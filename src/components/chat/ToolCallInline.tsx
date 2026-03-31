@@ -38,6 +38,10 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 
+function shouldRenderRawOutput(toolCall: ToolCall): boolean {
+  return Boolean(toolCall.output) && toolCall.name !== 'FileChange'
+}
+
 interface ToolCallInlineProps {
   toolCall: ToolCall
   className?: string
@@ -121,7 +125,7 @@ export function ToolCallInline({
             <div className="whitespace-pre-wrap text-xs text-muted-foreground">
               {expandedContent}
             </div>
-            {toolCall.output && (
+            {shouldRenderRawOutput(toolCall) && (
               <>
                 <div className="border-t border-border/30 my-2" />
                 <div className="text-xs text-muted-foreground/60 mb-1">
@@ -464,7 +468,7 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
             <div className="whitespace-pre-wrap text-[0.625rem] text-muted-foreground/70">
               {expandedContent}
             </div>
-            {toolCall.output && (
+            {shouldRenderRawOutput(toolCall) && (
               <>
                 <div className="border-t border-border/20 my-1.5" />
                 <div className="text-[0.625rem] text-muted-foreground/50 mb-0.5">
@@ -544,6 +548,32 @@ interface CodexFileChange {
   path?: string
 }
 
+function parseCodexFileChanges(input: unknown): CodexFileChange[] {
+  if (Array.isArray(input)) {
+    return input as CodexFileChange[]
+  }
+
+  if (input && typeof input === 'object') {
+    return [input as CodexFileChange]
+  }
+
+  if (typeof input === 'string') {
+    try {
+      const parsed = JSON.parse(input) as unknown
+      if (Array.isArray(parsed)) {
+        return parsed as CodexFileChange[]
+      }
+      if (parsed && typeof parsed === 'object') {
+        return [parsed as CodexFileChange]
+      }
+    } catch {
+      return []
+    }
+  }
+
+  return []
+}
+
 /** Renders a pre-computed unified diff patch with colored +/- lines */
 function PatchDiffView({ patch }: { patch: string }) {
   const lines = patch.split('\n')
@@ -574,11 +604,7 @@ function PatchDiffView({ patch }: { patch: string }) {
 
 /** Renders one or more Codex file changes with diffs */
 function FileChangeDiffView({ input }: { input: unknown }) {
-  const changes: CodexFileChange[] = Array.isArray(input)
-    ? (input as CodexFileChange[])
-    : input && typeof input === 'object'
-      ? [input as CodexFileChange]
-      : []
+  const changes = parseCodexFileChanges(input)
 
   if (changes.length === 0) {
     return <span>No file changes</span>
@@ -861,27 +887,42 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
 
     case 'FileChange': {
       // Codex file_change items — input is the raw "changes" JSON
-      const changes = input as Record<string, unknown>
+      const changes =
+        input && typeof input === 'object'
+          ? (input as Record<string, unknown>)
+          : {}
       const filePath = (changes.file ?? changes.path ?? changes.file_path) as
         | string
         | undefined
+      const fallbackChanges = !filePath ? parseCodexFileChanges(toolCall.output) : []
+      const fallbackFilePath =
+        fallbackChanges.length === 1
+          ? (fallbackChanges[0]?.path as string | undefined)
+          : undefined
       const filename = filePath ? getFilename(filePath) : undefined
 
       // If input is an array of changes, summarize
       const isArray = Array.isArray(toolCall.input)
+      const isFallbackArray = !isArray && fallbackChanges.length > 1
       const fileCount = isArray
         ? (toolCall.input as unknown[]).length
-        : undefined
-      const detail = isArray
+        : isFallbackArray
+          ? fallbackChanges.length
+          : undefined
+      const detail = isArray || isFallbackArray
         ? `${fileCount} file${fileCount === 1 ? '' : 's'}`
-        : filename
+        : filename ?? (fallbackFilePath ? getFilename(fallbackFilePath) : undefined)
 
       return {
         icon: <FileText className="h-4 w-4 shrink-0" />,
         label: 'File Change',
         detail,
-        filePath,
-        expandedContent: <FileChangeDiffView input={toolCall.input} />,
+        filePath: filePath ?? fallbackFilePath,
+        expandedContent: (
+          <FileChangeDiffView
+            input={toolCall.input ?? toolCall.output ?? null}
+          />
+        ),
       }
     }
 

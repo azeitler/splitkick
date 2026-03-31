@@ -149,13 +149,12 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             {/* Approve buttons */}
             {card.hasExitPlanMode &&
               !card.hasQuestion &&
-              card.session.backend !== 'codex' &&
+              !card.isSending &&
               onApprove &&
               onYolo && (
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
                     className="h-5 px-1.5 text-[10px] rounded"
-                    disabled={card.isSending}
                     onClick={e => {
                       e.stopPropagation()
                       onApprove()
@@ -169,7 +168,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                   <Button
                     variant="destructive"
                     className="h-5 px-1.5 text-[10px] rounded"
-                    disabled={card.isSending}
                     onClick={e => {
                       e.stopPropagation()
                       onYolo()
@@ -186,7 +184,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                     <Button
                       variant="destructive"
                       className="h-5 px-1.5 text-[10px] rounded"
-                      disabled={card.isSending}
                       onClick={e => {
                         e.stopPropagation()
                         onClearContextApprove()
@@ -204,7 +201,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                     <Button
                       variant="outline"
                       className="h-5 px-1.5 text-[10px] rounded"
-                      disabled={card.isSending}
                       onClick={e => {
                         e.stopPropagation()
                         onWorktreeBuildApprove()
@@ -222,7 +218,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                     <Button
                       variant="outline"
                       className="h-5 px-1.5 text-[10px] rounded"
-                      disabled={card.isSending}
                       onClick={e => {
                         e.stopPropagation()
                         onWorktreeYoloApprove()

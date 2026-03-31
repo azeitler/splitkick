@@ -2783,6 +2783,12 @@ pub fn run() {
             chat::save_cancelled_message,
             chat::mark_plan_approved,
             chat::approve_codex_command,
+            chat::respond_codex_command_approval,
+            chat::respond_codex_file_change_approval,
+            chat::respond_codex_permissions_request,
+            chat::respond_codex_user_input_request,
+            chat::respond_codex_mcp_elicitation,
+            chat::respond_codex_dynamic_tool_call,
             // Chat commands - Queue management (cross-client sync)
             chat::enqueue_message,
             chat::dequeue_message,

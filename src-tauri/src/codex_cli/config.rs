@@ -1,8 +1,8 @@
 //! Configuration and path management for the Codex CLI
 
+use crate::platform::silent_command;
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
-use crate::platform::silent_command;
 
 /// Directory name for storing the Codex CLI binary
 pub const CLI_DIR_NAME: &str = "codex-cli";
@@ -40,19 +40,28 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
         Ok(prefs_path) => {
             if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
                 if let Ok(prefs) = serde_json::from_str::<crate::AppPreferences>(&contents) {
-                    log::debug!("resolve_cli_binary: codex_cli_source={:?}", prefs.codex_cli_source);
+                    log::debug!(
+                        "resolve_cli_binary: codex_cli_source={:?}",
+                        prefs.codex_cli_source
+                    );
                     prefs.codex_cli_source == "path"
                 } else {
-                    log::debug!("resolve_cli_binary: failed to parse preferences, defaulting to jean");
+                    log::debug!(
+                        "resolve_cli_binary: failed to parse preferences, defaulting to jean"
+                    );
                     false
                 }
             } else {
-                log::debug!("resolve_cli_binary: failed to read preferences file, defaulting to jean");
+                log::debug!(
+                    "resolve_cli_binary: failed to read preferences file, defaulting to jean"
+                );
                 false
             }
         }
         Err(e) => {
-            log::debug!("resolve_cli_binary: failed to get preferences path: {e}, defaulting to jean");
+            log::debug!(
+                "resolve_cli_binary: failed to get preferences path: {e}, defaulting to jean"
+            );
             false
         }
     };
@@ -66,12 +75,19 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
 
         match silent_command(which_cmd).arg("codex").output() {
             Ok(output) => {
-                log::debug!("resolve_cli_binary: `{which_cmd} codex` exit_status={}, stdout={:?}",
+                log::debug!(
+                    "resolve_cli_binary: `{which_cmd} codex` exit_status={}, stdout={:?}",
                     output.status,
-                    String::from_utf8_lossy(&output.stdout).trim());
+                    String::from_utf8_lossy(&output.stdout).trim()
+                );
                 if output.status.success() {
                     // On Windows, `where` can return multiple paths; take only the first line
-                    let path_str = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
+                    let path_str = String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
                     if !path_str.is_empty() {
                         let path = PathBuf::from(&path_str);
                         if path.exists() {
@@ -81,7 +97,9 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
                             log::debug!("resolve_cli_binary: PATH binary does not exist on disk: {path_str}");
                         }
                     } else {
-                        log::debug!("resolve_cli_binary: `{which_cmd} codex` returned empty output");
+                        log::debug!(
+                            "resolve_cli_binary: `{which_cmd} codex` returned empty output"
+                        );
                     }
                 }
             }
@@ -92,7 +110,8 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
         log::warn!("codex_cli_source is 'path' but could not find codex in PATH, falling back to Jean-managed binary");
     }
 
-    let fallback = get_cli_binary_path(app).unwrap_or_else(|_| PathBuf::from(CLI_DIR_NAME).join(CLI_BINARY_NAME));
+    let fallback = get_cli_binary_path(app)
+        .unwrap_or_else(|_| PathBuf::from(CLI_DIR_NAME).join(CLI_BINARY_NAME));
     log::debug!("resolve_cli_binary: using jean-managed binary: {fallback:?}");
     fallback
 }

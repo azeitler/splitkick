@@ -225,15 +225,27 @@ const components: Components = {
   ),
 
   // Lists - generous spacing and indentation
-  ul: ({ children }) => (
-    <ul className="my-4 ml-6 list-disc list-outside space-y-2">{children}</ul>
+  ul: ({ children, className, ...props }) => (
+    <ul
+      {...props}
+      className={cn('my-4 ml-6 list-disc list-outside space-y-2', className)}
+    >
+      {children}
+    </ul>
   ),
-  ol: ({ children }) => (
-    <ol className="my-4 ml-6 list-decimal list-outside space-y-2">
+  ol: ({ children, className, ...props }) => (
+    <ol
+      {...props}
+      className={cn('my-4 ml-6 list-decimal list-outside space-y-2', className)}
+    >
       {children}
     </ol>
   ),
-  li: ({ children }) => <li className="leading-relaxed">{children}</li>,
+  li: ({ children, className, ...props }) => (
+    <li {...props} className={cn('leading-relaxed', className)}>
+      {children}
+    </li>
+  ),
 
   // Blockquotes - more prominent
   blockquote: ({ children }) => (

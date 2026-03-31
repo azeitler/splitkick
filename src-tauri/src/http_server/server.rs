@@ -351,20 +351,20 @@ async fn init_handler(Query(params): Query<WsAuth>, State(state): State<AppState
 
     // Parse browser-provided active session IDs (worktreeId:sessionId pairs).
     // These override ui_state.json which may be stale due to debounced save.
-    let browser_active_sessions: std::collections::HashMap<String, String> =
-        params.active_sessions
-            .as_deref()
-            .unwrap_or("")
-            .split(',')
-            .filter_map(|pair| {
-                let pair = pair.trim();
-                let (wt, sess) = pair.split_once(':')?;
-                if wt.is_empty() || sess.is_empty() {
-                    return None;
-                }
-                Some((wt.to_string(), sess.to_string()))
-            })
-            .collect();
+    let browser_active_sessions: std::collections::HashMap<String, String> = params
+        .active_sessions
+        .as_deref()
+        .unwrap_or("")
+        .split(',')
+        .filter_map(|pair| {
+            let pair = pair.trim();
+            let (wt, sess) = pair.split_once(':')?;
+            if wt.is_empty() || sess.is_empty() {
+                return None;
+            }
+            Some((wt.to_string(), sess.to_string()))
+        })
+        .collect();
 
     // Extract ui_state early so we can use it to fetch active sessions
     let mut ui_state = match &ui_state_result {

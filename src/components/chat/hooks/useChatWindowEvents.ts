@@ -78,18 +78,14 @@ interface UseChatWindowEventsParams {
   // Run scripts
   runScripts: string[]
   // Plan approval (keyboard shortcuts)
-  hasStreamingPlan: boolean
+  hasPendingPlanApproval: boolean
   pendingPlanMessage: { id: string } | null | undefined
-  handleStreamingPlanApproval: () => void
-  handleStreamingPlanApprovalYolo: () => void
   handlePlanApproval: (messageId: string) => void
   handlePlanApprovalYolo: (messageId: string) => void
   handleClearContextApproval: (messageId: string) => void
-  handleStreamingClearContextApproval: () => void
   handleClearContextApprovalBuild: (messageId: string) => void
-  handleStreamingClearContextApprovalBuild: () => void
-  /** Whether the active session uses Codex backend (no native approval flow) */
-  isCodexBackend: boolean
+  handleWorktreeBuildApproval: (messageId: string) => void
+  handleWorktreeYoloApproval: (messageId: string) => void
   /** Ref to the chat scroll viewport for keyboard scrolling */
   scrollViewportRef: RefObject<HTMLDivElement | null>
   /** Begin a user-initiated keyboard scroll: cancels auto-scroll, blocks handleScroll */
@@ -132,17 +128,14 @@ export function useChatWindowEvents({
   handleSaveContext,
   handleLoadContext,
   runScripts,
-  hasStreamingPlan,
+  hasPendingPlanApproval,
   pendingPlanMessage,
-  handleStreamingPlanApproval,
-  handleStreamingPlanApprovalYolo,
   handlePlanApproval,
   handlePlanApprovalYolo,
   handleClearContextApproval,
-  handleStreamingClearContextApproval,
   handleClearContextApprovalBuild,
-  handleStreamingClearContextApprovalBuild,
-  isCodexBackend,
+  handleWorktreeBuildApproval,
+  handleWorktreeYoloApproval,
   scrollViewportRef,
   beginKeyboardScroll,
   endKeyboardScroll,
@@ -464,16 +457,11 @@ export function useChatWindowEvents({
       window.removeEventListener('set-chat-input', handler as EventListener)
   }, [activeSessionId, inputRef])
 
-  // Approve plan keyboard shortcut (no-op for Codex which has no native approval flow)
+  // Approve plan keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingPlanApproval()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handlePlanApproval(pendingPlanMessage.id)
       }
     }
@@ -481,10 +469,8 @@ export function useChatWindowEvents({
     return () => window.removeEventListener('approve-plan', handler)
   }, [
     isModal,
-    isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingPlanApproval,
     handlePlanApproval,
   ])
 
@@ -537,16 +523,11 @@ export function useChatWindowEvents({
     }
   }, [scrollViewportRef, beginKeyboardScroll, endKeyboardScroll])
 
-  // Approve plan yolo keyboard shortcut (no-op for Codex)
+  // Approve plan yolo keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingPlanApprovalYolo()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handlePlanApprovalYolo(pendingPlanMessage.id)
       }
     }
@@ -554,23 +535,16 @@ export function useChatWindowEvents({
     return () => window.removeEventListener('approve-plan-yolo', handler)
   }, [
     isModal,
-    isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingPlanApprovalYolo,
     handlePlanApprovalYolo,
   ])
 
-  // Clear context and yolo keyboard shortcut (no-op for Codex)
+  // Clear context and yolo keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingClearContextApproval()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handleClearContextApproval(pendingPlanMessage.id)
       }
     }
@@ -579,23 +553,16 @@ export function useChatWindowEvents({
       window.removeEventListener('approve-plan-clear-context', handler)
   }, [
     isModal,
-    isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingClearContextApproval,
     handleClearContextApproval,
   ])
 
-  // Clear context and build keyboard shortcut (no-op for Codex)
+  // Clear context and build keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingClearContextApprovalBuild()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handleClearContextApprovalBuild(pendingPlanMessage.id)
       }
     }
@@ -604,10 +571,44 @@ export function useChatWindowEvents({
       window.removeEventListener('approve-plan-clear-context-build', handler)
   }, [
     isModal,
-    isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingClearContextApprovalBuild,
     handleClearContextApprovalBuild,
+  ])
+
+  // Worktree build keyboard shortcut
+  useEffect(() => {
+    const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
+      if (hasPendingPlanApproval && pendingPlanMessage) {
+        handleWorktreeBuildApproval(pendingPlanMessage.id)
+      }
+    }
+    window.addEventListener('approve-plan-worktree-build', handler)
+    return () =>
+      window.removeEventListener('approve-plan-worktree-build', handler)
+  }, [
+    isModal,
+    hasPendingPlanApproval,
+    pendingPlanMessage,
+    handleWorktreeBuildApproval,
+  ])
+
+  // Worktree yolo keyboard shortcut
+  useEffect(() => {
+    const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
+      if (hasPendingPlanApproval && pendingPlanMessage) {
+        handleWorktreeYoloApproval(pendingPlanMessage.id)
+      }
+    }
+    window.addEventListener('approve-plan-worktree-yolo', handler)
+    return () =>
+      window.removeEventListener('approve-plan-worktree-yolo', handler)
+  }, [
+    isModal,
+    hasPendingPlanApproval,
+    pendingPlanMessage,
+    handleWorktreeYoloApproval,
   ])
 }

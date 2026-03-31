@@ -491,6 +491,13 @@ pub async fn update_session_state(
     submitted_answers: Option<std::collections::HashMap<String, serde_json::Value>>,
     fixed_findings: Option<Vec<String>>,
     pending_permission_denials: Option<Vec<super::types::PermissionDenial>>,
+    pending_codex_permission_requests: Option<Vec<super::types::CodexPermissionRequest>>,
+    pending_codex_command_approval_requests: Option<Vec<super::types::CodexCommandApprovalRequest>>,
+    pending_codex_user_input_requests: Option<Vec<super::types::CodexUserInputRequest>>,
+    pending_codex_mcp_elicitation_requests: Option<Vec<super::types::CodexMcpElicitationRequest>>,
+    pending_codex_dynamic_tool_call_requests: Option<
+        Vec<super::types::CodexDynamicToolCallRequest>,
+    >,
     denied_message_context: Option<Option<super::types::DeniedMessageContext>>,
     is_reviewing: Option<bool>,
     waiting_for_input: Option<bool>,
@@ -518,6 +525,21 @@ pub async fn update_session_state(
             }
             if let Some(v) = pending_permission_denials {
                 session.pending_permission_denials = v;
+            }
+            if let Some(v) = pending_codex_permission_requests {
+                session.pending_codex_permission_requests = v;
+            }
+            if let Some(v) = pending_codex_command_approval_requests {
+                session.pending_codex_command_approval_requests = v;
+            }
+            if let Some(v) = pending_codex_user_input_requests {
+                session.pending_codex_user_input_requests = v;
+            }
+            if let Some(v) = pending_codex_mcp_elicitation_requests {
+                session.pending_codex_mcp_elicitation_requests = v;
+            }
+            if let Some(v) = pending_codex_dynamic_tool_call_requests {
+                session.pending_codex_dynamic_tool_call_requests = v;
             }
             if let Some(v) = denied_message_context {
                 session.denied_message_context = v;
@@ -1223,10 +1245,7 @@ pub async fn set_active_session(
 /// (viewing the session acts as acknowledgment).
 /// Returns true if the session was transitioned from waiting to review.
 #[tauri::command]
-pub async fn set_session_last_opened(
-    app: AppHandle,
-    session_id: String,
-) -> Result<bool, String> {
+pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Result<bool, String> {
     log::trace!("Setting last_opened_at for session: {session_id}");
 
     let mut transitioned = false;
@@ -1249,9 +1268,7 @@ pub async fn set_session_last_opened(
             metadata.is_reviewing = true;
             metadata.pending_plan_message_id = None;
             transitioned = true;
-            log::debug!(
-                "Auto-transitioned session {session_id} from waiting to review"
-            );
+            log::debug!("Auto-transitioned session {session_id} from waiting to review");
         }
 
         save_metadata(&app, &metadata)?;
@@ -1644,6 +1661,15 @@ pub async fn send_chat_message(
         Some(final_allowed_tools)
     };
 
+    // Check if MCP servers are configured (for Codex granular approval policy).
+    // Use the mcp_config parameter (JSON string from frontend) rather than
+    // session.enabled_mcp_servers, which may not be persisted yet.
+    let codex_has_mcp_servers = effective_backend == Backend::Codex
+        && mcp_config
+            .as_ref()
+            .map(|c| !c.is_empty())
+            .unwrap_or(false);
+
     // Unified response type for both backends
     struct UnifiedResponse {
         content: String,
@@ -1684,6 +1710,7 @@ pub async fn send_chat_message(
     let thread_codex_search = codex_search_enabled;
     let thread_codex_multi_agent = codex_multi_agent_enabled;
     let thread_codex_max_threads = codex_max_agent_threads;
+    let thread_codex_has_mcp = codex_has_mcp_servers;
 
     // For OpenCode sessions: create a cancel flag so we can signal the blocking HTTP thread.
     // Register it before spawning so cancel_process can find it immediately.
@@ -2126,9 +2153,9 @@ pub async fn send_chat_message(
                     }
                 };
 
-                // Read the instructions file content to pass inline via developerInstructions
-                let codex_instructions_content: Option<String> =
-                    codex_instructions_file.and_then(|path| {
+                // Read the instructions file content to pass inline via baseInstructions
+                let codex_base_instructions_content: Option<String> = codex_instructions_file
+                    .and_then(|path| {
                         std::fs::read_to_string(&path)
                             .map_err(|e| {
                                 log::error!("Failed to read Codex instructions file: {e}");
@@ -2150,9 +2177,10 @@ pub async fn send_chat_message(
                     thread_codex_search,
                     &codex_add_dirs,
                     &thread_message,
-                    codex_instructions_content.as_deref(),
+                    codex_base_instructions_content.as_deref(),
                     thread_codex_multi_agent,
                     thread_codex_max_threads,
+                    thread_codex_has_mcp,
                 ) {
                     Ok(response) => Ok((
                         0, // No PID for app-server sessions
@@ -2444,30 +2472,23 @@ pub async fn send_chat_message(
                     let resume_sid =
                         run_log::extract_session_id_from_jsonl(&app, &session_id, &run_id);
                     let salvage_msg_id = Uuid::new_v4().to_string();
-                    if let Err(complete_err) = run_log_writer.complete(
-                        &salvage_msg_id,
-                        resume_sid.as_deref(),
-                        None,
-                    ) {
+                    if let Err(complete_err) =
+                        run_log_writer.complete(&salvage_msg_id, resume_sid.as_deref(), None)
+                    {
                         log::warn!("Failed to complete salvaged run: {complete_err}");
                     }
                     // Also persist resume ID to session index so --resume works
                     if let Some(ref sid) = resume_sid {
-                        if let Err(save_err) = with_sessions_mut(
-                            &app,
-                            &worktree_path,
-                            &worktree_id,
-                            |sessions| {
-                                if let Some(session) =
-                                    sessions.find_session_mut(&session_id)
-                                {
+                        if let Err(save_err) =
+                            with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+                                if let Some(session) = sessions.find_session_mut(&session_id) {
                                     session.claude_session_id = Some(sid.clone());
                                     session.is_reviewing = true;
                                     session.waiting_for_input = false;
                                 }
                                 Ok(())
-                            },
-                        ) {
+                            })
+                        {
                             log::warn!(
                                 "Failed to save salvaged resume ID (will recover on restart): {save_err}"
                             );
@@ -2476,9 +2497,7 @@ pub async fn send_chat_message(
                     emit_sessions_cache_invalidation(&app);
                 } else {
                     if let Err(mark_err) = run_log_writer.mark_crashed() {
-                        log::warn!(
-                            "Failed to mark run as crashed after thread error: {mark_err}"
-                        );
+                        log::warn!("Failed to mark run as crashed after thread error: {mark_err}");
                     }
                 }
             }
@@ -2492,8 +2511,7 @@ pub async fn send_chat_message(
                 log::info!(
                     "[SendChat] CLI completed despite thread panic for session={session_id}, salvaging run"
                 );
-                let resume_sid =
-                    run_log::extract_session_id_from_jsonl(&app, &session_id, &run_id);
+                let resume_sid = run_log::extract_session_id_from_jsonl(&app, &session_id, &run_id);
                 let salvage_msg_id = Uuid::new_v4().to_string();
                 if let Err(complete_err) =
                     run_log_writer.complete(&salvage_msg_id, resume_sid.as_deref(), None)
@@ -2694,17 +2712,24 @@ pub async fn send_chat_message(
     // Pre-compute completion state flags before moving unified_response fields
     let has_content = !unified_response.content.is_empty();
     let was_cancelled = unified_response.cancelled;
-    let has_blocking_tool = unified_response
-        .tool_calls
-        .iter()
-        .any(|tc| tc.name == "AskUserQuestion" || tc.name == "ExitPlanMode" || tc.name == "question");
+    let has_blocking_tool = unified_response.tool_calls.iter().any(|tc| {
+        tc.name == "AskUserQuestion"
+            || tc.name == "ExitPlanMode"
+            || tc.name == "CodexPlan"
+            || tc.name == "question"
+    });
     let has_question_tool = unified_response
         .tool_calls
         .iter()
         .any(|tc| tc.name == "AskUserQuestion" || tc.name == "question");
-    let is_plan_mode_with_content = matches!(response_backend, Backend::Codex | Backend::Opencode)
+    let has_plan_tool = unified_response
+        .tool_calls
+        .iter()
+        .any(|tc| tc.name == "ExitPlanMode" || tc.name == "CodexPlan");
+    let is_plan_mode_with_content = matches!(response_backend, Backend::Opencode)
         && execution_mode.as_deref() == Some("plan")
-        && has_content;
+        && has_content
+        && !has_plan_tool;
 
     // Create assistant message with tool calls and content blocks
     let assistant_msg_id = Uuid::new_v4().to_string();
@@ -5524,17 +5549,93 @@ fn parse_codex_mcp_list_json(output: &str) -> std::collections::HashMap<String, 
     std::collections::HashMap::new()
 }
 
-/// Approve or decline a Codex command execution approval request.
-///
-/// Called by the frontend when the user clicks "Approve" or "Cancel" in the
-/// PermissionApproval UI during a Codex build-mode session.
+fn send_codex_response(rpc_id: u64, payload: serde_json::Value) -> Result<(), String> {
+    super::codex_server::send_response(rpc_id, payload)
+}
+
+/// Backward-compatible wrapper for legacy frontend callers.
 #[tauri::command]
 pub fn approve_codex_command(
     _session_id: String,
     rpc_id: u64,
     decision: String,
 ) -> Result<(), String> {
-    super::codex_server::send_response(rpc_id, serde_json::json!({"decision": decision}))
+    send_codex_response(rpc_id, serde_json::json!({ "decision": decision }))
+}
+
+#[tauri::command]
+pub fn respond_codex_command_approval(
+    _session_id: String,
+    rpc_id: u64,
+    response: serde_json::Value,
+) -> Result<(), String> {
+    send_codex_response(rpc_id, response)
+}
+
+#[tauri::command]
+pub fn respond_codex_file_change_approval(
+    _session_id: String,
+    rpc_id: u64,
+    decision: String,
+) -> Result<(), String> {
+    send_codex_response(rpc_id, serde_json::json!({ "decision": decision }))
+}
+
+#[tauri::command]
+pub fn respond_codex_permissions_request(
+    _session_id: String,
+    rpc_id: u64,
+    permissions: serde_json::Value,
+    scope: Option<String>,
+) -> Result<(), String> {
+    let mut payload = serde_json::json!({ "permissions": permissions });
+    if let Some(scope) = scope {
+        payload["scope"] = serde_json::json!(scope);
+    }
+    send_codex_response(rpc_id, payload)
+}
+
+#[tauri::command]
+pub fn respond_codex_user_input_request(
+    _session_id: String,
+    rpc_id: u64,
+    answers: std::collections::HashMap<String, serde_json::Value>,
+) -> Result<(), String> {
+    send_codex_response(rpc_id, serde_json::json!({ "answers": answers }))
+}
+
+#[tauri::command]
+pub fn respond_codex_mcp_elicitation(
+    _session_id: String,
+    rpc_id: u64,
+    action: String,
+    content: Option<serde_json::Value>,
+    meta: Option<serde_json::Value>,
+) -> Result<(), String> {
+    let mut payload = serde_json::json!({ "action": action });
+    if let Some(content) = content {
+        payload["content"] = content;
+    }
+    if let Some(meta) = meta {
+        payload["_meta"] = meta;
+    }
+    send_codex_response(rpc_id, payload)
+}
+
+#[tauri::command]
+pub fn respond_codex_dynamic_tool_call(
+    _session_id: String,
+    rpc_id: u64,
+    success: bool,
+    content_items: Vec<serde_json::Value>,
+) -> Result<(), String> {
+    send_codex_response(
+        rpc_id,
+        serde_json::json!({
+            "success": success,
+            "contentItems": content_items,
+        }),
+    )
 }
 
 // =============================================================================
@@ -5655,12 +5756,7 @@ pub async fn answer_opencode_question(
     let app_clone = app.clone();
 
     tokio::task::spawn_blocking(move || {
-        super::opencode::answer_opencode_question(
-            &app_clone,
-            &working_dir,
-            &tool_call_id,
-            answers,
-        )
+        super::opencode::answer_opencode_question(&app_clone, &working_dir, &tool_call_id, answers)
     })
     .await
     .map_err(|e| format!("Task join error: {e}"))?

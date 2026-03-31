@@ -178,10 +178,7 @@ struct Manifest {
 
 /// Parse version string into comparable parts
 fn parse_version(version: &str) -> Vec<u32> {
-    version
-        .split('.')
-        .filter_map(|s| s.parse().ok())
-        .collect()
+    version.split('.').filter_map(|s| s.parse().ok()).collect()
 }
 
 /// Get available Claude CLI versions from npm registry
@@ -1096,7 +1093,12 @@ pub async fn detect_claude_in_path(app: AppHandle) -> Result<ClaudePathDetection
     {
         Ok(output) if output.status.success() => {
             // On Windows, `where` can return multiple paths; take only the first line
-            String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string()
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string()
         }
         _ => {
             log::trace!("Claude CLI not found in PATH");
@@ -1141,7 +1143,9 @@ pub async fn detect_claude_in_path(app: AppHandle) -> Result<ClaudePathDetection
         .output()
     {
         Ok(ver_output) if ver_output.status.success() => {
-            let ver_str = String::from_utf8_lossy(&ver_output.stdout).trim().to_string();
+            let ver_str = String::from_utf8_lossy(&ver_output.stdout)
+                .trim()
+                .to_string();
             Some(extract_version_number(&ver_str))
         }
         _ => None,

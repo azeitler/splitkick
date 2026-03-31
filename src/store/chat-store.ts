@@ -15,11 +15,16 @@ import {
   type Todo,
   type QueuedMessage,
   type PermissionDenial,
+  type CodexCommandApprovalRequest,
+  type CodexPermissionRequest,
+  type CodexUserInputRequest,
+  type CodexMcpElicitationRequest,
+  type CodexDynamicToolCallRequest,
   type ExecutionMode,
   type SessionDigest,
   type LabelData,
   EXECUTION_MODE_CYCLE,
-  isExitPlanMode,
+  isPlanToolCall,
 } from '@/types/chat'
 import type { ReviewResponse } from '@/types/projects'
 import { invoke } from '@/lib/transport'
@@ -190,6 +195,20 @@ interface ChatUIState {
 
   // Pending permission denials per session (waiting for user approval)
   pendingPermissionDenials: Record<string, PermissionDenial[]>
+  pendingCodexCommandApprovalRequests: Record<
+    string,
+    CodexCommandApprovalRequest[]
+  >
+  pendingCodexPermissionRequests: Record<string, CodexPermissionRequest[]>
+  pendingCodexUserInputRequests: Record<string, CodexUserInputRequest[]>
+  pendingCodexMcpElicitationRequests: Record<
+    string,
+    CodexMcpElicitationRequest[]
+  >
+  pendingCodexDynamicToolCallRequests: Record<
+    string,
+    CodexDynamicToolCallRequest[]
+  >
 
   // The original message context that triggered the denial (for re-send)
   deniedMessageContext: Record<
@@ -482,6 +501,46 @@ interface ChatUIState {
   setPendingDenials: (sessionId: string, denials: PermissionDenial[]) => void
   clearPendingDenials: (sessionId: string) => void
   getPendingDenials: (sessionId: string) => PermissionDenial[]
+  setPendingCodexCommandApprovalRequests: (
+    sessionId: string,
+    requests: CodexCommandApprovalRequest[]
+  ) => void
+  clearPendingCodexCommandApprovalRequests: (sessionId: string) => void
+  getPendingCodexCommandApprovalRequests: (
+    sessionId: string
+  ) => CodexCommandApprovalRequest[]
+  setPendingCodexPermissionRequests: (
+    sessionId: string,
+    requests: CodexPermissionRequest[]
+  ) => void
+  clearPendingCodexPermissionRequests: (sessionId: string) => void
+  getPendingCodexPermissionRequests: (
+    sessionId: string
+  ) => CodexPermissionRequest[]
+  setPendingCodexUserInputRequests: (
+    sessionId: string,
+    requests: CodexUserInputRequest[]
+  ) => void
+  clearPendingCodexUserInputRequests: (sessionId: string) => void
+  getPendingCodexUserInputRequests: (
+    sessionId: string
+  ) => CodexUserInputRequest[]
+  setPendingCodexMcpElicitationRequests: (
+    sessionId: string,
+    requests: CodexMcpElicitationRequest[]
+  ) => void
+  clearPendingCodexMcpElicitationRequests: (sessionId: string) => void
+  getPendingCodexMcpElicitationRequests: (
+    sessionId: string
+  ) => CodexMcpElicitationRequest[]
+  setPendingCodexDynamicToolCallRequests: (
+    sessionId: string,
+    requests: CodexDynamicToolCallRequest[]
+  ) => void
+  clearPendingCodexDynamicToolCallRequests: (sessionId: string) => void
+  getPendingCodexDynamicToolCallRequests: (
+    sessionId: string
+  ) => CodexDynamicToolCallRequest[]
 
   // Actions - Denied message context (for re-send)
   setDeniedMessageContext: (
@@ -596,6 +655,11 @@ export const useChatStore = create<ChatUIState>()(
       executingModes: {},
       approvedTools: {},
       pendingPermissionDenials: {},
+      pendingCodexCommandApprovalRequests: {},
+      pendingCodexPermissionRequests: {},
+      pendingCodexUserInputRequests: {},
+      pendingCodexMcpElicitationRequests: {},
+      pendingCodexDynamicToolCallRequests: {},
       deniedMessageContext: {},
       lastCompaction: {},
       compactingSessions: {},
@@ -1025,7 +1089,7 @@ export const useChatStore = create<ChatUIState>()(
         )) {
           if (
             state.sessionWorktreeMap[sessionId] === worktreeId &&
-            toolCalls.some(tc => isAskUserQuestion(tc) || isExitPlanMode(tc))
+            toolCalls.some(tc => isAskUserQuestion(tc) || isPlanToolCall(tc))
           ) {
             return true
           }
@@ -1080,9 +1144,10 @@ export const useChatStore = create<ChatUIState>()(
               tc => tc.id === toolCall.id
             )
             if (existingIndex !== -1) {
-              // Already exists — update input if the new one has richer data
-              // (e.g., enriched question data replacing an empty placeholder)
-              const old = existing[existingIndex]!
+              // Already exists — update input if the new one has richer or newer data
+              // (e.g., enriched question data or streaming Codex plan deltas)
+              const old = existing[existingIndex]
+              if (!old) return state
               const oldEmpty =
                 old.input == null ||
                 (typeof old.input === 'object' &&
@@ -1091,7 +1156,10 @@ export const useChatStore = create<ChatUIState>()(
                 toolCall.input != null &&
                 typeof toolCall.input === 'object' &&
                 Object.keys(toolCall.input as object).length > 0
-              if (oldEmpty && newHasData) {
+              const inputChanged =
+                JSON.stringify(old.input ?? null) !==
+                JSON.stringify(toolCall.input ?? null)
+              if ((oldEmpty && newHasData) || (newHasData && inputChanged)) {
                 const updated = [...existing]
                 updated[existingIndex] = {
                   ...old,
@@ -1182,15 +1250,42 @@ export const useChatStore = create<ChatUIState>()(
 
       addToolBlock: (sessionId, toolCallId) =>
         set(
-          state => ({
-            streamingContentBlocks: {
-              ...state.streamingContentBlocks,
-              [sessionId]: [
-                ...(state.streamingContentBlocks[sessionId] ?? []),
-                { type: 'tool_use', tool_call_id: toolCallId },
-              ],
-            },
-          }),
+          state => {
+            const blocks = state.streamingContentBlocks[sessionId] ?? []
+            const nextBlocks = [
+              ...blocks.filter(
+                block =>
+                  !(
+                    block.type === 'tool_use' &&
+                    block.tool_call_id === toolCallId
+                  )
+              ),
+              { type: 'tool_use' as const, tool_call_id: toolCallId },
+            ]
+
+            const unchanged =
+              nextBlocks.length === blocks.length &&
+              nextBlocks.every((block, index) => {
+                const existing = blocks[index]
+                if (!existing || existing.type !== block.type) return false
+                if (block.type === 'tool_use') {
+                  return (
+                    existing.type === 'tool_use' &&
+                    existing.tool_call_id === block.tool_call_id
+                  )
+                }
+                return false
+              })
+
+            if (unchanged) return state
+
+            return {
+              streamingContentBlocks: {
+                ...state.streamingContentBlocks,
+                [sessionId]: nextBlocks,
+              },
+            }
+          },
           undefined,
           'addToolBlock'
         ),
@@ -1327,6 +1422,24 @@ export const useChatStore = create<ChatUIState>()(
               const { [sessionId]: __, ...restContext } =
                 state.deniedMessageContext
               newState.deniedMessageContext = restContext
+            }
+            if (mode === 'yolo') {
+              const { [sessionId]: _cmd, ...restCommandApprovals } =
+                state.pendingCodexCommandApprovalRequests
+              const { [sessionId]: _, ...restPermissionRequests } =
+                state.pendingCodexPermissionRequests
+              const { [sessionId]: __, ...restUserInputs } =
+                state.pendingCodexUserInputRequests
+              const { [sessionId]: ___, ...restMcp } =
+                state.pendingCodexMcpElicitationRequests
+              const { [sessionId]: ____, ...restDynamic } =
+                state.pendingCodexDynamicToolCallRequests
+              newState.pendingCodexCommandApprovalRequests =
+                restCommandApprovals
+              newState.pendingCodexPermissionRequests = restPermissionRequests
+              newState.pendingCodexUserInputRequests = restUserInputs
+              newState.pendingCodexMcpElicitationRequests = restMcp
+              newState.pendingCodexDynamicToolCallRequests = restDynamic
             }
             return newState
           },
@@ -2109,6 +2222,156 @@ export const useChatStore = create<ChatUIState>()(
       getPendingDenials: sessionId =>
         get().pendingPermissionDenials[sessionId] ?? [],
 
+      setPendingCodexCommandApprovalRequests: (sessionId, requests) =>
+        set(
+          state => {
+            const current = state.pendingCodexCommandApprovalRequests[sessionId]
+            if (!current && requests.length === 0) return state
+            return {
+              pendingCodexCommandApprovalRequests: {
+                ...state.pendingCodexCommandApprovalRequests,
+                [sessionId]: requests,
+              },
+            }
+          },
+          undefined,
+          'setPendingCodexCommandApprovalRequests'
+        ),
+
+      clearPendingCodexCommandApprovalRequests: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } =
+              state.pendingCodexCommandApprovalRequests
+            return { pendingCodexCommandApprovalRequests: rest }
+          },
+          undefined,
+          'clearPendingCodexCommandApprovalRequests'
+        ),
+
+      getPendingCodexCommandApprovalRequests: sessionId =>
+        get().pendingCodexCommandApprovalRequests[sessionId] ?? [],
+
+      setPendingCodexPermissionRequests: (sessionId, requests) =>
+        set(
+          state => {
+            const current = state.pendingCodexPermissionRequests[sessionId]
+            if (!current && requests.length === 0) return state
+            return {
+              pendingCodexPermissionRequests: {
+                ...state.pendingCodexPermissionRequests,
+                [sessionId]: requests,
+              },
+            }
+          },
+          undefined,
+          'setPendingCodexPermissionRequests'
+        ),
+
+      clearPendingCodexPermissionRequests: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } =
+              state.pendingCodexPermissionRequests
+            return { pendingCodexPermissionRequests: rest }
+          },
+          undefined,
+          'clearPendingCodexPermissionRequests'
+        ),
+
+      getPendingCodexPermissionRequests: sessionId =>
+        get().pendingCodexPermissionRequests[sessionId] ?? [],
+
+      setPendingCodexUserInputRequests: (sessionId, requests) =>
+        set(
+          state => {
+            const current = state.pendingCodexUserInputRequests[sessionId]
+            if (!current && requests.length === 0) return state
+            return {
+              pendingCodexUserInputRequests: {
+                ...state.pendingCodexUserInputRequests,
+                [sessionId]: requests,
+              },
+            }
+          },
+          undefined,
+          'setPendingCodexUserInputRequests'
+        ),
+
+      clearPendingCodexUserInputRequests: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } =
+              state.pendingCodexUserInputRequests
+            return { pendingCodexUserInputRequests: rest }
+          },
+          undefined,
+          'clearPendingCodexUserInputRequests'
+        ),
+
+      getPendingCodexUserInputRequests: sessionId =>
+        get().pendingCodexUserInputRequests[sessionId] ?? [],
+
+      setPendingCodexMcpElicitationRequests: (sessionId, requests) =>
+        set(
+          state => {
+            const current = state.pendingCodexMcpElicitationRequests[sessionId]
+            if (!current && requests.length === 0) return state
+            return {
+              pendingCodexMcpElicitationRequests: {
+                ...state.pendingCodexMcpElicitationRequests,
+                [sessionId]: requests,
+              },
+            }
+          },
+          undefined,
+          'setPendingCodexMcpElicitationRequests'
+        ),
+
+      clearPendingCodexMcpElicitationRequests: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } =
+              state.pendingCodexMcpElicitationRequests
+            return { pendingCodexMcpElicitationRequests: rest }
+          },
+          undefined,
+          'clearPendingCodexMcpElicitationRequests'
+        ),
+
+      getPendingCodexMcpElicitationRequests: sessionId =>
+        get().pendingCodexMcpElicitationRequests[sessionId] ?? [],
+
+      setPendingCodexDynamicToolCallRequests: (sessionId, requests) =>
+        set(
+          state => {
+            const current = state.pendingCodexDynamicToolCallRequests[sessionId]
+            if (!current && requests.length === 0) return state
+            return {
+              pendingCodexDynamicToolCallRequests: {
+                ...state.pendingCodexDynamicToolCallRequests,
+                [sessionId]: requests,
+              },
+            }
+          },
+          undefined,
+          'setPendingCodexDynamicToolCallRequests'
+        ),
+
+      clearPendingCodexDynamicToolCallRequests: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } =
+              state.pendingCodexDynamicToolCallRequests
+            return { pendingCodexDynamicToolCallRequests: rest }
+          },
+          undefined,
+          'clearPendingCodexDynamicToolCallRequests'
+        ),
+
+      getPendingCodexDynamicToolCallRequests: sessionId =>
+        get().pendingCodexDynamicToolCallRequests[sessionId] ?? [],
+
       // Denied message context (for re-send)
       setDeniedMessageContext: (sessionId, context) =>
         set(
@@ -2215,6 +2478,22 @@ export const useChatStore = create<ChatUIState>()(
             const { [sessionId]: _em, ...executingModes } = state.executingModes
             const { [sessionId]: _pd, ...pendingPermissionDenials } =
               state.pendingPermissionDenials
+            const {
+              [sessionId]: _ccar,
+              ...pendingCodexCommandApprovalRequests
+            } = state.pendingCodexCommandApprovalRequests
+            const { [sessionId]: _cpr, ...pendingCodexPermissionRequests } =
+              state.pendingCodexPermissionRequests
+            const { [sessionId]: _cui, ...pendingCodexUserInputRequests } =
+              state.pendingCodexUserInputRequests
+            const {
+              [sessionId]: _cmcp,
+              ...pendingCodexMcpElicitationRequests
+            } = state.pendingCodexMcpElicitationRequests
+            const {
+              [sessionId]: _cdtc,
+              ...pendingCodexDynamicToolCallRequests
+            } = state.pendingCodexDynamicToolCallRequests
             const { [sessionId]: _dc, ...deniedMessageContext } =
               state.deniedMessageContext
             const { [sessionId]: _sa, ...sendStartedAtRest } =
@@ -2228,6 +2507,11 @@ export const useChatStore = create<ChatUIState>()(
               streamingPlanApprovals,
               executingModes,
               pendingPermissionDenials,
+              pendingCodexCommandApprovalRequests,
+              pendingCodexPermissionRequests,
+              pendingCodexUserInputRequests,
+              pendingCodexMcpElicitationRequests,
+              pendingCodexDynamicToolCallRequests,
               deniedMessageContext,
               sendStartedAt: sendStartedAtRest,
               completedDurations:
@@ -2328,6 +2612,16 @@ export const useChatStore = create<ChatUIState>()(
               state.approvedTools
             const { [sessionId]: _denials, ...restDenials } =
               state.pendingPermissionDenials
+            const { [sessionId]: _commandReqs, ...restCommandReqs } =
+              state.pendingCodexCommandApprovalRequests
+            const { [sessionId]: _permissionReqs, ...restPermissionReqs } =
+              state.pendingCodexPermissionRequests
+            const { [sessionId]: _userInputReqs, ...restUserInputReqs } =
+              state.pendingCodexUserInputRequests
+            const { [sessionId]: _mcpReqs, ...restMcpReqs } =
+              state.pendingCodexMcpElicitationRequests
+            const { [sessionId]: _dynamicReqs, ...restDynamicReqs } =
+              state.pendingCodexDynamicToolCallRequests
             const { [sessionId]: _denied, ...restDenied } =
               state.deniedMessageContext
             const { [sessionId]: _reviewing, ...restReviewing } =
@@ -2346,6 +2640,11 @@ export const useChatStore = create<ChatUIState>()(
             return {
               approvedTools: restApproved,
               pendingPermissionDenials: restDenials,
+              pendingCodexCommandApprovalRequests: restCommandReqs,
+              pendingCodexPermissionRequests: restPermissionReqs,
+              pendingCodexUserInputRequests: restUserInputReqs,
+              pendingCodexMcpElicitationRequests: restMcpReqs,
+              pendingCodexDynamicToolCallRequests: restDynamicReqs,
               deniedMessageContext: restDenied,
               reviewingSessions: restReviewing,
               waitingForInputSessionIds: restWaiting,

@@ -723,9 +723,13 @@ pub async fn create_worktree(
         issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         linear_issue_identifier: linear_context.as_ref().map(|ctx| ctx.identifier.clone()),
         security_alert_number: security_context.as_ref().map(|ctx| ctx.number),
-        security_alert_url: security_context.as_ref().and_then(|ctx| ctx.html_url.clone()),
+        security_alert_url: security_context
+            .as_ref()
+            .and_then(|ctx| ctx.html_url.clone()),
         advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
-        advisory_url: advisory_context.as_ref().and_then(|ctx| ctx.html_url.clone()),
+        advisory_url: advisory_context
+            .as_ref()
+            .and_then(|ctx| ctx.html_url.clone()),
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1225,8 +1229,8 @@ pub async fn create_worktree(
             // Check for jean.json setup script upfront so we can include it in the
             // initial worktree record. This lets the frontend know a setup script
             // will run (setup_script is set, but setup_output is still None).
-            let pending_setup_script = git::read_jean_config(&project_path)
-                .and_then(|config| config.scripts.setup);
+            let pending_setup_script =
+                git::read_jean_config(&project_path).and_then(|config| config.scripts.setup);
 
             // Save to storage and emit worktree:created BEFORE running setup script
             // so the UI can open immediately and the user can start typing.
@@ -1260,9 +1264,15 @@ pub async fn create_worktree(
                         .as_ref()
                         .map(|ctx| ctx.identifier.clone()),
                     security_alert_number: security_context_clone.as_ref().map(|ctx| ctx.number),
-                    security_alert_url: security_context_clone.as_ref().and_then(|ctx| ctx.html_url.clone()),
-                    advisory_ghsa_id: advisory_context_clone.as_ref().map(|ctx| ctx.ghsa_id.clone()),
-                    advisory_url: advisory_context_clone.as_ref().and_then(|ctx| ctx.html_url.clone()),
+                    security_alert_url: security_context_clone
+                        .as_ref()
+                        .and_then(|ctx| ctx.html_url.clone()),
+                    advisory_ghsa_id: advisory_context_clone
+                        .as_ref()
+                        .map(|ctx| ctx.ghsa_id.clone()),
+                    advisory_url: advisory_context_clone
+                        .as_ref()
+                        .and_then(|ctx| ctx.html_url.clone()),
                     cached_pr_status: None,
                     cached_check_status: None,
                     cached_behind_count: None,
@@ -1279,7 +1289,7 @@ pub async fn create_worktree(
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
-                                last_opened_at: None,
+                    last_opened_at: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -1454,9 +1464,13 @@ pub async fn create_worktree_from_existing_branch(
         issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         linear_issue_identifier: linear_context.as_ref().map(|ctx| ctx.identifier.clone()),
         security_alert_number: security_context.as_ref().map(|ctx| ctx.number),
-        security_alert_url: security_context.as_ref().and_then(|ctx| ctx.html_url.clone()),
+        security_alert_url: security_context
+            .as_ref()
+            .and_then(|ctx| ctx.html_url.clone()),
         advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
-        advisory_url: advisory_context.as_ref().and_then(|ctx| ctx.html_url.clone()),
+        advisory_url: advisory_context
+            .as_ref()
+            .and_then(|ctx| ctx.html_url.clone()),
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1825,16 +1839,22 @@ pub async fn create_worktree_from_existing_branch(
                     setup_script,
                     setup_success,
                     session_type: SessionType::Worktree,
-                    pr_number: None,
+                    pr_number: pr_context_clone.as_ref().map(|ctx| ctx.number),
                     pr_url: None,
                     issue_number: issue_context_clone.as_ref().map(|ctx| ctx.number),
                     linear_issue_identifier: linear_context_clone
                         .as_ref()
                         .map(|ctx| ctx.identifier.clone()),
                     security_alert_number: security_context_clone.as_ref().map(|ctx| ctx.number),
-                    security_alert_url: security_context_clone.as_ref().and_then(|ctx| ctx.html_url.clone()),
-                    advisory_ghsa_id: advisory_context_clone.as_ref().map(|ctx| ctx.ghsa_id.clone()),
-                    advisory_url: advisory_context_clone.as_ref().and_then(|ctx| ctx.html_url.clone()),
+                    security_alert_url: security_context_clone
+                        .as_ref()
+                        .and_then(|ctx| ctx.html_url.clone()),
+                    advisory_ghsa_id: advisory_context_clone
+                        .as_ref()
+                        .map(|ctx| ctx.ghsa_id.clone()),
+                    advisory_url: advisory_context_clone
+                        .as_ref()
+                        .and_then(|ctx| ctx.html_url.clone()),
                     cached_pr_status: None,
                     cached_check_status: None,
                     cached_behind_count: None,
@@ -1851,7 +1871,7 @@ pub async fn create_worktree_from_existing_branch(
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
-                                last_opened_at: None,
+                    last_opened_at: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -2130,7 +2150,9 @@ pub async fn checkout_pr(
             // Fetch latest base branch so the worktree starts from up-to-date code
             let effective_base = match git::git_fetch(&project_path, &base_branch_clone, None) {
                 Ok(_) => {
-                    log::trace!("Successfully fetched base branch, using origin/{base_branch_clone}");
+                    log::trace!(
+                        "Successfully fetched base branch, using origin/{base_branch_clone}"
+                    );
                     format!("origin/{base_branch_clone}")
                 }
                 Err(e) => {
@@ -2396,7 +2418,7 @@ pub async fn checkout_pr(
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
-                                last_opened_at: None,
+                    last_opened_at: None,
                 };
 
                 data.add_worktree(worktree.clone());
@@ -3478,20 +3500,16 @@ pub async fn open_worktree_in_terminal(
                 } else if crate::platform::executable_exists("warp") {
                     "warp".to_string()
                 } else {
-                    return Err(format!(
-                        "Warp not found. Checked: {known_path} and PATH"
-                    ));
+                    return Err(format!("Warp not found. Checked: {known_path} and PATH"));
                 };
                 log::trace!("Using Warp at: {warp_exe}");
                 std::process::Command::new(&warp_exe)
                     .current_dir(&worktree_path)
                     .spawn()
             }
-            "windows-terminal" => {
-                std::process::Command::new("wt")
-                    .args(["-d", &worktree_path])
-                    .spawn()
-            }
+            "windows-terminal" => std::process::Command::new("wt")
+                .args(["-d", &worktree_path])
+                .spawn(),
             _ => {
                 // Default: PowerShell
                 std::process::Command::new("powershell")
@@ -4724,6 +4742,19 @@ pub async fn detect_and_link_pr(
     }
 
     log::trace!("No PR found for worktree {worktree_id}");
+
+    // Clear stale PR info if worktree previously had a PR linked
+    // (e.g., user switched away from a PR branch via `git switch`)
+    if let Ok(mut data) = load_projects_data(&app) {
+        if let Some(wt) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) {
+            if wt.pr_number.is_some() {
+                wt.pr_number = None;
+                wt.pr_url = None;
+                let _ = save_projects_data(&app, &data);
+            }
+        }
+    }
+
     Ok(None)
 }
 
@@ -5096,6 +5127,28 @@ fn extract_structured_output(output: &str) -> Result<String, String> {
     Err("No structured output found in Claude response".to_string())
 }
 
+fn build_claude_structured_output_args(model: &str, tools: &str, schema: &str) -> Vec<String> {
+    vec![
+        "--print".to_string(),
+        "--verbose".to_string(),
+        "--input-format".to_string(),
+        "stream-json".to_string(),
+        "--output-format".to_string(),
+        "stream-json".to_string(),
+        "--model".to_string(),
+        model.to_string(),
+        "--no-session-persistence".to_string(),
+        "--tools".to_string(),
+        tools.to_string(),
+        "--max-turns".to_string(),
+        "2".to_string(),
+        "--json-schema".to_string(),
+        schema.to_string(),
+        "--permission-mode".to_string(),
+        "plan".to_string(),
+    ]
+}
+
 /// Truncate a diff at file boundaries instead of mid-file.
 /// Splits on `\ndiff --git` markers and keeps complete file diffs until the budget is exceeded.
 fn truncate_diff_at_file_boundaries(diff: &str, max_chars: usize) -> String {
@@ -5132,7 +5185,11 @@ fn truncate_diff_at_file_boundaries(diff: &str, max_chars: usize) -> String {
 /// Get git diff between current branch and target branch
 fn get_branch_diff(repo_path: &str, target_branch: &str, head_ref: &str) -> Result<String, String> {
     let output = silent_command("git")
-        .args(["diff", "-U10", &format!("origin/{target_branch}...{head_ref}")])
+        .args([
+            "diff",
+            "-U10",
+            &format!("origin/{target_branch}...{head_ref}"),
+        ])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to get git diff: {e}"))?;
@@ -5148,9 +5205,17 @@ fn get_branch_diff(repo_path: &str, target_branch: &str, head_ref: &str) -> Resu
 }
 
 /// Get commit messages between current branch and target branch
-fn get_branch_commits(repo_path: &str, target_branch: &str, head_ref: &str) -> Result<String, String> {
+fn get_branch_commits(
+    repo_path: &str,
+    target_branch: &str,
+    head_ref: &str,
+) -> Result<String, String> {
     let output = silent_command("git")
-        .args(["log", "--oneline", &format!("origin/{target_branch}..{head_ref}")])
+        .args([
+            "log",
+            "--oneline",
+            &format!("origin/{target_branch}..{head_ref}"),
+        ])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to get git log: {e}"))?;
@@ -5164,7 +5229,11 @@ fn get_branch_commits(repo_path: &str, target_branch: &str, head_ref: &str) -> R
 }
 
 /// Count commits between current branch and target branch
-fn count_branch_commits(repo_path: &str, target_branch: &str, head_ref: &str) -> Result<u32, String> {
+fn count_branch_commits(
+    repo_path: &str,
+    target_branch: &str,
+    head_ref: &str,
+) -> Result<u32, String> {
     let output = silent_command("git")
         .args([
             "rev-list",
@@ -5269,23 +5338,11 @@ fn generate_pr_content(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "",
-        "--max-turns",
-        "1",
-        "--json-schema",
         PR_CONTENT_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -6120,8 +6177,6 @@ fn get_recent_commits(repo_path: &str, count: u32) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
-
-
 /// Stage only specific files. Resets the index first to ensure a clean state.
 fn stage_specific_files(repo_path: &str, files: &[String]) -> Result<(), String> {
     // Reset staging area to ensure only the specified files are staged
@@ -6294,23 +6349,11 @@ fn generate_commit_message(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "",
-        "--max-turns",
-        "1",
-        "--json-schema",
         COMMIT_MESSAGE_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -6750,23 +6793,11 @@ fn generate_review(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "none",
-        "--max-turns",
-        "1",
-        "--json-schema",
         REVIEW_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -7287,23 +7318,11 @@ fn generate_release_notes_content(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "",
-        "--max-turns",
-        "1",
-        "--json-schema",
         RELEASE_NOTES_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -8685,7 +8704,11 @@ fn resolve_command_interpolations(content: &str, working_dir: &str) -> String {
 
 /// Get home directory with Windows USERPROFILE fallback
 fn get_home_dir() -> Option<std::path::PathBuf> {
-    dirs::home_dir().or_else(|| std::env::var("USERPROFILE").ok().map(std::path::PathBuf::from))
+    dirs::home_dir().or_else(|| {
+        std::env::var("USERPROFILE")
+            .ok()
+            .map(std::path::PathBuf::from)
+    })
 }
 
 /// Collect skills from a directory into a map (later inserts override earlier ones)
@@ -8814,9 +8837,7 @@ fn collect_commands_from_dir(
 /// List Claude CLI skills from ~/.claude/skills/ and optionally <worktree>/.claude/skills/
 /// Skills are directories containing a SKILL.md file
 #[tauri::command]
-pub async fn list_claude_skills(
-    worktree_path: Option<String>,
-) -> Result<Vec<ClaudeSkill>, String> {
+pub async fn list_claude_skills(worktree_path: Option<String>) -> Result<Vec<ClaudeSkill>, String> {
     log::trace!("Listing Claude CLI skills (worktree: {worktree_path:?})");
 
     let mut skills_map = std::collections::HashMap::new();
@@ -9044,7 +9065,9 @@ pub struct RevertCommitResponse {
 }
 
 #[tauri::command]
-pub async fn revert_last_local_commit(worktree_path: String) -> Result<RevertCommitResponse, String> {
+pub async fn revert_last_local_commit(
+    worktree_path: String,
+) -> Result<RevertCommitResponse, String> {
     // Get the current HEAD commit hash and message before reverting
     let log_output = silent_command("git")
         .args(["log", "-1", "--format=%H%n%s"])
@@ -9201,5 +9224,18 @@ Body
 
         let result = extract_structured_output(output);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_claude_structured_output_args_uses_two_turns_and_plan_mode() {
+        let args = build_claude_structured_output_args("sonnet", "none", REVIEW_SCHEMA);
+
+        assert!(args.windows(2).any(|w| w == ["--max-turns", "2"]));
+        assert!(args.windows(2).any(|w| w == ["--permission-mode", "plan"]));
+        assert!(args.windows(2).any(|w| w == ["--tools", "none"]));
+        assert!(args.windows(2).any(|w| w == ["--model", "sonnet"]));
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["--json-schema", REVIEW_SCHEMA]));
     }
 }

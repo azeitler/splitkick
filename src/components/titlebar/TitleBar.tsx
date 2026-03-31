@@ -1,7 +1,6 @@
 import type React from 'react'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import { WindowsWindowControls } from './WindowsWindowControls'
 import { isMacOS, openExternal } from '@/lib/platform'
 import { Button } from '@/components/ui/button'
 import {
@@ -199,7 +198,6 @@ export function TitleBar({
             v{appVersion}
           </button>
         )}
-        {native && !isMacOS && <WindowsWindowControls />}
       </div>
     </div>
   )

@@ -159,6 +159,11 @@ export async function prefetchSessions(
     const executionModeUpdates: Record<string, ExecutionMode> = {}
     const labelUpdates: Record<string, LabelData> = {}
     const reviewResultsUpdates: Record<string, ReviewResponse> = {}
+    const answeredQuestionsUpdates: Record<string, Set<string>> = {}
+    const submittedAnswersUpdates: Record<
+      string,
+      Record<string, QuestionAnswer[]>
+    > = {}
     const fixedFindingsUpdates: Record<string, Set<string>> = {}
     for (const session of sessions.sessions) {
       if (session.is_reviewing) {
@@ -184,6 +189,17 @@ export async function prefetchSessions(
       }
       if (session.review_results) {
         reviewResultsUpdates[session.id] = session.review_results
+      }
+      if (session.answered_questions && session.answered_questions.length > 0) {
+        answeredQuestionsUpdates[session.id] = new Set(
+          session.answered_questions
+        )
+      }
+      if (
+        session.submitted_answers &&
+        Object.keys(session.submitted_answers).length > 0
+      ) {
+        submittedAnswersUpdates[session.id] = session.submitted_answers
       }
       if (session.fixed_findings && session.fixed_findings.length > 0) {
         fixedFindingsUpdates[session.id] = new Set(session.fixed_findings)
@@ -240,6 +256,18 @@ export async function prefetchSessions(
       storeUpdates.reviewResults = {
         ...currentState.reviewResults,
         ...reviewResultsUpdates,
+      }
+    }
+    if (Object.keys(answeredQuestionsUpdates).length > 0) {
+      storeUpdates.answeredQuestions = {
+        ...currentState.answeredQuestions,
+        ...answeredQuestionsUpdates,
+      }
+    }
+    if (Object.keys(submittedAnswersUpdates).length > 0) {
+      storeUpdates.submittedAnswers = {
+        ...currentState.submittedAnswers,
+        ...submittedAnswersUpdates,
       }
     }
     if (Object.keys(fixedFindingsUpdates).length > 0) {
@@ -479,6 +507,11 @@ export function useUpdateSessionState() {
       submittedAnswers,
       fixedFindings,
       pendingPermissionDenials,
+      pendingCodexCommandApprovalRequests,
+      pendingCodexPermissionRequests,
+      pendingCodexUserInputRequests,
+      pendingCodexMcpElicitationRequests,
+      pendingCodexDynamicToolCallRequests,
       deniedMessageContext,
       isReviewing,
       waitingForInput,
@@ -498,6 +531,48 @@ export function useUpdateSessionState() {
         tool_name: string
         tool_use_id: string
         tool_input: unknown
+        rpc_id?: number
+      }[]
+      pendingCodexCommandApprovalRequests?: {
+        rpc_id: number
+        item_id: string
+        thread_id: string
+        turn_id: string
+        approval_id?: string | null
+        command?: string | null
+        command_actions?: unknown
+        cwd?: string | null
+        reason?: string | null
+        network_approval_context?: unknown
+        proposed_execpolicy_amendment?: string[] | null
+        proposed_network_policy_amendments?: unknown
+      }[]
+      pendingCodexPermissionRequests?: {
+        rpc_id: number
+        item_id: string
+        permissions: unknown
+        reason?: string | null
+      }[]
+      pendingCodexUserInputRequests?: {
+        rpc_id: number
+        item_id: string
+        questions: unknown
+      }[]
+      pendingCodexMcpElicitationRequests?: {
+        rpc_id: number
+        server_name: string
+        message: string
+        mode: string
+        requested_schema?: unknown
+        url?: string
+        elicitation_id?: string | null
+        meta?: unknown
+      }[]
+      pendingCodexDynamicToolCallRequests?: {
+        rpc_id: number
+        call_id: string
+        tool: string
+        arguments: unknown
       }[]
       deniedMessageContext?: {
         message: string
@@ -524,6 +599,11 @@ export function useUpdateSessionState() {
         submittedAnswers,
         fixedFindings,
         pendingPermissionDenials,
+        pendingCodexCommandApprovalRequests,
+        pendingCodexPermissionRequests,
+        pendingCodexUserInputRequests,
+        pendingCodexMcpElicitationRequests,
+        pendingCodexDynamicToolCallRequests,
         deniedMessageContext,
         isReviewing,
         waitingForInput,
@@ -593,9 +673,13 @@ export function useCloseSession() {
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
 
-      // Switch to the new active session so the UI doesn't show a blank screen
+      // Switch to the new active session — but only if the caller hasn't already
+      // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
       if (newActiveId) {
-        useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        const currentActive = useChatStore.getState().activeSessionIds[worktreeId]
+        if (!currentActive || currentActive === sessionId) {
+          useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        }
       }
     },
     onError: error => {
@@ -652,9 +736,13 @@ export function useArchiveSession() {
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
 
-      // Switch to the new active session so the UI doesn't show a blank screen
+      // Switch to the new active session — but only if the caller hasn't already
+      // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
       if (newActiveId) {
-        useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        const currentActive = useChatStore.getState().activeSessionIds[worktreeId]
+        if (!currentActive || currentActive === sessionId) {
+          useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        }
       }
     },
     onError: error => {
@@ -1290,7 +1378,7 @@ export function useSendMessage() {
 
       return { previous, worktreeId }
     },
-    onSuccess: (response, { sessionId, worktreeId, executionMode }) => {
+    onSuccess: (response, { sessionId, worktreeId }) => {
       console.log(
         `[SendMutation] onSuccess sessionId=${sessionId} cancelled=${response.cancelled}`,
         {
@@ -1308,29 +1396,7 @@ export function useSendMessage() {
         return
       }
 
-      // For Codex plan mode: inject synthetic ExitPlanMode tool call into the response
-      // so the plan approval UI renders (Codex has no native ExitPlanMode tool)
-      const { selectedBackends } = useChatStore.getState()
-      const isCodexPlan =
-        selectedBackends[sessionId] === 'codex' &&
-        executionMode === 'plan' &&
-        !response.cancelled &&
-        response.content.length > 0
-      let finalResponse = response
-      if (isCodexPlan) {
-        const syntheticId = `codex-plan-${sessionId}-${Date.now()}`
-        finalResponse = {
-          ...response,
-          tool_calls: [
-            ...response.tool_calls,
-            { id: syntheticId, name: 'ExitPlanMode', input: {} },
-          ],
-          content_blocks: [
-            ...(response.content_blocks ?? []),
-            { type: 'tool_use' as const, tool_call_id: syntheticId },
-          ],
-        }
-      }
+      const finalResponse = response
 
       // Replace the optimistic assistant message with the complete one from backend
       // This fixes a race condition where chat:done creates an optimistic message

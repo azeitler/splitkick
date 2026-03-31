@@ -79,6 +79,22 @@ function isTransientTrailingAssistant(
   return toolCallsMatch(message.tool_calls, options.streamingToolCalls)
 }
 
+function hasMeaningfulPersistedPayload(message: ChatMessage): boolean {
+  if (message.content.trim().length > 0) return true
+  if (message.tool_calls.length > 0) return true
+
+  return (message.content_blocks ?? []).some(block => {
+    switch (block.type) {
+      case 'text':
+        return block.text.trim().length > 0
+      case 'thinking':
+        return block.thinking.trim().length > 0
+      case 'tool_use':
+        return block.tool_call_id.trim().length > 0
+    }
+  })
+}
+
 /**
  * While a session is actively streaming, React Query can briefly contain a
  * persisted assistant snapshot for the same in-flight turn. Hide that trailing
@@ -110,7 +126,10 @@ export function dedupeInFlightAssistantMessage(
   // Always hide trailing assistant during send — either streaming hasn't
   // started yet (backend persisted early) or it matches the live stream.
   if (!hasLiveStreaming) {
-    return messages.slice(0, -1)
+    return lastMessage.id.startsWith('running-') ||
+      !hasMeaningfulPersistedPayload(lastMessage)
+      ? messages.slice(0, -1)
+      : messages
   }
 
   return isTransientTrailingAssistant(lastMessage, options)

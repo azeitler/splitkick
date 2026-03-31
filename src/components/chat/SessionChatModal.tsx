@@ -67,6 +67,7 @@ import { toast } from 'sonner'
 import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
+import { DevToolsDropdown } from './DevToolsDropdown'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -445,6 +446,29 @@ export function SessionChatModal({
     removalBehavior: preferences?.removal_behavior,
   })
 
+  // Select the visually adjacent session after closing a tab.
+  // Uses the sorted tab order (what the user sees) rather than backend storage order.
+  // Ref is updated after sortedSessions is computed (below).
+  const sortedSessionsRef = useRef<Session[]>([])
+
+  const selectVisualNeighbor = useCallback(
+    (closedId: string) => {
+      const activeId = useChatStore.getState().activeSessionIds[worktreeId]
+      if (activeId !== closedId) return // Only switch if closing the active tab
+      const sorted = sortedSessionsRef.current
+      const idx = sorted.findIndex(s => s.id === closedId)
+      if (idx === -1) return
+      // Left neighbor first, then right
+      const left = idx > 0 ? sorted[idx - 1] : undefined
+      const right = idx < sorted.length - 1 ? sorted[idx + 1] : undefined
+      const nextId = left?.id ?? right?.id ?? null
+      if (nextId) {
+        useChatStore.getState().setActiveSession(worktreeId, nextId)
+      }
+    },
+    [worktreeId]
+  )
+
   // CMD+W: close the active session tab, or close modal if last tab
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
   const pendingCloseAction = useRef<(() => void) | null>(null)
@@ -467,6 +491,7 @@ export function SessionChatModal({
           }
           onClose()
         } else if (currentSessionId) {
+          selectVisualNeighbor(currentSessionId)
           handleDeleteSession(currentSessionId)
         }
       }
@@ -493,6 +518,7 @@ export function SessionChatModal({
     onClose,
     handleArchiveSession,
     handleDeleteSession,
+    selectVisualNeighbor,
     preferences?.confirm_session_close,
   ])
 
@@ -546,6 +572,9 @@ export function SessionChatModal({
       return a.created_at - b.created_at
     })
   }, [sessions, storeState])
+
+  // Keep ref in sync for selectVisualNeighbor (declared above sortedSessions)
+  sortedSessionsRef.current = sortedSessions
 
   // Off-screen waiting tab indicators
   const { hasLeft: hasWaitingLeft, hasRight: hasWaitingRight } =
@@ -785,6 +814,14 @@ export function SessionChatModal({
                     worktreePath={worktreePath}
                     branch={worktree?.branch}
                   />
+                  {currentSessionId && (
+                    <DevToolsDropdown
+                      sessionId={currentSessionId}
+                      worktreeId={worktreeId}
+                      worktreePath={worktreePath}
+                      session={currentSession}
+                    />
+                  )}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -1138,6 +1175,7 @@ export function SessionChatModal({
                                     action()
                                   }
                                 } else {
+                                  selectVisualNeighbor(session.id)
                                   handleArchiveSession(session.id)
                                 }
                               }}

@@ -9,7 +9,10 @@ import { ThemeProviderContext, type Theme } from '@/lib/theme-context'
 import { notify } from '@/lib/notifications'
 import { logger } from '@/lib/logger'
 import { copyToClipboard } from '@/lib/clipboard'
-import { formatSessionDebugDetails } from '@/lib/session-debug'
+import {
+  formatSessionDebugDetails,
+  resolveSessionDebugDetails,
+} from '@/lib/session-debug'
 import type { CommandContext } from '@/lib/commands/types'
 import type { AppPreferences, ClaudeModel } from '@/types/preferences'
 import { resolveMagicPromptProvider } from '@/types/preferences'
@@ -18,6 +21,7 @@ import type {
   ExecutionMode,
   SessionDebugInfo,
   Backend,
+  Session,
 } from '@/types/chat'
 import type { Project, ReviewResponse } from '@/types/projects'
 import { useQueryClient } from '@tanstack/react-query'
@@ -25,7 +29,6 @@ import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { chatQueryKeys } from '@/services/chat'
 import { projectsQueryKeys } from '@/services/projects'
 import { triggerImmediateGitPoll, performGitPull } from '@/services/git-status'
-import { getSessionProviderDisplayName } from '@/components/chat/toolbar/toolbar-utils'
 
 /**
  * Command context hook - provides essential actions for commands
@@ -695,26 +698,42 @@ export function useCommandContext(
       return
     }
 
-    const selectedModel = chatState.selectedModels[sessionId]
-    const selectedProvider = chatState.selectedProviders[sessionId]
-    const selectedBackend = chatState.selectedBackends[sessionId] as
-      | Backend
-      | undefined
-    const providerDisplay = getSessionProviderDisplayName(
-      selectedBackend,
-      selectedProvider
+    const selectedProjectId = useProjectsStore.getState().selectedProjectId
+    const session = queryClient.getQueryData<Session | null>(
+      chatQueryKeys.session(sessionId)
     )
+    const projects = queryClient.getQueryData<Project[]>(
+      projectsQueryKeys.list()
+    )
+    const project = selectedProjectId
+      ? projects?.find(p => p.id === selectedProjectId)
+      : null
+    const resolvedDebugDetails = resolveSessionDebugDetails({
+      session,
+      selectedBackend: chatState.selectedBackends[sessionId] as
+        | Backend
+        | undefined,
+      selectedModel: chatState.selectedModels[sessionId],
+      selectedProvider: chatState.selectedProviders[sessionId],
+      project,
+      preferences,
+      installedBackends: installedBackends as Backend[],
+    })
 
     try {
-      const debugInfo = await invoke<SessionDebugInfo>('get_session_debug_info', {
-        worktreeId,
-        worktreePath,
-        sessionId,
-      })
+      const debugInfo = await invoke<SessionDebugInfo>(
+        'get_session_debug_info',
+        {
+          worktreeId,
+          worktreePath,
+          sessionId,
+        }
+      )
       const text = formatSessionDebugDetails({
         sessionId,
-        selectedModel,
-        providerDisplay,
+        selectedBackend: resolvedDebugDetails.selectedBackend,
+        selectedModel: resolvedDebugDetails.selectedModel,
+        providerDisplay: resolvedDebugDetails.providerDisplay,
         debugInfo,
       })
       await copyToClipboard(text)

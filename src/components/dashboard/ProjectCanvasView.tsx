@@ -2029,6 +2029,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           isOpen={true}
           onClose={closePlanDialog}
           editable={true}
+          disabled={planDialogCard?.isSending ?? false}
           approvalContext={planApprovalContext ?? undefined}
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}
@@ -2049,6 +2050,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           isOpen={true}
           onClose={closePlanDialog}
           editable={true}
+          disabled={planDialogCard?.isSending ?? false}
           approvalContext={planApprovalContext ?? undefined}
           onApprove={handleDialogApprove}
           onApproveYolo={handleDialogApproveYolo}

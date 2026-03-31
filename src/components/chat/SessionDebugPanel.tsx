@@ -79,6 +79,7 @@ export function SessionDebugPanel({
     try {
       const text = formatSessionDebugDetails({
         sessionId,
+        selectedBackend,
         selectedModel,
         providerDisplay,
         debugInfo,
@@ -114,6 +115,10 @@ export function SessionDebugPanel({
       {/* Simple path rows */}
       <div className="text-muted-foreground">
         session: <span className="text-foreground">{sessionId}</span>
+      </div>
+      <div className="text-muted-foreground">
+        backend:{' '}
+        <span className="text-foreground">{selectedBackend ?? 'unknown'}</span>
       </div>
       <div className="text-muted-foreground">
         model:{' '}

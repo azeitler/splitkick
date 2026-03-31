@@ -399,6 +399,23 @@ pub fn send_response(id: u64, result: Value) -> Result<(), String> {
     write_message(&server.stdin_writer, &response)
 }
 
+/// Send a JSON-RPC error response.
+pub fn send_error_response(id: u64, code: i64, message: &str) -> Result<(), String> {
+    let guard = CODEX_SERVER.lock().unwrap();
+    let server = guard.as_ref().ok_or("Codex app-server not running")?;
+
+    let response = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": code,
+            "message": message,
+        },
+    });
+
+    write_message(&server.stdin_writer, &response)
+}
+
 /// Send a JSON-RPC notification (no id, no response expected).
 #[allow(dead_code)]
 pub fn send_notification(method: &str, params: Value) -> Result<(), String> {

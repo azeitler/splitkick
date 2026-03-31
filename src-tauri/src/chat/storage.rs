@@ -567,8 +567,7 @@ pub fn cleanup_orphaned_pasted_files(app: &AppHandle) -> Result<u32, String> {
     let mut referenced_paths = std::collections::HashSet::new();
 
     for session_id in &referenced_session_ids {
-        let messages =
-            super::run_log::load_session_messages(app, session_id).unwrap_or_default();
+        let messages = super::run_log::load_session_messages(app, session_id).unwrap_or_default();
         for message in &messages {
             for path in super::commands::extract_image_paths(&message.content) {
                 referenced_paths.insert(path);
@@ -597,9 +596,7 @@ pub fn cleanup_orphaned_pasted_files(app: &AppHandle) -> Result<u32, String> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 // Skip non-files and temp files
-                if !path.is_file()
-                    || path.extension().is_some_and(|ext| ext == "tmp")
-                {
+                if !path.is_file() || path.extension().is_some_and(|ext| ext == "tmp") {
                     continue;
                 }
 
@@ -678,6 +675,11 @@ pub fn load_sessions(
                 fixed_findings: vec![],
                 review_results: None,
                 pending_permission_denials: vec![],
+                pending_codex_permission_requests: vec![],
+                pending_codex_command_approval_requests: vec![],
+                pending_codex_user_input_requests: vec![],
+                pending_codex_mcp_elicitation_requests: vec![],
+                pending_codex_dynamic_tool_call_requests: vec![],
                 denied_message_context: None,
                 is_reviewing: false,
                 waiting_for_input: false,
@@ -760,6 +762,11 @@ where
                 fixed_findings: vec![],
                 review_results: None,
                 pending_permission_denials: vec![],
+                pending_codex_permission_requests: vec![],
+                pending_codex_command_approval_requests: vec![],
+                pending_codex_user_input_requests: vec![],
+                pending_codex_mcp_elicitation_requests: vec![],
+                pending_codex_dynamic_tool_call_requests: vec![],
                 denied_message_context: None,
                 is_reviewing: false,
                 waiting_for_input: false,

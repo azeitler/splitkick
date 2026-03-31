@@ -70,13 +70,27 @@ import type {
   PendingImage,
   PendingTextFile,
   PendingSkill,
+  CodexCommandApprovalRequest,
+  CodexPermissionRequest,
+  CodexUserInputRequest,
+  CodexMcpElicitationRequest,
+  CodexDynamicToolCallRequest,
   PermissionDenial,
   PendingFile,
 } from '@/types/chat'
-import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import {
+  isAskUserQuestion,
+  isPlanToolCall,
+  normalizeCodexQuestions,
+} from '@/types/chat'
 import { getFilename, normalizePath } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { PermissionApproval } from './PermissionApproval'
+import { AskUserQuestion } from './AskUserQuestion'
+import { CodexCommandApprovalRequestCard } from './CodexCommandApprovalRequest'
+import { CodexPermissionsRequest } from './CodexPermissionsRequest'
+import { CodexMcpElicitationRequest as CodexMcpElicitationRequestCard } from './CodexMcpElicitationRequest'
+import { CodexDynamicToolCallRequest as CodexDynamicToolCallRequestCard } from './CodexDynamicToolCallRequest'
 import { SetupScriptOutput } from './SetupScriptOutput'
 import { TodoWidget } from './TodoWidget'
 import { AgentWidget } from './AgentWidget'
@@ -187,6 +201,11 @@ const EMPTY_PENDING_FILES: PendingFile[] = []
 const EMPTY_PENDING_SKILLS: PendingSkill[] = []
 const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = []
 const EMPTY_PERMISSION_DENIALS: PermissionDenial[] = []
+const EMPTY_CODEX_PERMISSION_REQUESTS: CodexPermissionRequest[] = []
+const EMPTY_CODEX_COMMAND_APPROVAL_REQUESTS: CodexCommandApprovalRequest[] = []
+const EMPTY_CODEX_USER_INPUT_REQUESTS: CodexUserInputRequest[] = []
+const EMPTY_CODEX_MCP_ELICITATION_REQUESTS: CodexMcpElicitationRequest[] = []
+const EMPTY_CODEX_DYNAMIC_TOOL_CALL_REQUESTS: CodexDynamicToolCallRequest[] = []
 
 interface ChatWindowProps {
   /** When true, hides terminal panel and other elements not needed in modal */
@@ -271,9 +290,6 @@ export function ChatWindow({
     activeSessionId
       ? (state.reviewingSessions[activeSessionId] ?? false)
       : false
-  )
-  const isStreamingPlanApproved = useChatStore(
-    state => state.isStreamingPlanApproved
   )
   // Terminal panel visibility (per-worktree)
   const terminalVisible = useTerminalStore(state => state.terminalVisible)
@@ -713,12 +729,53 @@ export function ChatWindow({
         EMPTY_PERMISSION_DENIALS)
       : EMPTY_PERMISSION_DENIALS
   )
+  const pendingCodexPermissionRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexPermissionRequests[deferredSessionId] ??
+        EMPTY_CODEX_PERMISSION_REQUESTS)
+      : EMPTY_CODEX_PERMISSION_REQUESTS
+  )
+  const pendingCodexCommandApprovalRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexCommandApprovalRequests[deferredSessionId] ??
+        EMPTY_CODEX_COMMAND_APPROVAL_REQUESTS)
+      : EMPTY_CODEX_COMMAND_APPROVAL_REQUESTS
+  )
+  const pendingCodexUserInputRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexUserInputRequests[deferredSessionId] ??
+        EMPTY_CODEX_USER_INPUT_REQUESTS)
+      : EMPTY_CODEX_USER_INPUT_REQUESTS
+  )
+  const pendingCodexMcpElicitationRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexMcpElicitationRequests[deferredSessionId] ??
+        EMPTY_CODEX_MCP_ELICITATION_REQUESTS)
+      : EMPTY_CODEX_MCP_ELICITATION_REQUESTS
+  )
+  const pendingCodexDynamicToolCallRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexDynamicToolCallRequests[deferredSessionId] ??
+        EMPTY_CODEX_DYNAMIC_TOOL_CALL_REQUESTS)
+      : EMPTY_CODEX_DYNAMIC_TOOL_CALL_REQUESTS
+  )
   const showPermissionApproval = shouldShowPermissionApproval({
     pendingDenialsCount: pendingDenials.length,
     isSending,
     executionMode,
     isCodexBackend,
   })
+  const activeCodexCommandApprovalRequest =
+    pendingCodexCommandApprovalRequests[0]
+  const activeCodexPermissionRequest = pendingCodexPermissionRequests[0]
+  const activeCodexUserInputRequest = pendingCodexUserInputRequests[0]
+  const activeCodexMcpElicitationRequest = pendingCodexMcpElicitationRequests[0]
+  const activeCodexDynamicToolCallRequest =
+    pendingCodexDynamicToolCallRequests[0]
+  const activeCodexUserInputQuestions = useMemo(
+    () => normalizeCodexQuestions(activeCodexUserInputRequest?.questions),
+    [activeCodexUserInputRequest]
+  )
 
   // PERFORMANCE: Pre-compute last assistant message to avoid rescanning in multiple memos
   // This reference only changes when the actual last assistant message changes
@@ -881,18 +938,18 @@ export function ChatWindow({
     lastAssistantMessage,
   })
 
-  // Plan state: pending plan message, streaming plan, content, file path
+  // Plan state: finished pending plan, content, file path
   const {
     pendingPlanMessage,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     latestPlanContent,
     latestPlanFilePath,
   } = usePlanState({
     sessionMessages: session?.messages,
     currentToolCalls,
+    currentStreamingContent: streamingContent,
+    currentStreamingContentBlocks,
     isSending,
-    activeSessionId,
-    isStreamingPlanApproved,
   })
 
   // State for plan dialog
@@ -1658,6 +1715,9 @@ export function ChatWindow({
     queryClient,
     inputRef,
     preferences,
+    setSessionModel,
+    setSessionBackend,
+    setSessionProvider,
   })
 
   // Wrap push/pull/commit-and-push with remote picker for multi-remote repos
@@ -1856,19 +1916,21 @@ export function ChatWindow({
     handleSkipQuestion,
     handlePlanApproval,
     handlePlanApprovalYolo,
-    handleStreamingPlanApproval,
-    handleStreamingPlanApprovalYolo,
     handleClearContextApproval,
-    handleStreamingClearContextApproval,
     handleClearContextApprovalBuild,
-    handleStreamingClearContextApprovalBuild,
     handleWorktreeBuildApproval,
-    handleStreamingWorktreeBuildApproval,
     handleWorktreeYoloApproval,
-    handleStreamingWorktreeYoloApproval,
     handlePermissionApproval,
     handlePermissionApprovalYolo,
     handlePermissionDeny,
+    handleCodexCommandApproval,
+    handleCodexPermissionRequest,
+    handleCodexPermissionRequestDecline,
+    handleCodexUserInputAnswer,
+    handleCodexMcpElicitationAccept,
+    handleCodexMcpElicitationDecline,
+    handleCodexMcpElicitationCancel,
+    handleCodexDynamicToolCallUnsupported,
     handleFixFinding,
     handleFixAllFindings,
   } = useMessageHandlers({
@@ -1975,17 +2037,14 @@ export function ChatWindow({
     handleSaveContext,
     handleLoadContext,
     runScripts,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingPlanApproval,
-    handleStreamingPlanApprovalYolo,
     handlePlanApproval,
     handlePlanApprovalYolo,
     handleClearContextApproval,
-    handleStreamingClearContextApproval,
     handleClearContextApprovalBuild,
-    handleStreamingClearContextApprovalBuild,
-    isCodexBackend,
+    handleWorktreeBuildApproval,
+    handleWorktreeYoloApproval,
     scrollViewportRef,
     beginKeyboardScroll,
     endKeyboardScroll,
@@ -1993,68 +2052,29 @@ export function ChatWindow({
 
   // Combined floating-button approval callbacks (dispatch to streaming or pending variant)
   const floatingApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingPlanApproval()
-    else if (pendingPlanMessage) handlePlanApproval(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingPlanApproval,
-    pendingPlanMessage,
-    handlePlanApproval,
-  ])
+    if (pendingPlanMessage) handlePlanApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handlePlanApproval])
 
   const floatingYoloApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingPlanApprovalYolo()
-    else if (pendingPlanMessage) handlePlanApprovalYolo(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingPlanApprovalYolo,
-    pendingPlanMessage,
-    handlePlanApprovalYolo,
-  ])
+    if (pendingPlanMessage) handlePlanApprovalYolo(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handlePlanApprovalYolo])
 
   const floatingClearContextBuildApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingClearContextApprovalBuild()
-    else if (pendingPlanMessage)
+    if (pendingPlanMessage)
       handleClearContextApprovalBuild(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingClearContextApprovalBuild,
-    pendingPlanMessage,
-    handleClearContextApprovalBuild,
-  ])
+  }, [pendingPlanMessage, handleClearContextApprovalBuild])
 
   const floatingClearContextApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingClearContextApproval()
-    else if (pendingPlanMessage)
-      handleClearContextApproval(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingClearContextApproval,
-    pendingPlanMessage,
-    handleClearContextApproval,
-  ])
+    if (pendingPlanMessage) handleClearContextApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handleClearContextApproval])
 
   const floatingWorktreeBuildApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingWorktreeBuildApproval()
-    else if (pendingPlanMessage)
-      handleWorktreeBuildApproval(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingWorktreeBuildApproval,
-    pendingPlanMessage,
-    handleWorktreeBuildApproval,
-  ])
+    if (pendingPlanMessage) handleWorktreeBuildApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handleWorktreeBuildApproval])
 
   const floatingWorktreeYoloApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingWorktreeYoloApproval()
-    else if (pendingPlanMessage)
-      handleWorktreeYoloApproval(pendingPlanMessage.id)
-  }, [
-    hasStreamingPlan,
-    handleStreamingWorktreeYoloApproval,
-    pendingPlanMessage,
-    handleWorktreeYoloApproval,
-  ])
+    if (pendingPlanMessage) handleWorktreeYoloApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handleWorktreeYoloApproval])
 
   // Pending attachment removal, slash command execution, queue management
   const {
@@ -2096,7 +2116,7 @@ export function ChatWindow({
       if (
         m &&
         m.role === 'assistant' &&
-        m.tool_calls?.some(tc => isExitPlanMode(tc))
+        m.tool_calls?.some(tc => isPlanToolCall(tc))
       ) {
         return i
       }
@@ -2228,17 +2248,19 @@ export function ChatWindow({
                                 </div>
                               )}
                             {/* Setup script running indicator */}
-                            {worktree?.setup_script && worktree.setup_success == null && !setupScriptResult && (
-                              <div className="my-2 flex items-center gap-2 rounded border border-muted bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                                <span>
-                                  Running setup script:{' '}
-                                  <code className="rounded bg-muted px-1 py-0.5">
-                                    {worktree.setup_script}
-                                  </code>
-                                </span>
-                              </div>
-                            )}
+                            {worktree?.setup_script &&
+                              worktree.setup_success == null &&
+                              !setupScriptResult && (
+                                <div className="my-2 flex items-center gap-2 rounded border border-muted bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
+                                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                                  <span>
+                                    Running setup script:{' '}
+                                    <code className="rounded bg-muted px-1 py-0.5">
+                                      {worktree.setup_script}
+                                    </code>
+                                  </span>
+                                </div>
+                              )}
                             {/* Setup script output from jean.json */}
                             {setupScriptResult && activeWorktreeId && (
                               <SetupScriptOutput
@@ -2326,56 +2348,20 @@ export function ChatWindow({
                                 {(currentStreamingContentBlocks.length > 0 ||
                                   currentToolCalls.length > 0 ||
                                   streamingContent.trim().length > 0) && (
-                                  <StreamingMessage
-                                    sessionId={activeSessionId}
-                                    contentBlocks={
-                                      currentStreamingContentBlocks
-                                    }
-                                    toolCalls={currentToolCalls}
-                                    streamingContent={streamingContent}
-                                    selectedThinkingLevel={
-                                      selectedThinkingLevel
-                                    }
-                                    approveShortcut={approveShortcut}
-                                    approveShortcutYolo={approveShortcutYolo}
-                                    approveShortcutClearContext={
-                                      approveShortcutClearContext
-                                    }
-                                    approveShortcutClearContextBuild={
-                                      approveShortcutClearContextBuild
-                                    }
-                                    onQuestionAnswer={handleQuestionAnswer}
-                                    onQuestionSkip={handleSkipQuestion}
-                                    onFileClick={setViewingFilePath}
+                                <StreamingMessage
+                                  sessionId={activeSessionId}
+                                  contentBlocks={
+                                    currentStreamingContentBlocks
+                                  }
+                                  toolCalls={currentToolCalls}
+                                  streamingContent={streamingContent}
+                                  onQuestionAnswer={handleQuestionAnswer}
+                                  onQuestionSkip={handleSkipQuestion}
+                                  onFileClick={setViewingFilePath}
                                     onEditedFileClick={setViewingFilePath}
                                     isQuestionAnswered={isQuestionAnswered}
                                     getSubmittedAnswers={getSubmittedAnswers}
                                     areQuestionsSkipped={areQuestionsSkipped}
-                                    isStreamingPlanApproved={
-                                      isStreamingPlanApproved
-                                    }
-                                    onStreamingPlanApproval={
-                                      handleStreamingPlanApproval
-                                    }
-                                    onStreamingPlanApprovalYolo={
-                                      handleStreamingPlanApprovalYolo
-                                    }
-                                    onStreamingClearContextApproval={
-                                      handleStreamingClearContextApproval
-                                    }
-                                    onStreamingClearContextApprovalBuild={
-                                      handleStreamingClearContextApprovalBuild
-                                    }
-                                    onStreamingWorktreeBuildApproval={
-                                      worktree?.project_id
-                                        ? handleStreamingWorktreeBuildApproval
-                                        : undefined
-                                    }
-                                    onStreamingWorktreeYoloApproval={
-                                      worktree?.project_id
-                                        ? handleStreamingWorktreeYoloApproval
-                                        : undefined
-                                    }
                                   />
                                 )}
                                 <StreamingStatusBar
@@ -2410,6 +2396,106 @@ export function ChatWindow({
                               />
                             )}
 
+                            {activeCodexCommandApprovalRequest && (
+                              <CodexCommandApprovalRequestCard
+                                request={activeCodexCommandApprovalRequest}
+                                onApprove={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'accept'
+                                  )
+                                }
+                                onApproveYolo={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'acceptForSession'
+                                  )
+                                }
+                                onDecline={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'decline'
+                                  )
+                                }
+                                onCancel={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'cancel'
+                                  )
+                                }
+                              />
+                            )}
+
+                            {activeCodexPermissionRequest && (
+                              <CodexPermissionsRequest
+                                request={activeCodexPermissionRequest}
+                                onGrant={scope =>
+                                  handleCodexPermissionRequest(
+                                    activeCodexPermissionRequest,
+                                    scope
+                                  )
+                                }
+                                onDecline={() =>
+                                  handleCodexPermissionRequestDecline(
+                                    activeCodexPermissionRequest
+                                  )
+                                }
+                              />
+                            )}
+
+                            {activeCodexUserInputRequest &&
+                              activeCodexUserInputQuestions.length > 0 && (
+                                <AskUserQuestion
+                                  toolCallId={
+                                    activeCodexUserInputRequest.item_id ||
+                                    `codex-user-input-${activeCodexUserInputRequest.rpc_id}`
+                                  }
+                                  questions={activeCodexUserInputQuestions}
+                                  onSubmit={(_toolCallId, answers) =>
+                                    handleCodexUserInputAnswer(
+                                      activeCodexUserInputRequest,
+                                      answers,
+                                      activeCodexUserInputQuestions
+                                    )
+                                  }
+                                  isSkipped={false}
+                                />
+                              )}
+
+                            {activeCodexMcpElicitationRequest && (
+                              <CodexMcpElicitationRequestCard
+                                request={activeCodexMcpElicitationRequest}
+                                onAccept={(content, meta) =>
+                                  handleCodexMcpElicitationAccept(
+                                    activeCodexMcpElicitationRequest,
+                                    content,
+                                    meta
+                                  )
+                                }
+                                onDecline={() =>
+                                  handleCodexMcpElicitationDecline(
+                                    activeCodexMcpElicitationRequest
+                                  )
+                                }
+                                onCancel={() =>
+                                  handleCodexMcpElicitationCancel(
+                                    activeCodexMcpElicitationRequest
+                                  )
+                                }
+                              />
+                            )}
+
+                            {activeCodexDynamicToolCallRequest && (
+                              <CodexDynamicToolCallRequestCard
+                                request={activeCodexDynamicToolCallRequest}
+                                onRespondUnsupported={() =>
+                                  handleCodexDynamicToolCallUnsupported(
+                                    activeCodexDynamicToolCallRequest
+                                  )
+                                }
+                              />
+                            )}
+
                             {/* Queued messages - shown inline after streaming/messages */}
                             {activeSessionId && (
                               <QueuedMessagesList
@@ -2427,10 +2513,7 @@ export function ChatWindow({
 
                       {/* Floating scroll buttons */}
                       <FloatingButtons
-                        showApproveButton={
-                          !isCodexBackend &&
-                          (!!pendingPlanMessage || hasStreamingPlan)
-                        }
+                        showApproveButton={hasPendingPlanApproval}
                         showFindingsButton={!areFindingsVisible}
                         isAtBottom={isAtBottom}
                         approveShortcut={approveShortcut}
@@ -2819,6 +2902,7 @@ export function ChatWindow({
                 setPlanDialogContent(null)
               }}
               editable={true}
+              disabled={isSending}
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
@@ -2852,6 +2936,7 @@ export function ChatWindow({
               isOpen={isPlanDialogOpen}
               onClose={() => setIsPlanDialogOpen(false)}
               editable={true}
+              disabled={isSending}
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {

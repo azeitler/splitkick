@@ -32,4 +32,51 @@ describe('ToolCallInline', () => {
 
     expect(expandedContent).toBeInTheDocument()
   })
+
+  it('renders FileChange diffs without duplicate raw output', () => {
+    render(
+      <ToolCallInline
+        toolCall={{
+          id: 'tool-file-change-1',
+          name: 'FileChange',
+          input: [
+            {
+              path: '/tmp/chat-store.ts',
+              kind: { type: 'update', move_path: null },
+              diff: '@@ -1 +1 @@\n-old\n+new',
+            },
+          ],
+          output:
+            '[{"diff":"@@ -1 +1 @@\\n-old\\n+new","kind":{"type":"update","move_path":null},"path":"/tmp/chat-store.ts"}]',
+        }}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button'))
+
+    expect(screen.getByText('chat-store.ts')).toBeInTheDocument()
+    expect(screen.getByText('@@ -1 +1 @@')).toBeInTheDocument()
+    expect(screen.getByText('+new')).toBeInTheDocument()
+    expect(screen.queryByText('Output:')).not.toBeInTheDocument()
+  })
+
+  it('falls back to parsing legacy FileChange output when input is empty', () => {
+    render(
+      <ToolCallInline
+        toolCall={{
+          id: 'tool-file-change-2',
+          name: 'FileChange',
+          input: null,
+          output:
+            '[{"diff":"@@ -2 +2 @@\\n-before\\n+after","kind":{"type":"update","move_path":null},"path":"/tmp/legacy.ts"}]',
+        }}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button'))
+
+    expect(screen.getAllByText('legacy.ts')).toHaveLength(2)
+    expect(screen.getByText('+after')).toBeInTheDocument()
+    expect(screen.queryByText('Output:')).not.toBeInTheDocument()
+  })
 })

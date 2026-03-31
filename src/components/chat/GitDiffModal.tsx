@@ -48,6 +48,7 @@ import {
 import { cn } from '@/lib/utils'
 import { generateId } from '@/lib/uuid'
 import { getFilename } from '@/lib/path-utils'
+import { getFileLineStats } from '@/lib/diff-stats'
 import {
   Tooltip,
   TooltipTrigger,
@@ -555,13 +556,7 @@ export function GitDiffModal({
   const flattenedFiles = useMemo(() => {
     const fromPatch = parsedFiles.flatMap((patch, patchIndex) =>
       patch.files.map((fileDiff, fileIndex) => {
-        // Pre-compute stats from hunks
-        let additions = 0
-        let deletions = 0
-        for (const hunk of fileDiff.hunks) {
-          additions += hunk.additionCount
-          deletions += hunk.deletionCount
-        }
+        const { additions, deletions } = getFileLineStats(fileDiff, diff?.files)
         return {
           fileDiff,
           fileName: fileDiff.name || fileDiff.prevName || 'unknown',
@@ -578,6 +573,7 @@ export function GitDiffModal({
       const statusToType: Record<string, string> = {
         deleted: 'deleted',
         added: 'new',
+        untracked: 'new',
         renamed: 'rename-changed',
         modified: 'change',
       }

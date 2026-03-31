@@ -6,6 +6,7 @@ import type {
   DiffLineAnnotation,
   FileDiffMetadata,
 } from '@pierre/diffs'
+import { getFileLineStats } from '@/lib/diff-stats'
 import { cn } from '@/lib/utils'
 import type { SyntaxTheme } from '@/types/preferences'
 
@@ -117,15 +118,7 @@ export const MemoizedFileDiff = memo(
     )
 
     // Calculate stats from hunks for the header
-    const stats = useMemo(() => {
-      let additions = 0
-      let deletions = 0
-      for (const hunk of fileDiff.hunks) {
-        additions += hunk.additionCount
-        deletions += hunk.deletionCount
-      }
-      return { additions, deletions }
-    }, [fileDiff.hunks])
+    const stats = useMemo(() => getFileLineStats(fileDiff), [fileDiff])
 
     return (
       <div className="border border-border">

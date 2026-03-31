@@ -278,13 +278,21 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
     let output = match silent_command(which_cmd).arg("codex").output() {
         Ok(output) if output.status.success() => {
             // On Windows, `where` can return multiple paths; take only the first line
-            let raw = String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string();
+            let raw = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
             log::debug!("detect_codex_in_path: `{which_cmd} codex` found: {raw:?}");
             raw
         }
         Ok(output) => {
-            log::debug!("detect_codex_in_path: `{which_cmd} codex` exited with status={}, stderr={:?}",
-                output.status, String::from_utf8_lossy(&output.stderr).trim());
+            log::debug!(
+                "detect_codex_in_path: `{which_cmd} codex` exited with status={}, stderr={:?}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
             return Ok(CodexPathDetection {
                 found: false,
                 path: None,
@@ -332,7 +340,9 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
 
     let version = match silent_command(&found_path).arg("--version").output() {
         Ok(ver_output) if ver_output.status.success() => {
-            let ver_str = String::from_utf8_lossy(&ver_output.stdout).trim().to_string();
+            let ver_str = String::from_utf8_lossy(&ver_output.stdout)
+                .trim()
+                .to_string();
             log::debug!("detect_codex_in_path: raw --version output={ver_str:?}");
             let cleaned = ver_str
                 .split_whitespace()
@@ -340,11 +350,18 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
                 .unwrap_or(&ver_str)
                 .trim_start_matches('v')
                 .to_string();
-            if cleaned.is_empty() { None } else { Some(cleaned) }
+            if cleaned.is_empty() {
+                None
+            } else {
+                Some(cleaned)
+            }
         }
         Ok(ver_output) => {
-            log::debug!("detect_codex_in_path: --version failed, status={}, stderr={:?}",
-                ver_output.status, String::from_utf8_lossy(&ver_output.stderr).trim());
+            log::debug!(
+                "detect_codex_in_path: --version failed, status={}, stderr={:?}",
+                ver_output.status,
+                String::from_utf8_lossy(&ver_output.stderr).trim()
+            );
             None
         }
         Err(e) => {
@@ -693,10 +710,16 @@ pub async fn check_codex_cli_installed(app: AppHandle) -> Result<CodexCliStatus,
     log::debug!("check_codex_cli_installed: starting");
 
     let binary_path = resolve_cli_binary(&app);
-    log::debug!("check_codex_cli_installed: resolved binary_path={:?}", binary_path);
+    log::debug!(
+        "check_codex_cli_installed: resolved binary_path={:?}",
+        binary_path
+    );
 
     if !binary_path.exists() {
-        log::debug!("check_codex_cli_installed: binary not found at {:?}", binary_path);
+        log::debug!(
+            "check_codex_cli_installed: binary not found at {:?}",
+            binary_path
+        );
         return Ok(CodexCliStatus {
             installed: false,
             version: None,
@@ -708,7 +731,10 @@ pub async fn check_codex_cli_installed(app: AppHandle) -> Result<CodexCliStatus,
     let version = match silent_command(&binary_path).arg("--version").output() {
         Ok(output) if output.status.success() => {
             let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            log::debug!("check_codex_cli_installed: raw --version output={:?}", version_str);
+            log::debug!(
+                "check_codex_cli_installed: raw --version output={:?}",
+                version_str
+            );
             if version_str.is_empty() {
                 None
             } else {
@@ -722,9 +748,11 @@ pub async fn check_codex_cli_installed(app: AppHandle) -> Result<CodexCliStatus,
             }
         }
         Ok(output) => {
-            log::debug!("check_codex_cli_installed: --version failed, exit_status={}, stderr={:?}",
+            log::debug!(
+                "check_codex_cli_installed: --version failed, exit_status={}, stderr={:?}",
                 output.status,
-                String::from_utf8_lossy(&output.stderr).trim());
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
             None
         }
         Err(e) => {
@@ -738,8 +766,12 @@ pub async fn check_codex_cli_installed(app: AppHandle) -> Result<CodexCliStatus,
         version: version.clone(),
         path: Some(binary_path.to_string_lossy().to_string()),
     };
-    log::debug!("check_codex_cli_installed: returning installed={} version={:?} path={:?}",
-        status.installed, status.version, status.path);
+    log::debug!(
+        "check_codex_cli_installed: returning installed={} version={:?} path={:?}",
+        status.installed,
+        status.version,
+        status.path
+    );
 
     Ok(status)
 }
@@ -990,7 +1022,10 @@ fn save_codex_versions_cache(app: &AppHandle, versions: &[CodexReleaseInfo]) {
             return;
         }
     };
-    log::debug!("save_codex_versions_cache: writing {} versions to {cache_path:?}", versions.len());
+    log::debug!(
+        "save_codex_versions_cache: writing {} versions to {cache_path:?}",
+        versions.len()
+    );
     let cached = CachedCodexVersions {
         versions: versions.to_vec(),
         fetched_at: SystemTime::now()
@@ -1009,7 +1044,9 @@ fn save_codex_versions_cache(app: &AppHandle, versions: &[CodexReleaseInfo]) {
 }
 
 fn load_codex_versions_cache(app: &AppHandle) -> Option<Vec<CodexReleaseInfo>> {
-    let cache_path = super::config::get_cli_dir(app).ok()?.join(CODEX_VERSIONS_CACHE_FILE);
+    let cache_path = super::config::get_cli_dir(app)
+        .ok()?
+        .join(CODEX_VERSIONS_CACHE_FILE);
     let contents = std::fs::read_to_string(&cache_path).ok()?;
     let cached: CachedCodexVersions = serde_json::from_str(&contents).ok()?;
     if cached.versions.is_empty() {
@@ -1171,7 +1208,11 @@ async fn fetch_latest_codex_version(app: &AppHandle) -> Result<String, String> {
 }
 
 /// Find the download URL for a specific asset by searching recent releases
-async fn find_asset_url(app: &AppHandle, version: &str, asset_name: &str) -> Result<String, String> {
+async fn find_asset_url(
+    app: &AppHandle,
+    version: &str,
+    asset_name: &str,
+) -> Result<String, String> {
     let client = build_github_client()?;
     let token = resolve_github_api_token(app);
     let mut request = client
