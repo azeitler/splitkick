@@ -195,6 +195,42 @@ describe('MessageItem', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('renders prose before the fallback plan above tool calls', () => {
+    render(
+      <MessageItem
+        {...baseProps}
+        message={{
+          ...baseMessage,
+          content: 'Repo inspected.\n\nPlan:\n- Implement changes\n- Add tests',
+          tool_calls: [
+            {
+              id: 'tool-1',
+              name: 'Read',
+              input: { file_path: '/tmp/demo.ts' },
+              output: 'done',
+            },
+            {
+              id: 'plan-1',
+              name: 'CodexPlan',
+              input: {
+                explanation: 'Repo inspected. Native plan had no prose body.',
+                steps: [{ step: 'Clarify scope', status: 'in_progress' }],
+              },
+            },
+          ],
+          content_blocks: [],
+        }}
+      />
+    )
+
+    const prose = screen.getByText('Repo inspected.')
+    const toolsToggle = screen.getByRole('button', { name: /1 tool used/i })
+    expect(prose.compareDocumentPosition(toolsToggle)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    expect(screen.getByText('Plan:')).toBeVisible()
+  })
+
   it('renders answered OpenCode questions with the same persisted summary styling', () => {
     render(
       <MessageItem

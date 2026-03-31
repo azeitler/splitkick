@@ -32,9 +32,12 @@ import type {
 import type { Session } from '@/types/chat'
 import {
   DEFAULT_RESOLVE_CONFLICTS_PROMPT,
+  resolveMagicPromptBackend,
   resolveMagicPromptProvider,
+  type CliBackend,
   type AppPreferences,
 } from '@/types/preferences'
+import type { InvestigateOverride } from './useMagicCommands'
 
 interface UseGitOperationsParams {
   activeWorktreeId: string | null | undefined
@@ -63,7 +66,7 @@ interface UseGitOperationsReturn {
   /** Validates and shows merge options dialog */
   handleMerge: () => Promise<void>
   /** Detects existing merge conflicts and opens resolution session */
-  handleResolveConflicts: () => Promise<void>
+  handleResolveConflicts: (override?: InvestigateOverride) => Promise<void>
   /** Fetches base branch and merges to create local conflict state for PR conflict resolution */
   handleResolvePrConflicts: () => Promise<void>
   /** Executes the actual merge with specified type */
@@ -94,6 +97,66 @@ export function useGitOperations({
   const [showMergeDialog, setShowMergeDialog] = useState(false)
   const [pendingMergeWorktree, setPendingMergeWorktree] =
     useState<Worktree | null>(null)
+
+  const applyResolveConflictSessionSelection = useCallback(
+    (sessionId: string, override?: InvestigateOverride) => {
+      const defaultBackend =
+        (project?.default_backend ?? preferences?.default_backend ?? 'claude') as CliBackend
+      const resolvedProvider = resolveMagicPromptProvider(
+        preferences?.magic_prompt_providers,
+        'resolve_conflicts_provider',
+        preferences?.default_provider
+      )
+      const backend =
+        (override?.backend ??
+          resolveMagicPromptBackend(
+            preferences?.magic_prompt_backends,
+            'resolve_conflicts_backend',
+            defaultBackend
+          ) ??
+          defaultBackend) as CliBackend
+      const model =
+        override?.model ??
+        preferences?.magic_prompt_models?.resolve_conflicts_model ??
+        (backend === 'codex'
+          ? (preferences?.selected_codex_model ?? 'gpt-5.4')
+          : backend === 'opencode'
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            : (preferences?.selected_model ?? 'sonnet'))
+      const provider =
+        override?.backend && override.backend !== 'claude'
+          ? null
+          : resolvedProvider
+
+      useChatStore.getState().setSelectedBackend(sessionId, backend)
+      useChatStore.getState().setSelectedModel(sessionId, model)
+      useChatStore.getState().setSelectedProvider(sessionId, provider)
+
+      queryClient.setQueryData(
+        chatQueryKeys.session(sessionId),
+        (old: Session | null | undefined) =>
+          old
+            ? {
+                ...old,
+                backend,
+                selected_model: model,
+                selected_provider: provider,
+              }
+            : {
+                id: sessionId,
+                name: '',
+                order: 0,
+                created_at: Math.floor(Date.now() / 1000),
+                updated_at: Math.floor(Date.now() / 1000),
+                messages: [],
+                backend,
+                selected_model: model,
+                selected_provider: provider,
+              }
+      )
+    },
+    [preferences, project?.default_backend, queryClient]
+  )
 
   // Handle Commit - creates commit with AI-generated message (no push)
   const handleCommit = useCallback(async () => {
@@ -618,7 +681,7 @@ export function useGitOperations({
   }, [activeWorktreeId, worktree])
 
   // Handle Resolve Conflicts - detects existing merge conflicts and opens resolution session
-  const handleResolveConflicts = useCallback(async () => {
+  const handleResolveConflicts = useCallback(async (override?: InvestigateOverride) => {
     if (!activeWorktreeId || !worktree) return
 
     const toastId = toast.loading('Checking for merge conflicts...')
@@ -656,6 +719,7 @@ export function useGitOperations({
 
       // Inherit model/mode/thinking settings from current session
       if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
+      applyResolveConflictSessionSelection(newSession.id, override)
 
       // Set the new session as active
       setActiveSession(activeWorktreeId, newSession.id)
@@ -692,7 +756,14 @@ ${resolveInstructions}`
     } catch (error) {
       toast.error(`Failed to check conflicts: ${error}`, { id: toastId })
     }
-  }, [activeWorktreeId, worktree, preferences, queryClient, inputRef])
+  }, [
+    activeWorktreeId,
+    worktree,
+    preferences,
+    queryClient,
+    inputRef,
+    applyResolveConflictSessionSelection,
+  ])
 
   // Handle PR Conflicts - fetches base branch, merges locally to create conflict state
   const handleResolvePrConflicts = useCallback(async () => {

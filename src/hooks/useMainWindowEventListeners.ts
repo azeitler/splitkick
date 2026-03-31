@@ -22,6 +22,22 @@ import {
   type KeybindingsMap,
 } from '@/types/keybindings'
 
+const PLAN_DIALOG_APPROVAL_ACTIONS = new Set<KeybindingAction>([
+  'approve_plan',
+  'approve_plan_yolo',
+  'approve_plan_clear_context',
+  'approve_plan_clear_context_build',
+  'approve_plan_worktree_build',
+  'approve_plan_worktree_yolo',
+])
+
+export function shouldLetPlanDialogHandleAction(
+  action: KeybindingAction,
+  planDialogOpen: boolean
+): boolean {
+  return planDialogOpen && PLAN_DIALOG_APPROVAL_ACTIONS.has(action)
+}
+
 export function getTerminalShortcutWorktreeId(): string | null {
   const activeElement = document.activeElement
   const terminalFocused =
@@ -583,6 +599,14 @@ export function useMainWindowEventListeners() {
       const keybindings = keybindingsRef.current
       for (const [action, binding] of Object.entries(keybindings)) {
         if (binding === shortcut) {
+          if (
+            shouldLetPlanDialogHandleAction(
+              action as KeybindingAction,
+              useUIStore.getState().planDialogOpen
+            )
+          ) {
+            return
+          }
           e.preventDefault()
           e.stopPropagation()
           executeKeybindingAction(

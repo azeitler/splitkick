@@ -17,6 +17,7 @@ import {
   getPlanTextBlockIndicesToHide,
   isDuplicatePlanTextBlock,
   resolvePlanContent,
+  splitTextAroundPlan,
 } from './tool-call-utils'
 import { PlanDisplay } from './PlanFileDisplay'
 import { ImageLightbox } from './ImageLightbox'
@@ -241,6 +242,15 @@ export const MessageItem = memo(function MessageItem({
     message.content_blocks,
     resolvedPlan.content
   )
+  const fallbackTextSplit =
+    message.role === 'assistant'
+      ? splitTextAroundPlan(displayContent)
+      : { beforePlan: null, plan: null }
+  const fallbackPrePlanText =
+    message.role === 'assistant' &&
+    isDuplicatePlanTextBlock(displayContent, resolvedPlan.content)
+      ? fallbackTextSplit.beforePlan
+      : null
 
   const messageBoxContent = (
     <>
@@ -559,6 +569,9 @@ export const MessageItem = memo(function MessageItem({
         </>
       ) : (
         <>
+          {message.role === 'assistant' && fallbackPrePlanText && (
+            <Markdown streaming={message.cancelled}>{fallbackPrePlanText}</Markdown>
+          )}
           {/* Fallback: Show tool calls first for assistant messages (old format) */}
           {message.role === 'assistant' &&
             (message.tool_calls?.length ?? 0) > 0 &&

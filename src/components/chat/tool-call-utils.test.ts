@@ -2,8 +2,29 @@ import { describe, expect, it } from 'vitest'
 import {
   isDuplicatePlanTextBlock,
   resolvePlanContent,
+  splitTextAroundPlan,
 } from './tool-call-utils'
 import type { ToolCall } from '@/types/chat'
+
+describe('splitTextAroundPlan', () => {
+  it('separates prose before a trailing plan block', () => {
+    expect(
+      splitTextAroundPlan(
+        'Repo inspected.\n\nPlan:\n- Implement changes\n- Add tests'
+      )
+    ).toEqual({
+      beforePlan: 'Repo inspected.',
+      plan: 'Plan:\n- Implement changes\n- Add tests',
+    })
+  })
+
+  it('returns the full text as non-plan content when no plan heading exists', () => {
+    expect(splitTextAroundPlan('Repo inspected.')).toEqual({
+      beforePlan: 'Repo inspected.',
+      plan: null,
+    })
+  })
+})
 
 describe('resolvePlanContent', () => {
   it('extracts only the plan section from assistant text when tool only has explanation', () => {

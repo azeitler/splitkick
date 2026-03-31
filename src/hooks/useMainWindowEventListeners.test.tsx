@@ -6,6 +6,7 @@ import {
   addTerminalTabForShortcut,
   closeActiveTerminalTabForShortcut,
   getTerminalShortcutWorktreeId,
+  shouldLetPlanDialogHandleAction,
   switchActiveTerminalTabByIndexForShortcut,
 } from './useMainWindowEventListeners'
 
@@ -268,5 +269,25 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
     expect(
       useTerminalStore.getState().activeTerminalIds['modal-worktree']
     ).toBe('term-1')
+  })
+})
+
+describe('shouldLetPlanDialogHandleAction', () => {
+  it('returns true for approve actions when the plan dialog is open', () => {
+    expect(shouldLetPlanDialogHandleAction('approve_plan', true)).toBe(true)
+    expect(shouldLetPlanDialogHandleAction('approve_plan_yolo', true)).toBe(
+      true
+    )
+    expect(
+      shouldLetPlanDialogHandleAction('approve_plan_worktree_build', true)
+    ).toBe(true)
+    expect(
+      shouldLetPlanDialogHandleAction('approve_plan_worktree_yolo', true)
+    ).toBe(true)
+  })
+
+  it('returns false for non-approve actions or when the dialog is closed', () => {
+    expect(shouldLetPlanDialogHandleAction('open_plan', true)).toBe(false)
+    expect(shouldLetPlanDialogHandleAction('approve_plan', false)).toBe(false)
   })
 })

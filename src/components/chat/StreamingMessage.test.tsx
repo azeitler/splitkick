@@ -211,6 +211,40 @@ describe('StreamingMessage', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('renders prose before the fallback streaming plan above tool calls', () => {
+    render(
+      <StreamingMessage
+        {...baseProps}
+        streamingContent={
+          'Repo inspected.\n\nPlan:\n- Implement changes\n- Add tests'
+        }
+        toolCalls={[
+          {
+            id: 'tool-1',
+            name: 'Read',
+            input: { file_path: '/tmp/demo.ts' },
+            output: 'done',
+          },
+          {
+            id: 'plan-1',
+            name: 'CodexPlan',
+            input: {
+              explanation: 'Repo inspected. No implementation target given.',
+              steps: [{ step: 'Clarify scope', status: 'in_progress' }],
+            },
+          },
+        ]}
+      />
+    )
+
+    const prose = screen.getByText('Repo inspected.')
+    const toolsToggle = screen.getByRole('button', { name: /1 tool used/i })
+    expect(prose.compareDocumentPosition(toolsToggle)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    expect(screen.getByText('Plan:')).toBeVisible()
+  })
+
   it('renders answered OpenCode questions with persisted tool output while streaming', () => {
     render(
       <StreamingMessage

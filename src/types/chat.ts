@@ -182,6 +182,16 @@ export interface Session {
   fixed_findings?: string[]
   /** Pending permission denials awaiting user approval */
   pending_permission_denials?: PermissionDenial[]
+  /** Pending Codex permission grant requests awaiting user approval */
+  pending_codex_permission_requests?: CodexPermissionRequest[]
+  /** Pending Codex command execution approvals awaiting user response */
+  pending_codex_command_approval_requests?: CodexCommandApprovalRequest[]
+  /** Pending Codex request-user-input prompts awaiting user approval */
+  pending_codex_user_input_requests?: CodexUserInputRequest[]
+  /** Pending Codex MCP elicitation requests awaiting user approval */
+  pending_codex_mcp_elicitation_requests?: CodexMcpElicitationRequest[]
+  /** Pending Codex dynamic tool call requests awaiting user approval */
+  pending_codex_dynamic_tool_call_requests?: CodexDynamicToolCallRequest[]
   /** Original message context for re-send after permission approval */
   denied_message_context?: DeniedMessageContext
   /** AI code review results for this session */
@@ -421,6 +431,134 @@ export interface PermissionDeniedEvent {
   denials: PermissionDenial[]
 }
 
+export interface CodexRequestedFileSystemPermissions {
+  read?: string[] | null
+  write?: string[] | null
+}
+
+export interface CodexRequestedNetworkPermissions {
+  enabled?: boolean | null
+}
+
+export interface CodexPermissionRequest {
+  rpc_id: number
+  item_id: string
+  permissions: {
+    fileSystem?: CodexRequestedFileSystemPermissions | null
+    network?: CodexRequestedNetworkPermissions | null
+  }
+  reason?: string | null
+}
+
+export interface CodexPermissionRequestEvent {
+  session_id: string
+  worktree_id: string
+  request: CodexPermissionRequest
+}
+
+export interface CodexCommandAction {
+  command: string
+  type: 'read' | 'listFiles' | 'search' | 'unknown'
+  name?: string
+  path?: string | null
+  query?: string | null
+}
+
+export interface CodexNetworkApprovalContext {
+  host: string
+  protocol: 'http' | 'https' | 'socks5Tcp' | 'socks5Udp'
+}
+
+export interface CodexNetworkPolicyAmendment {
+  action: 'allow' | 'deny'
+  host: string
+}
+
+export interface CodexCommandApprovalRequest {
+  rpc_id: number
+  item_id: string
+  thread_id: string
+  turn_id: string
+  approval_id?: string | null
+  command?: string | null
+  command_actions?: CodexCommandAction[] | null
+  cwd?: string | null
+  reason?: string | null
+  network_approval_context?: CodexNetworkApprovalContext | null
+  proposed_execpolicy_amendment?: string[] | null
+  proposed_network_policy_amendments?: CodexNetworkPolicyAmendment[] | null
+}
+
+export interface CodexCommandApprovalRequestEvent {
+  session_id: string
+  worktree_id: string
+  request: CodexCommandApprovalRequest
+}
+
+export interface CodexUserInputOption {
+  label: string
+  description?: string
+}
+
+export interface CodexUserInputQuestion {
+  header: string
+  id: string
+  question: string
+  options?: CodexUserInputOption[] | null
+  isOther?: boolean
+  isSecret?: boolean
+}
+
+export interface CodexUserInputRequest {
+  rpc_id: number
+  item_id: string
+  questions: CodexUserInputQuestion[]
+  thread_id?: string
+  turn_id?: string
+}
+
+export interface CodexUserInputRequestEvent {
+  session_id: string
+  worktree_id: string
+  request: CodexUserInputRequest
+}
+
+export interface CodexMcpElicitationRequest {
+  rpc_id: number
+  server_name: string
+  message: string
+  mode: 'form' | 'url'
+  requested_schema?: unknown
+  url?: string
+  elicitation_id?: string | null
+  meta?: unknown
+}
+
+export interface CodexMcpElicitationRequestEvent {
+  session_id: string
+  worktree_id: string
+  request: CodexMcpElicitationRequest
+}
+
+export interface CodexDynamicToolCallRequest {
+  rpc_id: number
+  call_id: string
+  tool: string
+  arguments: unknown
+}
+
+export interface CodexDynamicToolCallRequestEvent {
+  session_id: string
+  worktree_id: string
+  request: CodexDynamicToolCallRequest
+}
+
+export interface CodexDynamicToolCallOutputContentItem {
+  type: 'inputText' | 'inputImage'
+  text?: string
+  imageUrl?: string
+}
+
 // ============================================================================
 // AskUserQuestion Types
 // ============================================================================
@@ -441,6 +579,42 @@ export interface Question {
   header?: string
   multiSelect: boolean
   options: QuestionOption[]
+  isOther?: boolean
+  isSecret?: boolean
+}
+
+export function normalizeCodexQuestions(questions: unknown): Question[] {
+  if (!Array.isArray(questions)) return []
+
+  return questions.map(question => {
+    const record =
+      typeof question === 'object' && question !== null
+        ? (question as Record<string, unknown>)
+        : {}
+    const rawOptions = Array.isArray(record.options) ? record.options : []
+
+    return {
+      header: String(record.header ?? ''),
+      question: String(record.question ?? ''),
+      multiSelect: false,
+      isOther: record.isOther === true,
+      isSecret: record.isSecret === true,
+      options: rawOptions.map(option => {
+        const optionRecord =
+          typeof option === 'object' && option !== null
+            ? (option as Record<string, unknown>)
+            : {}
+
+        return {
+          label: String(optionRecord.label ?? ''),
+          description:
+            typeof optionRecord.description === 'string'
+              ? optionRecord.description
+              : undefined,
+        }
+      }),
+    }
+  })
 }
 
 /**
@@ -470,7 +644,9 @@ export function isAskUserQuestion(
  * True only when persisted question tool output represents a real answer.
  * Blocking-tool errors can also produce output and must not collapse the UI.
  */
-export function hasQuestionAnswerOutput(output: string | null | undefined): boolean {
+export function hasQuestionAnswerOutput(
+  output: string | null | undefined
+): boolean {
   if (!output) return false
 
   const trimmed = output.trim()

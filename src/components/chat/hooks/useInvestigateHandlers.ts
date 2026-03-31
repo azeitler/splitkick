@@ -28,6 +28,7 @@ import type {
   McpServerInfo,
 } from '@/types/chat'
 import type { AppPreferences } from '@/types/preferences'
+import type { InvestigateOverride } from './useMagicCommands'
 
 // Re-export for the caller
 export interface WorkflowRunDetail {
@@ -147,7 +148,8 @@ export function useInvestigateHandlers({
 
   const handleInvestigate = useCallback(
     async (
-      type: 'issue' | 'pr' | 'security-alert' | 'advisory' | 'linear-issue'
+      type: 'issue' | 'pr' | 'security-alert' | 'advisory' | 'linear-issue',
+      override?: InvestigateOverride
     ) => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
@@ -182,12 +184,18 @@ export function useInvestigateHandlers({
                 ? 'investigate_linear_issue_backend'
                 : ('investigate_advisory_backend' as const)
       const investigateModel =
-        preferences?.magic_prompt_models?.[modelKey] ?? selectedModelRef.current
-      const investigateProvider = resolveMagicPromptProvider(
+        override?.model ??
+        preferences?.magic_prompt_models?.[modelKey] ??
+        selectedModelRef.current
+      const resolvedInvestigateProvider = resolveMagicPromptProvider(
         preferences?.magic_prompt_providers,
         providerKey,
         preferences?.default_provider
       )
+      const investigateProvider =
+        override?.backend && override.backend !== 'claude'
+          ? null
+          : resolvedInvestigateProvider
       const { customProfileName: resolvedInvestigateProfile } =
         resolveCustomProfile(investigateModel, investigateProvider)
 
@@ -361,11 +369,13 @@ export function useInvestigateHandlers({
         supportsAdaptiveThinking(investigateModel, cliVersion)
 
       const investigateBackend =
+        override?.backend ??
         resolveMagicPromptBackend(
           preferences?.magic_prompt_backends,
           backendKey,
           defaultBackend
-        ) ?? resolveBackend(investigateModel)
+        ) ??
+        resolveBackend(investigateModel)
 
       setSessionBackend.mutate({
         sessionId: activeSessionId,

@@ -160,8 +160,10 @@ export async function prefetchSessions(
     const labelUpdates: Record<string, LabelData> = {}
     const reviewResultsUpdates: Record<string, ReviewResponse> = {}
     const answeredQuestionsUpdates: Record<string, Set<string>> = {}
-    const submittedAnswersUpdates: Record<string, Record<string, QuestionAnswer[]>> =
-      {}
+    const submittedAnswersUpdates: Record<
+      string,
+      Record<string, QuestionAnswer[]>
+    > = {}
     const fixedFindingsUpdates: Record<string, Set<string>> = {}
     for (const session of sessions.sessions) {
       if (session.is_reviewing) {
@@ -505,6 +507,11 @@ export function useUpdateSessionState() {
       submittedAnswers,
       fixedFindings,
       pendingPermissionDenials,
+      pendingCodexCommandApprovalRequests,
+      pendingCodexPermissionRequests,
+      pendingCodexUserInputRequests,
+      pendingCodexMcpElicitationRequests,
+      pendingCodexDynamicToolCallRequests,
       deniedMessageContext,
       isReviewing,
       waitingForInput,
@@ -524,6 +531,48 @@ export function useUpdateSessionState() {
         tool_name: string
         tool_use_id: string
         tool_input: unknown
+        rpc_id?: number
+      }[]
+      pendingCodexCommandApprovalRequests?: {
+        rpc_id: number
+        item_id: string
+        thread_id: string
+        turn_id: string
+        approval_id?: string | null
+        command?: string | null
+        command_actions?: unknown
+        cwd?: string | null
+        reason?: string | null
+        network_approval_context?: unknown
+        proposed_execpolicy_amendment?: string[] | null
+        proposed_network_policy_amendments?: unknown
+      }[]
+      pendingCodexPermissionRequests?: {
+        rpc_id: number
+        item_id: string
+        permissions: unknown
+        reason?: string | null
+      }[]
+      pendingCodexUserInputRequests?: {
+        rpc_id: number
+        item_id: string
+        questions: unknown
+      }[]
+      pendingCodexMcpElicitationRequests?: {
+        rpc_id: number
+        server_name: string
+        message: string
+        mode: string
+        requested_schema?: unknown
+        url?: string
+        elicitation_id?: string | null
+        meta?: unknown
+      }[]
+      pendingCodexDynamicToolCallRequests?: {
+        rpc_id: number
+        call_id: string
+        tool: string
+        arguments: unknown
       }[]
       deniedMessageContext?: {
         message: string
@@ -550,6 +599,11 @@ export function useUpdateSessionState() {
         submittedAnswers,
         fixedFindings,
         pendingPermissionDenials,
+        pendingCodexCommandApprovalRequests,
+        pendingCodexPermissionRequests,
+        pendingCodexUserInputRequests,
+        pendingCodexMcpElicitationRequests,
+        pendingCodexDynamicToolCallRequests,
         deniedMessageContext,
         isReviewing,
         waitingForInput,

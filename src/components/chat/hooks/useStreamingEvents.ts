@@ -15,7 +15,11 @@ import {
   type NotificationSound,
 } from '@/types/preferences'
 import { triggerImmediateGitPoll } from '@/services/git-status'
-import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
+import {
+  isAskUserQuestion,
+  isPlanToolCall,
+  normalizeCodexQuestions,
+} from '@/types/chat'
 import { playNotificationSound } from '@/lib/sounds'
 import { findPlanFilePath } from '@/components/chat/tool-call-utils'
 import { generateId } from '@/lib/uuid'
@@ -33,6 +37,11 @@ import type {
   CancelledEvent,
   ThinkingEvent,
   PermissionDeniedEvent,
+  CodexCommandApprovalRequestEvent,
+  CodexPermissionRequestEvent,
+  CodexUserInputRequestEvent,
+  CodexMcpElicitationRequestEvent,
+  CodexDynamicToolCallRequestEvent,
   CompactingEvent,
   CompactedEvent,
   Session,
@@ -268,7 +277,7 @@ export default function useStreamingEvents({
     // Buffer chunks and flush on animation frames to avoid per-chunk re-renders.
     // Codex app-server sends very frequent deltas; without batching, each delta
     // triggers 2 store mutations + full StreamingMessage re-render.
-    const chunkBuffer: Record<string, string> = {}
+    let chunkBuffer: Record<string, string> = {}
     let chunkRafId: number | null = null
 
     function flushChunkBuffer() {
@@ -277,10 +286,7 @@ export default function useStreamingEvents({
         appendStreamingContent(sid, buffered)
         addTextBlock(sid, buffered)
       }
-      // Clear buffer (mutate in place for perf)
-      for (const key of Object.keys(chunkBuffer)) {
-        delete chunkBuffer[key]
-      }
+      chunkBuffer = {}
     }
 
     const unlistenChunk = listen<ChunkEvent>('chat:chunk', event => {
@@ -335,7 +341,7 @@ export default function useStreamingEvents({
     // Buffer thinking deltas and flush on animation frames (same pattern as chunks).
     // OpenCode/Codex stream thinking as frequent small deltas; without batching,
     // each delta triggers a store mutation + re-render.
-    const thinkingBuffer: Record<string, string> = {}
+    let thinkingBuffer: Record<string, string> = {}
     let thinkingRafId: number | null = null
 
     function flushThinkingBuffer() {
@@ -343,9 +349,7 @@ export default function useStreamingEvents({
       for (const [sid, buffered] of Object.entries(thinkingBuffer)) {
         addThinkingBlock(sid, buffered)
       }
-      for (const key of Object.keys(thinkingBuffer)) {
-        delete thinkingBuffer[key]
-      }
+      thinkingBuffer = {}
     }
 
     const unlistenThinking = listen<ThinkingEvent>('chat:thinking', event => {
@@ -421,6 +425,137 @@ export default function useStreamingEvents({
         }
       }
     )
+
+    const persistCodexPendingState = (
+      sessionId: string,
+      worktreeId: string,
+      updates: Record<string, unknown>
+    ) => {
+      const worktreePath = useChatStore.getState().worktreePaths[worktreeId]
+      if (!worktreePath) return
+      invoke('update_session_state', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        waitingForInput: true,
+        ...updates,
+      }).catch(err => {
+        console.error(
+          '[useStreamingEvents] Failed to persist Codex pending request:',
+          err
+        )
+      })
+    }
+
+    const unlistenCodexPermissionRequest = listen<CodexPermissionRequestEvent>(
+      'chat:codex_permission_request',
+      event => {
+        const { session_id, worktree_id, request } = event.payload
+        const { setPendingCodexPermissionRequests, setWaitingForInput } =
+          useChatStore.getState()
+        const current =
+          useChatStore.getState().pendingCodexPermissionRequests[session_id] ??
+          []
+        const next = [...current, request]
+        setPendingCodexPermissionRequests(session_id, next)
+        setWaitingForInput(session_id, true)
+        persistCodexPendingState(session_id, worktree_id, {
+          pendingCodexPermissionRequests: next,
+        })
+      }
+    )
+
+    const unlistenCodexCommandApprovalRequest =
+      listen<CodexCommandApprovalRequestEvent>(
+        'chat:codex_command_approval_request',
+        event => {
+          const { session_id, worktree_id, request } = event.payload
+          const { setPendingCodexCommandApprovalRequests, setWaitingForInput } =
+            useChatStore.getState()
+          const current =
+            useChatStore.getState().pendingCodexCommandApprovalRequests[
+              session_id
+            ] ?? []
+          const next = [...current, request]
+          setPendingCodexCommandApprovalRequests(session_id, next)
+          setWaitingForInput(session_id, true)
+          persistCodexPendingState(session_id, worktree_id, {
+            pendingCodexCommandApprovalRequests: next,
+          })
+        }
+      )
+
+    const unlistenCodexUserInputRequest = listen<CodexUserInputRequestEvent>(
+      'chat:codex_user_input_request',
+      event => {
+        const { session_id, worktree_id, request } = event.payload
+        const {
+          setPendingCodexUserInputRequests,
+          setWaitingForInput,
+          addToolCall,
+          addToolBlock,
+        } = useChatStore.getState()
+        const current =
+          useChatStore.getState().pendingCodexUserInputRequests[session_id] ??
+          []
+        const next = [...current, request]
+        setPendingCodexUserInputRequests(session_id, next)
+        setWaitingForInput(session_id, true)
+
+        const questions = normalizeCodexQuestions(request.questions)
+
+        const toolCall = {
+          id: request.item_id || `codex-user-input-${request.rpc_id}`,
+          name: 'AskUserQuestion',
+          input: { questions },
+        }
+        addToolCall(session_id, toolCall)
+        addToolBlock(session_id, toolCall.id)
+
+        persistCodexPendingState(session_id, worktree_id, {
+          pendingCodexUserInputRequests: next,
+        })
+      }
+    )
+
+    const unlistenCodexMcpElicitation = listen<CodexMcpElicitationRequestEvent>(
+      'chat:codex_mcp_elicitation_request',
+      event => {
+        const { session_id, worktree_id, request } = event.payload
+        const { setPendingCodexMcpElicitationRequests, setWaitingForInput } =
+          useChatStore.getState()
+        const current =
+          useChatStore.getState().pendingCodexMcpElicitationRequests[
+            session_id
+          ] ?? []
+        const next = [...current, request]
+        setPendingCodexMcpElicitationRequests(session_id, next)
+        setWaitingForInput(session_id, true)
+        persistCodexPendingState(session_id, worktree_id, {
+          pendingCodexMcpElicitationRequests: next,
+        })
+      }
+    )
+
+    const unlistenCodexDynamicToolCall =
+      listen<CodexDynamicToolCallRequestEvent>(
+        'chat:codex_dynamic_tool_call_request',
+        event => {
+          const { session_id, worktree_id, request } = event.payload
+          const { setPendingCodexDynamicToolCallRequests, setWaitingForInput } =
+            useChatStore.getState()
+          const current =
+            useChatStore.getState().pendingCodexDynamicToolCallRequests[
+              session_id
+            ] ?? []
+          const next = [...current, request]
+          setPendingCodexDynamicToolCallRequests(session_id, next)
+          setWaitingForInput(session_id, true)
+          persistCodexPendingState(session_id, worktree_id, {
+            pendingCodexDynamicToolCallRequests: next,
+          })
+        }
+      )
 
     const unlistenDone = listen<DoneEvent>('chat:done', event => {
       const sessionId = event.payload.session_id
@@ -546,7 +681,9 @@ export default function useStreamingEvents({
       // This determines whether to show "waiting" status in the UI
       const hasUnansweredBlockingTool = effectiveToolCalls?.some(
         tc =>
-          (isAskUserQuestion(tc) || isPlanToolCall(tc) || tc.name === 'question') &&
+          (isAskUserQuestion(tc) ||
+            isPlanToolCall(tc) ||
+            tc.name === 'question') &&
           !isQuestionAnswered(sessionId, tc.id)
       )
 
@@ -584,10 +721,7 @@ export default function useStreamingEvents({
         // Add optimistic assistant message BEFORE clearing streaming state.
         // This ensures the plan/question is visible in MessageList
         // before StreamingMessage unmounts (isSending becomes false).
-        if (
-          content ||
-          (effectiveToolCalls && effectiveToolCalls.length > 0)
-        ) {
+        if (content || (effectiveToolCalls && effectiveToolCalls.length > 0)) {
           const pendingIdKey = `__pendingMessageId_${sessionId}`
           const preGeneratedId = (window as unknown as Record<string, string>)[
             pendingIdKey
@@ -1582,6 +1716,11 @@ export default function useStreamingEvents({
       unlistenThinking.then(f => f())
       unlistenToolResult.then(f => f())
       unlistenPermissionDenied.then(f => f())
+      unlistenCodexPermissionRequest.then(f => f())
+      unlistenCodexCommandApprovalRequest.then(f => f())
+      unlistenCodexUserInputRequest.then(f => f())
+      unlistenCodexMcpElicitation.then(f => f())
+      unlistenCodexDynamicToolCall.then(f => f())
       unlistenDone.then(f => f())
       unlistenError.then(f => f())
       unlistenCancelled.then(f => f())

@@ -491,6 +491,13 @@ pub async fn update_session_state(
     submitted_answers: Option<std::collections::HashMap<String, serde_json::Value>>,
     fixed_findings: Option<Vec<String>>,
     pending_permission_denials: Option<Vec<super::types::PermissionDenial>>,
+    pending_codex_permission_requests: Option<Vec<super::types::CodexPermissionRequest>>,
+    pending_codex_command_approval_requests: Option<Vec<super::types::CodexCommandApprovalRequest>>,
+    pending_codex_user_input_requests: Option<Vec<super::types::CodexUserInputRequest>>,
+    pending_codex_mcp_elicitation_requests: Option<Vec<super::types::CodexMcpElicitationRequest>>,
+    pending_codex_dynamic_tool_call_requests: Option<
+        Vec<super::types::CodexDynamicToolCallRequest>,
+    >,
     denied_message_context: Option<Option<super::types::DeniedMessageContext>>,
     is_reviewing: Option<bool>,
     waiting_for_input: Option<bool>,
@@ -518,6 +525,21 @@ pub async fn update_session_state(
             }
             if let Some(v) = pending_permission_denials {
                 session.pending_permission_denials = v;
+            }
+            if let Some(v) = pending_codex_permission_requests {
+                session.pending_codex_permission_requests = v;
+            }
+            if let Some(v) = pending_codex_command_approval_requests {
+                session.pending_codex_command_approval_requests = v;
+            }
+            if let Some(v) = pending_codex_user_input_requests {
+                session.pending_codex_user_input_requests = v;
+            }
+            if let Some(v) = pending_codex_mcp_elicitation_requests {
+                session.pending_codex_mcp_elicitation_requests = v;
+            }
+            if let Some(v) = pending_codex_dynamic_tool_call_requests {
+                session.pending_codex_dynamic_tool_call_requests = v;
             }
             if let Some(v) = denied_message_context {
                 session.denied_message_context = v;
@@ -2122,8 +2144,8 @@ pub async fn send_chat_message(
                 };
 
                 // Read the instructions file content to pass inline via baseInstructions
-                let codex_base_instructions_content: Option<String> =
-                    codex_instructions_file.and_then(|path| {
+                let codex_base_instructions_content: Option<String> = codex_instructions_file
+                    .and_then(|path| {
                         std::fs::read_to_string(&path)
                             .map_err(|e| {
                                 log::error!("Failed to read Codex instructions file: {e}");
@@ -5516,17 +5538,93 @@ fn parse_codex_mcp_list_json(output: &str) -> std::collections::HashMap<String, 
     std::collections::HashMap::new()
 }
 
-/// Approve or decline a Codex command execution approval request.
-///
-/// Called by the frontend when the user clicks "Approve" or "Cancel" in the
-/// PermissionApproval UI during a Codex build-mode session.
+fn send_codex_response(rpc_id: u64, payload: serde_json::Value) -> Result<(), String> {
+    super::codex_server::send_response(rpc_id, payload)
+}
+
+/// Backward-compatible wrapper for legacy frontend callers.
 #[tauri::command]
 pub fn approve_codex_command(
     _session_id: String,
     rpc_id: u64,
     decision: String,
 ) -> Result<(), String> {
-    super::codex_server::send_response(rpc_id, serde_json::json!({"decision": decision}))
+    send_codex_response(rpc_id, serde_json::json!({ "decision": decision }))
+}
+
+#[tauri::command]
+pub fn respond_codex_command_approval(
+    _session_id: String,
+    rpc_id: u64,
+    response: serde_json::Value,
+) -> Result<(), String> {
+    send_codex_response(rpc_id, response)
+}
+
+#[tauri::command]
+pub fn respond_codex_file_change_approval(
+    _session_id: String,
+    rpc_id: u64,
+    decision: String,
+) -> Result<(), String> {
+    send_codex_response(rpc_id, serde_json::json!({ "decision": decision }))
+}
+
+#[tauri::command]
+pub fn respond_codex_permissions_request(
+    _session_id: String,
+    rpc_id: u64,
+    permissions: serde_json::Value,
+    scope: Option<String>,
+) -> Result<(), String> {
+    let mut payload = serde_json::json!({ "permissions": permissions });
+    if let Some(scope) = scope {
+        payload["scope"] = serde_json::json!(scope);
+    }
+    send_codex_response(rpc_id, payload)
+}
+
+#[tauri::command]
+pub fn respond_codex_user_input_request(
+    _session_id: String,
+    rpc_id: u64,
+    answers: std::collections::HashMap<String, serde_json::Value>,
+) -> Result<(), String> {
+    send_codex_response(rpc_id, serde_json::json!({ "answers": answers }))
+}
+
+#[tauri::command]
+pub fn respond_codex_mcp_elicitation(
+    _session_id: String,
+    rpc_id: u64,
+    action: String,
+    content: Option<serde_json::Value>,
+    meta: Option<serde_json::Value>,
+) -> Result<(), String> {
+    let mut payload = serde_json::json!({ "action": action });
+    if let Some(content) = content {
+        payload["content"] = content;
+    }
+    if let Some(meta) = meta {
+        payload["_meta"] = meta;
+    }
+    send_codex_response(rpc_id, payload)
+}
+
+#[tauri::command]
+pub fn respond_codex_dynamic_tool_call(
+    _session_id: String,
+    rpc_id: u64,
+    success: bool,
+    content_items: Vec<serde_json::Value>,
+) -> Result<(), String> {
+    send_codex_response(
+        rpc_id,
+        serde_json::json!({
+            "success": success,
+            "contentItems": content_items,
+        }),
+    )
 }
 
 // =============================================================================

@@ -8,7 +8,13 @@
 //! directly since they don't need streaming.
 
 use super::claude::CancelledEvent;
-use super::types::{ContentBlock, PermissionDenial, PermissionDeniedEvent, ToolCall, UsageData};
+use super::types::{
+    CodexCommandAction, CodexCommandApprovalRequest, CodexCommandApprovalRequestEvent,
+    CodexDynamicToolCallRequest, CodexDynamicToolCallRequestEvent, CodexMcpElicitationRequest,
+    CodexMcpElicitationRequestEvent, CodexNetworkApprovalContext, CodexNetworkPolicyAmendment,
+    CodexPermissionRequest, CodexPermissionRequestEvent, CodexUserInputRequest,
+    CodexUserInputRequestEvent, ContentBlock, ToolCall, UsageData,
+};
 use crate::http_server::EmitExt;
 
 use std::collections::HashMap;
@@ -771,34 +777,7 @@ fn process_turn_events(
 
     // Emit chat:done unless error was emitted
     if !cancelled && !error_emitted {
-        let mut has_plan_tool = tool_calls.iter().any(|tc| tc.name == CODEX_PLAN_TOOL_NAME);
-
-        // New Codex planning mode delivers plans as regular agent_message text
-        // without plan-specific events. Create a synthetic CodexPlan tool call
-        // so PlanDisplay renders and the approval flow triggers.
-        // Clear text content blocks to avoid showing the plan text twice
-        // (once as text, once in PlanDisplay).
-        if is_plan_mode && !has_plan_tool && !full_content.is_empty() {
-            // Only remove text blocks whose content is part of the plan text
-            content_blocks.retain(|cb| match cb {
-                ContentBlock::Text { text } => !full_content.contains(text.as_str()),
-                _ => true,
-            });
-
-            let tool_id = "codex-plan-synthetic".to_string();
-            let input = serde_json::json!({
-                "plan": full_content,
-                "source": "codex",
-            });
-            let inserted = upsert_codex_plan_tool_call(
-                &mut tool_calls,
-                &mut content_blocks,
-                &tool_id,
-                input.clone(),
-            );
-            emit_codex_plan_tool_call(app, session_id, worktree_id, &tool_id, &input, inserted);
-            has_plan_tool = true;
-        }
+        let has_plan_tool = tool_calls.iter().any(|tc| tc.name == CODEX_PLAN_TOOL_NAME);
 
         // Write result marker for crash-recovery compatibility
         // (jsonl_has_result_line() in run_log.rs checks for this)
@@ -985,6 +964,7 @@ fn process_server_notification(
             if !is_plan_mode {
                 return;
             }
+
             let turn_id = params.get("turnId").and_then(|v| v.as_str());
             let tool_id = codex_plan_tool_id(turn_id, None);
             let explanation = params
@@ -1006,6 +986,7 @@ fn process_server_notification(
             if !is_plan_mode {
                 return;
             }
+
             let turn_id = params.get("turnId").and_then(|v| v.as_str());
             let item_id = params.get("itemId").and_then(|v| v.as_str());
             let tool_id = codex_plan_tool_id(turn_id, item_id);
@@ -1039,6 +1020,7 @@ fn process_server_notification(
                 if !is_plan_mode {
                     return;
                 }
+
                 let turn_id = params.get("turnId").and_then(|v| v.as_str());
                 let item_id = event_item.get("id").and_then(|v| v.as_str());
                 let tool_id = codex_plan_tool_id(turn_id, item_id);
@@ -1085,6 +1067,7 @@ fn process_server_notification(
                 if !is_plan_mode {
                     return;
                 }
+
                 let turn_id = params.get("turnId").and_then(|v| v.as_str());
                 let item_id = event_item.get("id").and_then(|v| v.as_str());
                 let tool_id = codex_plan_tool_id(turn_id, item_id);
@@ -1283,6 +1266,17 @@ fn handle_approval_request(
     _is_build_mode: bool,
     is_plan_mode: bool,
 ) {
+    let emit_connection_error = || {
+        let _ = app.emit_all(
+            "chat:error",
+            &ErrorEvent {
+                session_id: session_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+                error: "Lost connection to Codex server".to_string(),
+            },
+        );
+    };
+
     match method {
         "item/fileChange/requestApproval" => {
             if is_plan_mode {
@@ -1293,14 +1287,7 @@ fn handle_approval_request(
                     serde_json::json!({"decision": "decline"}),
                 ) {
                     log::error!("Failed to deny file change in plan mode (rpc_id={rpc_id}): {e}");
-                    let _ = app.emit_all(
-                        "chat:error",
-                        &ErrorEvent {
-                            session_id: session_id.to_string(),
-                            worktree_id: worktree_id.to_string(),
-                            error: "Lost connection to Codex server".to_string(),
-                        },
-                    );
+                    emit_connection_error();
                 }
             } else {
                 // Auto-accept in build/yolo modes
@@ -1310,14 +1297,7 @@ fn handle_approval_request(
                     serde_json::json!({"decision": "accept"}),
                 ) {
                     log::error!("Failed to auto-accept file change (rpc_id={rpc_id}): {e}");
-                    let _ = app.emit_all(
-                        "chat:error",
-                        &ErrorEvent {
-                            session_id: session_id.to_string(),
-                            worktree_id: worktree_id.to_string(),
-                            error: "Lost connection to Codex server".to_string(),
-                        },
-                    );
+                    emit_connection_error();
                 }
             }
         }
@@ -1346,52 +1326,202 @@ fn handle_approval_request(
                     serde_json::json!({"decision": "accept"}),
                 ) {
                     log::error!("Failed to auto-accept CLI command (rpc_id={rpc_id}): {e}");
-                    let _ = app.emit_all(
-                        "chat:error",
-                        &ErrorEvent {
-                            session_id: session_id.to_string(),
-                            worktree_id: worktree_id.to_string(),
-                            error: "Lost connection to Codex server".to_string(),
-                        },
-                    );
+                    emit_connection_error();
                 }
                 return;
             }
 
             log::trace!("Command approval requested (rpc_id={rpc_id}): {command}");
 
-            let denial = PermissionDenial {
-                tool_name: "Bash".to_string(),
-                tool_use_id: item_id,
-                tool_input: serde_json::json!({ "command": command }),
-                rpc_id: Some(rpc_id),
+            let request = CodexCommandApprovalRequest {
+                rpc_id,
+                item_id,
+                thread_id: params
+                    .get("threadId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                turn_id: params
+                    .get("turnId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                approval_id: params
+                    .get("approvalId")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                command: params
+                    .get("command")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                command_actions: params.get("commandActions").and_then(|value| {
+                    serde_json::from_value::<Vec<CodexCommandAction>>(value.clone()).ok()
+                }),
+                cwd: params
+                    .get("cwd")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                reason: params
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                network_approval_context: params.get("networkApprovalContext").and_then(|value| {
+                    serde_json::from_value::<CodexNetworkApprovalContext>(value.clone()).ok()
+                }),
+                proposed_execpolicy_amendment: params
+                    .get("proposedExecpolicyAmendment")
+                    .and_then(|value| serde_json::from_value::<Vec<String>>(value.clone()).ok()),
+                proposed_network_policy_amendments: params
+                    .get("proposedNetworkPolicyAmendments")
+                    .and_then(|value| {
+                        serde_json::from_value::<Vec<CodexNetworkPolicyAmendment>>(value.clone())
+                            .ok()
+                    }),
             };
             let _ = app.emit_all(
-                "chat:permission_denied",
-                &PermissionDeniedEvent {
+                "chat:codex_command_approval_request",
+                &CodexCommandApprovalRequestEvent {
                     session_id: session_id.to_string(),
                     worktree_id: worktree_id.to_string(),
-                    denials: vec![denial],
+                    request,
                 },
             );
-            // Response will come from approve_codex_command Tauri command
+        }
+        "item/permissions/requestApproval" => {
+            let request = CodexPermissionRequest {
+                rpc_id,
+                item_id: params
+                    .get("itemId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                permissions: params
+                    .get("permissions")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+                reason: params
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            };
+            let _ = app.emit_all(
+                "chat:codex_permission_request",
+                &CodexPermissionRequestEvent {
+                    session_id: session_id.to_string(),
+                    worktree_id: worktree_id.to_string(),
+                    request,
+                },
+            );
+        }
+        "item/tool/requestUserInput" => {
+            let request = CodexUserInputRequest {
+                rpc_id,
+                item_id: params
+                    .get("itemId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                questions: params
+                    .get("questions")
+                    .cloned()
+                    .unwrap_or_else(|| serde_json::json!([])),
+                thread_id: params
+                    .get("threadId")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                turn_id: params
+                    .get("turnId")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+            };
+            let _ = app.emit_all(
+                "chat:codex_user_input_request",
+                &CodexUserInputRequestEvent {
+                    session_id: session_id.to_string(),
+                    worktree_id: worktree_id.to_string(),
+                    request,
+                },
+            );
+        }
+        "mcpServer/elicitation/request" => {
+            let request = CodexMcpElicitationRequest {
+                rpc_id,
+                server_name: params
+                    .get("serverName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                message: params
+                    .get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                mode: params
+                    .get("mode")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("form")
+                    .to_string(),
+                requested_schema: params.get("requestedSchema").cloned(),
+                url: params
+                    .get("url")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                elicitation_id: params
+                    .get("elicitationId")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string()),
+                meta: params.get("_meta").cloned(),
+            };
+            let _ = app.emit_all(
+                "chat:codex_mcp_elicitation_request",
+                &CodexMcpElicitationRequestEvent {
+                    session_id: session_id.to_string(),
+                    worktree_id: worktree_id.to_string(),
+                    request,
+                },
+            );
+        }
+        "item/tool/call" => {
+            let request = CodexDynamicToolCallRequest {
+                rpc_id,
+                call_id: params
+                    .get("callId")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                tool: params
+                    .get("tool")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                arguments: params
+                    .get("arguments")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null),
+            };
+            let _ = app.emit_all(
+                "chat:codex_dynamic_tool_call_request",
+                &CodexDynamicToolCallRequestEvent {
+                    session_id: session_id.to_string(),
+                    worktree_id: worktree_id.to_string(),
+                    request,
+                },
+            );
         }
         _ => {
-            log::debug!("Unknown approval request method: {method}");
-            // Auto-accept unknown approvals to avoid blocking
-            if let Err(e) = super::codex_server::send_response(
-                rpc_id,
-                serde_json::json!({"decision": "accept"}),
-            ) {
-                log::error!("Failed to auto-accept unknown approval (rpc_id={rpc_id}): {e}");
-                let _ = app.emit_all(
-                    "chat:error",
-                    &ErrorEvent {
-                        session_id: session_id.to_string(),
-                        worktree_id: worktree_id.to_string(),
-                        error: "Lost connection to Codex server".to_string(),
-                    },
-                );
+            let error = format!("Unsupported Codex server request: {method}. Please update Jean.");
+            log::error!("{error}");
+            let _ = app.emit_all(
+                "chat:error",
+                &ErrorEvent {
+                    session_id: session_id.to_string(),
+                    worktree_id: worktree_id.to_string(),
+                    error: error.clone(),
+                },
+            );
+            if let Err(e) = super::codex_server::send_error_response(rpc_id, -32601, &error) {
+                log::error!("Failed to reject unknown approval request (rpc_id={rpc_id}): {e}");
+                emit_connection_error();
             }
         }
     }
@@ -1853,24 +1983,10 @@ fn process_codex_event(
                     }
                 }
                 "file_change" => {
-                    let changes = item
-                        .get("changes")
-                        .map(|v| serde_json::to_string(v).unwrap_or_default())
-                        .unwrap_or_default();
                     let tool_id = pending_tool_ids.remove(item_id).unwrap_or_default();
                     if !tool_id.is_empty() {
-                        if let Some(tc) = tool_calls.iter_mut().find(|t| t.id == tool_id) {
-                            tc.output = Some(changes.clone());
-                        }
-                        let _ = app.emit_all(
-                            "chat:tool_result",
-                            &ToolResultEvent {
-                                session_id: session_id.to_string(),
-                                worktree_id: worktree_id.to_string(),
-                                tool_use_id: tool_id,
-                                output: changes,
-                            },
-                        );
+                        // FileChange diffs are already carried in the tool input.
+                        // Do not duplicate them into output as escaped JSON.
                     }
                 }
                 "reasoning" => {
@@ -2111,6 +2227,7 @@ pub fn parse_codex_run_to_message(
     use super::types::{ChatMessage, MessageRole};
     use uuid::Uuid;
 
+    let is_plan_mode = run.execution_mode.as_deref() == Some("plan");
     let mut content = String::new();
     let mut tool_calls: Vec<ToolCall> = Vec::new();
     let mut content_blocks: Vec<ContentBlock> = Vec::new();
@@ -2139,6 +2256,9 @@ pub fn parse_codex_run_to_message(
 
         match event_type {
             "turn.plan_updated" => {
+                if !is_plan_mode {
+                    continue;
+                }
                 let turn_id = msg.get("turn_id").and_then(|v| v.as_str());
                 let tool_id = codex_plan_tool_id(turn_id, None);
                 let explanation = msg
@@ -2155,6 +2275,9 @@ pub fn parse_codex_run_to_message(
                 upsert_codex_plan_tool_call(&mut tool_calls, &mut content_blocks, &tool_id, input);
             }
             "item.plan.delta" => {
+                if !is_plan_mode {
+                    continue;
+                }
                 let turn_id = msg.get("turn_id").and_then(|v| v.as_str());
                 let item_id = msg.get("item_id").and_then(|v| v.as_str());
                 let tool_id = codex_plan_tool_id(turn_id, item_id);
@@ -2184,6 +2307,9 @@ pub fn parse_codex_run_to_message(
 
                 match item_type {
                     "plan" => {
+                        if !is_plan_mode {
+                            continue;
+                        }
                         let tool_id = codex_plan_tool_id(None, Some(item_id));
                         let existing = tool_calls
                             .iter()
@@ -2338,6 +2464,9 @@ pub fn parse_codex_run_to_message(
 
                 match item_type {
                     "plan" => {
+                        if !is_plan_mode {
+                            continue;
+                        }
                         let tool_id = codex_plan_tool_id(None, Some(item_id));
                         let existing = tool_calls
                             .iter()
@@ -2391,15 +2520,10 @@ pub fn parse_codex_run_to_message(
                         }
                     }
                     "file_change" => {
-                        let changes = item
-                            .get("changes")
-                            .map(|v| serde_json::to_string(v).unwrap_or_default())
-                            .unwrap_or_default();
                         let tool_id = pending_tool_ids.remove(item_id).unwrap_or_default();
                         if !tool_id.is_empty() {
-                            if let Some(tc) = tool_calls.iter_mut().find(|t| t.id == tool_id) {
-                                tc.output = Some(changes);
-                            }
+                            // FileChange diffs are already carried in the tool input.
+                            // Do not duplicate them into output as escaped JSON.
                         }
                     }
                     "reasoning" => {
@@ -2805,7 +2929,67 @@ mod tests {
             .iter()
             .find(|tool| tool.name == CODEX_PLAN_TOOL_NAME)
             .expect("plan tool");
-        assert_eq!(plan_tool.input.get("plan").and_then(|v| v.as_str()), Some("Final plan"));
+        assert_eq!(
+            plan_tool.input.get("plan").and_then(|v| v.as_str()),
+            Some("Final plan")
+        );
+    }
+
+    #[test]
+    fn parse_non_plan_run_ignores_plan_events() {
+        let lines = vec![
+            r#"{"type":"turn.plan_updated","turn_id":"turn-1","explanation":"Investigating","plan":[{"step":"Inspect repo","status":"in_progress"}]}"#.to_string(),
+            r#"{"type":"item.plan.delta","item_id":"plan-1","turn_id":"turn-1","delta":"Partial plan"}"#.to_string(),
+            r#"{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"rtk git status"}}"#.to_string(),
+            r#"{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","aggregated_output":"clean"}}"#.to_string(),
+            r#"{"type":"item.completed","item":{"id":"plan-1","type":"plan","text":"Final plan"}}"#.to_string(),
+            r#"{"type":"item.completed","item":{"type":"agent_message","text":"Implemented fix."}}"#.to_string(),
+        ];
+        let run = RunEntry {
+            run_id: "run-3".to_string(),
+            user_message_id: "user-3".to_string(),
+            user_message: "prompt".to_string(),
+            model: None,
+            execution_mode: Some("yolo".to_string()),
+            thinking_level: None,
+            effort_level: None,
+            started_at: 1,
+            ended_at: Some(2),
+            status: RunStatus::Completed,
+            assistant_message_id: Some("assistant-3".to_string()),
+            cancelled: false,
+            recovered: false,
+            claude_session_id: None,
+            pid: None,
+            usage: None,
+        };
+
+        let message = parse_codex_run_to_message(&lines, &run).expect("message");
+
+        assert_eq!(message.content, "Implemented fix.");
+        assert_eq!(message.tool_calls.len(), 1);
+        assert_eq!(message.tool_calls[0].name, "Bash");
+        assert_eq!(
+            message.tool_calls[0]
+                .input
+                .get("command")
+                .and_then(|v| v.as_str()),
+            Some("rtk git status")
+        );
+        assert_eq!(message.tool_calls[0].output.as_deref(), Some("clean"));
+        assert!(!message
+            .tool_calls
+            .iter()
+            .any(|tool| tool.name == CODEX_PLAN_TOOL_NAME));
+        assert_eq!(message.content_blocks.len(), 2);
+        assert!(message.content_blocks.iter().any(|block| matches!(
+            block,
+            ContentBlock::ToolUse { tool_call_id } if tool_call_id == "cmd-1"
+        )));
+        assert!(message.content_blocks.iter().any(|block| matches!(
+            block,
+            ContentBlock::Text { text } if text == "Implemented fix."
+        )));
     }
 }
 

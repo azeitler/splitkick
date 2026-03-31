@@ -15,6 +15,7 @@ import {
   getPlanTextBlockIndicesToHide,
   isDuplicatePlanTextBlock,
   resolvePlanContent,
+  splitTextAroundPlan,
 } from './tool-call-utils'
 import { ToolCallsDisplay } from './ToolCallsDisplay'
 import { ExitPlanModeButton } from './ExitPlanModeButton'
@@ -120,6 +121,13 @@ export const StreamingMessage = memo(function StreamingMessage({
     contentBlocks,
     resolvedPlan.content
   )
+  const fallbackTextSplit = splitTextAroundPlan(streamingContent)
+  const fallbackPrePlanText = isDuplicatePlanTextBlock(
+    streamingContent,
+    resolvedPlan.content
+  )
+    ? fallbackTextSplit.beforePlan
+    : null
 
   return (
     <div className="text-foreground/90">
@@ -390,6 +398,7 @@ export const StreamingMessage = memo(function StreamingMessage({
         })()
       ) : (
         <>
+          {fallbackPrePlanText && <Markdown streaming>{fallbackPrePlanText}</Markdown>}
           {/* Fallback: Collapsible tool calls during streaming (old behavior) */}
           <ToolCallsDisplay
             toolCalls={toolCalls}

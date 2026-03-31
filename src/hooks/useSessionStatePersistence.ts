@@ -10,6 +10,11 @@ import { logger } from '@/lib/logger'
 import type {
   QuestionAnswer,
   PermissionDenial,
+  CodexCommandApprovalRequest,
+  CodexPermissionRequest,
+  CodexUserInputRequest,
+  CodexMcpElicitationRequest,
+  CodexDynamicToolCallRequest,
   ExecutionMode,
   Session,
   WorktreeSessions,
@@ -61,6 +66,11 @@ interface SessionState {
   submittedAnswers: Record<string, QuestionAnswer[]>
   fixedFindings: string[]
   pendingPermissionDenials: PermissionDenial[]
+  pendingCodexCommandApprovalRequests: CodexCommandApprovalRequest[]
+  pendingCodexPermissionRequests: CodexPermissionRequest[]
+  pendingCodexUserInputRequests: CodexUserInputRequest[]
+  pendingCodexMcpElicitationRequests: CodexMcpElicitationRequest[]
+  pendingCodexDynamicToolCallRequests: CodexDynamicToolCallRequest[]
   deniedMessageContext: {
     message: string
     model: string
@@ -140,6 +150,11 @@ export function useSessionStatePersistence() {
         submittedAnswers,
         fixedFindings,
         pendingPermissionDenials,
+        pendingCodexCommandApprovalRequests,
+        pendingCodexPermissionRequests,
+        pendingCodexUserInputRequests,
+        pendingCodexMcpElicitationRequests,
+        pendingCodexDynamicToolCallRequests,
         deniedMessageContext,
         reviewingSessions,
         waitingForInputSessionIds,
@@ -158,6 +173,16 @@ export function useSessionStatePersistence() {
         submittedAnswers: submittedAnswers[sessionId] ?? {},
         fixedFindings: Array.from(fixedFindings[sessionId] ?? new Set()),
         pendingPermissionDenials: pendingPermissionDenials[sessionId] ?? [],
+        pendingCodexCommandApprovalRequests:
+          pendingCodexCommandApprovalRequests[sessionId] ?? [],
+        pendingCodexPermissionRequests:
+          pendingCodexPermissionRequests[sessionId] ?? [],
+        pendingCodexUserInputRequests:
+          pendingCodexUserInputRequests[sessionId] ?? [],
+        pendingCodexMcpElicitationRequests:
+          pendingCodexMcpElicitationRequests[sessionId] ?? [],
+        pendingCodexDynamicToolCallRequests:
+          pendingCodexDynamicToolCallRequests[sessionId] ?? [],
         deniedMessageContext: ctx
           ? {
               message: ctx.message,
@@ -197,6 +222,14 @@ export function useSessionStatePersistence() {
         submittedAnswers: state.submittedAnswers,
         fixedFindings: state.fixedFindings,
         pendingPermissionDenials: state.pendingPermissionDenials,
+        pendingCodexCommandApprovalRequests:
+          state.pendingCodexCommandApprovalRequests,
+        pendingCodexPermissionRequests: state.pendingCodexPermissionRequests,
+        pendingCodexUserInputRequests: state.pendingCodexUserInputRequests,
+        pendingCodexMcpElicitationRequests:
+          state.pendingCodexMcpElicitationRequests,
+        pendingCodexDynamicToolCallRequests:
+          state.pendingCodexDynamicToolCallRequests,
         deniedMessageContext: state.deniedMessageContext,
         isReviewing: state.isReviewing,
         // Only persist waitingForInput when clearing it (user approval action).
@@ -298,6 +331,56 @@ export function useSessionStatePersistence() {
       updates.pendingPermissionDenials = {
         ...currentState.pendingPermissionDenials,
         [activeSessionId]: session.pending_permission_denials,
+      }
+    }
+
+    if (
+      session.pending_codex_command_approval_requests &&
+      session.pending_codex_command_approval_requests.length > 0
+    ) {
+      updates.pendingCodexCommandApprovalRequests = {
+        ...currentState.pendingCodexCommandApprovalRequests,
+        [activeSessionId]: session.pending_codex_command_approval_requests,
+      }
+    }
+
+    if (
+      session.pending_codex_permission_requests &&
+      session.pending_codex_permission_requests.length > 0
+    ) {
+      updates.pendingCodexPermissionRequests = {
+        ...currentState.pendingCodexPermissionRequests,
+        [activeSessionId]: session.pending_codex_permission_requests,
+      }
+    }
+
+    if (
+      session.pending_codex_user_input_requests &&
+      session.pending_codex_user_input_requests.length > 0
+    ) {
+      updates.pendingCodexUserInputRequests = {
+        ...currentState.pendingCodexUserInputRequests,
+        [activeSessionId]: session.pending_codex_user_input_requests,
+      }
+    }
+
+    if (
+      session.pending_codex_mcp_elicitation_requests &&
+      session.pending_codex_mcp_elicitation_requests.length > 0
+    ) {
+      updates.pendingCodexMcpElicitationRequests = {
+        ...currentState.pendingCodexMcpElicitationRequests,
+        [activeSessionId]: session.pending_codex_mcp_elicitation_requests,
+      }
+    }
+
+    if (
+      session.pending_codex_dynamic_tool_call_requests &&
+      session.pending_codex_dynamic_tool_call_requests.length > 0
+    ) {
+      updates.pendingCodexDynamicToolCallRequests = {
+        ...currentState.pendingCodexDynamicToolCallRequests,
+        [activeSessionId]: session.pending_codex_dynamic_tool_call_requests,
       }
     }
 
@@ -584,6 +667,16 @@ export function useSessionStatePersistence() {
     let prevFixedFindings = useChatStore.getState().fixedFindings[sessionId]
     let prevPendingDenials =
       useChatStore.getState().pendingPermissionDenials[sessionId]
+    let prevPendingCodexCommandApprovalRequests =
+      useChatStore.getState().pendingCodexCommandApprovalRequests[sessionId]
+    let prevPendingCodexPermissionRequests =
+      useChatStore.getState().pendingCodexPermissionRequests[sessionId]
+    let prevPendingCodexUserInputRequests =
+      useChatStore.getState().pendingCodexUserInputRequests[sessionId]
+    let prevPendingCodexMcpElicitations =
+      useChatStore.getState().pendingCodexMcpElicitationRequests[sessionId]
+    let prevPendingCodexDynamicToolCalls =
+      useChatStore.getState().pendingCodexDynamicToolCallRequests[sessionId]
     let prevDeniedContext =
       useChatStore.getState().deniedMessageContext[sessionId]
     let prevReviewing = useChatStore.getState().reviewingSessions[sessionId]
@@ -603,6 +696,16 @@ export function useSessionStatePersistence() {
       const currentSubmitted = state.submittedAnswers[sessionId]
       const currentFixed = state.fixedFindings[sessionId]
       const currentDenials = state.pendingPermissionDenials[sessionId]
+      const currentCodexCommandApprovalRequests =
+        state.pendingCodexCommandApprovalRequests[sessionId]
+      const currentCodexPermissionRequests =
+        state.pendingCodexPermissionRequests[sessionId]
+      const currentCodexUserInputRequests =
+        state.pendingCodexUserInputRequests[sessionId]
+      const currentCodexMcpElicitations =
+        state.pendingCodexMcpElicitationRequests[sessionId]
+      const currentCodexDynamicToolCalls =
+        state.pendingCodexDynamicToolCallRequests[sessionId]
       const currentDeniedCtx = state.deniedMessageContext[sessionId]
       const currentReviewing = state.reviewingSessions[sessionId]
       const currentWaiting = state.waitingForInputSessionIds[sessionId]
@@ -616,6 +719,12 @@ export function useSessionStatePersistence() {
         currentSubmitted !== prevSubmittedAnswers ||
         currentFixed !== prevFixedFindings ||
         currentDenials !== prevPendingDenials ||
+        currentCodexCommandApprovalRequests !==
+          prevPendingCodexCommandApprovalRequests ||
+        currentCodexPermissionRequests !== prevPendingCodexPermissionRequests ||
+        currentCodexUserInputRequests !== prevPendingCodexUserInputRequests ||
+        currentCodexMcpElicitations !== prevPendingCodexMcpElicitations ||
+        currentCodexDynamicToolCalls !== prevPendingCodexDynamicToolCalls ||
         currentDeniedCtx !== prevDeniedContext ||
         currentReviewing !== prevReviewing ||
         currentWaiting !== prevWaiting ||
@@ -629,6 +738,12 @@ export function useSessionStatePersistence() {
         prevSubmittedAnswers = currentSubmitted
         prevFixedFindings = currentFixed
         prevPendingDenials = currentDenials
+        prevPendingCodexCommandApprovalRequests =
+          currentCodexCommandApprovalRequests
+        prevPendingCodexPermissionRequests = currentCodexPermissionRequests
+        prevPendingCodexUserInputRequests = currentCodexUserInputRequests
+        prevPendingCodexMcpElicitations = currentCodexMcpElicitations
+        prevPendingCodexDynamicToolCalls = currentCodexDynamicToolCalls
         prevDeniedContext = currentDeniedCtx
         prevReviewing = currentReviewing
         prevWaiting = currentWaiting

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { render, screen, fireEvent } from '@/test/test-utils'
 import { AskUserQuestion } from './AskUserQuestion'
 import type { QuestionAnswer, Question } from '@/types/chat'
@@ -87,5 +87,60 @@ describe('AskUserQuestion', () => {
     expect(
       screen.getByText('Bird photography | Fun & educational')
     ).toBeInTheDocument()
+  })
+
+  it('hides custom text input when the question does not allow other answers', () => {
+    render(
+      <AskUserQuestion
+        toolCallId="tool-1"
+        questions={[
+          {
+            header: 'Choice',
+            question: 'Pick one',
+            multiSelect: false,
+            isOther: false,
+            options: [{ label: 'A' }, { label: 'B' }],
+          },
+        ]}
+        onSubmit={noopSubmit}
+      />
+    )
+
+    expect(
+      screen.queryByPlaceholderText('Or type your own answer...')
+    ).not.toBeInTheDocument()
+  })
+
+  it('submits secret custom answers when other answers are allowed', () => {
+    const onSubmit = vi.fn()
+
+    render(
+      <AskUserQuestion
+        toolCallId="tool-1"
+        questions={[
+          {
+            header: 'Token',
+            question: 'Paste token',
+            multiSelect: false,
+            isOther: true,
+            isSecret: true,
+            options: [],
+          },
+        ]}
+        onSubmit={onSubmit}
+      />
+    )
+
+    const input = screen.getByPlaceholderText(
+      'Or type your own answer...'
+    ) as HTMLInputElement
+    expect(input.type).toBe('password')
+
+    fireEvent.change(input, { target: { value: 'shhh' } })
+    fireEvent.click(screen.getByText('Answer'))
+
+    expect(onSubmit).toHaveBeenCalledWith('tool-1', [
+      { questionIndex: 0, selectedOptions: [], customText: 'shhh' },
+    ])
   })
 })

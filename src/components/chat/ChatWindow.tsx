@@ -70,13 +70,27 @@ import type {
   PendingImage,
   PendingTextFile,
   PendingSkill,
+  CodexCommandApprovalRequest,
+  CodexPermissionRequest,
+  CodexUserInputRequest,
+  CodexMcpElicitationRequest,
+  CodexDynamicToolCallRequest,
   PermissionDenial,
   PendingFile,
 } from '@/types/chat'
-import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
+import {
+  isAskUserQuestion,
+  isPlanToolCall,
+  normalizeCodexQuestions,
+} from '@/types/chat'
 import { getFilename, normalizePath } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { PermissionApproval } from './PermissionApproval'
+import { AskUserQuestion } from './AskUserQuestion'
+import { CodexCommandApprovalRequestCard } from './CodexCommandApprovalRequest'
+import { CodexPermissionsRequest } from './CodexPermissionsRequest'
+import { CodexMcpElicitationRequest as CodexMcpElicitationRequestCard } from './CodexMcpElicitationRequest'
+import { CodexDynamicToolCallRequest as CodexDynamicToolCallRequestCard } from './CodexDynamicToolCallRequest'
 import { SetupScriptOutput } from './SetupScriptOutput'
 import { TodoWidget } from './TodoWidget'
 import { AgentWidget } from './AgentWidget'
@@ -187,6 +201,11 @@ const EMPTY_PENDING_FILES: PendingFile[] = []
 const EMPTY_PENDING_SKILLS: PendingSkill[] = []
 const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = []
 const EMPTY_PERMISSION_DENIALS: PermissionDenial[] = []
+const EMPTY_CODEX_PERMISSION_REQUESTS: CodexPermissionRequest[] = []
+const EMPTY_CODEX_COMMAND_APPROVAL_REQUESTS: CodexCommandApprovalRequest[] = []
+const EMPTY_CODEX_USER_INPUT_REQUESTS: CodexUserInputRequest[] = []
+const EMPTY_CODEX_MCP_ELICITATION_REQUESTS: CodexMcpElicitationRequest[] = []
+const EMPTY_CODEX_DYNAMIC_TOOL_CALL_REQUESTS: CodexDynamicToolCallRequest[] = []
 
 interface ChatWindowProps {
   /** When true, hides terminal panel and other elements not needed in modal */
@@ -713,12 +732,53 @@ export function ChatWindow({
         EMPTY_PERMISSION_DENIALS)
       : EMPTY_PERMISSION_DENIALS
   )
+  const pendingCodexPermissionRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexPermissionRequests[deferredSessionId] ??
+        EMPTY_CODEX_PERMISSION_REQUESTS)
+      : EMPTY_CODEX_PERMISSION_REQUESTS
+  )
+  const pendingCodexCommandApprovalRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexCommandApprovalRequests[deferredSessionId] ??
+        EMPTY_CODEX_COMMAND_APPROVAL_REQUESTS)
+      : EMPTY_CODEX_COMMAND_APPROVAL_REQUESTS
+  )
+  const pendingCodexUserInputRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexUserInputRequests[deferredSessionId] ??
+        EMPTY_CODEX_USER_INPUT_REQUESTS)
+      : EMPTY_CODEX_USER_INPUT_REQUESTS
+  )
+  const pendingCodexMcpElicitationRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexMcpElicitationRequests[deferredSessionId] ??
+        EMPTY_CODEX_MCP_ELICITATION_REQUESTS)
+      : EMPTY_CODEX_MCP_ELICITATION_REQUESTS
+  )
+  const pendingCodexDynamicToolCallRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexDynamicToolCallRequests[deferredSessionId] ??
+        EMPTY_CODEX_DYNAMIC_TOOL_CALL_REQUESTS)
+      : EMPTY_CODEX_DYNAMIC_TOOL_CALL_REQUESTS
+  )
   const showPermissionApproval = shouldShowPermissionApproval({
     pendingDenialsCount: pendingDenials.length,
     isSending,
     executionMode,
     isCodexBackend,
   })
+  const activeCodexCommandApprovalRequest =
+    pendingCodexCommandApprovalRequests[0]
+  const activeCodexPermissionRequest = pendingCodexPermissionRequests[0]
+  const activeCodexUserInputRequest = pendingCodexUserInputRequests[0]
+  const activeCodexMcpElicitationRequest = pendingCodexMcpElicitationRequests[0]
+  const activeCodexDynamicToolCallRequest =
+    pendingCodexDynamicToolCallRequests[0]
+  const activeCodexUserInputQuestions = useMemo(
+    () => normalizeCodexQuestions(activeCodexUserInputRequest?.questions),
+    [activeCodexUserInputRequest]
+  )
 
   // PERFORMANCE: Pre-compute last assistant message to avoid rescanning in multiple memos
   // This reference only changes when the actual last assistant message changes
@@ -1871,6 +1931,14 @@ export function ChatWindow({
     handlePermissionApproval,
     handlePermissionApprovalYolo,
     handlePermissionDeny,
+    handleCodexCommandApproval,
+    handleCodexPermissionRequest,
+    handleCodexPermissionRequestDecline,
+    handleCodexUserInputAnswer,
+    handleCodexMcpElicitationAccept,
+    handleCodexMcpElicitationDecline,
+    handleCodexMcpElicitationCancel,
+    handleCodexDynamicToolCallUnsupported,
     handleFixFinding,
     handleFixAllFindings,
   } = useMessageHandlers({
@@ -1987,6 +2055,10 @@ export function ChatWindow({
     handleStreamingClearContextApproval,
     handleClearContextApprovalBuild,
     handleStreamingClearContextApprovalBuild,
+    handleWorktreeBuildApproval,
+    handleStreamingWorktreeBuildApproval,
+    handleWorktreeYoloApproval,
+    handleStreamingWorktreeYoloApproval,
     isCodexBackend,
     scrollViewportRef,
     beginKeyboardScroll,
@@ -2230,17 +2302,19 @@ export function ChatWindow({
                                 </div>
                               )}
                             {/* Setup script running indicator */}
-                            {worktree?.setup_script && worktree.setup_success == null && !setupScriptResult && (
-                              <div className="my-2 flex items-center gap-2 rounded border border-muted bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
-                                <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                                <span>
-                                  Running setup script:{' '}
-                                  <code className="rounded bg-muted px-1 py-0.5">
-                                    {worktree.setup_script}
-                                  </code>
-                                </span>
-                              </div>
-                            )}
+                            {worktree?.setup_script &&
+                              worktree.setup_success == null &&
+                              !setupScriptResult && (
+                                <div className="my-2 flex items-center gap-2 rounded border border-muted bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
+                                  <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                                  <span>
+                                    Running setup script:{' '}
+                                    <code className="rounded bg-muted px-1 py-0.5">
+                                      {worktree.setup_script}
+                                    </code>
+                                  </span>
+                                </div>
+                              )}
                             {/* Setup script output from jean.json */}
                             {setupScriptResult && activeWorktreeId && (
                               <SetupScriptOutput
@@ -2409,6 +2483,106 @@ export function ChatWindow({
                                 onApprove={handlePermissionApproval}
                                 onApproveYolo={handlePermissionApprovalYolo}
                                 onDeny={handlePermissionDeny}
+                              />
+                            )}
+
+                            {activeCodexCommandApprovalRequest && (
+                              <CodexCommandApprovalRequestCard
+                                request={activeCodexCommandApprovalRequest}
+                                onApprove={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'accept'
+                                  )
+                                }
+                                onApproveYolo={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'acceptForSession'
+                                  )
+                                }
+                                onDecline={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'decline'
+                                  )
+                                }
+                                onCancel={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'cancel'
+                                  )
+                                }
+                              />
+                            )}
+
+                            {activeCodexPermissionRequest && (
+                              <CodexPermissionsRequest
+                                request={activeCodexPermissionRequest}
+                                onGrant={scope =>
+                                  handleCodexPermissionRequest(
+                                    activeCodexPermissionRequest,
+                                    scope
+                                  )
+                                }
+                                onDecline={() =>
+                                  handleCodexPermissionRequestDecline(
+                                    activeCodexPermissionRequest
+                                  )
+                                }
+                              />
+                            )}
+
+                            {activeCodexUserInputRequest &&
+                              activeCodexUserInputQuestions.length > 0 && (
+                                <AskUserQuestion
+                                  toolCallId={
+                                    activeCodexUserInputRequest.item_id ||
+                                    `codex-user-input-${activeCodexUserInputRequest.rpc_id}`
+                                  }
+                                  questions={activeCodexUserInputQuestions}
+                                  onSubmit={(_toolCallId, answers) =>
+                                    handleCodexUserInputAnswer(
+                                      activeCodexUserInputRequest,
+                                      answers,
+                                      activeCodexUserInputQuestions
+                                    )
+                                  }
+                                  isSkipped={false}
+                                />
+                              )}
+
+                            {activeCodexMcpElicitationRequest && (
+                              <CodexMcpElicitationRequestCard
+                                request={activeCodexMcpElicitationRequest}
+                                onAccept={(content, meta) =>
+                                  handleCodexMcpElicitationAccept(
+                                    activeCodexMcpElicitationRequest,
+                                    content,
+                                    meta
+                                  )
+                                }
+                                onDecline={() =>
+                                  handleCodexMcpElicitationDecline(
+                                    activeCodexMcpElicitationRequest
+                                  )
+                                }
+                                onCancel={() =>
+                                  handleCodexMcpElicitationCancel(
+                                    activeCodexMcpElicitationRequest
+                                  )
+                                }
+                              />
+                            )}
+
+                            {activeCodexDynamicToolCallRequest && (
+                              <CodexDynamicToolCallRequestCard
+                                request={activeCodexDynamicToolCallRequest}
+                                onRespondUnsupported={() =>
+                                  handleCodexDynamicToolCallUnsupported(
+                                    activeCodexDynamicToolCallRequest
+                                  )
+                                }
                               />
                             )}
 

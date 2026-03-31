@@ -207,6 +207,142 @@ pub struct PermissionDeniedEvent {
     pub denials: Vec<PermissionDenial>,
 }
 
+/// Pending Codex permission request awaiting user response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexPermissionRequest {
+    pub rpc_id: u64,
+    pub item_id: String,
+    pub permissions: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Parsed command action details from Codex command approval requests
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexCommandAction {
+    pub command: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub query: Option<String>,
+}
+
+/// Managed-network approval context for a command approval request
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexNetworkApprovalContext {
+    pub host: String,
+    pub protocol: String,
+}
+
+/// Persistent network policy amendment offered by Codex
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexNetworkPolicyAmendment {
+    pub action: String,
+    pub host: String,
+}
+
+/// Pending Codex command approval request awaiting user response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexCommandApprovalRequest {
+    pub rpc_id: u64,
+    pub item_id: String,
+    pub thread_id: String,
+    pub turn_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_actions: Option<Vec<CodexCommandAction>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cwd: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub network_approval_context: Option<CodexNetworkApprovalContext>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_execpolicy_amendment: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub proposed_network_policy_amendments: Option<Vec<CodexNetworkPolicyAmendment>>,
+}
+
+/// Pending Codex request-user-input prompt awaiting user response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexUserInputRequest {
+    pub rpc_id: u64,
+    pub item_id: String,
+    pub questions: serde_json::Value,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thread_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn_id: Option<String>,
+}
+
+/// Pending Codex MCP elicitation request awaiting user response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexMcpElicitationRequest {
+    pub rpc_id: u64,
+    pub server_name: String,
+    pub message: String,
+    pub mode: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requested_schema: Option<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub elicitation_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta: Option<serde_json::Value>,
+}
+
+/// Pending Codex dynamic tool call request awaiting user response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodexDynamicToolCallRequest {
+    pub rpc_id: u64,
+    pub call_id: String,
+    pub tool: String,
+    pub arguments: serde_json::Value,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CodexPermissionRequestEvent {
+    pub session_id: String,
+    pub worktree_id: String,
+    pub request: CodexPermissionRequest,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CodexCommandApprovalRequestEvent {
+    pub session_id: String,
+    pub worktree_id: String,
+    pub request: CodexCommandApprovalRequest,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CodexUserInputRequestEvent {
+    pub session_id: String,
+    pub worktree_id: String,
+    pub request: CodexUserInputRequest,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CodexMcpElicitationRequestEvent {
+    pub session_id: String,
+    pub worktree_id: String,
+    pub request: CodexMcpElicitationRequest,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CodexDynamicToolCallRequestEvent {
+    pub session_id: String,
+    pub worktree_id: String,
+    pub request: CodexDynamicToolCallRequest,
+}
+
 /// Context for a denied message that can be re-sent after permission approval
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeniedMessageContext {
@@ -422,6 +558,21 @@ pub struct Session {
     /// Pending permission denials awaiting user approval
     #[serde(default)]
     pub pending_permission_denials: Vec<PermissionDenial>,
+    /// Pending Codex permission requests awaiting user approval
+    #[serde(default)]
+    pub pending_codex_permission_requests: Vec<CodexPermissionRequest>,
+    /// Pending Codex command approval requests awaiting user approval
+    #[serde(default)]
+    pub pending_codex_command_approval_requests: Vec<CodexCommandApprovalRequest>,
+    /// Pending Codex request-user-input prompts awaiting user approval
+    #[serde(default)]
+    pub pending_codex_user_input_requests: Vec<CodexUserInputRequest>,
+    /// Pending Codex MCP elicitation requests awaiting user approval
+    #[serde(default)]
+    pub pending_codex_mcp_elicitation_requests: Vec<CodexMcpElicitationRequest>,
+    /// Pending Codex dynamic tool call requests awaiting user approval
+    #[serde(default)]
+    pub pending_codex_dynamic_tool_call_requests: Vec<CodexDynamicToolCallRequest>,
     /// Original message context for re-send after permission approval
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub denied_message_context: Option<DeniedMessageContext>,
@@ -510,6 +661,11 @@ impl Session {
             fixed_findings: vec![],
             review_results: None,
             pending_permission_denials: vec![],
+            pending_codex_permission_requests: vec![],
+            pending_codex_command_approval_requests: vec![],
+            pending_codex_user_input_requests: vec![],
+            pending_codex_mcp_elicitation_requests: vec![],
+            pending_codex_dynamic_tool_call_requests: vec![],
             denied_message_context: None,
             is_reviewing: false,
             waiting_for_input: false,
@@ -690,6 +846,17 @@ impl SessionMetadata {
             fixed_findings: self.fixed_findings.clone(),
             review_results: self.review_results.clone(),
             pending_permission_denials: self.pending_permission_denials.clone(),
+            pending_codex_permission_requests: self.pending_codex_permission_requests.clone(),
+            pending_codex_command_approval_requests: self
+                .pending_codex_command_approval_requests
+                .clone(),
+            pending_codex_user_input_requests: self.pending_codex_user_input_requests.clone(),
+            pending_codex_mcp_elicitation_requests: self
+                .pending_codex_mcp_elicitation_requests
+                .clone(),
+            pending_codex_dynamic_tool_call_requests: self
+                .pending_codex_dynamic_tool_call_requests
+                .clone(),
             denied_message_context: self.denied_message_context.clone(),
             is_reviewing: self.is_reviewing,
             waiting_for_input: self.waiting_for_input,
@@ -727,6 +894,14 @@ impl SessionMetadata {
         self.fixed_findings = session.fixed_findings.clone();
         self.review_results = session.review_results.clone();
         self.pending_permission_denials = session.pending_permission_denials.clone();
+        self.pending_codex_permission_requests = session.pending_codex_permission_requests.clone();
+        self.pending_codex_command_approval_requests =
+            session.pending_codex_command_approval_requests.clone();
+        self.pending_codex_user_input_requests = session.pending_codex_user_input_requests.clone();
+        self.pending_codex_mcp_elicitation_requests =
+            session.pending_codex_mcp_elicitation_requests.clone();
+        self.pending_codex_dynamic_tool_call_requests =
+            session.pending_codex_dynamic_tool_call_requests.clone();
         self.denied_message_context = session.denied_message_context.clone();
         self.is_reviewing = session.is_reviewing;
         self.waiting_for_input = session.waiting_for_input;
@@ -1019,6 +1194,21 @@ pub struct SessionMetadata {
     /// Pending permission denials awaiting user approval
     #[serde(default)]
     pub pending_permission_denials: Vec<PermissionDenial>,
+    /// Pending Codex permission requests awaiting user approval
+    #[serde(default)]
+    pub pending_codex_permission_requests: Vec<CodexPermissionRequest>,
+    /// Pending Codex command approval requests awaiting user approval
+    #[serde(default)]
+    pub pending_codex_command_approval_requests: Vec<CodexCommandApprovalRequest>,
+    /// Pending Codex request-user-input prompts awaiting user approval
+    #[serde(default)]
+    pub pending_codex_user_input_requests: Vec<CodexUserInputRequest>,
+    /// Pending Codex MCP elicitation requests awaiting user approval
+    #[serde(default)]
+    pub pending_codex_mcp_elicitation_requests: Vec<CodexMcpElicitationRequest>,
+    /// Pending Codex dynamic tool call requests awaiting user approval
+    #[serde(default)]
+    pub pending_codex_dynamic_tool_call_requests: Vec<CodexDynamicToolCallRequest>,
     /// Original message context for re-send after permission approval
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub denied_message_context: Option<DeniedMessageContext>,
@@ -1145,6 +1335,11 @@ impl SessionMetadata {
             fixed_findings: vec![],
             review_results: None,
             pending_permission_denials: vec![],
+            pending_codex_permission_requests: vec![],
+            pending_codex_command_approval_requests: vec![],
+            pending_codex_user_input_requests: vec![],
+            pending_codex_mcp_elicitation_requests: vec![],
+            pending_codex_dynamic_tool_call_requests: vec![],
             denied_message_context: None,
             is_reviewing: false,
             waiting_for_input: false,

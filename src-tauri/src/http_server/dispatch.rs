@@ -1471,6 +1471,41 @@ pub async fn dispatch_command(
                     "pendingPermissionDenials",
                     "pending_permission_denials",
                 )?;
+            let pending_codex_permission_requests: Option<
+                Vec<crate::chat::types::CodexPermissionRequest>,
+            > = field_opt(
+                &args,
+                "pendingCodexPermissionRequests",
+                "pending_codex_permission_requests",
+            )?;
+            let pending_codex_command_approval_requests: Option<
+                Vec<crate::chat::types::CodexCommandApprovalRequest>,
+            > = field_opt(
+                &args,
+                "pendingCodexCommandApprovalRequests",
+                "pending_codex_command_approval_requests",
+            )?;
+            let pending_codex_user_input_requests: Option<
+                Vec<crate::chat::types::CodexUserInputRequest>,
+            > = field_opt(
+                &args,
+                "pendingCodexUserInputRequests",
+                "pending_codex_user_input_requests",
+            )?;
+            let pending_codex_mcp_elicitation_requests: Option<
+                Vec<crate::chat::types::CodexMcpElicitationRequest>,
+            > = field_opt(
+                &args,
+                "pendingCodexMcpElicitationRequests",
+                "pending_codex_mcp_elicitation_requests",
+            )?;
+            let pending_codex_dynamic_tool_call_requests: Option<
+                Vec<crate::chat::types::CodexDynamicToolCallRequest>,
+            > = field_opt(
+                &args,
+                "pendingCodexDynamicToolCallRequests",
+                "pending_codex_dynamic_tool_call_requests",
+            )?;
             let denied_message_context: Option<Option<crate::chat::types::DeniedMessageContext>> =
                 field_opt(&args, "deniedMessageContext", "denied_message_context")?;
             let is_reviewing: Option<bool> = field_opt(&args, "isReviewing", "is_reviewing")?;
@@ -1511,6 +1546,11 @@ pub async fn dispatch_command(
                 submitted_answers,
                 fixed_findings,
                 pending_permission_denials,
+                pending_codex_permission_requests,
+                pending_codex_command_approval_requests,
+                pending_codex_user_input_requests,
+                pending_codex_mcp_elicitation_requests,
+                pending_codex_dynamic_tool_call_requests,
                 denied_message_context,
                 is_reviewing,
                 waiting_for_input,
@@ -1828,6 +1868,57 @@ pub async fn dispatch_command(
             let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
             let decision: String = from_field(&args, "decision")?;
             crate::chat::approve_codex_command(session_id, rpc_id, decision)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_command_approval" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let response: Value = from_field(&args, "response")?;
+            crate::chat::respond_codex_command_approval(session_id, rpc_id, response)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_file_change_approval" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let decision: String = from_field(&args, "decision")?;
+            crate::chat::respond_codex_file_change_approval(session_id, rpc_id, decision)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_permissions_request" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let permissions: Value = from_field(&args, "permissions")?;
+            let scope: Option<String> = from_field_opt(&args, "scope")?;
+            crate::chat::respond_codex_permissions_request(session_id, rpc_id, permissions, scope)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_user_input_request" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let answers: std::collections::HashMap<String, Value> = from_field(&args, "answers")?;
+            crate::chat::respond_codex_user_input_request(session_id, rpc_id, answers)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_mcp_elicitation" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let action: String = from_field(&args, "action")?;
+            let content: Option<Value> = from_field_opt(&args, "content")?;
+            let meta: Option<Value> = from_field_opt(&args, "meta")?;
+            crate::chat::respond_codex_mcp_elicitation(session_id, rpc_id, action, content, meta)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_dynamic_tool_call" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let success: bool = from_field(&args, "success")?;
+            let content_items: Vec<Value> = field(&args, "contentItems", "content_items")?;
+            crate::chat::respond_codex_dynamic_tool_call(
+                session_id,
+                rpc_id,
+                success,
+                content_items,
+            )?;
             Ok(Value::Null)
         }
 

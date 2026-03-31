@@ -5114,6 +5114,32 @@ fn extract_structured_output(output: &str) -> Result<String, String> {
     Err("No structured output found in Claude response".to_string())
 }
 
+fn build_claude_structured_output_args(
+    model: &str,
+    tools: &str,
+    schema: &str,
+) -> Vec<String> {
+    vec![
+        "--print".to_string(),
+        "--verbose".to_string(),
+        "--input-format".to_string(),
+        "stream-json".to_string(),
+        "--output-format".to_string(),
+        "stream-json".to_string(),
+        "--model".to_string(),
+        model.to_string(),
+        "--no-session-persistence".to_string(),
+        "--tools".to_string(),
+        tools.to_string(),
+        "--max-turns".to_string(),
+        "2".to_string(),
+        "--json-schema".to_string(),
+        schema.to_string(),
+        "--permission-mode".to_string(),
+        "plan".to_string(),
+    ]
+}
+
 /// Truncate a diff at file boundaries instead of mid-file.
 /// Splits on `\ndiff --git` markers and keeps complete file diffs until the budget is exceeded.
 fn truncate_diff_at_file_boundaries(diff: &str, max_chars: usize) -> String {
@@ -5303,23 +5329,11 @@ fn generate_pr_content(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "",
-        "--max-turns",
-        "1",
-        "--json-schema",
         PR_CONTENT_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -6326,23 +6340,11 @@ fn generate_commit_message(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "",
-        "--max-turns",
-        "1",
-        "--json-schema",
         COMMIT_MESSAGE_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -6782,23 +6784,11 @@ fn generate_review(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "none",
-        "--max-turns",
-        "1",
-        "--json-schema",
         REVIEW_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -7319,23 +7309,11 @@ fn generate_release_notes_content(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "",
-        "--max-turns",
-        "1",
-        "--json-schema",
         RELEASE_NOTES_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -9237,5 +9215,16 @@ Body
 
         let result = extract_structured_output(output);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_claude_structured_output_args_uses_two_turns_and_plan_mode() {
+        let args = build_claude_structured_output_args("sonnet", "none", REVIEW_SCHEMA);
+
+        assert!(args.windows(2).any(|w| w == ["--max-turns", "2"]));
+        assert!(args.windows(2).any(|w| w == ["--permission-mode", "plan"]));
+        assert!(args.windows(2).any(|w| w == ["--tools", "none"]));
+        assert!(args.windows(2).any(|w| w == ["--model", "sonnet"]));
+        assert!(args.windows(2).any(|w| w == ["--json-schema", REVIEW_SCHEMA]));
     }
 }

@@ -135,6 +135,11 @@ export interface ResolvedPlanContent {
   source: 'plan' | 'plan_preview' | 'message_text' | 'explanation' | null
 }
 
+export interface SplitTextAroundPlanResult {
+  beforePlan: string | null
+  plan: string | null
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0
 }
@@ -443,23 +448,39 @@ function getPlanPreviewField(input: PlanToolInput | undefined): string | null {
   return isNonEmptyString(input?.plan_preview) ? input.plan_preview : null
 }
 
-function extractPlanSectionFromText(text: string): string | null {
+export function splitTextAroundPlan(text: string): SplitTextAroundPlanResult {
   const normalized = normalizePlanText(text)
-  if (!normalized) return null
+  if (!normalized) {
+    return { beforePlan: null, plan: null }
+  }
 
   // Codex often emits intro prose followed by the actual plan as regular
   // assistant text. Keep only the trailing `Plan:` section so PlanDisplay
   // shows the actionable plan body without duplicating the intro prose.
   const planHeadingMatch = normalized.match(/(^|\n)(Plan:\s*[\s\S]*)$/)
   if (planHeadingMatch) {
-    const extracted = planHeadingMatch[2]?.trim()
-    return extracted ? extracted : null
+    const fullMatch = planHeadingMatch[0] ?? ''
+    const extracted = planHeadingMatch[2]?.trim() ?? null
+    const beforePlan = normalized
+      .slice(0, normalized.length - fullMatch.length)
+      .trim()
+
+    return {
+      beforePlan: beforePlan || null,
+      plan: extracted || null,
+    }
   }
 
   const firstLine = normalized.split('\n')[0] ?? ''
-  if (/^Plan:\s*/.test(firstLine)) return normalized
+  if (/^Plan:\s*/.test(firstLine)) {
+    return { beforePlan: null, plan: normalized }
+  }
 
-  return null
+  return { beforePlan: normalized, plan: null }
+}
+
+function extractPlanSectionFromText(text: string): string | null {
+  return splitTextAroundPlan(text).plan
 }
 
 function extractPlanSectionFromCandidates(candidates: string[]): string | null {

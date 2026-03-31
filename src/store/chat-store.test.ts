@@ -3,6 +3,7 @@ import { useChatStore } from './chat-store'
 import type {
   ToolCall,
   QueuedMessage,
+  CodexCommandApprovalRequest,
   PermissionDenial,
   PendingImage,
   PendingTextFile,
@@ -47,6 +48,7 @@ describe('ChatStore', () => {
       executingModes: {},
       approvedTools: {},
       pendingPermissionDenials: {},
+      pendingCodexCommandApprovalRequests: {},
       deniedMessageContext: {},
       lastCompaction: {},
       compactingSessions: {},
@@ -604,6 +606,46 @@ describe('ChatStore', () => {
       clearPendingDenials('session-1')
 
       expect(getPendingDenials('session-1')).toHaveLength(0)
+    })
+  })
+
+  describe('pending Codex command approval requests', () => {
+    const requests: CodexCommandApprovalRequest[] = [
+      {
+        rpc_id: 1,
+        item_id: 'item-1',
+        thread_id: 'thread-1',
+        turn_id: 'turn-1',
+        command: 'npm test',
+      },
+    ]
+
+    it('sets and gets pending command approval requests', () => {
+      const {
+        setPendingCodexCommandApprovalRequests,
+        getPendingCodexCommandApprovalRequests,
+      } = useChatStore.getState()
+
+      setPendingCodexCommandApprovalRequests('session-1', requests)
+
+      expect(getPendingCodexCommandApprovalRequests('session-1')).toEqual(
+        requests
+      )
+    })
+
+    it('clears pending command approval requests', () => {
+      const {
+        setPendingCodexCommandApprovalRequests,
+        clearPendingCodexCommandApprovalRequests,
+        getPendingCodexCommandApprovalRequests,
+      } = useChatStore.getState()
+
+      setPendingCodexCommandApprovalRequests('session-1', requests)
+      clearPendingCodexCommandApprovalRequests('session-1')
+
+      expect(getPendingCodexCommandApprovalRequests('session-1')).toHaveLength(
+        0
+      )
     })
   })
 

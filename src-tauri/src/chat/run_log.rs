@@ -678,7 +678,10 @@ fn should_inject_synthetic_exit_plan(
     run: &RunEntry,
     assistant_msg: &ChatMessage,
 ) -> bool {
-    matches!(backend, Backend::Opencode | Backend::Codex)
+    // Codex plan events are handled by parse_codex_run_to_message via the
+    // app-server schema (turn/plan/updated, item/plan/delta, etc.), so no
+    // synthetic injection is needed for Codex sessions.
+    matches!(backend, Backend::Opencode)
         && run.status == RunStatus::Completed
         && run.execution_mode.as_deref() == Some("plan")
         && !assistant_msg.cancelled
@@ -689,11 +692,7 @@ fn should_inject_synthetic_exit_plan(
             .any(|tc| tc.name == "ExitPlanMode" || tc.name == "CodexPlan")
 }
 
-fn inject_synthetic_exit_plan(
-    backend: &Backend,
-    run_id: &str,
-    assistant_msg: &mut ChatMessage,
-) {
+fn inject_synthetic_exit_plan(backend: &Backend, run_id: &str, assistant_msg: &mut ChatMessage) {
     let synthetic_id = format!("synthetic-exit-plan-{run_id}");
     // Codex uses CodexPlan with plan content; OpenCode uses ExitPlanMode (empty input)
     let (tool_name, input) = if matches!(backend, Backend::Codex) {
@@ -905,32 +904,34 @@ mod tests {
     }
 
     #[test]
-    fn injects_synthetic_exit_plan_for_completed_codex_plan_runs() {
+    fn injects_synthetic_exit_plan_for_completed_opencode_plan_runs() {
         let run = sample_run();
         let mut msg = sample_assistant_message();
 
         assert!(should_inject_synthetic_exit_plan(
-            &Backend::Codex,
+            &Backend::Opencode,
             &run,
-            &msg
+            &msg,
         ));
 
-        inject_synthetic_exit_plan(&Backend::Codex, &run.run_id, &mut msg);
+        inject_synthetic_exit_plan(&Backend::Opencode, &run.run_id, &mut msg);
 
         assert_eq!(msg.tool_calls.len(), 1);
-        assert_eq!(msg.tool_calls[0].name, "CodexPlan");
+        assert_eq!(msg.tool_calls[0].name, "ExitPlanMode");
         assert_eq!(msg.tool_calls[0].id, "synthetic-exit-plan-run-123");
-        // Codex synthetic plan includes plan content from message text
-        assert_eq!(
-            msg.tool_calls[0].input.get("plan").and_then(|v| v.as_str()),
-            Some("Here is the plan")
-        );
-        // Text block removed (plan is in PlanDisplay), only tool_use block remains
-        assert_eq!(msg.content_blocks.len(), 1);
-        assert!(matches!(
-            msg.content_blocks.last(),
-            Some(ContentBlock::ToolUse { tool_call_id })
-                if tool_call_id == "synthetic-exit-plan-run-123"
+    }
+
+    #[test]
+    fn does_not_inject_for_codex_backend() {
+        // Codex handles plan events via its own schema-based parser,
+        // so no synthetic injection is needed.
+        let run = sample_run();
+        let msg = sample_assistant_message();
+
+        assert!(!should_inject_synthetic_exit_plan(
+            &Backend::Codex,
+            &run,
+            &msg,
         ));
     }
 
@@ -947,9 +948,9 @@ mod tests {
         });
 
         assert!(!should_inject_synthetic_exit_plan(
-            &Backend::Codex,
+            &Backend::Opencode,
             &run,
-            &msg
+            &msg,
         ));
     }
 }

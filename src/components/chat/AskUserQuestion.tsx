@@ -273,6 +273,7 @@ export function AskUserQuestion({
           const answer = readOnly
             ? effectiveAnswers?.find(a => a.questionIndex === qIndex)
             : answers.get(qIndex)
+          const allowsCustomText = question.isOther ?? true
 
           return (
             <div key={qIndex}>
@@ -420,17 +421,18 @@ export function AskUserQuestion({
                       Answer details unavailable after reload.
                     </div>
                   ) : null
-                ) : (
+                ) : allowsCustomText ? (
                   <div className="pt-1">
                     <Input
                       placeholder="Or type your own answer..."
+                      type={question.isSecret ? 'password' : 'text'}
                       value={answers.get(qIndex)?.customText ?? ''}
                       onChange={e => updateCustomText(qIndex, e.target.value)}
                       disabled={readOnly}
                       className="cursor-text font-mono text-sm select-text bg-white dark:bg-input"
                     />
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           )

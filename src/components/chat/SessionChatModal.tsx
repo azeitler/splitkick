@@ -67,6 +67,7 @@ import { toast } from 'sonner'
 import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
+import { DevToolsDropdown } from './DevToolsDropdown'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -785,6 +786,14 @@ export function SessionChatModal({
                     worktreePath={worktreePath}
                     branch={worktree?.branch}
                   />
+                  {currentSessionId && (
+                    <DevToolsDropdown
+                      sessionId={currentSessionId}
+                      worktreeId={worktreeId}
+                      worktreePath={worktreePath}
+                      session={currentSession}
+                    />
+                  )}
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
