@@ -1839,7 +1839,7 @@ pub async fn create_worktree_from_existing_branch(
                     setup_script,
                     setup_success,
                     session_type: SessionType::Worktree,
-                    pr_number: None,
+                    pr_number: pr_context_clone.as_ref().map(|ctx| ctx.number),
                     pr_url: None,
                     issue_number: issue_context_clone.as_ref().map(|ctx| ctx.number),
                     linear_issue_identifier: linear_context_clone
@@ -4742,6 +4742,19 @@ pub async fn detect_and_link_pr(
     }
 
     log::trace!("No PR found for worktree {worktree_id}");
+
+    // Clear stale PR info if worktree previously had a PR linked
+    // (e.g., user switched away from a PR branch via `git switch`)
+    if let Ok(mut data) = load_projects_data(&app) {
+        if let Some(wt) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) {
+            if wt.pr_number.is_some() {
+                wt.pr_number = None;
+                wt.pr_url = None;
+                let _ = save_projects_data(&app, &data);
+            }
+        }
+    }
+
     Ok(None)
 }
 

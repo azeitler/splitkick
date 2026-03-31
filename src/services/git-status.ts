@@ -15,7 +15,7 @@ import {
   updateWorktreeCachedStatus,
   projectsQueryKeys,
 } from '@/services/projects'
-import type { GitPushResponse, Worktree } from '@/types/projects'
+import type { DetectPrResponse, GitPushResponse, Worktree } from '@/types/projects'
 import type { GitDiff, CommitHistoryResult } from '@/types/git-diff'
 
 // ============================================================================
@@ -610,6 +610,23 @@ export function useGitStatusEvents(
               }
               updated[idx] = { ...match, ...patch }
               queryClient.setQueryData(key, updated)
+
+              // Auto-detect PR for the new branch (fire-and-forget)
+              invoke<DetectPrResponse | null>('detect_and_link_pr', {
+                worktreeId: status.worktree_id,
+                worktreePath: match.path,
+              })
+                .then(result => {
+                  if (result || match.pr_number) {
+                    // PR found or old PR needs clearing — refresh worktree data
+                    queryClient.invalidateQueries({
+                      queryKey: projectsQueryKeys.worktrees(match.project_id),
+                    })
+                  }
+                })
+                .catch(() => {
+                  /* noop - PR detection is best-effort */
+                })
             }
           }
         }
