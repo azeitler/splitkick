@@ -304,6 +304,7 @@ pub async fn get_session(
         }
     }
 
+    session.last_message_at = messages.iter().map(|message| message.timestamp).max();
     session.messages = messages;
     Ok(session)
 }

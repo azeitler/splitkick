@@ -148,7 +148,7 @@ interface FlatCard {
   isPending?: boolean
 }
 
-type WorktreeSortMode = 'created' | 'last_used'
+type WorktreeSortMode = 'created' | 'last_activity'
 
 type ActiveStatus =
   | 'waiting'
@@ -193,31 +193,30 @@ function formatRelativeTime(timestamp?: number): string | null {
   return `${days}d ago`
 }
 
+function getSessionActivityTimestamp(session: Session): number {
+  return session.last_message_at ?? session.updated_at ?? session.created_at
+}
+
+function getWorktreeLastActivity(
+  sessions: Session[],
+  fallbackTimestamp: number
+): number {
+  return sessions.reduce(
+    (latest, session) => Math.max(latest, getSessionActivityTimestamp(session)),
+    fallbackTimestamp
+  )
+}
+
 function getWorktreeSortValue(
   worktree: Worktree,
-  sessions: Session[],
+  latestActivityAt: number,
   sortMode: WorktreeSortMode
 ): number {
   if (sortMode === 'created') {
     return worktree.created_at
   }
 
-  const latestSessionOpenedAt = sessions.reduce(
-    (latest, session) => Math.max(latest, session.last_opened_at ?? 0),
-    0
-  )
-  const latestSessionActivityAt = sessions.reduce(
-    (latest, session) =>
-      Math.max(latest, session.updated_at ?? session.created_at ?? 0),
-    0
-  )
-
-  return Math.max(
-    worktree.last_opened_at ?? 0,
-    latestSessionOpenedAt,
-    latestSessionActivityAt,
-    worktree.created_at
-  )
+  return Math.max(latestActivityAt, worktree.created_at)
 }
 
 function getSessionMetrics(cards: SessionCardData[]) {
@@ -231,9 +230,9 @@ function getSessionMetrics(cards: SessionCardData[]) {
     c =>
       c.status === 'planning' || c.status === 'vibing' || c.status === 'yoloing'
   ).length
-  const latestUpdatedAt = cards.reduce(
+  const latestActivityAt = cards.reduce(
     (latest, card) =>
-      Math.max(latest, card.session.updated_at ?? card.session.created_at),
+      Math.max(latest, getSessionActivityTimestamp(card.session)),
     0
   )
 
@@ -242,7 +241,7 @@ function getSessionMetrics(cards: SessionCardData[]) {
     waitingCount,
     reviewCount,
     activeCount,
-    latestUpdatedAt,
+    latestActivityAt,
   }
 }
 
@@ -373,7 +372,7 @@ function WorktreeSectionHeader({
     return result
   }, [cards])
 
-  const lastActivity = formatRelativeTime(sessionMetrics?.latestUpdatedAt)
+  const lastActivity = formatRelativeTime(sessionMetrics?.latestActivityAt)
   const displayBranch = gitStatus?.current_branch ?? worktree.branch
 
   return (
@@ -724,36 +723,20 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Build worktree sections with computed card data
   const worktreeSections: WorktreeSection[] = useMemo(() => {
     const result: WorktreeSection[] = []
-
-    const getSortValueForWorktree = (worktree: Worktree) => {
-      const sessions = sessionsByWorktreeId.get(worktree.id)?.sessions ?? []
-      return getWorktreeSortValue(worktree, sessions, worktreeSortMode)
-    }
-
-    const compareBySortMode = (a: Worktree, b: Worktree) => {
-      const sortDiff =
-        getSortValueForWorktree(b) - getSortValueForWorktree(a)
-      if (sortDiff !== 0) return sortDiff
-      return b.created_at - a.created_at
-    }
+    const latestActivityByWorktreeId = new Map<string, number>()
 
     // Add pending worktrees first
-    const sortedPending = [...pendingWorktrees].sort(compareBySortMode)
+    const sortedPending = [...pendingWorktrees].sort(
+      (a, b) => b.created_at - a.created_at
+    )
     for (const worktree of sortedPending) {
+      latestActivityByWorktreeId.set(worktree.id, worktree.created_at)
       // Include pending worktrees even without sessions - show setup card
       result.push({ worktree, cards: [], isPending: true })
     }
 
-    // Sort ready worktrees: base sessions first, then selected sort mode
-    const sortedWorktrees = [...readyWorktrees].sort((a, b) => {
-      const aIsBase = isBaseSession(a)
-      const bIsBase = isBaseSession(b)
-      if (aIsBase && !bIsBase) return -1
-      if (!aIsBase && bIsBase) return 1
-      return compareBySortMode(a, b)
-    })
-
-    for (const worktree of sortedWorktrees) {
+    const readySections: WorktreeSection[] = []
+    for (const worktree of readyWorktrees) {
       const sessionData = sessionsByWorktreeId.get(worktree.id)
       const sessions = sessionData?.sessions ?? []
 
@@ -789,12 +772,42 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
       // Re-order by status group so flat array matches visual group order
       const grouped = flattenGroups(groupCardsByStatus(cards))
+      const latestActivityAt = getWorktreeLastActivity(
+        filteredSessions,
+        worktree.created_at
+      )
+
+      latestActivityByWorktreeId.set(worktree.id, latestActivityAt)
 
       // Only include worktrees that have sessions (after filtering)
       if (grouped.length > 0) {
-        result.push({ worktree, cards: grouped })
+        readySections.push({ worktree, cards: grouped })
       }
     }
+
+    // Sort ready worktrees: base sessions first, then selected sort mode
+    readySections.sort((a, b) => {
+      const aIsBase = isBaseSession(a.worktree)
+      const bIsBase = isBaseSession(b.worktree)
+      if (aIsBase && !bIsBase) return -1
+      if (!aIsBase && bIsBase) return 1
+
+      const sortDiff =
+        getWorktreeSortValue(
+          b.worktree,
+          latestActivityByWorktreeId.get(b.worktree.id) ?? b.worktree.created_at,
+          worktreeSortMode
+        ) -
+        getWorktreeSortValue(
+          a.worktree,
+          latestActivityByWorktreeId.get(a.worktree.id) ?? a.worktree.created_at,
+          worktreeSortMode
+        )
+      if (sortDiff !== 0) return sortDiff
+      return b.worktree.created_at - a.worktree.created_at
+    })
+
+    result.push(...readySections)
 
     return result
   }, [
@@ -807,49 +820,48 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   ])
 
   useEffect(() => {
-    if (worktreeSortMode !== 'last_used') return
+    if (worktreeSortMode !== 'last_activity') return
 
     console.debug(
-      '[ProjectCanvasView] last-used sort snapshot',
-      visibleWorktrees
-        .map(worktree => ({
-          id: worktree.id,
-          name: worktree.name,
-          created_at: worktree.created_at,
-          worktree_last_opened_at: worktree.last_opened_at ?? null,
-          session_last_opened_at:
-            sessionsByWorktreeId
-              .get(worktree.id)
-              ?.sessions.reduce(
-                (latest, session) =>
-                  Math.max(latest, session.last_opened_at ?? 0),
-                0
-              ) ?? null,
-          latest_session_activity_at:
-            sessionsByWorktreeId
-              .get(worktree.id)
-              ?.sessions.reduce(
-                (latest, session) =>
-                  Math.max(
-                    latest,
-                    session.updated_at ?? session.created_at ?? 0
-                  ),
-                0
-              ) ?? null,
-          effective_last_used_at: getWorktreeSortValue(
-            worktree,
-            sessionsByWorktreeId.get(worktree.id)?.sessions ?? [],
-            'last_used'
+      '[ProjectCanvasView] last-activity sort snapshot',
+      worktreeSections
+        .map(section => ({
+          id: section.worktree.id,
+          name: section.worktree.name,
+          created_at: section.worktree.created_at,
+          latest_activity_at: section.isPending
+            ? section.worktree.created_at
+            : getSessionMetrics(section.cards).latestActivityAt,
+          latest_activity_label: formatRelativeTime(
+            section.isPending
+              ? section.worktree.created_at
+              : getSessionMetrics(section.cards).latestActivityAt
           ),
+          session_activity_sources: section.isPending
+            ? []
+            : section.cards.map(card => ({
+                session_id: card.session.id,
+                last_message_at: card.session.last_message_at ?? null,
+                updated_at: card.session.updated_at,
+                created_at: card.session.created_at,
+                effective_activity_at: getSessionActivityTimestamp(
+                  card.session
+                ),
+              })),
+          is_base: isBaseSession(section.worktree),
+          is_pending: section.isPending ?? false,
         }))
         .sort((a, b) => {
-          const aLastUsed = a.effective_last_used_at ?? 0
-          const bLastUsed = b.effective_last_used_at ?? 0
-          if (bLastUsed !== aLastUsed) return bLastUsed - aLastUsed
+          if (a.is_base && !b.is_base) return -1
+          if (!a.is_base && b.is_base) return 1
+          const aLastActivity = a.latest_activity_at ?? 0
+          const bLastActivity = b.latest_activity_at ?? 0
+          if (bLastActivity !== aLastActivity)
+            return bLastActivity - aLastActivity
           return b.created_at - a.created_at
         })
     )
-  }, [worktreeSortMode, visibleWorktrees, sessionsByWorktreeId])
+  }, [worktreeSortMode, worktreeSections])
 
   const projectSummary = useMemo(() => {
     let reviewCount = 0
@@ -2024,8 +2036,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                     <DropdownMenuRadioItem value="created">
                       Creation date
                     </DropdownMenuRadioItem>
-                    <DropdownMenuRadioItem value="last_used">
-                      Last used date
+                    <DropdownMenuRadioItem value="last_activity">
+                      Last activity
                     </DropdownMenuRadioItem>
                   </DropdownMenuRadioGroup>
                 </DropdownMenuContent>

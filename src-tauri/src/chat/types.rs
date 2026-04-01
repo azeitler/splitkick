@@ -496,6 +496,9 @@ pub struct Session {
     pub created_at: u64,
     /// Unix timestamp of last activity (latest run's ended_at/started_at, or created_at)
     pub updated_at: u64,
+    /// Unix timestamp of the last actual chat message in this session, when available
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_message_at: Option<u64>,
     /// Chat messages for this session
     #[serde(default)]
     pub messages: Vec<ChatMessage>,
@@ -641,6 +644,7 @@ impl Session {
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap_or_default()
                 .as_secs(),
+            last_message_at: None,
             messages: vec![],
             message_count: None,
             backend,
@@ -821,12 +825,17 @@ impl SessionMetadata {
             .last()
             .map(|r| r.ended_at.unwrap_or(r.started_at))
             .unwrap_or(self.created_at);
+        let last_message_at = self
+            .runs
+            .last()
+            .map(|r| r.ended_at.unwrap_or(r.started_at));
         Session {
             id: self.id.clone(),
             name: self.name.clone(),
             order: self.order,
             created_at: self.created_at,
             updated_at,
+            last_message_at,
             messages: vec![], // Loaded separately from JSONL files
             message_count: Some(self.to_index_entry().message_count),
             backend: self.backend.clone(),
