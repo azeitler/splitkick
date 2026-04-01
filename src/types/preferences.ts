@@ -941,8 +941,9 @@ export interface AppPreferences {
   http_server_enabled: boolean // Whether HTTP server is enabled
   http_server_port: number // HTTP server port (default 3456)
   http_server_token: string | null // Auth token for HTTP/WS access
+  http_server_bind_host: string | null // Explicit bind host for HTTP server, null = use legacy fallback
   http_server_auto_start: boolean // Auto-start HTTP server on launch
-  http_server_localhost_only: boolean // Bind to localhost only (more secure)
+  http_server_localhost_only: boolean // Legacy localhost-only fallback when no bind host is set
   http_server_token_required: boolean // Require token for web access (default true)
   removal_behavior: RemovalBehavior // What happens when closing sessions/worktrees: 'archive' or 'delete'
   auto_save_context: boolean // Auto-save context after each session completion
@@ -1506,6 +1507,7 @@ export const defaultPreferences: AppPreferences = {
   http_server_enabled: false,
   http_server_port: 3456,
   http_server_token: null,
+  http_server_bind_host: null,
   http_server_auto_start: false,
   http_server_localhost_only: true, // Default to localhost-only for security
   http_server_token_required: true, // Default: require token for security

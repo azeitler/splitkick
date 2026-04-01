@@ -13,16 +13,49 @@ import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
+import type { AppPreferences } from '@/types/preferences'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
 import { openExternal } from '@/lib/platform'
 import { copyToClipboard } from '@/lib/clipboard'
+
+const LOOPBACK_BIND_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
+const WILDCARD_BIND_HOSTS = new Set(['0.0.0.0', '::'])
+
+function getConfiguredBindHost(
+  preferences: AppPreferences | undefined
+): string {
+  const explicit = preferences?.http_server_bind_host?.trim()
+  if (explicit) return explicit
+  return (preferences?.http_server_localhost_only ?? true)
+    ? '127.0.0.1'
+    : '0.0.0.0'
+}
+
+function isLoopbackBindHost(host: string | null | undefined): boolean {
+  return host != null && LOOPBACK_BIND_HOSTS.has(host.trim().toLowerCase())
+}
+
+function isWildcardBindHost(host: string | null | undefined): boolean {
+  return host != null && WILDCARD_BIND_HOSTS.has(host.trim().toLowerCase())
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
 
 const SettingsSection: React.FC<{
   title: string
@@ -62,12 +95,21 @@ interface ServerStatus {
   localhost_only: boolean | null
 }
 
+interface BindHostOption {
+  host: string
+  label: string
+}
+
 export const WebAccessPane: React.FC = () => {
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
   const [serverStatus, setServerStatus] = useState<ServerStatus | null>(null)
+  const [bindHostOptions, setBindHostOptions] = useState<BindHostOption[]>([])
   const [tokenVisible, setTokenVisible] = useState(false)
   const [isToggling, setIsToggling] = useState(false)
+  const [bindHostInput, setBindHostInput] = useState(
+    getConfiguredBindHost(preferences)
+  )
 
   // Poll server status
   const refreshStatus = useCallback(async () => {
@@ -85,6 +127,27 @@ export const WebAccessPane: React.FC = () => {
     const interval = setInterval(refreshStatus, 3000)
     return () => clearInterval(interval)
   }, [refreshStatus])
+
+  useEffect(() => {
+    if (!isNativeApp()) return
+
+    let cancelled = false
+    const loadBindHostOptions = async () => {
+      try {
+        const options = await invoke<BindHostOption[]>(
+          'list_http_bind_host_options'
+        )
+        if (!cancelled) setBindHostOptions(options)
+      } catch {
+        // Ignore failures and leave manual input available
+      }
+    }
+
+    void loadBindHostOptions()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleToggleServer = useCallback(async () => {
     if (!preferences) return
@@ -115,6 +178,13 @@ export const WebAccessPane: React.FC = () => {
       setPortInput(String(preferences.http_server_port))
     }
   }, [preferences?.http_server_port])
+
+  useEffect(() => {
+    setBindHostInput(getConfiguredBindHost(preferences))
+  }, [
+    preferences?.http_server_bind_host,
+    preferences?.http_server_localhost_only,
+  ])
 
   const handlePortBlur = useCallback(() => {
     const port = parseInt(portInput, 10)
@@ -151,28 +221,83 @@ export const WebAccessPane: React.FC = () => {
     [serverStatus?.token, tokenRequired]
   )
 
-  const handleLocalhostOnlyChange = useCallback(
-    async (checked: boolean) => {
-      patchPreferences.mutate({ http_server_localhost_only: checked })
+  const validateBindHost = useCallback(async (host: string) => {
+    const trimmed = host.trim()
+    if (!trimmed) {
+      throw new Error('Bind address cannot be empty')
+    }
 
-      // Restart server if currently running
+    return invoke<string>('validate_http_bind_host', { host: trimmed })
+  }, [])
+
+  const applyBindHost = useCallback(
+    async (nextHost: string) => {
+      if (!preferences) return
+
+      const currentBindHost = getConfiguredBindHost(preferences)
+      let validatedHost: string
+
+      try {
+        validatedHost = await validateBindHost(nextHost)
+      } catch (error) {
+        setBindHostInput(currentBindHost)
+        toast.error(getErrorMessage(error))
+        return
+      }
+
+      if (validatedHost === currentBindHost) {
+        setBindHostInput(validatedHost)
+        return
+      }
+
+      setBindHostInput(validatedHost)
+      try {
+        await patchPreferences.mutateAsync({
+          http_server_bind_host: validatedHost,
+          http_server_localhost_only: isLoopbackBindHost(validatedHost),
+        })
+      } catch (error) {
+        setBindHostInput(currentBindHost)
+        toast.error(`Failed to save bind address: ${error}`)
+        return
+      }
+
       if (serverStatus?.running) {
         setIsToggling(true)
         try {
           await invoke('stop_http_server')
-          // Small delay to ensure port is released
           await new Promise(resolve => setTimeout(resolve, 100))
           await invoke('start_http_server')
-          await refreshStatus()
           toast.success('Server restarted with new binding')
         } catch (error) {
-          toast.error(`Failed to restart server: ${error}`)
+          toast.error(
+            `Bind address was saved, but the server failed to restart: ${getErrorMessage(error)}`
+          )
         } finally {
+          await refreshStatus()
           setIsToggling(false)
         }
       }
     },
-    [patchPreferences, serverStatus?.running, refreshStatus]
+    [
+      patchPreferences,
+      preferences,
+      refreshStatus,
+      serverStatus?.running,
+      validateBindHost,
+    ]
+  )
+
+  const handleBindHostBlur = useCallback(() => {
+    void applyBindHost(bindHostInput)
+  }, [applyBindHost, bindHostInput])
+
+  const handleBindHostOptionSelect = useCallback(
+    (host: string) => {
+      setBindHostInput(host)
+      void applyBindHost(host)
+    },
+    [applyBindHost]
   )
 
   const handleCopyToken = useCallback(() => {
@@ -204,6 +329,19 @@ export const WebAccessPane: React.FC = () => {
     },
     [patchPreferences, serverStatus?.running, refreshStatus]
   )
+
+  const activeBindHost =
+    serverStatus?.bind_host ?? getConfiguredBindHost(preferences)
+  const boundUrl = serverStatus?.url ?? null
+  const selectedBindHostOption = bindHostOptions.some(
+    option => option.host === bindHostInput.trim()
+  )
+    ? bindHostInput.trim()
+    : undefined
+  const showLocalhostUrl =
+    isLoopbackBindHost(activeBindHost) || isWildcardBindHost(activeBindHost)
+  const showBoundUrl =
+    Boolean(boundUrl) && !isLoopbackBindHost(activeBindHost)
 
   if (!isNativeApp()) {
     return (
@@ -281,14 +419,37 @@ export const WebAccessPane: React.FC = () => {
           </InlineField>
 
           <InlineField
-            label="Localhost only"
-            description="Restrict access to this device only (more secure)"
+            label="Bind address"
+            description="Use localhost, 0.0.0.0, or a specific IP such as your Tailscale address"
           >
-            <Switch
-              checked={preferences?.http_server_localhost_only ?? true}
-              onCheckedChange={handleLocalhostOnlyChange}
-              disabled={isToggling}
-            />
+            <div className="flex flex-col gap-2">
+              <Input
+                type="text"
+                className="w-64 font-mono text-xs"
+                value={bindHostInput}
+                onChange={e => setBindHostInput(e.target.value)}
+                onBlur={() => void handleBindHostBlur()}
+                disabled={isToggling}
+                placeholder="127.0.0.1"
+              />
+              {bindHostOptions.length > 0 && (
+                <Select
+                  onValueChange={handleBindHostOptionSelect}
+                  value={selectedBindHostOption}
+                >
+                  <SelectTrigger className="w-64" disabled={isToggling}>
+                    <SelectValue placeholder="Use detected address" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {bindHostOptions.map(option => (
+                      <SelectItem key={option.host} value={option.host}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </InlineField>
         </div>
       </SettingsSection>
@@ -362,56 +523,12 @@ export const WebAccessPane: React.FC = () => {
               description="Open in a browser to access Jean"
             >
               <div className="flex flex-col gap-2">
-                {/* Localhost URL - always shown */}
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="text"
-                    className="w-64 font-mono text-xs"
-                    value={`http://localhost:${serverStatus.port}`}
-                    readOnly
-                  />
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          const base = `http://localhost:${serverStatus.port}`
-                          openExternal(
-                            tokenRequired && serverStatus.token
-                              ? `${base}?token=${serverStatus.token}`
-                              : base
-                          )
-                        }}
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Open in browser</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() =>
-                          handleCopyUrl(`http://localhost:${serverStatus.port}`)
-                        }
-                      >
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Copy URL</TooltipContent>
-                  </Tooltip>
-                </div>
-
-                {/* Network URL - only when not localhost-only */}
-                {!serverStatus.localhost_only && serverStatus.url && (
+                {showLocalhostUrl && (
                   <div className="flex items-center gap-2">
                     <Input
                       type="text"
                       className="w-64 font-mono text-xs"
-                      value={serverStatus.url}
+                      value={`http://localhost:${serverStatus.port}`}
                       readOnly
                     />
                     <Tooltip>
@@ -420,7 +537,7 @@ export const WebAccessPane: React.FC = () => {
                           variant="ghost"
                           size="icon"
                           onClick={() => {
-                            const base = serverStatus.url ?? ''
+                            const base = `http://localhost:${serverStatus.port}`
                             openExternal(
                               tokenRequired && serverStatus.token
                                 ? `${base}?token=${serverStatus.token}`
@@ -438,8 +555,53 @@ export const WebAccessPane: React.FC = () => {
                         <Button
                           variant="ghost"
                           size="icon"
-                          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                          onClick={() => handleCopyUrl(serverStatus.url!)}
+                          onClick={() =>
+                            handleCopyUrl(
+                              `http://localhost:${serverStatus.port}`
+                            )
+                          }
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Copy URL</TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
+
+                {showBoundUrl && boundUrl && (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="text"
+                      className="w-64 font-mono text-xs"
+                      value={boundUrl}
+                      readOnly
+                    />
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            const base = boundUrl
+                            openExternal(
+                              tokenRequired && serverStatus.token
+                                ? `${base}?token=${serverStatus.token}`
+                                : base
+                            )
+                          }}
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Open in browser</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleCopyUrl(boundUrl)}
                         >
                           <Copy className="h-4 w-4" />
                         </Button>
