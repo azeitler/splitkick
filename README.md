@@ -77,6 +77,17 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for full development setup and guidelines
 - **Windows**: Not fully tested
 - **Linux**: Community tested (Arch Linux + Hyprland/Wayland)
 
+## Headless Web Access
+
+Run Jean without the desktop window and expose the web UI over HTTP:
+
+```bash
+jean --headless --host 127.0.0.1 --port 3456
+```
+
+`--host` accepts `localhost` or an IP address. Passing a specific address such
+as your Tailscale IP binds Jean only to that interface.
+
 ## Roadmap
 
 - Enhance remote web access

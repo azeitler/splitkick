@@ -7,7 +7,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
@@ -33,6 +33,7 @@ pub struct HttpServerHandle {
     pub port: u16,
     pub token: String,
     pub url: String,
+    pub bind_host: String,
     pub localhost_only: bool,
     pub token_required: bool,
 }
@@ -44,6 +45,7 @@ pub struct ServerStatus {
     pub url: Option<String>,
     pub token: Option<String>,
     pub port: Option<u16>,
+    pub bind_host: Option<String>,
     pub localhost_only: Option<bool>,
 }
 
@@ -120,9 +122,11 @@ pub async fn start_server(
     app: AppHandle,
     port: u16,
     token: String,
-    localhost_only: bool,
+    bind_host: String,
     token_required: bool,
 ) -> Result<HttpServerHandle, String> {
+    let bind_ip = parse_bind_ip(&bind_host)?;
+    let localhost_only = bind_ip.is_loopback();
     let state = AppState {
         app: app.clone(),
         token: token.clone(),
@@ -151,33 +155,25 @@ pub async fn start_server(
         .layer(cors)
         .with_state(state);
 
-    // Bind to localhost only or all interfaces based on preference
-    let addr = if localhost_only {
-        SocketAddr::from(([127, 0, 0, 1], port))
-    } else {
-        SocketAddr::from(([0, 0, 0, 0], port))
-    };
+    let addr = SocketAddr::new(bind_ip, port);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .map_err(|e| format!("Failed to bind to port {port}: {e}"))?;
+        .map_err(|e| format!("Failed to bind to {bind_host}:{port}: {e}"))?;
 
     let local_addr = listener
         .local_addr()
         .map_err(|e| format!("Failed to get local address: {e}"))?;
 
-    // Get LAN IP for the URL (only used when not localhost-only)
-    let ip = if localhost_only {
-        "127.0.0.1".to_string()
-    } else {
-        get_local_ip().unwrap_or_else(|| "127.0.0.1".to_string())
-    };
-    let url = format!("http://{ip}:{}", local_addr.port());
+    let url = format_http_url(&display_host_for_bind_ip(bind_ip), local_addr.port());
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    let bind_host_for_log = bind_host.clone();
 
     // Spawn the server
     tokio::spawn(async move {
-        log::info!("HTTP server listening on {local_addr} (localhost_only: {localhost_only})");
+        log::info!(
+            "HTTP server listening on {local_addr} (bind_host: {bind_host_for_log}, localhost_only: {localhost_only})"
+        );
         axum::serve(listener, router)
             .with_graceful_shutdown(async {
                 let _ = shutdown_rx.await;
@@ -192,6 +188,7 @@ pub async fn start_server(
         port: local_addr.port(),
         token,
         url,
+        bind_host,
         localhost_only,
         token_required,
     })
@@ -660,6 +657,37 @@ async fn file_handler(
     }
 }
 
+fn parse_bind_ip(host: &str) -> Result<IpAddr, String> {
+    let trimmed = host.trim();
+    if trimmed.is_empty() {
+        return Err("Bind address cannot be empty".to_string());
+    }
+
+    if trimmed.eq_ignore_ascii_case("localhost") {
+        return Ok(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+
+    trimmed
+        .parse::<IpAddr>()
+        .map_err(|_| format!("Invalid bind address '{trimmed}'. Use an IP address or 'localhost'"))
+}
+
+fn display_host_for_bind_ip(bind_ip: IpAddr) -> String {
+    if bind_ip == IpAddr::V4(Ipv4Addr::UNSPECIFIED) {
+        get_local_ip().unwrap_or_else(|| Ipv4Addr::LOCALHOST.to_string())
+    } else {
+        bind_ip.to_string()
+    }
+}
+
+fn format_http_url(host: &str, port: u16) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("http://[{host}]:{port}")
+    } else {
+        format!("http://{host}:{port}")
+    }
+}
+
 /// Get the local LAN IP address.
 fn get_local_ip() -> Option<String> {
     use std::net::UdpSocket;
@@ -680,6 +708,7 @@ pub async fn get_server_status(app: AppHandle) -> ServerStatus {
                     url: Some(h.url.clone()),
                     token: Some(h.token.clone()),
                     port: Some(h.port),
+                    bind_host: Some(h.bind_host.clone()),
                     localhost_only: Some(h.localhost_only),
                 },
                 None => ServerStatus {
@@ -687,6 +716,7 @@ pub async fn get_server_status(app: AppHandle) -> ServerStatus {
                     url: None,
                     token: None,
                     port: None,
+                    bind_host: None,
                     localhost_only: None,
                 },
             }
@@ -696,7 +726,57 @@ pub async fn get_server_status(app: AppHandle) -> ServerStatus {
             url: None,
             token: None,
             port: None,
+            bind_host: None,
             localhost_only: None,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{display_host_for_bind_ip, format_http_url, parse_bind_ip};
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn parse_bind_ip_accepts_localhost_and_ip_literals() {
+        assert_eq!(
+            parse_bind_ip("localhost").unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        );
+        assert_eq!(
+            parse_bind_ip("100.64.0.1").unwrap(),
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))
+        );
+        assert_eq!(
+            parse_bind_ip("::1").unwrap(),
+            IpAddr::V6(Ipv6Addr::LOCALHOST)
+        );
+    }
+
+    #[test]
+    fn parse_bind_ip_rejects_invalid_values() {
+        let error = parse_bind_ip("tailscale").unwrap_err();
+        assert!(error.contains("Invalid bind address"));
+    }
+
+    #[test]
+    fn display_host_uses_specific_bind_ip_directly() {
+        assert_eq!(
+            display_host_for_bind_ip(IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))),
+            "100.64.0.1"
+        );
+        assert_eq!(
+            display_host_for_bind_ip(IpAddr::V6(Ipv6Addr::LOCALHOST)),
+            "::1"
+        );
+    }
+
+    #[test]
+    fn format_http_url_wraps_ipv6_hosts() {
+        assert_eq!(
+            format_http_url("100.64.0.1", 3456),
+            "http://100.64.0.1:3456"
+        );
+        assert_eq!(format_http_url("::1", 3456), "http://[::1]:3456");
     }
 }

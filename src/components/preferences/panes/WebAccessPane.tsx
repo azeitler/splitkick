@@ -58,6 +58,7 @@ interface ServerStatus {
   port: number | null
   url: string | null
   token: string | null
+  bind_host?: string | null
   localhost_only: boolean | null
 }
 
