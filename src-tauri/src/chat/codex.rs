@@ -421,7 +421,6 @@ pub fn build_thread_start_params(
     base_instructions_content: Option<&str>,
     multi_agent_enabled: bool,
     max_agent_threads: Option<u32>,
-    has_mcp_servers: bool,
 ) -> serde_json::Value {
     let mut params = serde_json::json!({
         "cwd": working_dir.to_string_lossy(),
@@ -444,24 +443,21 @@ pub fn build_thread_start_params(
 
     // Permission mode mapping
     //
-    // When MCP servers are enabled, use the granular approval policy to
-    // auto-approve MCP elicitation requests (matching Claude Code's behavior
-    // of auto-accepting MCP tools via --allowedTools).
+    // Always use granular approval policy with mcp_elicitations=false to
+    // auto-approve MCP elicitation requests (matching Claude Code's behavior).
+    // Codex reads MCP config from TOML files directly, so we can't detect
+    // whether MCP servers are configured — but setting mcp_elicitations=false
+    // is a no-op when no MCP servers exist, so it's safe to always use it.
     match execution_mode.unwrap_or("plan") {
         "build" => {
-            if has_mcp_servers {
-                log::info!("Using granular approvalPolicy (mcp_elicitations=false) for build mode with MCP servers");
-                params["approvalPolicy"] = serde_json::json!({
-                    "granular": {
-                        "mcp_elicitations": false,
-                        "sandbox_approval": true,
-                        "rules": true,
-                        "request_permissions": true,
-                    }
-                });
-            } else {
-                params["approvalPolicy"] = serde_json::json!("untrusted");
-            }
+            params["approvalPolicy"] = serde_json::json!({
+                "granular": {
+                    "mcp_elicitations": false,
+                    "sandbox_approval": true,
+                    "rules": true,
+                    "request_permissions": true,
+                }
+            });
             params["sandbox"] = serde_json::json!("workspace-write");
         }
         "yolo" => {
@@ -470,17 +466,14 @@ pub fn build_thread_start_params(
         }
         // "plan" or default: read-only sandbox
         _ => {
-            if has_mcp_servers {
-                log::info!("Using granular approvalPolicy (mcp_elicitations=false) for plan mode with MCP servers");
-                params["approvalPolicy"] = serde_json::json!({
-                    "granular": {
-                        "mcp_elicitations": false,
-                        "sandbox_approval": true,
-                        "rules": true,
-                        "request_permissions": true,
-                    }
-                });
-            }
+            params["approvalPolicy"] = serde_json::json!({
+                "granular": {
+                    "mcp_elicitations": false,
+                    "sandbox_approval": true,
+                    "rules": true,
+                    "request_permissions": true,
+                }
+            });
             params["sandbox"] = serde_json::json!("read-only");
         }
     }
@@ -602,7 +595,6 @@ pub fn execute_codex_via_server(
     base_instructions_content: Option<&str>,
     multi_agent_enabled: bool,
     max_agent_threads: Option<u32>,
-    has_mcp_servers: bool,
 ) -> Result<CodexResponse, String> {
     use super::codex_server;
 
@@ -631,7 +623,6 @@ pub fn execute_codex_via_server(
                 base_instructions_content,
                 multi_agent_enabled,
                 max_agent_threads,
-                has_mcp_servers,
             );
             let mut full_params =
                 serde_json::json!({ "threadId": tid, "persistExtendedHistory": true });
@@ -661,7 +652,6 @@ pub fn execute_codex_via_server(
                         base_instructions_content,
                         multi_agent_enabled,
                         max_agent_threads,
-                        has_mcp_servers,
                     )
                 }
             }
@@ -674,7 +664,6 @@ pub fn execute_codex_via_server(
                 base_instructions_content,
                 multi_agent_enabled,
                 max_agent_threads,
-                has_mcp_servers,
             )
         }
     })() {
@@ -753,7 +742,6 @@ fn start_new_thread(
     base_instructions_content: Option<&str>,
     multi_agent_enabled: bool,
     max_agent_threads: Option<u32>,
-    has_mcp_servers: bool,
 ) -> Result<String, String> {
     use super::codex_server;
 
@@ -765,7 +753,6 @@ fn start_new_thread(
         base_instructions_content,
         multi_agent_enabled,
         max_agent_threads,
-        has_mcp_servers,
     );
 
     let result = codex_server::send_request("thread/start", params)?;
@@ -1635,42 +1622,24 @@ fn handle_approval_request(
             );
         }
         "mcpServer/elicitation/request" => {
-            let request = CodexMcpElicitationRequest {
-                rpc_id,
-                server_name: params
-                    .get("serverName")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                message: params
-                    .get("message")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                mode: params
-                    .get("mode")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("form")
-                    .to_string(),
-                requested_schema: params.get("requestedSchema").cloned(),
-                url: params
-                    .get("url")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                elicitation_id: params
-                    .get("elicitationId")
-                    .and_then(|v| v.as_str())
-                    .map(|s| s.to_string()),
-                meta: params.get("_meta").cloned(),
-            };
-            let _ = app.emit_all(
-                "chat:codex_mcp_elicitation_request",
-                &CodexMcpElicitationRequestEvent {
-                    session_id: session_id.to_string(),
-                    worktree_id: worktree_id.to_string(),
-                    request,
-                },
+            // Auto-accept MCP elicitations — we always set mcp_elicitations=false
+            // in the approval policy, but the server may still send these.
+            let server_name = params
+                .get("serverName")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default();
+            log::trace!(
+                "Auto-accepting MCP elicitation from '{server_name}' (rpc_id={rpc_id})"
             );
+            if let Err(e) = super::codex_server::send_response(
+                rpc_id,
+                serde_json::json!({"action": "accept"}),
+            ) {
+                log::error!(
+                    "Failed to auto-accept MCP elicitation (rpc_id={rpc_id}): {e}"
+                );
+                emit_connection_error();
+            }
         }
         "item/tool/call" => {
             let request = CodexDynamicToolCallRequest {
@@ -2991,7 +2960,6 @@ mod tests {
             None,
             false,
             None,
-            false,
         );
         assert_eq!(params["model"], "gpt-5.4");
         assert_eq!(params["serviceTier"], "fast");
@@ -3024,14 +2992,13 @@ mod tests {
             None,
             false,
             None,
-            false,
         );
         assert_eq!(params["model"], "gpt-5.3");
         assert!(params.get("serviceTier").is_none());
     }
 
     #[test]
-    fn mcp_servers_use_granular_approval_policy_in_build_mode() {
+    fn build_mode_uses_granular_approval_policy() {
         let params = build_thread_start_params(
             std::path::Path::new("/tmp"),
             Some("gpt-5.4"),
@@ -3040,7 +3007,6 @@ mod tests {
             None,
             false,
             None,
-            true,
         );
         let policy = &params["approvalPolicy"]["granular"];
         assert_eq!(policy["mcp_elicitations"], false);
@@ -3050,7 +3016,7 @@ mod tests {
     }
 
     #[test]
-    fn mcp_servers_use_granular_approval_policy_in_plan_mode() {
+    fn plan_mode_uses_granular_approval_policy() {
         let params = build_thread_start_params(
             std::path::Path::new("/tmp"),
             Some("gpt-5.4"),
@@ -3059,30 +3025,16 @@ mod tests {
             None,
             false,
             None,
-            true,
         );
         let policy = &params["approvalPolicy"]["granular"];
         assert_eq!(policy["mcp_elicitations"], false);
         assert_eq!(policy["sandbox_approval"], true);
+        assert_eq!(policy["rules"], true);
+        assert_eq!(policy["request_permissions"], true);
     }
 
     #[test]
-    fn no_mcp_servers_uses_string_approval_policy() {
-        let params = build_thread_start_params(
-            std::path::Path::new("/tmp"),
-            Some("gpt-5.4"),
-            Some("build"),
-            false,
-            None,
-            false,
-            None,
-            false,
-        );
-        assert_eq!(params["approvalPolicy"], "untrusted");
-    }
-
-    #[test]
-    fn yolo_mode_ignores_mcp_servers_flag() {
+    fn yolo_mode_uses_never_approval_policy() {
         let params = build_thread_start_params(
             std::path::Path::new("/tmp"),
             Some("gpt-5.4"),
@@ -3091,7 +3043,6 @@ mod tests {
             None,
             false,
             None,
-            true,
         );
         assert_eq!(params["approvalPolicy"], "never");
     }

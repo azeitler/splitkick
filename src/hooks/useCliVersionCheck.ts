@@ -110,7 +110,7 @@ function resolveCliInfo(
  */
 export function useCliVersionCheck() {
   const shouldCheck = isNativeApp()
-  const { data: preferences } = usePreferences()
+  const { data: preferences, isLoading: preferencesLoading } = usePreferences()
   const { data: claudePathInfo } = useClaudePathDetection({
     enabled: shouldCheck,
   })
@@ -166,7 +166,8 @@ export function useCliVersionCheck() {
       claudeVersionsLoading ||
       ghVersionsLoading ||
       codexVersionsLoading ||
-      opencodeVersionsLoading
+      opencodeVersionsLoading ||
+      preferencesLoading
     if (isLoading) return
 
     const updates: CliUpdateInfo[] = []
@@ -241,6 +242,7 @@ export function useCliVersionCheck() {
     ghVersionsLoading,
     codexVersionsLoading,
     opencodeVersionsLoading,
+    preferencesLoading,
     preferences?.claude_cli_source,
     preferences?.codex_cli_source,
     preferences?.opencode_cli_source,

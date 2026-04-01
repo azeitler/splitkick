@@ -1661,15 +1661,6 @@ pub async fn send_chat_message(
         Some(final_allowed_tools)
     };
 
-    // Check if MCP servers are configured (for Codex granular approval policy).
-    // Use the mcp_config parameter (JSON string from frontend) rather than
-    // session.enabled_mcp_servers, which may not be persisted yet.
-    let codex_has_mcp_servers = effective_backend == Backend::Codex
-        && mcp_config
-            .as_ref()
-            .map(|c| !c.is_empty())
-            .unwrap_or(false);
-
     // Unified response type for both backends
     struct UnifiedResponse {
         content: String,
@@ -1710,7 +1701,6 @@ pub async fn send_chat_message(
     let thread_codex_search = codex_search_enabled;
     let thread_codex_multi_agent = codex_multi_agent_enabled;
     let thread_codex_max_threads = codex_max_agent_threads;
-    let thread_codex_has_mcp = codex_has_mcp_servers;
 
     // For OpenCode sessions: create a cancel flag so we can signal the blocking HTTP thread.
     // Register it before spawning so cancel_process can find it immediately.
@@ -2180,7 +2170,6 @@ pub async fn send_chat_message(
                     codex_base_instructions_content.as_deref(),
                     thread_codex_multi_agent,
                     thread_codex_max_threads,
-                    thread_codex_has_mcp,
                 ) {
                     Ok(response) => Ok((
                         0, // No PID for app-server sessions

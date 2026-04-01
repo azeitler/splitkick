@@ -2536,6 +2536,12 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
         log::error!("Failed to emit worktree:deleting event: {e}");
     }
 
+    // Collect session IDs now (before background thread) so we can clean up data dirs later
+    let session_ids: Vec<String> =
+        crate::chat::storage::load_sessions(&app, &worktree.path, &worktree_id)
+            .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
+            .unwrap_or_default();
+
     // Clone values for the background thread
     let app_clone = app.clone();
     let worktree_id_clone = worktree_id.clone();
@@ -2637,6 +2643,26 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
                 log::error!("Failed to emit worktree:delete_error event: {emit_err}");
             }
             return;
+        }
+
+        // Clean up session data directories and combined-context files
+        for sid in &session_ids {
+            if let Err(e) = crate::chat::storage::delete_session_data(&app_clone, sid) {
+                log::warn!("Failed to delete session data for {sid}: {e}");
+            }
+            crate::chat::storage::cleanup_combined_context_files(&app_clone, sid);
+        }
+
+        // Delete the sessions index file
+        if let Ok(app_data_dir) = app_clone.path().app_data_dir() {
+            let sessions_file = app_data_dir
+                .join("sessions")
+                .join(format!("{}.json", worktree_id_clone));
+            if sessions_file.exists() {
+                if let Err(e) = std::fs::remove_file(&sessions_file) {
+                    log::warn!("Failed to delete sessions file: {e}");
+                }
+            }
         }
 
         // Emit success event
@@ -2858,6 +2884,19 @@ async fn close_base_session_internal(
         );
         crate::chat::preserve_base_sessions(app, worktree_id, &worktree.project_id)?;
     } else {
+        // Clean close: delete session data directories before removing the index
+        let session_ids: Vec<String> =
+            crate::chat::storage::load_sessions(app, &worktree.path, worktree_id)
+                .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
+                .unwrap_or_default();
+
+        for sid in &session_ids {
+            if let Err(e) = crate::chat::storage::delete_session_data(app, sid) {
+                log::warn!("Failed to delete session data for {sid}: {e}");
+            }
+            crate::chat::storage::cleanup_combined_context_files(app, sid);
+        }
+
         // Delete the sessions file entirely for a clean close
         if let Ok(sessions_file) = crate::chat::storage::get_sessions_path(app, worktree_id) {
             if sessions_file.exists() {
