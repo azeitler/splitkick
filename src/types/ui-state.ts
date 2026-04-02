@@ -7,6 +7,10 @@
 // stored in the Session files. See useSessionStatePersistence.
 // Review results are also stored in Session files (review_results field).
 
+export interface ProjectCanvasSettingsState {
+  worktree_sort_mode?: 'created' | 'last_activity'
+}
+
 export interface UIState {
   active_worktree_id: string | null
   active_worktree_path: string | null
@@ -32,6 +36,8 @@ export interface UIState {
   project_access_timestamps?: Record<string, number>
   /** Dashboard worktree collapse overrides: worktreeId → collapsed (true/false) */
   dashboard_worktree_collapse_overrides?: Record<string, boolean>
+  /** Project canvas settings per project */
+  project_canvas_settings?: Record<string, ProjectCanvasSettingsState>
   /** Last opened worktree+session per project: projectId → { worktree_id, session_id } */
   last_opened_per_project?: Record<
     string,
