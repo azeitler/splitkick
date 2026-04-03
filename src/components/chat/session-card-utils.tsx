@@ -242,9 +242,10 @@ export function computeSessionCardData(
 
   // Use persisted waiting state as fallback when messages aren't loaded
   const isExplicitlyWaiting = waitingForInputSessionIds[session.id] ?? false
+  const hasActionableStreamingPlan = hasStreamingExitPlan && !sessionSending
   const isWaitingFromMessages =
     hasStreamingQuestion ||
-    hasStreamingExitPlan ||
+    hasActionableStreamingPlan ||
     hasPendingQuestion ||
     hasPendingExitPlan
   // When sessionSending is true, persisted waiting_for_input from TanStack Query

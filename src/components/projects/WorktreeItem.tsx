@@ -120,6 +120,7 @@ export function WorktreeItem({
     for (const [sessionId, toolCalls] of Object.entries(activeToolCalls)) {
       if (sessionWorktreeMap[sessionId] === worktree.id) {
         if (
+          !(sendingSessionIds[sessionId] ?? false) &&
           toolCalls.some(
             tc => isPlanToolCall(tc) && !isQuestionAnswered(sessionId, tc.id)
           )
@@ -129,7 +130,13 @@ export function WorktreeItem({
       }
     }
     return false
-  }, [activeToolCalls, sessionWorktreeMap, worktree.id, isQuestionAnswered])
+  }, [
+    activeToolCalls,
+    sessionWorktreeMap,
+    worktree.id,
+    sendingSessionIds,
+    isQuestionAnswered,
+  ])
 
   // Check if any session has unanswered AskUserQuestion in persisted messages (blinks)
   const hasPendingQuestion = useMemo(() => {
