@@ -382,10 +382,9 @@ export function AuthLoginState({
         </p>
       </div>
 
-      <div
-        ref={containerCallbackRef}
-        className="w-full h-[300px] rounded-md bg-[#1a1a1a] overflow-hidden"
-      />
+      <div className="h-[300px] w-full overflow-hidden rounded-md bg-[#1a1a1a] p-3 sm:p-4">
+        <div ref={containerCallbackRef} className="h-full w-full" />
+      </div>
 
       {exitStatus && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
