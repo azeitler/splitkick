@@ -428,7 +428,7 @@ function WorktreeSectionHeader({
             )}
             <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
               <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 truncate sm:flex-1">
+                <span className="min-w-0 flex-1 truncate">
                   {isBase ? 'Base Session' : worktree.name}
                 </span>
                 {displayBranch && (
