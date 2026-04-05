@@ -11,6 +11,8 @@ import { WelcomeProjectGrid } from './WelcomeProjectGrid'
 import { isFolder } from '@/types/projects'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { useSwipeBack } from '@/hooks/useSwipeBack'
 
 const ChatWindow = lazy(() =>
   import('@/components/chat/ChatWindow').then(mod => ({
@@ -34,6 +36,14 @@ export function MainWindowContent({
   className,
 }: MainWindowContentProps) {
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
+  const isMobile = useIsMobile()
+  const swipeBackCallback = useCallback(() => {
+    useChatStore.getState().clearActiveWorktree()
+  }, [])
+  const swipe = useSwipeBack({
+    onSwipeBack: swipeBackCallback,
+    enabled: isMobile && !!activeWorktreePath,
+  })
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const setAddProjectDialogOpen = useProjectsStore(
     state => state.setAddProjectDialogOpen
@@ -92,15 +102,37 @@ export function MainWindowContent({
       )}
     >
       {activeWorktreePath ? (
-        <Suspense
-          fallback={
-            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-              Loading chat…
-            </div>
+        <div
+          ref={isMobile ? swipe.containerRef : undefined}
+          className="relative h-full w-full"
+          style={
+            isMobile
+              ? {
+                  transform: `translateX(${swipe.translateX}px)`,
+                  transition: swipe.transitionStyle || undefined,
+                  willChange: swipe.isSwiping ? 'transform' : undefined,
+                }
+              : undefined
           }
         >
-          <ChatWindow />
-        </Suspense>
+          {isMobile && (
+            <div
+              className={cn(
+                'absolute left-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-r-full bg-muted-foreground/20 transition-opacity duration-300',
+                swipe.isSwiping ? 'opacity-0' : 'opacity-100'
+              )}
+            />
+          )}
+          <Suspense
+            fallback={
+              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                Loading chat…
+              </div>
+            }
+          >
+            <ChatWindow />
+          </Suspense>
+        </div>
       ) : selectedProjectId ? (
         <Suspense
           fallback={

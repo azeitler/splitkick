@@ -10,6 +10,7 @@ import {
 import { cn } from '@/lib/utils'
 import { TitleBar } from '@/components/titlebar/TitleBar'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useSwipeDown } from '@/hooks/useSwipeDown'
 import { DevModeBanner } from './DevModeBanner'
 import { SidebarWidthProvider } from './SidebarWidthContext'
 import { MainWindowContent } from './MainWindowContent'
@@ -220,6 +221,12 @@ export function MainWindow() {
   )
 
   const isMobile = useIsMobile()
+  const swipeDown = useSwipeDown({
+    onSwipeDown: useCallback(() => {
+      useUIStore.getState().setCommandPaletteOpen(true)
+    }, []),
+    enabled: isMobile,
+  })
 
   // Fetch worktree data for polling initialization
   const { data: worktree } = useWorktree(selectedWorktreeId ?? null)
@@ -402,11 +409,29 @@ export function MainWindow() {
 
   return (
     <div
+      ref={isMobile ? swipeDown.containerRef : undefined}
       className={cn(
         'flex h-dvh w-full flex-col overflow-hidden bg-background',
         roundedClass
       )}
     >
+      {/* Mobile swipe-down pull indicator */}
+      {isMobile && swipeDown.isSwiping && (
+        <div
+          className="pointer-events-none absolute left-1/2 z-[60] flex -translate-x-1/2 items-center justify-center"
+          style={{ top: swipeDown.translateY - 8 }}
+        >
+          <div
+            className="rounded-full bg-muted-foreground/30 transition-transform"
+            style={{
+              width: 8 + swipeDown.progress * 24,
+              height: 8 + swipeDown.progress * 24,
+              opacity: 0.3 + swipeDown.progress * 0.7,
+            }}
+          />
+        </div>
+      )}
+
       {/* Title Bar - semi-transparent overlay */}
       <TitleBar title={windowTitle} className="absolute top-0 left-0 right-0" />
 
