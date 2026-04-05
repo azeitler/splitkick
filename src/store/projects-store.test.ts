@@ -8,6 +8,7 @@ describe('ProjectsStore', () => {
       selectedWorktreeId: null,
       expandedProjectIds: new Set<string>(),
       expandedFolderIds: new Set<string>(),
+      projectCanvasSettings: {},
       addProjectDialogOpen: false,
       projectSettingsDialogOpen: false,
       projectSettingsProjectId: null,
@@ -228,6 +229,23 @@ describe('ProjectsStore', () => {
 
       setEditingFolderId(null)
       expect(useProjectsStore.getState().editingFolderId).toBeNull()
+    })
+  })
+
+  describe('project canvas settings', () => {
+    it('stores worktree sort mode per project', () => {
+      const { setProjectCanvasWorktreeSortMode } = useProjectsStore.getState()
+
+      setProjectCanvasWorktreeSortMode('project-1', 'last_activity')
+      setProjectCanvasWorktreeSortMode('project-2', 'created')
+
+      const state = useProjectsStore.getState()
+      expect(state.projectCanvasSettings['project-1']?.worktreeSortMode).toBe(
+        'last_activity'
+      )
+      expect(state.projectCanvasSettings['project-2']?.worktreeSortMode).toBe(
+        'created'
+      )
     })
   })
 })

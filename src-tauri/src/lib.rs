@@ -1263,6 +1263,10 @@ pub struct UIState {
     #[serde(default)]
     pub dashboard_worktree_collapse_overrides: std::collections::HashMap<String, bool>,
 
+    /// Project canvas settings per project
+    #[serde(default)]
+    pub project_canvas_settings: std::collections::HashMap<String, ProjectCanvasSettings>,
+
     /// Last opened worktree+session per project: projectId → { worktree_id, session_id }
     #[serde(default)]
     pub last_opened_per_project: std::collections::HashMap<String, LastOpenedEntry>,
@@ -1280,6 +1284,12 @@ fn default_ui_state_version() -> u32 {
 pub struct LastOpenedEntry {
     pub worktree_id: String,
     pub session_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProjectCanvasSettings {
+    #[serde(default)]
+    pub worktree_sort_mode: Option<String>,
 }
 
 impl Default for UIState {
@@ -1300,6 +1310,7 @@ impl Default for UIState {
             modal_terminal_width: None,
             project_access_timestamps: std::collections::HashMap::new(),
             dashboard_worktree_collapse_overrides: std::collections::HashMap::new(),
+            project_canvas_settings: std::collections::HashMap::new(),
             last_opened_per_project: std::collections::HashMap::new(),
             version: default_ui_state_version(),
         }

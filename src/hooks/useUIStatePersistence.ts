@@ -82,6 +82,7 @@ export function useUIStatePersistence() {
       selectedProjectId,
       projectAccessTimestamps,
       dashboardWorktreeCollapseOverrides,
+      projectCanvasSettings,
     } = useProjectsStore.getState()
     const { leftSidebarSize, leftSidebarVisible } = useUIStore.getState()
     const { modalTerminalOpen, modalTerminalWidth } =
@@ -108,6 +109,15 @@ export function useUIStatePersistence() {
       project_access_timestamps: projectAccessTimestamps,
       // Dashboard worktree collapse overrides
       dashboard_worktree_collapse_overrides: dashboardWorktreeCollapseOverrides,
+      // Project canvas settings per project
+      project_canvas_settings: Object.fromEntries(
+        Object.entries(projectCanvasSettings).map(([projectId, settings]) => [
+          projectId,
+          {
+            worktree_sort_mode: settings.worktreeSortMode,
+          },
+        ])
+      ),
       // Last opened worktree+session per project (convert camelCase → snake_case keys)
       last_opened_per_project: Object.fromEntries(
         Object.entries(lastOpenedPerProject).map(([projectId, entry]) => [
@@ -314,6 +324,23 @@ export function useUIStatePersistence() {
       })
     }
 
+    const projectCanvasSettings = uiState.project_canvas_settings ?? {}
+    if (Object.keys(projectCanvasSettings).length > 0) {
+      logger.debug('Restoring project canvas settings', {
+        count: Object.keys(projectCanvasSettings).length,
+      })
+      useProjectsStore.getState().setProjectCanvasSettings(
+        Object.fromEntries(
+          Object.entries(projectCanvasSettings).map(([projectId, settings]) => [
+            projectId,
+            {
+              worktreeSortMode: settings.worktree_sort_mode,
+            },
+          ])
+        )
+      )
+    }
+
     // Restore last opened worktree+session per project (convert snake_case → camelCase keys)
     const lastOpenedPerProject = uiState.last_opened_per_project ?? {}
     if (Object.keys(lastOpenedPerProject).length > 0) {
@@ -349,6 +376,8 @@ export function useUIStatePersistence() {
       useProjectsStore.getState().projectAccessTimestamps
     let prevDashboardCollapseOverrides =
       useProjectsStore.getState().dashboardWorktreeCollapseOverrides
+    let prevProjectCanvasSettings =
+      useProjectsStore.getState().projectCanvasSettings
     let prevLeftSidebarSize = useUIStore.getState().leftSidebarSize
     let prevLeftSidebarVisible = useUIStore.getState().leftSidebarVisible
     let prevWorktreeId = useChatStore.getState().activeWorktreeId
@@ -375,13 +404,16 @@ export function useUIStatePersistence() {
       const collapseOverridesChanged =
         state.dashboardWorktreeCollapseOverrides !==
         prevDashboardCollapseOverrides
+      const projectCanvasSettingsChanged =
+        state.projectCanvasSettings !== prevProjectCanvasSettings
 
       if (
         projectIdsChanged ||
         folderIdsChanged ||
         selectedProjectChanged ||
         accessTimestampsChanged ||
-        collapseOverridesChanged
+        collapseOverridesChanged ||
+        projectCanvasSettingsChanged
       ) {
         prevExpandedProjectIds = state.expandedProjectIds
         prevExpandedFolderIds = state.expandedFolderIds
@@ -389,6 +421,7 @@ export function useUIStatePersistence() {
         prevProjectAccessTimestamps = state.projectAccessTimestamps
         prevDashboardCollapseOverrides =
           state.dashboardWorktreeCollapseOverrides
+        prevProjectCanvasSettings = state.projectCanvasSettings
         const currentState = getCurrentUIState()
         debouncedSaveRef.current?.(currentState)
       }
