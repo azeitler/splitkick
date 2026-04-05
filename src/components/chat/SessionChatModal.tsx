@@ -102,6 +102,7 @@ import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu
 import { LabelModal } from './LabelModal'
 import { useSessionArchive } from './hooks/useSessionArchive'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useSwipeBack } from '@/hooks/useSwipeBack'
 
 /** Track whether any waiting tabs are off-screen to the left or right */
 function useOffScreenWaiting(
@@ -224,6 +225,10 @@ export function SessionChatModal({
   onClose,
 }: SessionChatModalProps) {
   const isMobile = useIsMobile()
+  const swipe = useSwipeBack({
+    onSwipeBack: onClose,
+    enabled: isMobile && isOpen,
+  })
   const { data: sessionsData } = useSessions(
     worktreeId || null,
     worktreePath || null
@@ -747,8 +752,26 @@ export function SessionChatModal({
     <>
       <div
         key={worktreeId}
+        ref={isMobile ? swipe.containerRef : undefined}
         className="absolute inset-0 z-10 flex flex-col overflow-hidden bg-background pb-2 pt-[3px]"
+        style={
+          isMobile
+            ? {
+                transform: `translateX(${swipe.translateX}px)`,
+                transition: swipe.transitionStyle || undefined,
+                willChange: swipe.isSwiping ? 'transform' : undefined,
+              }
+            : undefined
+        }
       >
+        {isMobile && (
+          <div
+            className={cn(
+              'absolute left-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-r-full bg-muted-foreground/20 transition-opacity duration-300',
+              swipe.isSwiping ? 'opacity-0' : 'opacity-100'
+            )}
+          />
+        )}
         <div className="flex shrink-0 flex-col gap-2 border-b px-4 py-2 sm:text-left">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 min-w-0">
