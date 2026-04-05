@@ -5,9 +5,11 @@ use axum::{
     routing::get,
     Json, Router,
 };
+use if_addrs::get_if_addrs;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::net::SocketAddr;
+use std::collections::HashSet;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
@@ -33,6 +35,7 @@ pub struct HttpServerHandle {
     pub port: u16,
     pub token: String,
     pub url: String,
+    pub bind_host: String,
     pub localhost_only: bool,
     pub token_required: bool,
 }
@@ -44,6 +47,7 @@ pub struct ServerStatus {
     pub url: Option<String>,
     pub token: Option<String>,
     pub port: Option<u16>,
+    pub bind_host: Option<String>,
     pub localhost_only: Option<bool>,
 }
 
@@ -54,6 +58,12 @@ struct WsAuth {
     /// Used by /api/init to load the correct active sessions even when
     /// ui_state.json on disk is stale (debounced save hasn't flushed yet).
     active_sessions: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct BindHostOption {
+    pub host: String,
+    pub label: String,
 }
 
 /// Resolve the dist directory path at runtime.
@@ -120,9 +130,11 @@ pub async fn start_server(
     app: AppHandle,
     port: u16,
     token: String,
-    localhost_only: bool,
+    bind_host: String,
     token_required: bool,
 ) -> Result<HttpServerHandle, String> {
+    let bind_ip = parse_bind_ip(&bind_host)?;
+    let localhost_only = bind_ip.is_loopback();
     let state = AppState {
         app: app.clone(),
         token: token.clone(),
@@ -151,33 +163,25 @@ pub async fn start_server(
         .layer(cors)
         .with_state(state);
 
-    // Bind to localhost only or all interfaces based on preference
-    let addr = if localhost_only {
-        SocketAddr::from(([127, 0, 0, 1], port))
-    } else {
-        SocketAddr::from(([0, 0, 0, 0], port))
-    };
+    let addr = SocketAddr::new(bind_ip, port);
     let listener = tokio::net::TcpListener::bind(addr)
         .await
-        .map_err(|e| format!("Failed to bind to port {port}: {e}"))?;
+        .map_err(|e| format!("Failed to bind to {bind_host}:{port}: {e}"))?;
 
     let local_addr = listener
         .local_addr()
         .map_err(|e| format!("Failed to get local address: {e}"))?;
 
-    // Get LAN IP for the URL (only used when not localhost-only)
-    let ip = if localhost_only {
-        "127.0.0.1".to_string()
-    } else {
-        get_local_ip().unwrap_or_else(|| "127.0.0.1".to_string())
-    };
-    let url = format!("http://{ip}:{}", local_addr.port());
+    let url = format_http_url(&display_host_for_bind_ip(bind_ip), local_addr.port());
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
+    let bind_host_for_log = bind_host.clone();
 
     // Spawn the server
     tokio::spawn(async move {
-        log::info!("HTTP server listening on {local_addr} (localhost_only: {localhost_only})");
+        log::info!(
+            "HTTP server listening on {local_addr} (bind_host: {bind_host_for_log}, localhost_only: {localhost_only})"
+        );
         axum::serve(listener, router)
             .with_graceful_shutdown(async {
                 let _ = shutdown_rx.await;
@@ -192,6 +196,7 @@ pub async fn start_server(
         port: local_addr.port(),
         token,
         url,
+        bind_host,
         localhost_only,
         token_required,
     })
@@ -660,13 +665,167 @@ async fn file_handler(
     }
 }
 
-/// Get the local LAN IP address.
-fn get_local_ip() -> Option<String> {
-    use std::net::UdpSocket;
-    let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
-    socket.connect("8.8.8.8:80").ok()?;
-    let addr = socket.local_addr().ok()?;
-    Some(addr.ip().to_string())
+fn parse_bind_ip(host: &str) -> Result<IpAddr, String> {
+    let trimmed = host.trim();
+    if trimmed.is_empty() {
+        return Err("Bind address cannot be empty".to_string());
+    }
+
+    if trimmed.eq_ignore_ascii_case("localhost") {
+        return Ok(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    }
+
+    trimmed
+        .parse::<IpAddr>()
+        .map_err(|_| format!("Invalid bind address '{trimmed}'. Use an IP address or 'localhost'"))
+}
+
+pub(crate) fn validate_bind_host(host: &str) -> Result<String, String> {
+    let trimmed = host.trim();
+    parse_bind_ip(trimmed)?;
+
+    if trimmed.eq_ignore_ascii_case("localhost") {
+        Ok("localhost".to_string())
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+fn display_host_for_bind_ip(bind_ip: IpAddr) -> String {
+    display_ip_for_bind_ip_with_candidates(
+        bind_ip,
+        get_if_addrs()
+            .into_iter()
+            .flatten()
+            .map(|interface| interface.ip()),
+    )
+    .to_string()
+}
+
+fn display_ip_for_bind_ip_with_candidates(
+    bind_ip: IpAddr,
+    candidates: impl IntoIterator<Item = IpAddr>,
+) -> IpAddr {
+    if !bind_ip.is_unspecified() {
+        return bind_ip;
+    }
+
+    let mut ipv4_candidate = None;
+    let mut ipv6_candidate = None;
+
+    for ip in candidates {
+        if !is_displayable_bind_ip_candidate(ip) {
+            continue;
+        }
+
+        match ip {
+            IpAddr::V4(_) if ipv4_candidate.is_none() => ipv4_candidate = Some(ip),
+            IpAddr::V6(_) if ipv6_candidate.is_none() => ipv6_candidate = Some(ip),
+            _ => {}
+        }
+    }
+
+    match bind_ip {
+        IpAddr::V4(_) => ipv4_candidate.unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST)),
+        IpAddr::V6(_) => ipv6_candidate
+            .or(ipv4_candidate)
+            .unwrap_or(IpAddr::V6(Ipv6Addr::LOCALHOST)),
+    }
+}
+
+fn is_displayable_bind_ip_candidate(ip: IpAddr) -> bool {
+    if ip.is_loopback() || ip.is_unspecified() || ip.is_multicast() {
+        return false;
+    }
+
+    !matches!(ip, IpAddr::V6(v6) if v6.is_unicast_link_local())
+}
+
+fn format_http_url(host: &str, port: u16) -> String {
+    if host.contains(':') && !host.starts_with('[') {
+        format!("http://[{host}]:{port}")
+    } else {
+        format!("http://{host}:{port}")
+    }
+}
+
+pub fn list_bind_host_options() -> Vec<BindHostOption> {
+    let mut seen = HashSet::from([
+        "127.0.0.1".to_string(),
+        "0.0.0.0".to_string(),
+        "::1".to_string(),
+        "::".to_string(),
+    ]);
+    let mut options = vec![
+        BindHostOption {
+            host: "127.0.0.1".to_string(),
+            label: "This device only (localhost)".to_string(),
+        },
+        BindHostOption {
+            host: "0.0.0.0".to_string(),
+            label: "All interfaces".to_string(),
+        },
+    ];
+    let mut detected = Vec::new();
+
+    if let Ok(interfaces) = get_if_addrs() {
+        for interface in interfaces {
+            let ip = interface.ip();
+            if !is_displayable_bind_ip_candidate(ip) {
+                continue;
+            }
+
+            let host = ip.to_string();
+            if !seen.insert(host.clone()) {
+                continue;
+            }
+
+            detected.push(BindHostOption {
+                label: bind_host_option_label(&interface.name, ip),
+                host,
+            });
+        }
+    }
+
+    detected.sort_by(|left, right| {
+        bind_host_option_rank(&left.host)
+            .cmp(&bind_host_option_rank(&right.host))
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    options.extend(detected);
+    options
+}
+
+fn bind_host_option_label(interface_name: &str, ip: IpAddr) -> String {
+    match ip {
+        IpAddr::V4(v4) if is_tailscale_ipv4(v4) => format!("Tailscale ({v4})"),
+        IpAddr::V6(v6) if is_tailscale_ipv6(v6) => format!("Tailscale ({v6})"),
+        IpAddr::V4(v4) if v4.is_private() => format!("Local network ({interface_name}: {v4})"),
+        IpAddr::V4(v4) => format!("{interface_name} ({v4})"),
+        IpAddr::V6(v6) => format!("{interface_name} ({v6})"),
+    }
+}
+
+fn bind_host_option_rank(host: &str) -> u8 {
+    host.parse::<IpAddr>()
+        .map(|ip| match ip {
+            IpAddr::V4(v4) if is_tailscale_ipv4(v4) => 0,
+            IpAddr::V6(v6) if is_tailscale_ipv6(v6) => 0,
+            IpAddr::V4(v4) if v4.is_private() => 1,
+            IpAddr::V4(_) => 2,
+            IpAddr::V6(_) => 3,
+        })
+        .unwrap_or(4)
+}
+
+fn is_tailscale_ipv4(ip: Ipv4Addr) -> bool {
+    let octets = ip.octets();
+    octets[0] == 100 && (64..=127).contains(&octets[1])
+}
+
+fn is_tailscale_ipv6(ip: Ipv6Addr) -> bool {
+    let segments = ip.segments();
+    segments[0] == 0xfd7a && segments[1] == 0x115c && segments[2] == 0xa1e0
 }
 
 /// Get current server status. Called from dispatch.
@@ -680,6 +839,7 @@ pub async fn get_server_status(app: AppHandle) -> ServerStatus {
                     url: Some(h.url.clone()),
                     token: Some(h.token.clone()),
                     port: Some(h.port),
+                    bind_host: Some(h.bind_host.clone()),
                     localhost_only: Some(h.localhost_only),
                 },
                 None => ServerStatus {
@@ -687,6 +847,7 @@ pub async fn get_server_status(app: AppHandle) -> ServerStatus {
                     url: None,
                     token: None,
                     port: None,
+                    bind_host: None,
                     localhost_only: None,
                 },
             }
@@ -696,7 +857,179 @@ pub async fn get_server_status(app: AppHandle) -> ServerStatus {
             url: None,
             token: None,
             port: None,
+            bind_host: None,
             localhost_only: None,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        bind_host_option_label, bind_host_option_rank, display_host_for_bind_ip,
+        display_ip_for_bind_ip_with_candidates, format_http_url, is_tailscale_ipv4, parse_bind_ip,
+        validate_bind_host,
+    };
+    use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+
+    #[test]
+    fn parse_bind_ip_accepts_localhost_and_ip_literals() {
+        assert_eq!(
+            parse_bind_ip("localhost").unwrap(),
+            IpAddr::V4(Ipv4Addr::LOCALHOST)
+        );
+        assert_eq!(
+            parse_bind_ip("100.64.0.1").unwrap(),
+            IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))
+        );
+        assert_eq!(
+            parse_bind_ip("::1").unwrap(),
+            IpAddr::V6(Ipv6Addr::LOCALHOST)
+        );
+    }
+
+    #[test]
+    fn parse_bind_ip_rejects_invalid_values() {
+        let error = parse_bind_ip("tailscale").unwrap_err();
+        assert!(error.contains("Invalid bind address"));
+
+        let empty_error = parse_bind_ip("").unwrap_err();
+        assert!(empty_error.contains("cannot be empty"));
+    }
+
+    #[test]
+    fn validate_bind_host_trims_and_normalizes_localhost() {
+        assert_eq!(validate_bind_host(" LOCALHOST ").unwrap(), "localhost");
+        assert_eq!(
+            validate_bind_host(" 100.110.76.47 ").unwrap(),
+            "100.110.76.47"
+        );
+    }
+
+    #[test]
+    fn display_host_uses_specific_bind_ip_directly() {
+        assert_eq!(
+            display_host_for_bind_ip(IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))),
+            "100.64.0.1"
+        );
+        assert_eq!(
+            display_host_for_bind_ip(IpAddr::V6(Ipv6Addr::LOCALHOST)),
+            "::1"
+        );
+    }
+
+    #[test]
+    fn ipv4_wildcard_display_host_uses_first_valid_ipv4_candidate() {
+        assert_eq!(
+            display_ip_for_bind_ip_with_candidates(
+                IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+                [
+                    IpAddr::V6(Ipv6Addr::LOCALHOST),
+                    IpAddr::V4(Ipv4Addr::new(192, 168, 1, 25)),
+                    IpAddr::V6("fd7a:115c:a1e0::1".parse::<Ipv6Addr>().unwrap()),
+                ],
+            ),
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 25))
+        );
+    }
+
+    #[test]
+    fn ipv6_wildcard_display_host_prefers_valid_ipv6_candidate() {
+        assert_eq!(
+            display_ip_for_bind_ip_with_candidates(
+                IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+                [
+                    IpAddr::V4(Ipv4Addr::new(192, 168, 1, 25)),
+                    IpAddr::V6("fd7a:115c:a1e0::1".parse::<Ipv6Addr>().unwrap()),
+                ],
+            ),
+            IpAddr::V6("fd7a:115c:a1e0::1".parse::<Ipv6Addr>().unwrap())
+        );
+    }
+
+    #[test]
+    fn ipv6_wildcard_display_host_falls_back_to_ipv4_when_needed() {
+        assert_eq!(
+            display_ip_for_bind_ip_with_candidates(
+                IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+                [IpAddr::V4(Ipv4Addr::new(192, 168, 1, 25))],
+            ),
+            IpAddr::V4(Ipv4Addr::new(192, 168, 1, 25))
+        );
+    }
+
+    #[test]
+    fn ipv6_wildcard_display_host_falls_back_to_ipv6_localhost_when_no_candidates() {
+        assert_eq!(
+            display_ip_for_bind_ip_with_candidates(IpAddr::V6(Ipv6Addr::UNSPECIFIED), []),
+            IpAddr::V6(Ipv6Addr::LOCALHOST)
+        );
+    }
+
+    #[test]
+    fn format_http_url_wraps_ipv6_hosts() {
+        assert_eq!(
+            format_http_url("100.64.0.1", 3456),
+            "http://100.64.0.1:3456"
+        );
+        assert_eq!(format_http_url("::1", 3456), "http://[::1]:3456");
+    }
+
+    #[test]
+    fn wildcard_display_urls_never_use_unspecified_hosts() {
+        let ipv6_url = format_http_url(
+            &display_ip_for_bind_ip_with_candidates(
+                IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+                [IpAddr::V6("fd7a:115c:a1e0::1".parse::<Ipv6Addr>().unwrap())],
+            )
+            .to_string(),
+            3456,
+        );
+        assert_eq!(ipv6_url, "http://[fd7a:115c:a1e0::1]:3456");
+
+        let fallback_url = format_http_url(
+            &display_ip_for_bind_ip_with_candidates(IpAddr::V6(Ipv6Addr::UNSPECIFIED), [])
+                .to_string(),
+            3456,
+        );
+        assert_ne!(fallback_url, "http://[::]:3456");
+        assert_eq!(fallback_url, "http://[::1]:3456");
+    }
+
+    #[test]
+    fn tailscale_ipv4_detection_matches_cgnat_range() {
+        assert!(is_tailscale_ipv4(Ipv4Addr::new(100, 110, 76, 47)));
+        assert!(!is_tailscale_ipv4(Ipv4Addr::new(100, 63, 0, 1)));
+        assert!(!is_tailscale_ipv4(Ipv4Addr::new(192, 168, 1, 10)));
+    }
+
+    #[test]
+    fn tailscale_ipv6_detection_matches_known_prefix() {
+        assert!(super::is_tailscale_ipv6(
+            "fd7a:115c:a1e0::1".parse::<Ipv6Addr>().unwrap()
+        ));
+        assert!(!super::is_tailscale_ipv6(
+            "fd00::1".parse::<Ipv6Addr>().unwrap()
+        ));
+    }
+
+    #[test]
+    fn bind_host_labels_prioritize_tailscale_and_lan_ips() {
+        assert_eq!(
+            bind_host_option_label("utun4", IpAddr::V4(Ipv4Addr::new(100, 110, 76, 47))),
+            "Tailscale (100.110.76.47)"
+        );
+        assert_eq!(
+            bind_host_option_label("en0", IpAddr::V4(Ipv4Addr::new(192, 168, 18, 17))),
+            "Local network (en0: 192.168.18.17)"
+        );
+        assert!(bind_host_option_rank("100.110.76.47") < bind_host_option_rank("192.168.18.17"));
+    }
+
+    #[test]
+    fn bind_host_options_include_default_presets() {
+        let options = super::list_bind_host_options();
+        assert!(options.iter().any(|option| option.host == "127.0.0.1"));
+        assert!(options.iter().any(|option| option.host == "0.0.0.0"));
     }
 }
