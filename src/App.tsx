@@ -215,6 +215,13 @@ function App() {
             chatQueryKeys.sessions(worktreeId),
             sessionsData
           )
+          // Also seed the 'with-counts' variant used by ProjectCanvasView.
+          // The /api/init endpoint fetches with include_message_counts=true,
+          // so this data is valid for both keys.
+          queryClient.setQueryData(
+            [...chatQueryKeys.sessions(worktreeId), 'with-counts'],
+            sessionsData
+          )
 
           // Extract session state for Zustand store
           const wts = sessionsData as WorktreeSessions
@@ -412,23 +419,31 @@ function App() {
           if (data) {
             seedCache(data)
             logger.info('Reconnect: re-seeded cache from HTTP')
-          }
-          setWsDataReady(true)
-          // Invalidate non-preloaded queries after a frame so the seeded
-          // cache renders first (prevents flash of stale → fresh data).
-          requestAnimationFrame(() => {
-            queryClient.invalidateQueries({
-              predicate: query => {
-                const key = query.queryKey[0]
-                return (
-                  key !== 'projects' &&
-                  key !== 'preferences' &&
-                  key !== 'ui-state' &&
-                  key !== 'chat'
-                )
-              },
+            setWsDataReady(true)
+            // Invalidate non-preloaded queries after a frame so the seeded
+            // cache renders first (prevents flash of stale → fresh data).
+            requestAnimationFrame(() => {
+              queryClient.invalidateQueries({
+                predicate: query => {
+                  const key = query.queryKey[0]
+                  return (
+                    key !== 'projects' &&
+                    key !== 'preferences' &&
+                    key !== 'ui-state' &&
+                    key !== 'chat'
+                  )
+                },
+              })
             })
-          })
+          } else {
+            // HTTP fetch returned null (server not ready yet) — invalidate
+            // everything so TanStack Query refetches via WebSocket.
+            logger.warn(
+              'Reconnect: HTTP re-fetch returned no data, invalidating all queries'
+            )
+            setWsDataReady(true)
+            queryClient.invalidateQueries()
+          }
         })
         .catch(err => {
           logger.warn(

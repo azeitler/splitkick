@@ -1000,8 +1000,9 @@ export function useWorktreeEvents() {
           },
         }
 
-        toast.success('Worktree ready', {
+        toast.success(`Worktree ready: ${worktree.name}`, {
           id: `worktree-creating-${worktree.id}`,
+          duration: 5000,
           action: openWorktreeAction,
         })
       })

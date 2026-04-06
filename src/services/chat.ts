@@ -29,6 +29,12 @@ import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import type { ReviewResponse, Worktree } from '@/types/projects'
 
+/** Check if an error is from a WebSocket disconnect (suppress toasts during reconnect). */
+function isWsDisconnectError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error)
+  return msg.includes('WebSocket disconnected')
+}
+
 // Query keys for chat
 export const chatQueryKeys = {
   all: ['chat'] as const,
@@ -430,6 +436,7 @@ export function useCreateSession() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -479,6 +486,7 @@ export function useRenameSession() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -683,6 +691,7 @@ export function useCloseSession() {
       }
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -746,6 +755,7 @@ export function useArchiveSession() {
       }
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message = error instanceof Error ? error.message : String(error)
       logger.error('Failed to archive session', { error })
       toast.error('Failed to archive session', { description: message })
@@ -789,6 +799,7 @@ export function useUnarchiveSession() {
       toast.success('Session restored')
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message = error instanceof Error ? error.message : String(error)
       logger.error('Failed to unarchive session', { error })
       toast.error('Failed to restore session', { description: message })
@@ -860,6 +871,7 @@ export function useRestoreSessionWithBase() {
       toast.success('Session restored')
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message = error instanceof Error ? error.message : String(error)
       logger.error('Failed to restore session with base', { error })
       toast.error('Failed to restore session', { description: message })
@@ -902,6 +914,7 @@ export function useDeleteArchivedSession() {
       toast.success('Session permanently deleted')
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message = error instanceof Error ? error.message : String(error)
       logger.error('Failed to delete archived session', { error })
       toast.error('Failed to delete session', { description: message })
@@ -1156,6 +1169,7 @@ export function useReorderSessions() {
           context.previousSessions
         )
       }
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1208,6 +1222,7 @@ export function useSetActiveSession() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1493,6 +1508,7 @@ export function useSendMessage() {
             ? 'Connection lost — refreshing...'
             : 'Response timed out — refreshing...',
           {
+            id: isDisconnect ? 'ws-disconnect-toast' : undefined,
             description: 'Your message was likely processed successfully.',
           }
         )
@@ -1589,6 +1605,7 @@ export function useClearSessionHistory() {
       toast.success('Chat history cleared')
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1634,6 +1651,7 @@ export function useClearChatHistory() {
       toast.success('Chat history cleared')
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1704,6 +1722,7 @@ export function useSetSessionModel() {
           context.prev
         )
       }
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1748,6 +1767,7 @@ export function useSetSessionBackend() {
     // No query invalidation here — callers chain setSessionModel after,
     // which handles invalidation (avoids race where refetch overwrites optimistic update)
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1800,6 +1820,7 @@ export function useSetSessionProvider() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1855,6 +1876,7 @@ export function useSetSessionThinkingLevel() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1901,6 +1923,7 @@ export function useSetWorktreeModel() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1954,6 +1977,7 @@ export function useSetWorktreeThinkingLevel() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
