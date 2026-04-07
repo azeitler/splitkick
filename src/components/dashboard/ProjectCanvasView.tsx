@@ -29,6 +29,7 @@ import {
   Home,
   Terminal,
   Trash2,
+  Play,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -100,6 +101,7 @@ import {
   useCloseBaseSessionClean,
   useCloseBaseSessionArchive,
 } from '@/services/projects'
+import { useWorktreeTerminalStatus } from '@/hooks/useWorktreeTerminalStatus'
 import { usePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
@@ -116,7 +118,6 @@ const LinkedProjectsModal = lazy(() =>
 )
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
-import { useTerminalStore } from '@/store/terminal-store'
 import {
   Tooltip,
   TooltipContent,
@@ -273,13 +274,11 @@ function WorktreeSectionHeader({
   const isBase = isBaseSession(worktree)
   const { data: gitStatus } = useGitStatus(worktree.id)
 
-  const hasRunningTerminal = useTerminalStore(state => {
-    const terminals = state.terminals[worktree.id] ?? []
-    // Show spinner when a run-script terminal exists: covers both "pending" (created
-    // by startRun on canvas, PTY starts when session opens) and "running" (PTY active).
-    // Terminal entry is removed on successful exit, so spinner clears automatically.
-    return terminals.some(t => !!t.command)
-  })
+  const {
+    hasFailedTerminal,
+    showTerminalIndicator,
+    tooltipLines: terminalTooltipContent,
+  } = useWorktreeTerminalStatus(worktree.id)
 
   const behindCount =
     gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
@@ -416,13 +415,24 @@ function WorktreeSectionHeader({
                 <span className="text-[9px]">⌘{shortcutNumber}</span>
               </kbd>
             )}
-            {hasRunningTerminal && (
+            {showTerminalIndicator && terminalTooltipContent && (
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <span className="shrink-0 block h-3 w-3 square-spinner" />
+                  <Play
+                    className={cn(
+                      'h-3 w-3 shrink-0 fill-current',
+                      hasFailedTerminal ? 'text-red-500' : 'text-yellow-400 animate-icon-glow'
+                    )}
+                  />
                 </TooltipTrigger>
                 <TooltipContent>
-                  Dev server running in terminal. Press ⌘R to open
+                  <div className="flex flex-col gap-0.5">
+                    {terminalTooltipContent.map((line, i) => (
+                      <span key={i} className="text-xs">
+                        {line}
+                      </span>
+                    ))}
+                  </div>
                 </TooltipContent>
               </Tooltip>
             )}
