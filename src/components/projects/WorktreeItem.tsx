@@ -4,16 +4,20 @@ import type {
   IndicatorStatus,
   IndicatorVariant,
 } from '@/components/ui/status-indicator'
-import { ArrowDown, ArrowUp, ChevronDown, GitBranch } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, GitBranch, Play } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { isBaseSession, type Worktree } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { useTerminalStore } from '@/store/terminal-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { WorktreeContextMenu } from './WorktreeContextMenu'
-import { useRenameWorktree } from '@/services/projects'
+import {
+  useRenameWorktree,
+  useTerminalListeningPorts,
+} from '@/services/projects'
 import { useSessions } from '@/services/chat'
 import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
 import {
@@ -78,6 +82,51 @@ export function WorktreeItem({
   )
   const isSelected = selectedWorktreeId === worktree.id
   const isBase = isBaseSession(worktree)
+
+  // Terminal state: separate primitive-only selectors to avoid infinite loops.
+  // useShallow with objects containing arrays can trigger re-render cascades.
+  // Mutation guards on setTerminalRunning/setTerminalFailed prevent spurious
+  // Set ref changes, so these selectors only re-render when values change.
+  const hasRunningTerminal = useTerminalStore(state => {
+    const terminals = state.terminals[worktree.id] ?? []
+    return terminals.some(
+      t => !!t.command && state.runningTerminals.has(t.id)
+    )
+  })
+  const hasFailedTerminal = useTerminalStore(state => {
+    const terminals = state.terminals[worktree.id] ?? []
+    return terminals.some(
+      t => !!t.command && state.failedTerminals.has(t.id)
+    )
+  })
+  const showTerminalIndicator = hasRunningTerminal || hasFailedTerminal
+
+  // Poll for listening ports only when terminals are running
+  const { data: listeningPorts = [] } =
+    useTerminalListeningPorts(hasRunningTerminal)
+
+  // Build tooltip content on demand using getState() (no subscription needed
+  // for tooltip — it only shows on hover, so stale-by-one-render is fine)
+  const terminalTooltipContent = useMemo(() => {
+    if (!showTerminalIndicator) return null
+    const { terminals, runningTerminals, failedTerminals } =
+      useTerminalStore.getState()
+    const worktreeTerminals = terminals[worktree.id] ?? []
+    const lines: string[] = []
+    for (const t of worktreeTerminals) {
+      if (!t.command) continue
+      if (runningTerminals.has(t.id)) {
+        const ports = listeningPorts
+          .filter(p => p.terminalId === t.id)
+          .map(p => `:${p.port}`)
+        const portSuffix = ports.length > 0 ? ` (${ports.join(', ')})` : ''
+        lines.push(`${t.command}${portSuffix}`)
+      } else if (failedTerminals.has(t.id)) {
+        lines.push(`${t.command} (crashed)`)
+      }
+    }
+    return lines
+  }, [showTerminalIndicator, worktree.id, listeningPorts])
 
   // Get git status for this worktree from event-driven cache
   // Note: useGitStatus reads from TanStack Query cache, no network requests
@@ -530,12 +579,37 @@ export function WorktreeItem({
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
         >
-          {/* Status indicator */}
+          {/* Chat status indicator (spinner/dot) */}
           <StatusIndicator
             status={indicatorStatus}
             variant={indicatorVariant}
             className="h-2 w-2"
           />
+
+          {/* Terminal running/failed indicator */}
+          {showTerminalIndicator && terminalTooltipContent && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Play
+                  className={cn(
+                    'h-2.5 w-2.5 shrink-0 fill-current',
+                    hasFailedTerminal
+                      ? 'text-red-500'
+                      : 'text-green-500'
+                  )}
+                />
+              </TooltipTrigger>
+              <TooltipContent>
+                <div className="flex flex-col gap-0.5">
+                  {terminalTooltipContent.map((line, i) => (
+                    <span key={i} className="text-xs">
+                      {line}
+                    </span>
+                  ))}
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          )}
 
           {/* Workspace name - editable on double-click */}
           {isEditing ? (
