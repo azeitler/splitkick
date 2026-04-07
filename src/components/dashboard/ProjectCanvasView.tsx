@@ -29,7 +29,6 @@ import {
   Home,
   Terminal,
   Trash2,
-  Play,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -101,7 +100,7 @@ import {
   useCloseBaseSessionClean,
   useCloseBaseSessionArchive,
 } from '@/services/projects'
-import { useWorktreeTerminalStatus } from '@/hooks/useWorktreeTerminalStatus'
+import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
 import { usePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
@@ -118,11 +117,6 @@ const LinkedProjectsModal = lazy(() =>
 )
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import {
   gitPush,
   fetchWorktreesStatus,
@@ -274,11 +268,6 @@ function WorktreeSectionHeader({
   const isBase = isBaseSession(worktree)
   const { data: gitStatus } = useGitStatus(worktree.id)
 
-  const {
-    hasFailedTerminal,
-    showTerminalIndicator,
-    tooltipLines: terminalTooltipContent,
-  } = useWorktreeTerminalStatus(worktree.id)
 
   const behindCount =
     gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
@@ -415,27 +404,7 @@ function WorktreeSectionHeader({
                 <span className="text-[9px]">⌘{shortcutNumber}</span>
               </kbd>
             )}
-            {showTerminalIndicator && terminalTooltipContent && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Play
-                    className={cn(
-                      'h-3 w-3 shrink-0 fill-current',
-                      hasFailedTerminal ? 'text-red-500' : 'text-yellow-400 animate-icon-glow'
-                    )}
-                  />
-                </TooltipTrigger>
-                <TooltipContent>
-                  <div className="flex flex-col gap-0.5">
-                    {terminalTooltipContent.map((line, i) => (
-                      <span key={i} className="text-xs">
-                        {line}
-                      </span>
-                    ))}
-                  </div>
-                </TooltipContent>
-              </Tooltip>
-            )}
+            <TerminalStatusIndicator worktreeId={worktree.id} iconSize="h-3 w-3" />
             <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 flex-1 truncate">

@@ -1,23 +1,20 @@
 import { useMemo } from 'react'
+import { Play } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import { useTerminalStore } from '@/store/terminal-store'
 import { useTerminalListeningPorts } from '@/services/projects'
 import type { TerminalPortInfo } from '@/services/projects'
-
-export interface WorktreeTerminalStatus {
-  hasRunningTerminal: boolean
-  hasFailedTerminal: boolean
-  showTerminalIndicator: boolean
-  /** Lines to show in tooltip. null when no indicator to show. */
-  tooltipLines: string[] | null
-}
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 /**
  * Shared hook for per-worktree terminal status detection.
  * Tracks running/failed run-script terminals and discovered listening ports.
  */
-export function useWorktreeTerminalStatus(
-  worktreeId: string
-): WorktreeTerminalStatus {
+export function useWorktreeTerminalStatus(worktreeId: string) {
   const hasRunningTerminal = useTerminalStore(state => {
     const terminals = state.terminals[worktreeId] ?? []
     return terminals.some(
@@ -59,5 +56,47 @@ export function useWorktreeTerminalStatus(
     return lines
   }, [showTerminalIndicator, worktreeId, listeningPorts])
 
-  return { hasRunningTerminal, hasFailedTerminal, showTerminalIndicator, tooltipLines }
+  return { hasFailedTerminal, showTerminalIndicator, tooltipLines }
+}
+
+/**
+ * Play icon with tooltip showing running/failed terminal status and listening ports.
+ * Returns null when no run-script terminals are active or failed.
+ */
+export function TerminalStatusIndicator({
+  worktreeId,
+  iconSize = 'h-2.5 w-2.5',
+}: {
+  worktreeId: string
+  iconSize?: string
+}) {
+  const { hasFailedTerminal, showTerminalIndicator, tooltipLines } =
+    useWorktreeTerminalStatus(worktreeId)
+
+  if (!showTerminalIndicator || !tooltipLines) return null
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Play
+          className={cn(
+            'shrink-0 fill-current',
+            iconSize,
+            hasFailedTerminal
+              ? 'text-red-500'
+              : 'text-yellow-400 animate-icon-glow'
+          )}
+        />
+      </TooltipTrigger>
+      <TooltipContent>
+        <div className="flex flex-col gap-0.5">
+          {tooltipLines.map((line, i) => (
+            <span key={i} className="text-xs">
+              {line}
+            </span>
+          ))}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  )
 }

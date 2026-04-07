@@ -4,7 +4,7 @@ import type {
   IndicatorStatus,
   IndicatorVariant,
 } from '@/components/ui/status-indicator'
-import { ArrowDown, ArrowUp, ChevronDown, GitBranch, Play } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, GitBranch } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { isBaseSession, type Worktree } from '@/types/projects'
@@ -12,7 +12,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useWorktreeTerminalStatus } from '@/hooks/useWorktreeTerminalStatus'
+import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
 import { WorktreeContextMenu } from './WorktreeContextMenu'
 import { useRenameWorktree } from '@/services/projects'
 import { useSessions } from '@/services/chat'
@@ -80,11 +80,6 @@ export function WorktreeItem({
   const isSelected = selectedWorktreeId === worktree.id
   const isBase = isBaseSession(worktree)
 
-  const {
-    hasFailedTerminal,
-    showTerminalIndicator,
-    tooltipLines: terminalTooltipContent,
-  } = useWorktreeTerminalStatus(worktree.id)
 
   // Get git status for this worktree from event-driven cache
   // Note: useGitStatus reads from TanStack Query cache, no network requests
@@ -545,29 +540,7 @@ export function WorktreeItem({
           />
 
           {/* Terminal running/failed indicator */}
-          {showTerminalIndicator && terminalTooltipContent && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Play
-                  className={cn(
-                    'h-2.5 w-2.5 shrink-0 fill-current',
-                    hasFailedTerminal
-                      ? 'text-red-500'
-                      : 'text-yellow-400 animate-icon-glow'
-                  )}
-                />
-              </TooltipTrigger>
-              <TooltipContent>
-                <div className="flex flex-col gap-0.5">
-                  {terminalTooltipContent.map((line, i) => (
-                    <span key={i} className="text-xs">
-                      {line}
-                    </span>
-                  ))}
-                </div>
-              </TooltipContent>
-            </Tooltip>
-          )}
+          <TerminalStatusIndicator worktreeId={worktree.id} />
 
           {/* Workspace name - editable on double-click */}
           {isEditing ? (
