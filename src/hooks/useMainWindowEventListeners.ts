@@ -202,20 +202,22 @@ function executeKeybindingAction(
         break
       }
 
+      const resolvedWorktreePath = targetWorktreePath
+
       // Fetch run scripts - use fetchQuery to handle uncached dashboard worktrees
       ;(async () => {
         let runScripts = queryClient.getQueryData<string[]>([
           'run-scripts',
-          targetWorktreePath,
+          resolvedWorktreePath,
         ])
 
         if (runScripts === undefined) {
           try {
             runScripts = await queryClient.fetchQuery<string[]>({
-              queryKey: ['run-scripts', targetWorktreePath],
+              queryKey: ['run-scripts', resolvedWorktreePath],
               queryFn: () =>
                 invoke<string[]>('get_run_scripts', {
-                  worktreePath: targetWorktreePath,
+                  worktreePath: resolvedWorktreePath,
                 }),
             })
           } catch {
@@ -254,7 +256,7 @@ function executeKeybindingAction(
           // Canvas view: start PTY headlessly (no terminal UI mounted yet)
           startHeadless(terminalId, {
             worktreeId: targetWorktreeId,
-            worktreePath: targetWorktreePath!,
+            worktreePath: resolvedWorktreePath,
             command: firstScript,
           })
         }
@@ -520,7 +522,7 @@ export function useMainWindowEventListeners() {
         if (terminalShortcutWorktreeId) {
           const kb = keybindingsRef.current
           const digitMatch = e.code.match(/^Digit(\d)$/)
-          const digit = digitMatch ? parseInt(digitMatch[1]!, 10) : NaN
+          const digit = digitMatch?.[1] ? parseInt(digitMatch[1], 10) : NaN
 
           if (
             (e.metaKey || e.ctrlKey) &&
@@ -563,7 +565,7 @@ export function useMainWindowEventListeners() {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         // Use e.code (physical key) since e.key can vary with CMD held on macOS
         const digitMatch = e.code.match(/^Digit(\d)$/)
-        const digit = digitMatch ? parseInt(digitMatch[1]!, 10) : NaN
+        const digit = digitMatch?.[1] ? parseInt(digitMatch[1], 10) : NaN
         if (digit >= 1 && digit <= 9) {
           e.preventDefault()
           e.stopPropagation()

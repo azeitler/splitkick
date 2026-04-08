@@ -12,7 +12,9 @@ import {
 
 const { mockInvoke, mockListen, mockDisposeTerminal } = vi.hoisted(() => ({
   mockInvoke: vi.fn().mockResolvedValue(undefined),
-  mockListen: vi.fn().mockResolvedValue(() => {}),
+  mockListen: vi.fn().mockResolvedValue(() => {
+    /* noop cleanup */
+  }),
   mockDisposeTerminal: vi.fn(),
 }))
 

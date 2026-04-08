@@ -31,7 +31,7 @@ vi.mock('@/services/preferences', () => ({
 
 vi.mock('@/services/chat', async () => {
   const actual =
-    await vi.importActual<typeof import('@/services/chat')>('@/services/chat')
+    await vi.importActual<typeof import('@/services/chat')>('@/services/chat') // eslint-disable-line @typescript-eslint/consistent-type-imports
 
   return {
     ...actual,

@@ -660,12 +660,6 @@ export function DesktopToolbarControls({
                           ? 'Codex'
                           : 'OpenCode'}
                     </span>
-                    {(selectedBackend === 'codex' ||
-                      selectedBackend === 'opencode') && (
-                      <span className="rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                        BETA
-                      </span>
-                    )}
                     <ChevronDown className="h-3 w-3 opacity-50" />
                   </button>
                 </DropdownMenuTrigger>
@@ -691,17 +685,11 @@ export function DesktopToolbarControls({
                 {installedBackends.includes('codex') && (
                   <DropdownMenuRadioItem value="codex">
                     Codex
-                    <span className="ml-auto rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                      BETA
-                    </span>
                   </DropdownMenuRadioItem>
                 )}
                 {installedBackends.includes('opencode') && (
                   <DropdownMenuRadioItem value="opencode">
                     OpenCode
-                    <span className="ml-auto rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                      BETA
-                    </span>
                   </DropdownMenuRadioItem>
                 )}
               </DropdownMenuRadioGroup>
@@ -836,8 +824,8 @@ export function DesktopToolbarControls({
                 } else if (event.key === 'Enter') {
                   event.preventDefault()
                   event.stopPropagation()
-                  if (visibleModelOptions.length > 0) {
-                    handleModelChange(visibleModelOptions[0]!.value)
+                  if (visibleModelOptions[0]) {
+                    handleModelChange(visibleModelOptions[0].value)
                   }
                 } else {
                   event.stopPropagation()

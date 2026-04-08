@@ -747,18 +747,12 @@ export function MobileToolbarMenu({
                   )}
                   {installedBackends.includes('codex') && (
                     <DropdownMenuRadioItem value="codex">
-                      Codex{' '}
-                      <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                        BETA
-                      </span>
+                      Codex
                     </DropdownMenuRadioItem>
                   )}
                   {installedBackends.includes('opencode') && (
                     <DropdownMenuRadioItem value="opencode">
-                      OpenCode{' '}
-                      <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                        BETA
-                      </span>
+                      OpenCode
                     </DropdownMenuRadioItem>
                   )}
                 </DropdownMenuRadioGroup>

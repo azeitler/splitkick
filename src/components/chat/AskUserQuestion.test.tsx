@@ -37,10 +37,9 @@ describe('AskUserQuestion', () => {
     },
   ]
 
-  const noopSubmit = (
-    _toolCallId: string,
-    _answers: QuestionAnswer[]
-  ) => {}
+  const noopSubmit = (_toolCallId: string, _answers: QuestionAnswer[]) => {
+    // noop for test
+  }
 
   it('shows persisted answer labels in the collapsed summary and expanded content', () => {
     render(
@@ -62,8 +61,12 @@ describe('AskUserQuestion', () => {
 
     fireEvent.click(screen.getByText('Backyard birding | Reflective'))
 
-    expect(screen.getByText('Personal experiences watching birds at home')).toBeVisible()
-    expect(screen.getByText('Deeper thoughts on nature and slowing down')).toBeVisible()
+    expect(
+      screen.getByText('Personal experiences watching birds at home')
+    ).toBeVisible()
+    expect(
+      screen.getByText('Deeper thoughts on nature and slowing down')
+    ).toBeVisible()
     expect(
       screen.queryByText('Answered (details unavailable)')
     ).not.toBeInTheDocument()

@@ -1051,14 +1051,7 @@ export const GeneralPane: React.FC = () => {
 
       {isNativeApp() && (
         <SettingsSection
-          title={
-            <>
-              Codex CLI{' '}
-              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                BETA
-              </span>
-            </>
-          }
+          title="Codex CLI"
           actions={
             codexStatus?.installed ? (
               checkingCodexAuth || isCodexAuthLoading ? (
@@ -1210,14 +1203,7 @@ export const GeneralPane: React.FC = () => {
 
       {isNativeApp() && (
         <SettingsSection
-          title={
-            <>
-              OpenCode CLI{' '}
-              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                BETA
-              </span>
-            </>
-          }
+          title="OpenCode CLI"
           actions={
             opencodeStatus?.installed ? (
               checkingOpenCodeAuth || isOpenCodeAuthLoading ? (
@@ -1822,10 +1808,7 @@ export const GeneralPane: React.FC = () => {
           {/* Codex subsection */}
           <div className="pt-2">
             <div className="text-sm font-semibold text-foreground/80 mb-3">
-              Codex{' '}
-              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                BETA
-              </span>
+              Codex
             </div>
           </div>
 
@@ -1900,10 +1883,7 @@ export const GeneralPane: React.FC = () => {
           {/* OpenCode subsection */}
           <div className="pt-2">
             <div className="text-sm font-semibold text-foreground/80 mb-3">
-              OpenCode{' '}
-              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                BETA
-              </span>
+              OpenCode
             </div>
           </div>
 
