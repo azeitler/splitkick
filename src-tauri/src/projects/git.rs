@@ -1277,6 +1277,13 @@ pub fn gh_pr_checkout(
 pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), String> {
     log::trace!("Removing worktree at {worktree_path}");
 
+    // SAFETY: Never remove the main working tree — this would delete the entire repo
+    if is_main_worktree(repo_path, worktree_path) {
+        return Err(format!(
+            "Refusing to remove main working tree at {worktree_path}"
+        ));
+    }
+
     // Prune stale worktree entries (folders deleted outside the app)
     let _ = silent_command("git")
         .args(["worktree", "prune"])
@@ -1318,7 +1325,17 @@ pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), Strin
                 .output();
         } else {
             // git worktree remove failed (e.g. file locks on Windows)
-            // Try manual directory removal as fallback
+            // Try manual directory removal as fallback, but NEVER on the repo root
+            let is_repo_root = {
+                let wt = Path::new(worktree_path).canonicalize().ok();
+                let rp = Path::new(repo_path).canonicalize().ok();
+                wt.is_some() && wt == rp
+            };
+            if is_repo_root {
+                return Err(format!(
+                    "Refusing to remove directory: path matches repository root ({repo_path})"
+                ));
+            }
             if Path::new(worktree_path).exists() {
                 log::warn!(
                     "git worktree remove failed ({stderr}), attempting manual directory removal"
@@ -1339,7 +1356,13 @@ pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), Strin
     }
 
     // Safety net: if git reported success but directory still exists, clean it up
-    if Path::new(worktree_path).exists() {
+    // But NEVER remove the repo root directory
+    let is_repo_root = {
+        let wt = Path::new(worktree_path).canonicalize().ok();
+        let rp = Path::new(repo_path).canonicalize().ok();
+        wt.is_some() && wt == rp
+    };
+    if Path::new(worktree_path).exists() && !is_repo_root {
         log::warn!(
             "Worktree directory still exists after git worktree remove, cleaning up manually"
         );
@@ -1441,6 +1464,36 @@ pub fn cleanup_stale_branch(repo_path: &str, branch: &str) {
         log::trace!("Deleting stale branch '{branch}'");
         let _ = delete_branch(repo_path, branch);
     }
+}
+
+/// Check if a path is the main working tree (not a linked worktree).
+/// Uses `git worktree list --porcelain` — the first entry is always the main worktree.
+pub fn is_main_worktree(repo_path: &str, worktree_path: &str) -> bool {
+    let output = silent_command("git")
+        .args(["worktree", "list", "--porcelain"])
+        .current_dir(repo_path)
+        .output()
+        .ok();
+
+    let Some(output) = output else { return false };
+    if !output.status.success() {
+        return false;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    // First "worktree <path>" line is always the main worktree
+    for line in stdout.lines() {
+        if let Some(path) = line.strip_prefix("worktree ") {
+            // Canonicalize both paths for reliable comparison (handles symlinks, trailing slashes, ..)
+            let main = Path::new(path).canonicalize().ok();
+            let target = Path::new(worktree_path).canonicalize().ok();
+            return match (main, target) {
+                (Some(m), Some(t)) => m == t,
+                _ => path == worktree_path,
+            };
+        }
+    }
+    false
 }
 
 /// List existing worktrees for a repository

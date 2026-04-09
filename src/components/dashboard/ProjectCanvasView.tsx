@@ -584,6 +584,18 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     return visibleWorktrees.filter(wt => wt.status === 'pending')
   }, [visibleWorktrees])
 
+  // All worktree labels (unfiltered by search) for the label modal
+  const allWorktreeLabels = useMemo(() => {
+    const labels: LabelData[] = []
+    for (const wt of readyWorktrees) {
+      if (wt.label) labels.push(wt.label)
+    }
+    for (const wt of pendingWorktrees) {
+      if (wt.label) labels.push(wt.label)
+    }
+    return labels
+  }, [readyWorktrees, pendingWorktrees])
+
   // Load sessions for all worktrees dynamically using useQueries
   const sessionQueries = useQueries({
     queries: readyWorktrees.map(wt => ({
@@ -2276,9 +2288,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         currentLabel={worktreeLabelTarget?.currentLabel ?? null}
         onApply={handleWorktreeLabelApply}
         onColorChange={handleLabelColorChange}
-        extraLabels={worktreeSections
-          .map(s => s.worktree.label)
-          .filter((l): l is LabelData => !!l)}
+        extraLabels={allWorktreeLabels}
       />
 
       {/* Session Chat Modal */}

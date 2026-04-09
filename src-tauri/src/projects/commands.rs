@@ -2507,6 +2507,14 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
         worktree.path
     );
 
+    // SAFETY: Never delete a Base session — its path is the main repo root
+    if worktree.session_type == SessionType::Base {
+        return Err(
+            "Cannot delete a base session. Use the project settings to manage the base branch."
+                .to_string(),
+        );
+    }
+
     let project = data
         .find_project(&worktree.project_id)
         .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?
