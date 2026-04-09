@@ -85,7 +85,7 @@ export function TerminalStatusIndicator({
             iconSize,
             hasFailedTerminal
               ? 'text-red-500'
-              : 'text-yellow-400 animate-icon-glow'
+              : 'text-amber-500 dark:text-yellow-400 animate-icon-glow'
           )}
         />
       </TooltipTrigger>

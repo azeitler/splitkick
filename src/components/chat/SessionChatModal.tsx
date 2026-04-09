@@ -877,7 +877,7 @@ export function SessionChatModal({
                           onClick={handleRun}
                         >
                           <Play
-                            className={`h-3 w-3 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`}
+                            className={`h-3 w-3 ${hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
                           />
                         </Button>
                       </TooltipTrigger>
@@ -900,7 +900,7 @@ export function SessionChatModal({
                             onClick={handleRun}
                           >
                             <Play
-                              className={`h-3 w-3 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`}
+                              className={`h-3 w-3 ${hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
                             />
                           </Button>
                         </TooltipTrigger>
@@ -1013,7 +1013,7 @@ export function SessionChatModal({
                     {runScripts.length === 1 && (
                       <DropdownMenuItem onSelect={handleRun}>
                         <Play
-                          className={`h-4 w-4 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`}
+                          className={`h-4 w-4 ${hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
                         />
                         Run
                       </DropdownMenuItem>
@@ -1022,7 +1022,7 @@ export function SessionChatModal({
                       <DropdownMenuSub>
                         <DropdownMenuSubTrigger>
                           <Play
-                            className={`h-4 w-4 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`}
+                            className={`h-4 w-4 ${hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
                           />
                           Run
                         </DropdownMenuSubTrigger>
