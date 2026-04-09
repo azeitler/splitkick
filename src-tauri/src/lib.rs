@@ -1251,9 +1251,21 @@ pub struct UIState {
     #[serde(default)]
     pub modal_terminal_open: std::collections::HashMap<String, bool>,
 
-    /// Modal terminal drawer width in pixels
+    /// Modal terminal dock mode
+    #[serde(default)]
+    pub modal_terminal_dock_mode: Option<String>,
+
+    /// Legacy pinned state; maps to right dock when true
+    #[serde(default)]
+    pub modal_terminal_pinned: Option<bool>,
+
+    /// Modal terminal width in pixels for left/right dock
     #[serde(default)]
     pub modal_terminal_width: Option<f64>,
+
+    /// Modal terminal height in pixels for bottom dock
+    #[serde(default)]
+    pub modal_terminal_height: Option<f64>,
 
     /// Last-accessed timestamps per project for recency sorting (projectId → unix ms)
     #[serde(default)]
@@ -1307,7 +1319,10 @@ impl Default for UIState {
             review_sidebar_visible: None,
             pending_digest_session_ids: Vec::new(),
             modal_terminal_open: std::collections::HashMap::new(),
+            modal_terminal_dock_mode: None,
+            modal_terminal_pinned: None,
             modal_terminal_width: None,
+            modal_terminal_height: None,
             project_access_timestamps: std::collections::HashMap::new(),
             dashboard_worktree_collapse_overrides: std::collections::HashMap::new(),
             project_canvas_settings: std::collections::HashMap::new(),

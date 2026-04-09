@@ -10,6 +10,7 @@ import {
 import { Kbd } from '@/components/ui/kbd'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import { cn } from '@/lib/utils'
+import { MODAL_TERMINAL_SECONDARY_ROW_CLASS } from './modal-terminal-layout'
 import '@xterm/xterm/css/xterm.css'
 
 const EMPTY_TERMINALS: TerminalInstance[] = []
@@ -214,7 +215,12 @@ export function TerminalView({
   return (
     <div className="flex h-full flex-col bg-[#1a1a1a]">
       {/* Tab bar - fixed height for consistency */}
-      <div className="flex h-8 items-stretch border-b border-neutral-700">
+      <div
+        className={cn(
+          'flex items-stretch border-b border-neutral-700',
+          MODAL_TERMINAL_SECONDARY_ROW_CLASS
+        )}
+      >
         <div className="flex min-w-0 items-center overflow-x-auto">
           {terminals.map((terminal, index) => {
             const isActive = terminal.id === activeTerminalId

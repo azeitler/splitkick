@@ -50,6 +50,7 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { useTerminalStore } from '@/store/terminal-store'
 import { chatQueryKeys } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
 import { useWorktree, type GitHubRemote } from '@/services/projects'
@@ -191,6 +192,17 @@ export function FloatingDock() {
     ? (sessionChatModalWorktreeId ?? activeWorktreeId ?? selectedWorktreeId)
     : (activeWorktreeId ?? selectedWorktreeId)
   const { data: worktree } = useWorktree(isMobile ? currentWorktreeId : null)
+  const modalTerminalDockMode = useTerminalStore(
+    state => state.modalTerminalDockMode
+  )
+  const modalTerminalHeight = useTerminalStore(
+    state => state.modalTerminalHeight
+  )
+  const modalTerminalOpen = useTerminalStore(state =>
+    currentWorktreeId
+      ? (state.modalTerminalOpen[currentWorktreeId] ?? false)
+      : false
+  )
   const activeSessionId = useChatStore(state =>
     currentWorktreeId ? state.activeSessionIds[currentWorktreeId] : undefined
   )
@@ -385,9 +397,18 @@ export function FloatingDock() {
   const showKeybindingHints = isNativeApp() && !isMobile
   const popoverSide = isMobile || isLg ? 'top' : ('right' as const)
   const popoverAlign = isMobile ? 'end' : ('start' as const)
+  const bottomOffset =
+    sessionChatModalOpen &&
+    modalTerminalOpen &&
+    modalTerminalDockMode === 'bottom'
+      ? modalTerminalHeight + 16
+      : 16
 
   return (
-    <div className="absolute bottom-4 right-4 z-10 flex flex-row items-center gap-0.5 rounded-full border border-border/30 bg-background/60 backdrop-blur-md px-1 py-0.5 sm:left-4 sm:right-auto sm:flex-col sm:rounded-2xl sm:px-0.5 sm:py-1 xl:flex-row xl:rounded-full xl:px-1 xl:py-0.5">
+    <div
+      className="absolute right-4 z-10 flex flex-row items-center gap-0.5 rounded-full border border-border/30 bg-background/60 backdrop-blur-md px-1 py-0.5 transition-[bottom] duration-200 sm:left-4 sm:right-auto sm:flex-col sm:rounded-2xl sm:px-0.5 sm:py-1 xl:flex-row xl:rounded-full xl:px-1 xl:py-0.5"
+      style={{ bottom: `${bottomOffset}px` }}
+    >
       <DropdownMenu open={menuOpen} onOpenChange={handleQuickMenuOpenChange}>
         <Tooltip>
           <TooltipTrigger asChild>

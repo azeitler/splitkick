@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { getFilename } from '@/lib/path-utils'
 import { generateId } from '@/lib/uuid'
+import type { ModalTerminalDockMode } from '@/types/ui-state'
 
 /** A single terminal instance */
 export interface TerminalInstance {
@@ -27,7 +28,9 @@ interface TerminalState {
 
   // Modal terminal drawer state
   modalTerminalOpen: Record<string, boolean>
+  modalTerminalDockMode: ModalTerminalDockMode
   modalTerminalWidth: number
+  modalTerminalHeight: number
 
   setTerminalVisible: (visible: boolean) => void
   setTerminalPanelOpen: (worktreeId: string, open: boolean) => void
@@ -38,7 +41,9 @@ interface TerminalState {
   // Modal terminal drawer methods
   setModalTerminalOpen: (worktreeId: string, open: boolean) => void
   toggleModalTerminal: (worktreeId: string) => void
+  setModalTerminalDockMode: (dockMode: ModalTerminalDockMode) => void
   setModalTerminalWidth: (width: number) => void
+  setModalTerminalHeight: (height: number) => void
 
   // Terminal instance management
   addTerminal: (
@@ -88,17 +93,25 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   terminalPanelOpen: {},
   terminalHeight: 30,
   modalTerminalOpen: {},
+  modalTerminalDockMode: 'floating',
   modalTerminalWidth: 400,
+  modalTerminalHeight: 280,
 
-  setTerminalVisible: visible => set({ terminalVisible: visible }),
+  setTerminalVisible: visible =>
+    set(state =>
+      state.terminalVisible === visible ? state : { terminalVisible: visible }
+    ),
 
   setTerminalPanelOpen: (worktreeId, open) =>
-    set(state => ({
-      terminalPanelOpen: {
-        ...state.terminalPanelOpen,
-        [worktreeId]: open,
-      },
-    })),
+    set(state => {
+      if ((state.terminalPanelOpen[worktreeId] ?? false) === open) return state
+      return {
+        terminalPanelOpen: {
+          ...state.terminalPanelOpen,
+          [worktreeId]: open,
+        },
+      }
+    }),
 
   isTerminalPanelOpen: worktreeId =>
     get().terminalPanelOpen[worktreeId] ?? false,
@@ -112,12 +125,18 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         : state.terminalPanelOpen,
     })),
 
-  setTerminalHeight: height => set({ terminalHeight: height }),
+  setTerminalHeight: height =>
+    set(state =>
+      state.terminalHeight === height ? state : { terminalHeight: height }
+    ),
 
   setModalTerminalOpen: (worktreeId, open) =>
-    set(state => ({
-      modalTerminalOpen: { ...state.modalTerminalOpen, [worktreeId]: open },
-    })),
+    set(state => {
+      if ((state.modalTerminalOpen[worktreeId] ?? false) === open) return state
+      return {
+        modalTerminalOpen: { ...state.modalTerminalOpen, [worktreeId]: open },
+      }
+    }),
 
   toggleModalTerminal: worktreeId =>
     set(state => ({
@@ -127,7 +146,24 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       },
     })),
 
-  setModalTerminalWidth: width => set({ modalTerminalWidth: width }),
+  setModalTerminalDockMode: dockMode =>
+    set(state =>
+      state.modalTerminalDockMode === dockMode
+        ? state
+        : { modalTerminalDockMode: dockMode }
+    ),
+
+  setModalTerminalWidth: width =>
+    set(state =>
+      state.modalTerminalWidth === width ? state : { modalTerminalWidth: width }
+    ),
+
+  setModalTerminalHeight: height =>
+    set(state =>
+      state.modalTerminalHeight === height
+        ? state
+        : { modalTerminalHeight: height }
+    ),
 
   addTerminal: (worktreeId, command = null, label) => {
     const id = generateTerminalId()
