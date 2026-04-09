@@ -263,6 +263,16 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       return existingTerminal.id
     }
 
+    // Clear stale failed IDs for this worktree's command terminals
+    const failedIds = terminals.filter(
+      t => t.command && state.failedTerminals.has(t.id)
+    )
+    if (failedIds.length > 0) {
+      const newFailed = new Set(state.failedTerminals)
+      for (const t of failedIds) newFailed.delete(t.id)
+      set({ failedTerminals: newFailed })
+    }
+
     // No existing running terminal, create a new one (addTerminal sets terminalPanelOpen)
     return get().addTerminal(worktreeId, command)
   },

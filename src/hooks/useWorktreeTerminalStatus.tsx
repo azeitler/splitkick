@@ -56,11 +56,12 @@ export function useWorktreeTerminalStatus(worktreeId: string) {
     return lines
   }, [showTerminalIndicator, worktreeId, listeningPorts])
 
-  return { hasFailedTerminal, showTerminalIndicator, tooltipLines }
+  return { hasRunningTerminal, hasFailedTerminal, showTerminalIndicator, tooltipLines }
 }
 
 /**
- * Play icon with tooltip showing running/failed terminal status and listening ports.
+ * Terminal status indicator with tooltip showing running/failed status and listening ports.
+ * Running: yellow square-spinner (original style). Failed: red square.
  * Returns null when no run-script terminals are active or failed.
  */
 export function TerminalStatusIndicator({
@@ -70,7 +71,7 @@ export function TerminalStatusIndicator({
   worktreeId: string
   iconSize?: string
 }) {
-  const { hasFailedTerminal, showTerminalIndicator, tooltipLines } =
+  const { hasRunningTerminal, hasFailedTerminal, showTerminalIndicator, tooltipLines } =
     useWorktreeTerminalStatus(worktreeId)
 
   if (!showTerminalIndicator || !tooltipLines) return null
@@ -80,7 +81,7 @@ export function TerminalStatusIndicator({
       <TooltipTrigger asChild>
         <Play
           className={cn(
-            'shrink-0 fill-current',
+            'shrink-0 fill-none',
             iconSize,
             hasFailedTerminal
               ? 'text-red-500'

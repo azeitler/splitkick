@@ -306,6 +306,7 @@ pub async fn get_terminal_listening_ports() -> Vec<TerminalPortInfo> {
 }
 
 /// Extract port number from an lsof address like "127.0.0.1:3000" or "*:8080" or "[::1]:3000"
+#[cfg(unix)]
 fn extract_port(addr: &str) -> Option<u16> {
     addr.rsplit(':').next()?.parse::<u16>().ok()
 }
