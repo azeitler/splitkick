@@ -138,14 +138,17 @@ export function useAllBackendsMcpHealth(installedBackends: CliBackend[]) {
 
   const statuses = useMemo(() => {
     const merged: Record<string, McpHealthStatus> = {}
-    if (has.has('claude') && claude.data?.statuses) {
-      Object.assign(merged, claude.data.statuses)
-    }
-    if (has.has('codex') && codex.data?.statuses) {
-      Object.assign(merged, codex.data.statuses)
-    }
-    if (has.has('opencode') && opencode.data?.statuses) {
-      Object.assign(merged, opencode.data.statuses)
+    const entries: [CliBackend, typeof claude][] = [
+      ['claude', claude],
+      ['codex', codex],
+      ['opencode', opencode],
+    ]
+    for (const [backend, query] of entries) {
+      if (has.has(backend) && query.data?.statuses) {
+        for (const [name, status] of Object.entries(query.data.statuses)) {
+          merged[mcpKey(backend, name)] = status
+        }
+      }
     }
     return merged
   }, [has, claude.data, codex.data, opencode.data])
@@ -185,10 +188,11 @@ export function getNewServersToAutoEnable(
   const enabledSet = new Set(currentEnabled)
   const knownSet = new Set(knownServers)
   return allServers
-    .filter(
-      s => !s.disabled && !enabledSet.has(s.name) && !knownSet.has(s.name)
-    )
-    .map(s => s.name)
+    .filter(s => {
+      const key = mcpKey(s.backend, s.name)
+      return !s.disabled && !enabledSet.has(key) && !knownSet.has(key)
+    })
+    .map(s => mcpKey(s.backend, s.name))
 }
 
 /**
@@ -207,15 +211,63 @@ export function buildMcpConfigJson(
   if (enabledNames.length === 0) return undefined
 
   const mcpServers: Record<string, unknown> = {}
-  for (const name of enabledNames) {
+  for (const key of enabledNames) {
+    const parsed = parseMcpKey(key)
+    const serverName = parsed.name
+    // If composite key specifies a backend, skip if it doesn't match the target
+    if (parsed.backend && backend && parsed.backend !== backend) continue
     const server = allServers.find(
-      s => s.name === name && (!backend || s.backend === backend)
+      s => s.name === serverName && (!backend || s.backend === backend)
     )
-    if (server) mcpServers[name] = server.config
+    if (server) mcpServers[serverName] = server.config
   }
 
   if (Object.keys(mcpServers).length === 0) return undefined
   return JSON.stringify({ mcpServers })
+}
+
+// ── Composite key helpers ──────────────────────────────────────────────
+// MCP servers are identified by "backend:name" composite keys to avoid
+// collisions when different backends have servers with the same name.
+
+/** Create a composite key for an MCP server: "backend:name" */
+export function mcpKey(backend: string, name: string): string {
+  return `${backend}:${name}`
+}
+
+/** Parse a composite key back into backend + name. Legacy bare names return empty backend. */
+export function parseMcpKey(key: string): { backend: string; name: string } {
+  const idx = key.indexOf(':')
+  if (idx === -1) return { backend: '', name: key }
+  return { backend: key.slice(0, idx), name: key.slice(idx + 1) }
+}
+
+/**
+ * Migrate legacy bare-name keys to composite keys.
+ * For each bare name, expands to all backends that have a server with that name.
+ * Returns the migrated array and whether any changes were made.
+ */
+export function migrateLegacyMcpKeys(
+  keys: string[],
+  allServers: McpServerInfo[]
+): { migrated: string[]; changed: boolean } {
+  const result: string[] = []
+  let changed = false
+  for (const key of keys) {
+    if (key.includes(':')) {
+      result.push(key)
+      continue
+    }
+    // Legacy bare name — expand to all backends that have this server
+    const matches = allServers.filter(s => s.name === key)
+    if (matches.length > 0) {
+      for (const s of matches) result.push(mcpKey(s.backend, s.name))
+    } else {
+      result.push(mcpKey('claude', key)) // fallback: assume claude
+    }
+    changed = true
+  }
+  return { migrated: [...new Set(result)], changed }
 }
 
 /** Backend display labels */
