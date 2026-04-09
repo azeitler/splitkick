@@ -42,10 +42,13 @@ export function ChatSearchBar({ scrollContainerRef }: ChatSearchBarProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const supportsHighlightAPI = typeof CSS !== 'undefined' && 'highlights' in CSS
+
   const clearHighlights = useCallback(() => {
+    if (!supportsHighlightAPI) return
     CSS.highlights.delete('chat-search')
     CSS.highlights.delete('chat-search-active')
-  }, [])
+  }, [supportsHighlightAPI])
 
   const highlightActiveMatch = useCallback(
     (index: number, allMatches: MatchInfo[]) => {
@@ -53,10 +56,12 @@ export function ChatSearchBar({ scrollContainerRef }: ChatSearchBarProps) {
       if (!match) return
       const range = rangeFromMatch(match)
       if (!range) return
-      CSS.highlights.set('chat-search-active', new Highlight(range))
+      if (supportsHighlightAPI) {
+        CSS.highlights.set('chat-search-active', new Highlight(range))
+      }
       scrollRangeIntoView(range)
     },
-    []
+    [supportsHighlightAPI]
   )
 
   const performSearch = useCallback(
@@ -102,9 +107,11 @@ export function ChatSearchBar({ scrollContainerRef }: ChatSearchBarProps) {
 
       if (found.length === 0) return
 
-      const allRanges = found.map(rangeFromMatch).filter((r): r is Range => r !== null)
-      if (allRanges.length > 0) {
-        CSS.highlights.set('chat-search', new Highlight(...allRanges))
+      if (supportsHighlightAPI) {
+        const allRanges = found.map(rangeFromMatch).filter((r): r is Range => r !== null)
+        if (allRanges.length > 0) {
+          CSS.highlights.set('chat-search', new Highlight(...allRanges))
+        }
       }
       highlightActiveMatch(0, found)
     },
@@ -143,6 +150,21 @@ export function ChatSearchBar({ scrollContainerRef }: ChatSearchBarProps) {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
   }, [query, chatSearchOpen, performSearch])
+
+  // Re-run search when DOM content changes (new messages, re-renders)
+  useEffect(() => {
+    if (!chatSearchOpen || !query || !scrollContainerRef.current) return
+
+    const observer = new MutationObserver(() => {
+      performSearch(query)
+    })
+    observer.observe(scrollContainerRef.current, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    })
+    return () => observer.disconnect()
+  }, [chatSearchOpen, query, scrollContainerRef, performSearch])
 
   // Focus input when opened
   useEffect(() => {
@@ -209,7 +231,7 @@ export function ChatSearchBar({ scrollContainerRef }: ChatSearchBarProps) {
         className="w-40 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
       />
       {query && (
-        <span className="text-xs text-muted-foreground whitespace-nowrap">
+        <span className="text-xs text-muted-foreground whitespace-nowrap" aria-live="polite">
           {matches.length > 0 ? `${activeIndex + 1}/${matches.length}` : '0/0'}
         </span>
       )}

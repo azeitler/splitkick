@@ -701,7 +701,10 @@ export const useUIStore = create<UIState>()(
         ),
 
       setChatSearchOpen: (open: boolean) =>
-        set({ chatSearchOpen: open }, undefined, 'setChatSearchOpen'),
+        set(state => {
+          if (state.chatSearchOpen === open) return state
+          return { chatSearchOpen: open }
+        }, undefined, 'setChatSearchOpen'),
 
       setGitHubDashboardOpen: (open: boolean) =>
         set({ githubDashboardOpen: open }, undefined, 'setGitHubDashboardOpen'),
