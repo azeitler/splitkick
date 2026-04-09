@@ -71,7 +71,7 @@ export function TerminalStatusIndicator({
   worktreeId: string
   iconSize?: string
 }) {
-  const { hasRunningTerminal, hasFailedTerminal, showTerminalIndicator, tooltipLines } =
+  const { hasFailedTerminal, showTerminalIndicator, tooltipLines } =
     useWorktreeTerminalStatus(worktreeId)
 
   if (!showTerminalIndicator || !tooltipLines) return null
