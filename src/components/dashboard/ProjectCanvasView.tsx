@@ -100,6 +100,7 @@ import {
   useCloseBaseSessionClean,
   useCloseBaseSessionArchive,
 } from '@/services/projects'
+import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
 import { usePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
@@ -116,12 +117,6 @@ const LinkedProjectsModal = lazy(() =>
 )
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
-import { useTerminalStore } from '@/store/terminal-store'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 import {
   gitPush,
   fetchWorktreesStatus,
@@ -273,13 +268,6 @@ function WorktreeSectionHeader({
   const isBase = isBaseSession(worktree)
   const { data: gitStatus } = useGitStatus(worktree.id)
 
-  const hasRunningTerminal = useTerminalStore(state => {
-    const terminals = state.terminals[worktree.id] ?? []
-    // Show spinner when a run-script terminal exists: covers both "pending" (created
-    // by startRun on canvas, PTY starts when session opens) and "running" (PTY active).
-    // Terminal entry is removed on successful exit, so spinner clears automatically.
-    return terminals.some(t => !!t.command)
-  })
 
   const behindCount =
     gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
@@ -416,16 +404,7 @@ function WorktreeSectionHeader({
                 <span className="text-[9px]">⌘{shortcutNumber}</span>
               </kbd>
             )}
-            {hasRunningTerminal && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="shrink-0 block h-3 w-3 square-spinner" />
-                </TooltipTrigger>
-                <TooltipContent>
-                  Dev server running in terminal. Press ⌘R to open
-                </TooltipContent>
-              </Tooltip>
-            )}
+            <TerminalStatusIndicator worktreeId={worktree.id} iconSize="h-3 w-3" />
             <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 flex-1 truncate">

@@ -12,6 +12,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
 import { WorktreeContextMenu } from './WorktreeContextMenu'
 import { useRenameWorktree } from '@/services/projects'
 import { useSessions } from '@/services/chat'
@@ -78,6 +79,7 @@ export function WorktreeItem({
   )
   const isSelected = selectedWorktreeId === worktree.id
   const isBase = isBaseSession(worktree)
+
 
   // Get git status for this worktree from event-driven cache
   // Note: useGitStatus reads from TanStack Query cache, no network requests
@@ -535,12 +537,15 @@ export function WorktreeItem({
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
         >
-          {/* Status indicator */}
+          {/* Chat status indicator (spinner/dot) */}
           <StatusIndicator
             status={indicatorStatus}
             variant={indicatorVariant}
             className="h-2 w-2"
           />
+
+          {/* Terminal running/failed indicator */}
+          <TerminalStatusIndicator worktreeId={worktree.id} />
 
           {/* Workspace name - editable on double-click */}
           {isEditing ? (

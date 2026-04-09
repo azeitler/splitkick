@@ -217,6 +217,15 @@
   inherits: false;
 }
 
+/* Failed terminal: static red square (no spinning) */
+.square-spinner-failed {
+  --spinner-color: oklch(0.637 0.237 25.331); /* red-500 */
+  position: relative;
+  background: color-mix(in srgb, var(--spinner-color) 25%, transparent);
+  border: 1px solid var(--spinner-color);
+  border-radius: 2px;
+}
+
 /* Animated border for session cards in running state.
    Uses transform:rotate on an oversized conic-gradient pseudo-element
    (WebKit doesn't support @property animation needed for the from-angle approach). */
