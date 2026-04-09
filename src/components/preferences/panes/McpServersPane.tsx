@@ -17,6 +17,8 @@ import {
   useAllBackendsMcpHealth,
   groupServersByBackend,
   BACKEND_LABELS,
+  mcpKey,
+  migrateLegacyMcpKeys,
 } from '@/services/mcp'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useChatStore } from '@/store/chat-store'
@@ -144,27 +146,45 @@ export const McpServersPane: React.FC = () => {
   // Auto-enable newly discovered (non-disabled) servers, but not ones the user has previously disabled
   useEffect(() => {
     if (!preferences || !mcpServers) return
-    const allServerNames = mcpServers.filter(s => !s.disabled).map(s => s.name)
+
+    // Migrate legacy bare-name keys to composite keys
+    let currentEnabled = enabledServers
+    let currentKnown = knownServers
+    const enabledMigration = migrateLegacyMcpKeys(enabledServers, mcpServers)
+    const knownMigration = migrateLegacyMcpKeys(knownServers, mcpServers)
+    if (enabledMigration.changed) currentEnabled = enabledMigration.migrated
+    if (knownMigration.changed) currentKnown = knownMigration.migrated
+
+    const allServerKeys = mcpServers
+      .filter(s => !s.disabled)
+      .map(s => mcpKey(s.backend, s.name))
     const newServers = getNewServersToAutoEnable(
       mcpServers,
-      enabledServers,
-      knownServers
+      currentEnabled,
+      currentKnown
     )
-    const updatedKnown = [...new Set([...knownServers, ...allServerNames])]
-    const knownChanged = updatedKnown.length !== knownServers.length
-    if (newServers.length > 0 || knownChanged) {
+    const updatedKnown = [...new Set([...currentKnown, ...allServerKeys])]
+    const knownChanged = updatedKnown.length !== currentKnown.length
+
+    if (
+      newServers.length > 0 ||
+      knownChanged ||
+      enabledMigration.changed ||
+      knownMigration.changed
+    ) {
       patchPreferences.mutate({
-        default_enabled_mcp_servers: [...enabledServers, ...newServers],
+        default_enabled_mcp_servers: [...currentEnabled, ...newServers],
         known_mcp_servers: updatedKnown,
       })
     }
   }, [mcpServers]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleToggle = (serverName: string) => {
+  const handleToggle = (backend: CliBackend, serverName: string) => {
     if (!preferences) return
-    const updated = enabledServers.includes(serverName)
-      ? enabledServers.filter(n => n !== serverName)
-      : [...enabledServers, serverName]
+    const key = mcpKey(backend, serverName)
+    const updated = enabledServers.includes(key)
+      ? enabledServers.filter(n => n !== key)
+      : [...enabledServers, key]
     patchPreferences.mutate({ default_enabled_mcp_servers: updated })
   }
 
@@ -214,9 +234,10 @@ export const McpServersPane: React.FC = () => {
                     <Checkbox
                       id={`mcp-${backend}-${server.name}`}
                       checked={
-                        !server.disabled && enabledServers.includes(server.name)
+                        !server.disabled &&
+                        enabledServers.includes(mcpKey(backend, server.name))
                       }
-                      onCheckedChange={() => handleToggle(server.name)}
+                      onCheckedChange={() => handleToggle(backend, server.name)}
                       disabled={server.disabled}
                     />
                     <Label
@@ -229,7 +250,7 @@ export const McpServersPane: React.FC = () => {
                       {server.name}
                     </Label>
                     <HealthIndicator
-                      status={healthStatuses[server.name]}
+                      status={healthStatuses[mcpKey(backend, server.name)]}
                       isChecking={isHealthChecking}
                       backend={backend}
                     />
