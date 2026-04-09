@@ -243,6 +243,10 @@ export function SessionChatModal({
     const terminals = state.terminals[worktreeId] ?? []
     return terminals.some(t => state.runningTerminals.has(t.id))
   })
+  const hasFailedTerminal = useTerminalStore(state => {
+    const terminals = state.terminals[worktreeId] ?? []
+    return terminals.some(t => !!t.command && state.failedTerminals.has(t.id))
+  })
   const terminalShortcut = formatShortcutDisplay(
     preferences?.keybindings?.toggle_terminal ??
       DEFAULT_KEYBINDINGS.toggle_terminal
@@ -879,12 +883,12 @@ export function SessionChatModal({
                           onClick={handleRun}
                         >
                           <Play
-                            className={`h-3 w-3 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`}
+                            className={`h-3 w-3 ${hasFailedTerminal ? 'text-red-500' : hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
                           />
                         </Button>
                       </TooltipTrigger>
                       <TooltipContent>
-                        {hasRunningTerminal ? 'Running' : 'Run'}{' '}
+                        {hasFailedTerminal ? 'Crashed' : hasRunningTerminal ? 'Running' : 'Run'}{' '}
                         <kbd className="ml-1 text-[0.625rem] opacity-60">
                           {runShortcut}
                         </kbd>
@@ -902,12 +906,12 @@ export function SessionChatModal({
                             onClick={handleRun}
                           >
                             <Play
-                              className={`h-3 w-3 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`}
+                              className={`h-3 w-3 ${hasFailedTerminal ? 'text-red-500' : hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
                             />
                           </Button>
                         </TooltipTrigger>
                         <TooltipContent>
-                          {hasRunningTerminal ? 'Running' : 'Run first command'}{' '}
+                          {hasFailedTerminal ? 'Crashed' : hasRunningTerminal ? 'Running' : 'Run first command'}{' '}
                           <kbd className="ml-1 text-[0.625rem] opacity-60">
                             {runShortcut}
                           </kbd>
@@ -1015,7 +1019,7 @@ export function SessionChatModal({
                     {runScripts.length === 1 && (
                       <DropdownMenuItem onSelect={handleRun}>
                         <Play
-                          className={`h-4 w-4 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`}
+                          className={`h-4 w-4 ${hasFailedTerminal ? 'text-red-500' : hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
                         />
                         Run
                       </DropdownMenuItem>
@@ -1024,7 +1028,7 @@ export function SessionChatModal({
                       <DropdownMenuSub>
                         <DropdownMenuSubTrigger>
                           <Play
-                            className={`h-4 w-4 ${hasRunningTerminal ? 'text-yellow-400 animate-icon-glow' : ''}`}
+                            className={`h-4 w-4 ${hasFailedTerminal ? 'text-red-500' : hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
                           />
                           Run
                         </DropdownMenuSubTrigger>
