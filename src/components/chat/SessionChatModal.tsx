@@ -776,7 +776,7 @@ export function SessionChatModal({
         ref={isMobile ? swipe.containerRef : undefined}
         className={cn(
           'absolute inset-0 z-10 flex min-w-0 overflow-hidden bg-background pt-[3px]',
-          !isMobile && 'mb-2',
+          !isMobile && 'pb-2',
           modalTerminalDockMode === 'bottom' ? 'flex-col' : 'flex-row'
         )}
         style={
