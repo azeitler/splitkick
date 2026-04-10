@@ -105,13 +105,6 @@ export const UsagePane: React.FC = () => {
         </div>
       </div>
 
-      <SettingsSection title="Claude">
-        <p className="text-sm text-muted-foreground">
-          Claude usage tracking is temporarily disabled due to an authentication
-          bug that causes repeated logouts.
-        </p>
-      </SettingsSection>
-
       <SettingsSection title="Codex">
         {!codexStatus.data?.installed ? (
           <p className="text-sm text-muted-foreground">

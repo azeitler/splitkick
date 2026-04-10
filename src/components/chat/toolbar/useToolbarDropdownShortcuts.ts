@@ -1,17 +1,21 @@
 import { useEffect } from 'react'
 
 interface UseToolbarDropdownShortcutsArgs {
+  enabled?: boolean
   setProviderDropdownOpen?: (open: boolean) => void
   setModelDropdownOpen?: (open: boolean) => void
   setThinkingDropdownOpen?: (open: boolean) => void
 }
 
 export function useToolbarDropdownShortcuts({
+  enabled = true,
   setProviderDropdownOpen,
   setModelDropdownOpen,
   setThinkingDropdownOpen,
 }: UseToolbarDropdownShortcutsArgs) {
   useEffect(() => {
+    if (!enabled) return
+
     const unlisteners: (() => void)[] = []
 
     if (setProviderDropdownOpen) {
@@ -41,5 +45,10 @@ export function useToolbarDropdownShortcuts({
     return () => {
       for (const unlisten of unlisteners) unlisten()
     }
-  }, [setModelDropdownOpen, setProviderDropdownOpen, setThinkingDropdownOpen])
+  }, [
+    enabled,
+    setModelDropdownOpen,
+    setProviderDropdownOpen,
+    setThinkingDropdownOpen,
+  ])
 }

@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import {
   gitPush,
@@ -8,11 +8,12 @@ import {
 } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
-import { useAllBackendsMcpHealth } from '@/services/mcp'
+import { useAllBackendsMcpHealth, BACKEND_LABELS } from '@/services/mcp'
 import type { ClaudeModel } from '@/types/preferences'
 import type { EffortLevel, ThinkingLevel } from '@/types/chat'
 import type { ChatToolbarProps } from '@/components/chat/toolbar/types'
 import { MobileToolbarMenu } from '@/components/chat/toolbar/MobileToolbarMenu'
+import { MobileBackendModelPickerSheet } from '@/components/chat/toolbar/MobileBackendModelPickerSheet'
 import { DesktopToolbarControls } from '@/components/chat/toolbar/DesktopToolbarControls'
 import { SendCancelButton } from '@/components/chat/toolbar/SendCancelButton'
 import { ContextViewerDialog } from '@/components/chat/toolbar/ContextViewerDialog'
@@ -28,6 +29,7 @@ import { useToolbarDerivedState } from '@/components/chat/toolbar/useToolbarDeri
 import { useContextViewer } from '@/components/chat/toolbar/useContextViewer'
 import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
+import { useIsMobile } from '@/hooks/use-mobile'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export {
@@ -87,7 +89,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   hasOpenPr,
   onSetDiffRequest,
   installedBackends,
-  onBackendChange,
   onModelChange,
   onBackendModelChange,
   onProviderChange,
@@ -111,6 +112,9 @@ export const ChatToolbar = memo(function ChatToolbar({
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false)
   const [mcpDropdownOpen, setMcpDropdownOpen] = useState(false)
+  const [mobileBackendModelPickerOpen, setMobileBackendModelPickerOpen] =
+    useState(false)
+  const isMobile = useIsMobile()
 
   const pickRemoteOrRun = useRemotePicker(activeWorktreePath)
 
@@ -138,7 +142,7 @@ export const ChatToolbar = memo(function ChatToolbar({
       label: formatOpencodeModelLabel(model),
     })) ?? OPENCODE_MODEL_OPTIONS
 
-  const { isCodex, activeMcpCount, filteredModelOptions } =
+  const { isCodex, activeMcpCount, selectedModelLabel } =
     useToolbarDerivedState({
       selectedBackend,
       selectedProvider,
@@ -148,6 +152,12 @@ export const ChatToolbar = memo(function ChatToolbar({
       availableMcpServers,
       enabledMcpServers,
     })
+
+  const backendModelLabel = useMemo(
+    () =>
+      `${BACKEND_LABELS[selectedBackend] ?? selectedBackend} · ${selectedModelLabel}`,
+    [selectedBackend, selectedModelLabel]
+  )
 
   const {
     viewingContext,
@@ -272,11 +282,10 @@ export const ChatToolbar = memo(function ChatToolbar({
         <MobileToolbarMenu
           isDisabled={isSending || hasPendingQuestions}
           hasOpenPr={hasOpenPr}
-          sessionHasMessages={sessionHasMessages}
           providerLocked={providerLocked}
           selectedBackend={selectedBackend}
           selectedProvider={selectedProvider}
-          selectedModel={selectedModel}
+          backendModelLabel={backendModelLabel}
           selectedEffortLevel={selectedEffortLevel}
           selectedThinkingLevel={selectedThinkingLevel}
           hideThinkingLevel={hideThinkingLevel}
@@ -284,7 +293,6 @@ export const ChatToolbar = memo(function ChatToolbar({
           isCodex={isCodex}
           executionMode={executionMode}
           customCliProfiles={customCliProfiles}
-          filteredModelOptions={filteredModelOptions}
           uncommittedAdded={uncommittedAdded}
           uncommittedRemoved={uncommittedRemoved}
           branchDiffAdded={branchDiffAdded}
@@ -302,15 +310,13 @@ export const ChatToolbar = memo(function ChatToolbar({
           onReview={onReview}
           onMerge={onMerge}
           onResolveConflicts={onResolveConflicts}
-          installedBackends={installedBackends}
-          onBackendChange={onBackendChange}
+          onOpenBackendModelPicker={() => setMobileBackendModelPickerOpen(true)}
           onSetExecutionMode={onSetExecutionMode}
           handlePullClick={handlePullClick}
           handlePushClick={handlePushClick}
           handleUncommittedDiffClick={handleUncommittedDiffClick}
           handleBranchDiffClick={handleBranchDiffClick}
           handleProviderChange={handleProviderChange}
-          handleModelChange={handleModelChange}
           handleEffortLevelChange={handleEffortLevelChange}
           handleThinkingLevelChange={handleThinkingLevelChange}
           loadedIssueContexts={loadedIssueContexts}
@@ -330,6 +336,22 @@ export const ChatToolbar = memo(function ChatToolbar({
           activeMcpCount={activeMcpCount}
           onToggleMcpServer={onToggleMcpServer}
         />
+
+        {isMobile && (
+          <MobileBackendModelPickerSheet
+            open={mobileBackendModelPickerOpen}
+            onOpenChange={setMobileBackendModelPickerOpen}
+            sessionHasMessages={sessionHasMessages}
+            providerLocked={providerLocked}
+            selectedBackend={selectedBackend}
+            selectedProvider={selectedProvider}
+            selectedModel={selectedModel}
+            installedBackends={installedBackends}
+            customCliProfiles={customCliProfiles}
+            onModelChange={handleModelChange}
+            onBackendModelChange={onBackendModelChange}
+          />
+        )}
 
         <DesktopToolbarControls
           hasPendingQuestions={hasPendingQuestions}

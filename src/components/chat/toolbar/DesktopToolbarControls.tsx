@@ -683,6 +683,7 @@ export function DesktopToolbarControls({
       <DesktopBackendModelPicker
         disabled={hasPendingQuestions}
         sessionHasMessages={sessionHasMessages}
+        providerLocked={providerLocked}
         triggerClassName="rounded-none border-0 bg-transparent px-3"
         selectedBackend={selectedBackend}
         selectedModel={selectedModel}

@@ -1789,7 +1789,6 @@ export function ChatWindow({
   // PERFORMANCE: Stable callbacks for ChatToolbar to prevent re-renders
   const {
     handleToolbarModelChange,
-    handleToolbarBackendChange,
     handleToolbarBackendModelChange,
     handleTabBackendSwitch,
     handleToolbarProviderChange,
@@ -2740,7 +2739,6 @@ export function ChatWindow({
                                 hasOpenPr={Boolean(worktree?.pr_url)}
                                 onSetDiffRequest={setDiffRequest}
                                 installedBackends={installedBackends}
-                                onBackendChange={handleToolbarBackendChange}
                                 onModelChange={handleToolbarModelChange}
                                 onProviderChange={handleToolbarProviderChange}
                                 customCliProfiles={
