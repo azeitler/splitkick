@@ -183,6 +183,7 @@ import { useChatWindowEvents } from './hooks/useChatWindowEvents'
 import { useInvestigateHandlers } from './hooks/useInvestigateHandlers'
 import { useMcpServerResolution } from './hooks/useMcpServerResolution'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useToolbarHandlers } from './hooks/useToolbarHandlers'
 import { useMessageSending } from './hooks/useMessageSending'
 import { usePlanState } from './hooks/usePlanState'
@@ -222,6 +223,7 @@ export function ChatWindow({
   worktreeId: propWorktreeId,
   worktreePath: propWorktreePath,
 }: ChatWindowProps = {}) {
+  const isMobile = useIsMobile()
   // PERFORMANCE: Use focused selectors instead of whole-store destructuring
   // This prevents re-renders when other sessions' state changes (e.g., streaming chunks)
 
@@ -2551,7 +2553,14 @@ export function ChatWindow({
                     )}
 
                     {/* Input container - full width, centered content */}
-                    <div>
+                    <div
+                      className="bg-background"
+                      style={
+                        isMobile
+                          ? { paddingBottom: 'var(--safe-area-bottom)' }
+                          : undefined
+                      }
+                    >
                       <div className="mx-auto max-w-7xl">
                         <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl">
                           {/* Input area - unified container with textarea and toolbar */}

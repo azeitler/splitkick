@@ -775,7 +775,8 @@ export function SessionChatModal({
         key={worktreeId}
         ref={isMobile ? swipe.containerRef : undefined}
         className={cn(
-          'absolute inset-0 z-10 flex min-w-0 overflow-hidden bg-background pb-2 pt-[3px]',
+          'absolute inset-0 z-10 flex min-w-0 overflow-hidden bg-background pt-[3px]',
+          !isMobile && 'pb-2',
           modalTerminalDockMode === 'bottom' ? 'flex-col' : 'flex-row'
         )}
         style={
