@@ -407,6 +407,7 @@ fn emit_codex_plan_tool_call(
 fn split_fast_model(model: &str) -> (&str, bool) {
     match model {
         "gpt-5.4-fast" => ("gpt-5.4", true),
+        "gpt-5.4-mini-fast" => ("gpt-5.4-mini", true),
         other => (other.strip_suffix("-fast").unwrap_or(other), false),
     }
 }
@@ -3109,8 +3110,14 @@ mod tests {
     }
 
     #[test]
+    fn split_fast_model_recognises_gpt_5_4_mini_fast() {
+        assert_eq!(split_fast_model("gpt-5.4-mini-fast"), ("gpt-5.4-mini", true));
+    }
+
+    #[test]
     fn split_fast_model_passes_through_normal_models() {
         assert_eq!(split_fast_model("gpt-5.4"), ("gpt-5.4", false));
+        assert_eq!(split_fast_model("gpt-5.4-mini"), ("gpt-5.4-mini", false));
         assert_eq!(split_fast_model("o3"), ("o3", false));
     }
 
