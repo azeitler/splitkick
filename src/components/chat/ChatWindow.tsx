@@ -1790,6 +1790,7 @@ export function ChatWindow({
   const {
     handleToolbarModelChange,
     handleToolbarBackendChange,
+    handleToolbarBackendModelChange,
     handleTabBackendSwitch,
     handleToolbarProviderChange,
     handleToolbarThinkingLevelChange,
@@ -2730,6 +2731,9 @@ export function ChatWindow({
                               onReview={() => handleReview()}
                               onMerge={handleMerge}
                               onResolvePrConflicts={handleResolvePrConflicts}
+                              onBackendModelChange={
+                                handleToolbarBackendModelChange
+                              }
                               onResolveConflicts={handleResolveConflicts}
                               hasOpenPr={Boolean(worktree?.pr_url)}
                               onSetDiffRequest={setDiffRequest}

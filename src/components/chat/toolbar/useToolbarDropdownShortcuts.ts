@@ -1,9 +1,9 @@
 import { useEffect } from 'react'
 
 interface UseToolbarDropdownShortcutsArgs {
-  setProviderDropdownOpen: (open: boolean) => void
-  setModelDropdownOpen: (open: boolean) => void
-  setThinkingDropdownOpen: (open: boolean) => void
+  setProviderDropdownOpen?: (open: boolean) => void
+  setModelDropdownOpen?: (open: boolean) => void
+  setThinkingDropdownOpen?: (open: boolean) => void
 }
 
 export function useToolbarDropdownShortcuts({
@@ -12,16 +12,34 @@ export function useToolbarDropdownShortcuts({
   setThinkingDropdownOpen,
 }: UseToolbarDropdownShortcutsArgs) {
   useEffect(() => {
-    const onProvider = () => setProviderDropdownOpen(true)
-    const onModel = () => setModelDropdownOpen(true)
-    const onThinking = () => setThinkingDropdownOpen(true)
-    window.addEventListener('open-provider-dropdown', onProvider)
-    window.addEventListener('open-model-dropdown', onModel)
-    window.addEventListener('open-thinking-dropdown', onThinking)
+    const unlisteners: (() => void)[] = []
+
+    if (setProviderDropdownOpen) {
+      const onProvider = () => setProviderDropdownOpen(true)
+      window.addEventListener('open-provider-dropdown', onProvider)
+      unlisteners.push(() =>
+        window.removeEventListener('open-provider-dropdown', onProvider)
+      )
+    }
+
+    if (setModelDropdownOpen) {
+      const onModel = () => setModelDropdownOpen(true)
+      window.addEventListener('open-model-dropdown', onModel)
+      unlisteners.push(() =>
+        window.removeEventListener('open-model-dropdown', onModel)
+      )
+    }
+
+    if (setThinkingDropdownOpen) {
+      const onThinking = () => setThinkingDropdownOpen(true)
+      window.addEventListener('open-thinking-dropdown', onThinking)
+      unlisteners.push(() =>
+        window.removeEventListener('open-thinking-dropdown', onThinking)
+      )
+    }
+
     return () => {
-      window.removeEventListener('open-provider-dropdown', onProvider)
-      window.removeEventListener('open-model-dropdown', onModel)
-      window.removeEventListener('open-thinking-dropdown', onThinking)
+      for (const unlisten of unlisteners) unlisten()
     }
   }, [setModelDropdownOpen, setProviderDropdownOpen, setThinkingDropdownOpen])
 }

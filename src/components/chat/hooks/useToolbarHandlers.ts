@@ -73,48 +73,9 @@ export function useToolbarHandlers({
   setExecutionMode,
   setLoadContextModalOpen,
 }: UseToolbarHandlersParams) {
-  const handleToolbarModelChange = useCallback(
-    (model: string) => {
+  const persistToolbarBackendAndModel = useCallback(
+    (backend: 'claude' | 'codex' | 'opencode', model: string) => {
       if (activeSessionId && activeWorktreeId && activeWorktreePath) {
-        useChatStore.getState().setSelectedModel(activeSessionId, model)
-        queryClient.setQueryData(
-          chatQueryKeys.session(activeSessionId),
-          (old: Session | null | undefined) =>
-            old ? applySessionSettingToSession(old, 'model', model) : old
-        )
-        setSessionModel.mutate({
-          sessionId: activeSessionId,
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-          model,
-        })
-        invoke('broadcast_session_setting', {
-          sessionId: activeSessionId,
-          key: 'model',
-          value: model,
-        }).catch(() => undefined)
-      }
-      window.dispatchEvent(new CustomEvent('focus-chat-input'))
-    },
-    [
-      activeSessionId,
-      activeWorktreeId,
-      activeWorktreePath,
-      queryClient,
-      setSessionModel,
-    ]
-  )
-
-  const handleToolbarBackendChange = useCallback(
-    (backend: 'claude' | 'codex' | 'opencode') => {
-      if (activeSessionId && activeWorktreeId && activeWorktreePath) {
-        const model =
-          backend === 'codex'
-            ? (preferences?.selected_codex_model ?? 'gpt-5.4')
-            : backend === 'opencode'
-              ? (preferences?.selected_opencode_model ??
-                'opencode/gpt-5.3-codex')
-              : ((preferences?.selected_model as string) ?? DEFAULT_MODEL)
         useChatStore.getState().setSelectedBackend(activeSessionId, backend)
         useChatStore.getState().setSelectedModel(activeSessionId, model)
         queryClient.setQueryData(
@@ -163,13 +124,68 @@ export function useToolbarHandlers({
       activeSessionId,
       activeWorktreeId,
       activeWorktreePath,
-      preferences?.selected_model,
-      preferences?.selected_codex_model,
-      preferences?.selected_opencode_model,
       queryClient,
       setSessionBackend,
       setSessionModel,
     ]
+  )
+
+  const handleToolbarModelChange = useCallback(
+    (model: string) => {
+      if (activeSessionId && activeWorktreeId && activeWorktreePath) {
+        useChatStore.getState().setSelectedModel(activeSessionId, model)
+        queryClient.setQueryData(
+          chatQueryKeys.session(activeSessionId),
+          (old: Session | null | undefined) =>
+            old ? applySessionSettingToSession(old, 'model', model) : old
+        )
+        setSessionModel.mutate({
+          sessionId: activeSessionId,
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          model,
+        })
+        invoke('broadcast_session_setting', {
+          sessionId: activeSessionId,
+          key: 'model',
+          value: model,
+        }).catch(() => undefined)
+      }
+      window.dispatchEvent(new CustomEvent('focus-chat-input'))
+    },
+    [
+      activeSessionId,
+      activeWorktreeId,
+      activeWorktreePath,
+      queryClient,
+      setSessionModel,
+    ]
+  )
+
+  const handleToolbarBackendChange = useCallback(
+    (backend: 'claude' | 'codex' | 'opencode') => {
+      const model =
+        backend === 'codex'
+          ? (preferences?.selected_codex_model ?? 'gpt-5.4')
+          : backend === 'opencode'
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            : ((preferences?.selected_model as string) ?? DEFAULT_MODEL)
+
+      persistToolbarBackendAndModel(backend, model)
+    },
+    [
+      persistToolbarBackendAndModel,
+      preferences?.selected_codex_model,
+      preferences?.selected_model,
+      preferences?.selected_opencode_model,
+    ]
+  )
+
+  const handleToolbarBackendModelChange = useCallback(
+    (backend: 'claude' | 'codex' | 'opencode', model: string) => {
+      persistToolbarBackendAndModel(backend, model)
+    },
+    [persistToolbarBackendAndModel]
   )
 
   const handleTabBackendSwitch = useCallback(() => {
@@ -309,6 +325,7 @@ export function useToolbarHandlers({
   return {
     handleToolbarModelChange,
     handleToolbarBackendChange,
+    handleToolbarBackendModelChange,
     handleTabBackendSwitch,
     handleToolbarProviderChange,
     handleToolbarThinkingLevelChange,

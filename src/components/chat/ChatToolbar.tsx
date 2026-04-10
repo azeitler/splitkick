@@ -89,6 +89,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   installedBackends,
   onBackendChange,
   onModelChange,
+  onBackendModelChange,
   onProviderChange,
   customCliProfiles,
   onThinkingLevelChange,
@@ -108,7 +109,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   } = useAllBackendsMcpHealth(installedBackends)
 
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
-  const [modelDropdownOpen, setModelDropdownOpen] = useState(false)
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false)
   const [mcpDropdownOpen, setMcpDropdownOpen] = useState(false)
 
@@ -126,7 +126,6 @@ export const ChatToolbar = memo(function ChatToolbar({
 
   useToolbarDropdownShortcuts({
     setProviderDropdownOpen,
-    setModelDropdownOpen,
     setThinkingDropdownOpen,
   })
 
@@ -139,7 +138,7 @@ export const ChatToolbar = memo(function ChatToolbar({
       label: formatOpencodeModelLabel(model),
     })) ?? OPENCODE_MODEL_OPTIONS
 
-  const { isCodex, activeMcpCount, filteredModelOptions, selectedModelLabel } =
+  const { isCodex, activeMcpCount, filteredModelOptions } =
     useToolbarDerivedState({
       selectedBackend,
       selectedProvider,
@@ -345,8 +344,6 @@ export const ChatToolbar = memo(function ChatToolbar({
           sessionHasMessages={sessionHasMessages}
           providerLocked={providerLocked}
           customCliProfiles={customCliProfiles}
-          filteredModelOptions={filteredModelOptions}
-          selectedModelLabel={selectedModelLabel}
           isCodex={isCodex}
           prUrl={prUrl}
           prNumber={prNumber}
@@ -366,11 +363,9 @@ export const ChatToolbar = memo(function ChatToolbar({
           loadedLinearContexts={loadedLinearContexts}
           attachedSavedContexts={attachedSavedContexts}
           providerDropdownOpen={providerDropdownOpen}
-          modelDropdownOpen={modelDropdownOpen}
           thinkingDropdownOpen={thinkingDropdownOpen}
           mcpDropdownOpen={mcpDropdownOpen}
           setProviderDropdownOpen={setProviderDropdownOpen}
-          setModelDropdownOpen={setModelDropdownOpen}
           setThinkingDropdownOpen={setThinkingDropdownOpen}
           onMcpDropdownOpenChange={handleMcpDropdownOpenChange}
           onOpenMagicModal={onOpenMagicModal}
@@ -378,10 +373,10 @@ export const ChatToolbar = memo(function ChatToolbar({
           onResolvePrConflicts={onResolvePrConflicts}
           onLoadContext={onLoadContext}
           installedBackends={installedBackends}
-          onBackendChange={onBackendChange}
           onSetExecutionMode={onSetExecutionMode}
           onToggleMcpServer={onToggleMcpServer}
           handleModelChange={handleModelChange}
+          handleBackendModelChange={onBackendModelChange}
           handleProviderChange={handleProviderChange}
           handleThinkingLevelChange={handleThinkingLevelChange}
           handleEffortLevelChange={handleEffortLevelChange}
@@ -399,7 +394,6 @@ export const ChatToolbar = memo(function ChatToolbar({
           <SendCancelButton
             isSending={isSending}
             canSend={canSend}
-            executionMode={executionMode}
             queuedMessageCount={queuedMessageCount}
             onCancel={onCancel}
           />

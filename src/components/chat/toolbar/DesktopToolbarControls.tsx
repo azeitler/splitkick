@@ -11,12 +11,10 @@ import {
   Plug,
   Shield,
   ShieldAlert,
-  Sparkles,
   Wand2,
   Zap,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Input } from '@/components/ui/input'
+import { useCallback } from 'react'
 import { Kbd } from '@/components/ui/kbd'
 import {
   Tooltip,
@@ -72,6 +70,7 @@ import {
   getPrStatusDisplay,
   getProviderDisplayName,
 } from '@/components/chat/toolbar/toolbar-utils'
+import { DesktopBackendModelPicker } from '@/components/chat/toolbar/DesktopBackendModelPicker'
 
 interface DesktopToolbarControlsProps {
   hasPendingQuestions: boolean
@@ -86,8 +85,6 @@ interface DesktopToolbarControlsProps {
   sessionHasMessages?: boolean
   providerLocked?: boolean
   customCliProfiles: CustomCliProfile[]
-  filteredModelOptions: { value: string; label: string }[]
-  selectedModelLabel: string
   isCodex: boolean
 
   prUrl: string | undefined
@@ -111,11 +108,9 @@ interface DesktopToolbarControlsProps {
   attachedSavedContexts: AttachedSavedContext[]
 
   providerDropdownOpen: boolean
-  modelDropdownOpen: boolean
   thinkingDropdownOpen: boolean
   mcpDropdownOpen: boolean
   setProviderDropdownOpen: (open: boolean) => void
-  setModelDropdownOpen: (open: boolean) => void
   setThinkingDropdownOpen: (open: boolean) => void
   onMcpDropdownOpenChange: (open: boolean) => void
 
@@ -124,11 +119,14 @@ interface DesktopToolbarControlsProps {
   onResolvePrConflicts: () => void
   onLoadContext: () => void
   installedBackends: ('claude' | 'codex' | 'opencode')[]
-  onBackendChange: (backend: 'claude' | 'codex' | 'opencode') => void
   onSetExecutionMode: (mode: ExecutionMode) => void
   onToggleMcpServer: (name: string) => void
 
   handleModelChange: (value: string) => void
+  handleBackendModelChange: (
+    backend: 'claude' | 'codex' | 'opencode',
+    model: string
+  ) => void
   handleProviderChange: (value: string) => void
   handleThinkingLevelChange: (value: string) => void
   handleEffortLevelChange: (value: string) => void
@@ -153,8 +151,6 @@ export function DesktopToolbarControls({
   sessionHasMessages,
   providerLocked,
   customCliProfiles,
-  filteredModelOptions,
-  selectedModelLabel,
   isCodex,
   prUrl,
   prNumber,
@@ -174,11 +170,9 @@ export function DesktopToolbarControls({
   loadedLinearContexts,
   attachedSavedContexts,
   providerDropdownOpen,
-  modelDropdownOpen,
   thinkingDropdownOpen,
   mcpDropdownOpen,
   setProviderDropdownOpen,
-  setModelDropdownOpen,
   setThinkingDropdownOpen,
   onMcpDropdownOpenChange,
   onOpenMagicModal,
@@ -186,10 +180,10 @@ export function DesktopToolbarControls({
   onResolvePrConflicts,
   onLoadContext,
   installedBackends,
-  onBackendChange,
   onSetExecutionMode,
   onToggleMcpServer,
   handleModelChange,
+  handleBackendModelChange,
   handleProviderChange,
   handleThinkingLevelChange,
   handleEffortLevelChange,
@@ -214,25 +208,8 @@ export function DesktopToolbarControls({
   const loadedLinearCount = loadedLinearContexts.length
   const loadedContextCount = attachedSavedContexts.length
   const providerDisplayName = getProviderDisplayName(selectedProvider)
-  const [modelSearchQuery, setModelSearchQuery] = useState('')
-  const modelSearchInputRef = useRef<HTMLInputElement>(null)
-  const visibleModelOptions = useMemo(() => {
-    const query = modelSearchQuery.trim().toLowerCase()
-    if (!query) return filteredModelOptions
-    return filteredModelOptions.filter(
-      option =>
-        option.label.toLowerCase().includes(query) ||
-        option.value.toLowerCase().includes(query)
-    )
-  }, [filteredModelOptions, modelSearchQuery])
-
-  useEffect(() => {
-    if (!modelDropdownOpen) return
-    requestAnimationFrame(() => {
-      modelSearchInputRef.current?.focus()
-      modelSearchInputRef.current?.select()
-    })
-  }, [modelDropdownOpen])
+  const executionModeLabel =
+    executionMode.charAt(0).toUpperCase() + executionMode.slice(1)
 
   return (
     <>
@@ -638,62 +615,6 @@ export function DesktopToolbarControls({
         </>
       )}
 
-      {!sessionHasMessages && (
-        <>
-          <div className="hidden @xl:block h-4 w-px bg-border/50" />
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    disabled={hasPendingQuestions}
-                    className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-                  >
-                    <span>
-                      {selectedBackend === 'claude'
-                        ? 'Claude'
-                        : selectedBackend === 'codex'
-                          ? 'Codex'
-                          : 'OpenCode'}
-                    </span>
-                  </button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>Switch backend (Tab)</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent
-              align="start"
-              className="min-w-40"
-              onCloseAutoFocus={focusChatInput}
-            >
-              <DropdownMenuRadioGroup
-                value={selectedBackend}
-                onValueChange={v =>
-                  onBackendChange(v as 'claude' | 'codex' | 'opencode')
-                }
-              >
-                {installedBackends.includes('claude') && (
-                  <DropdownMenuRadioItem value="claude">
-                    Claude
-                  </DropdownMenuRadioItem>
-                )}
-                {installedBackends.includes('codex') && (
-                  <DropdownMenuRadioItem value="codex">
-                    Codex
-                  </DropdownMenuRadioItem>
-                )}
-                {installedBackends.includes('opencode') && (
-                  <DropdownMenuRadioItem value="opencode">
-                    OpenCode
-                  </DropdownMenuRadioItem>
-                )}
-              </DropdownMenuRadioGroup>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </>
-      )}
-
       {customCliProfiles.length > 0 &&
         !providerLocked &&
         selectedBackend === 'claude' && (
@@ -759,94 +680,18 @@ export function DesktopToolbarControls({
 
       <div className="hidden @xl:block h-4 w-px bg-border/50" />
 
-      <DropdownMenu
-        open={modelDropdownOpen}
-        onOpenChange={open => {
-          setModelDropdownOpen(open)
-          if (!open) {
-            setModelSearchQuery('')
-          }
-        }}
-      >
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={hasPendingQuestions}
-                className="hidden @xl:flex h-8 min-w-0 items-center gap-1.5 rounded-none bg-transparent px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              >
-                <Sparkles className="h-3.5 w-3.5 shrink-0" />
-                <span className="max-w-48 truncate">{selectedModelLabel}</span>
-              </button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>Model (⌘⇧M)</TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent
-          align="start"
-          className="min-w-40"
-          enableNumberSelection={false}
-          onEscapeKeyDown={e => e.stopPropagation()}
-          onCloseAutoFocus={focusChatInput}
-        >
-          {providerLocked && customCliProfiles.length > 0 && (
-            <>
-              <DropdownMenuLabel className="text-xs text-muted-foreground">
-                Provider: {providerDisplayName}
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-            </>
-          )}
-          <div className="p-1">
-            <Input
-              ref={modelSearchInputRef}
-              value={modelSearchQuery}
-              onChange={event => setModelSearchQuery(event.target.value)}
-              onKeyDown={event => {
-                const items = event.currentTarget
-                  .closest('[role="menu"]')
-                  ?.querySelectorAll<HTMLElement>('[role="menuitemradio"]')
-                if (event.key === 'ArrowDown' || event.key === 'Tab') {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  items?.[0]?.focus()
-                } else if (event.key === 'ArrowUp') {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  items?.[items.length - 1]?.focus()
-                } else if (event.key === 'Enter') {
-                  event.preventDefault()
-                  event.stopPropagation()
-                  if (visibleModelOptions[0]) {
-                    handleModelChange(visibleModelOptions[0].value)
-                  }
-                } else {
-                  event.stopPropagation()
-                }
-              }}
-              placeholder="Search models..."
-              className="h-8 text-xs"
-            />
-          </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuRadioGroup
-            className="max-h-[19rem] overflow-y-auto"
-            value={selectedModel}
-            onValueChange={handleModelChange}
-          >
-            {visibleModelOptions.length > 0 ? (
-              visibleModelOptions.map(option => (
-                <DropdownMenuRadioItem key={option.value} value={option.value}>
-                  {option.label}
-                </DropdownMenuRadioItem>
-              ))
-            ) : (
-              <DropdownMenuItem disabled>No models found</DropdownMenuItem>
-            )}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <DesktopBackendModelPicker
+        disabled={hasPendingQuestions}
+        sessionHasMessages={sessionHasMessages}
+        triggerClassName="rounded-none border-0 bg-transparent px-3"
+        selectedBackend={selectedBackend}
+        selectedModel={selectedModel}
+        selectedProvider={selectedProvider}
+        installedBackends={installedBackends}
+        customCliProfiles={customCliProfiles}
+        onModelChange={handleModelChange}
+        onBackendModelChange={handleBackendModelChange}
+      />
 
       {!hideThinkingLevel && (
         <div className="hidden @xl:block h-4 w-px bg-border/50" />
@@ -980,11 +825,12 @@ export function DesktopToolbarControls({
                 {executionMode === 'yolo' && (
                   <Zap className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />
                 )}
+                <span>{executionModeLabel}</span>
               </button>
             </DropdownMenuTrigger>
           </TooltipTrigger>
           <TooltipContent>
-            {`${executionMode.charAt(0).toUpperCase() + executionMode.slice(1)} mode (Shift+Tab to cycle)`}
+            {`${executionModeLabel} mode (Shift+Tab to cycle)`}
           </TooltipContent>
         </Tooltip>
         <DropdownMenuContent align="start" onCloseAutoFocus={focusChatInput}>

@@ -81,6 +81,10 @@ export interface ChatToolbarProps {
   installedBackends: ('claude' | 'codex' | 'opencode')[]
   onBackendChange: (backend: 'claude' | 'codex' | 'opencode') => void
   onModelChange: (model: ClaudeModel) => void
+  onBackendModelChange: (
+    backend: 'claude' | 'codex' | 'opencode',
+    model: string
+  ) => void
   onProviderChange: (provider: string | null) => void
   customCliProfiles: CustomCliProfile[]
   onThinkingLevelChange: (level: ThinkingLevel) => void
