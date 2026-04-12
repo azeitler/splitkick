@@ -80,6 +80,12 @@ fn now() -> u64 {
         .as_secs()
 }
 
+fn sanitize_folder_name(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .collect()
+}
+
 pub(crate) fn allow_project_in_asset_scope(app: &AppHandle, project_path: &str) {
     let scope = app.asset_protocol_scope();
     let _ = scope.allow_directory(project_path, true);
@@ -673,14 +679,16 @@ pub async fn create_worktree(
         })
     };
 
-    // Build worktree path: <base>/<project-name>/<workspace-name>
+    // Build worktree path: <base>/<project-name>/<folder-name>
+    // Use sanitized name for folder path (branch name may contain slashes)
     let project_worktrees_dir =
         get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
     allow_project_in_asset_scope(&app, &project.path);
     if let Some(worktrees_dir) = project_worktrees_dir.to_str() {
         allow_project_in_asset_scope(&app, worktrees_dir);
     }
-    let worktree_path = project_worktrees_dir.join(&name);
+    let folder_name = sanitize_folder_name(&name);
+    let worktree_path = project_worktrees_dir.join(&folder_name);
     let worktree_path_str = worktree_path
         .to_str()
         .ok_or_else(|| "Invalid worktree path".to_string())?
@@ -9200,7 +9208,7 @@ Body
     #[test]
     fn test_parse_command_content_with_allowed_tools_string_ignores_empty_entries() {
         let content = r#"---
-allowed-tools: Read, , Bash(git status:*),   
+allowed-tools: Read, , Bash(git status:*),
 ---
 
 Body

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { GitBranch, Loader2, Plus, Settings } from 'lucide-react'
 import {
   Tooltip,
@@ -11,7 +12,7 @@ import { normalizeRunScripts, type JeanConfig } from '@/services/projects'
 
 export interface QuickActionsTabProps {
   hasBaseSession: boolean
-  onCreateWorktree: () => void
+  onCreateWorktree: (customName?: string) => void
   onBaseSession: () => void
   isCreating: boolean
   projectId: string | null
@@ -26,6 +27,7 @@ export function QuickActionsTab({
   projectId,
   jeanConfig,
 }: QuickActionsTabProps) {
+  const [customBranchName, setCustomBranchName] = useState('')
   const setupScript = jeanConfig?.scripts.setup
   const runScripts = normalizeRunScripts(jeanConfig?.scripts.run)
 
@@ -35,6 +37,11 @@ export function QuickActionsTab({
       useUIStore.getState().setNewWorktreeModalOpen(false)
       useProjectsStore.getState().openProjectSettings(projectId, 'jean-json')
     }
+  }
+
+  const handleCreateClick = () => {
+    onCreateWorktree(customBranchName.trim() || undefined)
+    setCustomBranchName('')
   }
 
   return (
@@ -65,13 +72,10 @@ export function QuickActionsTab({
         </button>
 
         {/* New Worktree button */}
-        <button
-          onClick={onCreateWorktree}
-          disabled={isCreating}
+        <div
           className={cn(
-            'relative flex flex-col items-center justify-center gap-4 sm:aspect-square p-4 sm:p-8 rounded-xl text-sm transition-colors',
-            'hover:bg-accent focus:outline-none focus:ring-2 focus:ring-ring',
-            'border border-border'
+            'relative flex flex-col items-center justify-center gap-3 sm:gap-4 sm:aspect-square p-4 sm:p-8 rounded-xl text-sm transition-colors',
+            'border border-border bg-card'
           )}
         >
           {isCreating ? (
@@ -90,10 +94,33 @@ export function QuickActionsTab({
               </span>
             )}
           </div>
+          <input
+            type="text"
+            value={customBranchName}
+            onChange={e => setCustomBranchName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && !isCreating) handleCreateClick()
+            }}
+            placeholder="Branch name (optional)"
+            disabled={isCreating}
+            className="mt-1 w-full max-w-[180px] px-2 py-1 text-xs text-center rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+          />
+          <button
+            onClick={handleCreateClick}
+            disabled={isCreating}
+            className={cn(
+              'px-3 py-1 rounded text-xs transition-colors',
+              'bg-primary text-primary-foreground hover:bg-primary/90',
+              'focus:outline-none focus:ring-2 focus:ring-ring',
+              'disabled:opacity-50'
+            )}
+          >
+            Create
+          </button>
           <kbd className="hidden sm:block absolute top-3 right-3 text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
             N
           </kbd>
-        </button>
+        </div>
       </div>
 
       {/* Configure jean.json - only show when not configured */}
