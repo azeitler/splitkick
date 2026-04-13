@@ -33,6 +33,10 @@ use super::linear_issues::{
     linear_context_to_detail, LinearIssueContext,
 };
 use super::names::generate_unique_workspace_name;
+use super::release_notes::{
+    build_pr_issue_refs_from_commit_range, build_release_notes_prompt_context, format_issue_groups,
+    PrIssueRefsMap,
+};
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
 use super::types::{
     JeanConfig, MergeType, Project, SessionType, Worktree, WorktreeArchivedEvent,
@@ -46,6 +50,11 @@ use crate::codex_cli::resolve_cli_binary as resolve_codex_cli_binary;
 use crate::gh_cli::config::resolve_gh_binary;
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
+
+static RELEASE_NOTES_PAREN_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\(([^)]*)\)").expect("valid release notes parenthetical regex"));
+static RELEASE_NOTES_LEADING_PR_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^\s*#(\d+)\b").expect("valid release notes PR regex"));
 
 /// Generate a unique name by appending 4 random alphanumeric chars,
 /// checking against both storage and git branches.
@@ -5114,6 +5123,10 @@ const PR_CONTENT_PROMPT: &str = r#"<task>Generate a pull request title and descr
 {context}
 </related_context>
 
+<related_pull_requests>
+{related_pull_requests}
+</related_pull_requests>
+
 <commits>
 {commits}
 </commits>
@@ -5325,6 +5338,13 @@ fn generate_pr_content(
 
     let commits = get_branch_commits(repo_path, target_branch, head_ref)?;
     let commit_count = count_branch_commits(repo_path, target_branch, head_ref)?;
+    let related_pr_issue_refs = build_pr_issue_refs_from_commit_range(
+        app,
+        repo_path,
+        &format!("origin/{target_branch}..{head_ref}"),
+    )
+    .unwrap_or_default();
+    let related_pull_requests = format_related_pull_requests(&related_pr_issue_refs);
 
     // Build prompt - use custom if provided and non-empty, otherwise use default
     let prompt_template = custom_prompt
@@ -5336,6 +5356,7 @@ fn generate_pr_content(
         .replace("{target_branch}", target_branch)
         .replace("{commit_count}", &commit_count.to_string())
         .replace("{context}", context)
+        .replace("{related_pull_requests}", &related_pull_requests)
         .replace("{commits}", &commits)
         .replace("{diff}", &diff);
 
@@ -5354,10 +5375,12 @@ fn generate_pr_content(
             Some(std::path::Path::new(repo_path)),
             reasoning_effort,
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: PrContentResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode PR content JSON: {e}, content: {json_str}");
             format!("Failed to parse PR content: {e}")
-        });
+        })?;
+        response.body = augment_pr_references_in_body(&response.body, &related_pr_issue_refs);
+        return Ok(response);
     }
 
     if backend == crate::chat::types::Backend::Codex {
@@ -5370,10 +5393,12 @@ fn generate_pr_content(
             Some(std::path::Path::new(repo_path)),
             reasoning_effort,
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: PrContentResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex PR content JSON: {e}, content: {json_str}");
             format!("Failed to parse PR content: {e}")
-        });
+        })?;
+        response.body = augment_pr_references_in_body(&response.body, &related_pr_issue_refs);
+        return Ok(response);
     }
 
     log::trace!("Generating PR content with Claude CLI (JSON schema)");
@@ -5440,10 +5465,12 @@ fn generate_pr_content(
     let json_content = extract_structured_output(&stdout)?;
     log::trace!("Extracted PR content JSON: {json_content}");
 
-    serde_json::from_str(&json_content).map_err(|e| {
+    let mut response: PrContentResponse = serde_json::from_str(&json_content).map_err(|e| {
         log::error!("Failed to parse PR content JSON: {e}, content: {json_content}");
         format!("Failed to parse PR content: {e}")
-    })
+    })?;
+    response.body = augment_pr_references_in_body(&response.body, &related_pr_issue_refs);
+    Ok(response)
 }
 
 /// Parse PR number and URL from gh pr create output
@@ -7232,6 +7259,10 @@ const RELEASE_NOTES_SCHEMA: &str = r#"{
 
 const RELEASE_NOTES_PROMPT: &str = r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).
 
+## Pull requests since {tag}
+
+{pull_requests}
+
 ## Commits since {tag}
 
 {commits}
@@ -7241,7 +7272,10 @@ const RELEASE_NOTES_PROMPT: &str = r#"Generate release notes for changes since t
 - Write a concise release title
 - Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
 - Use bullet points with brief descriptions
-- Reference PR numbers if visible in commit messages
+- Prefer pull request context over raw commits when available
+- Every bullet must include the PR number in parentheses, for example `(#123)`
+- If a pull request lists related issues, include all detected issue numbers after the PR number, grouped by lowercase keyword, for example `(#123, fixes #45, #46)` or `(#123, closes #50, resolves #51)`
+- Do not invent PR or issue numbers that are not present in the provided context
 - Skip merge commits and trivial changes (typos, formatting)
 - Write in past tense ("Added", "Fixed", "Improved")
 - Keep it concise and user-facing (skip internal implementation details)"#;
@@ -7270,6 +7304,8 @@ fn generate_release_notes_content(
         log::warn!("git fetch --tags warning: {stderr}");
     }
 
+    let prompt_context = build_release_notes_prompt_context(app, project_path, tag)?;
+
     // Get commits since the tag
     let commits_output = silent_command("git")
         .args([
@@ -7293,21 +7329,8 @@ fn generate_release_notes_content(
         return Err(format!("No changes found since {tag}"));
     }
 
-    // Truncate commits if too large (50K chars, char-safe for multi-byte UTF-8)
-    let commits = if commits.len() > 50_000 {
-        let end = commits
-            .char_indices()
-            .nth(50_000)
-            .map(|(i, _)| i)
-            .unwrap_or(commits.len());
-        format!(
-            "{}\n\n[... truncated, {} total characters]",
-            &commits[..end],
-            commits.len()
-        )
-    } else {
-        commits
-    };
+    let commits = truncate_prompt_section(&commits, 35_000);
+    let pull_requests = truncate_prompt_section(&prompt_context.pull_requests, 25_000);
 
     // Build prompt
     let prompt_template = custom_prompt
@@ -7317,6 +7340,7 @@ fn generate_release_notes_content(
     let prompt = prompt_template
         .replace("{tag}", tag)
         .replace("{previous_release_name}", release_name)
+        .replace("{pull_requests}", &pull_requests)
         .replace("{commits}", &commits);
 
     let model_str = model.unwrap_or("haiku");
@@ -7334,10 +7358,13 @@ fn generate_release_notes_content(
             Some(std::path::Path::new(project_path)),
             reasoning_effort,
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &prompt_context.pr_issue_refs);
+        return Ok(response);
     }
 
     if backend == crate::chat::types::Backend::Codex {
@@ -7350,10 +7377,13 @@ fn generate_release_notes_content(
             Some(std::path::Path::new(project_path)),
             reasoning_effort,
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &prompt_context.pr_issue_refs);
+        return Ok(response);
     }
 
     let cli_path = resolve_cli_binary(app);
@@ -7412,8 +7442,132 @@ fn generate_release_notes_content(
     let json_content = extract_structured_output(&stdout)?;
     log::trace!("Extracted release notes JSON: {json_content}");
 
-    serde_json::from_str::<ReleaseNotesResponse>(&json_content)
-        .map_err(|e| format!("Failed to parse release notes response: {e}"))
+    let mut response = serde_json::from_str::<ReleaseNotesResponse>(&json_content)
+        .map_err(|e| format!("Failed to parse release notes response: {e}"))?;
+    response.body = augment_pr_references_in_body(&response.body, &prompt_context.pr_issue_refs);
+    Ok(response)
+}
+
+fn truncate_prompt_section(content: &str, max_chars: usize) -> String {
+    if content.len() <= max_chars {
+        return content.to_string();
+    }
+
+    let end = content
+        .char_indices()
+        .nth(max_chars)
+        .map(|(i, _)| i)
+        .unwrap_or(content.len());
+    format!(
+        "{}\n\n[... truncated, {} total characters]",
+        &content[..end],
+        content.len()
+    )
+}
+
+fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> String {
+    RELEASE_NOTES_PAREN_RE
+        .replace_all(body, |captures: &regex::Captures<'_>| {
+            let Some(content_match) = captures.get(1) else {
+                return captures[0].to_string();
+            };
+            let content = content_match.as_str().trim();
+            let Some(pr_captures) = RELEASE_NOTES_LEADING_PR_RE.captures(content) else {
+                return captures[0].to_string();
+            };
+            let Some(pr_number_match) = pr_captures.get(1) else {
+                return captures[0].to_string();
+            };
+            let Ok(pr_number) = pr_number_match.as_str().parse::<u32>() else {
+                return captures[0].to_string();
+            };
+            let Some(issue_groups) = pr_issue_refs.get(&pr_number) else {
+                return captures[0].to_string();
+            };
+            if issue_groups.is_empty() {
+                return captures[0].to_string();
+            }
+
+            format!("(#{pr_number}, {})", format_issue_groups(issue_groups))
+        })
+        .into_owned()
+}
+
+fn format_related_pull_requests(pr_issue_refs: &PrIssueRefsMap) -> String {
+    if pr_issue_refs.is_empty() {
+        return "No merged pull requests were detected from commit subjects in this branch."
+            .to_string();
+    }
+
+    pr_issue_refs
+        .iter()
+        .map(|(pr_number, issue_groups)| {
+            format!(
+                "- PR #{pr_number}: use exact reference `(#{pr_number}, {})`",
+                format_issue_groups(issue_groups)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[cfg(test)]
+mod release_notes_body_tests {
+    use super::{augment_pr_references_in_body, format_related_pull_requests};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    fn issue_map(
+        entries: &[(u32, &[(&str, &[u32])])],
+    ) -> BTreeMap<u32, BTreeMap<String, BTreeSet<u32>>> {
+        entries
+            .iter()
+            .map(|(pr, groups)| {
+                let grouped = groups
+                    .iter()
+                    .map(|(keyword, numbers)| {
+                        (
+                            (*keyword).to_string(),
+                            numbers.iter().copied().collect::<BTreeSet<u32>>(),
+                        )
+                    })
+                    .collect::<BTreeMap<_, _>>();
+                (*pr, grouped)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn augments_missing_issue_refs_for_known_pr() {
+        let body = "- Added support (#9503)";
+        let result =
+            augment_pr_references_in_body(body, &issue_map(&[(9503, &[("fixes", &[9501, 9504])])]));
+        assert_eq!(result, "- Added support (#9503, fixes #9501, #9504)");
+    }
+
+    #[test]
+    fn replaces_partial_issue_refs_with_full_authoritative_set() {
+        let body = "- Added support (#9503, fixes #9501)";
+        let result =
+            augment_pr_references_in_body(body, &issue_map(&[(9503, &[("fixes", &[9501, 9504])])]));
+        assert_eq!(result, "- Added support (#9503, fixes #9501, #9504)");
+    }
+
+    #[test]
+    fn leaves_unknown_pr_references_untouched() {
+        let body = "- Added support (#9503)";
+        let result = augment_pr_references_in_body(body, &BTreeMap::new());
+        assert_eq!(result, body);
+    }
+
+    #[test]
+    fn formats_related_pull_requests_guidance() {
+        let result =
+            format_related_pull_requests(&issue_map(&[(9503, &[("fixes", &[9501, 9504])])]));
+        assert_eq!(
+            result,
+            "- PR #9503: use exact reference `(#9503, fixes #9501, #9504)`"
+        );
+    }
 }
 
 /// Generate release notes comparing a tag to HEAD

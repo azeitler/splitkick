@@ -20,8 +20,9 @@ vi.stubGlobal('ResizeObserver', ResizeObserverMock)
 HTMLCanvasElement.prototype.getContext = vi.fn(() => null)
 Element.prototype.scrollIntoView = vi.fn()
 
-vi.mock('@/lib/platform', async importOriginal => {
-  const actual = await importOriginal()
+vi.mock('@/lib/platform', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/platform')>('@/lib/platform') // eslint-disable-line @typescript-eslint/consistent-type-imports
 
   return {
     ...actual,

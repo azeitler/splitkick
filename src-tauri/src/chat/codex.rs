@@ -3111,7 +3111,10 @@ mod tests {
 
     #[test]
     fn split_fast_model_recognises_gpt_5_4_mini_fast() {
-        assert_eq!(split_fast_model("gpt-5.4-mini-fast"), ("gpt-5.4-mini", true));
+        assert_eq!(
+            split_fast_model("gpt-5.4-mini-fast"),
+            ("gpt-5.4-mini", true)
+        );
     }
 
     #[test]

@@ -319,6 +319,15 @@ const PROMPT_SECTIONS: PromptSection[] = [
             name: '{commit_count}',
             description: 'Number of commits in the PR',
           },
+          {
+            name: '{context}',
+            description: 'Loaded issue/PR/security/Linear context content',
+          },
+          {
+            name: '{related_pull_requests}',
+            description:
+              'Exact PR reference strings derived from merged PRs mentioned in commit subjects.',
+          },
           { name: '{commits}', description: 'List of commit messages' },
           { name: '{diff}', description: 'Git diff of all changes' },
         ],
@@ -352,6 +361,11 @@ const PROMPT_SECTIONS: PromptSection[] = [
           {
             name: '{previous_release_name}',
             description: 'Name of the selected release',
+          },
+          {
+            name: '{pull_requests}',
+            description:
+              'Merged pull requests matched to the selected release window, including detected issue references.',
           },
           {
             name: '{commits}',

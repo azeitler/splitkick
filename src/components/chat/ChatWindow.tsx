@@ -2566,6 +2566,11 @@ export function ChatWindow({
                               isDragging &&
                                 'ring-2 ring-primary ring-inset bg-primary/5'
                             )}
+                            style={
+                              isMobile
+                                ? { paddingBottom: 'var(--safe-area-bottom)' }
+                                : undefined
+                            }
                           >
                             {/* Pending file preview (@ mentions) */}
                             <FilePreview
@@ -2673,13 +2678,7 @@ export function ChatWindow({
                             </div>
 
                             {/* Bottom toolbar */}
-                            <div
-                              style={
-                                isMobile
-                                  ? { paddingBottom: 'var(--safe-area-bottom)' }
-                                  : undefined
-                              }
-                            >
+                            <div>
                               <ChatToolbar
                                 isSending={isSending}
                                 hasPendingQuestions={hasPendingQuestions}
