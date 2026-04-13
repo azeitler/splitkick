@@ -522,6 +522,7 @@ pub fn build_turn_start_params(
     execution_mode: Option<&str>,
     reasoning_effort: Option<&str>,
     add_dirs: &[String],
+    git_writable_roots: &[String],
 ) -> serde_json::Value {
     let mut params = serde_json::json!({
         "threadId": thread_id,
@@ -539,12 +540,16 @@ pub fn build_turn_start_params(
 
     // Sandbox policy — grant read access to add_dirs (pasted files, contexts, etc.)
     // in ALL modes, and writable roots only in build/yolo modes.
+    // Also include git metadata dirs so worktree commits work (issue #280).
     let mode = execution_mode.unwrap_or("plan");
-    if !add_dirs.is_empty() {
+    if !add_dirs.is_empty() || !git_writable_roots.is_empty() {
         let is_writable = mode == "build" || mode == "yolo";
         let writable_roots: Vec<serde_json::Value> = if is_writable {
             let mut roots = vec![serde_json::json!(working_dir.to_string_lossy())];
             for dir in add_dirs {
+                roots.push(serde_json::json!(dir));
+            }
+            for dir in git_writable_roots {
                 roots.push(serde_json::json!(dir));
             }
             roots
@@ -676,6 +681,19 @@ pub fn execute_codex_via_server(
         }
     };
 
+    // Resolve git metadata dirs for worktree sandbox access (issue #280).
+    // For worktrees, git needs write access to dirs outside the checkout path.
+    let git_writable_roots: Vec<String> =
+        crate::projects::git::resolve_git_dirs(working_dir)
+            .map(|(git_dir, common_dir)| {
+                let mut dirs = vec![git_dir.clone()];
+                if common_dir != git_dir {
+                    dirs.push(common_dir);
+                }
+                dirs
+            })
+            .unwrap_or_default();
+
     // Build turn params
     let turn_params = build_turn_start_params(
         &thread_id,
@@ -684,6 +702,7 @@ pub fn execute_codex_via_server(
         execution_mode,
         reasoning_effort,
         add_dirs,
+        &git_writable_roots,
     );
 
     // Set up event channel for this session
