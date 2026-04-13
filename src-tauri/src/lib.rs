@@ -946,10 +946,6 @@ Investigate the loaded Linear {linearWord} ({linearRefs})
 fn default_release_notes_prompt() -> String {
     r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).
 
-## Pull requests since {tag}
-
-{pull_requests}
-
 ## Commits since {tag}
 
 {commits}
@@ -959,10 +955,7 @@ fn default_release_notes_prompt() -> String {
 - Write a concise release title
 - Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
 - Use bullet points with brief descriptions
-- Prefer pull request context over raw commits when available
-- Every bullet must include the PR number in parentheses, for example `(#123)`
-- If a pull request lists related issues, include all detected issue numbers after the PR number, grouped by lowercase keyword, for example `(#123, fixes #45, #46)` or `(#123, closes #50, resolves #51)`
-- Do not invent PR or issue numbers that are not present in the provided context
+- Reference PR numbers if visible in commit messages
 - Skip merge commits and trivial changes (typos, formatting)
 - Write in past tense ("Added", "Fixed", "Improved")
 - Keep it concise and user-facing (skip internal implementation details)"#

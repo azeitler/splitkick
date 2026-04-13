@@ -363,11 +363,6 @@ const PROMPT_SECTIONS: PromptSection[] = [
             description: 'Name of the selected release',
           },
           {
-            name: '{pull_requests}',
-            description:
-              'Merged pull requests matched to the selected release window, including detected issue references.',
-          },
-          {
             name: '{commits}',
             description: 'Commit messages since the selected release',
           },
