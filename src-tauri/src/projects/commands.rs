@@ -34,8 +34,8 @@ use super::linear_issues::{
 };
 use super::names::generate_unique_workspace_name;
 use super::release_notes::{
-    build_pr_issue_refs_from_commit_range, build_release_notes_prompt_context, format_issue_groups,
-    PrIssueRefsMap,
+    build_pr_issue_refs_from_commit_range, build_pr_issue_refs_from_commit_subjects,
+    build_release_notes_prompt_context, format_issue_groups, PrIssueRefsMap,
 };
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
 use super::types::{
@@ -4750,6 +4750,61 @@ pub struct DetectPrResponse {
     pub title: String,
 }
 
+/// Detect an open PR for the current branch of a worktree without linking it.
+#[tauri::command]
+pub async fn detect_open_pr_for_branch(
+    app: AppHandle,
+    worktree_path: String,
+) -> Result<Option<DetectPrResponse>, String> {
+    log::trace!("Detecting open PR for branch at {worktree_path}");
+
+    let current_branch = git::get_current_branch(&worktree_path)?;
+    let repo = get_repo_identifier(&worktree_path)?;
+    let gh = resolve_gh_binary(&app);
+    let view_output = silent_command(&gh)
+        .args([
+            "api",
+            "--method",
+            "GET",
+            &format!("repos/{}/{}/pulls", repo.owner, repo.repo),
+            "-f",
+            "state=open",
+            "-f",
+            &format!("head={}:{}", repo.owner, current_branch),
+            "-f",
+            "per_page=1",
+        ])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh api: {e}"))?;
+
+    if !view_output.status.success() {
+        let stderr = String::from_utf8_lossy(&view_output.stderr);
+        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
+        }
+        return Err(format!("Failed to detect open PR for branch: {stderr}"));
+    }
+
+    if let Ok(view_json) = serde_json::from_slice::<serde_json::Value>(&view_output.stdout) {
+        if let Some(pr) = view_json.as_array().and_then(|items| items.first()) {
+            let pr_number = pr["number"].as_u64().unwrap_or(0) as u32;
+            let pr_url = pr["html_url"].as_str().unwrap_or("").to_string();
+            let title = pr["title"].as_str().unwrap_or("").to_string();
+
+            if pr_number > 0 && !pr_url.is_empty() {
+                return Ok(Some(DetectPrResponse {
+                    pr_number,
+                    pr_url,
+                    title,
+                }));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 /// Detect and link an existing PR for the current branch of a worktree.
 ///
 /// Runs `gh pr view` to check if a PR exists. If found, saves the PR info
@@ -5330,7 +5385,6 @@ fn generate_pr_content(
     reasoning_effort: Option<&str>,
     head_ref: &str,
 ) -> Result<PrContentResponse, String> {
-    // Get diff and commits
     let diff = get_branch_diff(repo_path, target_branch, head_ref)?;
     if diff.trim().is_empty() {
         return Err("No changes to create PR for".to_string());
@@ -5344,133 +5398,23 @@ fn generate_pr_content(
         &format!("origin/{target_branch}..{head_ref}"),
     )
     .unwrap_or_default();
-    let related_pull_requests = format_related_pull_requests(&related_pr_issue_refs);
-
-    // Build prompt - use custom if provided and non-empty, otherwise use default
-    let prompt_template = custom_prompt
-        .filter(|p| !p.trim().is_empty())
-        .unwrap_or(PR_CONTENT_PROMPT);
-
-    let prompt = prompt_template
-        .replace("{current_branch}", current_branch)
-        .replace("{target_branch}", target_branch)
-        .replace("{commit_count}", &commit_count.to_string())
-        .replace("{context}", context)
-        .replace("{related_pull_requests}", &related_pull_requests)
-        .replace("{commits}", &commits)
-        .replace("{diff}", &diff);
-
-    let model_str = model.unwrap_or("haiku");
-
-    // Per-operation backend > project/global default_backend
-    let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
-
-    if backend == crate::chat::types::Backend::Opencode {
-        log::trace!("Generating PR content with OpenCode");
-        let json_str = crate::chat::opencode::execute_one_shot_opencode(
-            app,
-            &prompt,
-            model_str,
-            Some(PR_CONTENT_SCHEMA),
-            Some(std::path::Path::new(repo_path)),
-            reasoning_effort,
-        )?;
-        let mut response: PrContentResponse = serde_json::from_str(&json_str).map_err(|e| {
-            log::error!("Failed to parse OpenCode PR content JSON: {e}, content: {json_str}");
-            format!("Failed to parse PR content: {e}")
-        })?;
-        response.body = augment_pr_references_in_body(&response.body, &related_pr_issue_refs);
-        return Ok(response);
-    }
-
-    if backend == crate::chat::types::Backend::Codex {
-        log::trace!("Generating PR content with Codex CLI (output-schema)");
-        let json_str = crate::chat::codex::execute_one_shot_codex(
-            app,
-            &prompt,
-            model_str,
-            PR_CONTENT_SCHEMA,
-            Some(std::path::Path::new(repo_path)),
-            reasoning_effort,
-        )?;
-        let mut response: PrContentResponse = serde_json::from_str(&json_str).map_err(|e| {
-            log::error!("Failed to parse Codex PR content JSON: {e}, content: {json_str}");
-            format!("Failed to parse PR content: {e}")
-        })?;
-        response.body = augment_pr_references_in_body(&response.body, &related_pr_issue_refs);
-        return Ok(response);
-    }
-
-    log::trace!("Generating PR content with Claude CLI (JSON schema)");
-
-    let cli_path = resolve_cli_binary(app);
-    if !cli_path.exists() {
-        return Err("Claude CLI not installed".to_string());
-    }
-
-    let mut cmd = silent_command(&cli_path);
-    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args(build_claude_structured_output_args(
-        model_str,
-        "",
-        PR_CONTENT_SCHEMA,
-    ));
-
-    cmd.stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn Claude CLI: {e}"))?;
-
-    // Write prompt to stdin
-    {
-        let input_message = serde_json::json!({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": prompt
-            }
-        });
-
-        let write_result = if let Some(stdin) = child.stdin.as_mut() {
-            writeln!(stdin, "{input_message}")
-        } else {
-            Err(std::io::Error::other("Failed to open stdin"))
-        };
-
-        if let Err(e) = write_result {
-            return Err(format!("Failed to write to stdin: {e}"));
-        }
-    }
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for Claude CLI: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "Claude CLI failed: stderr={}, stdout={}",
-            stderr.trim(),
-            stdout.trim()
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    log::trace!("Claude CLI PR generation stdout: {stdout}");
-
-    let json_content = extract_structured_output(&stdout)?;
-    log::trace!("Extracted PR content JSON: {json_content}");
-
-    let mut response: PrContentResponse = serde_json::from_str(&json_content).map_err(|e| {
-        log::error!("Failed to parse PR content JSON: {e}, content: {json_content}");
-        format!("Failed to parse PR content: {e}")
-    })?;
-    response.body = augment_pr_references_in_body(&response.body, &related_pr_issue_refs);
-    Ok(response)
+    generate_pr_content_from_inputs(
+        app,
+        repo_path,
+        current_branch,
+        target_branch,
+        custom_prompt,
+        model,
+        context,
+        custom_profile_name,
+        worktree_id,
+        magic_backend,
+        reasoning_effort,
+        &commits,
+        commit_count,
+        &diff,
+        &related_pr_issue_refs,
+    )
 }
 
 /// Parse PR number and URL from gh pr create output
@@ -5910,8 +5854,221 @@ pub async fn merge_github_pr(
 /// Response from updating a PR with AI-generated content
 #[derive(Debug, Clone, Serialize)]
 pub struct UpdatePrResponse {
+    pub pr_number: u32,
     pub title: String,
     pub body: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrGenerationTargetInfo {
+    number: u32,
+    #[serde(default)]
+    base_ref_name: String,
+    #[serde(default)]
+    head_ref_name: String,
+    #[serde(default)]
+    commits: Vec<PrGenerationCommit>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrGenerationCommit {
+    #[serde(default)]
+    message_headline: String,
+}
+
+fn get_pr_generation_target_info(
+    gh: &std::path::Path,
+    repo_path: &str,
+    pr_number: u32,
+) -> Result<PrGenerationTargetInfo, String> {
+    let output = silent_command(gh)
+        .args([
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--json",
+            "number,baseRefName,headRefName,commits",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr view: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
+        }
+        return Err(format!("Failed to load PR #{pr_number}: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str::<PrGenerationTargetInfo>(&stdout)
+        .map_err(|e| format!("Failed to parse PR #{pr_number}: {e}"))
+}
+
+fn get_pr_generation_diff(
+    repo_path: &str,
+    pr_number: u32,
+    gh: &std::path::Path,
+) -> Result<String, String> {
+    let output = silent_command(gh)
+        .args(["pr", "diff", &pr_number.to_string()])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr diff: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to get diff for PR #{pr_number}: {stderr}"));
+    }
+
+    let diff = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(truncate_diff_at_file_boundaries(&diff, 200_000))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn generate_pr_content_from_inputs(
+    app: &AppHandle,
+    repo_path: &str,
+    current_branch: &str,
+    target_branch: &str,
+    custom_prompt: Option<&str>,
+    model: Option<&str>,
+    context: &str,
+    custom_profile_name: Option<&str>,
+    worktree_id: Option<&str>,
+    magic_backend: Option<&str>,
+    reasoning_effort: Option<&str>,
+    commits: &str,
+    commit_count: u32,
+    diff: &str,
+    related_pr_issue_refs: &PrIssueRefsMap,
+) -> Result<PrContentResponse, String> {
+    let related_pull_requests = format_related_pull_requests(related_pr_issue_refs);
+
+    let prompt_template = custom_prompt
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or(PR_CONTENT_PROMPT);
+
+    let prompt = prompt_template
+        .replace("{current_branch}", current_branch)
+        .replace("{target_branch}", target_branch)
+        .replace("{commit_count}", &commit_count.to_string())
+        .replace("{context}", context)
+        .replace("{related_pull_requests}", &related_pull_requests)
+        .replace("{commits}", commits)
+        .replace("{diff}", diff);
+
+    let model_str = model.unwrap_or("haiku");
+    let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
+
+    if backend == crate::chat::types::Backend::Opencode {
+        log::trace!("Generating PR content with OpenCode");
+        let json_str = crate::chat::opencode::execute_one_shot_opencode(
+            app,
+            &prompt,
+            model_str,
+            Some(PR_CONTENT_SCHEMA),
+            Some(std::path::Path::new(repo_path)),
+            reasoning_effort,
+        )?;
+        let mut response: PrContentResponse = serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode PR content JSON: {e}, content: {json_str}");
+            format!("Failed to parse PR content: {e}")
+        })?;
+        response.body = augment_pr_references_in_body(&response.body, related_pr_issue_refs);
+        return Ok(response);
+    }
+
+    if backend == crate::chat::types::Backend::Codex {
+        log::trace!("Generating PR content with Codex CLI (output-schema)");
+        let json_str = crate::chat::codex::execute_one_shot_codex(
+            app,
+            &prompt,
+            model_str,
+            PR_CONTENT_SCHEMA,
+            Some(std::path::Path::new(repo_path)),
+            reasoning_effort,
+        )?;
+        let mut response: PrContentResponse = serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex PR content JSON: {e}, content: {json_str}");
+            format!("Failed to parse PR content: {e}")
+        })?;
+        response.body = augment_pr_references_in_body(&response.body, related_pr_issue_refs);
+        return Ok(response);
+    }
+
+    log::trace!("Generating PR content with Claude CLI (JSON schema)");
+
+    let cli_path = resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
+
+    let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
+    cmd.args(build_claude_structured_output_args(
+        model_str,
+        "",
+        PR_CONTENT_SCHEMA,
+    ));
+
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Claude CLI: {e}"))?;
+
+    {
+        let input_message = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": prompt
+            }
+        });
+
+        let write_result = if let Some(stdin) = child.stdin.as_mut() {
+            writeln!(stdin, "{input_message}")
+        } else {
+            Err(std::io::Error::other("Failed to open stdin"))
+        };
+
+        if let Err(e) = write_result {
+            return Err(format!("Failed to write to stdin: {e}"));
+        }
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait for Claude CLI: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "Claude CLI failed: stderr={}, stdout={}",
+            stderr.trim(),
+            stdout.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    log::trace!("Claude CLI PR generation stdout: {stdout}");
+
+    let json_content = extract_structured_output(&stdout)?;
+    log::trace!("Extracted PR content JSON: {json_content}");
+
+    let mut response: PrContentResponse = serde_json::from_str(&json_content).map_err(|e| {
+        log::error!("Failed to parse PR content JSON: {e}, content: {json_content}");
+        format!("Failed to parse PR content: {e}")
+    })?;
+    response.body = augment_pr_references_in_body(&response.body, related_pr_issue_refs);
+    Ok(response)
 }
 
 /// Generate AI content for updating a PR (does not apply changes)
@@ -5921,6 +6078,7 @@ pub struct UpdatePrResponse {
 pub async fn generate_pr_update_content(
     app: AppHandle,
     worktree_path: String,
+    pr_number: Option<u32>,
     session_id: Option<String>,
     custom_prompt: Option<String>,
     model: Option<String>,
@@ -5939,9 +6097,6 @@ pub async fn generate_pr_update_content(
     let project = data
         .find_project(&worktree.project_id)
         .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?;
-
-    let target_branch = &project.default_branch;
-    let current_branch = git::get_current_branch(&worktree_path)?;
 
     // Gather issue/PR context for this session AND worktree (same logic as create_pr_with_ai_content)
     let effective_session_id = session_id.as_deref().unwrap_or("");
@@ -5976,18 +6131,36 @@ pub async fn generate_pr_update_content(
         }
     }
 
-    // Generate PR content using Claude CLI — only include pushed commits
-    let remote_head = format!("origin/{current_branch}");
+    let selected_pr_number = pr_number
+        .or(worktree.pr_number)
+        .ok_or_else(|| "Enter a pull request number".to_string())?;
+    let gh = resolve_gh_binary(&app);
+    let pr_target = get_pr_generation_target_info(&gh, &worktree_path, selected_pr_number)?;
+    let commit_subjects = pr_target
+        .commits
+        .iter()
+        .map(|commit| commit.message_headline.clone())
+        .collect::<Vec<_>>();
+    let commits = commit_subjects.join("\n");
+    let commit_count = pr_target.commits.len() as u32;
+    let diff = get_pr_generation_diff(&worktree_path, selected_pr_number, &gh)?;
+    if diff.trim().is_empty() {
+        return Err(format!("No changes found for PR #{selected_pr_number}"));
+    }
+    let related_pr_issue_refs =
+        build_pr_issue_refs_from_commit_subjects(&app, &worktree_path, &commit_subjects)
+            .unwrap_or_default();
+
     let pr_magic_backend = crate::get_preferences_path(&app)
         .ok()
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
         .and_then(|p| p.magic_prompt_backends.pr_content_backend);
-    let mut pr_content = generate_pr_content(
+    let mut pr_content = generate_pr_content_from_inputs(
         &app,
         &worktree_path,
-        &current_branch,
-        target_branch,
+        &pr_target.head_ref_name,
+        &pr_target.base_ref_name,
         custom_prompt.as_deref(),
         model.as_deref(),
         &context_content,
@@ -5995,7 +6168,10 @@ pub async fn generate_pr_update_content(
         Some(worktree_id),
         pr_magic_backend.as_deref(),
         reasoning_effort.as_deref(),
-        &remote_head,
+        &commits,
+        commit_count,
+        &diff,
+        &related_pr_issue_refs,
     )?;
 
     // Gather Linear identifiers
@@ -6036,6 +6212,7 @@ pub async fn generate_pr_update_content(
     }
 
     Ok(UpdatePrResponse {
+        pr_number: selected_pr_number,
         title: pr_content.title,
         body: pr_content.body,
     })

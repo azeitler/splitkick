@@ -1447,13 +1447,8 @@ ${resolveInstructions}`
         return
       }
 
-      // Update PR description: open the update dialog (requires open PR)
+      // Update PR description: always open the dialog; user can enter any PR number
       if (option === 'update-pr') {
-        if (!worktree?.pr_number) {
-          notify('No PR open for this worktree', undefined, { type: 'error' })
-          setMagicModalOpen(false)
-          return
-        }
         useUIStore.getState().setUpdatePrModalOpen(true)
         setMagicModalOpen(false)
         return
@@ -1636,7 +1631,6 @@ ${resolveInstructions}`
                           (option.id === 'investigate-issue' &&
                             !hasIssueContexts) ||
                           (option.id === 'investigate-pr' && !hasPrContexts) ||
-                          (option.id === 'update-pr' && !hasOpenPr) ||
                           (option.id === 'review-comments' && !hasOpenPr) ||
                           (option.id === 'merge-pr' && !hasOpenPr)
 

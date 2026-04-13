@@ -252,6 +252,12 @@ pub async fn dispatch_command(
             }
             to_value(result)
         }
+        "detect_open_pr_for_branch" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let result =
+                crate::projects::detect_open_pr_for_branch(app.clone(), worktree_path).await?;
+            to_value(result)
+        }
         "clear_worktree_pr" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             crate::projects::clear_worktree_pr(app.clone(), worktree_id).await?;
@@ -2152,6 +2158,7 @@ pub async fn dispatch_command(
         }
         "generate_pr_update_content" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let pr_number: Option<u32> = field_opt(&args, "prNumber", "pr_number")?;
             let session_id: Option<String> = field_opt(&args, "sessionId", "session_id")?;
             let custom_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
@@ -2162,6 +2169,7 @@ pub async fn dispatch_command(
             let result = crate::projects::generate_pr_update_content(
                 app.clone(),
                 worktree_path,
+                pr_number,
                 session_id,
                 custom_prompt,
                 model,

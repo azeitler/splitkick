@@ -536,15 +536,41 @@ pub fn build_pr_issue_refs_from_commit_range(
     let gh = resolve_gh_binary(app);
     let commits = load_git_commits_for_range(project_path, revision_range)?;
     let pr_numbers = collect_pr_numbers_from_subjects(&commits);
+    build_pr_issue_refs_for_pr_numbers(&gh, project_path, &pr_numbers)
+}
+
+pub fn build_pr_issue_refs_from_commit_subjects(
+    app: &AppHandle,
+    project_path: &str,
+    commit_subjects: &[String],
+) -> Result<PrIssueRefsMap, String> {
+    let gh = resolve_gh_binary(app);
+    let commits = commit_subjects
+        .iter()
+        .map(|subject| GitCommitRecord {
+            oid: String::new(),
+            subject: subject.clone(),
+            body: String::new(),
+        })
+        .collect::<Vec<_>>();
+    let pr_numbers = collect_pr_numbers_from_subjects(&commits);
+    build_pr_issue_refs_for_pr_numbers(&gh, project_path, &pr_numbers)
+}
+
+fn build_pr_issue_refs_for_pr_numbers(
+    gh: &Path,
+    project_path: &str,
+    pr_numbers: &HashSet<u32>,
+) -> Result<PrIssueRefsMap, String> {
     let mut result = BTreeMap::new();
 
     for pr_number in pr_numbers {
-        let (pr, pr_commits) = load_pull_request_detail(&gh, project_path, pr_number)?;
+        let (pr, pr_commits) = load_pull_request_detail(gh, project_path, *pr_number)?;
         let issue_refs = collect_issue_refs(&pr, &pr_commits, &[]);
         if issue_refs.is_empty() {
             continue;
         }
-        result.insert(pr_number, group_issue_refs(&issue_refs));
+        result.insert(*pr_number, group_issue_refs(&issue_refs));
     }
 
     Ok(result)
