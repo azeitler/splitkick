@@ -124,6 +124,7 @@ describe('ChatInput attachments', () => {
     expect(textarea).toHaveAttribute('wrap', 'soft')
     expect(textarea).toHaveClass(
       'min-w-0',
+      'overflow-x-hidden',
       'whitespace-pre-wrap',
       'break-words'
     )
