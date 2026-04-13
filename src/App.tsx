@@ -318,23 +318,49 @@ function App() {
       // This clears sessions that finished while disconnected and restores
       // sessions that are still running — server is source of truth.
       const runningSendingIds: Record<string, boolean> = {}
+      const runningSendStartedAt: Record<string, number> = {}
       if (data.runningSessions?.length) {
         for (const sessionId of data.runningSessions) {
           runningSendingIds[sessionId] = true
+          const startedAt = data.sessionsByWorktree
+            ? Object.values(data.sessionsByWorktree)
+                .flatMap(ws => (ws as WorktreeSessions).sessions)
+                .find(session => session.id === sessionId)?.last_run_started_at
+            : undefined
+          if (startedAt) {
+            runningSendStartedAt[sessionId] = startedAt * 1000
+          }
         }
       }
       useChatStore.setState(state => {
         const current = state.sendingSessionIds
+        const currentSendStartedAt = state.sendStartedAt
         // Check if anything actually changed to avoid unnecessary re-renders
         const currentKeys = Object.keys(current)
         const newKeys = Object.keys(runningSendingIds)
+        const currentStartKeys = Object.keys(currentSendStartedAt).filter(
+          key => runningSendingIds[key]
+        )
+        const newStartKeys = Object.keys(runningSendStartedAt)
         if (
           currentKeys.length === newKeys.length &&
-          newKeys.every(k => current[k])
+          newKeys.every(k => current[k]) &&
+          currentStartKeys.length === newStartKeys.length &&
+          newStartKeys.every(k => currentSendStartedAt[k] === runningSendStartedAt[k])
         ) {
           return state
         }
-        return { sendingSessionIds: runningSendingIds }
+        return {
+          sendingSessionIds: runningSendingIds,
+          sendStartedAt: {
+            ...Object.fromEntries(
+              Object.entries(currentSendStartedAt).filter(
+                ([sessionId]) => !runningSendingIds[sessionId]
+              )
+            ),
+            ...runningSendStartedAt,
+          },
+        }
       })
       // Note: Git status is included in worktree cached_* fields, no separate cache needed
       // Seed preferences into cache

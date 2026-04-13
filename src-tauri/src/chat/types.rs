@@ -613,6 +613,9 @@ pub struct Session {
     /// Execution mode of the last run (plan/build/yolo)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_execution_mode: Option<String>,
+    /// Unix timestamp when the last run started
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_run_started_at: Option<u64>,
     /// User-assigned label with color (e.g. "Needs testing")
     #[serde(
         default,
@@ -681,6 +684,7 @@ impl Session {
             digest: None,
             last_run_status: None,
             last_run_execution_mode: None,
+            last_run_started_at: None,
             label: None,
             queued_messages: vec![],
         }
@@ -875,6 +879,7 @@ impl SessionMetadata {
             // Populate from last run for status recovery on app restart
             last_run_status: last_run.map(|r| r.status.clone()),
             last_run_execution_mode: last_run.and_then(|r| r.execution_mode.clone()),
+            last_run_started_at: last_run.map(|r| r.started_at),
             label: self.label.clone(),
             queued_messages: self.queued_messages.clone(),
         }
