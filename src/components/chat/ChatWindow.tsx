@@ -2556,7 +2556,7 @@ export function ChatWindow({
                     {/* Input container - full width, centered content */}
                     <div className="bg-background">
                       <div className="mx-auto max-w-7xl">
-                        <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl">
+                        <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl xl:max-w-4xl">
                           {/* Input area - unified container with textarea and toolbar */}
                           <form
                             ref={formRef}
