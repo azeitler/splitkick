@@ -1,18 +1,16 @@
 import {
   Brain,
   CircleDot,
-  ClipboardList,
   ExternalLink,
   FolderOpen,
   GitMerge,
   GitPullRequest,
-  Hammer,
   Loader2,
+  Paperclip,
   Plug,
   Shield,
   ShieldAlert,
   Wand2,
-  Zap,
 } from 'lucide-react'
 import { useCallback } from 'react'
 import { Kbd } from '@/components/ui/kbd'
@@ -71,6 +69,7 @@ import {
   getProviderDisplayName,
 } from '@/components/chat/toolbar/toolbar-utils'
 import { DesktopBackendModelPicker } from '@/components/chat/toolbar/DesktopBackendModelPicker'
+import { ExecutionModeDropdown } from '@/components/chat/toolbar/ExecutionModeDropdown'
 
 interface DesktopToolbarControlsProps {
   hasPendingQuestions: boolean
@@ -118,6 +117,7 @@ interface DesktopToolbarControlsProps {
   onOpenProjectSettings?: () => void
   onResolvePrConflicts: () => void
   onLoadContext: () => void
+  onAttach: () => void
   installedBackends: ('claude' | 'codex' | 'opencode')[]
   onSetExecutionMode: (mode: ExecutionMode) => void
   onToggleMcpServer: (name: string) => void
@@ -179,6 +179,7 @@ export function DesktopToolbarControls({
   onOpenProjectSettings,
   onResolvePrConflicts,
   onLoadContext,
+  onAttach,
   installedBackends,
   onSetExecutionMode,
   onToggleMcpServer,
@@ -208,13 +209,9 @@ export function DesktopToolbarControls({
   const loadedLinearCount = loadedLinearContexts.length
   const loadedContextCount = attachedSavedContexts.length
   const providerDisplayName = getProviderDisplayName(selectedProvider)
-  const executionModeLabel =
-    executionMode.charAt(0).toUpperCase() + executionMode.slice(1)
 
   return (
     <>
-      <div className="block @xl:hidden h-4 w-px bg-border/50" />
-
       <button
         type="button"
         className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
@@ -331,6 +328,21 @@ export function DesktopToolbarControls({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            disabled={hasPendingQuestions}
+            onClick={onAttach}
+            className="hidden @xl:flex h-8 items-center justify-center px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            aria-label="Attach images"
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Attach images from device</TooltipContent>
+      </Tooltip>
 
       {(loadedIssueCount > 0 ||
         loadedPRCount > 0 ||
@@ -808,63 +820,13 @@ export function DesktopToolbarControls({
 
       <div className="hidden @xl:block h-4 w-px bg-border/50" />
 
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={hasPendingQuestions}
-                className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              >
-                {executionMode === 'plan' && (
-                  <ClipboardList className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
-                )}
-                {executionMode === 'build' && (
-                  <Hammer className="h-3.5 w-3.5" />
-                )}
-                {executionMode === 'yolo' && (
-                  <Zap className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />
-                )}
-                <span>{executionModeLabel}</span>
-              </button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>
-            {`${executionModeLabel} mode (Shift+Tab to cycle)`}
-          </TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="start" onCloseAutoFocus={focusChatInput}>
-          <DropdownMenuRadioGroup
-            value={executionMode}
-            onValueChange={v => onSetExecutionMode(v as ExecutionMode)}
-          >
-            <DropdownMenuRadioItem value="plan">
-              <ClipboardList className="mr-2 h-4 w-4" />
-              Plan
-              <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                Read-only
-              </span>
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="build">
-              <Hammer className="mr-2 h-4 w-4" />
-              Build
-              <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                Auto-edits
-              </span>
-            </DropdownMenuRadioItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuRadioItem
-              value="yolo"
-              className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
-            >
-              <Zap className="mr-2 h-4 w-4" />
-              Yolo
-              <span className="ml-auto pl-4 text-xs">No limits!</span>
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <ExecutionModeDropdown
+        executionMode={executionMode}
+        disabled={hasPendingQuestions}
+        onSetExecutionMode={onSetExecutionMode}
+        className="hidden @xl:flex"
+        onCloseAutoFocus={focusChatInput}
+      />
     </>
   )
 }

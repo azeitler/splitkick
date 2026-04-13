@@ -1,4 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react'
+import { Paperclip } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   gitPush,
@@ -15,6 +16,7 @@ import type { ChatToolbarProps } from '@/components/chat/toolbar/types'
 import { MobileToolbarMenu } from '@/components/chat/toolbar/MobileToolbarMenu'
 import { MobileBackendModelPickerSheet } from '@/components/chat/toolbar/MobileBackendModelPickerSheet'
 import { DesktopToolbarControls } from '@/components/chat/toolbar/DesktopToolbarControls'
+import { ExecutionModeDropdown } from '@/components/chat/toolbar/ExecutionModeDropdown'
 import { SendCancelButton } from '@/components/chat/toolbar/SendCancelButton'
 import { ContextViewerDialog } from '@/components/chat/toolbar/ContextViewerDialog'
 import {
@@ -30,6 +32,11 @@ import { useContextViewer } from '@/components/chat/toolbar/useContextViewer'
 import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { useIsMobile } from '@/hooks/use-mobile'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export {
@@ -96,6 +103,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   onThinkingLevelChange,
   onEffortLevelChange,
   onSetExecutionMode,
+  onAttach,
   onCancel,
   queuedMessageCount,
   availableMcpServers,
@@ -291,7 +299,6 @@ export const ChatToolbar = memo(function ChatToolbar({
           hideThinkingLevel={hideThinkingLevel}
           useAdaptiveThinking={useAdaptiveThinking}
           isCodex={isCodex}
-          executionMode={executionMode}
           customCliProfiles={customCliProfiles}
           uncommittedAdded={uncommittedAdded}
           uncommittedRemoved={uncommittedRemoved}
@@ -311,7 +318,6 @@ export const ChatToolbar = memo(function ChatToolbar({
           onMerge={onMerge}
           onResolveConflicts={onResolveConflicts}
           onOpenBackendModelPicker={() => setMobileBackendModelPickerOpen(true)}
-          onSetExecutionMode={onSetExecutionMode}
           handlePullClick={handlePullClick}
           handlePushClick={handlePushClick}
           handleUncommittedDiffClick={handleUncommittedDiffClick}
@@ -337,6 +343,21 @@ export const ChatToolbar = memo(function ChatToolbar({
           onToggleMcpServer={onToggleMcpServer}
         />
 
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={onAttach}
+              disabled={hasPendingQuestions}
+              className="flex @xl:hidden h-8 items-center justify-center px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+              aria-label="Attach images"
+            >
+              <Paperclip className="h-4 w-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Attach images</TooltipContent>
+        </Tooltip>
+
         {isMobile && (
           <MobileBackendModelPickerSheet
             open={mobileBackendModelPickerOpen}
@@ -352,6 +373,16 @@ export const ChatToolbar = memo(function ChatToolbar({
             onBackendModelChange={onBackendModelChange}
           />
         )}
+
+        <div className="block @xl:hidden h-4 w-px shrink-0 bg-border/50" />
+
+        <ExecutionModeDropdown
+          executionMode={executionMode}
+          disabled={hasPendingQuestions}
+          onSetExecutionMode={onSetExecutionMode}
+          className="flex @xl:hidden shrink-0"
+          align="end"
+        />
 
         <DesktopToolbarControls
           hasPendingQuestions={hasPendingQuestions}
@@ -394,6 +425,7 @@ export const ChatToolbar = memo(function ChatToolbar({
           onOpenProjectSettings={onOpenProjectSettings}
           onResolvePrConflicts={onResolvePrConflicts}
           onLoadContext={onLoadContext}
+          onAttach={onAttach}
           installedBackends={installedBackends}
           onSetExecutionMode={onSetExecutionMode}
           onToggleMcpServer={onToggleMcpServer}

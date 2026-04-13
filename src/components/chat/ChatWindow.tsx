@@ -879,6 +879,7 @@ export function ChatWindow({
 
   // Ref for approve button (passed to VirtualizedMessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
+  const triggerChatAttachRef = useRef<(() => void) | null>(null)
 
   // Terminal panel ref for imperative collapse/expand
   const terminalPanelRef = useRef<ImperativePanelHandle>(null)
@@ -2663,6 +2664,9 @@ export function ChatWindow({
                                 ) => {
                                   clearChatInputStateRef.current = handler
                                 }}
+                                onRegisterAttachHandler={handler => {
+                                  triggerChatAttachRef.current = handler
+                                }}
                                 formRef={formRef}
                                 inputRef={inputRef}
                               />
@@ -2752,6 +2756,9 @@ export function ChatWindow({
                                 }
                                 onSetExecutionMode={
                                   handleToolbarSetExecutionMode
+                                }
+                                onAttach={() =>
+                                  triggerChatAttachRef.current?.()
                                 }
                                 onCancel={handleCancel}
                                 queuedMessageCount={

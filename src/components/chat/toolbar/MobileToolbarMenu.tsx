@@ -7,7 +7,6 @@ import {
   Bug,
   ChevronRight,
   CircleDot,
-  ClipboardList,
   ExternalLink,
   Eye,
   FileText,
@@ -17,7 +16,6 @@ import {
   GitMerge,
   GitPullRequest,
   GitPullRequestArrow,
-  Hammer,
   Link2,
   MessageSquare,
   MoreHorizontal,
@@ -27,7 +25,6 @@ import {
   Shield,
   ShieldAlert,
   Sparkles,
-  Zap,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -46,7 +43,6 @@ import {
 import type { CustomCliProfile, CliBackend } from '@/types/preferences'
 import type {
   EffortLevel,
-  ExecutionMode,
   McpServerInfo,
   ThinkingLevel,
 } from '@/types/chat'
@@ -86,7 +82,6 @@ interface MobileToolbarMenuProps {
   hideThinkingLevel?: boolean
   useAdaptiveThinking: boolean
   isCodex: boolean
-  executionMode: ExecutionMode
   customCliProfiles: CustomCliProfile[]
 
   uncommittedAdded: number
@@ -108,7 +103,6 @@ interface MobileToolbarMenuProps {
   onMerge: () => void
   onResolveConflicts: () => void
   onOpenBackendModelPicker: () => void
-  onSetExecutionMode: (mode: ExecutionMode) => void
 
   handlePullClick: () => void
   handlePushClick: () => void
@@ -150,7 +144,6 @@ export function MobileToolbarMenu({
   hideThinkingLevel,
   useAdaptiveThinking,
   isCodex,
-  executionMode,
   customCliProfiles,
   uncommittedAdded,
   uncommittedRemoved,
@@ -170,7 +163,6 @@ export function MobileToolbarMenu({
   onMerge,
   onResolveConflicts,
   onOpenBackendModelPicker,
-  onSetExecutionMode,
   handlePullClick,
   handlePushClick,
   handleUncommittedDiffClick,
@@ -209,6 +201,7 @@ export function MobileToolbarMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
+          aria-label="More actions"
           className="flex @xl:hidden h-8 items-center gap-1 rounded-l-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           disabled={isDisabled}
         >
@@ -797,38 +790,6 @@ export function MobileToolbarMenu({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         )}
-
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
-            {executionMode === 'plan' && (
-              <ClipboardList className="mr-2 h-4 w-4" />
-            )}
-            {executionMode === 'build' && <Hammer className="mr-2 h-4 w-4" />}
-            {executionMode === 'yolo' && <Zap className="mr-2 h-4 w-4" />}
-            <span>Mode</span>
-            <span className="ml-auto w-16 text-right text-xs text-muted-foreground capitalize">
-              {executionMode}
-            </span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuRadioGroup
-              value={executionMode}
-              onValueChange={v => onSetExecutionMode(v as ExecutionMode)}
-            >
-              <DropdownMenuRadioItem value="plan">Plan</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="build">Build</DropdownMenuRadioItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioItem
-                value="yolo"
-                className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
-              >
-                Yolo
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-
-        <DropdownMenuSeparator />
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">

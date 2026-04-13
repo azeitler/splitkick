@@ -321,7 +321,7 @@ std::fs::rename(&temp_path, &final_path)?;
 
 ### Image Processing
 
-Images pasted or dropped into chat are processed in Rust before saving:
+Images pasted, dropped, or selected from the native file picker into chat are processed in Rust before saving:
 
 - **Resize**: Max 1568px on longest side (Claude's internal limit)
 - **Compress**: Opaque PNGs → JPEG at 85% quality (typically 5-10x smaller)

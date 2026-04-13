@@ -21,8 +21,7 @@ HTMLCanvasElement.prototype.getContext = vi.fn(() => null)
 Element.prototype.scrollIntoView = vi.fn()
 
 vi.mock('@/lib/platform', async importOriginal => {
-  const actual =
-    await importOriginal<typeof import('@/lib/platform')>()
+  const actual = await importOriginal()
 
   return {
     ...actual,
@@ -76,6 +75,7 @@ function renderDesktopToolbarControls(
     onOpenProjectSettings: vi.fn(),
     onResolvePrConflicts: vi.fn(),
     onLoadContext: vi.fn(),
+    onAttach: vi.fn(),
     installedBackends: ['claude', 'codex', 'opencode'],
     onSetExecutionMode: vi.fn(),
     onToggleMcpServer: vi.fn(),
