@@ -684,16 +684,15 @@ pub fn execute_codex_via_server(
 
     // Resolve git metadata dirs for worktree sandbox access (issue #280).
     // For worktrees, git needs write access to dirs outside the checkout path.
-    let git_writable_roots: Vec<String> =
-        crate::projects::git::resolve_git_dirs(working_dir)
-            .map(|(git_dir, common_dir)| {
-                let mut dirs = vec![git_dir.clone()];
-                if common_dir != git_dir {
-                    dirs.push(common_dir);
-                }
-                dirs
-            })
-            .unwrap_or_default();
+    let git_writable_roots: Vec<String> = crate::projects::git::resolve_git_dirs(working_dir)
+        .map(|(git_dir, common_dir)| {
+            let mut dirs = vec![git_dir.clone()];
+            if common_dir != git_dir {
+                dirs.push(common_dir);
+            }
+            dirs
+        })
+        .unwrap_or_default();
 
     // Persist codex_thread_id on the RunEntry so crash recovery can find it
     if let Ok(mut writer) = super::run_log::RunLogWriter::resume(app, session_id, run_id) {
@@ -1346,7 +1345,7 @@ fn process_server_notification(
     received_completed_agent_message: &mut bool,
     is_plan_mode: bool,
 ) {
-    log::trace!("[codex-server] Notification: {method} for session {session_id}");
+    log::debug!("[codex-notify] {method} for session {session_id}");
 
     match method {
         "thread/started" => {
@@ -1363,6 +1362,10 @@ fn process_server_notification(
             // Streaming text delta — emit immediately
             if let Some(delta) = params.get("delta").and_then(|v| v.as_str()) {
                 if !delta.is_empty() {
+                    log::debug!(
+                        "[codex-text] delta {}B for session {session_id}",
+                        delta.len()
+                    );
                     full_content.push_str(delta);
                     let _ = app.emit_all(
                         "chat:chunk",
@@ -1662,7 +1665,7 @@ fn process_server_notification(
             }
         }
         _ => {
-            log::trace!("Unhandled app-server notification: {method}");
+            log::debug!("[codex-notify] Unhandled notification: {method}");
         }
     }
 }
@@ -1685,6 +1688,10 @@ fn normalize_item_types(item: &serde_json::Value) -> serde_json::Value {
                 "imageView" => "image_view",
                 "contextCompaction" => "context_compaction",
                 "userMessage" => "user_message",
+                "dynamicToolCall" => "dynamic_tool_call",
+                "hookPrompt" => "hook_prompt",
+                "enteredReviewMode" => "entered_review_mode",
+                "exitedReviewMode" => "exited_review_mode",
                 other => other,
             };
             obj.insert("type".to_string(), serde_json::json!(normalized));
@@ -2000,17 +2007,20 @@ fn process_codex_event(
     usage: &mut Option<UsageData>,
     error_emitted: &mut bool,
 ) {
+    log::debug!("[codex-event] {event_type} for session {session_id}");
+
     match event_type {
         "thread.started" => {
             if let Some(tid) = msg.get("thread_id").and_then(|v| v.as_str()) {
                 *thread_id = tid.to_string();
-                log::trace!("Codex thread started: {tid}");
+                log::debug!("[codex-event] thread started: {tid}");
             }
         }
         "item.started" => {
             let item = msg.get("item").unwrap_or(&serde_json::Value::Null);
             let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
             let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            log::debug!("[codex-event] item.started type={item_type} id={item_id}");
 
             match item_type {
                 "command_execution" => {
@@ -2233,8 +2243,61 @@ fn process_codex_event(
                         },
                     );
                 }
+                "dynamic_tool_call" => {
+                    let tool = item
+                        .get("tool")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
+                    let arguments = item
+                        .get("arguments")
+                        .cloned()
+                        .unwrap_or(serde_json::Value::Null);
+                    let tool_id = if item_id.is_empty() {
+                        uuid::Uuid::new_v4().to_string()
+                    } else {
+                        item_id.to_string()
+                    };
+                    let name = format!("DynamicToolCall:{tool}");
+                    tool_calls.push(ToolCall {
+                        id: tool_id.clone(),
+                        name: name.clone(),
+                        input: arguments.clone(),
+                        output: None,
+                        parent_tool_use_id: None,
+                    });
+                    content_blocks.push(ContentBlock::ToolUse {
+                        tool_call_id: tool_id.clone(),
+                    });
+                    if !item_id.is_empty() {
+                        pending_tool_ids.insert(item_id.to_string(), tool_id.clone());
+                    }
+                    let _ = app.emit_all(
+                        "chat:tool_use",
+                        &ToolUseEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            id: tool_id.clone(),
+                            name,
+                            input: arguments,
+                            parent_tool_use_id: None,
+                        },
+                    );
+                    let _ = app.emit_all(
+                        "chat:tool_block",
+                        &ToolBlockEvent {
+                            session_id: session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            tool_call_id: tool_id,
+                        },
+                    );
+                }
                 // These types are handled on completion only (via deltas / dedicated events)
-                "agent_message" | "reasoning" | "user_message" => {}
+                "agent_message"
+                | "reasoning"
+                | "user_message"
+                | "hook_prompt"
+                | "entered_review_mode"
+                | "exited_review_mode" => {}
                 "plan" => {
                     let tool_id = codex_plan_tool_id(None, Some(item_id));
                     let existing = tool_calls
@@ -2311,6 +2374,7 @@ fn process_codex_event(
             let item = msg.get("item").unwrap_or(&serde_json::Value::Null);
             let item_type = item.get("type").and_then(|v| v.as_str()).unwrap_or("");
             let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            log::debug!("[codex-event] item.completed type={item_type} id={item_id}");
 
             match item_type {
                 "agent_message" => {
@@ -2523,8 +2587,41 @@ fn process_codex_event(
                         );
                     }
                 }
-                // User's own input echoed back — no UI needed
-                "user_message" => {}
+                "dynamic_tool_call" => {
+                    let output = item
+                        .get("output")
+                        .or_else(|| item.get("contentItems"))
+                        .map(|v| {
+                            if let Some(s) = v.as_str() {
+                                s.to_string()
+                            } else {
+                                serde_json::to_string(v).unwrap_or_default()
+                            }
+                        })
+                        .unwrap_or_else(|| {
+                            item.get("status")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("completed")
+                                .to_string()
+                        });
+                    let tool_id = pending_tool_ids.remove(item_id).unwrap_or_default();
+                    if !tool_id.is_empty() {
+                        if let Some(tc) = tool_calls.iter_mut().find(|t| t.id == tool_id) {
+                            tc.output = Some(output.clone());
+                        }
+                        let _ = app.emit_all(
+                            "chat:tool_result",
+                            &ToolResultEvent {
+                                session_id: session_id.to_string(),
+                                worktree_id: worktree_id.to_string(),
+                                tool_use_id: tool_id,
+                                output,
+                            },
+                        );
+                    }
+                }
+                // No UI action needed for these types
+                "user_message" | "hook_prompt" | "entered_review_mode" | "exited_review_mode" => {}
                 other => {
                     log::debug!("Unknown Codex item.completed type: {other}");
                 }

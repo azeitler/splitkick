@@ -531,6 +531,8 @@ fn reader_loop(
             }
         };
 
+        log::debug!("[codex-raw] {line}");
+
         let has_method = msg.get("method").is_some();
         let has_id = msg.get("id").is_some();
         let has_result = msg.get("result").is_some();
@@ -567,7 +569,7 @@ fn reader_loop(
 
             route_server_request(&active_sessions, id, method, params);
         } else {
-            log::trace!("Unclassified app-server message: {line}");
+            log::debug!("[codex-raw] Unclassified message: {line}");
         }
     }
 
@@ -612,11 +614,11 @@ fn route_notification(
                 .event_tx
                 .send(ServerEvent::Notification { method, params });
         } else {
-            log::trace!("No active session for thread {tid}, notification: {method}");
+            log::debug!("[codex-route] No active session for thread {tid}, notification: {method}");
         }
     } else {
         // Broadcast to all sessions (global notifications)
-        log::trace!("Broadcasting notification without threadId: {method}");
+        log::debug!("[codex-route] Broadcasting {method} (no threadId)");
         let sessions = active_sessions.lock().unwrap();
         for (_tid, ctx) in sessions.iter() {
             let _ = ctx.event_tx.send(ServerEvent::Notification {
