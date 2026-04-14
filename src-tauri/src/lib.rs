@@ -272,7 +272,7 @@ fn default_auto_branch_naming() -> bool {
 }
 
 fn default_branch_naming_model() -> String {
-    "haiku".to_string() // Use Haiku by default for fast, cheap branch name generation
+    "sonnet".to_string()
 }
 
 fn default_auto_session_naming() -> bool {
@@ -280,7 +280,7 @@ fn default_auto_session_naming() -> bool {
 }
 
 fn default_session_naming_model() -> String {
-    "haiku".to_string() // Use Haiku by default for fast, cheap session name generation
+    "sonnet".to_string()
 }
 
 fn default_font_size() -> u32 {
@@ -1111,9 +1111,9 @@ pub struct MagicPromptModels {
     pub investigate_pr_model: String,
     #[serde(default = "default_model")]
     pub investigate_workflow_run_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub pr_content_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub commit_message_model: String,
     #[serde(default = "default_model")]
     pub code_review_model: String,
@@ -1121,11 +1121,11 @@ pub struct MagicPromptModels {
     pub context_summary_model: String,
     #[serde(default = "default_model")]
     pub resolve_conflicts_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub release_notes_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub session_naming_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub session_recap_model: String,
     #[serde(default = "default_model")]
     pub investigate_security_alert_model: String,
@@ -1137,8 +1137,8 @@ pub struct MagicPromptModels {
     pub review_comments_model: String,
 }
 
-fn default_haiku_model() -> String {
-    "haiku".to_string()
+fn default_sonnet_model() -> String {
+    "sonnet".to_string()
 }
 
 impl Default for MagicPromptModels {
@@ -1147,14 +1147,14 @@ impl Default for MagicPromptModels {
             investigate_issue_model: default_model(),
             investigate_pr_model: default_model(),
             investigate_workflow_run_model: default_model(),
-            pr_content_model: default_haiku_model(),
-            commit_message_model: default_haiku_model(),
+            pr_content_model: default_sonnet_model(),
+            commit_message_model: default_sonnet_model(),
             code_review_model: default_model(),
             context_summary_model: default_model(),
             resolve_conflicts_model: default_model(),
-            release_notes_model: default_haiku_model(),
-            session_naming_model: default_haiku_model(),
-            session_recap_model: default_haiku_model(),
+            release_notes_model: default_sonnet_model(),
+            session_naming_model: default_sonnet_model(),
+            session_recap_model: default_sonnet_model(),
             investigate_security_alert_model: default_model(),
             investigate_advisory_model: default_model(),
             investigate_linear_issue_model: default_model(),

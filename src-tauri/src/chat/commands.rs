@@ -451,7 +451,7 @@ pub async fn regenerate_session_name(
         .map(|m| m.content.clone())
         .ok_or_else(|| "No user messages in session to generate name from".to_string())?;
 
-    let naming_model = model.unwrap_or_else(|| "haiku".to_string());
+    let naming_model = model.unwrap_or_else(|| "sonnet".to_string());
 
     // Read per-operation backend from prefs
     let backend_override = crate::get_preferences_path(&app)

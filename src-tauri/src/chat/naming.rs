@@ -247,7 +247,7 @@ fn get_cli_model_alias(model: &str) -> &'static str {
         "haiku" => "haiku",
         "sonnet" => "sonnet",
         "opus" => "opus",
-        _ => "haiku",
+        _ => "sonnet",
     }
 }
 

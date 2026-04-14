@@ -5961,7 +5961,7 @@ fn generate_pr_content_from_inputs(
         .replace("{commits}", commits)
         .replace("{diff}", diff);
 
-    let model_str = model.unwrap_or("haiku");
+    let model_str = model.unwrap_or("sonnet");
     let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
 
     if backend == crate::chat::types::Backend::Opencode {
@@ -7005,7 +7005,7 @@ fn generate_review(
     magic_backend: Option<&str>,
     reasoning_effort: Option<&str>,
 ) -> Result<ReviewResponse, String> {
-    let model_str = model.unwrap_or("haiku");
+    let model_str = model.unwrap_or("sonnet");
 
     // Per-operation backend > project/global default_backend
     let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
@@ -7523,7 +7523,7 @@ fn generate_release_notes_content(
         .replace("{previous_release_name}", release_name)
         .replace("{commits}", &commits);
 
-    let model_str = model.unwrap_or("haiku");
+    let model_str = model.unwrap_or("sonnet");
 
     // Per-operation backend > global default_backend (no worktree for release notes)
     let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, None);
