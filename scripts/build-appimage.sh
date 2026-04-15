@@ -76,6 +76,7 @@ NO_STRIP=1 ARCH="$MACHINE_ARCH" "$LINUXDEPLOY_PLUGIN_BIN" --appdir Jean.AppDir 2
 # Rename to standard naming convention
 ARCH_LABEL="amd64"
 if [ "$MACHINE_ARCH" = "aarch64" ]; then
+    # Convention: "arm64" (not "aarch64") — must match jean.build download page
     ARCH_LABEL="arm64"
 fi
 
