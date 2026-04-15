@@ -389,7 +389,7 @@ export function useMessageSending({
 
       let message = textMessage
       if (textMessage.startsWith('/')) {
-        const slashName = textMessage.slice(1).split(/\s/)[0]
+        const slashName = textMessage.slice(1).split(/\s/)[0] ?? ''
         const params = textMessage.slice(1 + slashName.length).trim()
         const claudeSkills =
           queryClient.getQueryData<{ name: string }[]>(

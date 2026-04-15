@@ -1275,7 +1275,7 @@ export function useSendMessage() {
       model?: string
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
-      effortLevel?: string
+      effortLevel?: EffortLevel
       parallelExecutionPrompt?: string
       aiLanguage?: string
       allowedTools?: string[]
