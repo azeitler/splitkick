@@ -52,6 +52,11 @@ pub async fn dispatch_command(
             let result = crate::projects::list_projects(app.clone()).await?;
             to_value(result)
         }
+        "browse_directory" => {
+            let path: Option<String> = from_field_opt(&args, "path")?;
+            let result = crate::projects::browse_directory(path).await?;
+            to_value(result)
+        }
         "add_project" => {
             let path: String = from_field(&args, "path")?;
             let parent_id: Option<String> = field_opt(&args, "parentId", "parent_id")?;

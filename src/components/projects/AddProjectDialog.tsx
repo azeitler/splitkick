@@ -1,5 +1,4 @@
-import { useCallback, useEffect } from 'react'
-import { toast } from 'sonner'
+import { useCallback, useEffect, useState } from 'react'
 import { isNativeApp } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
 import { FolderOpen, FolderPlus, Globe } from 'lucide-react'
@@ -13,6 +12,7 @@ import {
 import { Kbd } from '@/components/ui/kbd'
 import { useProjectsStore } from '@/store/projects-store'
 import { useAddProject, useInitProject } from '@/services/projects'
+import { DirectoryBrowser } from '@/components/projects/DirectoryBrowser'
 
 export function AddProjectDialog() {
   const {
@@ -22,6 +22,7 @@ export function AddProjectDialog() {
   } = useProjectsStore()
   const addProject = useAddProject()
   const initProject = useInitProject()
+  const [browserMode, setBrowserMode] = useState<'select' | 'save' | null>(null)
 
   const handleCloneRemote = useCallback(() => {
     const { openCloneModal } = useProjectsStore.getState()
@@ -32,10 +33,7 @@ export function AddProjectDialog() {
 
   const handleAddExisting = useCallback(async () => {
     if (!isNativeApp()) {
-      toast.error('Native desktop feature unavailable', {
-        description:
-          'This action requires the Jean desktop app (Tauri runtime).',
-      })
+      setBrowserMode('select')
       return
     }
 
@@ -86,10 +84,7 @@ export function AddProjectDialog() {
 
   const handleInitNew = useCallback(async () => {
     if (!isNativeApp()) {
-      toast.error('Native desktop feature unavailable', {
-        description:
-          'This action requires the Jean desktop app (Tauri runtime).',
-      })
+      setBrowserMode('save')
       return
     }
 
@@ -133,13 +128,80 @@ export function AddProjectDialog() {
     }
   }, [initProject, addProjectParentFolderId, setAddProjectDialogOpen])
 
+  const handleBrowserOpenChange = useCallback((open: boolean) => {
+    if (!open) setBrowserMode(null)
+  }, [])
+
+  const handleBrowserSelect = useCallback(
+    async (selected: string) => {
+      if (browserMode === 'select') {
+        try {
+          await addProject.mutateAsync({
+            path: selected,
+            parentId: addProjectParentFolderId ?? undefined,
+          })
+          setAddProjectDialogOpen(false)
+          setBrowserMode(null)
+        } catch (error) {
+          const errorMessage =
+            typeof error === 'string'
+              ? error
+              : error instanceof Error
+                ? error.message
+                : ''
+
+          if (
+            errorMessage.includes('not a git repository') ||
+            errorMessage.includes("ambiguous argument 'HEAD'")
+          ) {
+            const { openGitInitModal } = useProjectsStore.getState()
+            openGitInitModal(selected)
+            setBrowserMode(null)
+          }
+        }
+        return
+      }
+
+      if (browserMode === 'save') {
+        try {
+          const identity = await invoke<{
+            name: string | null
+            email: string | null
+          }>('check_git_identity')
+          if (!identity.name || !identity.email) {
+            const { openGitInitModal } = useProjectsStore.getState()
+            openGitInitModal(selected)
+            setBrowserMode(null)
+            return
+          }
+        } catch {
+          // Ignore and let init flow surface errors
+        }
+
+        await initProject.mutateAsync({
+          path: selected,
+          parentId: addProjectParentFolderId ?? undefined,
+        })
+        setAddProjectDialogOpen(false)
+        setBrowserMode(null)
+      }
+    },
+    [
+      addProject,
+      addProjectParentFolderId,
+      browserMode,
+      initProject,
+      setAddProjectDialogOpen,
+    ]
+  )
+
   // Keyboard shortcuts: A = add existing, I = initialize new, C = clone
   useEffect(() => {
     if (!addProjectDialogOpen || isPending) return
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't intercept when another modal is on top
       const { gitInitModalOpen, cloneModalOpen } = useProjectsStore.getState()
-      if (gitInitModalOpen || cloneModalOpen) return
+      if (gitInitModalOpen || cloneModalOpen || browserMode !== null) return
 
       // Don't intercept when typing in an input field
       const target = e.target as HTMLElement
@@ -165,6 +227,7 @@ export function AddProjectDialog() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [
     addProjectDialogOpen,
+    browserMode,
     isPending,
     handleAddExisting,
     handleInitNew,
@@ -173,73 +236,93 @@ export function AddProjectDialog() {
 
   return (
     <Dialog open={addProjectDialogOpen} onOpenChange={setAddProjectDialogOpen}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>New Project</DialogTitle>
-          <DialogDescription>
-            Add an existing git repository or create a new one.
-          </DialogDescription>
-        </DialogHeader>
+      <>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New Project</DialogTitle>
+            <DialogDescription>
+              Add an existing git repository or create a new one.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="grid gap-3 py-4">
-          <button
-            onClick={handleAddExisting}
-            disabled={isPending}
-            className="flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <FolderOpen className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div className="flex-1 space-y-1">
-              <p className="text-sm font-medium leading-none">
-                Add Existing Project
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Select a git repository from your computer
-              </p>
-            </div>
-            <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">A</Kbd>
-          </button>
+          <div className="grid gap-3 py-4">
+            <button
+              onClick={handleAddExisting}
+              disabled={isPending}
+              className="flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <FolderOpen className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-medium leading-none">
+                  Add Existing Project
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Select a git repository from your computer
+                </p>
+              </div>
+              <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">A</Kbd>
+            </button>
 
-          <button
-            onClick={handleInitNew}
-            disabled={isPending}
-            className="flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <FolderPlus className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div className="flex-1 space-y-1">
-              <p className="text-sm font-medium leading-none">
-                Initialize New Project
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Create a new directory with git initialized
-              </p>
-            </div>
-            <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">I</Kbd>
-          </button>
+            <button
+              onClick={handleInitNew}
+              disabled={isPending}
+              className="flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <FolderPlus className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-medium leading-none">
+                  Initialize New Project
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Create a new directory with git initialized
+                </p>
+              </div>
+              <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">I</Kbd>
+            </button>
 
-          <button
-            onClick={handleCloneRemote}
-            disabled={isPending}
-            className="flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-          >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <Globe className="h-5 w-5 text-muted-foreground" />
-            </div>
-            <div className="flex-1 space-y-1">
-              <p className="text-sm font-medium leading-none">
-                Clone from Remote
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Clone a repository from a git URL
-              </p>
-            </div>
-            <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">C</Kbd>
-          </button>
-        </div>
-      </DialogContent>
+            <button
+              onClick={handleCloneRemote}
+              disabled={isPending}
+              className="flex items-start gap-4 rounded-lg border border-border p-4 text-left transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                <Globe className="h-5 w-5 text-muted-foreground" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-medium leading-none">
+                  Clone from Remote
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  Clone a repository from a git URL
+                </p>
+              </div>
+              <Kbd className="mt-1 h-6 px-1.5 text-xs shrink-0">C</Kbd>
+            </button>
+          </div>
+        </DialogContent>
+
+        <DirectoryBrowser
+          open={browserMode !== null}
+          onOpenChange={handleBrowserOpenChange}
+          onSelect={handleBrowserSelect}
+          mode={browserMode ?? 'select'}
+          title={
+            browserMode === 'save'
+              ? 'Create new project'
+              : 'Select existing project'
+          }
+          description={
+            browserMode === 'save'
+              ? 'Choose a parent directory and enter a new project folder name.'
+              : 'Choose an existing git repository folder.'
+          }
+          defaultName={browserMode === 'save' ? 'my-project' : undefined}
+        />
+      </>
     </Dialog>
   )
 }

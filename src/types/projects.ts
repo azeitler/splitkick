@@ -60,6 +60,20 @@ export interface Project {
   linked_project_ids?: string[]
 }
 
+export interface DirEntry {
+  name: string
+  path: string
+  is_dir: boolean
+  is_git_repo: boolean
+  is_hidden: boolean
+}
+
+export interface BrowseDirectoryResult {
+  current_path: string
+  parent_path?: string
+  entries: DirEntry[]
+}
+
 /**
  * Check if a project entry is a folder
  */

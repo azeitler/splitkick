@@ -2928,6 +2928,7 @@ pub fn run() {
             // Project management commands
             projects::check_git_identity,
             projects::set_git_identity,
+            projects::browse_directory,
             projects::list_projects,
             projects::add_project,
             projects::init_git_in_folder,
