@@ -250,7 +250,7 @@ struct CachedGhVersions {
 
 /// Save fetched versions to disk cache
 fn save_gh_versions_cache(app: &AppHandle, versions: &[GhReleaseInfo]) {
-    let cache_path = match super::config::get_gh_cli_dir(app) {
+    let cache_path = match super::config::ensure_gh_cli_dir(app) {
         Ok(dir) => dir.join(GH_VERSIONS_CACHE_FILE),
         Err(e) => {
             log::warn!("Cannot resolve gh CLI dir for cache: {e}");
