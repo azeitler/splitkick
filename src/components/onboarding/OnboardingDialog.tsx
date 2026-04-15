@@ -49,6 +49,8 @@ import {
 } from './CliSetupComponents'
 import { toast } from 'sonner'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
+import { isWindows } from '@/lib/platform'
+import { WslSetupStep } from './WslSetupStep'
 
 type AIBackend = 'claude' | 'codex' | 'opencode'
 type CliType = AIBackend | 'gh'
@@ -56,6 +58,7 @@ type CliType = AIBackend | 'gh'
 const AI_BACKENDS: AIBackend[] = ['claude', 'codex', 'opencode']
 
 type OnboardingStep =
+  | 'wsl-setup'
   | 'backend-select'
   | 'claude-setup'
   | 'claude-installing'
@@ -404,6 +407,13 @@ function OnboardingDialogContent() {
       setOpencodeLoginAttempt(0)
       setGhLoginAttempt(0)
     })
+
+    // On Windows, show WSL mode selection first if not yet chosen
+    if (isWindows && preferences && !preferences.wsl_mode_chosen && !onboardingStartStep) {
+      dbg('init effect: Windows + WSL not chosen → wsl-setup')
+      queueMicrotask(() => setStep('wsl-setup'))
+      return
+    }
 
     if (onboardingStartStep === 'gh') {
       dbg('init effect: startStep=gh → gh-setup')
@@ -1049,6 +1059,13 @@ function OnboardingDialogContent() {
   })
 
   const getDialogContent = () => {
+    if (step === 'wsl-setup') {
+      return {
+        title: 'Welcome to Jean',
+        description: 'Choose your development environment.',
+      }
+    }
+
     if (step === 'backend-select') {
       return {
         title: onboardingManuallyTriggered
@@ -1233,10 +1250,17 @@ function OnboardingDialogContent() {
         </DialogHeader>
 
         <div className="overflow-y-auto py-4 flex flex-col">
-          {renderStepIndicator()}
+          {step !== 'wsl-setup' && renderStepIndicator()}
 
           <div className="w-full">
-            {step === 'backend-select' ? (
+            {step === 'wsl-setup' ? (
+              <WslSetupStep
+                onComplete={() => {
+                  dbg('WSL setup complete → backend-select')
+                  setStep('backend-select')
+                }}
+              />
+            ) : step === 'backend-select' ? (
               <BackendSelectionState
                 selectedBackends={selectedBackends}
                 onToggle={handleBackendToggle}

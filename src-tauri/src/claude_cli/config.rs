@@ -1,6 +1,6 @@
 //! Configuration and path management for the embedded Claude CLI
 
-use crate::platform::silent_command;
+use crate::platform::{silent_command, get_wsl_config};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -53,26 +53,35 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
     };
 
     if use_path {
-        // Try to find claude in system PATH
-        let which_cmd = if cfg!(target_os = "windows") {
-            "where"
+        let wsl = get_wsl_config();
+        if wsl.enabled {
+            // In WSL mode, check if binary exists inside WSL — return bare name
+            // since it will be invoked through wsl.exe
+            if crate::platform::check_wsl_tool(&wsl.distro, "claude") {
+                return PathBuf::from("claude");
+            }
         } else {
-            "which"
-        };
+            // Try to find claude in system PATH
+            let which_cmd = if cfg!(target_os = "windows") {
+                "where"
+            } else {
+                "which"
+            };
 
-        if let Ok(output) = silent_command(which_cmd).arg("claude").output() {
-            if output.status.success() {
-                // On Windows, `where` can return multiple paths; take only the first line
-                let path_str = String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .to_string();
-                if !path_str.is_empty() {
-                    let path = PathBuf::from(&path_str);
-                    if path.exists() {
-                        return path;
+            if let Ok(output) = silent_command(which_cmd).arg("claude").output() {
+                if output.status.success() {
+                    // On Windows, `where` can return multiple paths; take only the first line
+                    let path_str = String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    if !path_str.is_empty() {
+                        let path = PathBuf::from(&path_str);
+                        if path.exists() {
+                            return path;
+                        }
                     }
                 }
             }

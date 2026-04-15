@@ -2,6 +2,8 @@
 
 pub mod process;
 pub mod shell;
+pub mod wsl;
 
 pub use process::*;
 pub use shell::*;
+pub use wsl::*;

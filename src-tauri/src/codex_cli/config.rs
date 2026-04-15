@@ -1,6 +1,6 @@
 //! Configuration and path management for the Codex CLI
 
-use crate::platform::silent_command;
+use crate::platform::{silent_command, get_wsl_config};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -67,44 +67,52 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
     };
 
     if use_path {
-        let which_cmd = if cfg!(target_os = "windows") {
-            "where"
+        let wsl = get_wsl_config();
+        if wsl.enabled {
+            if crate::platform::check_wsl_tool(&wsl.distro, "codex") {
+                log::debug!("resolve_cli_binary: found codex in WSL distro {}", wsl.distro);
+                return PathBuf::from("codex");
+            }
         } else {
-            "which"
-        };
+            let which_cmd = if cfg!(target_os = "windows") {
+                "where"
+            } else {
+                "which"
+            };
 
-        match silent_command(which_cmd).arg("codex").output() {
-            Ok(output) => {
-                log::debug!(
-                    "resolve_cli_binary: `{which_cmd} codex` exit_status={}, stdout={:?}",
-                    output.status,
-                    String::from_utf8_lossy(&output.stdout).trim()
-                );
-                if output.status.success() {
-                    // On Windows, `where` can return multiple paths; take only the first line
-                    let path_str = String::from_utf8_lossy(&output.stdout)
-                        .lines()
-                        .next()
-                        .unwrap_or("")
-                        .trim()
-                        .to_string();
-                    if !path_str.is_empty() {
-                        let path = PathBuf::from(&path_str);
-                        if path.exists() {
-                            log::debug!("resolve_cli_binary: resolved to PATH binary: {path_str}");
-                            return path;
+            match silent_command(which_cmd).arg("codex").output() {
+                Ok(output) => {
+                    log::debug!(
+                        "resolve_cli_binary: `{which_cmd} codex` exit_status={}, stdout={:?}",
+                        output.status,
+                        String::from_utf8_lossy(&output.stdout).trim()
+                    );
+                    if output.status.success() {
+                        // On Windows, `where` can return multiple paths; take only the first line
+                        let path_str = String::from_utf8_lossy(&output.stdout)
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        if !path_str.is_empty() {
+                            let path = PathBuf::from(&path_str);
+                            if path.exists() {
+                                log::debug!("resolve_cli_binary: resolved to PATH binary: {path_str}");
+                                return path;
+                            } else {
+                                log::debug!("resolve_cli_binary: PATH binary does not exist on disk: {path_str}");
+                            }
                         } else {
-                            log::debug!("resolve_cli_binary: PATH binary does not exist on disk: {path_str}");
+                            log::debug!(
+                                "resolve_cli_binary: `{which_cmd} codex` returned empty output"
+                            );
                         }
-                    } else {
-                        log::debug!(
-                            "resolve_cli_binary: `{which_cmd} codex` returned empty output"
-                        );
                     }
                 }
-            }
-            Err(e) => {
-                log::debug!("resolve_cli_binary: `{which_cmd} codex` failed to execute: {e}");
+                Err(e) => {
+                    log::debug!("resolve_cli_binary: `{which_cmd} codex` failed to execute: {e}");
+                }
             }
         }
         log::warn!("codex_cli_source is 'path' but could not find codex in PATH, falling back to Jean-managed binary");

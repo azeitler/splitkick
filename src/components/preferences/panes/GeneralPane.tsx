@@ -133,6 +133,7 @@ import {
 import { playNotificationSound } from '@/lib/sounds'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
+import { isWindows } from '@/lib/platform'
 import { isNewerVersion } from '@/lib/version-utils'
 import { cn } from '@/lib/utils'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -1596,6 +1597,13 @@ export const GeneralPane: React.FC = () => {
         </SettingsSection>
       )}
 
+      {isWindows && isNativeApp() && (
+        <WslSettingsSection
+          preferences={preferences}
+          patchPreferences={patchPreferences}
+        />
+      )}
+
       <SettingsSection title="Defaults">
         <div className="space-y-4">
           <InlineField
@@ -2899,5 +2907,96 @@ const AiLanguageField: FC<{
         </Button>
       </div>
     </InlineField>
+  )
+}
+
+const WslSettingsSection: FC<{
+  preferences: AppPreferences | undefined
+  patchPreferences: ReturnType<typeof usePatchPreferences>
+}> = ({ preferences, patchPreferences }) => {
+  const [distros, setDistros] = useState<string[]>([])
+  const [loadingDistros, setLoadingDistros] = useState(false)
+  const [toolStatus, setToolStatus] = useState<string>('')
+
+  // Load available distros
+  useEffect(() => {
+    setLoadingDistros(true)
+    invoke<string[]>('list_wsl_distros')
+      .then(setDistros)
+      .catch(() => setDistros([]))
+      .finally(() => setLoadingDistros(false))
+  }, [])
+
+  // Check tools when distro changes
+  useEffect(() => {
+    if (!preferences?.wsl_enabled || !preferences?.wsl_distro) {
+      setToolStatus('')
+      return
+    }
+    invoke<boolean>('check_wsl_tool', {
+      distro: preferences.wsl_distro,
+      tool: 'git',
+    }).then(hasGit => {
+      setToolStatus(hasGit ? 'git found' : 'git not found in WSL')
+    }).catch(() => setToolStatus(''))
+  }, [preferences?.wsl_enabled, preferences?.wsl_distro])
+
+  return (
+    <SettingsSection title="WSL">
+      <div className="space-y-4">
+        <InlineField
+          label="Use WSL"
+          description="Route commands through Windows Subsystem for Linux"
+        >
+          <Switch
+            checked={preferences?.wsl_enabled ?? false}
+            onCheckedChange={checked => {
+              patchPreferences.mutate({
+                wsl_enabled: checked,
+                wsl_mode_chosen: true,
+              })
+            }}
+          />
+        </InlineField>
+
+        {preferences?.wsl_enabled && (
+          <>
+            <InlineField
+              label="Distribution"
+              description={toolStatus || 'Select your WSL distribution'}
+            >
+              {loadingDistros ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Loading...
+                </div>
+              ) : (
+                <Select
+                  value={preferences?.wsl_distro || ''}
+                  onValueChange={value => {
+                    patchPreferences.mutate({ wsl_distro: value })
+                  }}
+                >
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Select distro" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {distros.map(d => (
+                      <SelectItem key={d} value={d}>
+                        {d}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </InlineField>
+
+            <div className="text-xs text-muted-foreground">
+              CLI tools must be installed inside your WSL distribution.
+            </div>
+          </>
+        )}
+      </div>
+    </SettingsSection>
   )
 }

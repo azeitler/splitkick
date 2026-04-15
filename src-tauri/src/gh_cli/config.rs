@@ -1,6 +1,6 @@
 //! Configuration and path management for the embedded GitHub CLI
 
-use crate::platform::silent_command;
+use crate::platform::{silent_command, get_wsl_config};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -56,25 +56,32 @@ pub fn resolve_gh_binary(app: &AppHandle) -> PathBuf {
     };
 
     if use_path {
-        let which_cmd = if cfg!(target_os = "windows") {
-            "where"
+        let wsl = get_wsl_config();
+        if wsl.enabled {
+            if crate::platform::check_wsl_tool(&wsl.distro, "gh") {
+                return PathBuf::from("gh");
+            }
         } else {
-            "which"
-        };
+            let which_cmd = if cfg!(target_os = "windows") {
+                "where"
+            } else {
+                "which"
+            };
 
-        if let Ok(output) = silent_command(which_cmd).arg("gh").output() {
-            if output.status.success() {
-                // On Windows, `where` can return multiple paths; take only the first line
-                let path_str = String::from_utf8_lossy(&output.stdout)
-                    .lines()
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .to_string();
-                if !path_str.is_empty() {
-                    let path = PathBuf::from(&path_str);
-                    if path.exists() {
-                        return path;
+            if let Ok(output) = silent_command(which_cmd).arg("gh").output() {
+                if output.status.success() {
+                    // On Windows, `where` can return multiple paths; take only the first line
+                    let path_str = String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .next()
+                        .unwrap_or("")
+                        .trim()
+                        .to_string();
+                    if !path_str.is_empty() {
+                        let path = PathBuf::from(&path_str);
+                        if path.exists() {
+                            return path;
+                        }
                     }
                 }
             }
