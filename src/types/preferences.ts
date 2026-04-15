@@ -6,18 +6,14 @@ import { isMacOS, isWindows } from '../lib/platform'
 // Notification Sounds
 // =============================================================================
 
-export type NotificationSound = 'none' | 'ding' | 'chime' | 'pop' | 'choochoo'
+export type NotificationSound = 'none' | 'workwork'
 
 export const notificationSoundOptions: {
   value: NotificationSound
   label: string
 }[] = [
   { value: 'none', label: 'None' },
-  // More sounds will be added later:
-  // { value: 'ding', label: 'Ding' },
-  // { value: 'chime', label: 'Chime' },
-  // { value: 'pop', label: 'Pop' },
-  // { value: 'choochoo', label: 'Choo-choo' },
+  { value: 'workwork', label: 'Work Work' },
 ]
 
 // =============================================================================

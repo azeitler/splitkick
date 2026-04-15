@@ -888,12 +888,10 @@ export default function useStreamingEvents({
             // Question waiting state is persisted by the backend — no frontend persist needed.
           }
 
-          // Play waiting sound if not currently viewing this session
-          if (!isCurrentlyViewing) {
-            const waitingSound = (preferences?.waiting_sound ??
-              'none') as NotificationSound
-            playNotificationSound(waitingSound)
-          }
+          // Play waiting sound
+          const waitingSound = (preferences?.waiting_sound ??
+            'none') as NotificationSound
+          playNotificationSound(waitingSound)
         }
       } else if (event.payload.waiting_for_plan) {
         // Codex/Opencode plan-mode run completed with content — enter plan-waiting state.
@@ -1004,12 +1002,10 @@ export default function useStreamingEvents({
           }
         }
 
-        // Play waiting sound only if not currently viewing this session
-        if (!isCurrentlyViewing) {
-          const waitingSound = (preferences?.waiting_sound ??
-            'none') as NotificationSound
-          playNotificationSound(waitingSound)
-        }
+        // Play waiting sound
+        const waitingSound = (preferences?.waiting_sound ??
+          'none') as NotificationSound
+        playNotificationSound(waitingSound)
       } else {
         // No blocking tools — add optimistic message FIRST, then batch-clear state.
         // This eliminates the flicker gap where neither streaming nor persisted content is visible.
@@ -1106,12 +1102,10 @@ export default function useStreamingEvents({
 
         // Reviewing state is persisted by the backend — no frontend persist needed.
 
-        // Play review sound if not currently viewing this session
-        if (!isCurrentlyViewing) {
-          const reviewSound = (preferences?.review_sound ??
-            'none') as NotificationSound
-          playNotificationSound(reviewSound)
-        }
+        // Play review sound
+        const reviewSound = (preferences?.review_sound ??
+          'none') as NotificationSound
+        playNotificationSound(reviewSound)
 
         // Auto-save context (fire-and-forget, no blocking)
         if (preferences?.auto_save_context === true) {
