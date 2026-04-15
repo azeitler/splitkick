@@ -967,8 +967,6 @@ fn process_turn_events(
 ) -> CodexResponse {
     use super::codex_server::ServerEvent;
     use std::io::Write;
-    use std::time::Duration;
-
     let mut full_content = String::new();
     let mut response_thread_id = thread_id.to_string();
     let mut tool_calls: Vec<ToolCall> = Vec::new();
@@ -988,43 +986,13 @@ fn process_turn_events(
         .open(output_file)
         .ok();
 
-    let mut stall_count: u32 = 0;
-
     'outer: loop {
-        // Receive with 30s intermediate timeouts for earlier stall detection
-        let event = loop {
-            match event_rx.recv_timeout(Duration::from_secs(30)) {
-                Ok(e) => {
-                    stall_count = 0;
-                    break e;
-                }
-                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
-                    stall_count += 1;
-                    if stall_count >= 10 {
-                        // 10 × 30s = 300s total
-                        log::warn!("Turn event timeout for session {session_id} after {stall_count} intervals");
-                        let _ = app.emit_all(
-                            "chat:error",
-                            &ErrorEvent {
-                                session_id: session_id.to_string(),
-                                worktree_id: worktree_id.to_string(),
-                                error: "Codex response timed out".to_string(),
-                            },
-                        );
-                        error_emitted = true;
-                        break 'outer;
-                    }
-                    log::info!(
-                        "No codex events for {}s (session {session_id}, interval {stall_count}/10)",
-                        stall_count * 30
-                    );
-                    continue;
-                }
-                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                    log::warn!("Event channel disconnected for session {session_id}");
-                    cancelled = true;
-                    break 'outer;
-                }
+        let event = match event_rx.recv() {
+            Ok(e) => e,
+            Err(_) => {
+                log::warn!("Event channel disconnected for session {session_id}");
+                cancelled = true;
+                break 'outer;
             }
         };
 

@@ -85,6 +85,21 @@ if [ -f "$OUTPUT_NAME" ]; then
     FINAL_NAME="Jean_${VERSION}_${ARCH_LABEL}.AppImage"
     mv "$OUTPUT_NAME" "$FINAL_NAME"
     echo "==> AppImage built successfully: $BUNDLE_DIR/$FINAL_NAME"
+
+    echo "==> Creating updater artifact (.tar.gz)..."
+    tar -czf "${FINAL_NAME}.tar.gz" "$FINAL_NAME"
+
+    if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+        echo "==> Signing updater artifact..."
+        cd "$PROJECT_DIR"
+        bun run tauri signer sign \
+            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" \
+            "$BUNDLE_DIR/${FINAL_NAME}.tar.gz"
+        echo "==> Updater artifacts created: ${FINAL_NAME}.tar.gz + .sig"
+    else
+        echo "WARN: TAURI_SIGNING_PRIVATE_KEY not set, skipping signature"
+    fi
 else
     echo "ERROR: Repackaging failed"
     exit 1
