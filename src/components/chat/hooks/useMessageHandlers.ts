@@ -59,7 +59,7 @@ interface SendMessageMutation {
       model?: string
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
-      effortLevel?: string
+      effortLevel?: EffortLevel
       allowedTools?: string[]
       mcpConfig?: string
       customProfileName?: string

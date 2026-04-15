@@ -19,6 +19,7 @@ import type {
   QuestionAnswer,
   ThinkingLevel,
   ExecutionMode,
+  EffortLevel,
   LabelData,
   QueuedMessage,
 } from '@/types/chat'
