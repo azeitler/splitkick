@@ -1072,6 +1072,7 @@ export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
 
 export type ClaudeModel =
   | 'opus'
+  | 'claude-opus-4-5-20251101'
   | 'claude-opus-4-6[1m]'
   | 'opus-fast'
   | 'claude-opus-4-6[1m]-fast'
@@ -1081,6 +1082,7 @@ export type ClaudeModel =
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
   { value: 'opus', label: 'Claude Opus 4.6' },
+  { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
   { value: 'claude-opus-4-6[1m]', label: 'Claude Opus 4.6 (1M)' },
   { value: 'opus-fast', label: 'Claude Opus 4.6 Fast' },
   { value: 'claude-opus-4-6[1m]-fast', label: 'Claude Opus 4.6 (1M) Fast' },
