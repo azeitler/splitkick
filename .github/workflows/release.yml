@@ -107,11 +107,57 @@ jobs:
           RELEASE_TAG: ${{ github.event.release.tag_name || inputs.version }}
         run: |
           VERSION="${RELEASE_TAG#v}"
-          # Find the AppImage regardless of arch suffix (amd64 or aarch64)
-          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name "Jean_${VERSION}_*.AppImage" -print -quit 2>/dev/null)
+          BUNDLE_DIR="src-tauri/target/release/bundle/appimage"
+          APPIMAGE=$(find "$BUNDLE_DIR" -name "Jean_${VERSION}_*.AppImage" ! -name "*.tar.gz" -print -quit 2>/dev/null)
           if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
             gh release upload "$RELEASE_TAG" "$APPIMAGE" --clobber
+            # Upload updater artifacts (.tar.gz + .sig)
+            [ -f "${APPIMAGE}.tar.gz" ] && gh release upload "$RELEASE_TAG" "${APPIMAGE}.tar.gz" --clobber
+            [ -f "${APPIMAGE}.tar.gz.sig" ] && gh release upload "$RELEASE_TAG" "${APPIMAGE}.tar.gz.sig" --clobber
           fi
+
+      - name: Patch latest.json for AppImage updater
+        if: startsWith(matrix.platform, 'ubuntu')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.version }}
+        run: |
+          VERSION="${RELEASE_TAG#v}"
+          BUNDLE_DIR="src-tauri/target/release/bundle/appimage"
+          ARCH_LABEL="amd64"
+          PLATFORM_KEY="linux-x86_64"
+          if [ "$(uname -m)" = "aarch64" ]; then
+            ARCH_LABEL="arm64"
+            PLATFORM_KEY="linux-aarch64"
+          fi
+
+          APPIMAGE_TAR="Jean_${VERSION}_${ARCH_LABEL}.AppImage.tar.gz"
+          SIG_FILE="${BUNDLE_DIR}/${APPIMAGE_TAR}.sig"
+
+          if [ ! -f "$SIG_FILE" ]; then
+            echo "No signature file found at $SIG_FILE, skipping latest.json patch"
+            exit 0
+          fi
+
+          SIGNATURE=$(cat "$SIG_FILE")
+          URL="https://github.com/coollabsio/jean/releases/download/${RELEASE_TAG}/${APPIMAGE_TAR}"
+
+          # Download current latest.json, patch Linux platform entry, re-upload
+          gh release download "$RELEASE_TAG" -p "latest.json" -D /tmp --clobber
+
+          SIG_CONTENT="$SIGNATURE" node -e "
+            const fs = require('fs');
+            const data = JSON.parse(fs.readFileSync('/tmp/latest.json', 'utf8'));
+            data.platforms = data.platforms || {};
+            data.platforms['${PLATFORM_KEY}'] = {
+              signature: process.env.SIG_CONTENT,
+              url: '${URL}'
+            };
+            fs.writeFileSync('/tmp/latest.json', JSON.stringify(data, null, 2));
+          "
+
+          gh release upload "$RELEASE_TAG" /tmp/latest.json --clobber
+          echo "Patched latest.json: ${PLATFORM_KEY} -> ${URL}"
 
   update-homebrew-tap:
     name: Update Homebrew Tap
