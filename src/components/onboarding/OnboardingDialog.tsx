@@ -379,7 +379,7 @@ function OnboardingDialogContent() {
       return
     }
 
-    if (loadingInitialState || initializedFlowRef.current) {
+    if (loadingInitialState || initializedFlowRef.current || !preferences) {
       dbg(
         'init effect: skipped (loading:',
         loadingInitialState,
@@ -488,6 +488,7 @@ function OnboardingDialogContent() {
     ghSetup.status?.installed,
     ghAuth.data?.authenticated,
     getNextStepAfterBackends,
+    preferences,
   ])
 
   // Handle AI backend auth check steps
