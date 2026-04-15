@@ -751,7 +751,17 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
               (storeState.sessionLabels[session.id]?.name ?? '')
                 .toLowerCase()
                 .includes(q) ||
-              (worktree.label?.name ?? '').toLowerCase().includes(q)
+              (worktree.label?.name ?? '').toLowerCase().includes(q) ||
+              (worktree.pr_number != null &&
+                worktree.pr_number.toString().includes(q)) ||
+              (worktree.issue_number != null &&
+                worktree.issue_number.toString().includes(q)) ||
+              (worktree.linear_issue_identifier ?? '')
+                .toLowerCase()
+                .includes(q) ||
+              (worktree.security_alert_number != null &&
+                worktree.security_alert_number.toString().includes(q)) ||
+              (worktree.advisory_ghsa_id ?? '').toLowerCase().includes(q)
             )
           })
         : sessions

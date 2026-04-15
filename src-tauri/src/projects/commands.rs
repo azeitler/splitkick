@@ -9265,6 +9265,23 @@ pub async fn list_claude_skills(worktree_path: Option<String>) -> Result<Vec<Cla
     Ok(skills)
 }
 
+/// List Codex CLI skills from ~/.codex/skills/
+#[tauri::command]
+pub async fn list_codex_skills() -> Result<Vec<ClaudeSkill>, String> {
+    log::trace!("Listing Codex CLI skills");
+
+    let mut skills_map = std::collections::HashMap::new();
+
+    if let Some(home) = get_home_dir() {
+        collect_skills_from_dir(&home.join(".codex").join("skills"), &mut skills_map);
+    }
+
+    let mut skills: Vec<ClaudeSkill> = skills_map.into_values().collect();
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    log::trace!("Found {} Codex CLI skills", skills.len());
+    Ok(skills)
+}
+
 /// List Claude CLI custom commands from ~/.claude/commands/ and optionally <worktree>/.claude/commands/
 #[tauri::command]
 pub async fn list_claude_commands(

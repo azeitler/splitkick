@@ -525,6 +525,9 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
     // Used to filter out denied blocking tools (AskUserQuestion/ExitPlanMode)
     // that Claude retried multiple times.
     let mut errored_tool_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // OpenCode echoes the user prompt as the first text block in assistant messages.
+    // Skip it during replay so the prompt doesn't appear twice.
+    let mut skipped_prompt_echo = false;
 
     for line in lines {
         if line.trim().is_empty() {
@@ -568,6 +571,13 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                                         // Skip CLI placeholder text emitted when extended
                                         // thinking starts before any real text content
                                         if text == "(no content)" {
+                                            continue;
+                                        }
+                                        if !skipped_prompt_echo
+                                            && content_blocks.is_empty()
+                                            && text.trim() == run.user_message.trim()
+                                        {
+                                            skipped_prompt_echo = true;
                                             continue;
                                         }
                                         content.push_str(text);

@@ -1331,6 +1331,8 @@ export function useSendMessage() {
       model,
       executionMode,
       thinkingLevel,
+      effortLevel,
+      backend,
     }) => {
       console.log(`[SendMutation] onMutate sessionId=${sessionId}`)
       // Cancel in-flight queries to avoid overwriting optimistic update
@@ -1353,7 +1355,8 @@ export function useSendMessage() {
         tool_calls: [],
         model,
         execution_mode: executionMode,
-        thinking_level: thinkingLevel,
+        thinking_level: backend === 'cursor' ? undefined : (effortLevel ? undefined : thinkingLevel),
+        effort_level: backend === 'cursor' ? undefined : effortLevel,
       }
 
       // Batch the optimistic user message AND sending state together so React

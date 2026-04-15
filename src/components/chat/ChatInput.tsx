@@ -16,6 +16,7 @@ import type {
   ReadTextResponse,
   ExecutionMode,
 } from '@/types/chat'
+import type { CliBackend } from '@/types/preferences'
 import {
   FileMentionPopover,
   type FileMentionPopoverHandle,
@@ -46,6 +47,7 @@ interface ChatInputProps {
   onRegisterAttachHandler?: (attachHandler: (() => void) | null) => void
   formRef: React.RefObject<HTMLFormElement | null>
   inputRef: React.RefObject<HTMLTextAreaElement | null>
+  installedBackends?: CliBackend[]
 }
 
 export const ChatInput = memo(function ChatInput({
@@ -64,6 +66,7 @@ export const ChatInput = memo(function ChatInput({
   onRegisterAttachHandler,
   formRef,
   inputRef,
+  installedBackends,
 }: ChatInputProps) {
   const isMobile = useIsMobile()
   const fileInputRef = useRef<HTMLInputElement | null>(null)
@@ -937,6 +940,7 @@ export const ChatInput = memo(function ChatInput({
         isAtPromptStart={isSlashAtPromptStart}
         worktreePath={activeWorktreePath}
         handleRef={slashPopoverHandleRef}
+        installedBackends={installedBackends}
       />
     </div>
   )

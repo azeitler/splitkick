@@ -2722,6 +2722,7 @@ export function ChatWindow({
                                 }}
                                 formRef={formRef}
                                 inputRef={inputRef}
+                                installedBackends={installedBackends}
                               />
                             </div>
 

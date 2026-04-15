@@ -1359,6 +1359,10 @@ pub async fn dispatch_command(
             let result = crate::projects::list_claude_commands(worktree_path).await?;
             to_value(result)
         }
+        "list_codex_skills" => {
+            let result = crate::projects::list_codex_skills().await?;
+            to_value(result)
+        }
         "search_github_issues" => {
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let query: String = from_field(&args, "query")?;

@@ -7,6 +7,7 @@ import {
   cancelChatMessage,
   persistEnqueue,
 } from '@/services/chat'
+import { skillQueryKeys } from '@/services/skills'
 import { buildMcpConfigJson } from '@/services/mcp'
 import { DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
 import type {
@@ -386,7 +387,32 @@ export function useMessageSending({
         return
       }
 
-      const message = textMessage
+      let message = textMessage
+      if (textMessage.startsWith('/')) {
+        const slashName = textMessage.slice(1).split(/\s/)[0]
+        const params = textMessage.slice(1 + slashName.length).trim()
+        const claudeSkills =
+          queryClient.getQueryData<{ name: string }[]>(
+            skillQueryKeys.claudeSkills(activeWorktreePath)
+          ) ?? []
+        const codexSkills =
+          queryClient.getQueryData<{ name: string }[]>(
+            skillQueryKeys.codexSkills()
+          ) ?? []
+        const isSkill =
+          claudeSkills.some(s => s.name === slashName) ||
+          codexSkills.some(s => s.name === slashName)
+        if (!isSkill) {
+          const claudeCommands =
+            queryClient.getQueryData<{ name: string; path: string }[]>(
+              skillQueryKeys.claudeCommands(activeWorktreePath)
+            ) ?? []
+          const cmd = claudeCommands.find(c => c.name === slashName)
+          if (cmd) {
+            message = `Run the /${slashName} command from ${cmd.path}${params ? ` with arguments: ${params}` : ''}`
+          }
+        }
+      }
 
       if (
         images.length > 0 ||

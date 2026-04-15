@@ -1612,6 +1612,18 @@ pub async fn send_chat_message(
         .find_session(&session_id)
         .and_then(|s| s.cursor_chat_id.clone());
 
+    // Cursor CLI doesn't support thinking/effort levels
+    let run_thinking_level = if effective_backend == Backend::Cursor {
+        None
+    } else {
+        thinking_level.as_ref().map(|t| format!("{t:?}").to_lowercase())
+    };
+    let run_effort_level = if effective_backend == Backend::Cursor {
+        None
+    } else {
+        effort_level.as_ref().and_then(|e| e.effort_value())
+    };
+
     // Start NDJSON run log for crash recovery
     let mut run_log_writer = run_log::start_run(
         &app,
@@ -1623,14 +1635,8 @@ pub async fn send_chat_message(
         &message,
         model.as_deref(),
         execution_mode.as_deref(),
-        thinking_level
-            .as_ref()
-            .map(|t| format!("{t:?}").to_lowercase())
-            .as_deref(),
-        effort_level
-            .as_ref()
-            .and_then(|e| e.effort_value())
-            .or(None),
+        run_thinking_level.as_deref(),
+        run_effort_level,
         Some(effective_backend.clone()),
     )?;
 
@@ -2596,8 +2602,19 @@ pub async fn send_chat_message(
     {
         if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(&output_file) {
             if !unified_response.content_blocks.is_empty() {
-                let blocks: Vec<serde_json::Value> = unified_response
-                    .content_blocks
+                // Filter out echoed user prompt: OpenCode includes the user
+                // message as the first text block in its response.
+                let trimmed_prompt = message.trim();
+                let blocks_to_write: Vec<&super::types::ContentBlock> = {
+                    let mut iter = unified_response.content_blocks.iter().peekable();
+                    let first = iter.peek();
+                    let skip_first = matches!(first,
+                        Some(super::types::ContentBlock::Text { text }) if text.trim() == trimmed_prompt
+                    );
+                    if skip_first { iter.next(); }
+                    iter.collect()
+                };
+                let blocks: Vec<serde_json::Value> = blocks_to_write
                     .iter()
                     .map(|cb| match cb {
                         super::types::ContentBlock::Text { text } => {

@@ -3008,10 +3008,11 @@ pub fn run() {
             projects::reorder_projects,
             projects::reorder_worktrees,
             projects::fetch_worktrees_status,
-            // Claude CLI skills & commands
+            // CLI skills & commands
             projects::list_claude_skills,
             projects::list_claude_commands,
             projects::resolve_claude_command,
+            projects::list_codex_skills,
             // GitHub issues commands
             projects::list_github_issues,
             projects::search_github_issues,

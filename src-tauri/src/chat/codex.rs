@@ -1153,11 +1153,15 @@ fn process_turn_events(
         }
     }
 
-    let detected_plain_text_plan = if !cancelled && !error_emitted && is_plan_mode {
-        ensure_plain_text_codex_plan_tool(&mut tool_calls, &mut content_blocks, &full_content)
-    } else {
-        false
-    };
+    let has_executed_tools = tool_calls
+        .iter()
+        .any(|tc| tc.name != CODEX_PLAN_TOOL_NAME);
+    let detected_plain_text_plan =
+        if !cancelled && !error_emitted && is_plan_mode && !has_executed_tools {
+            ensure_plain_text_codex_plan_tool(&mut tool_calls, &mut content_blocks, &full_content)
+        } else {
+            false
+        };
 
     // Fallback: if we're in plan mode with a CodexPlan tool that has steps but
     // no plan text, inject full_content so the investigation summary renders
@@ -3154,7 +3158,10 @@ pub fn parse_codex_run_to_message(
         }
     }
 
-    if is_plan_mode {
+    let has_executed_tools = tool_calls
+        .iter()
+        .any(|tc| tc.name != CODEX_PLAN_TOOL_NAME);
+    if is_plan_mode && !has_executed_tools {
         ensure_plain_text_codex_plan_tool(&mut tool_calls, &mut content_blocks, &content);
 
         // Fallback: if CodexPlan exists but has no plan text, inject full content
