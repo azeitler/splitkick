@@ -140,9 +140,9 @@ pub struct AppPreferences {
     #[serde(default = "default_allow_web_tools_in_plan_mode")]
     pub allow_web_tools_in_plan_mode: bool, // Allow WebFetch/WebSearch in plan mode without prompts
     #[serde(default = "default_waiting_sound")]
-    pub waiting_sound: String, // Sound when session is waiting for input: none, ding, chime, pop, choochoo
+    pub waiting_sound: String, // Sound when session is waiting for input: none, workwork
     #[serde(default = "default_review_sound")]
-    pub review_sound: String, // Sound when session finishes reviewing: none, ding, chime, pop, choochoo
+    pub review_sound: String, // Sound when session finishes reviewing: none, workwork
     #[serde(default)]
     pub http_server_enabled: bool, // Whether HTTP server is enabled
     #[serde(default)]
