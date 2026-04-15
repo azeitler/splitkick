@@ -63,7 +63,7 @@ echo "==> Repackaging AppImage..."
 cd "$BUNDLE_DIR"
 
 # Remove old AppImage files
-rm -f Jean_*_amd64.AppImage Jean_*_arm64.AppImage Jean-x86_64.AppImage Jean-aarch64.AppImage
+rm -f Jean*.AppImage
 
 if [ ! -x "$LINUXDEPLOY_PLUGIN_BIN" ]; then
     echo "ERROR: linuxdeploy appimage plugin not found/executable at $LINUXDEPLOY_PLUGIN_BIN"

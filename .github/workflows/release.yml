@@ -112,8 +112,12 @@ jobs:
           if [ -n "$APPIMAGE" ] && [ -f "$APPIMAGE" ]; then
             gh release upload "$RELEASE_TAG" "$APPIMAGE" --clobber
             # Upload updater artifacts (.tar.gz + .sig)
-            [ -f "${APPIMAGE}.tar.gz" ] && gh release upload "$RELEASE_TAG" "${APPIMAGE}.tar.gz" --clobber
-            [ -f "${APPIMAGE}.tar.gz.sig" ] && gh release upload "$RELEASE_TAG" "${APPIMAGE}.tar.gz.sig" --clobber
+            if [ -f "${APPIMAGE}.tar.gz" ]; then
+              gh release upload "$RELEASE_TAG" "${APPIMAGE}.tar.gz" --clobber
+            fi
+            if [ -f "${APPIMAGE}.tar.gz.sig" ]; then
+              gh release upload "$RELEASE_TAG" "${APPIMAGE}.tar.gz.sig" --clobber
+            fi
           fi
 
       - name: Patch latest.json for AppImage updater
