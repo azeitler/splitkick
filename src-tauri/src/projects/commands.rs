@@ -9317,7 +9317,10 @@ pub async fn list_plugin_skills() -> Result<Vec<PluginSkillGroup>, String> {
     };
 
     // Read installed_plugins.json
-    let installed_plugins_path = home.join(".claude").join("plugins").join("installed_plugins.json");
+    let installed_plugins_path = home
+        .join(".claude")
+        .join("plugins")
+        .join("installed_plugins.json");
     let installed_content = match std::fs::read_to_string(&installed_plugins_path) {
         Ok(c) => c,
         Err(_) => return Ok(vec![]),
@@ -9352,7 +9355,10 @@ pub async fn list_plugin_skills() -> Result<Vec<PluginSkillGroup>, String> {
                     .ok()
                     .and_then(|v| {
                         v.get("enabledPlugins").and_then(|ep| {
-                            serde_json::from_value::<std::collections::HashMap<String, bool>>(ep.clone()).ok()
+                            serde_json::from_value::<std::collections::HashMap<String, bool>>(
+                                ep.clone(),
+                            )
+                            .ok()
                         })
                     })
             })
@@ -9366,7 +9372,8 @@ pub async fn list_plugin_skills() -> Result<Vec<PluginSkillGroup>, String> {
 
     for plugin_key in plugin_keys {
         // Skip disabled plugins (if enabledPlugins exists, only include explicitly enabled ones)
-        if !enabled_plugins.is_empty() && !enabled_plugins.get(plugin_key).copied().unwrap_or(false) {
+        if !enabled_plugins.is_empty() && !enabled_plugins.get(plugin_key).copied().unwrap_or(false)
+        {
             continue;
         }
 
@@ -9393,7 +9400,10 @@ pub async fn list_plugin_skills() -> Result<Vec<PluginSkillGroup>, String> {
         let mut skills: Vec<ClaudeSkill> = skills_map.into_values().collect();
         skills.sort_by(|a, b| a.name.cmp(&b.name));
 
-        groups.push(PluginSkillGroup { plugin_name, skills });
+        groups.push(PluginSkillGroup {
+            plugin_name,
+            skills,
+        });
     }
 
     log::trace!("Found {} plugin skill groups", groups.len());

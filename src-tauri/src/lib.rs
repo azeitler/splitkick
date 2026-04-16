@@ -16,8 +16,8 @@ mod cursor_cli;
 mod gh_cli;
 pub mod http_server;
 mod opencode_cli;
-mod opinionated;
 mod opencode_server;
+mod opinionated;
 mod platform;
 mod projects;
 mod terminal;
@@ -83,7 +83,7 @@ pub struct AppPreferences {
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String, // Thinking level: off, think, megathink, ultrathink
     #[serde(default = "default_effort_level")]
-    pub default_effort_level: String, // Effort level for Opus 4.6: low, medium, high, max
+    pub default_effort_level: String, // Effort level for Opus adaptive thinking: low, medium, high, xhigh, max
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
     #[serde(default = "default_editor")]
@@ -300,7 +300,7 @@ fn default_chat_font() -> String {
 }
 
 fn default_model() -> String {
-    "opus".to_string()
+    "claude-opus-4-7".to_string()
 }
 
 fn default_thinking_level() -> String {
@@ -3090,6 +3090,7 @@ pub fn run() {
             chat::get_sessions,
             chat::list_all_sessions,
             chat::get_session,
+            chat::load_older_session_messages,
             chat::create_session,
             chat::rename_session,
             chat::regenerate_session_name,
