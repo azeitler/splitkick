@@ -946,6 +946,17 @@ export interface ClaudeCommand {
 }
 
 /**
+ * A group of skills from an installed Claude plugin
+ * Returned by the list_plugin_skills Tauri command
+ */
+export interface PluginSkillGroup {
+  /** Plugin display name (e.g., "Superpowers", "Frontend Design") */
+  pluginName: string
+  /** Skills found in this plugin's skills/ directory */
+  skills: ClaudeSkill[]
+}
+
+/**
  * A resolved Claude command with interpolations expanded
  */
 export interface ResolvedCommand {
