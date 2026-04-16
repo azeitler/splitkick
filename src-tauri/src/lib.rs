@@ -16,6 +16,7 @@ mod cursor_cli;
 mod gh_cli;
 pub mod http_server;
 mod opencode_cli;
+mod opinionated;
 mod opencode_server;
 mod platform;
 mod projects;
@@ -3214,6 +3215,9 @@ pub fn run() {
             list_http_bind_host_options,
             validate_http_bind_host,
             regenerate_http_token,
+            // Opinionated plugin commands
+            opinionated::check_opinionated_plugin_status,
+            opinionated::install_opinionated_plugin,
             // OpenCode server commands
             opencode_server::start_opencode_server,
             opencode_server::stop_opencode_server,

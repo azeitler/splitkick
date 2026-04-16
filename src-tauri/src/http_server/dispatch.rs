@@ -1026,8 +1026,8 @@ pub async fn dispatch_command(
         // Chat - File operations
         // =====================================================================
         "read_file_content" => {
-            let file_path: String = field(&args, "filePath", "file_path")?;
-            let result = crate::chat::read_file_content(file_path).await?;
+            let path: String = from_field(&args, "path")?;
+            let result = crate::chat::read_file_content(path).await?;
             to_value(result)
         }
         "read_plan_file" => {
@@ -2418,6 +2418,22 @@ pub async fn dispatch_command(
             let state = app.state::<crate::background_tasks::BackgroundTaskManager>();
             crate::background_tasks::commands::set_pr_worktrees_for_polling(state, worktrees)?;
             Ok(Value::Null)
+        }
+
+        // =====================================================================
+        // Opinionated plugin commands
+        // =====================================================================
+        "check_opinionated_plugin_status" => {
+            let plugin_name: String = from_field(&args, "pluginName")?;
+            let result =
+                crate::opinionated::check_opinionated_plugin_status(plugin_name).await?;
+            to_value(result)
+        }
+        "install_opinionated_plugin" => {
+            let plugin_name: String = from_field(&args, "pluginName")?;
+            let result =
+                crate::opinionated::install_opinionated_plugin(app.clone(), plugin_name).await?;
+            to_value(result)
         }
 
         // =====================================================================
