@@ -79,7 +79,7 @@ fn greet(name: &str) -> String {
 pub struct AppPreferences {
     pub theme: String,
     #[serde(default = "default_model")]
-    pub selected_model: String, // Claude model: opus, sonnet, haiku
+    pub selected_model: String, // Claude model: claude-opus-4-7, claude-opus-4-6, sonnet, haiku
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String, // Thinking level: off, think, megathink, ultrathink
     #[serde(default = "default_effort_level")]
@@ -93,11 +93,11 @@ pub struct AppPreferences {
     #[serde(default = "default_auto_branch_naming")]
     pub auto_branch_naming: bool, // Automatically generate branch names from first message
     #[serde(default = "default_branch_naming_model")]
-    pub branch_naming_model: String, // Model for generating branch names: haiku, sonnet, opus
+    pub branch_naming_model: String, // Model for generating branch names: haiku, sonnet, claude-opus-4-7, claude-opus-4-6
     #[serde(default = "default_auto_session_naming")]
     pub auto_session_naming: bool, // Automatically generate session names from first message
     #[serde(default = "default_session_naming_model")]
-    pub session_naming_model: String, // Model for generating session names: haiku, sonnet, opus
+    pub session_naming_model: String, // Model for generating session names: haiku, sonnet, claude-opus-4-7, claude-opus-4-6
     #[serde(default = "default_font_size")]
     pub ui_font_size: u32, // Font size for UI text in pixels (10-24)
     #[serde(default = "default_font_size")]
@@ -1171,6 +1171,36 @@ impl Default for MagicPromptModels {
     }
 }
 
+impl MagicPromptModels {
+    /// Upgrade legacy default model values left on existing installs:
+    /// fields that previously defaulted to `"opus"` (Opus 4.6) are bumped to
+    /// the new default (`"claude-opus-4-7"`). Users who explicitly picked
+    /// other models are untouched. Returns true if any field changed.
+    fn migrate_legacy_defaults(&mut self) -> bool {
+        let new_opus = default_model();
+        let opus_fields: [&mut String; 10] = [
+            &mut self.investigate_issue_model,
+            &mut self.investigate_pr_model,
+            &mut self.investigate_workflow_run_model,
+            &mut self.code_review_model,
+            &mut self.context_summary_model,
+            &mut self.resolve_conflicts_model,
+            &mut self.investigate_security_alert_model,
+            &mut self.investigate_advisory_model,
+            &mut self.investigate_linear_issue_model,
+            &mut self.review_comments_model,
+        ];
+        let mut changed = false;
+        for field in opus_fields {
+            if field == "opus" {
+                *field = new_opus.clone();
+                changed = true;
+            }
+        }
+        changed
+    }
+}
+
 /// Returns true if the given model string identifies an OpenCode model.
 /// OpenCode model IDs are prefixed with "opencode/" (e.g. "opencode/gpt-5.2-codex").
 pub fn is_opencode_model(model: &str) -> bool {
@@ -1623,8 +1653,19 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
     // so they auto-update when new defaults are shipped
     preferences.magic_prompts.migrate_defaults();
 
+    // Migrate legacy magic-prompt model names ("opus" → "claude-opus-4-7")
+    // and legacy auto-naming models ("haiku" → "sonnet")
+    let mut needs_resave = preferences.magic_prompt_models.migrate_legacy_defaults();
+    if preferences.branch_naming_model == "haiku" {
+        preferences.branch_naming_model = default_branch_naming_model();
+        needs_resave = true;
+    }
+    if preferences.session_naming_model == "haiku" {
+        preferences.session_naming_model = default_session_naming_model();
+        needs_resave = true;
+    }
+
     // Migrate CLI profiles: move settings_json from preferences.json to standalone files
-    let mut needs_resave = false;
     for profile in &mut preferences.custom_cli_profiles {
         let path = match get_cli_profile_path(&profile.name) {
             Ok(p) => p,

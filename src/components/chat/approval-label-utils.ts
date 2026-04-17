@@ -36,12 +36,16 @@ export function resolveApprovalLabel(
   if (!preferences) return null
   const modeBackend =
     mode === 'yolo' ? preferences.yolo_backend : preferences.build_backend
-  const overridesApply = !modeBackend || !sessionBackend || modeBackend === sessionBackend
+  const overridesApply =
+    !modeBackend || !sessionBackend || modeBackend === sessionBackend
   const model = overridesApply
-    ? (mode === 'yolo' ? preferences.yolo_model : preferences.build_model)
+    ? mode === 'yolo'
+      ? preferences.yolo_model
+      : preferences.build_model
     : null
   const backend = overridesApply ? modeBackend : null
-  const resolvedBackend = backend ?? sessionBackend ?? preferences.default_backend ?? 'claude'
+  const resolvedBackend =
+    backend ?? sessionBackend ?? preferences.default_backend ?? 'claude'
   const backendDefaultModel =
     resolvedBackend === 'codex'
       ? (preferences.selected_codex_model ?? 'gpt-5.4')

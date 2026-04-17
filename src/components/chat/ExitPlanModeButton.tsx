@@ -55,7 +55,7 @@ export function ExitPlanModeButton({
 }: ExitPlanModeButtonProps) {
   const { data: preferences } = usePreferences()
   const sessionBackend = useChatStore(state =>
-    sessionId ? state.selectedBackends[sessionId] ?? null : null
+    sessionId ? (state.selectedBackends[sessionId] ?? null) : null
   )
   const buildLabel = resolveApprovalLabel('build', preferences, sessionBackend)
   const yoloLabel = resolveApprovalLabel('yolo', preferences, sessionBackend)

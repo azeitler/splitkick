@@ -234,10 +234,13 @@ export function usePlanDialogApproval({
 
       const backendOverride =
         mode === 'yolo' ? yoloBackendRef.current : buildBackendRef.current
-      const overridesApply = !backendOverride || backendOverride === selectedBackendRef.current
+      const overridesApply =
+        !backendOverride || backendOverride === selectedBackendRef.current
 
       const modelOverride = overridesApply
-        ? (mode === 'yolo' ? yoloModelRef.current : buildModelRef.current)
+        ? mode === 'yolo'
+          ? yoloModelRef.current
+          : buildModelRef.current
         : null
 
       if (modelOverride) {
@@ -245,9 +248,9 @@ export function usePlanDialogApproval({
       }
 
       const thinkingOverride = overridesApply
-        ? (mode === 'yolo'
-            ? yoloThinkingLevelRef.current
-            : buildThinkingLevelRef.current)
+        ? mode === 'yolo'
+          ? yoloThinkingLevelRef.current
+          : buildThinkingLevelRef.current
         : null
       const resolvedThinkingLevel: ThinkingLevel = isThinkingLevel(
         thinkingOverride

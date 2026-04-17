@@ -2118,7 +2118,7 @@ export const GeneralPane: React.FC = () => {
             description="Claude model for AI assistance"
           >
             <Select
-              value={preferences?.selected_model ?? 'opus'}
+              value={preferences?.selected_model ?? 'claude-opus-4-7'}
               onValueChange={handleModelChange}
             >
               <SelectTrigger className="w-full sm:min-w-96">
@@ -2569,9 +2569,7 @@ export const GeneralPane: React.FC = () => {
                   preferences.waiting_sound === 'none'
                 }
                 onClick={() =>
-                  playNotificationSound(
-                    preferences?.waiting_sound ?? 'none'
-                  )
+                  playNotificationSound(preferences?.waiting_sound ?? 'none')
                 }
               >
                 <Play className="h-4 w-4" />
@@ -2607,9 +2605,7 @@ export const GeneralPane: React.FC = () => {
                   preferences.review_sound === 'none'
                 }
                 onClick={() =>
-                  playNotificationSound(
-                    preferences?.review_sound ?? 'none'
-                  )
+                  playNotificationSound(preferences?.review_sound ?? 'none')
                 }
               >
                 <Play className="h-4 w-4" />

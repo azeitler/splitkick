@@ -654,21 +654,21 @@ export interface MagicPromptReasoningEfforts {
 
 /** Default models for each magic prompt */
 export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
-  investigate_issue_model: 'opus',
-  investigate_pr_model: 'opus',
-  investigate_workflow_run_model: 'opus',
+  investigate_issue_model: 'claude-opus-4-7',
+  investigate_pr_model: 'claude-opus-4-7',
+  investigate_workflow_run_model: 'claude-opus-4-7',
   pr_content_model: 'sonnet',
   commit_message_model: 'sonnet',
-  code_review_model: 'opus',
-  context_summary_model: 'opus',
-  resolve_conflicts_model: 'opus',
+  code_review_model: 'claude-opus-4-7',
+  context_summary_model: 'claude-opus-4-7',
+  resolve_conflicts_model: 'claude-opus-4-7',
   release_notes_model: 'sonnet',
   session_naming_model: 'sonnet',
   session_recap_model: 'sonnet',
-  investigate_security_alert_model: 'opus',
-  investigate_advisory_model: 'opus',
-  investigate_linear_issue_model: 'opus',
-  review_comments_model: 'opus',
+  investigate_security_alert_model: 'claude-opus-4-7',
+  investigate_advisory_model: 'claude-opus-4-7',
+  investigate_linear_issue_model: 'claude-opus-4-7',
+  review_comments_model: 'claude-opus-4-7',
 }
 
 /** Codex preset: heavy tasks use top model, light tasks use mini */
@@ -1073,21 +1073,22 @@ export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
 
 export type ClaudeModel =
   | 'claude-opus-4-7'
-  | 'opus'
+  | 'claude-opus-4-6'
   | 'claude-opus-4-5-20251101'
   | 'claude-opus-4-6[1m]'
-  | 'opus-fast'
+  | 'claude-opus-4-6-fast'
   | 'claude-opus-4-6[1m]-fast'
+  | 'opus' // Legacy/provider-alias: resolved by CLI via ANTHROPIC_DEFAULT_OPUS_MODEL env
   | 'sonnet'
   | 'claude-sonnet-4-6[1m]'
   | 'haiku'
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
   { value: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
-  { value: 'opus', label: 'Claude Opus 4.6' },
+  { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
   { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
   { value: 'claude-opus-4-6[1m]', label: 'Claude Opus 4.6 (1M)' },
-  { value: 'opus-fast', label: 'Claude Opus 4.6 Fast' },
+  { value: 'claude-opus-4-6-fast', label: 'Claude Opus 4.6 Fast' },
   { value: 'claude-opus-4-6[1m]-fast', label: 'Claude Opus 4.6 (1M) Fast' },
   { value: 'sonnet', label: 'Claude Sonnet 4.6' },
   { value: 'claude-sonnet-4-6[1m]', label: 'Claude Sonnet 4.6 (1M)' },
@@ -1502,9 +1503,9 @@ export const defaultPreferences: AppPreferences = {
   editor: 'zed',
   open_in: 'editor',
   auto_branch_naming: true,
-  branch_naming_model: 'haiku',
+  branch_naming_model: 'sonnet',
   auto_session_naming: true,
-  session_naming_model: 'haiku',
+  session_naming_model: 'sonnet',
   ui_font_size: FONT_SIZE_DEFAULT,
   chat_font_size: FONT_SIZE_DEFAULT,
   ui_font: 'geist',

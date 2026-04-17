@@ -29,7 +29,7 @@ export function resolveBackend(
  * adaptive thinking (effort parameter) instead of traditional thinking levels.
  *
  * Returns true when:
- * - Model is a Claude 4.6 Opus variant ('opus', 'opus-fast', 'claude-opus-*')
+ * - Model is a Claude Opus variant ('claude-opus-*')
  * - CLI version is >= 2.1.32
  *
  * Sonnet models use traditional thinking levels, not adaptive thinking.
@@ -38,10 +38,7 @@ export function supportsAdaptiveThinking(
   model: string,
   cliVersion: string | null | undefined
 ): boolean {
-  const isOpusModel =
-    model === 'opus' ||
-    model === 'opus-fast' ||
-    model.startsWith('claude-opus-')
+  const isOpusModel = model.startsWith('claude-opus-')
   if (!isOpusModel) return false
   if (!cliVersion) return false
   return compareVersions(cliVersion, ADAPTIVE_THINKING_MIN_CLI_VERSION) >= 0

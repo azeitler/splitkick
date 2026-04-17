@@ -137,13 +137,16 @@ export function useMessageSending({
       }
 
       if (queuedMsg.pendingTextFiles.length > 0) {
+        if (!message) {
+          message = 'Please check the attached text as reference.'
+        }
         const textFileRefs = queuedMsg.pendingTextFiles
           .map(
             tf =>
               `[Text file attached: ${tf.path} - Use the Read tool to view this file]`
           )
           .join('\n')
-        message = message ? `${message}\n\n${textFileRefs}` : textFileRefs
+        message = `${message}\n\n${textFileRefs}`
       }
 
       return message

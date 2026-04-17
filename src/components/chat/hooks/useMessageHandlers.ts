@@ -224,7 +224,7 @@ function getDefaultModelForBackend(
   if (backend === 'cursor') {
     return preferences?.selected_cursor_model ?? 'cursor/auto'
   }
-  return preferences?.selected_model ?? 'opus'
+  return preferences?.selected_model ?? 'claude-opus-4-7'
 }
 
 /**
@@ -621,13 +621,15 @@ export function useMessageHandlers({
       // the denied message context won't be set and approval UI won't work
       const sessionBackend = useChatStore.getState().selectedBackends[sessionId]
       const buildBackendOverride = buildBackendRef.current
-      const overridesApply = !buildBackendOverride || buildBackendOverride === sessionBackend
+      const overridesApply =
+        !buildBackendOverride || buildBackendOverride === sessionBackend
       const buildModel = overridesApply
         ? (buildModelRef.current ?? selectedModelRef.current)
         : selectedModelRef.current
-      const buildThinking = overridesApply && isThinkingLevel(buildThinkingLevelRef.current)
-        ? buildThinkingLevelRef.current
-        : selectedThinkingLevelRef.current
+      const buildThinking =
+        overridesApply && isThinkingLevel(buildThinkingLevelRef.current)
+          ? buildThinkingLevelRef.current
+          : selectedThinkingLevelRef.current
 
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
@@ -793,15 +795,18 @@ export function useMessageHandlers({
           ? 'Execute the plan you created. Implement all changes described.'
           : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
       // Resolve yolo overrides (skip if backend override doesn't match session)
-      const sessionBackendYolo = useChatStore.getState().selectedBackends[sessionId]
+      const sessionBackendYolo =
+        useChatStore.getState().selectedBackends[sessionId]
       const yoloBackendOverride = yoloBackendRef.current
-      const yoloOverridesApply = !yoloBackendOverride || yoloBackendOverride === sessionBackendYolo
+      const yoloOverridesApply =
+        !yoloBackendOverride || yoloBackendOverride === sessionBackendYolo
       const yoloModel = yoloOverridesApply
         ? (yoloModelRef.current ?? selectedModelRef.current)
         : selectedModelRef.current
-      const yoloThinking = yoloOverridesApply && isThinkingLevel(yoloThinkingLevelRef.current)
-        ? yoloThinkingLevelRef.current
-        : selectedThinkingLevelRef.current
+      const yoloThinking =
+        yoloOverridesApply && isThinkingLevel(yoloThinkingLevelRef.current)
+          ? yoloThinkingLevelRef.current
+          : selectedThinkingLevelRef.current
 
       // Send approval message so the backend continues with execution
       setLastSentMessage(sessionId, message)
@@ -926,15 +931,20 @@ export function useMessageHandlers({
     markAtBottom()
 
     // Resolve build overrides (skip if backend override doesn't match session)
-    const streamBuildSessionBackend = useChatStore.getState().selectedBackends[sessionId]
+    const streamBuildSessionBackend =
+      useChatStore.getState().selectedBackends[sessionId]
     const streamBuildBackendOverride = buildBackendRef.current
-    const streamBuildOverridesApply = !streamBuildBackendOverride || streamBuildBackendOverride === streamBuildSessionBackend
+    const streamBuildOverridesApply =
+      !streamBuildBackendOverride ||
+      streamBuildBackendOverride === streamBuildSessionBackend
     const streamBuildModel = streamBuildOverridesApply
       ? (buildModelRef.current ?? selectedModelRef.current)
       : selectedModelRef.current
-    const streamBuildThinking = streamBuildOverridesApply && isThinkingLevel(buildThinkingLevelRef.current)
-      ? buildThinkingLevelRef.current
-      : selectedThinkingLevelRef.current
+    const streamBuildThinking =
+      streamBuildOverridesApply &&
+      isThinkingLevel(buildThinkingLevelRef.current)
+        ? buildThinkingLevelRef.current
+        : selectedThinkingLevelRef.current
 
     // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
     setMode(sessionId, 'build')
@@ -1025,15 +1035,19 @@ export function useMessageHandlers({
     markAtBottom()
 
     // Resolve yolo overrides (skip if backend override doesn't match session)
-    const streamYoloSessionBackend = useChatStore.getState().selectedBackends[sessionId]
+    const streamYoloSessionBackend =
+      useChatStore.getState().selectedBackends[sessionId]
     const streamYoloBackendOverride = yoloBackendRef.current
-    const streamYoloOverridesApply = !streamYoloBackendOverride || streamYoloBackendOverride === streamYoloSessionBackend
+    const streamYoloOverridesApply =
+      !streamYoloBackendOverride ||
+      streamYoloBackendOverride === streamYoloSessionBackend
     const streamYoloModel = streamYoloOverridesApply
       ? (yoloModelRef.current ?? selectedModelRef.current)
       : selectedModelRef.current
-    const streamYoloThinking = streamYoloOverridesApply && isThinkingLevel(yoloThinkingLevelRef.current)
-      ? yoloThinkingLevelRef.current
-      : selectedThinkingLevelRef.current
+    const streamYoloThinking =
+      streamYoloOverridesApply && isThinkingLevel(yoloThinkingLevelRef.current)
+        ? yoloThinkingLevelRef.current
+        : selectedThinkingLevelRef.current
 
     // Set to yolo mode for auto-approval of all future tools
     setMode(sessionId, 'yolo')

@@ -134,14 +134,23 @@ export function usePlanApproval({
 
       const sessionBackend = card.session.backend
       const buildBackendOverride = preferences?.build_backend
-      const overridesApply = !buildBackendOverride || buildBackendOverride === sessionBackend
+      const overridesApply =
+        !buildBackendOverride || buildBackendOverride === sessionBackend
       const model = overridesApply
-        ? (preferences?.build_model ?? preferences?.selected_model ?? 'opus')
-        : (preferences?.selected_model ?? 'opus')
-      const buildThinkingOverride = overridesApply ? preferences?.build_thinking_level : null
-      const thinkingLevel: ThinkingLevel = isThinkingLevel(buildThinkingOverride)
+        ? (preferences?.build_model ??
+          preferences?.selected_model ??
+          'claude-opus-4-7')
+        : (preferences?.selected_model ?? 'claude-opus-4-7')
+      const buildThinkingOverride = overridesApply
+        ? preferences?.build_thinking_level
+        : null
+      const thinkingLevel: ThinkingLevel = isThinkingLevel(
+        buildThinkingOverride
+      )
         ? buildThinkingOverride
-        : (isThinkingLevel(preferences?.thinking_level) ? preferences.thinking_level : 'off')
+        : isThinkingLevel(preferences?.thinking_level)
+          ? preferences.thinking_level
+          : 'off'
 
       const isCodex = sessionBackend === 'codex'
       const baseMsg = isCodex
@@ -309,14 +318,21 @@ export function usePlanApproval({
 
       const sessionBackend = card.session.backend
       const yoloBackendOverride = preferences?.yolo_backend
-      const overridesApplyYolo = !yoloBackendOverride || yoloBackendOverride === sessionBackend
+      const overridesApplyYolo =
+        !yoloBackendOverride || yoloBackendOverride === sessionBackend
       const model = overridesApplyYolo
-        ? (preferences?.yolo_model ?? preferences?.selected_model ?? 'opus')
-        : (preferences?.selected_model ?? 'opus')
-      const yoloThinkingOverride = overridesApplyYolo ? preferences?.yolo_thinking_level : null
+        ? (preferences?.yolo_model ??
+          preferences?.selected_model ??
+          'claude-opus-4-7')
+        : (preferences?.selected_model ?? 'claude-opus-4-7')
+      const yoloThinkingOverride = overridesApplyYolo
+        ? preferences?.yolo_thinking_level
+        : null
       const thinkingLevel: ThinkingLevel = isThinkingLevel(yoloThinkingOverride)
         ? yoloThinkingOverride
-        : (isThinkingLevel(preferences?.thinking_level) ? preferences.thinking_level : 'off')
+        : isThinkingLevel(preferences?.thinking_level)
+          ? preferences.thinking_level
+          : 'off'
 
       const isCodexYolo = sessionBackend === 'codex'
       const baseMsgYolo = isCodexYolo

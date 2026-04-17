@@ -220,10 +220,10 @@ export const ChatToolbar = memo(function ChatToolbar({
         provider !== '__anthropic__' &&
         (selectedModel === 'claude-opus-4-6[1m]' ||
           selectedModel === 'claude-sonnet-4-6[1m]' ||
-          selectedModel === 'opus-fast' ||
+          selectedModel === 'claude-opus-4-6-fast' ||
           selectedModel === 'claude-opus-4-6[1m]-fast')
       ) {
-        onModelChange('opus' as ClaudeModel)
+        onModelChange('claude-opus-4-6' as ClaudeModel)
       }
     },
     [onProviderChange, onModelChange, selectedModel]

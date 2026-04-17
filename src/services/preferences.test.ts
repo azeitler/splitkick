@@ -183,7 +183,7 @@ describe('preferences service', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
       expect(result.current.data?.theme).toBe('system')
-      expect(result.current.data?.selected_model).toBe('opus')
+      expect(result.current.data?.selected_model).toBe('claude-opus-4-7')
     })
 
     it('returns defaults on backend error', async () => {

@@ -758,21 +758,24 @@ export const MessageItem = memo(function MessageItem({
             {message.model && (
               <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
                 {MODEL_OPTIONS.find(o => o.value === message.model)?.label ??
-                  (message.model?.includes('/') ? formatOpencodeModelLabel(message.model) : message.model)}
+                  (message.model?.includes('/')
+                    ? formatOpencodeModelLabel(message.model)
+                    : message.model)}
                 {message.execution_mode &&
                   message.execution_mode !== 'plan' && (
                     <span className="capitalize">
                       · {message.execution_mode}
                     </span>
                   )}
-                {!message.model?.startsWith('cursor/') && message.effort_level && (
-                  <span>
-                    ·{' '}
-                    {EFFORT_LEVEL_OPTIONS.find(
-                      o => o.value === message.effort_level
-                    )?.label ?? message.effort_level}
-                  </span>
-                )}
+                {!message.model?.startsWith('cursor/') &&
+                  message.effort_level && (
+                    <span>
+                      ·{' '}
+                      {EFFORT_LEVEL_OPTIONS.find(
+                        o => o.value === message.effort_level
+                      )?.label ?? message.effort_level}
+                    </span>
+                  )}
                 {!message.model?.startsWith('cursor/') &&
                   !message.effort_level &&
                   message.thinking_level &&
