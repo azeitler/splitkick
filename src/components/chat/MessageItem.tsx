@@ -51,12 +51,7 @@ import {
   stripAllMarkers,
 } from './message-content-utils'
 import { hasQuestionAnswerOutput } from '@/types/chat'
-import {
-  EFFORT_LEVEL_OPTIONS,
-  MODEL_OPTIONS,
-  THINKING_LEVEL_OPTIONS,
-} from '@/components/chat/toolbar/toolbar-options'
-import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
+import { MessageSettingsBadges } from '@/components/chat/MessageSettingsBadges'
 
 interface MessageItemProps {
   /** The message to render */
@@ -756,37 +751,14 @@ export const MessageItem = memo(function MessageItem({
           <div className="text-foreground border border-border rounded-lg px-3 py-2 bg-muted/20 min-w-0 break-words">
             {messageBoxContent}
             {message.model && (
-              <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
-                {MODEL_OPTIONS.find(o => o.value === message.model)?.label ??
-                  (message.model?.includes('/')
-                    ? formatOpencodeModelLabel(message.model)
-                    : message.model)}
-                {message.execution_mode &&
-                  message.execution_mode !== 'plan' && (
-                    <span className="capitalize">
-                      · {message.execution_mode}
-                    </span>
-                  )}
-                {!message.model?.startsWith('cursor/') &&
-                  message.effort_level && (
-                    <span>
-                      ·{' '}
-                      {EFFORT_LEVEL_OPTIONS.find(
-                        o => o.value === message.effort_level
-                      )?.label ?? message.effort_level}
-                    </span>
-                  )}
-                {!message.model?.startsWith('cursor/') &&
-                  !message.effort_level &&
-                  message.thinking_level &&
-                  message.thinking_level !== 'off' && (
-                    <span>
-                      ·{' '}
-                      {THINKING_LEVEL_OPTIONS.find(
-                        o => o.value === message.thinking_level
-                      )?.label ?? message.thinking_level}
-                    </span>
-                  )}
+              <div className="mt-1.5">
+                <MessageSettingsBadges
+                  model={message.model}
+                  executionMode={message.execution_mode}
+                  thinkingLevel={message.thinking_level}
+                  effortLevel={message.effort_level}
+                  isCursor={message.model.startsWith('cursor/')}
+                />
               </div>
             )}
           </div>

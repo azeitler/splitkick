@@ -393,7 +393,7 @@ export function FloatingDock() {
       DEFAULT_KEYBINDINGS.open_usage_dropdown) as string
   )
   const isWebAccess = !isNativeApp()
-  const showConnectionIndicator = isWebAccess
+  const showConnectionIndicator = isWebAccess && !isMobile
   const showKeybindingHints = isNativeApp() && !isMobile
   const popoverSide = isMobile || isLg ? 'top' : ('right' as const)
   const popoverAlign = isMobile ? 'end' : ('start' as const)
@@ -527,7 +527,7 @@ export function FloatingDock() {
         </TooltipContent>
       </Tooltip>
 
-      {activeUsageEntry && (
+      {!isMobile && activeUsageEntry && (
         <DropdownMenu open={usageMenuOpen} onOpenChange={setUsageMenuOpen}>
           <Tooltip>
             <TooltipTrigger asChild>

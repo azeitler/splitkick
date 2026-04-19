@@ -373,7 +373,7 @@ export function DesktopToolbarControls({
                     loadedSecurityCount > 0 && `${loadedSecurityCount}`,
                     loadedLinearCount > 0 && `${loadedLinearCount} Linear`,
                     loadedContextCount > 0 &&
-                      `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`,
+                      `${loadedContextCount}`,
                   ]
                     .filter(Boolean)
                     .join(', ')}
