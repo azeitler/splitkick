@@ -1128,8 +1128,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
   // Keep a valid selection when the selected item disappears (archive/delete/close).
   // In list layout this prefers the previous row, matching expected canvas behavior.
+  // Skip while search is active — transient empty filter results should not erase selection memory.
   useEffect(() => {
     if (selectedIndex === null) return
+    if (searchQuery) return
     if (flatCards.length === 0) {
       setSelectedIndex(null)
       highlightedCardRef.current = null
@@ -1154,7 +1156,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     } else {
       highlightedCardRef.current = null
     }
-  }, [flatCards, selectedIndex])
+  }, [flatCards, selectedIndex, searchQuery])
 
   // Auto-open session modal for newly created worktrees
   useEffect(() => {
