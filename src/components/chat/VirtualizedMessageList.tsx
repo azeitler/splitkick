@@ -1,6 +1,7 @@
 import {
   useRef,
   useEffect,
+  useLayoutEffect,
   useImperativeHandle,
   forwardRef,
   memo,
@@ -176,6 +177,9 @@ export const VirtualizedMessageList = memo(
       // Captured scroll height taken just before requesting an older-runs load.
       // Used to restore scroll position after the prepended messages render.
       const pendingPrependScrollHeightRef = useRef<number | null>(null)
+      // Messages length captured at request time, used to compute how many
+      // messages the backend actually prepended (varies per response).
+      const pendingPrependMessagesLengthRef = useRef<number | null>(null)
 
       // Track how many messages to render (from the end)
       const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
@@ -239,6 +243,7 @@ export const VirtualizedMessageList = memo(
           pendingPrependScrollHeightRef.current === null
         ) {
           pendingPrependScrollHeightRef.current = container.scrollHeight
+          pendingPrependMessagesLengthRef.current = messages.length
           onLoadOlderRuns()
         }
       }, [
@@ -250,22 +255,34 @@ export const VirtualizedMessageList = memo(
         onLoadOlderRuns,
       ])
 
-      // After backend prepend completes, restore scroll position and expand
-      // visibleCount so the freshly-prepended messages are actually rendered.
-      useEffect(() => {
+      // After backend prepend completes, expand visibleCount so the freshly-
+      // prepended messages actually render, then anchor scrollTop so the user's
+      // previously-visible message stays at the same viewport position.
+      // useLayoutEffect + flushSync ensures the expand and scroll adjustment
+      // happen in a single paint — no flash, no stale delta.
+      useLayoutEffect(() => {
         const container = scrollContainerRef.current
         const before = pendingPrependScrollHeightRef.current
-        if (!container || before === null) return
+        const prevLen = pendingPrependMessagesLengthRef.current
+        if (!container || before === null || prevLen === null) return
         if (isLoadingOlder) return
+
+        const prepended = messages.length - prevLen
+        pendingPrependScrollHeightRef.current = null
+        pendingPrependMessagesLengthRef.current = null
+
+        if (prepended <= 0) return
+
+        // Synchronously expand the visible window so prepended messages render
+        // this frame — without flushSync, scrollHeight below would be stale.
+        flushSync(() => {
+          setVisibleCount(prev => prev + prepended)
+        })
 
         const delta = container.scrollHeight - before
         if (delta > 0) {
-          // Expand the visible window so the user sees the older messages we
-          // just prepended, then anchor scroll to compensate for new content.
-          setVisibleCount(prev => prev + LOAD_MORE_COUNT)
           container.scrollTop += delta
         }
-        pendingPrependScrollHeightRef.current = null
       }, [scrollContainerRef, isLoadingOlder, messages.length])
 
       // Detect scroll to top

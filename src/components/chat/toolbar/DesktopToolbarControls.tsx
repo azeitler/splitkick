@@ -367,11 +367,11 @@ export function DesktopToolbarControls({
                 <span>
                   {[
                     loadedIssueCount > 0 &&
-                      `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`,
+                      `${loadedIssueCount}`,
                     loadedPRCount > 0 &&
-                      `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`,
+                      `${loadedPRCount}`,
                     loadedSecurityCount > 0 && `${loadedSecurityCount}`,
-                    loadedLinearCount > 0 && `${loadedLinearCount} Linear`,
+                    loadedLinearCount > 0 && `${loadedLinearCount}`,
                     loadedContextCount > 0 &&
                       `${loadedContextCount}`,
                   ]
