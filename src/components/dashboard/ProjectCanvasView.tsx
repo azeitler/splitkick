@@ -1829,7 +1829,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   ])
 
   // Listen for open-session-modal event (fired by ChatWindow when creating new session inside modal,
-  // or by UnreadBell/UnreadSessionsModal to open a session on the project canvas)
+  // or by UnreadBell to open a session on the project canvas)
   useEffect(() => {
     const handleOpenSessionModal = (
       e: CustomEvent<{

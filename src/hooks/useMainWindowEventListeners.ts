@@ -524,17 +524,13 @@ export function useMainWindowEventListeners() {
         return
       }
 
-      // Skip when a blocking modal/dialog is open - let it handle its own shortcuts
-      const uiState = useUIStore.getState()
+      // Skip when any modal/dialog is open - let it handle its own shortcuts.
+      // Covers all shadcn/Radix Dialog + AlertDialog instances automatically
+      // (including future modals) via their data-state attribute.
       if (
-        uiState.loadContextModalOpen ||
-        uiState.magicModalOpen ||
-        uiState.openInModalOpen ||
-        uiState.newWorktreeModalOpen ||
-        uiState.commandPaletteOpen ||
-        uiState.preferencesOpen ||
-        uiState.releaseNotesModalOpen ||
-        uiState.updatePrModalOpen
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"]'
+        )
       )
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
