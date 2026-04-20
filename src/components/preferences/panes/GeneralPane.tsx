@@ -140,31 +140,7 @@ import {
   setGitPollInterval,
   setRemotePollInterval,
 } from '@/services/git-status'
-
-/** Get [command, args] for updating a PATH-mode CLI, respecting package manager.
- *  Returns null when the CLI has no self-update command and no known package manager. */
-function getPathUpdateAction(
-  cliPath: string | null | undefined,
-  packageManager: string | null | undefined,
-  brewPkg: string,
-  selfUpdateArgs: string[] | null,
-  npmPkg?: string,
-  targetVersion?: string
-): [string, string[]] | null {
-  if (packageManager === 'homebrew') {
-    return ['brew', ['upgrade', brewPkg]]
-  }
-  if (selfUpdateArgs) {
-    return [cliPath ?? brewPkg, selfUpdateArgs]
-  }
-  if (packageManager === 'bun' && npmPkg && targetVersion) {
-    return ['bun', ['install', '-g', `${npmPkg}@${targetVersion}`]]
-  }
-  if (packageManager === 'npm' && npmPkg && targetVersion) {
-    return ['npm', ['install', '-g', `${npmPkg}@${targetVersion}`]]
-  }
-  return null
-}
+import { getPathUpdateAction } from '@/lib/cli-update'
 
 interface CleanupResult {
   deleted_worktrees: number

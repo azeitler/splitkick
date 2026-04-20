@@ -1379,7 +1379,6 @@ export function ChatWindow({
       )
         return
 
-
       // Mark pending plan approved if exists
       if (pendingPlanMessage) {
         markPlanApprovedService(
@@ -1598,7 +1597,6 @@ export function ChatWindow({
         effortLevel,
         backend: modeBackend,
       })
-
     },
     [
       activeSessionId,
@@ -1987,6 +1985,7 @@ export function ChatWindow({
     yoloBackendRef,
     yoloThinkingLevelRef,
     yoloEffortLevelRef,
+    selectedBackendRef,
     getCustomProfileName: () => {
       return selectedProviderRef.current ?? undefined
     },

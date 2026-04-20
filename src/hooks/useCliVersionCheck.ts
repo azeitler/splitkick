@@ -32,34 +32,19 @@ import { isNewerVersion } from '@/lib/version-utils'
 import { logger } from '@/lib/logger'
 import { isNativeApp } from '@/lib/environment'
 import { usePreferences } from '@/services/preferences'
+import {
+  CLI_DISPLAY_NAMES,
+  resolveCliPathUpdateAction,
+  type CliType,
+} from '@/lib/cli-update'
 
 interface CliUpdateInfo {
-  type: 'claude' | 'gh' | 'codex' | 'opencode'
+  type: CliType
   currentVersion: string
   latestVersion: string
   cliSource?: 'jean' | 'path'
   cliPath?: string | null
   packageManager?: string | null
-}
-
-/** Map CLI type to the binary name used by the package manager */
-const CLI_BINARY_NAMES: Record<CliUpdateInfo['type'], string> = {
-  claude: 'claude-code',
-  gh: 'gh',
-  codex: 'codex',
-  opencode: 'opencode',
-}
-
-/** Map CLI type to its npm package name (for npm-installed CLIs without self-update) */
-const NPM_PACKAGE_NAMES: Partial<Record<CliUpdateInfo['type'], string>> = {
-  codex: '@openai/codex',
-}
-
-const CLI_DISPLAY_NAMES: Record<CliUpdateInfo['type'], string> = {
-  claude: 'Claude CLI',
-  gh: 'GitHub CLI',
-  codex: 'Codex CLI',
-  opencode: 'OpenCode CLI',
 }
 
 /**
@@ -264,19 +249,6 @@ export function useCliVersionCheck() {
   ])
 }
 
-/** Get the correct self-update args for each CLI type, or null if no built-in update */
-function getPathModeUpdateArgs(type: CliUpdateInfo['type']): string[] | null {
-  switch (type) {
-    case 'claude':
-      return ['update']
-    case 'opencode':
-      return ['upgrade']
-    // gh and codex have no built-in self-update command
-    default:
-      return null
-  }
-}
-
 /**
  * Show toast notifications for each CLI update.
  * Each CLI gets its own toast with Update and Cancel buttons.
@@ -290,7 +262,6 @@ function showUpdateToasts(updates: CliUpdateInfo[]) {
     const toastId = `cli-update-${update.type}`
 
     const isPathMode = update.cliSource === 'path'
-    const isHomebrew = update.packageManager === 'homebrew'
 
     toast.info(`${cliName} update available`, {
       id: toastId,
@@ -299,46 +270,25 @@ function showUpdateToasts(updates: CliUpdateInfo[]) {
       action: {
         label: 'Update',
         onClick: () => {
-          if (isPathMode && isHomebrew) {
-            const brewPkg = CLI_BINARY_NAMES[update.type]
-            logger.debug(
-              `[CliVersionCheck] Homebrew update: brew upgrade ${brewPkg}`
-            )
-            openCliLoginModal(
+          if (isPathMode) {
+            const action = resolveCliPathUpdateAction(
               update.type,
-              'brew',
-              ['upgrade', brewPkg],
-              'update'
+              update.cliPath,
+              update.packageManager,
+              update.latestVersion
             )
-          } else if (isPathMode && update.cliPath) {
-            const pathUpdateArgs = getPathModeUpdateArgs(update.type)
-            if (pathUpdateArgs) {
+            if (action) {
               logger.debug(
-                `[CliVersionCheck] PATH-mode update: type=${update.type} path=${update.cliPath} args=${pathUpdateArgs}`
+                `[CliVersionCheck] PATH-mode update: type=${update.type} cmd=${action[0]} args=${action[1].join(' ')}`
               )
-              openCliLoginModal(
-                update.type,
-                update.cliPath,
-                pathUpdateArgs,
-                'update'
-              )
-            } else if (update.packageManager === 'npm') {
-              const npmPkg = NPM_PACKAGE_NAMES[update.type]
-              if (npmPkg) {
-                logger.debug(
-                  `[CliVersionCheck] npm update: npm install -g ${npmPkg}@${update.latestVersion}`
-                )
-                openCliLoginModal(
-                  update.type,
-                  'npm',
-                  ['install', '-g', `${npmPkg}@${update.latestVersion}`],
-                  'update'
-                )
-              } else {
-                openCliUpdateModal(update.type)
-              }
+              openCliLoginModal(update.type, action[0], action[1], 'update')
             } else {
-              openCliUpdateModal(update.type)
+              logger.warn(
+                `[CliVersionCheck] PATH-mode update with unknown package manager: type=${update.type} pm=${update.packageManager}`
+              )
+              toast.error(
+                `Can't auto-update ${cliName}. Update it manually via your package manager.`
+              )
             }
           } else {
             openCliUpdateModal(update.type)

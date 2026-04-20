@@ -96,6 +96,7 @@ interface UseMessageHandlersParams {
   yoloBackendRef: RefObject<string | null>
   yoloThinkingLevelRef: RefObject<string | null>
   yoloEffortLevelRef: RefObject<string | null>
+  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode' | 'cursor'>
   getCustomProfileName: () => string | undefined
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
@@ -248,6 +249,7 @@ export function useMessageHandlers({
   yoloBackendRef,
   yoloThinkingLevelRef,
   yoloEffortLevelRef,
+  selectedBackendRef,
   getCustomProfileName,
   executionModeRef,
   selectedThinkingLevelRef,
@@ -614,8 +616,7 @@ export function useMessageHandlers({
 
       // Format approval message - include updated plan if provided
       // For Codex: use explicit execution instruction since it resumes a thread
-      const isCodex =
-        useChatStore.getState().selectedBackends[sessionId] === 'codex'
+      const isCodex = selectedBackendRef.current === 'codex'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : isCodex
@@ -624,7 +625,7 @@ export function useMessageHandlers({
       // Send approval message so the backend continues with execution
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
       // the denied message context won't be set and approval UI won't work
-      const sessionBackend = useChatStore.getState().selectedBackends[sessionId]
+      const sessionBackend = selectedBackendRef.current
       const buildBackendOverride = buildBackendRef.current
       const overridesApply =
         !buildBackendOverride || buildBackendOverride === sessionBackend
@@ -711,6 +712,7 @@ export function useMessageHandlers({
       buildBackendRef,
       buildThinkingLevelRef,
       buildEffortLevelRef,
+      selectedBackendRef,
       getMcpConfig,
       getCustomProfileName,
       markAtBottom,
@@ -797,16 +799,14 @@ export function useMessageHandlers({
       markAtBottom()
 
       // Format approval message - include updated plan if provided
-      const isCodexYolo =
-        useChatStore.getState().selectedBackends[sessionId] === 'codex'
+      const isCodexYolo = selectedBackendRef.current === 'codex'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : isCodexYolo
           ? 'Execute the plan you created. Implement all changes described.'
           : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
       // Resolve yolo overrides (skip if backend override doesn't match session)
-      const sessionBackendYolo =
-        useChatStore.getState().selectedBackends[sessionId]
+      const sessionBackendYolo = selectedBackendRef.current
       const yoloBackendOverride = yoloBackendRef.current
       const yoloOverridesApply =
         !yoloBackendOverride || yoloBackendOverride === sessionBackendYolo
@@ -894,6 +894,7 @@ export function useMessageHandlers({
       yoloBackendRef,
       yoloThinkingLevelRef,
       yoloEffortLevelRef,
+      selectedBackendRef,
       getMcpConfig,
       getCustomProfileName,
       markAtBottom,
@@ -946,8 +947,7 @@ export function useMessageHandlers({
     markAtBottom()
 
     // Resolve build overrides (skip if backend override doesn't match session)
-    const streamBuildSessionBackend =
-      useChatStore.getState().selectedBackends[sessionId]
+    const streamBuildSessionBackend = selectedBackendRef.current
     const streamBuildBackendOverride = buildBackendRef.current
     const streamBuildOverridesApply =
       !streamBuildBackendOverride ||
@@ -1012,6 +1012,7 @@ export function useMessageHandlers({
     buildBackendRef,
     buildThinkingLevelRef,
     buildEffortLevelRef,
+    selectedBackendRef,
     getMcpConfig,
     getCustomProfileName,
     markAtBottom,
@@ -1055,8 +1056,7 @@ export function useMessageHandlers({
     markAtBottom()
 
     // Resolve yolo overrides (skip if backend override doesn't match session)
-    const streamYoloSessionBackend =
-      useChatStore.getState().selectedBackends[sessionId]
+    const streamYoloSessionBackend = selectedBackendRef.current
     const streamYoloBackendOverride = yoloBackendRef.current
     const streamYoloOverridesApply =
       !streamYoloBackendOverride ||
@@ -1118,6 +1118,7 @@ export function useMessageHandlers({
     yoloBackendRef,
     yoloThinkingLevelRef,
     yoloEffortLevelRef,
+    selectedBackendRef,
     getMcpConfig,
     getCustomProfileName,
     markAtBottom,
@@ -1902,7 +1903,6 @@ export function useMessageHandlers({
         backend: resolvedBackend,
       })
 
-
       // Optionally close the original session
       if (prefs?.close_original_on_clear_context) {
         const closeCommand =
@@ -2004,7 +2004,6 @@ export function useMessageHandlers({
         toast.error('No plan content available')
         return
       }
-
 
       // Mark as approved in streaming state
       store.setStreamingPlanApproved(sessionId, true)
@@ -2218,7 +2217,6 @@ export function useMessageHandlers({
         customProfileName: getCustomProfileName(),
         backend: resolvedBackend,
       })
-
 
       // Optionally close the original session
       if (prefs?.close_original_on_clear_context) {
