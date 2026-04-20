@@ -428,6 +428,20 @@ function executeKeybindingAction(
         new CustomEvent('scroll-chat', { detail: { direction: 'down' } })
       )
       break
+    case 'scroll_chat_up_small':
+      window.dispatchEvent(
+        new CustomEvent('scroll-chat', {
+          detail: { direction: 'up', amount: 'small' },
+        })
+      )
+      break
+    case 'scroll_chat_down_small':
+      window.dispatchEvent(
+        new CustomEvent('scroll-chat', {
+          detail: { direction: 'down', amount: 'small' },
+        })
+      )
+      break
     case 'search_chat': {
       logger.debug('Keybinding: search_chat')
       const uiStoreSearch = useUIStore.getState()
@@ -619,6 +633,17 @@ export function useMainWindowEventListeners() {
             )
           ) {
             return
+          }
+          // Scope small-scroll arrow keys to ChatWindow context
+          // so canvas/list arrow navigation still works elsewhere
+          if (
+            action === 'scroll_chat_up_small' ||
+            action === 'scroll_chat_down_small'
+          ) {
+            const chatVisible =
+              !!useChatStore.getState().activeWorktreeId ||
+              useUIStore.getState().sessionChatModalOpen
+            if (!chatVisible) return
           }
           e.preventDefault()
           e.stopPropagation()

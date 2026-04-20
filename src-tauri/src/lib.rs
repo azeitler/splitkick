@@ -220,6 +220,10 @@ pub struct AppPreferences {
     pub build_thinking_level: Option<String>, // Thinking level override for build mode, None = use session thinking level
     #[serde(default)]
     pub yolo_thinking_level: Option<String>, // Thinking level override for yolo mode, None = use session thinking level
+    #[serde(default)]
+    pub build_effort_level: Option<String>, // Effort level override for build mode (Claude adaptive / Codex), None = use session effort
+    #[serde(default)]
+    pub yolo_effort_level: Option<String>, // Effort level override for yolo mode (Claude adaptive / Codex), None = use session effort
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_api_key: Option<String>, // Global Linear personal API key (inherited by all projects)
     #[serde(default = "default_cli_source")]
@@ -1457,6 +1461,8 @@ impl Default for AppPreferences {
             yolo_backend: None,
             build_thinking_level: None,
             yolo_thinking_level: None,
+            build_effort_level: None,
+            yolo_effort_level: None,
             linear_api_key: None,
             claude_cli_source: default_cli_source(),
             codex_cli_source: default_cli_source(),

@@ -40,6 +40,7 @@ import {
   chatQueryKeys,
 } from '@/services/chat'
 import { useWorktree, useProjects, useRunScripts } from '@/services/projects'
+import { markWorktreeSilentReady } from '@/services/worktree-silent-ready'
 import { useProjectsStore } from '@/store/projects-store'
 import type {
   Worktree,
@@ -850,11 +851,17 @@ export function ChatWindow({
   const buildThinkingLevelRef = useRef<string | null>(
     preferences?.build_thinking_level ?? null
   )
+  const buildEffortLevelRef = useRef<string | null>(
+    preferences?.build_effort_level ?? null
+  )
   const yoloBackendRef = useRef<string | null>(
     preferences?.yolo_backend ?? null
   )
   const yoloThinkingLevelRef = useRef<string | null>(
     preferences?.yolo_thinking_level ?? null
+  )
+  const yoloEffortLevelRef = useRef<string | null>(
+    preferences?.yolo_effort_level ?? null
   )
   const selectedProviderRef = useRef(selectedProvider)
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
@@ -876,8 +883,10 @@ export function ChatWindow({
   yoloModelRef.current = preferences?.yolo_model ?? null
   buildBackendRef.current = preferences?.build_backend ?? null
   buildThinkingLevelRef.current = preferences?.build_thinking_level ?? null
+  buildEffortLevelRef.current = preferences?.build_effort_level ?? null
   yoloBackendRef.current = preferences?.yolo_backend ?? null
   yoloThinkingLevelRef.current = preferences?.yolo_thinking_level ?? null
+  yoloEffortLevelRef.current = preferences?.yolo_effort_level ?? null
   selectedProviderRef.current = selectedProvider
   selectedThinkingLevelRef.current = selectedThinkingLevel
   selectedEffortLevelRef.current = selectedEffortLevel
@@ -1004,9 +1013,11 @@ export function ChatWindow({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedProviderRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
@@ -1088,7 +1099,6 @@ export function ChatWindow({
         yoloModelRef.current || yoloBackend
           ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
           : ''
-      if (yoloOverride) toast.info(`Yolo: ${yoloOverride}`)
       const message = yoloOverride
         ? `[Yolo: ${yoloOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
@@ -1140,6 +1150,7 @@ export function ChatWindow({
 
       const effectiveYoloBackend = yoloBackend ?? session?.backend
       const yoloModeThinking = yoloThinkingLevelRef.current
+      const yoloModeEffort = yoloEffortLevelRef.current
       const yoloThinkingLevel: ThinkingLevel =
         effectiveYoloBackend === 'codex'
           ? 'off'
@@ -1147,16 +1158,12 @@ export function ChatWindow({
               selectedThinkingLevelRef.current) as ThinkingLevel)
       const yoloEffortLevel: EffortLevel | undefined =
         effectiveYoloBackend === 'codex'
-          ? ((
-              {
-                low: 'low',
-                medium: 'medium',
-                high: 'high',
-                xhigh: 'xhigh',
-                max: 'max',
-              } as Record<string, EffortLevel>
-            )[yoloModeThinking ?? ''] ?? selectedEffortLevelRef.current)
-          : undefined
+          ? ((yoloModeEffort as EffortLevel | null) ??
+            selectedEffortLevelRef.current)
+          : useAdaptiveThinkingRef.current
+            ? ((yoloModeEffort as EffortLevel | null) ??
+              selectedEffortLevelRef.current)
+            : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: activeWorktreeId,
@@ -1181,8 +1188,10 @@ export function ChatWindow({
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       preferences?.selected_codex_model,
       preferences?.selected_opencode_model,
       session?.backend,
@@ -1259,7 +1268,6 @@ export function ChatWindow({
         buildModelRef.current || buildBackend
           ? [buildBackend, buildModel].filter(Boolean).join(' / ')
           : ''
-      if (buildOverride) toast.info(`Build: ${buildOverride}`)
       const message = buildOverride
         ? `[Build: ${buildOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
@@ -1311,6 +1319,7 @@ export function ChatWindow({
 
       const effectiveBuildBackend = buildBackend ?? session?.backend
       const buildModeThinking = buildThinkingLevelRef.current
+      const buildModeEffort = buildEffortLevelRef.current
       const buildThinkingLevel: ThinkingLevel =
         effectiveBuildBackend === 'codex'
           ? 'off'
@@ -1318,16 +1327,12 @@ export function ChatWindow({
               selectedThinkingLevelRef.current) as ThinkingLevel)
       const buildEffortLevel: EffortLevel | undefined =
         effectiveBuildBackend === 'codex'
-          ? ((
-              {
-                low: 'low',
-                medium: 'medium',
-                high: 'high',
-                xhigh: 'xhigh',
-                max: 'max',
-              } as Record<string, EffortLevel>
-            )[buildModeThinking ?? ''] ?? selectedEffortLevelRef.current)
-          : undefined
+          ? ((buildModeEffort as EffortLevel | null) ??
+            selectedEffortLevelRef.current)
+          : useAdaptiveThinkingRef.current
+            ? ((buildModeEffort as EffortLevel | null) ??
+              selectedEffortLevelRef.current)
+            : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: activeWorktreeId,
@@ -1352,8 +1357,10 @@ export function ChatWindow({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       preferences?.selected_codex_model,
       preferences?.selected_opencode_model,
       session?.backend,
@@ -1372,7 +1379,6 @@ export function ChatWindow({
       )
         return
 
-      const toastId = toast.loading('Creating worktree...')
 
       // Mark pending plan approved if exists
       if (pendingPlanMessage) {
@@ -1415,9 +1421,10 @@ export function ChatWindow({
           projectId,
         })
       } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`, { id: toastId })
+        toast.error(`Failed to create worktree: ${err}`)
         return
       }
+      markWorktreeSilentReady(pendingWorktree.id)
 
       // Wait for worktree to be ready
       let readyWorktree: Worktree
@@ -1454,11 +1461,9 @@ export function ChatWindow({
           )
         })
       } catch (err) {
-        toast.error(`Worktree creation failed: ${err}`, { id: toastId })
+        toast.error(`Worktree creation failed: ${err}`)
         return
       }
-
-      toast.loading('Sending plan...', { id: toastId })
 
       // Navigate to new worktree
       const projectsStore = useProjectsStore.getState()
@@ -1483,7 +1488,7 @@ export function ChatWindow({
           })
         }
       } catch (err) {
-        toast.error(`Failed to get session: ${err}`, { id: toastId })
+        toast.error(`Failed to get session: ${err}`)
         return
       }
 
@@ -1498,6 +1503,7 @@ export function ChatWindow({
       const modeThinkingRef = isYolo
         ? yoloThinkingLevelRef
         : buildThinkingLevelRef
+      const modeEffortRef = isYolo ? yoloEffortLevelRef : buildEffortLevelRef
       const modeBackend =
         (modeBackendRef.current as Session['backend']) ?? undefined
       const modeModel =
@@ -1513,7 +1519,6 @@ export function ChatWindow({
         modeModelRef.current || modeBackend
           ? [modeBackend, modeModel].filter(Boolean).join(' / ')
           : ''
-      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
       const message = modeOverride
         ? `[${modeLabel}: ${modeOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
@@ -1568,6 +1573,7 @@ export function ChatWindow({
 
       const effectiveBackend = modeBackend ?? session?.backend
       const modeThinking = modeThinkingRef.current
+      const modeEffort = modeEffortRef.current
       const thinkingLevel: ThinkingLevel =
         effectiveBackend === 'codex'
           ? 'off'
@@ -1575,16 +1581,12 @@ export function ChatWindow({
               selectedThinkingLevelRef.current) as ThinkingLevel)
       const effortLevel: EffortLevel | undefined =
         effectiveBackend === 'codex'
-          ? ((
-              {
-                low: 'low',
-                medium: 'medium',
-                high: 'high',
-                xhigh: 'xhigh',
-                max: 'max',
-              } as Record<string, EffortLevel>
-            )[modeThinking ?? ''] ?? selectedEffortLevelRef.current)
-          : undefined
+          ? ((modeEffort as EffortLevel | null) ??
+            selectedEffortLevelRef.current)
+          : useAdaptiveThinkingRef.current
+            ? ((modeEffort as EffortLevel | null) ??
+              selectedEffortLevelRef.current)
+            : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: readyWorktree.id,
@@ -1597,7 +1599,6 @@ export function ChatWindow({
         backend: modeBackend,
       })
 
-      toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
     },
     [
       activeSessionId,
@@ -1611,11 +1612,14 @@ export function ChatWindow({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       preferences?.selected_codex_model,
       preferences?.selected_opencode_model,
       session?.backend,
@@ -1978,9 +1982,11 @@ export function ChatWindow({
     buildModelRef,
     buildBackendRef,
     buildThinkingLevelRef,
+    buildEffortLevelRef,
     yoloModelRef,
     yoloBackendRef,
     yoloThinkingLevelRef,
+    yoloEffortLevelRef,
     getCustomProfileName: () => {
       return selectedProviderRef.current ?? undefined
     },
@@ -2593,6 +2599,7 @@ export function ChatWindow({
                         showApproveButton={hasPendingPlanApproval}
                         showFindingsButton={!areFindingsVisible}
                         isAtBottom={isAtBottom || messages.length === 0}
+                        isSending={isSending}
                         approveShortcut={approveShortcut}
                         onApprove={floatingApprove}
                         onYoloApprove={floatingYoloApprove}

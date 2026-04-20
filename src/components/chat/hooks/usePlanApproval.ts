@@ -8,7 +8,14 @@ import {
   chatQueryKeys,
 } from '@/services/chat'
 import { invoke } from '@/lib/transport'
-import type { Session, ThinkingLevel, WorktreeSessions } from '@/types/chat'
+import { useClaudeCliStatus } from '@/services/claude-cli'
+import { supportsAdaptiveThinking } from '@/lib/model-utils'
+import type {
+  EffortLevel,
+  Session,
+  ThinkingLevel,
+  WorktreeSessions,
+} from '@/types/chat'
 import type { SessionCardData } from '../session-card-utils'
 
 const THINKING_LEVEL_VALUES = new Set<ThinkingLevel>([
@@ -23,6 +30,19 @@ function isThinkingLevel(
 ): value is ThinkingLevel {
   if (!value) return false
   return THINKING_LEVEL_VALUES.has(value as ThinkingLevel)
+}
+
+const EFFORT_LEVEL_VALUES = new Set<EffortLevel>([
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+])
+
+function isEffortLevel(value: string | null | undefined): value is EffortLevel {
+  if (!value) return false
+  return EFFORT_LEVEL_VALUES.has(value as EffortLevel)
 }
 
 interface UsePlanApprovalParams {
@@ -60,6 +80,7 @@ export function usePlanApproval({
   const queryClient = useQueryClient()
   const { data: preferences } = usePreferences()
   const sendMessage = useSendMessage()
+  const { data: cliStatus } = useClaudeCliStatus()
 
   const {
     setExecutionMode,
@@ -153,6 +174,18 @@ export function usePlanApproval({
           : 'off'
 
       const isCodex = sessionBackend === 'codex'
+      const buildEffortOverride = overridesApply
+        ? preferences?.build_effort_level
+        : null
+      const effortAppliesBuild =
+        isCodex || supportsAdaptiveThinking(model, cliStatus?.version ?? null)
+      const effortLevel: EffortLevel | undefined = effortAppliesBuild
+        ? isEffortLevel(buildEffortOverride)
+          ? buildEffortOverride
+          : isEffortLevel(preferences?.default_effort_level)
+            ? preferences?.default_effort_level
+            : undefined
+        : undefined
       const baseMsg = isCodex
         ? 'Execute the plan you created. Implement all changes described.'
         : 'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
@@ -235,6 +268,8 @@ export function usePlanApproval({
             model,
             executionMode: 'build',
             thinkingLevel,
+            effortLevel,
+            backend: sessionBackend,
             customProfileName: card.session.selected_provider ?? undefined,
           })
         })
@@ -245,6 +280,7 @@ export function usePlanApproval({
       queryClient,
       preferences,
       sendMessage,
+      cliStatus?.version,
       setExecutionMode,
       clearToolCalls,
       clearStreamingContentBlocks,
@@ -335,6 +371,19 @@ export function usePlanApproval({
           : 'off'
 
       const isCodexYolo = sessionBackend === 'codex'
+      const yoloEffortOverride = overridesApplyYolo
+        ? preferences?.yolo_effort_level
+        : null
+      const effortAppliesYolo =
+        isCodexYolo ||
+        supportsAdaptiveThinking(model, cliStatus?.version ?? null)
+      const effortLevel: EffortLevel | undefined = effortAppliesYolo
+        ? isEffortLevel(yoloEffortOverride)
+          ? yoloEffortOverride
+          : isEffortLevel(preferences?.default_effort_level)
+            ? preferences?.default_effort_level
+            : undefined
+        : undefined
       const baseMsgYolo = isCodexYolo
         ? 'Execute the plan you created. Implement all changes described.'
         : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
@@ -410,6 +459,8 @@ export function usePlanApproval({
             model,
             executionMode: 'yolo',
             thinkingLevel,
+            effortLevel,
+            backend: sessionBackend,
             customProfileName: card.session.selected_provider ?? undefined,
           })
         })
@@ -420,6 +471,7 @@ export function usePlanApproval({
       queryClient,
       preferences,
       sendMessage,
+      cliStatus?.version,
       setExecutionMode,
       clearToolCalls,
       clearStreamingContentBlocks,

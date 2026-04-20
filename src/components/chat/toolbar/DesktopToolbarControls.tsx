@@ -335,21 +335,6 @@ export function DesktopToolbarControls({
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            disabled={hasPendingQuestions}
-            onClick={onAttach}
-            className="hidden @xl:flex h-8 items-center justify-center px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-            aria-label="Attach images"
-          >
-            <Paperclip className="h-3.5 w-3.5" />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Attach images from device</TooltipContent>
-      </Tooltip>
-
       {(loadedIssueCount > 0 ||
         loadedPRCount > 0 ||
         loadedSecurityCount > 0 ||
@@ -366,14 +351,11 @@ export function DesktopToolbarControls({
                 <CircleDot className="h-3.5 w-3.5" />
                 <span>
                   {[
-                    loadedIssueCount > 0 &&
-                      `${loadedIssueCount}`,
-                    loadedPRCount > 0 &&
-                      `${loadedPRCount}`,
+                    loadedIssueCount > 0 && `${loadedIssueCount}`,
+                    loadedPRCount > 0 && `${loadedPRCount}`,
                     loadedSecurityCount > 0 && `${loadedSecurityCount}`,
                     loadedLinearCount > 0 && `${loadedLinearCount}`,
-                    loadedContextCount > 0 &&
-                      `${loadedContextCount}`,
+                    loadedContextCount > 0 && `${loadedContextCount}`,
                   ]
                     .filter(Boolean)
                     .join(', ')}
@@ -834,6 +816,21 @@ export function DesktopToolbarControls({
         className="hidden @xl:flex"
         onCloseAutoFocus={focusChatInput}
       />
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            disabled={hasPendingQuestions}
+            onClick={onAttach}
+            className="hidden @xl:flex h-8 items-center justify-center px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            aria-label="Attach images"
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Attach images from device</TooltipContent>
+      </Tooltip>
     </>
   )
 }

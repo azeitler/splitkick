@@ -349,7 +349,11 @@ export const MessageItem = memo(function MessageItem({
                   <div className="text-sm text-muted-foreground italic">
                     <span>[Message could not be rendered]</span>
                     {message.content && (
-                      <Markdown streaming={message.cancelled}>
+                      <Markdown
+                        streaming={message.cancelled}
+                        messageId={message.id}
+                        sessionId={sessionId}
+                      >
                         {message.content}
                       </Markdown>
                     )}
@@ -375,7 +379,11 @@ export const MessageItem = memo(function MessageItem({
               return (
                 <>
                   {fallbackAssistantIntro && (
-                    <Markdown streaming={message.cancelled}>
+                    <Markdown
+                      streaming={message.cancelled}
+                      messageId={message.id}
+                      sessionId={sessionId}
+                    >
                       {fallbackAssistantIntro}
                     </Markdown>
                   )}
@@ -424,7 +432,11 @@ export const MessageItem = memo(function MessageItem({
                               const strippedText = stripFindingBlocks(item.text)
                               return (
                                 <div>
-                                  <Markdown streaming={message.cancelled}>
+                                  <Markdown
+                                    streaming={message.cancelled}
+                                    messageId={message.id}
+                                    sessionId={sessionId}
+                                  >
                                     {strippedText}
                                   </Markdown>
                                   {findings.length > 0 && (
@@ -441,7 +453,11 @@ export const MessageItem = memo(function MessageItem({
                               )
                             }
                             return (
-                              <Markdown streaming={message.cancelled}>
+                              <Markdown
+                                streaming={message.cancelled}
+                                messageId={message.id}
+                                sessionId={sessionId}
+                              >
                                 {item.text}
                               </Markdown>
                             )
@@ -613,7 +629,11 @@ export const MessageItem = memo(function MessageItem({
       ) : (
         <>
           {message.role === 'assistant' && fallbackPrePlanText && (
-            <Markdown streaming={message.cancelled}>
+            <Markdown
+              streaming={message.cancelled}
+              messageId={message.id}
+              sessionId={sessionId}
+            >
               {fallbackPrePlanText}
             </Markdown>
           )}
@@ -651,7 +671,11 @@ export const MessageItem = memo(function MessageItem({
                 {message.role === 'assistant' &&
                 hasReviewFindings(displayContent) ? (
                   <>
-                    <Markdown streaming={message.cancelled}>
+                    <Markdown
+                      streaming={message.cancelled}
+                      messageId={message.id}
+                      sessionId={sessionId}
+                    >
                       {stripFindingBlocks(displayContent)}
                     </Markdown>
                     <ReviewFindingsList
@@ -668,7 +692,11 @@ export const MessageItem = memo(function MessageItem({
                     {displayContent}
                   </div>
                 ) : (
-                  <Markdown streaming={message.cancelled}>
+                  <Markdown
+                    streaming={message.cancelled}
+                    messageId={message.id}
+                    sessionId={sessionId}
+                  >
                     {displayContent}
                   </Markdown>
                 )}

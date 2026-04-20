@@ -31,6 +31,7 @@ import type { AppPreferences } from '@/types/preferences'
 import type { AdvisoryContext } from '@/types/github'
 import { hasBackend } from '@/lib/environment'
 import { openExternal, preOpenWindow } from '@/lib/platform'
+import { consumeWorktreeSilentReady } from '@/services/worktree-silent-ready'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -979,6 +980,10 @@ export function useWorktreeEvents() {
         // between worktree:creating and worktree:created events).
         handleWorktreeReady(worktree, queryClient)
         clearPendingTimeout(worktree.id)
+
+        if (consumeWorktreeSilentReady(worktree.id)) {
+          return
+        }
 
         const openWorktreeAction = {
           label: 'Open',

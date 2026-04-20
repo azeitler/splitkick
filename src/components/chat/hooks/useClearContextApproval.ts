@@ -261,6 +261,9 @@ export function useClearContextApproval({
       const modeThinkingPref = isYolo
         ? preferences?.yolo_thinking_level
         : preferences?.build_thinking_level
+      const modeEffortPref = isYolo
+        ? preferences?.yolo_effort_level
+        : preferences?.build_effort_level
       const modeBackendOverride = modeBackendPref as
         | 'claude'
         | 'codex'
@@ -290,7 +293,7 @@ export function useClearContextApproval({
             preferences?.default_codex_reasoning_effort
           ) ?? 'high'
         effortLevel =
-          mapCodexReasoningToEffort(modeThinkingPref) ?? defaultCodexEffort
+          mapCodexReasoningToEffort(modeEffortPref) ?? defaultCodexEffort
       } else {
         const fallbackThinking = isThinkingLevel(preferences?.thinking_level)
           ? preferences.thinking_level
@@ -298,6 +301,7 @@ export function useClearContextApproval({
         thinkingLevel = isThinkingLevel(modeThinkingPref)
           ? modeThinkingPref
           : fallbackThinking
+        effortLevel = mapCodexReasoningToEffort(modeEffortPref)
       }
       const resolvedPlanFilePath =
         card.planFilePath || store.getPlanFilePath(sessionId)

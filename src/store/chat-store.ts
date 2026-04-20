@@ -79,6 +79,10 @@ interface ChatUIState {
   // Fixed AI review findings per session (sessionId → fixed finding keys)
   fixedReviewFindings: Record<string, Set<string>>
 
+  // Per-table checklist state: sessionId → (tableKey → Set of checked row indices)
+  // Presence of tableKey = checklist mode enabled for that table
+  tableCheckedRows: Record<string, Record<string, Set<number>>>
+
   // Mapping of worktree IDs to paths (for looking up paths by ID)
   worktreePaths: Record<string, string>
 
@@ -278,6 +282,15 @@ interface ChatUIState {
   markReviewFindingFixed: (sessionId: string, findingKey: string) => void
   isReviewFindingFixed: (sessionId: string, findingKey: string) => boolean
   clearFixedReviewFindings: (sessionId: string) => void
+
+  // Actions - Table checklist state (session-scoped, persisted)
+  enableTableChecklist: (sessionId: string, tableKey: string) => void
+  disableTableChecklist: (sessionId: string, tableKey: string) => void
+  toggleTableRowChecked: (
+    sessionId: string,
+    tableKey: string,
+    rowIndex: number
+  ) => void
 
   // Actions - Reviewing status management (persisted)
   setSessionReviewing: (sessionId: string, reviewing: boolean) => void
@@ -619,6 +632,7 @@ export const useChatStore = create<ChatUIState>()(
       reviewResults: {},
       reviewSidebarVisible: false,
       fixedReviewFindings: {},
+      tableCheckedRows: {},
       worktreePaths: {},
       sendingSessionIds: {},
       sendStartedAt: {},
@@ -797,6 +811,73 @@ export const useChatStore = create<ChatUIState>()(
           },
           undefined,
           'clearFixedReviewFindings'
+        ),
+
+      // Table checklist (session-scoped, persisted)
+      enableTableChecklist: (sessionId, tableKey) =>
+        set(
+          state => {
+            const sessionTables = state.tableCheckedRows[sessionId] ?? {}
+            if (tableKey in sessionTables) return state
+            return {
+              tableCheckedRows: {
+                ...state.tableCheckedRows,
+                [sessionId]: {
+                  ...sessionTables,
+                  [tableKey]: new Set<number>(),
+                },
+              },
+            }
+          },
+          undefined,
+          'enableTableChecklist'
+        ),
+
+      disableTableChecklist: (sessionId, tableKey) =>
+        set(
+          state => {
+            const sessionTables = state.tableCheckedRows[sessionId]
+            if (!sessionTables || !(tableKey in sessionTables)) return state
+            const { [tableKey]: _removed, ...restTables } = sessionTables
+            const nextSession = restTables
+            if (Object.keys(nextSession).length === 0) {
+              const { [sessionId]: __, ...restSessions } =
+                state.tableCheckedRows
+              return { tableCheckedRows: restSessions }
+            }
+            return {
+              tableCheckedRows: {
+                ...state.tableCheckedRows,
+                [sessionId]: nextSession,
+              },
+            }
+          },
+          undefined,
+          'disableTableChecklist'
+        ),
+
+      toggleTableRowChecked: (sessionId, tableKey, rowIndex) =>
+        set(
+          state => {
+            const sessionTables = state.tableCheckedRows[sessionId]
+            if (!sessionTables) return state
+            const existing = sessionTables[tableKey]
+            if (!existing) return state
+            const updated = new Set(existing)
+            if (updated.has(rowIndex)) {
+              updated.delete(rowIndex)
+            } else {
+              updated.add(rowIndex)
+            }
+            return {
+              tableCheckedRows: {
+                ...state.tableCheckedRows,
+                [sessionId]: { ...sessionTables, [tableKey]: updated },
+              },
+            }
+          },
+          undefined,
+          'toggleTableRowChecked'
         ),
 
       // Reviewing status management (persisted)

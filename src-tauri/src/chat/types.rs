@@ -609,6 +609,10 @@ pub struct Session {
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
+    /// Per-table checklist state: tableKey -> checked row indices.
+    /// Key = "{messageId}:{markdownOffset}". Presence = checklist mode on.
+    #[serde(default)]
+    pub table_checked_rows: HashMap<String, Vec<u32>>,
 
     // ========================================================================
     // Run recovery state (for showing correct status on app restart)
@@ -711,6 +715,7 @@ impl Session {
             pending_plan_message_id: None,
             enabled_mcp_servers: None,
             digest: None,
+            table_checked_rows: HashMap::new(),
             last_run_status: None,
             last_run_execution_mode: None,
             last_run_started_at: None,
@@ -908,6 +913,7 @@ impl SessionMetadata {
             pending_plan_message_id: self.pending_plan_message_id.clone(),
             enabled_mcp_servers: self.enabled_mcp_servers.clone(),
             digest: self.digest.clone(),
+            table_checked_rows: self.table_checked_rows.clone(),
             // Populate from last run for status recovery on app restart
             last_run_status: last_run.map(|r| r.status.clone()),
             last_run_execution_mode: last_run.and_then(|r| r.execution_mode.clone()),
@@ -956,6 +962,7 @@ impl SessionMetadata {
         self.plan_file_path = session.plan_file_path.clone();
         self.pending_plan_message_id = session.pending_plan_message_id.clone();
         self.enabled_mcp_servers = session.enabled_mcp_servers.clone();
+        self.table_checked_rows = session.table_checked_rows.clone();
         self.label = session.label.clone();
         // NOTE: Do NOT overwrite queued_messages here. Queue state is managed
         // exclusively by enqueue/dequeue/remove/clear operations which use
@@ -1295,6 +1302,9 @@ pub struct SessionMetadata {
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
+    /// Per-table checklist state: tableKey -> checked row indices.
+    #[serde(default)]
+    pub table_checked_rows: HashMap<String, Vec<u32>>,
     /// User-assigned label with color (e.g. "Needs testing")
     #[serde(
         default,
@@ -1411,6 +1421,7 @@ impl SessionMetadata {
             pending_plan_message_id: None,
             enabled_mcp_servers: None,
             digest: None,
+            table_checked_rows: HashMap::new(),
             label: None,
             queued_messages: vec![],
             last_opened_at: None,

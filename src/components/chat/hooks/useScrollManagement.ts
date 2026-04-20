@@ -195,36 +195,52 @@ export function useScrollManagement({
   }, [isSending])
 
   // [Tier 4] Scroll management on streaming transitions.
-  // - Start: scroll to bottom so auto-scroll works for queued messages
-  //   (queue processor doesn't have access to scrollToBottom).
+  // - Start: if user was at bottom, smooth-scroll to follow queued/approved execution.
+  //   If user scrolled up, respect their position — ResizeObserver live-tail stays disabled.
   // - End: pin to actual bottom to catch late layout shifts from
   //   streaming → final content reflow (double-rAF ≈ 33ms).
   const wasSendingRef = useRef(false)
   useEffect(() => {
-    // Streaming just started — ensure we're at bottom so ResizeObserver auto-scroll works.
-    // Covers: queued messages executed by useQueueProcessor, plan approvals, direct sends.
-    // Single rAF is sufficient because PlanDisplay now collapses instantly (skipAnimation)
-    // when triggered programmatically, so no second layout shift to wait for.
+    // Streaming just started.
     if (!wasSendingRef.current && isSending) {
-      isAtBottomRef.current = true
-      setIsAtBottom(true)
-      let cancelled = false
       const viewport = scrollViewportRef.current
-      if (viewport) {
+      // Only follow if user was already at bottom. Otherwise leave them where they are —
+      // FloatingButtons' "Bottom" button is the manual escape hatch.
+      if (viewport && isAtBottomRef.current && !isAutoScrollingRef.current) {
+        let cancelled = false
         requestAnimationFrame(() => {
-          if (cancelled) return
-          if (isAtBottomRef.current) {
-            viewport.scrollTo({
-              top: viewport.scrollHeight,
-              behavior: 'instant',
-            })
+          if (cancelled || !isAtBottomRef.current) return
+          isAutoScrollingRef.current = true
+          viewport.scrollTo({
+            top: viewport.scrollHeight,
+            behavior: 'smooth',
+          })
+          const onEnd = () => {
+            isAutoScrollingRef.current = false
+            viewport.removeEventListener('scrollend', onEnd)
+            if (scrollTimeoutRef.current) {
+              clearTimeout(scrollTimeoutRef.current)
+              scrollTimeoutRef.current = null
+            }
+            // Correct any stale-scrollHeight undershoot from DOM changes mid-animation
+            const { scrollTop, scrollHeight, clientHeight } = viewport
+            if (
+              isAtBottomRef.current &&
+              scrollHeight - scrollTop - clientHeight > 2
+            ) {
+              viewport.scrollTo({ top: scrollHeight, behavior: 'instant' })
+            }
           }
+          viewport.addEventListener('scrollend', onEnd, { once: true })
+          scrollTimeoutRef.current = setTimeout(onEnd, 400)
         })
+        wasSendingRef.current = !!isSending
+        return () => {
+          cancelled = true
+        }
       }
       wasSendingRef.current = !!isSending
-      return () => {
-        cancelled = true
-      }
+      return
     }
 
     // Streaming just ended — pin to actual bottom

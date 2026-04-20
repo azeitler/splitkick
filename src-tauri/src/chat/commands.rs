@@ -563,6 +563,7 @@ pub async fn update_session_state(
     review_results: Option<Option<serde_json::Value>>,
     enabled_mcp_servers: Option<Option<Vec<String>>>,
     selected_execution_mode: Option<Option<String>>,
+    table_checked_rows: Option<std::collections::HashMap<String, Vec<u32>>>,
 ) -> Result<(), String> {
     log::trace!("Updating session state for: {session_id}");
 
@@ -630,6 +631,9 @@ pub async fn update_session_state(
             }
             if let Some(v) = selected_execution_mode {
                 session.selected_execution_mode = v;
+            }
+            if let Some(v) = table_checked_rows {
+                session.table_checked_rows = v;
             }
             Ok(())
         } else {

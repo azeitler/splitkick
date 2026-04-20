@@ -42,9 +42,7 @@ export const MessageSettingsBadges = memo(function MessageSettingsBadges({
   return (
     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
       <span>{modelLabel}</span>
-      {executionMode && (
-        <span className="capitalize">· {executionMode}</span>
-      )}
+      {executionMode && <span className="capitalize">· {executionMode}</span>}
       {!isCursor && effortLabel && <span>· {effortLabel}</span>}
       {!isCursor && !effortLabel && thinkingLabel && (
         <span>· {thinkingLabel}</span>

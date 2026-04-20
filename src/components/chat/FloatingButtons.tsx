@@ -22,6 +22,8 @@ interface FloatingButtonsProps {
   showFindingsButton: boolean
   /** Whether user is at the bottom of scroll */
   isAtBottom: boolean
+  /** Whether a message is currently streaming — drives new-activity indicator on Bottom button */
+  isSending?: boolean
   /** Keyboard shortcut for approve */
   approveShortcut: string
   /** Callback for approve (build mode) */
@@ -50,6 +52,7 @@ export const FloatingButtons = memo(function FloatingButtons({
   showApproveButton: showApprove,
   showFindingsButton,
   isAtBottom,
+  isSending,
   approveShortcut,
   onApprove,
   onYoloApprove,
@@ -172,10 +175,19 @@ export const FloatingButtons = memo(function FloatingButtons({
           <button
             type="button"
             onClick={onScrollToBottom}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground"
+            className="relative flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground"
           >
             <ArrowDown className="h-3.5 w-3.5" />
             <span>Bottom</span>
+            {isSending && (
+              <span
+                aria-hidden="true"
+                className="absolute -top-0.5 -right-0.5 flex h-2 w-2"
+              >
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+              </span>
+            )}
           </button>
         )}
       </div>
