@@ -983,6 +983,7 @@ export interface AppPreferences {
   codex_cli_source: 'jean' | 'path' // Codex CLI source: 'jean' (managed) or 'path' (system PATH)
   opencode_cli_source: 'jean' | 'path' // OpenCode CLI source: 'jean' (managed) or 'path' (system PATH)
   gh_cli_source: 'jean' | 'path' // GitHub CLI source: 'jean' (managed) or 'path' (system PATH)
+  expand_tool_calls_by_default: boolean // Expand all tool call collapsibles by default
 }
 
 export interface CustomCliProfile {
@@ -1575,4 +1576,5 @@ export const defaultPreferences: AppPreferences = {
   codex_cli_source: 'jean', // Default: Jean-managed
   opencode_cli_source: 'jean', // Default: Jean-managed
   gh_cli_source: 'jean', // Default: Jean-managed
+  expand_tool_calls_by_default: false, // Default: collapsed
 }

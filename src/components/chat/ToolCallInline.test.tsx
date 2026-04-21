@@ -1,6 +1,10 @@
 import { fireEvent, render, screen } from '@/test/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ToolCallInline } from './ToolCallInline'
+
+vi.mock('@/services/preferences', () => ({
+  usePreferences: () => ({ data: undefined }),
+}))
 
 describe('ToolCallInline', () => {
   it('renders Cursor EnterPlanMode instructions', () => {

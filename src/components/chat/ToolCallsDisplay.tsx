@@ -1,4 +1,5 @@
 import { memo, useState, useCallback } from 'react'
+import { usePreferences } from '@/services/preferences'
 import type { ToolCall, Question, QuestionAnswer } from '@/types/chat'
 import {
   hasQuestionAnswerOutput,
@@ -71,7 +72,7 @@ interface ToolCallsDisplayProps {
 export const ToolCallsDisplay = memo(function ToolCallsDisplay({
   toolCalls,
   sessionId,
-  defaultExpanded = false,
+  defaultExpanded,
   isStreaming = false,
   hasFollowUpMessage = false,
   onQuestionAnswer,
@@ -80,7 +81,10 @@ export const ToolCallsDisplay = memo(function ToolCallsDisplay({
   onQuestionSkip,
   areQuestionsSkipped,
 }: ToolCallsDisplayProps) {
-  const [expanded, setExpanded] = useState(defaultExpanded)
+  const { data: preferences } = usePreferences()
+  const [expanded, setExpanded] = useState(
+    defaultExpanded ?? preferences?.expand_tool_calls_by_default ?? false
+  )
 
   // Memoized toggle handler
   const handleToggle = useCallback(() => {

@@ -234,6 +234,8 @@ pub struct AppPreferences {
     pub opencode_cli_source: String, // OpenCode CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default = "default_cli_source")]
     pub gh_cli_source: String, // GitHub CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default)]
+    pub expand_tool_calls_by_default: bool, // Expand all tool call collapsibles by default (default: false)
 }
 
 fn default_true() -> Option<bool> {
@@ -1468,6 +1470,7 @@ impl Default for AppPreferences {
             codex_cli_source: default_cli_source(),
             opencode_cli_source: default_cli_source(),
             gh_cli_source: default_cli_source(),
+            expand_tool_calls_by_default: false,
         }
     }
 }
