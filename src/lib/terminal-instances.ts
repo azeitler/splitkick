@@ -13,18 +13,22 @@ import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { openExternal } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
-import { listen, type UnlistenFn } from '@/lib/transport'
+import { listen } from '@/lib/transport'
 import { useTerminalStore } from '@/store/terminal-store'
 import type {
   TerminalOutputEvent,
   TerminalStartedEvent,
   TerminalStoppedEvent,
 } from '@/types/terminal'
+import { startTerminalWatchdog } from '@/lib/terminal-watchdog'
 
 interface PersistentTerminal {
   terminal: Terminal
   fitAddon: FitAddon
-  listeners: UnlistenFn[]
+  /** Promises that resolve to UnlistenFn — kept as promises to close the
+   *  registration race: if disposeTerminal runs before listen() resolves,
+   *  we still await and call the returned unlisten. */
+  listeners: Promise<() => void>[]
   worktreeId: string
   worktreePath: string
   command: string | null
@@ -35,6 +39,45 @@ interface PersistentTerminal {
 
 // Module-level Map - persists across React mount/unmount cycles
 const instances = new Map<string, PersistentTerminal>()
+
+/** Pending listener registrations not yet resolved — for leak detection. */
+let pendingListenerCount = 0
+
+/** Expose debug stats for the terminal watchdog. */
+function getTerminalDebugStats() {
+  const totalListeners = [...instances.values()].reduce(
+    (n, inst) => n + inst.listeners.length,
+    0
+  )
+  return {
+    instanceCount: instances.size,
+    totalListeners,
+    pendingRegistrations: pendingListenerCount,
+  }
+}
+
+/** Register one document/window wake handler that forces all xterm instances
+ *  to repaint when the webview resumes from idle/sleep (issue #320).
+ *  RAF-based DOM renderer can stall after macOS App Nap or DPMS sleep;
+ *  terminal.refresh() kicks the render queue without needing a new frame. */
+let wakeHandlerRegistered = false
+function ensureWakeHandler(): void {
+  if (wakeHandlerRegistered) return
+  wakeHandlerRegistered = true
+  const wake = () => {
+    if (document.visibilityState !== 'visible') return
+    for (const inst of instances.values()) {
+      try {
+        inst.terminal.refresh(0, Math.max(0, inst.terminal.rows - 1))
+      } catch {
+        // ignore — terminal may be in mid-dispose
+      }
+    }
+  }
+  document.addEventListener('visibilitychange', wake)
+  window.addEventListener('focus', wake)
+}
+
 const FALLBACK_TERMINAL_BACKGROUND = '#101010'
 const FALLBACK_TERMINAL_FOREGROUND = '#fafafa'
 const FALLBACK_TERMINAL_SELECTION = '#242424'
@@ -150,66 +193,80 @@ export function getOrCreateTerminal(
     invoke('terminal_write', { terminalId, data }).catch(console.error)
   })
 
-  const listeners: UnlistenFn[] = []
+  // Ensure the visibility/focus wake handler and RAF watchdog are running.
+  ensureWakeHandler()
+  startTerminalWatchdog(getTerminalDebugStats)
 
-  // Setup event listeners ONCE when terminal is created
-  // These persist for the lifetime of the terminal instance
-  listen<TerminalOutputEvent>('terminal:output', event => {
-    if (event.payload.terminal_id === terminalId) {
-      terminal.write(event.payload.data)
-    }
-  }).then(unlisten => listeners.push(unlisten))
+  const listeners: Promise<() => void>[] = []
 
-  listen<TerminalStartedEvent>('terminal:started', event => {
-    if (event.payload.terminal_id === terminalId) {
-      setTerminalRunning(terminalId, true)
-    }
-  }).then(unlisten => listeners.push(unlisten))
-
-  listen<TerminalStoppedEvent>('terminal:stopped', event => {
-    if (event.payload.terminal_id === terminalId) {
-      setTerminalRunning(terminalId, false)
-      const exitCode = event.payload.exit_code
-      const signal = event.payload.signal
-      const exitLabel =
-        signal != null ? `signal ${signal}` : `code ${exitCode ?? 'unknown'}`
-      terminal.writeln(`\r\n\x1b[90m[Process exited with ${exitLabel}]\x1b[0m`)
-      const inst = instances.get(terminalId)
-      inst?.onStopped?.(exitCode, signal)
-
-      // Auto-close terminal tab on clean exit:
-      // - code 0 — any terminal
-      // - SIGINT (Ctrl+C) or SIGTERM (graceful stop) — user or system stop
-      // SIGKILL, SIGSEGV, SIGABRT, etc. are NOT clean → mark as failed.
-      const isRunTerminal = inst?.command != null
-      const isIntentionalSignal =
-        signal != null &&
-        (signal.includes('Interrupt') || signal.includes('Terminated'))
-      const isCleanExit = exitCode === 0 || isIntentionalSignal
-
-      if (isCleanExit && inst) {
-        const wId = inst.worktreeId
-        setTimeout(() => {
-          if (!instances.has(terminalId)) return // Already disposed
-          // eslint-disable-next-line @typescript-eslint/no-empty-function
-          invoke('stop_terminal', { terminalId }).catch(() => {})
-          disposeTerminal(terminalId)
-          const { removeTerminal, setTerminalPanelOpen } =
-            useTerminalStore.getState()
-          removeTerminal(wId, terminalId)
-          const remaining = useTerminalStore.getState().terminals[wId] ?? []
-          if (remaining.length === 0) {
-            setTerminalPanelOpen(wId, false)
-            useTerminalStore.getState().setTerminalVisible(false)
-            useTerminalStore.getState().setModalTerminalOpen(wId, false)
-          }
-        }, 0)
-      } else if (isRunTerminal) {
-        // Non-zero exit on a run terminal → mark as failed (red indicator in sidebar)
-        useTerminalStore.getState().setTerminalFailed(terminalId, true)
+  // Setup event listeners ONCE when terminal is created.
+  // Stored as Promise<UnlistenFn> (not resolved values) so that disposeTerminal
+  // can await them even if disposal races the async listen() resolution.
+  pendingListenerCount++
+  listeners.push(
+    listen<TerminalOutputEvent>('terminal:output', event => {
+      if (event.payload.terminal_id === terminalId) {
+        terminal.write(event.payload.data)
       }
-    }
-  }).then(unlisten => listeners.push(unlisten))
+    }).finally(() => { pendingListenerCount-- })
+  )
+
+  pendingListenerCount++
+  listeners.push(
+    listen<TerminalStartedEvent>('terminal:started', event => {
+      if (event.payload.terminal_id === terminalId) {
+        setTerminalRunning(terminalId, true)
+      }
+    }).finally(() => { pendingListenerCount-- })
+  )
+
+  pendingListenerCount++
+  listeners.push(
+    listen<TerminalStoppedEvent>('terminal:stopped', event => {
+      if (event.payload.terminal_id === terminalId) {
+        setTerminalRunning(terminalId, false)
+        const exitCode = event.payload.exit_code
+        const signal = event.payload.signal
+        const exitLabel =
+          signal != null ? `signal ${signal}` : `code ${exitCode ?? 'unknown'}`
+        terminal.writeln(`\r\n\x1b[90m[Process exited with ${exitLabel}]\x1b[0m`)
+        const inst = instances.get(terminalId)
+        inst?.onStopped?.(exitCode, signal)
+
+        // Auto-close terminal tab on clean exit:
+        // - code 0 — any terminal
+        // - SIGINT (Ctrl+C) or SIGTERM (graceful stop) — user or system stop
+        // SIGKILL, SIGSEGV, SIGABRT, etc. are NOT clean → mark as failed.
+        const isRunTerminal = inst?.command != null
+        const isIntentionalSignal =
+          signal != null &&
+          (signal.includes('Interrupt') || signal.includes('Terminated'))
+        const isCleanExit = exitCode === 0 || isIntentionalSignal
+
+        if (isCleanExit && inst) {
+          const wId = inst.worktreeId
+          setTimeout(() => {
+            if (!instances.has(terminalId)) return // Already disposed
+            // eslint-disable-next-line @typescript-eslint/no-empty-function
+            invoke('stop_terminal', { terminalId }).catch(() => {})
+            disposeTerminal(terminalId)
+            const { removeTerminal, setTerminalPanelOpen } =
+              useTerminalStore.getState()
+            removeTerminal(wId, terminalId)
+            const remaining = useTerminalStore.getState().terminals[wId] ?? []
+            if (remaining.length === 0) {
+              setTerminalPanelOpen(wId, false)
+              useTerminalStore.getState().setTerminalVisible(false)
+              useTerminalStore.getState().setModalTerminalOpen(wId, false)
+            }
+          }, 0)
+        } else if (isRunTerminal) {
+          // Non-zero exit on a run terminal → mark as failed (red indicator in sidebar)
+          useTerminalStore.getState().setTerminalFailed(terminalId, true)
+        }
+      }
+    }).finally(() => { pendingListenerCount-- })
+  )
 
   const instance: PersistentTerminal = {
     terminal,
@@ -403,21 +460,31 @@ export function focusTerminal(terminalId: string): void {
  * Dispose a single terminal instance.
  * Cleans up event listeners, disposes xterm, removes from Map.
  * Does NOT stop PTY - caller should do that separately.
+ *
+ * Async so it can await listen() promises that may not have resolved yet
+ * (prevents orphan listeners when dispose races the initial listen() call).
+ * All callers are fire-and-forget so the async signature is safe.
  */
-export function disposeTerminal(terminalId: string): void {
+export async function disposeTerminal(terminalId: string): Promise<void> {
   const instance = instances.get(terminalId)
   if (!instance) return
 
-  // Cleanup event listeners
-  for (const unlisten of instance.listeners) {
-    unlisten()
+  // Remove from Map first so new lookups don't find a half-disposed instance
+  instances.delete(terminalId)
+
+  // Await each listener promise then call the returned unlisten function.
+  // If listen() hasn't resolved yet this ensures we still unsubscribe.
+  for (const listenerPromise of instance.listeners) {
+    try {
+      const unlisten = await listenerPromise
+      unlisten()
+    } catch {
+      // listen() itself failed — nothing to unsubscribe
+    }
   }
 
   // Dispose xterm.js (clears buffer, removes DOM)
   instance.terminal.dispose()
-
-  // Remove from Map
-  instances.delete(terminalId)
 }
 
 /**
