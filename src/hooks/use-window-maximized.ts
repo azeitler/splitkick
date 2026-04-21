@@ -1,18 +1,18 @@
 import { useEffect, useState } from 'react'
-import { isWindows } from '@/lib/platform'
+import { isLinux, isWindows } from '@/lib/platform'
 import { isNativeApp } from '@/lib/environment'
 
 /**
  * Hook to track whether the current window is maximized.
  * Useful for adjusting UI elements like border radius when maximized.
  *
- * Only relevant for native Tauri windows on Windows — returns false in web mode.
+ * Only relevant for native Tauri windows on Windows and Linux — returns false in web mode.
  */
 export function useWindowMaximized() {
   const [isMaximized, setIsMaximized] = useState(false)
 
   useEffect(() => {
-    if (!isWindows || !isNativeApp()) return
+    if ((!isWindows && !isLinux) || !isNativeApp()) return
 
     let unlisten: (() => void) | null = null
     let cancelled = false
