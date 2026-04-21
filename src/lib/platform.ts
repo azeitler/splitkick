@@ -2,6 +2,7 @@ import { isNativeApp } from './environment'
 
 export const isMacOS = navigator.platform.includes('Mac')
 export const isWindows = navigator.platform.includes('Win')
+export const isLinux = navigator.platform.includes('Linux')
 
 /**
  * Pre-open a blank browser tab synchronously during a user gesture.
