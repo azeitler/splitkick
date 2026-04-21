@@ -268,13 +268,8 @@ function TableBlock({ children, tableOffset }: TableBlockProps) {
     'opacity-100 transition-opacity p-1.5 rounded-md bg-background/80 text-foreground cursor-pointer'
 
   return (
-    <div className="relative my-5 overflow-x-auto">
-      <ChecklistInjectionContext.Provider value={checklistCtxValue}>
-        <table ref={tableRef} className="min-w-full border-collapse text-sm">
-          {children}
-        </table>
-      </ChecklistInjectionContext.Provider>
-      <div className="absolute right-2 top-2 flex gap-0.5">
+    <div className="my-5">
+      <div className="mb-1 flex justify-end gap-0.5">
         {canUseChecklist && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -315,6 +310,13 @@ function TableBlock({ children, tableOffset }: TableBlockProps) {
           </TooltipTrigger>
           <TooltipContent>Copy for spreadsheet</TooltipContent>
         </Tooltip>
+      </div>
+      <div className="overflow-x-auto">
+        <ChecklistInjectionContext.Provider value={checklistCtxValue}>
+          <table ref={tableRef} className="min-w-full border-collapse text-sm">
+            {children}
+          </table>
+        </ChecklistInjectionContext.Provider>
       </div>
     </div>
   )
