@@ -20,7 +20,6 @@ import type {
   TerminalStartedEvent,
   TerminalStoppedEvent,
 } from '@/types/terminal'
-import { startTerminalWatchdog } from '@/lib/terminal-watchdog'
 
 interface PersistentTerminal {
   terminal: Terminal
@@ -39,22 +38,6 @@ interface PersistentTerminal {
 
 // Module-level Map - persists across React mount/unmount cycles
 const instances = new Map<string, PersistentTerminal>()
-
-/** Pending listener registrations not yet resolved — for leak detection. */
-let pendingListenerCount = 0
-
-/** Expose debug stats for the terminal watchdog. */
-function getTerminalDebugStats() {
-  const totalListeners = [...instances.values()].reduce(
-    (n, inst) => n + inst.listeners.length,
-    0
-  )
-  return {
-    instanceCount: instances.size,
-    totalListeners,
-    pendingRegistrations: pendingListenerCount,
-  }
-}
 
 /** Register one document/window wake handler that forces all xterm instances
  *  to repaint when the webview resumes from idle/sleep (issue #320).
@@ -193,34 +176,30 @@ export function getOrCreateTerminal(
     invoke('terminal_write', { terminalId, data }).catch(console.error)
   })
 
-  // Ensure the visibility/focus wake handler and RAF watchdog are running.
+  // Ensure the visibility/focus wake handler is running.
   ensureWakeHandler()
-  startTerminalWatchdog(getTerminalDebugStats)
 
   const listeners: Promise<() => void>[] = []
 
   // Setup event listeners ONCE when terminal is created.
   // Stored as Promise<UnlistenFn> (not resolved values) so that disposeTerminal
   // can await them even if disposal races the async listen() resolution.
-  pendingListenerCount++
   listeners.push(
     listen<TerminalOutputEvent>('terminal:output', event => {
       if (event.payload.terminal_id === terminalId) {
         terminal.write(event.payload.data)
       }
-    }).finally(() => { pendingListenerCount-- })
+    })
   )
 
-  pendingListenerCount++
   listeners.push(
     listen<TerminalStartedEvent>('terminal:started', event => {
       if (event.payload.terminal_id === terminalId) {
         setTerminalRunning(terminalId, true)
       }
-    }).finally(() => { pendingListenerCount-- })
+    })
   )
 
-  pendingListenerCount++
   listeners.push(
     listen<TerminalStoppedEvent>('terminal:stopped', event => {
       if (event.payload.terminal_id === terminalId) {
@@ -265,7 +244,7 @@ export function getOrCreateTerminal(
           useTerminalStore.getState().setTerminalFailed(terminalId, true)
         }
       }
-    }).finally(() => { pendingListenerCount-- })
+    })
   )
 
   const instance: PersistentTerminal = {

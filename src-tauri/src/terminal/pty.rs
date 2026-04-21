@@ -2,7 +2,6 @@ use portable_pty::{native_pty_system, CommandBuilder, PtySize};
 use std::io::Read;
 use std::sync::Mutex;
 use std::thread;
-use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 use super::registry::{register_terminal, unregister_terminal};
@@ -165,13 +164,6 @@ pub fn spawn_terminal(
     let terminal_id_clone = terminal_id.clone();
     thread::spawn(move || {
         let mut buf = [0u8; 4096];
-        // Diagnostic counters — logged every 5s to help diagnose idle freeze (issue #320).
-        // If pty_tick logs stop while the UI is frozen, the PTY/IPC layer is the culprit.
-        // If pty_tick logs continue, the freeze is frontend-side (RAF throttle, webview suspend).
-        let mut tick_deadline = Instant::now() + Duration::from_secs(5);
-        let mut bytes_since_tick = 0usize;
-        let mut emits_since_tick = 0u32;
-        let mut emit_errors_since_tick = 0u32;
         loop {
             match reader.read(&mut buf) {
                 Ok(0) => {
@@ -180,7 +172,6 @@ pub fn spawn_terminal(
                     break;
                 }
                 Ok(n) => {
-                    bytes_since_tick += n;
                     // Convert bytes to string (lossy conversion for non-UTF8)
                     let data = String::from_utf8_lossy(&buf[..n]).to_string();
                     let event = TerminalOutputEvent {
@@ -189,24 +180,12 @@ pub fn spawn_terminal(
                     };
                     if let Err(e) = app_clone.emit("terminal:output", &event) {
                         log::error!("Failed to emit terminal:output event: {e}");
-                        emit_errors_since_tick += 1;
-                    } else {
-                        emits_since_tick += 1;
                     }
                 }
                 Err(e) => {
                     log::error!("Error reading from terminal: {e}");
                     break;
                 }
-            }
-            if Instant::now() >= tick_deadline {
-                log::info!(
-                    "pty_tick {terminal_id_clone}: bytes={bytes_since_tick} emits={emits_since_tick} errors={emit_errors_since_tick}"
-                );
-                bytes_since_tick = 0;
-                emits_since_tick = 0;
-                emit_errors_since_tick = 0;
-                tick_deadline = Instant::now() + Duration::from_secs(5);
             }
         }
 
