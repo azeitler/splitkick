@@ -8344,8 +8344,8 @@ pub async fn cleanup_old_archives(
     }
 
     // --- Clean up orphaned session data directories ---
-    let orphaned = crate::chat::storage::cleanup_orphaned_session_data(&app).unwrap_or(0);
-    deleted_sessions += orphaned;
+    // Background janitor only — not archive-related, not user-facing.
+    let _ = crate::chat::storage::cleanup_orphaned_session_data(&app);
 
     // --- Clean up orphaned context files ---
     let deleted_contexts =

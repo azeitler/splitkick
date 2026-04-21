@@ -534,21 +534,13 @@ export function FloatingDock() {
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size={isLg ? 'sm' : 'icon'}
-                  className={
-                    isLg
-                      ? 'h-7 w-[88px] justify-center px-2 text-muted-foreground hover:text-foreground'
-                      : 'h-7 w-7 text-muted-foreground hover:text-foreground'
-                  }
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground xl:w-[88px] xl:justify-center xl:px-2"
                 >
-                  <activeUsageEntry.Icon
-                    className={isLg ? 'mr-1 size-3.5 shrink-0' : 'size-4'}
-                  />
-                  {isLg && (
-                    <span className="text-[11px] leading-none tabular-nums">
-                      {usageBadge.text}
-                    </span>
-                  )}
+                  <activeUsageEntry.Icon className="size-4 shrink-0 xl:mr-1 xl:size-3.5" />
+                  <span className="hidden text-[11px] leading-none tabular-nums xl:inline">
+                    {usageBadge.text}
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
