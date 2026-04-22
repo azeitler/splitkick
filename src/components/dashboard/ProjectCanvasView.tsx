@@ -20,6 +20,7 @@ import {
   FileJson,
   Clock3,
   GitBranch,
+  GitBranchPlus,
   GitPullRequestArrow,
   ShieldAlert,
   Code,
@@ -63,6 +64,7 @@ import {
   useCreateSession,
   cancelChatMessage,
 } from '@/services/chat'
+import { useGitHubPRs } from '@/services/github'
 import { useGitStatus } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -244,6 +246,7 @@ function WorktreeSectionHeader({
   worktree,
   projectId,
   defaultBranch,
+  openPRs,
   cards,
   showDetails = false,
   isSelected,
@@ -254,6 +257,7 @@ function WorktreeSectionHeader({
   worktree: Worktree
   projectId: string
   defaultBranch: string
+  openPRs?: { number: number; headRefName: string }[]
   cards?: SessionCardData[]
   showDetails?: boolean
   isSelected?: boolean
@@ -265,6 +269,10 @@ function WorktreeSectionHeader({
     type: 'uncommitted' | 'branch'
   ) => void
 }) {
+  const stackedOnPR =
+    worktree.base_branch && worktree.base_branch !== defaultBranch
+      ? openPRs?.find(pr => pr.headRefName === worktree.base_branch)
+      : undefined
   const isBase = isBaseSession(worktree)
   const { data: gitStatus } = useGitStatus(worktree.id)
 
@@ -416,6 +424,22 @@ function WorktreeSectionHeader({
                   <span className="hidden items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
                     <GitBranch className="h-2.5 w-2.5" />
                     <span className="max-w-40 truncate">{displayBranch}</span>
+                    {worktree.base_branch &&
+                      worktree.base_branch !== defaultBranch && (
+                        <>
+                          <span className="text-border">·</span>
+                          <GitBranchPlus className="h-2.5 w-2.5" />
+                          <span className="max-w-32 truncate">
+                            {worktree.base_branch}
+                          </span>
+                          {stackedOnPR && (
+                            <>
+                              <GitPullRequestArrow className="h-2.5 w-2.5" />#
+                              {stackedOnPR.number}
+                            </>
+                          )}
+                        </>
+                      )}
                     {worktree.pr_number && (
                       <>
                         <span className="text-border">·</span>
@@ -460,6 +484,22 @@ function WorktreeSectionHeader({
                 <span className="inline-flex max-w-full items-center gap-1 self-start rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">
                   <GitBranch className="h-2.5 w-2.5 shrink-0" />
                   <span className="max-w-full truncate">{displayBranch}</span>
+                  {worktree.base_branch &&
+                    worktree.base_branch !== defaultBranch && (
+                      <>
+                        <span className="text-border">·</span>
+                        <GitBranchPlus className="h-2.5 w-2.5 shrink-0" />
+                        <span className="max-w-32 truncate">
+                          {worktree.base_branch}
+                        </span>
+                        {stackedOnPR && (
+                          <>
+                            <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />
+                            #{stackedOnPR.number}
+                          </>
+                        )}
+                      </>
+                    )}
                   {worktree.pr_number && (
                     <>
                       <span className="text-border">·</span>
@@ -569,6 +609,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Get project info
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const project = projects.find(p => p.id === projectId)
+
+  // Open PRs: used to link a worktree's base_branch to a PR number in row badges
+  const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open')
 
   // Get worktrees
   const { data: worktrees = [], isLoading: worktreesLoading } =
@@ -2238,6 +2281,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                         worktree={section.worktree}
                         projectId={projectId}
                         defaultBranch={project.default_branch}
+                        openPRs={openPRs}
                         cards={section.cards}
                         showDetails={true}
                         isSelected={selectedIndex === currentIndex}

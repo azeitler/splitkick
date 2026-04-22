@@ -81,6 +81,8 @@ export interface Worktree {
   path: string
   /** Git branch name (same as workspace name) */
   branch: string
+  /** Base branch this worktree was created from (undefined for legacy worktrees or base sessions) */
+  base_branch?: string
   /** Unix timestamp when worktree was created */
   created_at: number
   /** Output from setup script (if any) */

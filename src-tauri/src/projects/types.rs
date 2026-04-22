@@ -138,6 +138,9 @@ pub struct Worktree {
     pub path: String,
     /// Git branch name (same as workspace name)
     pub branch: String,
+    /// Base branch this worktree was created from (None for legacy worktrees or base sessions)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_branch: Option<String>,
     /// Unix timestamp when worktree was created
     pub created_at: u64,
     /// Output from setup script (if any)

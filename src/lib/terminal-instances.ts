@@ -208,7 +208,9 @@ export function getOrCreateTerminal(
         const signal = event.payload.signal
         const exitLabel =
           signal != null ? `signal ${signal}` : `code ${exitCode ?? 'unknown'}`
-        terminal.writeln(`\r\n\x1b[90m[Process exited with ${exitLabel}]\x1b[0m`)
+        terminal.writeln(
+          `\r\n\x1b[90m[Process exited with ${exitLabel}]\x1b[0m`
+        )
         const inst = instances.get(terminalId)
         inst?.onStopped?.(exitCode, signal)
 
