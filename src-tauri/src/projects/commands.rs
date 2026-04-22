@@ -722,6 +722,7 @@ pub async fn create_worktree(
         name: name.clone(),
         path: worktree_path_str.clone(),
         branch: name.clone(),
+        base_branch: Some(base.clone()),
         created_at,
         setup_output: None,
         setup_script: None,
@@ -783,7 +784,10 @@ pub async fn create_worktree(
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
             log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone}");
 
-            // Fetch base branch if enabled, use origin/<base> for up-to-date start point
+            // Fetch base branch if enabled, use origin/<base> for up-to-date start point.
+            // If the base is only available as a remote-tracking branch (e.g. stacking on a
+            // PR head that wasn't fetched locally), also use the origin/<base> ref.
+            let has_local_branch = git::branch_exists(&project_path, &base_clone);
             let effective_base = if should_auto_pull {
                 log::trace!("Fetching base branch {base_clone} before worktree creation");
                 match git::git_fetch(&project_path, &base_clone, None) {
@@ -793,11 +797,17 @@ pub async fn create_worktree(
                     }
                     Err(e) => {
                         log::warn!("Failed to fetch base branch {base_clone}: {e}");
-                        base_clone.clone()
+                        if has_local_branch {
+                            base_clone.clone()
+                        } else {
+                            format!("origin/{base_clone}")
+                        }
                     }
                 }
-            } else {
+            } else if has_local_branch {
                 base_clone.clone()
+            } else {
+                format!("origin/{base_clone}")
             };
 
             // Check if path already exists
@@ -1261,6 +1271,7 @@ pub async fn create_worktree(
                     name: name_clone.clone(),
                     path: worktree_path_clone.clone(),
                     branch: final_branch.clone(),
+                    base_branch: Some(base_clone.clone()),
                     created_at,
                     setup_output: None,
                     setup_script: pending_setup_script.clone(),
@@ -1463,6 +1474,7 @@ pub async fn create_worktree_from_existing_branch(
         name: name.clone(),
         path: worktree_path_str.clone(),
         branch: name.clone(),
+        base_branch: Some(branch_name.clone()),
         created_at,
         setup_output: None,
         setup_script: None,
@@ -1842,7 +1854,8 @@ pub async fn create_worktree_from_existing_branch(
                     project_id: project_id_clone.clone(),
                     name: name_clone.clone(),
                     path: worktree_path_clone.clone(),
-                    branch: branch_name_clone,
+                    branch: branch_name_clone.clone(),
+                    base_branch: Some(branch_name_clone),
                     created_at,
                     setup_output,
                     setup_script,
@@ -2078,6 +2091,7 @@ pub async fn checkout_pr(
         name: final_worktree_name.clone(),
         path: worktree_path_str.clone(),
         branch: pr_detail.head_ref_name.clone(), // Use PR's actual branch name
+        base_branch: None,
         created_at,
         setup_output: None,
         setup_script: None,
@@ -2398,6 +2412,7 @@ pub async fn checkout_pr(
                     name: worktree_name_clone.clone(),
                     path: worktree_path_clone.clone(),
                     branch: actual_branch.clone(),
+                    base_branch: None,
                     created_at,
                     setup_output,
                     setup_script,
@@ -2729,6 +2744,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         name: project.default_branch.clone(),
         path: project.path.clone(), // Uses project's base directory directly
         branch: project.default_branch.clone(),
+        base_branch: None,
         created_at: now(),
         setup_output: None,
         setup_script: None,
@@ -3139,6 +3155,7 @@ pub async fn import_worktree(
         name,
         path: path.clone(),
         branch,
+        base_branch: None,
         created_at: now(),
         setup_output: None,
         setup_script: None,

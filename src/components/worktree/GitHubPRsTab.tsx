@@ -28,8 +28,10 @@ export interface GitHubPRsTabProps {
   setSelectedIndex: (index: number) => void
   onSelectPR: (pr: GitHubPullRequest, background?: boolean) => void
   onInvestigatePR: (pr: GitHubPullRequest, background?: boolean) => void
+  onStackPR: (pr: GitHubPullRequest, background?: boolean) => void
   onPreviewPR: (pr: GitHubPullRequest) => void
   creatingFromNumber: number | null
+  stackingFromPR: number | null
   searchInputRef: React.RefObject<HTMLInputElement | null>
   onGhLogin: () => void
   isGhInstalled: boolean
@@ -50,8 +52,10 @@ export function GitHubPRsTab({
   setSelectedIndex,
   onSelectPR,
   onInvestigatePR,
+  onStackPR,
   onPreviewPR,
   creatingFromNumber,
+  stackingFromPR,
   searchInputRef,
   onGhLogin,
   isGhInstalled,
@@ -168,9 +172,11 @@ export function GitHubPRsTab({
                 index={index}
                 isSelected={index === selectedIndex}
                 isCreating={creatingFromNumber === pr.number}
+                isStacking={stackingFromPR === pr.number}
                 onMouseEnter={() => setSelectedIndex(index)}
                 onClick={bg => onSelectPR(pr, bg)}
                 onInvestigate={bg => onInvestigatePR(pr, bg)}
+                onStack={bg => onStackPR(pr, bg)}
                 onPreview={() => onPreviewPR(pr)}
                 onLabelClick={handleLabelClick}
               />

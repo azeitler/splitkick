@@ -20,7 +20,9 @@ export interface BranchesTabProps {
   selectedIndex: number
   setSelectedIndex: (index: number) => void
   onSelectBranch: (branchName: string, background?: boolean) => void
+  onStackBranch: (branchName: string, background?: boolean) => void
   creatingFromBranch: string | null
+  stackingFromBranch: string | null
   searchInputRef: React.RefObject<HTMLInputElement | null>
 }
 
@@ -35,7 +37,9 @@ export function BranchesTab({
   selectedIndex,
   setSelectedIndex,
   onSelectBranch,
+  onStackBranch,
   creatingFromBranch,
+  stackingFromBranch,
   searchInputRef,
 }: BranchesTabProps) {
   return (
@@ -118,8 +122,10 @@ export function BranchesTab({
                 index={index}
                 isSelected={index === selectedIndex}
                 isCreating={creatingFromBranch === branch}
+                isStacking={stackingFromBranch === branch}
                 onMouseEnter={() => setSelectedIndex(index)}
                 onClick={bg => onSelectBranch(branch, bg)}
+                onStack={bg => onStackBranch(branch, bg)}
               />
             ))}
           </div>

@@ -470,6 +470,20 @@ pub fn branch_exists(repo_path: &str, branch_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if a remote-tracking branch exists (refs/remotes/origin/<branch>)
+pub fn remote_branch_exists(repo_path: &str, branch_name: &str) -> bool {
+    silent_command("git")
+        .args([
+            "rev-parse",
+            "--verify",
+            &format!("refs/remotes/origin/{branch_name}"),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Check if a repository has any commits
 pub fn has_commits(repo_path: &str) -> bool {
     silent_command("git")
@@ -493,8 +507,10 @@ pub fn get_valid_base_branch(repo_path: &str, preferred_branch: &str) -> Result<
             .to_string());
     }
 
-    // Try preferred branch first
-    if branch_exists(repo_path, preferred_branch) {
+    // Try preferred branch first (local or remote-tracking)
+    if branch_exists(repo_path, preferred_branch)
+        || remote_branch_exists(repo_path, preferred_branch)
+    {
         return Ok(preferred_branch.to_string());
     }
 
