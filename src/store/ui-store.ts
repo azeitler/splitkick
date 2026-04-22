@@ -77,6 +77,9 @@ interface UIState {
   pendingAutoOpenSessionIds: Record<string, string>
   /** Whether a session chat modal is open (for magic command keybinding checks) */
   sessionChatModalOpen: boolean
+  /** Whether the chat toolbar is mounted — used to hide the global FloatingDock
+   *  because its burger-menu counterpart now lives in the chat toolbar. */
+  chatToolbarMounted: boolean
   /** Which worktree the session chat modal is for (for magic command worktree resolution) */
   sessionChatModalWorktreeId: string | null
   /** Whether a git diff modal is open (blocks execute_run keybinding) */
@@ -158,6 +161,7 @@ interface UIState {
     sessionId?: string
   }
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
+  setChatToolbarMounted: (mounted: boolean) => void
   setGitDiffModalOpen: (open: boolean) => void
   toggleGitDiffSelectedFile: (filePath: string) => void
   clearGitDiffSelectedFiles: () => void
@@ -225,6 +229,7 @@ export const useUIStore = create<UIState>()(
       pendingAutoOpenSessionIds: {},
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
+      chatToolbarMounted: false,
       gitDiffModalOpen: false,
       gitDiffSelectedFiles: new Set<string>(),
       planDialogOpen: false,
@@ -653,6 +658,13 @@ export const useUIStore = create<UIState>()(
           },
           undefined,
           'setSessionChatModalOpen'
+        ),
+
+      setChatToolbarMounted: (mounted: boolean) =>
+        set(state =>
+          state.chatToolbarMounted === mounted
+            ? state
+            : { chatToolbarMounted: mounted }
         ),
 
       setGitDiffModalOpen: (open: boolean) =>

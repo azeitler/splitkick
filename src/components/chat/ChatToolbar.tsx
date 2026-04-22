@@ -1,6 +1,6 @@
-import { memo, useCallback, useMemo, useState } from 'react'
-import { Paperclip } from 'lucide-react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { useUIStore } from '@/store/ui-store'
 import {
   gitPush,
   triggerImmediateGitPoll,
@@ -40,11 +40,6 @@ import {
   BackendLabel,
   getBackendPlainLabel,
 } from '@/components/ui/backend-label'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export {
@@ -148,6 +143,13 @@ export const ChatToolbar = memo(function ChatToolbar({
     setProviderDropdownOpen,
     setThinkingDropdownOpen,
   })
+
+  // Signal to FloatingDock that its burger counterpart now lives in this toolbar.
+  useEffect(() => {
+    const { setChatToolbarMounted } = useUIStore.getState()
+    setChatToolbarMounted(true)
+    return () => setChatToolbarMounted(false)
+  }, [])
 
   const { data: availableOpencodeModels } = useAvailableOpencodeModels({
     enabled: selectedBackend === 'opencode',
@@ -307,7 +309,7 @@ export const ChatToolbar = memo(function ChatToolbar({
 
   return (
     <div className="@container flex justify-start px-4 py-2 md:px-6">
-      <div className="inline-flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap rounded-lg bg-transparent scrollbar-hide">
+      <div className="inline-flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap bg-transparent scrollbar-hide">
         <MobileToolbarMenu
           isDisabled={isSending || hasPendingQuestions}
           hasOpenPr={hasOpenPr}
@@ -364,21 +366,6 @@ export const ChatToolbar = memo(function ChatToolbar({
           activeMcpCount={activeMcpCount}
           onToggleMcpServer={onToggleMcpServer}
         />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onAttach}
-              disabled={hasPendingQuestions}
-              className="flex @xl:hidden h-8 items-center justify-center px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              aria-label="Attach images"
-            >
-              <Paperclip className="h-4 w-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Attach images</TooltipContent>
-        </Tooltip>
 
         {isMobile && (
           <MobileBackendModelPickerSheet
