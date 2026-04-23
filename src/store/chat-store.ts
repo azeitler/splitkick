@@ -32,7 +32,7 @@ import type { ClaudeModel, CodexModel } from '@/types/preferences'
 export type { ClaudeModel, CodexModel }
 
 /** Default model to use when none is selected (fallback only - preferences take priority) */
-export const DEFAULT_MODEL: ClaudeModel = 'opus'
+export const DEFAULT_MODEL: ClaudeModel = 'claude-opus-4-7'
 
 /** Default Codex model */
 export const DEFAULT_CODEX_MODEL: CodexModel = 'gpt-5.4'
@@ -78,6 +78,10 @@ interface ChatUIState {
 
   // Fixed AI review findings per session (sessionId → fixed finding keys)
   fixedReviewFindings: Record<string, Set<string>>
+
+  // Per-table checklist state: sessionId → (tableKey → Set of checked row indices)
+  // Presence of tableKey = checklist mode enabled for that table
+  tableCheckedRows: Record<string, Record<string, Set<number>>>
 
   // Mapping of worktree IDs to paths (for looking up paths by ID)
   worktreePaths: Record<string, string>
@@ -126,8 +130,8 @@ interface ChatUIState {
   // Effort level per session (for Opus 4.6 adaptive thinking)
   effortLevels: Record<string, EffortLevel>
 
-  // Selected backend per session (claude, codex, or opencode)
-  selectedBackends: Record<string, 'claude' | 'codex' | 'opencode'>
+  // Selected backend per session (claude, codex, opencode, or cursor)
+  selectedBackends: Record<string, 'claude' | 'codex' | 'opencode' | 'cursor'>
 
   // Selected model per session (for tracking what model was used)
   selectedModels: Record<string, string>
@@ -279,6 +283,15 @@ interface ChatUIState {
   isReviewFindingFixed: (sessionId: string, findingKey: string) => boolean
   clearFixedReviewFindings: (sessionId: string) => void
 
+  // Actions - Table checklist state (session-scoped, persisted)
+  enableTableChecklist: (sessionId: string, tableKey: string) => void
+  disableTableChecklist: (sessionId: string, tableKey: string) => void
+  toggleTableRowChecked: (
+    sessionId: string,
+    tableKey: string,
+    rowIndex: number
+  ) => void
+
   // Actions - Reviewing status management (persisted)
   setSessionReviewing: (sessionId: string, reviewing: boolean) => void
   isSessionReviewing: (sessionId: string) => boolean
@@ -369,7 +382,7 @@ interface ChatUIState {
   // Actions - Selected backend (session-based)
   setSelectedBackend: (
     sessionId: string,
-    backend: 'claude' | 'codex' | 'opencode'
+    backend: 'claude' | 'codex' | 'opencode' | 'cursor'
   ) => void
 
   // Actions - Selected model (session-based)
@@ -619,6 +632,7 @@ export const useChatStore = create<ChatUIState>()(
       reviewResults: {},
       reviewSidebarVisible: false,
       fixedReviewFindings: {},
+      tableCheckedRows: {},
       worktreePaths: {},
       sendingSessionIds: {},
       sendStartedAt: {},
@@ -797,6 +811,73 @@ export const useChatStore = create<ChatUIState>()(
           },
           undefined,
           'clearFixedReviewFindings'
+        ),
+
+      // Table checklist (session-scoped, persisted)
+      enableTableChecklist: (sessionId, tableKey) =>
+        set(
+          state => {
+            const sessionTables = state.tableCheckedRows[sessionId] ?? {}
+            if (tableKey in sessionTables) return state
+            return {
+              tableCheckedRows: {
+                ...state.tableCheckedRows,
+                [sessionId]: {
+                  ...sessionTables,
+                  [tableKey]: new Set<number>(),
+                },
+              },
+            }
+          },
+          undefined,
+          'enableTableChecklist'
+        ),
+
+      disableTableChecklist: (sessionId, tableKey) =>
+        set(
+          state => {
+            const sessionTables = state.tableCheckedRows[sessionId]
+            if (!sessionTables || !(tableKey in sessionTables)) return state
+            const { [tableKey]: _removed, ...restTables } = sessionTables
+            const nextSession = restTables
+            if (Object.keys(nextSession).length === 0) {
+              const { [sessionId]: __, ...restSessions } =
+                state.tableCheckedRows
+              return { tableCheckedRows: restSessions }
+            }
+            return {
+              tableCheckedRows: {
+                ...state.tableCheckedRows,
+                [sessionId]: nextSession,
+              },
+            }
+          },
+          undefined,
+          'disableTableChecklist'
+        ),
+
+      toggleTableRowChecked: (sessionId, tableKey, rowIndex) =>
+        set(
+          state => {
+            const sessionTables = state.tableCheckedRows[sessionId]
+            if (!sessionTables) return state
+            const existing = sessionTables[tableKey]
+            if (!existing) return state
+            const updated = new Set(existing)
+            if (updated.has(rowIndex)) {
+              updated.delete(rowIndex)
+            } else {
+              updated.add(rowIndex)
+            }
+            return {
+              tableCheckedRows: {
+                ...state.tableCheckedRows,
+                [sessionId]: { ...sessionTables, [tableKey]: updated },
+              },
+            }
+          },
+          undefined,
+          'toggleTableRowChecked'
         ),
 
       // Reviewing status management (persisted)
@@ -2433,6 +2514,10 @@ export const useChatStore = create<ChatUIState>()(
             const { [sessionId]: _sp, ...streamingPlanApprovals } =
               state.streamingPlanApprovals
             const { [sessionId]: _em, ...executingModes } = state.executingModes
+            const { [sessionId]: _pd, ...pendingPermissionDenials } =
+              state.pendingPermissionDenials
+            const { [sessionId]: _dc, ...deniedMessageContext } =
+              state.deniedMessageContext
             const { [sessionId]: _sa, ...sendStartedAtRest } =
               state.sendStartedAt
             return {
@@ -2443,6 +2528,8 @@ export const useChatStore = create<ChatUIState>()(
               waitingForInputSessionIds,
               streamingPlanApprovals,
               executingModes,
+              pendingPermissionDenials,
+              deniedMessageContext,
               sendStartedAt: sendStartedAtRest,
               completedDurations:
                 sendStarted > 0
@@ -2585,6 +2672,10 @@ export const useChatStore = create<ChatUIState>()(
               state.sendingSessionIds
             const { [sessionId]: _wi, ...waitingForInputSessionIds } =
               state.waitingForInputSessionIds
+            const { [sessionId]: _pd, ...pendingPermissionDenials } =
+              state.pendingPermissionDenials
+            const { [sessionId]: _dc, ...deniedMessageContext } =
+              state.deniedMessageContext
             const { [sessionId]: _sa, ...sendStartedAtRest } =
               state.sendStartedAt
             return {
@@ -2593,6 +2684,8 @@ export const useChatStore = create<ChatUIState>()(
               activeToolCalls,
               sendingSessionIds,
               waitingForInputSessionIds,
+              pendingPermissionDenials,
+              deniedMessageContext,
               sendStartedAt: sendStartedAtRest,
               reviewingSessions: {
                 ...state.reviewingSessions,

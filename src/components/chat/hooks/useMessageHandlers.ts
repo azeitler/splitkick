@@ -29,6 +29,7 @@ import { formatAnswersAsNaturalLanguage } from '@/services/chat'
 import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
 import { findPlanFilePath, resolvePlanContent } from '../tool-call-utils'
 import { navigateToApprovedWorktree } from '../worktree-approval-navigation'
+import { markWorktreeSilentReady } from '@/services/worktree-silent-ready'
 import { getCodexPermissionApprovalMode } from '../permission-approval-utils'
 import { isCodexDevUserInputRequest } from '../codex-dev-flows'
 import { generateId } from '@/lib/uuid'
@@ -59,7 +60,7 @@ interface SendMessageMutation {
       model?: string
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
-      effortLevel?: string
+      effortLevel?: EffortLevel
       allowedTools?: string[]
       mcpConfig?: string
       customProfileName?: string
@@ -90,9 +91,12 @@ interface UseMessageHandlersParams {
   buildModelRef: RefObject<string | null>
   buildBackendRef: RefObject<string | null>
   buildThinkingLevelRef: RefObject<string | null>
+  buildEffortLevelRef: RefObject<string | null>
   yoloModelRef: RefObject<string | null>
   yoloBackendRef: RefObject<string | null>
   yoloThinkingLevelRef: RefObject<string | null>
+  yoloEffortLevelRef: RefObject<string | null>
+  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode' | 'cursor'>
   getCustomProfileName: () => string | undefined
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
@@ -203,6 +207,7 @@ function mapCodexReasoningToEffort(
     case 'high':
       return 'high'
     case 'xhigh':
+      return 'xhigh'
     case 'max':
       return 'max'
     default:
@@ -220,7 +225,10 @@ function getDefaultModelForBackend(
   if (backend === 'opencode') {
     return preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex'
   }
-  return preferences?.selected_model ?? 'opus'
+  if (backend === 'cursor') {
+    return preferences?.selected_cursor_model ?? 'cursor/auto'
+  }
+  return preferences?.selected_model ?? 'claude-opus-4-7'
 }
 
 /**
@@ -236,9 +244,12 @@ export function useMessageHandlers({
   buildModelRef,
   buildBackendRef,
   buildThinkingLevelRef,
+  buildEffortLevelRef,
   yoloModelRef,
   yoloBackendRef,
   yoloThinkingLevelRef,
+  yoloEffortLevelRef,
+  selectedBackendRef,
   getCustomProfileName,
   executionModeRef,
   selectedThinkingLevelRef,
@@ -605,8 +616,7 @@ export function useMessageHandlers({
 
       // Format approval message - include updated plan if provided
       // For Codex: use explicit execution instruction since it resumes a thread
-      const isCodex =
-        useChatStore.getState().selectedBackends[sessionId] === 'codex'
+      const isCodex = selectedBackendRef.current === 'codex'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : isCodex
@@ -615,10 +625,26 @@ export function useMessageHandlers({
       // Send approval message so the backend continues with execution
       // NOTE: setLastSentMessage is critical for permission denial flow - without it,
       // the denied message context won't be set and approval UI won't work
+      const sessionBackend = selectedBackendRef.current
+      const buildBackendOverride = buildBackendRef.current
+      const overridesApply =
+        !buildBackendOverride || buildBackendOverride === sessionBackend
+      const buildModel = overridesApply
+        ? (buildModelRef.current ?? selectedModelRef.current)
+        : selectedModelRef.current
+      const buildThinking =
+        overridesApply && isThinkingLevel(buildThinkingLevelRef.current)
+          ? buildThinkingLevelRef.current
+          : selectedThinkingLevelRef.current
+      const buildEffort =
+        overridesApply && buildEffortLevelRef.current
+          ? (buildEffortLevelRef.current as EffortLevel)
+          : selectedEffortLevelRef.current
+
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
+      setSelectedModel(sessionId, buildModel)
       setExecutingMode(sessionId, 'build')
       const markPromise = markPlanApprovedService(
         worktreeId,
@@ -657,11 +683,11 @@ export function useMessageHandlers({
               worktreeId,
               worktreePath,
               message,
-              model: selectedModelRef.current,
+              model: buildModel,
               executionMode: 'build',
-              thinkingLevel: selectedThinkingLevelRef.current,
+              thinkingLevel: buildThinking,
               effortLevel: useAdaptiveThinkingRef.current
-                ? selectedEffortLevelRef.current
+                ? buildEffort
                 : undefined,
               mcpConfig: getMcpConfig(),
               customProfileName: getCustomProfileName(),
@@ -682,6 +708,11 @@ export function useMessageHandlers({
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
+      buildModelRef,
+      buildBackendRef,
+      buildThinkingLevelRef,
+      buildEffortLevelRef,
+      selectedBackendRef,
       getMcpConfig,
       getCustomProfileName,
       markAtBottom,
@@ -768,18 +799,34 @@ export function useMessageHandlers({
       markAtBottom()
 
       // Format approval message - include updated plan if provided
-      const isCodexYolo =
-        useChatStore.getState().selectedBackends[sessionId] === 'codex'
+      const isCodexYolo = selectedBackendRef.current === 'codex'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : isCodexYolo
           ? 'Execute the plan you created. Implement all changes described.'
           : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
+      // Resolve yolo overrides (skip if backend override doesn't match session)
+      const sessionBackendYolo = selectedBackendRef.current
+      const yoloBackendOverride = yoloBackendRef.current
+      const yoloOverridesApply =
+        !yoloBackendOverride || yoloBackendOverride === sessionBackendYolo
+      const yoloModel = yoloOverridesApply
+        ? (yoloModelRef.current ?? selectedModelRef.current)
+        : selectedModelRef.current
+      const yoloThinking =
+        yoloOverridesApply && isThinkingLevel(yoloThinkingLevelRef.current)
+          ? yoloThinkingLevelRef.current
+          : selectedThinkingLevelRef.current
+      const yoloEffort =
+        yoloOverridesApply && yoloEffortLevelRef.current
+          ? (yoloEffortLevelRef.current as EffortLevel)
+          : selectedEffortLevelRef.current
+
       // Send approval message so the backend continues with execution
       setLastSentMessage(sessionId, message)
       setError(sessionId, null)
       addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
+      setSelectedModel(sessionId, yoloModel)
       setExecutingMode(sessionId, 'yolo')
       const markPromise = markPlanApprovedService(
         worktreeId,
@@ -818,11 +865,11 @@ export function useMessageHandlers({
               worktreeId,
               worktreePath,
               message,
-              model: selectedModelRef.current,
+              model: yoloModel,
               executionMode: 'yolo',
-              thinkingLevel: selectedThinkingLevelRef.current,
+              thinkingLevel: yoloThinking,
               effortLevel: useAdaptiveThinkingRef.current
-                ? selectedEffortLevelRef.current
+                ? yoloEffort
                 : undefined,
               mcpConfig: getMcpConfig(),
               customProfileName: getCustomProfileName(),
@@ -843,6 +890,11 @@ export function useMessageHandlers({
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
+      yoloModelRef,
+      yoloBackendRef,
+      yoloThinkingLevelRef,
+      yoloEffortLevelRef,
+      selectedBackendRef,
       getMcpConfig,
       getCustomProfileName,
       markAtBottom,
@@ -894,9 +946,28 @@ export function useMessageHandlers({
     // anchoring handle the plan collapse smoothly.
     markAtBottom()
 
+    // Resolve build overrides (skip if backend override doesn't match session)
+    const streamBuildSessionBackend = selectedBackendRef.current
+    const streamBuildBackendOverride = buildBackendRef.current
+    const streamBuildOverridesApply =
+      !streamBuildBackendOverride ||
+      streamBuildBackendOverride === streamBuildSessionBackend
+    const streamBuildModel = streamBuildOverridesApply
+      ? (buildModelRef.current ?? selectedModelRef.current)
+      : selectedModelRef.current
+    const streamBuildThinking =
+      streamBuildOverridesApply &&
+      isThinkingLevel(buildThinkingLevelRef.current)
+        ? buildThinkingLevelRef.current
+        : selectedThinkingLevelRef.current
+    const streamBuildEffort =
+      streamBuildOverridesApply && buildEffortLevelRef.current
+        ? (buildEffortLevelRef.current as EffortLevel)
+        : selectedEffortLevelRef.current
+
     // Explicitly set to build mode (not toggle, to avoid switching back to plan if already in build)
     setMode(sessionId, 'build')
-    setSelectedModel(sessionId, selectedModelRef.current)
+    setSelectedModel(sessionId, streamBuildModel)
 
     // Send approval message to Claude so it continues with execution
     // NOTE: setLastSentMessage is critical for permission denial flow - without it,
@@ -914,11 +985,11 @@ export function useMessageHandlers({
         worktreeId,
         worktreePath,
         message: buildApprovalMsg,
-        model: selectedModelRef.current,
+        model: streamBuildModel,
         executionMode: 'build',
-        thinkingLevel: selectedThinkingLevelRef.current,
+        thinkingLevel: streamBuildThinking,
         effortLevel: useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
+          ? streamBuildEffort
           : undefined,
         mcpConfig: getMcpConfig(),
         customProfileName: getCustomProfileName(),
@@ -937,6 +1008,11 @@ export function useMessageHandlers({
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
+    buildModelRef,
+    buildBackendRef,
+    buildThinkingLevelRef,
+    buildEffortLevelRef,
+    selectedBackendRef,
     getMcpConfig,
     getCustomProfileName,
     markAtBottom,
@@ -979,9 +1055,27 @@ export function useMessageHandlers({
     // anchoring handle the plan collapse smoothly.
     markAtBottom()
 
+    // Resolve yolo overrides (skip if backend override doesn't match session)
+    const streamYoloSessionBackend = selectedBackendRef.current
+    const streamYoloBackendOverride = yoloBackendRef.current
+    const streamYoloOverridesApply =
+      !streamYoloBackendOverride ||
+      streamYoloBackendOverride === streamYoloSessionBackend
+    const streamYoloModel = streamYoloOverridesApply
+      ? (yoloModelRef.current ?? selectedModelRef.current)
+      : selectedModelRef.current
+    const streamYoloThinking =
+      streamYoloOverridesApply && isThinkingLevel(yoloThinkingLevelRef.current)
+        ? yoloThinkingLevelRef.current
+        : selectedThinkingLevelRef.current
+    const streamYoloEffort =
+      streamYoloOverridesApply && yoloEffortLevelRef.current
+        ? (yoloEffortLevelRef.current as EffortLevel)
+        : selectedEffortLevelRef.current
+
     // Set to yolo mode for auto-approval of all future tools
     setMode(sessionId, 'yolo')
-    setSelectedModel(sessionId, selectedModelRef.current)
+    setSelectedModel(sessionId, streamYoloModel)
 
     // Send approval message to Claude so it continues with execution
     const yoloApprovalMsg =
@@ -997,11 +1091,11 @@ export function useMessageHandlers({
         worktreeId,
         worktreePath,
         message: yoloApprovalMsg,
-        model: selectedModelRef.current,
+        model: streamYoloModel,
         executionMode: 'yolo',
-        thinkingLevel: selectedThinkingLevelRef.current,
+        thinkingLevel: streamYoloThinking,
         effortLevel: useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
+          ? streamYoloEffort
           : undefined,
         mcpConfig: getMcpConfig(),
         customProfileName: getCustomProfileName(),
@@ -1020,6 +1114,11 @@ export function useMessageHandlers({
     selectedThinkingLevelRef,
     selectedEffortLevelRef,
     useAdaptiveThinkingRef,
+    yoloModelRef,
+    yoloBackendRef,
+    yoloThinkingLevelRef,
+    yoloEffortLevelRef,
+    selectedBackendRef,
     getMcpConfig,
     getCustomProfileName,
     markAtBottom,
@@ -1118,6 +1217,7 @@ export function useMessageHandlers({
       const modeThinkingRef = isYolo
         ? yoloThinkingLevelRef
         : buildThinkingLevelRef
+      const modeEffortRef = isYolo ? yoloEffortLevelRef : buildEffortLevelRef
       const modeLabel = isYolo ? 'Yolo' : 'Build'
 
       const currentSessionBackend = queryClient.getQueryData<Session>(
@@ -1139,7 +1239,6 @@ export function useMessageHandlers({
         modeModelRef.current || modeBackendOverride
           ? [resolvedBackend, resolvedModel].filter(Boolean).join(' / ')
           : ''
-      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
       const planMessage = modeOverride
         ? `[${modeLabel}: ${modeOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
@@ -1152,7 +1251,7 @@ export function useMessageHandlers({
       if (resolvedBackend) {
         store.setSelectedBackend(
           newSession.id,
-          resolvedBackend as 'claude' | 'codex' | 'opencode'
+          resolvedBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model
@@ -1194,17 +1293,17 @@ export function useMessageHandlers({
       const effectiveBackend = resolvedBackend ?? currentSessionBackend
       let resolvedThinkingLevel: ThinkingLevel =
         selectedThinkingLevelRef.current
-      let resolvedEffortLevel: EffortLevel | undefined =
-        useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
-          : undefined
+      let resolvedEffortLevel: EffortLevel | undefined = undefined
+      if (isThinkingLevel(modeThinkingRef.current)) {
+        resolvedThinkingLevel = modeThinkingRef.current
+      }
       if (effectiveBackend === 'codex') {
         resolvedThinkingLevel = 'off'
+      }
+      if (effectiveBackend === 'codex' || useAdaptiveThinkingRef.current) {
         resolvedEffortLevel =
-          mapCodexReasoningToEffort(modeThinkingRef.current) ??
+          mapCodexReasoningToEffort(modeEffortRef.current) ??
           selectedEffortLevelRef.current
-      } else if (isThinkingLevel(modeThinkingRef.current)) {
-        resolvedThinkingLevel = modeThinkingRef.current
       }
       sendMessage.mutate({
         sessionId: newSession.id,
@@ -1267,9 +1366,11 @@ export function useMessageHandlers({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
@@ -1357,6 +1458,7 @@ export function useMessageHandlers({
       const modeThinkingRef = isYolo
         ? yoloThinkingLevelRef
         : buildThinkingLevelRef
+      const modeEffortRef = isYolo ? yoloEffortLevelRef : buildEffortLevelRef
       const modeLabel = isYolo ? 'Yolo' : 'Build'
 
       const currentSessionBackend = queryClient.getQueryData<Session>(
@@ -1378,7 +1480,6 @@ export function useMessageHandlers({
         modeModelRef.current || modeBackendOverride
           ? [resolvedBackend, resolvedModel].filter(Boolean).join(' / ')
           : ''
-      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
       const planMessage = modeOverride
         ? `[${modeLabel}: ${modeOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
@@ -1391,7 +1492,7 @@ export function useMessageHandlers({
       if (resolvedBackend) {
         store.setSelectedBackend(
           newSession.id,
-          resolvedBackend as 'claude' | 'codex' | 'opencode'
+          resolvedBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
@@ -1434,17 +1535,17 @@ export function useMessageHandlers({
       const effectiveBackend = resolvedBackend ?? currentSessionBackend
       let resolvedThinkingLevel: ThinkingLevel =
         selectedThinkingLevelRef.current
-      let resolvedEffortLevel: EffortLevel | undefined =
-        useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
-          : undefined
+      let resolvedEffortLevel: EffortLevel | undefined = undefined
+      if (isThinkingLevel(modeThinkingRef.current)) {
+        resolvedThinkingLevel = modeThinkingRef.current
+      }
       if (effectiveBackend === 'codex') {
         resolvedThinkingLevel = 'off'
+      }
+      if (effectiveBackend === 'codex' || useAdaptiveThinkingRef.current) {
         resolvedEffortLevel =
-          mapCodexReasoningToEffort(modeThinkingRef.current) ??
+          mapCodexReasoningToEffort(modeEffortRef.current) ??
           selectedEffortLevelRef.current
-      } else if (isThinkingLevel(modeThinkingRef.current)) {
-        resolvedThinkingLevel = modeThinkingRef.current
       }
       sendMessage.mutate({
         sessionId: newSession.id,
@@ -1507,9 +1608,11 @@ export function useMessageHandlers({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
@@ -1572,8 +1675,6 @@ export function useMessageHandlers({
         return
       }
 
-      const toastId = toast.loading('Creating worktree...')
-
       // Mark plan approved on original session
       markPlanApprovedService(worktreeId, worktreePath, sessionId, messageId)
       queryClient.setQueryData<Session>(
@@ -1609,9 +1710,10 @@ export function useMessageHandlers({
           projectId,
         })
       } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`, { id: toastId })
+        toast.error(`Failed to create worktree: ${err}`)
         return
       }
+      markWorktreeSilentReady(pendingWorktree.id)
 
       // Wait for worktree to be ready
       let readyWorktree: Worktree
@@ -1648,11 +1750,9 @@ export function useMessageHandlers({
           )
         })
       } catch (err) {
-        toast.error(`Worktree creation failed: ${err}`, { id: toastId })
+        toast.error(`Worktree creation failed: ${err}`)
         return
       }
-
-      toast.loading('Sending plan...', { id: toastId })
 
       // Use the default session auto-created by the backend, or create one if none exists
       let newSession: Session
@@ -1670,7 +1770,7 @@ export function useMessageHandlers({
           })
         }
       } catch (err) {
-        toast.error(`Failed to get session: ${err}`, { id: toastId })
+        toast.error(`Failed to get session: ${err}`)
         return
       }
 
@@ -1706,6 +1806,7 @@ export function useMessageHandlers({
       const modeThinkingRef = isYolo
         ? yoloThinkingLevelRef
         : buildThinkingLevelRef
+      const modeEffortRef = isYolo ? yoloEffortLevelRef : buildEffortLevelRef
       const modeLabel = isYolo ? 'Yolo' : 'Build'
 
       const currentSessionBackend = queryClient.getQueryData<Session>(
@@ -1727,7 +1828,6 @@ export function useMessageHandlers({
         modeModelRef.current || modeBackendOverride
           ? [resolvedBackend, resolvedModel].filter(Boolean).join(' / ')
           : ''
-      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
       const planMessage = modeOverride
         ? `[${modeLabel}: ${modeOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
@@ -1740,7 +1840,7 @@ export function useMessageHandlers({
       if (resolvedBackend) {
         store.setSelectedBackend(
           newSession.id,
-          resolvedBackend as 'claude' | 'codex' | 'opencode'
+          resolvedBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       queryClient.setQueryData<Session>(
@@ -1777,17 +1877,17 @@ export function useMessageHandlers({
       const effectiveBackend = resolvedBackend ?? currentSessionBackend
       let resolvedThinkingLevel: ThinkingLevel =
         selectedThinkingLevelRef.current
-      let resolvedEffortLevel: EffortLevel | undefined =
-        useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
-          : undefined
+      let resolvedEffortLevel: EffortLevel | undefined = undefined
+      if (isThinkingLevel(modeThinkingRef.current)) {
+        resolvedThinkingLevel = modeThinkingRef.current
+      }
       if (effectiveBackend === 'codex') {
         resolvedThinkingLevel = 'off'
+      }
+      if (effectiveBackend === 'codex' || useAdaptiveThinkingRef.current) {
         resolvedEffortLevel =
-          mapCodexReasoningToEffort(modeThinkingRef.current) ??
+          mapCodexReasoningToEffort(modeEffortRef.current) ??
           selectedEffortLevelRef.current
-      } else if (isThinkingLevel(modeThinkingRef.current)) {
-        resolvedThinkingLevel = modeThinkingRef.current
       }
       sendMessage.mutate({
         sessionId: newSession.id,
@@ -1802,8 +1902,6 @@ export function useMessageHandlers({
         customProfileName: getCustomProfileName(),
         backend: resolvedBackend,
       })
-
-      toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
 
       // Optionally close the original session
       if (prefs?.close_original_on_clear_context) {
@@ -1846,9 +1944,11 @@ export function useMessageHandlers({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,
@@ -1905,8 +2005,6 @@ export function useMessageHandlers({
         return
       }
 
-      const toastId = toast.loading('Creating worktree...')
-
       // Mark as approved in streaming state
       store.setStreamingPlanApproved(sessionId, true)
       store.clearToolCalls(sessionId)
@@ -1921,9 +2019,10 @@ export function useMessageHandlers({
           projectId,
         })
       } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`, { id: toastId })
+        toast.error(`Failed to create worktree: ${err}`)
         return
       }
+      markWorktreeSilentReady(pendingWorktree.id)
 
       // Wait for worktree to be ready
       let readyWorktree: Worktree
@@ -1960,11 +2059,9 @@ export function useMessageHandlers({
           )
         })
       } catch (err) {
-        toast.error(`Worktree creation failed: ${err}`, { id: toastId })
+        toast.error(`Worktree creation failed: ${err}`)
         return
       }
-
-      toast.loading('Sending plan...', { id: toastId })
 
       // Use the default session auto-created by the backend, or create one if none exists
       let newSession: Session
@@ -1982,7 +2079,7 @@ export function useMessageHandlers({
           })
         }
       } catch (err) {
-        toast.error(`Failed to get session: ${err}`, { id: toastId })
+        toast.error(`Failed to get session: ${err}`)
         return
       }
 
@@ -2018,6 +2115,7 @@ export function useMessageHandlers({
       const modeThinkingRef = isYolo
         ? yoloThinkingLevelRef
         : buildThinkingLevelRef
+      const modeEffortRef = isYolo ? yoloEffortLevelRef : buildEffortLevelRef
       const modeLabel = isYolo ? 'Yolo' : 'Build'
 
       const currentSessionBackend = queryClient.getQueryData<Session>(
@@ -2039,7 +2137,6 @@ export function useMessageHandlers({
         modeModelRef.current || modeBackendOverride
           ? [resolvedBackend, resolvedModel].filter(Boolean).join(' / ')
           : ''
-      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
       const planMessage = modeOverride
         ? `[${modeLabel}: ${modeOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${planContent}\n</plan>`
@@ -2052,7 +2149,7 @@ export function useMessageHandlers({
       if (resolvedBackend) {
         store.setSelectedBackend(
           newSession.id,
-          resolvedBackend as 'claude' | 'codex' | 'opencode'
+          resolvedBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       queryClient.setQueryData<Session>(
@@ -2095,17 +2192,17 @@ export function useMessageHandlers({
       const effectiveBackend = resolvedBackend ?? currentSessionBackend
       let resolvedThinkingLevel: ThinkingLevel =
         selectedThinkingLevelRef.current
-      let resolvedEffortLevel: EffortLevel | undefined =
-        useAdaptiveThinkingRef.current
-          ? selectedEffortLevelRef.current
-          : undefined
+      let resolvedEffortLevel: EffortLevel | undefined = undefined
+      if (isThinkingLevel(modeThinkingRef.current)) {
+        resolvedThinkingLevel = modeThinkingRef.current
+      }
       if (effectiveBackend === 'codex') {
         resolvedThinkingLevel = 'off'
+      }
+      if (effectiveBackend === 'codex' || useAdaptiveThinkingRef.current) {
         resolvedEffortLevel =
-          mapCodexReasoningToEffort(modeThinkingRef.current) ??
+          mapCodexReasoningToEffort(modeEffortRef.current) ??
           selectedEffortLevelRef.current
-      } else if (isThinkingLevel(modeThinkingRef.current)) {
-        resolvedThinkingLevel = modeThinkingRef.current
       }
       sendMessage.mutate({
         sessionId: newSession.id,
@@ -2120,8 +2217,6 @@ export function useMessageHandlers({
         customProfileName: getCustomProfileName(),
         backend: resolvedBackend,
       })
-
-      toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
 
       // Optionally close the original session
       if (prefs?.close_original_on_clear_context) {
@@ -2164,9 +2259,11 @@ export function useMessageHandlers({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
       useAdaptiveThinkingRef,

@@ -25,8 +25,15 @@ import {
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
-import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
-import { OPENCODE_MODEL_OPTIONS as OPENCODE_FALLBACK_OPTIONS } from '@/components/chat/toolbar/toolbar-options'
+import { useAvailableCursorModels } from '@/services/cursor-cli'
+import {
+  formatCursorModelLabel,
+  formatOpencodeModelLabel,
+} from '@/components/chat/toolbar/toolbar-utils'
+import {
+  CURSOR_MODEL_OPTIONS as CURSOR_FALLBACK_OPTIONS,
+  OPENCODE_MODEL_OPTIONS as OPENCODE_FALLBACK_OPTIONS,
+} from '@/components/chat/toolbar/toolbar-options'
 import {
   DEFAULT_INVESTIGATE_ISSUE_PROMPT,
   DEFAULT_INVESTIGATE_PR_PROMPT,
@@ -56,6 +63,7 @@ import {
   OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
   codexModelOptions,
   isCodexModel,
+  isCursorModel,
   type MagicPrompts,
   type MagicPromptModels,
   type MagicPromptProviders,
@@ -63,6 +71,7 @@ import {
   type MagicPromptModel,
 } from '@/types/preferences'
 import { cn } from '@/lib/utils'
+import { BackendLabel } from '@/components/ui/backend-label'
 
 interface VariableInfo {
   name: string
@@ -109,7 +118,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ISSUE_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'investigate_pr',
@@ -130,7 +139,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_PR_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'investigate_workflow_run',
@@ -157,7 +166,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'investigate_security_alert',
@@ -179,7 +188,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'investigate_advisory',
@@ -199,7 +208,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'investigate_linear_issue',
@@ -224,7 +233,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
     ],
   },
@@ -251,7 +260,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_CODE_REVIEW_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'review_comments',
@@ -273,7 +282,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_REVIEW_COMMENTS_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'commit_message',
@@ -319,6 +328,15 @@ const PROMPT_SECTIONS: PromptSection[] = [
             name: '{commit_count}',
             description: 'Number of commits in the PR',
           },
+          {
+            name: '{context}',
+            description: 'Loaded issue/PR/security/Linear context content',
+          },
+          {
+            name: '{related_pull_requests}',
+            description:
+              'Exact PR reference strings derived from merged PRs mentioned in commit subjects.',
+          },
           { name: '{commits}', description: 'List of commit messages' },
           { name: '{diff}', description: 'Git diff of all changes' },
         ],
@@ -334,7 +352,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
         description: 'Instructions appended to conflict resolution prompts.',
         variables: [],
         defaultValue: DEFAULT_RESOLVE_CONFLICTS_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'release_notes',
@@ -449,9 +467,16 @@ const PROMPT_SECTIONS: PromptSection[] = [
 
 // Flat list for lookups
 const PROMPT_CONFIGS = PROMPT_SECTIONS.flatMap(s => s.configs)
+const PROMPT_CONFIG_KEYS = new Set(PROMPT_CONFIGS.map(config => config.key))
+const MAGIC_PROMPT_HIGHLIGHT_DURATION_MS = 1800
+
+export function getMagicPromptItemId(key: keyof MagicPrompts): string {
+  return `settings-magic-prompt-${key}`
+}
 
 const CLAUDE_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
-  { value: 'opus', label: 'Opus 4.6' },
+  { value: 'claude-opus-4-7', label: 'Opus 4.7' },
+  { value: 'claude-opus-4-6', label: 'Opus 4.6' },
   { value: 'sonnet', label: 'Sonnet 4.6' },
   { value: 'haiku', label: 'Haiku' },
 ]
@@ -459,16 +484,27 @@ const CLAUDE_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
 const CODEX_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] =
   codexModelOptions.map(o => ({ value: o.value, label: o.label }))
 
-export const MagicPromptsPane: React.FC = () => {
+interface MagicPromptsPaneProps {
+  searchTargetPromptKey?: keyof MagicPrompts | null
+}
+
+export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
+  searchTargetPromptKey = null,
+}) => {
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
   const [selectedKey, setSelectedKey] =
     useState<keyof MagicPrompts>('investigate_issue')
+  const [highlightedKey, setHighlightedKey] = useState<
+    keyof MagicPrompts | null
+  >(null)
   const [localValue, setLocalValue] = useState('')
   const [modelPopoverOpen, setModelPopoverOpen] = useState(false)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const { data: availableOpencodeModels } = useAvailableOpencodeModels()
+  const { data: availableCursorModels } = useAvailableCursorModels()
   const { installedBackends } = useInstalledBackends()
 
   const formatOpenCodeLabel = (value: string) => {
@@ -487,6 +523,18 @@ export const MagicPromptsPane: React.FC = () => {
       label: formatOpenCodeLabel(value),
     }))
   }, [availableOpencodeModels])
+  const cursorModelOptions = useMemo(() => {
+    const models = availableCursorModels?.length
+      ? availableCursorModels.map(model => ({
+          value: `cursor/${model.id}`,
+          label: model.label || formatCursorModelLabel(model.id),
+        }))
+      : CURSOR_FALLBACK_OPTIONS
+    return models.map(option => ({
+      value: option.value as MagicPromptModel,
+      label: option.label || formatCursorModelLabel(option.value),
+    }))
+  }, [availableCursorModels])
 
   const currentPrompts = preferences?.magic_prompts ?? DEFAULT_MAGIC_PROMPTS
   const currentModels =
@@ -519,8 +567,16 @@ export const MagicPromptsPane: React.FC = () => {
   const currentModelIsOpenCode = currentModel
     ? currentModel.startsWith('opencode/')
     : false
+  const currentModelIsCursor = currentModel
+    ? isCursorModel(currentModel)
+    : false
   const filteredClaudeOptions = useMemo(() => {
-    if (!currentProvider || currentModelIsCodex || currentModelIsOpenCode) {
+    if (
+      !currentProvider ||
+      currentModelIsCodex ||
+      currentModelIsOpenCode ||
+      currentModelIsCursor
+    ) {
       return CLAUDE_MODEL_OPTIONS
     }
     const profile = profiles.find(p => p.name === currentProvider)
@@ -547,7 +603,13 @@ export const MagicPromptsPane: React.FC = () => {
     } catch {
       return CLAUDE_MODEL_OPTIONS
     }
-  }, [currentProvider, currentModelIsCodex, currentModelIsOpenCode, profiles])
+  }, [
+    currentProvider,
+    currentModelIsCodex,
+    currentModelIsCursor,
+    currentModelIsOpenCode,
+    profiles,
+  ])
 
   const isModified = currentPrompts[selectedKey] !== null
 
@@ -563,8 +625,38 @@ export const MagicPromptsPane: React.FC = () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current)
+      }
     }
   }, [])
+
+  useEffect(() => {
+    if (
+      !searchTargetPromptKey ||
+      !PROMPT_CONFIG_KEYS.has(searchTargetPromptKey)
+    ) {
+      return
+    }
+
+    setSelectedKey(searchTargetPromptKey)
+    setHighlightedKey(searchTargetPromptKey)
+
+    const targetElement = document.getElementById(
+      getMagicPromptItemId(searchTargetPromptKey)
+    )
+    targetElement?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current)
+    }
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedKey(current =>
+        current === searchTargetPromptKey ? null : current
+      )
+      highlightTimeoutRef.current = null
+    }, MAGIC_PROMPT_HIGHLIGHT_DURATION_MS)
+  }, [searchTargetPromptKey])
 
   const handleChange = useCallback(
     (newValue: string) => {
@@ -672,11 +764,13 @@ export const MagicPromptsPane: React.FC = () => {
       let defaultModel: MagicPromptModel | undefined
       if (selectedConfig.modelKey) {
         if (backend === 'claude') {
-          defaultModel = selectedConfig.defaultModel ?? 'haiku'
+          defaultModel = selectedConfig.defaultModel ?? 'sonnet'
         } else if (backend === 'codex') {
           defaultModel = CODEX_MODEL_OPTIONS[0]?.value
         } else if (backend === 'opencode') {
           defaultModel = opencodeModelOptions[0]?.value
+        } else if (backend === 'cursor') {
+          defaultModel = cursorModelOptions[0]?.value
         }
       }
       patchPreferences.mutate({
@@ -702,6 +796,7 @@ export const MagicPromptsPane: React.FC = () => {
       selectedConfig.backendKey,
       selectedConfig.modelKey,
       selectedConfig.defaultModel,
+      cursorModelOptions,
       opencodeModelOptions,
     ]
   )
@@ -808,11 +903,16 @@ export const MagicPromptsPane: React.FC = () => {
                   <button
                     key={config.key}
                     onClick={() => setSelectedKey(config.key)}
+                    id={getMagicPromptItemId(config.key)}
+                    data-settings-target={config.key}
                     className={cn(
-                      'w-full px-2 py-1.5 rounded-md text-left text-sm transition-colors truncate',
+                      'w-full px-2 py-1.5 rounded-md text-left text-sm transition-colors truncate ring-1 ring-transparent',
                       selectedKey === config.key
                         ? 'bg-accent text-accent-foreground'
-                        : 'hover:bg-muted/50 text-foreground'
+                        : 'hover:bg-muted/50 text-foreground',
+                      highlightedKey === config.key
+                        ? 'ring-border bg-accent/40'
+                        : ''
                     )}
                   >
                     {config.label}
@@ -855,6 +955,11 @@ export const MagicPromptsPane: React.FC = () => {
                     {installedBackends.includes('opencode') && (
                       <SelectItem value="opencode">OpenCode</SelectItem>
                     )}
+                    {installedBackends.includes('cursor') && (
+                      <SelectItem value="cursor">
+                        <BackendLabel backend="cursor" />
+                      </SelectItem>
+                    )}
                     {installedBackends.includes('codex') && (
                       <SelectItem value="codex">Codex</SelectItem>
                     )}
@@ -865,8 +970,10 @@ export const MagicPromptsPane: React.FC = () => {
             {currentProvider !== undefined &&
               profiles.length > 0 &&
               !currentModelIsCodex &&
+              !currentModelIsCursor &&
               !currentModelIsOpenCode &&
               effectiveBackend !== 'opencode' &&
+              effectiveBackend !== 'cursor' &&
               effectiveBackend !== 'codex' && (
                 <>
                   <span className="text-xs text-muted-foreground">
@@ -910,13 +1017,16 @@ export const MagicPromptsPane: React.FC = () => {
                             ...filteredClaudeOptions,
                             ...CODEX_MODEL_OPTIONS,
                             ...opencodeModelOptions,
+                            ...cursorModelOptions,
                           ]
                           return (
                             allOptions.find(o => o.value === currentModel)
                               ?.label ??
                             (currentModel.startsWith('opencode/')
                               ? formatOpenCodeLabel(currentModel)
-                              : currentModel)
+                              : isCursorModel(currentModel)
+                                ? formatCursorModelLabel(currentModel)
+                                : currentModel)
                           )
                         })()}
                       </span>
@@ -985,6 +1095,32 @@ export const MagicPromptsPane: React.FC = () => {
                         {effectiveBackend === 'opencode' && (
                           <CommandGroup heading="OpenCode">
                             {opencodeModelOptions.map(opt => (
+                              <CommandItem
+                                key={opt.value}
+                                value={`${opt.label} ${opt.value}`}
+                                onSelect={() => {
+                                  handleModelChange(opt.value)
+                                  setModelPopoverOpen(false)
+                                }}
+                              >
+                                <span className="text-xs">{opt.label}</span>
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-3 w-3',
+                                    currentModel === opt.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
+                        {effectiveBackend === 'cursor' && (
+                          <CommandGroup
+                            heading={<BackendLabel backend="cursor" />}
+                          >
+                            {cursorModelOptions.map(opt => (
                               <CommandItem
                                 key={opt.value}
                                 value={`${opt.label} ${opt.value}`}

@@ -148,8 +148,7 @@ export function computeSessionCardData(
   const sessionSending = sendingSessionIds[session.id] ?? false
   const toolCalls = activeToolCalls[session.id] ?? []
   const streamingContent = streamingContents[session.id] ?? ''
-  const currentStreamingContentBlocks =
-    streamingContentBlocks[session.id] ?? []
+  const currentStreamingContentBlocks = streamingContentBlocks[session.id] ?? []
   const answeredSet = answeredQuestions[session.id]
 
   // Check streaming tool calls for waiting state
@@ -227,7 +226,6 @@ export function computeSessionCardData(
         break // Only check the last assistant message
       }
     }
-
   }
 
   // Also check for plan file/content in streaming tool calls
@@ -240,8 +238,14 @@ export function computeSessionCardData(
     }
   }
 
-  // Use persisted waiting state as fallback when messages aren't loaded
-  const isExplicitlyWaiting = waitingForInputSessionIds[session.id] ?? false
+  // Stale Zustand flag must not pin status to "waiting" when the backend has
+  // already moved the session into review. Backend `waiting_for_input` still
+  // flows through `persistedWaitingForInput` below, so genuine waiting wins.
+  const isInReviewState =
+    reviewingSessions[session.id] || !!session.review_results
+  const isExplicitlyWaiting = isInReviewState
+    ? false
+    : (waitingForInputSessionIds[session.id] ?? false)
   const hasActionableStreamingPlan = hasStreamingExitPlan && !sessionSending
   const isWaitingFromMessages =
     hasStreamingQuestion ||
@@ -356,6 +360,9 @@ export function getResumeCommand(session: Session): string | null {
   }
   if (session.backend === 'opencode' && session.opencode_session_id) {
     return `opencode -s ${session.opencode_session_id}`
+  }
+  if (session.backend === 'cursor' && session.cursor_chat_id) {
+    return `cursor-agent --resume ${session.cursor_chat_id}`
   }
   return null
 }

@@ -531,6 +531,8 @@ fn reader_loop(
             }
         };
 
+        log::debug!("[codex-raw] {line}");
+
         let has_method = msg.get("method").is_some();
         let has_id = msg.get("id").is_some();
         let has_result = msg.get("result").is_some();
@@ -567,7 +569,7 @@ fn reader_loop(
 
             route_server_request(&active_sessions, id, method, params);
         } else {
-            log::trace!("Unclassified app-server message: {line}");
+            log::debug!("[codex-raw] Unclassified message: {line}");
         }
     }
 

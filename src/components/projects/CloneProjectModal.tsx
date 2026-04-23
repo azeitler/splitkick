@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
 import { Loader2, Globe, FolderOpen, AlertCircle } from 'lucide-react'
 import {
@@ -15,6 +14,8 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useProjectsStore } from '@/store/projects-store'
 import { useCloneProject } from '@/services/projects'
+import { DirectoryBrowser } from '@/components/projects/DirectoryBrowser'
+import { toast } from 'sonner'
 
 /** Extract a repository name from a git URL (strips .git suffix) */
 function extractRepoName(url: string): string {
@@ -36,6 +37,7 @@ export function CloneProjectModal() {
   const [url, setUrl] = useState('')
   const [destination, setDestination] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [browserOpen, setBrowserOpen] = useState(false)
 
   const repoName = useMemo(() => extractRepoName(url), [url])
 
@@ -45,6 +47,7 @@ export function CloneProjectModal() {
       setUrl('')
       setDestination('')
       setError(null)
+      setBrowserOpen(false)
     }
   }, [cloneModalOpen])
 
@@ -59,7 +62,10 @@ export function CloneProjectModal() {
   )
 
   const handleBrowse = useCallback(async () => {
-    if (!isNativeApp()) return
+    if (!isNativeApp()) {
+      setBrowserOpen(true)
+      return
+    }
 
     try {
       const { save } = await import('@tauri-apps/plugin-dialog')
@@ -119,90 +125,102 @@ export function CloneProjectModal() {
 
   return (
     <Dialog open={cloneModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Globe className="h-5 w-5" />
-            Clone Repository
-          </DialogTitle>
-          <DialogDescription>
-            Clone a remote git repository by URL.
-          </DialogDescription>
-        </DialogHeader>
+      <>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-5 w-5" />
+              Clone Repository
+            </DialogTitle>
+            <DialogDescription>
+              Clone a remote git repository by URL.
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="space-y-4 py-4">
-          {/* Git URL input */}
-          <div className="space-y-1.5">
-            <Label htmlFor="clone-url" className="text-xs">
-              Repository URL
-            </Label>
-            <Input
-              id="clone-url"
-              placeholder="https://github.com/user/repo.git"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              disabled={cloneProject.isPending}
-              autoFocus
-              onKeyDown={e => {
-                if (e.key === 'Enter' && url.trim() && destination) {
-                  e.preventDefault()
-                  handleClone()
-                }
-              }}
-            />
-          </div>
-
-          {/* Destination picker */}
-          <div className="space-y-1.5">
-            <Label className="text-xs">Destination</Label>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                className="flex-1 justify-start"
-                onClick={handleBrowse}
+          <div className="space-y-4 py-4">
+            {/* Git URL input */}
+            <div className="space-y-1.5">
+              <Label htmlFor="clone-url" className="text-xs">
+                Repository URL
+              </Label>
+              <Input
+                id="clone-url"
+                placeholder="https://github.com/user/repo.git"
+                value={url}
+                onChange={e => setUrl(e.target.value)}
                 disabled={cloneProject.isPending}
-              >
-                <FolderOpen className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                <span className="truncate text-sm">
-                  {destination || 'Choose destination...'}
-                </span>
-              </Button>
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && url.trim() && destination) {
+                    e.preventDefault()
+                    handleClone()
+                  }
+                }}
+              />
             </div>
-            {destination && (
-              <p className="truncate text-xs text-muted-foreground">
-                {destination}
-              </p>
+
+            {/* Destination picker */}
+            <div className="space-y-1.5">
+              <Label className="text-xs">Destination</Label>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1 justify-start"
+                  onClick={handleBrowse}
+                  disabled={cloneProject.isPending}
+                >
+                  <FolderOpen className="mr-2 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span className="truncate text-sm">
+                    {destination || 'Choose destination...'}
+                  </span>
+                </Button>
+              </div>
+              {destination && (
+                <p className="truncate text-xs text-muted-foreground">
+                  {destination}
+                </p>
+              )}
+            </div>
+
+            {/* Error display */}
+            {error && (
+              <div className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-destructive">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                <div className="text-sm">{error}</div>
+              </div>
             )}
           </div>
 
-          {/* Error display */}
-          {error && (
-            <div className="flex items-start gap-2 rounded-lg bg-destructive/10 p-3 text-destructive">
-              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-              <div className="text-sm">{error}</div>
-            </div>
-          )}
-        </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => handleOpenChange(false)}
+              disabled={cloneProject.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleClone}
+              disabled={cloneProject.isPending || !url.trim() || !destination}
+            >
+              {cloneProject.isPending && (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              )}
+              Clone
+            </Button>
+          </DialogFooter>
+        </DialogContent>
 
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => handleOpenChange(false)}
-            disabled={cloneProject.isPending}
-          >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleClone}
-            disabled={cloneProject.isPending || !url.trim() || !destination}
-          >
-            {cloneProject.isPending && (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            )}
-            Clone
-          </Button>
-        </DialogFooter>
-      </DialogContent>
+        <DirectoryBrowser
+          open={browserOpen}
+          onOpenChange={setBrowserOpen}
+          onSelect={setDestination}
+          mode="save"
+          title="Choose clone destination"
+          description="Choose a parent folder and enter the cloned repository name."
+          defaultName={repoName || 'repo'}
+        />
+      </>
     </Dialog>
   )
 }

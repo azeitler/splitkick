@@ -5,6 +5,45 @@ use serde::{Deserialize, Serialize};
 
 use super::types::{JeanConfig, MergeType};
 
+/// Resolve the git metadata directories for a working directory.
+///
+/// Returns `(git_dir, git_common_dir)` as absolute, canonicalized paths.
+/// - `git_dir`: worktree-specific metadata (e.g., `/repo/.git/worktrees/feat-x`)
+/// - `git_common_dir`: shared metadata (e.g., `/repo/.git`)
+///
+/// For non-worktree repos, both point to the same `.git` directory.
+/// Returns `None` if the path is not a git repo or the command fails.
+pub fn resolve_git_dirs(working_dir: &Path) -> Option<(String, String)> {
+    let output = silent_command("git")
+        .args(["rev-parse", "--git-dir", "--git-common-dir"])
+        .current_dir(working_dir)
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut lines = stdout.lines();
+    let git_dir_raw = lines.next()?.trim();
+    let git_common_dir_raw = lines.next()?.trim();
+
+    let resolve = |p: &str| -> Option<String> {
+        let path = Path::new(p);
+        let abs = if path.is_absolute() {
+            path.to_path_buf()
+        } else {
+            working_dir.join(path)
+        };
+        std::fs::canonicalize(&abs)
+            .ok()
+            .map(|p| p.to_string_lossy().into_owned())
+    };
+
+    Some((resolve(git_dir_raw)?, resolve(git_common_dir_raw)?))
+}
+
 /// Repository identifier extracted from GitHub remote URL
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct RepoIdentifier {
@@ -431,6 +470,20 @@ pub fn branch_exists(repo_path: &str, branch_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if a remote-tracking branch exists (refs/remotes/origin/<branch>)
+pub fn remote_branch_exists(repo_path: &str, branch_name: &str) -> bool {
+    silent_command("git")
+        .args([
+            "rev-parse",
+            "--verify",
+            &format!("refs/remotes/origin/{branch_name}"),
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Check if a repository has any commits
 pub fn has_commits(repo_path: &str) -> bool {
     silent_command("git")
@@ -454,8 +507,10 @@ pub fn get_valid_base_branch(repo_path: &str, preferred_branch: &str) -> Result<
             .to_string());
     }
 
-    // Try preferred branch first
-    if branch_exists(repo_path, preferred_branch) {
+    // Try preferred branch first (local or remote-tracking)
+    if branch_exists(repo_path, preferred_branch)
+        || remote_branch_exists(repo_path, preferred_branch)
+    {
         return Ok(preferred_branch.to_string());
     }
 
@@ -688,9 +743,11 @@ pub fn git_stash(repo_path: &str) -> Result<String, String> {
         log::trace!("Stash result: {stdout}");
         Ok(stdout)
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        log::error!("Failed to stash: {stderr}");
-        Err(stderr)
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let combined = format!("{stdout}\n{stderr}").trim().to_string();
+        log::error!("Failed to stash: {combined}");
+        Err(combined)
     }
 }
 
@@ -709,9 +766,11 @@ pub fn git_stash_pop(repo_path: &str) -> Result<String, String> {
         log::trace!("Stash pop result: {stdout}");
         Ok(stdout)
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        log::error!("Failed to pop stash: {stderr}");
-        Err(stderr)
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let combined = format!("{stdout}\n{stderr}").trim().to_string();
+        log::error!("Failed to pop stash: {combined}");
+        Err(combined)
     }
 }
 

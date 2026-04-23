@@ -250,7 +250,7 @@ struct CachedGhVersions {
 
 /// Save fetched versions to disk cache
 fn save_gh_versions_cache(app: &AppHandle, versions: &[GhReleaseInfo]) {
-    let cache_path = match super::config::get_gh_cli_dir(app) {
+    let cache_path = match super::config::ensure_gh_cli_dir(app) {
         Ok(dir) => dir.join(GH_VERSIONS_CACHE_FILE),
         Err(e) => {
             log::warn!("Cannot resolve gh CLI dir for cache: {e}");
@@ -665,10 +665,10 @@ pub async fn check_gh_cli_auth(app: AppHandle) -> Result<GhAuthStatus, String> {
     }
 
     // Run gh auth status to check authentication
-    log::trace!("Running auth check: {:?} auth status", binary_path);
+    log::trace!("Running auth check: {:?} auth status --active", binary_path);
 
     let output = silent_command(&binary_path)
-        .args(["auth", "status"])
+        .args(["auth", "status", "--active"])
         .output()
         .map_err(|e| format!("Failed to execute GitHub CLI: {e}"))?;
 

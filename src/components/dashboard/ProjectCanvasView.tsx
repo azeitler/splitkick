@@ -20,6 +20,7 @@ import {
   FileJson,
   Clock3,
   GitBranch,
+  GitBranchPlus,
   GitPullRequestArrow,
   ShieldAlert,
   Code,
@@ -63,6 +64,7 @@ import {
   useCreateSession,
   cancelChatMessage,
 } from '@/services/chat'
+import { useGitHubPRs } from '@/services/github'
 import { useGitStatus } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -244,6 +246,7 @@ function WorktreeSectionHeader({
   worktree,
   projectId,
   defaultBranch,
+  openPRs,
   cards,
   showDetails = false,
   isSelected,
@@ -254,6 +257,7 @@ function WorktreeSectionHeader({
   worktree: Worktree
   projectId: string
   defaultBranch: string
+  openPRs?: { number: number; headRefName: string }[]
   cards?: SessionCardData[]
   showDetails?: boolean
   isSelected?: boolean
@@ -265,9 +269,12 @@ function WorktreeSectionHeader({
     type: 'uncommitted' | 'branch'
   ) => void
 }) {
+  const stackedOnPR =
+    worktree.base_branch && worktree.base_branch !== defaultBranch
+      ? openPRs?.find(pr => pr.headRefName === worktree.base_branch)
+      : undefined
   const isBase = isBaseSession(worktree)
   const { data: gitStatus } = useGitStatus(worktree.id)
-
 
   const behindCount =
     gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
@@ -404,7 +411,10 @@ function WorktreeSectionHeader({
                 <span className="text-[9px]">⌘{shortcutNumber}</span>
               </kbd>
             )}
-            <TerminalStatusIndicator worktreeId={worktree.id} iconSize="h-3 w-3" />
+            <TerminalStatusIndicator
+              worktreeId={worktree.id}
+              iconSize="h-3 w-3"
+            />
             <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
               <span className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 flex-1 truncate">
@@ -414,6 +424,22 @@ function WorktreeSectionHeader({
                   <span className="hidden items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
                     <GitBranch className="h-2.5 w-2.5" />
                     <span className="max-w-40 truncate">{displayBranch}</span>
+                    {worktree.base_branch &&
+                      worktree.base_branch !== defaultBranch && (
+                        <>
+                          <span className="text-border">·</span>
+                          <GitBranchPlus className="h-2.5 w-2.5" />
+                          <span className="max-w-32 truncate">
+                            {worktree.base_branch}
+                          </span>
+                          {stackedOnPR && (
+                            <>
+                              <GitPullRequestArrow className="h-2.5 w-2.5" />#
+                              {stackedOnPR.number}
+                            </>
+                          )}
+                        </>
+                      )}
                     {worktree.pr_number && (
                       <>
                         <span className="text-border">·</span>
@@ -432,7 +458,9 @@ function WorktreeSectionHeader({
                       <>
                         <span className="text-border">·</span>
                         <ShieldAlert className="h-2.5 w-2.5 text-orange-500" />
-                        <span className="max-w-20 truncate">{worktree.advisory_ghsa_id}</span>
+                        <span className="max-w-20 truncate">
+                          {worktree.advisory_ghsa_id}
+                        </span>
                       </>
                     )}
                   </span>
@@ -456,6 +484,22 @@ function WorktreeSectionHeader({
                 <span className="inline-flex max-w-full items-center gap-1 self-start rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">
                   <GitBranch className="h-2.5 w-2.5 shrink-0" />
                   <span className="max-w-full truncate">{displayBranch}</span>
+                  {worktree.base_branch &&
+                    worktree.base_branch !== defaultBranch && (
+                      <>
+                        <span className="text-border">·</span>
+                        <GitBranchPlus className="h-2.5 w-2.5 shrink-0" />
+                        <span className="max-w-32 truncate">
+                          {worktree.base_branch}
+                        </span>
+                        {stackedOnPR && (
+                          <>
+                            <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />
+                            #{stackedOnPR.number}
+                          </>
+                        )}
+                      </>
+                    )}
                   {worktree.pr_number && (
                     <>
                       <span className="text-border">·</span>
@@ -466,15 +510,17 @@ function WorktreeSectionHeader({
                   {worktree.security_alert_number && (
                     <>
                       <span className="text-border">·</span>
-                      <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />#
-                      {worktree.security_alert_number}
+                      <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />
+                      #{worktree.security_alert_number}
                     </>
                   )}
                   {worktree.advisory_ghsa_id && (
                     <>
                       <span className="text-border">·</span>
                       <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />
-                      <span className="max-w-20 truncate">{worktree.advisory_ghsa_id}</span>
+                      <span className="max-w-20 truncate">
+                        {worktree.advisory_ghsa_id}
+                      </span>
                     </>
                   )}
                 </span>
@@ -563,6 +609,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Get project info
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const project = projects.find(p => p.id === projectId)
+
+  // Open PRs: used to link a worktree's base_branch to a PR number in row badges
+  const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open')
 
   // Get worktrees
   const { data: worktrees = [], isLoading: worktreesLoading } =
@@ -745,7 +794,17 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
               (storeState.sessionLabels[session.id]?.name ?? '')
                 .toLowerCase()
                 .includes(q) ||
-              (worktree.label?.name ?? '').toLowerCase().includes(q)
+              (worktree.label?.name ?? '').toLowerCase().includes(q) ||
+              (worktree.pr_number != null &&
+                worktree.pr_number.toString().includes(q)) ||
+              (worktree.issue_number != null &&
+                worktree.issue_number.toString().includes(q)) ||
+              (worktree.linear_issue_identifier ?? '')
+                .toLowerCase()
+                .includes(q) ||
+              (worktree.security_alert_number != null &&
+                worktree.security_alert_number.toString().includes(q)) ||
+              (worktree.advisory_ghsa_id ?? '').toLowerCase().includes(q)
             )
           })
         : sessions
@@ -788,12 +847,14 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       const sortDiff =
         getWorktreeSortValue(
           b.worktree,
-          latestActivityByWorktreeId.get(b.worktree.id) ?? b.worktree.created_at,
+          latestActivityByWorktreeId.get(b.worktree.id) ??
+            b.worktree.created_at,
           worktreeSortMode
         ) -
         getWorktreeSortValue(
           a.worktree,
-          latestActivityByWorktreeId.get(a.worktree.id) ?? a.worktree.created_at,
+          latestActivityByWorktreeId.get(a.worktree.id) ??
+            a.worktree.created_at,
           worktreeSortMode
         )
       if (sortDiff !== 0) return sortDiff
@@ -1110,8 +1171,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
   // Keep a valid selection when the selected item disappears (archive/delete/close).
   // In list layout this prefers the previous row, matching expected canvas behavior.
+  // Skip while search is active — transient empty filter results should not erase selection memory.
   useEffect(() => {
     if (selectedIndex === null) return
+    if (searchQuery) return
     if (flatCards.length === 0) {
       setSelectedIndex(null)
       highlightedCardRef.current = null
@@ -1136,7 +1199,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     } else {
       highlightedCardRef.current = null
     }
-  }, [flatCards, selectedIndex])
+  }, [flatCards, selectedIndex, searchQuery])
 
   // Auto-open session modal for newly created worktrees
   useEffect(() => {
@@ -1456,9 +1519,13 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     worktreeId: selectedFlatCard?.worktreeId ?? '',
     worktreePath: selectedFlatCard?.worktreePath ?? '',
     onPlanApproval: (card, updatedPlan) =>
-      handlePlanApproval(card, updatedPlan),
+      card.session.backend === 'cursor'
+        ? handleClearContextApprovalBuild(card, updatedPlan)
+        : handlePlanApproval(card, updatedPlan),
     onPlanApprovalYolo: (card, updatedPlan) =>
-      handlePlanApprovalYolo(card, updatedPlan),
+      card.session.backend === 'cursor'
+        ? handleClearContextApproval(card, updatedPlan)
+        : handlePlanApprovalYolo(card, updatedPlan),
     onClearContextApproval: (card, updatedPlan) =>
       handleClearContextApproval(card, updatedPlan),
     onClearContextApprovalBuild: (card, updatedPlan) =>
@@ -1630,22 +1697,42 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   })
 
   // Handle approve from dialog (with updated plan content)
+  // Cursor can't switch modes on a resumed session, so redirect to clear-context (new session)
+  const isDialogCardCursor = planDialogCard?.session.backend === 'cursor'
   const handleDialogApprove = useCallback(
     (updatedPlan: string) => {
       if (planDialogCard) {
-        handlePlanApproval(planDialogCard, updatedPlan)
+        if (isDialogCardCursor) {
+          handleClearContextApprovalBuild(planDialogCard, updatedPlan)
+        } else {
+          handlePlanApproval(planDialogCard, updatedPlan)
+        }
       }
     },
-    [planDialogCard, handlePlanApproval]
+    [
+      planDialogCard,
+      handlePlanApproval,
+      handleClearContextApprovalBuild,
+      isDialogCardCursor,
+    ]
   )
 
   const handleDialogApproveYolo = useCallback(
     (updatedPlan: string) => {
       if (planDialogCard) {
-        handlePlanApprovalYolo(planDialogCard, updatedPlan)
+        if (isDialogCardCursor) {
+          handleClearContextApproval(planDialogCard, updatedPlan)
+        } else {
+          handlePlanApprovalYolo(planDialogCard, updatedPlan)
+        }
       }
     },
-    [planDialogCard, handlePlanApprovalYolo]
+    [
+      planDialogCard,
+      handlePlanApprovalYolo,
+      handleClearContextApproval,
+      isDialogCardCursor,
+    ]
   )
 
   const handleDialogClearContextApprove = useCallback(
@@ -1785,7 +1872,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   ])
 
   // Listen for open-session-modal event (fired by ChatWindow when creating new session inside modal,
-  // or by UnreadBell/UnreadSessionsModal to open a session on the project canvas)
+  // or by UnreadBell to open a session on the project canvas)
   useEffect(() => {
     const handleOpenSessionModal = (
       e: CustomEvent<{
@@ -2020,17 +2107,17 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                 <DropdownMenuContent align="start" className="w-48">
                   <DropdownMenuLabel>Sort worktrees</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                    <DropdownMenuRadioGroup
-                      value={worktreeSortMode}
-                      onValueChange={value =>
-                        useProjectsStore
-                          .getState()
-                          .setProjectCanvasWorktreeSortMode(
-                            projectId,
-                            value as WorktreeSortMode
-                          )
-                      }
-                    >
+                  <DropdownMenuRadioGroup
+                    value={worktreeSortMode}
+                    onValueChange={value =>
+                      useProjectsStore
+                        .getState()
+                        .setProjectCanvasWorktreeSortMode(
+                          projectId,
+                          value as WorktreeSortMode
+                        )
+                    }
+                  >
                     <DropdownMenuRadioItem value="created">
                       Creation date
                     </DropdownMenuRadioItem>
@@ -2194,6 +2281,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                         worktree={section.worktree}
                         projectId={projectId}
                         defaultBranch={project.default_branch}
+                        openPRs={openPRs}
                         cards={section.cards}
                         showDetails={true}
                         isSelected={selectedIndex === currentIndex}

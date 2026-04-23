@@ -176,6 +176,7 @@ function snapshotLg() {
 const serverLg = () => true
 
 export function FloatingDock() {
+  const chatToolbarMounted = useUIStore(state => state.chatToolbarMounted)
   const isMobile = useIsMobile()
   const isLg = useSyncExternalStore(subscribeLg, snapshotLg, serverLg)
   const { data: preferences } = usePreferences()
@@ -216,7 +217,7 @@ export function FloatingDock() {
 
   const activeBackend = (selectedBackend ??
     preferences?.default_backend ??
-    'claude') as 'claude' | 'codex' | 'opencode'
+    'claude') as 'claude' | 'codex' | 'opencode' | 'cursor'
 
   const codexStatus = useCodexCliStatus()
   const codexAuth = useCodexCliAuth({
@@ -393,7 +394,7 @@ export function FloatingDock() {
       DEFAULT_KEYBINDINGS.open_usage_dropdown) as string
   )
   const isWebAccess = !isNativeApp()
-  const showConnectionIndicator = isWebAccess
+  const showConnectionIndicator = isWebAccess && !isMobile
   const showKeybindingHints = isNativeApp() && !isMobile
   const popoverSide = isMobile || isLg ? 'top' : ('right' as const)
   const popoverAlign = isMobile ? 'end' : ('start' as const)
@@ -403,6 +404,11 @@ export function FloatingDock() {
     modalTerminalDockMode === 'bottom'
       ? `calc(${modalTerminalHeight + 8}px + var(--safe-area-bottom))`
       : 'calc(8px + var(--safe-area-bottom))'
+
+  // When the chat toolbar is mounted, the DockBurgerButton there exposes the
+  // same menu — hide this corner dock to avoid duplicate UI and overlap with
+  // the chat textarea.
+  if (chatToolbarMounted) return null
 
   return (
     <div
@@ -527,28 +533,20 @@ export function FloatingDock() {
         </TooltipContent>
       </Tooltip>
 
-      {activeUsageEntry && (
+      {!isMobile && activeUsageEntry && (
         <DropdownMenu open={usageMenuOpen} onOpenChange={setUsageMenuOpen}>
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size={isLg ? 'sm' : 'icon'}
-                  className={
-                    isLg
-                      ? 'h-7 w-[88px] justify-center px-2 text-muted-foreground hover:text-foreground'
-                      : 'h-7 w-7 text-muted-foreground hover:text-foreground'
-                  }
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground xl:w-[88px] xl:justify-center xl:px-2"
                 >
-                  <activeUsageEntry.Icon
-                    className={isLg ? 'mr-1 size-3.5 shrink-0' : 'size-4'}
-                  />
-                  {isLg && (
-                    <span className="text-[11px] leading-none tabular-nums">
-                      {usageBadge.text}
-                    </span>
-                  )}
+                  <activeUsageEntry.Icon className="size-4 shrink-0 xl:mr-1 xl:size-3.5" />
+                  <span className="hidden text-[11px] leading-none tabular-nums xl:inline">
+                    {usageBadge.text}
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>

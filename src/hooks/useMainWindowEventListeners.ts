@@ -428,6 +428,20 @@ function executeKeybindingAction(
         new CustomEvent('scroll-chat', { detail: { direction: 'down' } })
       )
       break
+    case 'scroll_chat_up_small':
+      window.dispatchEvent(
+        new CustomEvent('scroll-chat', {
+          detail: { direction: 'up', amount: 'small' },
+        })
+      )
+      break
+    case 'scroll_chat_down_small':
+      window.dispatchEvent(
+        new CustomEvent('scroll-chat', {
+          detail: { direction: 'down', amount: 'small' },
+        })
+      )
+      break
     case 'search_chat': {
       logger.debug('Keybinding: search_chat')
       const uiStoreSearch = useUIStore.getState()
@@ -510,17 +524,15 @@ export function useMainWindowEventListeners() {
         return
       }
 
-      // Skip when a blocking modal/dialog is open - let it handle its own shortcuts
-      const uiState = useUIStore.getState()
+      // Skip when any modal/dialog is open - let it handle its own shortcuts.
+      // Covers all shadcn/Radix Dialog + AlertDialog instances automatically
+      // (including future modals) via their data-state attribute.
+      // Also skip when a Radix DropdownMenu / Select is open so its built-in
+      // arrow-key navigation isn't hijacked (e.g. by scroll_chat_*).
       if (
-        uiState.loadContextModalOpen ||
-        uiState.magicModalOpen ||
-        uiState.openInModalOpen ||
-        uiState.newWorktreeModalOpen ||
-        uiState.commandPaletteOpen ||
-        uiState.preferencesOpen ||
-        uiState.releaseNotesModalOpen ||
-        uiState.updatePrModalOpen
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]'
+        )
       )
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
@@ -619,6 +631,17 @@ export function useMainWindowEventListeners() {
             )
           ) {
             return
+          }
+          // Scope small-scroll arrow keys to ChatWindow context
+          // so canvas/list arrow navigation still works elsewhere
+          if (
+            action === 'scroll_chat_up_small' ||
+            action === 'scroll_chat_down_small'
+          ) {
+            const chatVisible =
+              !!useChatStore.getState().activeWorktreeId ||
+              useUIStore.getState().sessionChatModalOpen
+            if (!chatVisible) return
           }
           e.preventDefault()
           e.stopPropagation()

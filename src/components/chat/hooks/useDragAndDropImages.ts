@@ -3,14 +3,12 @@ import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
 import type { SaveImageResponse, SaveTextResponse } from '@/types/chat'
-import { MAX_IMAGE_SIZE } from '../image-constants'
+import {
+  ALLOWED_IMAGE_EXTENSIONS,
+  MAX_IMAGE_SIZE,
+  SVG_EXTENSION,
+} from '../image-constants'
 import { isNativeApp } from '@/lib/environment'
-
-/** Allowed file extensions for dropped images */
-const ALLOWED_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp']
-
-/** Extensions handled as text files (vector formats) */
-const TEXT_IMAGE_EXTENSIONS = ['svg']
 
 /** Tracks image paths currently being processed to prevent duplicates */
 const processingPaths = new Set<string>()
@@ -74,8 +72,8 @@ export function useDragAndDropImages(
           const svgPaths: string[] = []
           for (const path of paths) {
             const ext = path.split('.').pop()?.toLowerCase() ?? ''
-            if (ALLOWED_EXTENSIONS.includes(ext)) imagePaths.push(path)
-            else if (TEXT_IMAGE_EXTENSIONS.includes(ext)) svgPaths.push(path)
+            if (ALLOWED_IMAGE_EXTENSIONS.includes(ext)) imagePaths.push(path)
+            else if (ext === SVG_EXTENSION) svgPaths.push(path)
           }
 
           if (imagePaths.length === 0 && svgPaths.length === 0) {

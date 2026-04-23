@@ -1,26 +1,12 @@
 import { memo, useCallback } from 'react'
-import {
-  Brain,
-  ClipboardList,
-  Clock,
-  Hammer,
-  Play,
-  Sparkles,
-  X,
-  Zap,
-} from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { Clock, Play, X } from 'lucide-react'
 import { ImageLightbox } from '@/components/chat/ImageLightbox'
 import { TextFileLightbox } from '@/components/chat/TextFileLightbox'
 import { FileMentionBadge } from '@/components/chat/FileMentionBadge'
 import { SkillBadge } from '@/components/chat/SkillBadge'
+import { MessageSettingsBadges } from '@/components/chat/MessageSettingsBadges'
 import { normalizePath } from '@/lib/path-utils'
 import type { QueuedMessage } from '@/types/chat'
-import {
-  MODEL_OPTIONS,
-  THINKING_LEVEL_OPTIONS,
-  EFFORT_LEVEL_OPTIONS,
-} from '@/components/chat/ChatToolbar'
 import {
   Tooltip,
   TooltipTrigger,
@@ -161,55 +147,14 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
         {/* Message content */}
         <div className="text-sm whitespace-pre-wrap">{message.message}</div>
         {/* Captured settings */}
-        <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
-          {/* Model badge */}
-          <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-            <Sparkles className="h-2.5 w-2.5" />
-            {MODEL_OPTIONS.find(o => o.value === message.model)?.label ??
-              message.model}
-          </span>
-          {/* Mode badge */}
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px]',
-              message.executionMode === 'plan' &&
-                'bg-yellow-500/20 text-yellow-600 dark:text-yellow-400',
-              message.executionMode === 'build' &&
-                'bg-muted/80 text-muted-foreground',
-              message.executionMode === 'yolo' &&
-                'bg-red-500/20 text-red-600 dark:text-red-400'
-            )}
-          >
-            {message.executionMode === 'plan' && (
-              <ClipboardList className="h-2.5 w-2.5" />
-            )}
-            {message.executionMode === 'build' && (
-              <Hammer className="h-2.5 w-2.5" />
-            )}
-            {message.executionMode === 'yolo' && (
-              <Zap className="h-2.5 w-2.5" />
-            )}
-            <span className="capitalize">{message.executionMode}</span>
-          </span>
-          {/* Thinking/Effort level badge */}
-          {message.effortLevel ? (
-            <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              <Brain className="h-2.5 w-2.5" />
-              {
-                EFFORT_LEVEL_OPTIONS.find(o => o.value === message.effortLevel)
-                  ?.label
-              }
-            </span>
-          ) : message.thinkingLevel !== 'off' ? (
-            <span className="inline-flex items-center gap-1 rounded bg-muted/80 px-1.5 py-0.5 text-[10px] text-muted-foreground">
-              <Brain className="h-2.5 w-2.5" />
-              {
-                THINKING_LEVEL_OPTIONS.find(
-                  o => o.value === message.thinkingLevel
-                )?.label
-              }
-            </span>
-          ) : null}
+        <div className="mt-1.5">
+          <MessageSettingsBadges
+            model={message.model}
+            executionMode={message.executionMode}
+            thinkingLevel={message.thinkingLevel}
+            effortLevel={message.effortLevel}
+            isCursor={message.backend === 'cursor'}
+          />
         </div>
       </div>
     </div>

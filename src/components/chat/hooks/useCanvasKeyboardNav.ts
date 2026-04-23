@@ -79,7 +79,8 @@ export function useCanvasKeyboardNav<T>({
         uiState.planDialogOpen ||
         uiState.commandPaletteOpen ||
         uiState.preferencesOpen ||
-        uiState.releaseNotesModalOpen
+        uiState.releaseNotesModalOpen ||
+        uiState.sessionChatModalOpen
       )
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
@@ -87,8 +88,14 @@ export function useCanvasKeyboardNav<T>({
       // Skip if a dialog just closed (prevents Enter/arrow keys leaking from command palette)
       if (Date.now() - lastModalCloseRef.current < 150) return
 
-      // Skip if focus is inside any dialog (catches modals not tracked in UI store)
-      if (document.activeElement?.closest('[role="dialog"]')) return
+      // Skip if focus is inside any dialog or open menu/listbox (Radix DropdownMenu
+      // content uses role="menu"; let those components own arrow-key navigation).
+      if (
+        document.activeElement?.closest(
+          '[role="dialog"], [role="menu"], [role="listbox"]'
+        )
+      )
+        return
 
       if (
         document.activeElement?.tagName === 'INPUT' ||

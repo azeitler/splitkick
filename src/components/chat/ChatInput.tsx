@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useAutoResize } from '@/hooks/use-auto-resize'
 import { invoke } from '@/lib/transport'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
@@ -16,6 +17,7 @@ import type {
   ReadTextResponse,
   ExecutionMode,
 } from '@/types/chat'
+import type { CliBackend } from '@/types/preferences'
 import {
   FileMentionPopover,
   type FileMentionPopoverHandle,
@@ -24,11 +26,8 @@ import { queryClient } from '@/lib/query-client'
 import { fileQueryKeys } from '@/services/files'
 import type { WorktreeFile } from '@/types/chat'
 import { SlashPopover, type SlashPopoverHandle } from './SlashPopover'
-
-import { MAX_IMAGE_SIZE, ALLOWED_IMAGE_TYPES } from './image-constants'
-
-/** Maximum text file size in bytes (10MB) */
-const MAX_TEXT_SIZE = 10 * 1024 * 1024
+import { processAttachmentFile } from './attachment-processing'
+import { IMAGE_ATTACHMENT_ACCEPT, MAX_TEXT_SIZE } from './image-constants'
 
 /** Threshold for saving pasted text as file (2000 chars) */
 const TEXT_PASTE_THRESHOLD = 2000
@@ -46,8 +45,10 @@ interface ChatInputProps {
   onCommandExecute?: (command: ClaudeCommand) => void
   onHasValueChange?: (hasValue: boolean) => void
   onRegisterClearHandler?: (clearHandler: (() => void) | null) => void
+  onRegisterAttachHandler?: (attachHandler: (() => void) | null) => void
   formRef: React.RefObject<HTMLFormElement | null>
   inputRef: React.RefObject<HTMLTextAreaElement | null>
+  installedBackends?: CliBackend[]
 }
 
 export const ChatInput = memo(function ChatInput({
@@ -63,10 +64,14 @@ export const ChatInput = memo(function ChatInput({
   onCommandExecute,
   onHasValueChange,
   onRegisterClearHandler,
+  onRegisterAttachHandler,
   formRef,
   inputRef,
+  installedBackends,
 }: ChatInputProps) {
   const isMobile = useIsMobile()
+  const resizeTextarea = useAutoResize(inputRef)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   // PERFORMANCE: Use uncontrolled input pattern - track value in ref, not state
   // This avoids React re-renders on every keystroke
@@ -135,8 +140,9 @@ export const ChatInput = memo(function ChatInput({
 
     if (inputRef.current) {
       inputRef.current.value = draft
+      resizeTextarea()
     }
-  }, [activeSessionId, inputRef])
+  }, [activeSessionId, inputRef, resizeTextarea])
 
   // Listen for command:focus-chat-input event from command palette
   useEffect(() => {
@@ -166,6 +172,7 @@ export const ChatInput = memo(function ChatInput({
         valueRef.current = ''
         setShowHint(true)
         onHasValueChangeRef.current?.(false)
+        resizeTextarea()
       }
 
       // React to external restores (draft went from empty to non-empty)
@@ -175,9 +182,10 @@ export const ChatInput = memo(function ChatInput({
         valueRef.current = draft
         setShowHint(false)
         onHasValueChangeRef.current?.(true)
+        resizeTextarea()
       }
     })
-  }, [activeSessionId, inputRef])
+  }, [activeSessionId, inputRef, resizeTextarea])
 
   const clearInputState = useCallback(() => {
     clearTimeout(debouncedSaveRef.current)
@@ -187,12 +195,22 @@ export const ChatInput = memo(function ChatInput({
     valueRef.current = ''
     setShowHint(true)
     onHasValueChangeRef.current?.(false)
-  }, [inputRef])
+    resizeTextarea()
+  }, [inputRef, resizeTextarea])
 
   useEffect(() => {
     onRegisterClearHandler?.(clearInputState)
     return () => onRegisterClearHandler?.(null)
   }, [clearInputState, onRegisterClearHandler])
+
+  const handleAttachClick = useCallback(() => {
+    fileInputRef.current?.click()
+  }, [])
+
+  useEffect(() => {
+    onRegisterAttachHandler?.(handleAttachClick)
+    return () => onRegisterAttachHandler?.(null)
+  }, [handleAttachClick, onRegisterAttachHandler])
 
   // Handle textarea value changes
   const handleChange = useCallback(
@@ -449,6 +467,7 @@ export const ChatInput = memo(function ChatInput({
         setShowHint(true)
         const textarea = e.target as HTMLTextAreaElement
         textarea.value = ''
+        resizeTextarea()
       }
       // Shift+Enter adds a new line (default behavior)
     },
@@ -462,6 +481,7 @@ export const ChatInput = memo(function ChatInput({
       canSwitchBackendWithTab,
       onSwitchBackendWithTab,
       isMobile,
+      resizeTextarea,
     ]
   )
 
@@ -503,6 +523,7 @@ export const ChatInput = memo(function ChatInput({
                 .getState()
                 .setInputDraft(activeSessionId, textarea.value)
               onHasValueChangeRef.current?.(Boolean(textarea.value.trim()))
+              resizeTextarea()
             }
 
             const {
@@ -574,103 +595,12 @@ export const ChatInput = memo(function ChatInput({
         if (!item.type.startsWith('image/')) continue
         hasImage = true
 
-        // SVGs are XML text — route through text file path instead of raster image pipeline
-        if (item.type === 'image/svg+xml') {
-          const file = item.getAsFile()
-          if (!file) continue
-          e.preventDefault()
-
-          try {
-            const svgText = await file.text()
-            const result = await invoke<SaveTextResponse>('save_pasted_text', {
-              content: svgText,
-            })
-            const { addPendingTextFile } = useChatStore.getState()
-            addPendingTextFile(activeSessionId, {
-              id: result.id,
-              path: result.path,
-              filename: result.filename,
-              size: result.size,
-              content: svgText,
-            })
-          } catch (error) {
-            console.error('Failed to save SVG:', error)
-            toast.error('Failed to save SVG', {
-              description: String(error),
-            })
-          }
-          continue
-        }
-
-        // Check if it's an allowed type
-        if (!ALLOWED_IMAGE_TYPES.includes(item.type)) {
-          toast.error('Unsupported image type', {
-            description: `Allowed types: PNG, JPEG, GIF, WebP, SVG`,
-          })
-          continue
-        }
-
         const file = item.getAsFile()
         if (!file) continue
 
         // Prevent default paste (we're handling it)
         e.preventDefault()
-
-        // Check size limit
-        if (file.size > MAX_IMAGE_SIZE) {
-          toast.error('Image too large', {
-            description: 'Maximum size is 10MB',
-          })
-          continue
-        }
-
-        // Read as base64 and save to disk
-        const reader = new FileReader()
-        reader.onload = async event => {
-          const dataUrl = event.target?.result as string
-          if (!dataUrl) return
-
-          // Extract base64 data (remove data URL prefix)
-          const base64Data = dataUrl.split(',')[1]
-          if (!base64Data) return
-
-          // Add loading placeholder immediately
-          const placeholderId = `loading-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`
-          const { addPendingImage, updatePendingImage, removePendingImage } =
-            useChatStore.getState()
-          addPendingImage(activeSessionId, {
-            id: placeholderId,
-            path: '',
-            filename: 'Processing...',
-            loading: true,
-          })
-
-          try {
-            // Save to disk via Tauri command (resizes/compresses)
-            const result = await invoke<SaveImageResponse>(
-              'save_pasted_image',
-              {
-                data: base64Data,
-                mimeType: file.type,
-              }
-            )
-
-            // Replace loading placeholder with actual image
-            updatePendingImage(activeSessionId, placeholderId, {
-              id: result.id,
-              path: result.path,
-              filename: result.filename,
-              loading: false,
-            })
-          } catch (error) {
-            console.error('Failed to save image:', error)
-            removePendingImage(activeSessionId, placeholderId)
-            toast.error('Failed to save image', {
-              description: String(error),
-            })
-          }
-        }
-        reader.readAsDataURL(file)
+        await processAttachmentFile(file, activeSessionId)
       }
 
       // If we handled an image, don't also process text
@@ -812,7 +742,24 @@ export const ChatInput = memo(function ChatInput({
         }
       }
     },
-    [activeSessionId, activeWorktreePath, inputRef]
+    [activeSessionId, activeWorktreePath, inputRef, resizeTextarea]
+  )
+
+  const handleFileInputChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!activeSessionId) return
+
+      const files = e.target.files
+      if (!files || files.length === 0) return
+
+      for (const file of Array.from(files)) {
+        await processAttachmentFile(file, activeSessionId)
+      }
+
+      e.target.value = ''
+      inputRef.current?.focus()
+    },
+    [activeSessionId, inputRef]
   )
 
   // Handle file selection from @ mention popover
@@ -837,6 +784,7 @@ export const ChatInput = memo(function ChatInput({
         // PERFORMANCE: Update DOM directly, no React render
         inputRef.current.value = newValue
         valueRef.current = newValue
+        resizeTextarea()
 
         // Set cursor position after the inserted filename
         requestAnimationFrame(() => {
@@ -853,7 +801,7 @@ export const ChatInput = memo(function ChatInput({
       // Refocus input
       inputRef.current?.focus()
     },
-    [activeSessionId, atTriggerIndex, inputRef]
+    [activeSessionId, atTriggerIndex, inputRef, resizeTextarea]
   )
 
   // Handle skill selection from / mention popover
@@ -876,6 +824,7 @@ export const ChatInput = memo(function ChatInput({
         // PERFORMANCE: Update DOM directly, no React render
         inputRef.current.value = newValue
         valueRef.current = newValue
+        resizeTextarea()
 
         // Cancel pending debounced save (it still has the old "/query" value)
         // and sync cleaned value to store immediately
@@ -897,7 +846,7 @@ export const ChatInput = memo(function ChatInput({
       // Refocus input
       inputRef.current?.focus()
     },
-    [activeSessionId, slashTriggerIndex, inputRef]
+    [activeSessionId, slashTriggerIndex, inputRef, resizeTextarea]
   )
 
   // Handle command selection from / mention popover (executes immediately)
@@ -914,6 +863,7 @@ export const ChatInput = memo(function ChatInput({
       if (activeSessionId) {
         useChatStore.getState().setInputDraft(activeSessionId, '')
       }
+      resizeTextarea()
 
       // Reset slash popover state
       setSlashPopoverOpen(false)
@@ -924,7 +874,7 @@ export const ChatInput = memo(function ChatInput({
       // Notify parent to execute command
       onCommandExecute?.(command)
     },
-    [activeSessionId, inputRef, onCommandExecute]
+    [activeSessionId, inputRef, onCommandExecute, resizeTextarea]
   )
 
   // Determine if slash is at prompt start (for enabling commands)
@@ -935,7 +885,16 @@ export const ChatInput = memo(function ChatInput({
       valueRef.current.slice(0, slashTriggerIndex).trim() === '')
 
   return (
-    <div className="relative">
+    <div className="relative min-w-0">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept={IMAGE_ATTACHMENT_ACCEPT}
+        multiple
+        tabIndex={-1}
+        className="sr-only"
+        onChange={handleFileInputChange}
+      />
       <Textarea
         ref={inputRef}
         placeholder={
@@ -958,7 +917,7 @@ export const ChatInput = memo(function ChatInput({
         onKeyDown={handleKeyDown}
         onPaste={handlePaste}
         disabled={false}
-        className="custom-scrollbar min-h-[40px] max-h-[240px] w-full resize-none overflow-y-auto  border-0 dark:bg-transparent p-0 font-mono text-base shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 md:text-sm"
+        className="custom-scrollbar min-h-[40px] max-h-[50vh] w-full resize-none overflow-x-hidden overflow-y-auto border-0 dark:bg-transparent p-0 font-mono text-base shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 md:text-sm"
         rows={1}
         autoFocus={!isMobile}
       />
@@ -993,6 +952,7 @@ export const ChatInput = memo(function ChatInput({
         isAtPromptStart={isSlashAtPromptStart}
         worktreePath={activeWorktreePath}
         handleRef={slashPopoverHandleRef}
+        installedBackends={installedBackends}
       />
     </div>
   )

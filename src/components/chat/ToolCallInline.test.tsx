@@ -1,8 +1,47 @@
 import { fireEvent, render, screen } from '@/test/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ToolCallInline } from './ToolCallInline'
 
+vi.mock('@/services/preferences', () => ({
+  usePreferences: () => ({ data: undefined }),
+}))
+
 describe('ToolCallInline', () => {
+  it('renders Cursor EnterPlanMode instructions', () => {
+    render(
+      <ToolCallInline
+        toolCall={{
+          id: 'tool-enter-plan-1',
+          name: 'EnterPlanMode',
+          input: {
+            title: 'Plan mode instructions',
+            instructions: [
+              'Read/analyze only; do not write, edit, or create files.',
+              'Do not run mutating commands.',
+            ],
+          },
+        }}
+      />
+    )
+
+    expect(screen.getByText('Entered plan mode')).toBeInTheDocument()
+    expect(
+      screen.getByText('Read-only analysis instructions')
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button'))
+
+    expect(screen.getByText('Plan mode instructions:')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        'Read/analyze only; do not write, edit, or create files.'
+      )
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('Do not run mutating commands.')
+    ).toBeInTheDocument()
+  })
+
   it('renders OpenCode ToolSearch calls without the unhandled fallback', () => {
     render(
       <ToolCallInline

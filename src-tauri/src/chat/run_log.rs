@@ -14,7 +14,8 @@ use super::storage::{
     get_session_dir, list_all_session_ids, load_metadata, save_metadata, with_metadata_mut,
 };
 use super::types::{
-    Backend, ChatMessage, ContentBlock, MessageRole, RunEntry, RunStatus, ToolCall, UsageData,
+    Backend, ChatMessage, ContentBlock, LoadedMessages, MessageRole, RunEntry, RunStatus, ToolCall,
+    UsageData,
 };
 
 // ============================================================================
@@ -235,6 +236,57 @@ impl RunLogWriter {
         })
     }
 
+    /// Set the Codex thread ID and (optionally) turn ID on the run entry.
+    /// Called after thread/start or thread/resume returns the thread ID,
+    /// and again after turn/started returns the turn ID.
+    pub fn set_codex_ids(&mut self, thread_id: &str, turn_id: Option<&str>) -> Result<(), String> {
+        let run_id = self.run_id.clone();
+        let tid = thread_id.to_string();
+        let tuid = turn_id.map(|s| s.to_string());
+
+        with_metadata_mut(
+            &self.app,
+            &self.session_id,
+            &self.worktree_id,
+            &self.session_name,
+            self.order,
+            |metadata| {
+                if let Some(run) = metadata.find_run_mut(&run_id) {
+                    run.codex_thread_id = Some(tid);
+                    run.codex_turn_id = tuid;
+                }
+                Ok(())
+            },
+        )?;
+
+        log::trace!(
+            "Set codex IDs for run {}: thread={thread_id}, turn={turn_id:?}",
+            self.run_id
+        );
+        Ok(())
+    }
+
+    /// Clear the Codex turn ID (turn completed successfully).
+    pub fn clear_codex_turn_id(&mut self) -> Result<(), String> {
+        let run_id = self.run_id.clone();
+
+        with_metadata_mut(
+            &self.app,
+            &self.session_id,
+            &self.worktree_id,
+            &self.session_name,
+            self.order,
+            |metadata| {
+                if let Some(run) = metadata.find_run_mut(&run_id) {
+                    run.codex_turn_id = None;
+                }
+                Ok(())
+            },
+        )?;
+
+        Ok(())
+    }
+
     /// Mark the run as crashed (used when resume fails)
     pub fn crash(&mut self) -> Result<(), String> {
         let now = now_timestamp();
@@ -329,6 +381,9 @@ pub fn start_run(
         claude_session_id: None,
         pid: None,   // Set later via set_pid() after spawning detached process
         usage: None, // Set on completion via complete()
+        codex_thread_id: None,
+        codex_turn_id: None,
+        cursor_chat_id: None,
     };
 
     with_metadata_mut(
@@ -471,6 +526,9 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
     // Used to filter out denied blocking tools (AskUserQuestion/ExitPlanMode)
     // that Claude retried multiple times.
     let mut errored_tool_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+    // OpenCode echoes the user prompt as the first text block in assistant messages.
+    // Skip it during replay so the prompt doesn't appear twice.
+    let mut skipped_prompt_echo = false;
 
     for line in lines {
         if line.trim().is_empty() {
@@ -514,6 +572,13 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                                         // Skip CLI placeholder text emitted when extended
                                         // thinking starts before any real text content
                                         if text == "(no content)" {
+                                            continue;
+                                        }
+                                        if !skipped_prompt_echo
+                                            && content_blocks.is_empty()
+                                            && text.trim() == run.user_message.trim()
+                                        {
+                                            skipped_prompt_echo = true;
                                             continue;
                                         }
                                         content.push_str(text);
@@ -680,16 +745,31 @@ fn should_inject_synthetic_exit_plan(
 ) -> bool {
     // Codex history recovery is handled in parse_codex_run_to_message(), which
     // now covers both structured plan events and plain-text final answers.
-    matches!(backend, Backend::Opencode)
-        && run.status == RunStatus::Completed
+    let base_match = run.status == RunStatus::Completed
         && run.execution_mode.as_deref() == Some("plan")
         && !assistant_msg.cancelled
         && !assistant_msg.content.trim().is_empty()
         && !assistant_msg
             .tool_calls
             .iter()
-            .any(|tc| tc.name == "ExitPlanMode" || tc.name == "CodexPlan")
+            .any(|tc| tc.name == "ExitPlanMode" || tc.name == "CodexPlan");
+
+    match backend {
+        Backend::Opencode => base_match,
+        Backend::Cursor => false, // Plan approval only on real createPlanToolCall / interaction_query
+        _ => false,
+    }
 }
+
+fn should_inject_synthetic_enter_plan(
+    _backend: &Backend,
+    _run: &RunEntry,
+    _assistant_msg: &ChatMessage,
+) -> bool {
+    false
+}
+
+fn inject_synthetic_enter_plan(_run_id: &str, _assistant_msg: &mut ChatMessage) {}
 
 fn inject_synthetic_exit_plan(backend: &Backend, run_id: &str, assistant_msg: &mut ChatMessage) {
     let synthetic_id = format!("synthetic-exit-plan-{run_id}");
@@ -733,23 +813,47 @@ pub fn load_session_messages(
     app: &tauri::AppHandle,
     session_id: &str,
 ) -> Result<Vec<ChatMessage>, String> {
+    Ok(load_session_messages_window(app, session_id, None, None)?.messages)
+}
+
+/// Load a window of messages for a session by parsing JSONL files.
+///
+/// - `limit`: max number of runs (most recent within window) to parse. `None` = all.
+/// - `before_run_index`: only parse runs strictly before this index. `None` = up to end.
+///
+/// Returned `LoadedMessages.loaded_run_start_index` is the index of the first run actually
+/// parsed; subsequent paginated loads should pass that value as `before_run_index`.
+pub fn load_session_messages_window(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    limit: Option<usize>,
+    before_run_index: Option<usize>,
+) -> Result<LoadedMessages, String> {
     let metadata = match load_metadata(app, session_id)? {
         Some(m) => m,
         None => {
             log::debug!("[LoadMessages] session={session_id} no metadata found");
-            return Ok(vec![]);
+            return Ok(LoadedMessages {
+                messages: vec![],
+                total_runs: 0,
+                loaded_run_start_index: 0,
+            });
         }
     };
 
+    let total_runs = metadata.runs.len();
+    let end = before_run_index.unwrap_or(total_runs).min(total_runs);
+    let start = limit.map_or(0, |n| end.saturating_sub(n));
+
     log::debug!(
-        "[LoadMessages] session={session_id} metadata has {} runs (backend={:?})",
-        metadata.runs.len(),
+        "[LoadMessages] session={session_id} metadata has {} runs (backend={:?}) — window [{start}..{end}]",
+        total_runs,
         metadata.backend
     );
 
     let mut messages = Vec::new();
 
-    for run in &metadata.runs {
+    for run in &metadata.runs[start..end] {
         // Skip user message for instant-cancelled runs (undo_send)
         // These have Cancelled status but no assistant_message_id
         let is_undo_send = run.status == RunStatus::Cancelled && run.assistant_message_id.is_none();
@@ -801,9 +905,32 @@ pub fn load_session_messages(
             } else {
                 parse_run_to_message(&lines, run)?
             };
+            let is_cursor_run = run
+                .model
+                .as_deref()
+                .map(crate::is_cursor_model)
+                .unwrap_or(metadata.backend == Backend::Cursor);
+            if is_cursor_run {
+                let original_content = assistant_msg.content.clone();
+                let normalized_content = super::cursor::normalize_cursor_content(&original_content);
+                if normalized_content != assistant_msg.content {
+                    assistant_msg.content = normalized_content.clone();
+                    if let Some(ContentBlock::Text { text }) = assistant_msg
+                        .content_blocks
+                        .iter_mut()
+                        .find(|block| matches!(block, ContentBlock::Text { text } if text == &original_content))
+                    {
+                        *text = normalized_content;
+                    }
+                }
+            }
             assistant_msg.session_id = session_id.to_string();
             if run.status == RunStatus::Running {
                 assistant_msg.id = format!("running-{}", run.run_id);
+            }
+
+            if should_inject_synthetic_enter_plan(&metadata.backend, run, &assistant_msg) {
+                inject_synthetic_enter_plan(&run.run_id, &mut assistant_msg);
             }
 
             // OpenCode/Codex can complete plan-mode runs without a native
@@ -852,7 +979,11 @@ pub fn load_session_messages(
         }
     }
 
-    Ok(messages)
+    Ok(LoadedMessages {
+        messages,
+        total_runs,
+        loaded_run_start_index: start,
+    })
 }
 
 #[cfg(test)]
@@ -877,6 +1008,9 @@ mod tests {
             claude_session_id: None,
             pid: None,
             usage: None,
+            codex_thread_id: None,
+            codex_turn_id: None,
+            cursor_chat_id: None,
         }
     }
 
@@ -951,6 +1085,43 @@ mod tests {
             &run,
             &msg,
         ));
+    }
+
+    #[test]
+    fn does_not_inject_for_cursor_when_text_is_not_a_plan() {
+        let run = sample_run();
+        let msg = ChatMessage {
+            content: "Hi — what would you like me to plan?".to_string(),
+            ..sample_assistant_message()
+        };
+
+        assert!(!should_inject_synthetic_exit_plan(
+            &Backend::Cursor,
+            &run,
+            &msg,
+        ));
+    }
+
+    #[test]
+    fn should_inject_synthetic_enter_plan_always_returns_false() {
+        let run = sample_run();
+        let msg = sample_assistant_message();
+
+        assert!(!should_inject_synthetic_enter_plan(
+            &Backend::Cursor,
+            &run,
+            &msg,
+        ));
+    }
+
+    #[test]
+    fn inject_synthetic_enter_plan_is_noop_for_cursor() {
+        let mut msg = sample_assistant_message();
+        let before_tool_count = msg.tool_calls.len();
+
+        inject_synthetic_enter_plan("run-123", &mut msg);
+
+        assert_eq!(msg.tool_calls.len(), before_tool_count);
     }
 }
 
@@ -1216,6 +1387,31 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
                                 metadata.claude_session_id = Some(sid);
                             }
                         }
+                    } else if run.codex_thread_id.is_some() {
+                        // Codex sessions can be resumed via thread/resume even after
+                        // Jean crashes — threads are persisted to disk by app-server.
+                        // Mark as Resumable so resume_session can recover them.
+                        run.status = RunStatus::Resumable;
+
+                        recovered.push(RecoveredRun {
+                            session_id: session_id.clone(),
+                            worktree_id: metadata.worktree_id.clone(),
+                            run_id: run.run_id.clone(),
+                            user_message: run.user_message.clone(),
+                            resumable: true,
+                            execution_mode: run.execution_mode.clone(),
+                            started_at: run.started_at,
+                        });
+
+                        log::trace!(
+                            "Found resumable Codex run: {} in session {} (thread_id: {:?})",
+                            run.run_id,
+                            session_id,
+                            run.codex_thread_id
+                        );
+
+                        modified = true;
+                        continue;
                     } else {
                         run.status = RunStatus::Crashed;
                     }

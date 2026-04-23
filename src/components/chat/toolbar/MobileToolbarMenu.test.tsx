@@ -36,11 +36,11 @@ describe('MobileToolbarMenu', () => {
         selectedBackend="claude"
         selectedProvider={null}
         backendModelLabel="Claude · Sonnet"
+        backendModelLabelText="Claude · Sonnet"
         selectedEffortLevel="medium"
         selectedThinkingLevel="think"
         useAdaptiveThinking={false}
         isCodex={false}
-        executionMode="build"
         customCliProfiles={[]}
         uncommittedAdded={0}
         uncommittedRemoved={0}
@@ -60,7 +60,6 @@ describe('MobileToolbarMenu', () => {
         onMerge={vi.fn()}
         onResolveConflicts={vi.fn()}
         onOpenBackendModelPicker={onOpenBackendModelPicker}
-        onSetExecutionMode={vi.fn()}
         handlePullClick={vi.fn()}
         handlePushClick={vi.fn()}
         handleUncommittedDiffClick={vi.fn()}
@@ -87,11 +86,12 @@ describe('MobileToolbarMenu', () => {
       />
     )
 
-    await user.click(screen.getByRole('button'))
+    await user.click(screen.getByRole('button', { name: /more actions/i }))
 
     expect(screen.getByText('Backend / Model')).toBeInTheDocument()
     expect(screen.queryByText(/^Backend$/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Model$/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Mode$/)).not.toBeInTheDocument()
 
     await user.click(screen.getByText('Backend / Model'))
 

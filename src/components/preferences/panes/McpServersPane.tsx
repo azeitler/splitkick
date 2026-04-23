@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
+import { BackendLabel } from '@/components/ui/backend-label'
 import { cn } from '@/lib/utils'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import {
@@ -16,7 +17,6 @@ import {
   getNewServersToAutoEnable,
   useAllBackendsMcpHealth,
   groupServersByBackend,
-  BACKEND_LABELS,
   mcpKey,
   migrateLegacyMcpKeys,
 } from '@/services/mcp'
@@ -24,19 +24,7 @@ import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useChatStore } from '@/store/chat-store'
 import type { McpHealthStatus } from '@/types/chat'
 import type { CliBackend } from '@/types/preferences'
-
-const SettingsSection: React.FC<{
-  title: string
-  children: React.ReactNode
-}> = ({ title, children }) => (
-  <div className="space-y-4">
-    <div>
-      <h3 className="text-lg font-medium text-foreground">{title}</h3>
-      <Separator className="mt-2" />
-    </div>
-    {children}
-  </div>
-)
+import { SettingsSection } from '../SettingsSection'
 
 function mcpAuthHint(backend: CliBackend): string {
   switch (backend) {
@@ -44,6 +32,8 @@ function mcpAuthHint(backend: CliBackend): string {
       return "Run 'codex mcp auth' in your terminal to authenticate"
     case 'opencode':
       return "Run 'opencode mcp auth' in your terminal to authenticate"
+    case 'cursor':
+      return "Run 'cursor-agent mcp login <server>' in your terminal to authenticate"
     default:
       return "Run 'claude /mcp' in your terminal to authenticate"
   }
@@ -132,7 +122,7 @@ export const McpServersPane: React.FC = () => {
     statuses: healthStatuses,
     isFetching: isHealthChecking,
     refetchAll: checkHealth,
-  } = useAllBackendsMcpHealth(installedBackends)
+  } = useAllBackendsMcpHealth(installedBackends, activeWorktreePath)
 
   // Re-read MCP config from disk and trigger health check every time this pane is opened
   useEffect(() => {
@@ -196,7 +186,10 @@ export const McpServersPane: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <SettingsSection title="Default MCP Servers">
+      <SettingsSection
+        title="Default MCP Servers"
+        anchorId="pref-mcp-section-default-servers"
+      >
         <p className="text-sm text-muted-foreground">
           Selected servers will be enabled by default in new sessions. You can
           override per-session from the toolbar.
@@ -218,7 +211,7 @@ export const McpServersPane: React.FC = () => {
                 {showSectionHeaders && (
                   <div className="flex items-center gap-2 pt-1">
                     <span className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                      {BACKEND_LABELS[backend]}
+                      <BackendLabel backend={backend} />
                     </span>
                     <Separator className="flex-1" />
                   </div>

@@ -1,18 +1,12 @@
 import {
   Brain,
   CircleDot,
-  ClipboardList,
   ExternalLink,
   FolderOpen,
   GitMerge,
   GitPullRequest,
-  Hammer,
-  Loader2,
-  Plug,
   Shield,
   ShieldAlert,
-  Wand2,
-  Zap,
 } from 'lucide-react'
 import { useCallback } from 'react'
 import { Kbd } from '@/components/ui/kbd'
@@ -23,7 +17,6 @@ import {
 } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -57,12 +50,6 @@ import type {
 import { openExternal } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import {
-  McpStatusDot,
-  mcpStatusHint,
-} from '@/components/chat/toolbar/McpStatusDot'
-import { groupServersByBackend, BACKEND_LABELS } from '@/services/mcp'
-import type { CliBackend } from '@/types/preferences'
-import {
   EFFORT_LEVEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
@@ -71,10 +58,12 @@ import {
   getProviderDisplayName,
 } from '@/components/chat/toolbar/toolbar-utils'
 import { DesktopBackendModelPicker } from '@/components/chat/toolbar/DesktopBackendModelPicker'
+import { ExecutionModeDropdown } from '@/components/chat/toolbar/ExecutionModeDropdown'
+import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
 
 interface DesktopToolbarControlsProps {
   hasPendingQuestions: boolean
-  selectedBackend: 'claude' | 'codex' | 'opencode'
+  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor'
   selectedModel: string
   selectedProvider: string | null
   selectedThinkingLevel: ThinkingLevel
@@ -118,13 +107,15 @@ interface DesktopToolbarControlsProps {
   onOpenProjectSettings?: () => void
   onResolvePrConflicts: () => void
   onLoadContext: () => void
-  installedBackends: ('claude' | 'codex' | 'opencode')[]
+  onAttach: () => void
+  installedBackends: ('claude' | 'codex' | 'opencode' | 'cursor')[]
   onSetExecutionMode: (mode: ExecutionMode) => void
+  availableExecutionModes: ExecutionMode[]
   onToggleMcpServer: (name: string) => void
 
   handleModelChange: (value: string) => void
   handleBackendModelChange: (
-    backend: 'claude' | 'codex' | 'opencode',
+    backend: 'claude' | 'codex' | 'opencode' | 'cursor',
     model: string
   ) => void
   handleProviderChange: (value: string) => void
@@ -158,11 +149,11 @@ export function DesktopToolbarControls({
   checkStatus: _checkStatus,
   mergeableStatus,
   activeWorktreePath: _activeWorktreePath,
-  availableMcpServers,
-  enabledMcpServers,
+  availableMcpServers: _availableMcpServers,
+  enabledMcpServers: _enabledMcpServers,
   activeMcpCount,
-  isHealthChecking,
-  mcpStatuses,
+  isHealthChecking: _isHealthChecking,
+  mcpStatuses: _mcpStatuses,
   loadedIssueContexts,
   loadedPRContexts,
   loadedSecurityContexts,
@@ -171,17 +162,19 @@ export function DesktopToolbarControls({
   attachedSavedContexts,
   providerDropdownOpen,
   thinkingDropdownOpen,
-  mcpDropdownOpen,
+  mcpDropdownOpen: _mcpDropdownOpen,
   setProviderDropdownOpen,
   setThinkingDropdownOpen,
-  onMcpDropdownOpenChange,
-  onOpenMagicModal,
-  onOpenProjectSettings,
+  onMcpDropdownOpenChange: _onMcpDropdownOpenChange,
+  onOpenMagicModal: _onOpenMagicModal,
+  onOpenProjectSettings: _onOpenProjectSettings,
   onResolvePrConflicts,
   onLoadContext,
+  onAttach,
   installedBackends,
   onSetExecutionMode,
-  onToggleMcpServer,
+  availableExecutionModes,
+  onToggleMcpServer: _onToggleMcpServer,
   handleModelChange,
   handleBackendModelChange,
   handleProviderChange,
@@ -208,129 +201,12 @@ export function DesktopToolbarControls({
   const loadedLinearCount = loadedLinearContexts.length
   const loadedContextCount = attachedSavedContexts.length
   const providerDisplayName = getProviderDisplayName(selectedProvider)
-  const executionModeLabel =
-    executionMode.charAt(0).toUpperCase() + executionMode.slice(1)
 
   return (
     <>
-      <div className="block @xl:hidden h-4 w-px bg-border/50" />
+      <DockBurgerButton activeMcpCount={activeMcpCount} onAttach={onAttach} />
 
-      <button
-        type="button"
-        className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-        disabled={hasPendingQuestions}
-        onClick={onOpenMagicModal}
-      >
-        <Wand2 className="h-3.5 w-3.5" />
-      </button>
-
-      <div className="hidden @xl:block h-4 w-px bg-border/50" />
-
-      <DropdownMenu
-        open={mcpDropdownOpen}
-        onOpenChange={onMcpDropdownOpenChange}
-      >
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={hasPendingQuestions}
-                className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              >
-                <Plug
-                  className={cn(
-                    'h-3.5 w-3.5',
-                    activeMcpCount > 0 &&
-                      'text-emerald-600 dark:text-emerald-400'
-                  )}
-                />
-                {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
-              </button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>
-            {activeMcpCount > 0
-              ? `${activeMcpCount} MCP server(s) enabled`
-              : 'No MCP servers enabled'}
-          </TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel className="flex items-center gap-2">
-            MCP Servers
-            {isHealthChecking && (
-              <Loader2 className="size-3 animate-spin text-muted-foreground" />
-            )}
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {availableMcpServers.length > 0 ? (
-            (() => {
-              const grouped = groupServersByBackend(availableMcpServers)
-              const backends = Object.keys(grouped) as CliBackend[]
-              const showHeaders = backends.length > 1
-              return backends.map((backend, idx) => (
-                <div key={backend}>
-                  {showHeaders && (
-                    <>
-                      {idx > 0 && <DropdownMenuSeparator />}
-                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium py-1">
-                        {BACKEND_LABELS[backend] ?? backend}
-                      </DropdownMenuLabel>
-                    </>
-                  )}
-                  {(grouped[backend] ?? []).map(server => {
-                    const status = mcpStatuses?.[server.name]
-                    const hint = mcpStatusHint(status)
-                    const item = (
-                      <DropdownMenuCheckboxItem
-                        key={`${backend}-${server.name}`}
-                        checked={
-                          !server.disabled &&
-                          enabledMcpServers.includes(server.name)
-                        }
-                        onCheckedChange={() => onToggleMcpServer(server.name)}
-                        disabled={server.disabled}
-                        className={server.disabled ? 'opacity-50' : undefined}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <McpStatusDot status={status} />
-                          {server.name}
-                        </span>
-                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                          {server.disabled ? 'disabled' : server.scope}
-                        </span>
-                      </DropdownMenuCheckboxItem>
-                    )
-                    if (!hint) return item
-                    return (
-                      <Tooltip key={`${backend}-${server.name}`}>
-                        <TooltipTrigger asChild>{item}</TooltipTrigger>
-                        <TooltipContent side="left">{hint}</TooltipContent>
-                      </Tooltip>
-                    )
-                  })}
-                </div>
-              ))
-            })()
-          ) : (
-            <DropdownMenuItem disabled>
-              <span className="text-xs text-muted-foreground">
-                No MCP servers configured
-              </span>
-            </DropdownMenuItem>
-          )}
-          {onOpenProjectSettings && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={onOpenProjectSettings}>
-                <span className="text-xs text-muted-foreground">
-                  Set defaults in project settings
-                </span>
-              </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <div className="h-4 w-px bg-border/50" />
 
       {(loadedIssueCount > 0 ||
         loadedPRCount > 0 ||
@@ -348,14 +224,11 @@ export function DesktopToolbarControls({
                 <CircleDot className="h-3.5 w-3.5" />
                 <span>
                   {[
-                    loadedIssueCount > 0 &&
-                      `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`,
-                    loadedPRCount > 0 &&
-                      `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`,
+                    loadedIssueCount > 0 && `${loadedIssueCount}`,
+                    loadedPRCount > 0 && `${loadedPRCount}`,
                     loadedSecurityCount > 0 && `${loadedSecurityCount}`,
-                    loadedLinearCount > 0 && `${loadedLinearCount} Linear`,
-                    loadedContextCount > 0 &&
-                      `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`,
+                    loadedLinearCount > 0 && `${loadedLinearCount}`,
+                    loadedContextCount > 0 && `${loadedContextCount}`,
                   ]
                     .filter(Boolean)
                     .join(', ')}
@@ -808,63 +681,14 @@ export function DesktopToolbarControls({
 
       <div className="hidden @xl:block h-4 w-px bg-border/50" />
 
-      <DropdownMenu>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={hasPendingQuestions}
-                className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              >
-                {executionMode === 'plan' && (
-                  <ClipboardList className="h-3.5 w-3.5 text-yellow-600 dark:text-yellow-400" />
-                )}
-                {executionMode === 'build' && (
-                  <Hammer className="h-3.5 w-3.5" />
-                )}
-                {executionMode === 'yolo' && (
-                  <Zap className="h-3.5 w-3.5 text-red-500 dark:text-red-400" />
-                )}
-                <span>{executionModeLabel}</span>
-              </button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>
-            {`${executionModeLabel} mode (Shift+Tab to cycle)`}
-          </TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="start" onCloseAutoFocus={focusChatInput}>
-          <DropdownMenuRadioGroup
-            value={executionMode}
-            onValueChange={v => onSetExecutionMode(v as ExecutionMode)}
-          >
-            <DropdownMenuRadioItem value="plan">
-              <ClipboardList className="mr-2 h-4 w-4" />
-              Plan
-              <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                Read-only
-              </span>
-            </DropdownMenuRadioItem>
-            <DropdownMenuRadioItem value="build">
-              <Hammer className="mr-2 h-4 w-4" />
-              Build
-              <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                Auto-edits
-              </span>
-            </DropdownMenuRadioItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuRadioItem
-              value="yolo"
-              className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
-            >
-              <Zap className="mr-2 h-4 w-4" />
-              Yolo
-              <span className="ml-auto pl-4 text-xs">No limits!</span>
-            </DropdownMenuRadioItem>
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <ExecutionModeDropdown
+        executionMode={executionMode}
+        availableModes={availableExecutionModes}
+        disabled={hasPendingQuestions}
+        onSetExecutionMode={onSetExecutionMode}
+        className="hidden @xl:flex"
+        onCloseAutoFocus={focusChatInput}
+      />
     </>
   )
 }

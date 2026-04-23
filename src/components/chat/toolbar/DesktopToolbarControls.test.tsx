@@ -20,9 +20,9 @@ vi.stubGlobal('ResizeObserver', ResizeObserverMock)
 HTMLCanvasElement.prototype.getContext = vi.fn(() => null)
 Element.prototype.scrollIntoView = vi.fn()
 
-vi.mock('@/lib/platform', async importOriginal => {
+vi.mock('@/lib/platform', async () => {
   const actual =
-    await importOriginal<typeof import('@/lib/platform')>()
+    await vi.importActual<typeof import('@/lib/platform')>('@/lib/platform') // eslint-disable-line @typescript-eslint/consistent-type-imports
 
   return {
     ...actual,
@@ -76,8 +76,10 @@ function renderDesktopToolbarControls(
     onOpenProjectSettings: vi.fn(),
     onResolvePrConflicts: vi.fn(),
     onLoadContext: vi.fn(),
+    onAttach: vi.fn(),
     installedBackends: ['claude', 'codex', 'opencode'],
     onSetExecutionMode: vi.fn(),
+    availableExecutionModes: ['plan', 'build', 'yolo'],
     onToggleMcpServer: vi.fn(),
     handleModelChange: vi.fn(),
     handleBackendModelChange: vi.fn(),

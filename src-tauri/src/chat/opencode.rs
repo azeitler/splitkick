@@ -1953,6 +1953,11 @@ pub fn execute_opencode_http(
         .cloned()
         .unwrap_or_default();
 
+    // OpenCode echoes the user prompt as the first text part in the response.
+    // Track whether we've seen a non-text part so we only skip the leading echo.
+    let mut seen_non_text = false;
+    let trimmed_prompt = prompt.trim();
+
     for part in parts {
         // Re-check cancel flag per part: if user cancelled while POST was in-flight,
         // suppress event emission to avoid re-adding content after chat:cancelled
@@ -1962,6 +1967,13 @@ pub fn execute_opencode_http(
         match part.get("type").and_then(|v| v.as_str()) {
             Some("text") => {
                 if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                    // Skip user prompt echo: OpenCode includes the user message as
+                    // the first text part before any reasoning/tool parts.
+                    if !seen_non_text && content_blocks.is_empty() && text.trim() == trimmed_prompt
+                    {
+                        log::trace!("OpenCode: skipping echoed user prompt in response parts");
+                        continue;
+                    }
                     if !text.is_empty() {
                         if !content.is_empty() {
                             content.push_str("\n\n");
@@ -1984,6 +1996,7 @@ pub fn execute_opencode_http(
                 }
             }
             Some("reasoning") => {
+                seen_non_text = true;
                 if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
                     content_blocks.push(ContentBlock::Thinking {
                         thinking: text.to_string(),
@@ -2001,6 +2014,7 @@ pub fn execute_opencode_http(
                 }
             }
             Some("tool") => {
+                seen_non_text = true;
                 let raw_tool_name = part.get("tool").and_then(|v| v.as_str()).unwrap_or("tool");
                 let tool_call_id = part
                     .get("callID")

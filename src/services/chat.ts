@@ -13,21 +13,29 @@ import type {
   ArchivedSessionEntry,
   ChatMessage,
   ChatHistory,
+  LoadedMessages,
   Session,
   WorktreeSessions,
   Question,
   QuestionAnswer,
   ThinkingLevel,
   ExecutionMode,
+  EffortLevel,
   LabelData,
   QueuedMessage,
 } from '@/types/chat'
+
 import { isTauri, projectsQueryKeys } from '@/services/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import type { ReviewResponse, Worktree } from '@/types/projects'
+
+/** Default number of recent runs loaded on initial session fetch. */
+export const INITIAL_RUN_LIMIT = 10
+/** Number of older runs to load per scroll-up batch. */
+export const OLDER_RUN_BATCH = 10
 
 /** Check if an error is from a WebSocket disconnect (suppress toasts during reconnect). */
 function isWsDisconnectError(error: unknown): boolean {
@@ -349,16 +357,23 @@ export function useSession(
           worktreeId,
           worktreePath,
           sessionId,
+          limit: INITIAL_RUN_LIMIT,
         })
         logger.info('[useSession] loaded', {
           sessionId,
           messageCount: session.messages.length,
+          totalRuns: session.total_runs,
+          loadedFromRun: session.loaded_run_start_index,
           backend: session.backend,
         })
 
         // Preserve optimistic messages from sendMessage.onMutate that the
         // backend hasn't persisted yet (race: refetchOnMount fires before
         // the send_chat_message invoke writes the user message to disk).
+        // Also preserve messages the user loaded via scroll-up pagination:
+        // fresh fetch uses INITIAL_RUN_LIMIT so its loaded_run_start_index
+        // reflects only the last N runs — using it would wrongly re-show
+        // the "load older" button for runs the cache already contains.
         const cached = queryClient.getQueryData<Session>(
           chatQueryKeys.session(sessionId)
         )
@@ -369,9 +384,17 @@ export function useSession(
               sessionId,
               cachedCount: cached.messages.length,
               diskCount: session.messages.length,
+              cachedStart: cached.loaded_run_start_index,
+              freshStart: session.loaded_run_start_index,
             }
           )
-          return { ...session, messages: cached.messages }
+          return {
+            ...session,
+            messages: cached.messages,
+            // Keep cached pagination cursor (reflects what's actually in
+            // messages); fresh total_runs is still authoritative.
+            loaded_run_start_index: cached.loaded_run_start_index,
+          }
         }
 
         return session
@@ -386,6 +409,79 @@ export function useSession(
     // Respects staleTime; cross-client sync handled by cache:invalidate broadcast
     // from Rust after send_chat_message completes (JSONL fully written).
     refetchOnMount: true,
+  })
+}
+
+/**
+ * Hook to load an older window of messages for an already-cached session.
+ * Prepends the fetched messages into the existing `useSession` cache and
+ * advances `loaded_run_start_index` so subsequent calls walk backward.
+ */
+export function useLoadOlderMessages() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    retry: false,
+    mutationFn: async ({
+      sessionId,
+      beforeRunIndex,
+      limit = OLDER_RUN_BATCH,
+    }: {
+      sessionId: string
+      beforeRunIndex: number
+      limit?: number
+    }): Promise<LoadedMessages> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+      logger.debug('[useLoadOlderMessages] fetching', {
+        sessionId,
+        beforeRunIndex,
+        limit,
+      })
+      const result = await invoke<LoadedMessages>(
+        'load_older_session_messages',
+        {
+          sessionId,
+          beforeRunIndex,
+          limit,
+        }
+      )
+      logger.info('[useLoadOlderMessages] loaded', {
+        sessionId,
+        added: result.messages.length,
+        newStart: result.loaded_run_start_index,
+      })
+      return result
+    },
+    onSuccess: (loaded, { sessionId }) => {
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(sessionId),
+        old => {
+          if (!old) return old
+          // Guard: if backend returned empty (race) keep cache untouched.
+          if (loaded.messages.length === 0) {
+            return {
+              ...old,
+              total_runs: loaded.total_runs,
+              loaded_run_start_index: loaded.loaded_run_start_index,
+            }
+          }
+          return {
+            ...old,
+            messages: [...loaded.messages, ...old.messages],
+            total_runs: loaded.total_runs,
+            loaded_run_start_index: loaded.loaded_run_start_index,
+          }
+        }
+      )
+    },
+    onError: error => {
+      if (isWsDisconnectError(error)) return
+      const message = error instanceof Error ? error.message : String(error)
+      logger.error('Failed to load older messages', { error })
+      toast.error('Failed to load older messages', { description: message })
+    },
   })
 }
 
@@ -528,6 +624,7 @@ export function useUpdateSessionState() {
       pendingPlanMessageId,
       enabledMcpServers,
       selectedExecutionMode,
+      tableCheckedRows,
     }: {
       worktreeId: string
       worktreePath: string
@@ -594,6 +691,7 @@ export function useUpdateSessionState() {
       pendingPlanMessageId?: string | null
       enabledMcpServers?: string[] | null
       selectedExecutionMode?: ExecutionMode | null
+      tableCheckedRows?: Record<string, number[]>
     }): Promise<void> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -620,6 +718,7 @@ export function useUpdateSessionState() {
         pendingPlanMessageId,
         enabledMcpServers,
         selectedExecutionMode,
+        tableCheckedRows,
       })
       logger.debug('Session state updated')
     },
@@ -684,7 +783,8 @@ export function useCloseSession() {
       // Switch to the new active session — but only if the caller hasn't already
       // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
       if (newActiveId) {
-        const currentActive = useChatStore.getState().activeSessionIds[worktreeId]
+        const currentActive =
+          useChatStore.getState().activeSessionIds[worktreeId]
         if (!currentActive || currentActive === sessionId) {
           useChatStore.getState().setActiveSession(worktreeId, newActiveId)
         }
@@ -748,7 +848,8 @@ export function useArchiveSession() {
       // Switch to the new active session — but only if the caller hasn't already
       // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
       if (newActiveId) {
-        const currentActive = useChatStore.getState().activeSessionIds[worktreeId]
+        const currentActive =
+          useChatStore.getState().activeSessionIds[worktreeId]
         if (!currentActive || currentActive === sessionId) {
           useChatStore.getState().setActiveSession(worktreeId, newActiveId)
         }
@@ -1273,7 +1374,7 @@ export function useSendMessage() {
       model?: string
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
-      effortLevel?: string
+      effortLevel?: EffortLevel
       parallelExecutionPrompt?: string
       aiLanguage?: string
       allowedTools?: string[]
@@ -1329,6 +1430,8 @@ export function useSendMessage() {
       model,
       executionMode,
       thinkingLevel,
+      effortLevel,
+      backend,
     }) => {
       console.log(`[SendMutation] onMutate sessionId=${sessionId}`)
       // Cancel in-flight queries to avoid overwriting optimistic update
@@ -1351,7 +1454,13 @@ export function useSendMessage() {
         tool_calls: [],
         model,
         execution_mode: executionMode,
-        thinking_level: thinkingLevel,
+        thinking_level:
+          backend === 'cursor'
+            ? undefined
+            : effortLevel
+              ? undefined
+              : thinkingLevel,
+        effort_level: backend === 'cursor' ? undefined : effortLevel,
       }
 
       // Batch the optimistic user message AND sending state together so React

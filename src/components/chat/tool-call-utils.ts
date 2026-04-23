@@ -1,14 +1,5 @@
-import type {
-  ToolCall,
-  ContentBlock,
-  Todo,
-  PlanToolInput,
-} from '@/types/chat'
-import {
-  isTodoWrite,
-  isCollabToolCall,
-  isPlanToolCall,
-} from '@/types/chat'
+import type { ToolCall, ContentBlock, Todo, PlanToolInput } from '@/types/chat'
+import { isTodoWrite, isCollabToolCall, isPlanToolCall } from '@/types/chat'
 
 /** Check if a tool is a task/agent container (Claude CLI uses both names) */
 function isAgentTool(name: string): boolean {
@@ -212,10 +203,32 @@ function mergeConsecutiveStackables(items: TimelineItem[]): TimelineItem[] {
  * @param toolCalls - All tool calls from the message
  * @returns Timeline items in the correct order for rendering
  */
+/**
+ * Merge consecutive text blocks into one.
+ *
+ * Replay/snapshot paths may deliver text as many separate `ContentBlock::Text`
+ * entries (one per streaming delta). Streaming in-memory state coalesces them
+ * via `chat-store.addTextBlock`. Run both inputs through this helper so the
+ * timeline sees an identical shape regardless of origin.
+ */
+export function coalesceContentBlocks(blocks: ContentBlock[]): ContentBlock[] {
+  const out: ContentBlock[] = []
+  for (const block of blocks) {
+    const last = out[out.length - 1]
+    if (block.type === 'text' && last?.type === 'text') {
+      out[out.length - 1] = { type: 'text', text: last.text + block.text }
+    } else {
+      out.push(block)
+    }
+  }
+  return out
+}
+
 export function buildTimeline(
   contentBlocks: ContentBlock[],
   toolCalls: ToolCall[]
 ): TimelineItem[] {
+  const normalizedBlocks = coalesceContentBlocks(contentBlocks)
   const result: TimelineItem[] = []
 
   // Build a map of tool calls by ID for quick lookup
@@ -244,7 +257,7 @@ export function buildTimeline(
   // Find Tasks and their sub-tools by processing content_blocks in order
   // This respects the actual output sequence - text blocks indicate Task completion
   let currentTaskId: string | null = null
-  for (const block of contentBlocks) {
+  for (const block of normalizedBlocks) {
     if (block.type === 'text' && block.text.trim()) {
       // Text breaks the Task context - the agent has returned
       currentTaskId = null
@@ -276,8 +289,8 @@ export function buildTimeline(
   let lastTextIndex: number | null = null
 
   // Process content blocks in order
-  for (let i = 0; i < contentBlocks.length; i++) {
-    const block = contentBlocks[i]
+  for (let i = 0; i < normalizedBlocks.length; i++) {
+    const block = normalizedBlocks[i]
     if (!block) continue
 
     if (block.type === 'thinking') {
@@ -488,7 +501,7 @@ function extractPlanSectionFromCandidates(candidates: string[]): string | null {
     const extracted = extractPlanSectionFromText(candidate)
     if (extracted) return extracted
   }
- 
+
   return null
 }
 
@@ -555,8 +568,10 @@ export function isDuplicatePlanTextBlock(
   resolvedPlanContent: string | null
 ): boolean {
   if (!resolvedPlanContent) return false
-  // Suppress raw assistant text blocks only when they collapse to the exact
-  // same plan body already shown inside PlanDisplay.
+  // Direct match: the text block IS the plan content (Cursor CLI — no "Plan:" prefix)
+  if (normalizePlanText(text) === normalizePlanText(resolvedPlanContent))
+    return true
+  // "Plan:"-prefixed match: Codex emits intro prose + "Plan:\n..." section
   const extracted = extractPlanSectionFromText(text)
   if (!extracted) return false
   return normalizePlanText(extracted) === normalizePlanText(resolvedPlanContent)
@@ -570,11 +585,19 @@ export function getPlanTextBlockIndicesToHide(
   if (!contentBlocks?.length || !resolvedPlanContent) return hidden
 
   const textBlocks = contentBlocks.flatMap((block, index) =>
-    block.type === 'text' && block.text.trim() ? [{ index, text: block.text }] : []
+    block.type === 'text' && block.text.trim()
+      ? [{ index, text: block.text }]
+      : []
   )
   if (textBlocks.length === 0) return hidden
 
   const joinedText = textBlocks.map(block => block.text).join('')
+  // Direct match: all text blocks together ARE the plan (Cursor CLI — no "Plan:" prefix)
+  if (
+    normalizePlanText(joinedText) === normalizePlanText(resolvedPlanContent)
+  ) {
+    return new Set(textBlocks.map(block => block.index))
+  }
   const extracted = extractPlanSectionFromText(joinedText)
   if (!extracted) return hidden
   if (normalizePlanText(extracted) !== normalizePlanText(resolvedPlanContent)) {

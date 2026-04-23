@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
+  connectTransport,
+  ingestBootstrapEvents,
   invoke,
   useWsConnectionStatus,
-  useWsDataReady,
   setWsDataReady,
   useWsAuthError,
   preloadInitialData,
@@ -34,6 +35,7 @@ import {
 import { useUIStore } from './store/ui-store'
 import type { AppPreferences } from './types/preferences'
 import { useChatStore } from './store/chat-store'
+import { useProjectsStore } from './store/projects-store'
 import { useFontSettings } from './hooks/use-font-settings'
 import { useZoom } from './hooks/use-zoom'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
@@ -43,6 +45,7 @@ import { useBackgroundInvestigation } from './hooks/useBackgroundInvestigation'
 import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
 import { useMagicPromptAutoDefaults } from './hooks/useMagicPromptAutoDefaults'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
+import { hydrateRunningSnapshot } from './lib/hydrate-running-snapshot'
 import { preloadAllSounds } from './lib/sounds'
 import {
   beginSessionStateHydration,
@@ -91,24 +94,11 @@ function WsAuthErrorOverlay() {
   )
 }
 
-function WsReconnectingOverlay() {
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/90 backdrop-blur-sm">
-      <div className="flex flex-col items-center gap-3">
-        <div className="size-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
-        <div className="text-sm font-medium">Reconnecting...</div>
-        <div className="text-xs text-muted-foreground">
-          Reloading session state
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function App() {
   // Track preloading state for web view
   const [isPreloading, setIsPreloading] = useState(!isNativeApp())
   const queryClient = useQueryClient()
+  const hasStartedTransportRef = useRef(false)
 
   // Holds the update object so the title bar indicator can trigger install later
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -264,10 +254,32 @@ function App() {
             ...worktreePaths,
           }
         }
+        // Clear stale waiting/reviewing state for sessions actively running a turn.
+        // The server persists these flags from the previous turn's completion;
+        // if a new turn is in-flight they're stale and would show approve buttons.
+        if (data.runningSessions?.length) {
+          const runningSessionIds = new Set(data.runningSessions)
+          for (const sessionId of data.runningSessions) {
+            runningSessionIds.add(sessionId)
+          }
+          const filteredReviewingUpdates = Object.fromEntries(
+            Object.entries(reviewingUpdates).filter(
+              ([sessionId]) => !runningSessionIds.has(sessionId)
+            )
+          )
+          const filteredWaitingUpdates = Object.fromEntries(
+            Object.entries(waitingUpdates).filter(
+              ([sessionId]) => !runningSessionIds.has(sessionId)
+            )
+          )
+          storeUpdates.reviewingSessions = filteredReviewingUpdates
+          storeUpdates.waitingForInputSessionIds = filteredWaitingUpdates
+        } else {
+          storeUpdates.reviewingSessions = reviewingUpdates
+          storeUpdates.waitingForInputSessionIds = waitingUpdates
+        }
         // Replace (not merge) reviewing/waiting state — server is source of truth.
         // Merging would keep stale entries from sessions that changed while disconnected.
-        storeUpdates.reviewingSessions = reviewingUpdates
-        storeUpdates.waitingForInputSessionIds = waitingUpdates
         if (Object.keys(storeUpdates).length > 0) {
           beginSessionStateHydration()
           try {
@@ -306,23 +318,51 @@ function App() {
       // This clears sessions that finished while disconnected and restores
       // sessions that are still running — server is source of truth.
       const runningSendingIds: Record<string, boolean> = {}
+      const runningSendStartedAt: Record<string, number> = {}
       if (data.runningSessions?.length) {
         for (const sessionId of data.runningSessions) {
           runningSendingIds[sessionId] = true
+          const startedAt = data.sessionsByWorktree
+            ? Object.values(data.sessionsByWorktree)
+                .flatMap(ws => (ws as WorktreeSessions).sessions)
+                .find(session => session.id === sessionId)?.last_run_started_at
+            : undefined
+          if (startedAt) {
+            runningSendStartedAt[sessionId] = startedAt * 1000
+          }
         }
       }
       useChatStore.setState(state => {
         const current = state.sendingSessionIds
+        const currentSendStartedAt = state.sendStartedAt
         // Check if anything actually changed to avoid unnecessary re-renders
         const currentKeys = Object.keys(current)
         const newKeys = Object.keys(runningSendingIds)
+        const currentStartKeys = Object.keys(currentSendStartedAt).filter(
+          key => runningSendingIds[key]
+        )
+        const newStartKeys = Object.keys(runningSendStartedAt)
         if (
           currentKeys.length === newKeys.length &&
-          newKeys.every(k => current[k])
+          newKeys.every(k => current[k]) &&
+          currentStartKeys.length === newStartKeys.length &&
+          newStartKeys.every(
+            k => currentSendStartedAt[k] === runningSendStartedAt[k]
+          )
         ) {
           return state
         }
-        return { sendingSessionIds: runningSendingIds }
+        return {
+          sendingSessionIds: runningSendingIds,
+          sendStartedAt: {
+            ...Object.fromEntries(
+              Object.entries(currentSendStartedAt).filter(
+                ([sessionId]) => !runningSendingIds[sessionId]
+              )
+            ),
+            ...runningSendStartedAt,
+          },
+        }
       })
       // Note: Git status is included in worktree cached_* fields, no separate cache needed
       // Seed preferences into cache
@@ -345,13 +385,16 @@ function App() {
   useEffect(() => {
     if (isNativeApp()) return
 
-    preloadInitialData()
+    const initialSelectedProjectId =
+      useProjectsStore.getState().selectedProjectId
+    preloadInitialData(initialSelectedProjectId)
       .then(data => {
         if (data) {
           logger.info('Preloaded initial data via HTTP', {
             projects: Array.isArray(data.projects) ? data.projects.length : 0,
           })
           seedCache(data)
+          ingestBootstrapEvents(data.replayEvents ?? [])
           setWsDataReady(true)
         }
       })
@@ -379,6 +422,14 @@ function App() {
   // even when ChatWindow is unmounted (e.g., when viewing a different worktree)
   useStreamingEvents({ queryClient })
 
+  // Browser mode: only open WebSocket after preload + listener registration.
+  // This lets us replay buffered server events before live events start arriving.
+  useEffect(() => {
+    if (isNativeApp() || isPreloading || hasStartedTransportRef.current) return
+    hasStartedTransportRef.current = true
+    connectTransport()
+  }, [isPreloading])
+
   // Global queue processor - must be at App level so queued messages execute
   // even when the worktree is not focused (ChatWindow unmounted)
   useQueueProcessor()
@@ -397,8 +448,6 @@ function App() {
   // On first connect: invalidate non-preloaded queries.
   // On reconnect: re-fetch bulk data via HTTP to restore everything fast.
   const wsConnected = useWsConnectionStatus()
-  const wsDataReady = useWsDataReady()
-  const wsAuthError = useWsAuthError()
   const hadWsConnectionRef = useRef(false)
   useEffect(() => {
     if (isNativeApp() || !wsConnected) return
@@ -412,12 +461,17 @@ function App() {
       // so the server loads the correct sessions even when ui_state.json
       // on disk is stale (debounced save hasn't flushed yet).
       const activeSessionIds = useChatStore.getState().activeSessionIds
-      const dataPromise = refetchInitialData(activeSessionIds)
+      const selectedProjectId = useProjectsStore.getState().selectedProjectId
+      const dataPromise = refetchInitialData(
+        activeSessionIds,
+        selectedProjectId
+      )
       logger.info('WebSocket reconnected, re-fetching initial data via HTTP')
       dataPromise
         .then(data => {
           if (data) {
             seedCache(data)
+            ingestBootstrapEvents(data.replayEvents ?? [])
             logger.info('Reconnect: re-seeded cache from HTTP')
             setWsDataReady(true)
             // Invalidate non-preloaded queries after a frame so the seeded
@@ -810,21 +864,7 @@ function App() {
                 }
               }
 
-              if (!store.streamingContentBlocks[session.session_id]?.length) {
-                for (const block of lastMsg.content_blocks ?? []) {
-                  if (block.type === 'text') {
-                    store.addTextBlock(session.session_id, block.text)
-                  } else if (block.type === 'tool_use') {
-                    store.addToolBlock(session.session_id, block.tool_call_id)
-                  } else if (block.type === 'thinking') {
-                    store.addThinkingBlock(session.session_id, block.thinking)
-                  }
-                }
-
-                for (const tc of lastMsg.tool_calls ?? []) {
-                  store.addToolCall(session.session_id, tc)
-                }
-              }
+              hydrateRunningSnapshot(session.session_id, lastMsg)
 
               queryClient.setQueryData<Session>(
                 chatQueryKeys.session(session.session_id),
@@ -878,14 +918,10 @@ function App() {
     return <WebLoadingScreen />
   }
 
-  const showReconnectOverlay =
-    !isNativeApp() && hadWsConnectionRef.current && !wsDataReady && !wsAuthError
-
   return (
     <ErrorBoundary>
       <ThemeProvider>
         <MainWindow />
-        {showReconnectOverlay && <WsReconnectingOverlay />}
         {!isNativeApp() && <WsAuthErrorOverlay />}
       </ThemeProvider>
     </ErrorBoundary>

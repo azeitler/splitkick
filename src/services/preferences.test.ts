@@ -141,6 +141,7 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
+        selected_cursor_model: 'cursor/auto',
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
@@ -152,12 +153,15 @@ describe('preferences service', () => {
         yolo_backend: null,
         build_thinking_level: null,
         yolo_thinking_level: null,
+        build_effort_level: null,
+        yolo_effort_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
         claude_cli_source: 'jean',
         codex_cli_source: 'jean',
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
+        expand_tool_calls_by_default: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -182,7 +186,7 @@ describe('preferences service', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
       expect(result.current.data?.theme).toBe('system')
-      expect(result.current.data?.selected_model).toBe('opus')
+      expect(result.current.data?.selected_model).toBe('claude-opus-4-7')
     })
 
     it('returns defaults on backend error', async () => {
@@ -264,6 +268,7 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
+        selected_cursor_model: 'cursor/auto',
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
@@ -275,12 +280,15 @@ describe('preferences service', () => {
         yolo_backend: null,
         build_thinking_level: null,
         yolo_thinking_level: null,
+        build_effort_level: null,
+        yolo_effort_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
         claude_cli_source: 'jean',
         codex_cli_source: 'jean',
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
+        expand_tool_calls_by_default: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -360,6 +368,7 @@ describe('preferences service', () => {
         selected_codex_model:
           'gpt-5.3-fast' as AppPreferences['selected_codex_model'],
         selected_opencode_model: 'opencode/gpt-5.3-codex',
+        selected_cursor_model: 'cursor/auto',
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
@@ -371,12 +380,15 @@ describe('preferences service', () => {
         yolo_backend: null,
         build_thinking_level: null,
         yolo_thinking_level: null,
+        build_effort_level: null,
+        yolo_effort_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
         claude_cli_source: 'jean',
         codex_cli_source: 'jean',
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
+        expand_tool_calls_by_default: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithDeprecatedFastModel)
 
@@ -456,6 +468,7 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
+        selected_cursor_model: 'cursor/auto',
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
@@ -467,12 +480,15 @@ describe('preferences service', () => {
         yolo_backend: null,
         build_thinking_level: null,
         yolo_thinking_level: null,
+        build_effort_level: null,
+        yolo_effort_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
         claude_cli_source: 'jean',
         codex_cli_source: 'jean',
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
+        expand_tool_calls_by_default: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -554,6 +570,7 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
+        selected_cursor_model: 'cursor/auto',
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
@@ -565,12 +582,15 @@ describe('preferences service', () => {
         yolo_backend: null,
         build_thinking_level: null,
         yolo_thinking_level: null,
+        build_effort_level: null,
+        yolo_effort_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
         claude_cli_source: 'jean',
         codex_cli_source: 'jean',
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
+        expand_tool_calls_by_default: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -652,6 +672,7 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
+        selected_cursor_model: 'cursor/auto',
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
@@ -663,12 +684,15 @@ describe('preferences service', () => {
         yolo_backend: null,
         build_thinking_level: null,
         yolo_thinking_level: null,
+        build_effort_level: null,
+        yolo_effort_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
         claude_cli_source: 'jean',
         codex_cli_source: 'jean',
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
+        expand_tool_calls_by_default: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -748,6 +772,7 @@ describe('preferences service', () => {
         default_backend: 'claude',
         selected_codex_model: 'gpt-5.4',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
+        selected_cursor_model: 'cursor/auto',
         default_codex_reasoning_effort: 'high',
         codex_multi_agent_enabled: false,
         codex_max_agent_threads: 3,
@@ -759,12 +784,15 @@ describe('preferences service', () => {
         yolo_backend: null,
         build_thinking_level: null,
         yolo_thinking_level: null,
+        build_effort_level: null,
+        yolo_effort_level: null,
         linear_api_key: null,
         magic_models_auto_initialized: false,
         claude_cli_source: 'jean',
         codex_cli_source: 'jean',
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
+        expand_tool_calls_by_default: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

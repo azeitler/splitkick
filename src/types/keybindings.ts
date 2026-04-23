@@ -33,6 +33,8 @@ export type KeybindingAction =
   | 'cancel_prompt'
   | 'scroll_chat_up'
   | 'scroll_chat_down'
+  | 'scroll_chat_up_small'
+  | 'scroll_chat_down_small'
   | 'open_github_dashboard'
   | 'open_quick_menu'
   | 'open_usage_dropdown'
@@ -89,6 +91,8 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   cancel_prompt: 'mod+alt+backspace',
   scroll_chat_up: 'mod+arrowup',
   scroll_chat_down: 'mod+arrowdown',
+  scroll_chat_up_small: 'arrowup',
+  scroll_chat_down_small: 'arrowdown',
   open_github_dashboard: 'mod+shift+d',
   open_quick_menu: 'mod+period',
   open_usage_dropdown: 'mod+u',
@@ -327,6 +331,20 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'Scroll chat down',
     description: 'Scroll the chat message list down by one page',
     default_shortcut: 'mod+arrowdown',
+    category: 'chat',
+  },
+  {
+    action: 'scroll_chat_up_small',
+    label: 'Scroll chat up (small)',
+    description: 'Scroll the chat message list up by a small increment',
+    default_shortcut: 'arrowup',
+    category: 'chat',
+  },
+  {
+    action: 'scroll_chat_down_small',
+    label: 'Scroll chat down (small)',
+    description: 'Scroll the chat message list down by a small increment',
+    default_shortcut: 'arrowdown',
     category: 'chat',
   },
   {

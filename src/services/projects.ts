@@ -31,6 +31,7 @@ import type { AppPreferences } from '@/types/preferences'
 import type { AdvisoryContext } from '@/types/github'
 import { hasBackend } from '@/lib/environment'
 import { openExternal, preOpenWindow } from '@/lib/platform'
+import { consumeWorktreeSilentReady } from '@/services/worktree-silent-ready'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -918,8 +919,17 @@ export function useWorktreeEvents() {
     // Listen for creation starting - add pending worktree immediately
     unlistenPromises.push(
       listen<WorktreeCreatingEvent>('worktree:creating', event => {
-        const { id, project_id, name, path, branch, pr_number, issue_number, security_alert_number, advisory_ghsa_id } =
-          event.payload
+        const {
+          id,
+          project_id,
+          name,
+          path,
+          branch,
+          pr_number,
+          issue_number,
+          security_alert_number,
+          advisory_ghsa_id,
+        } = event.payload
         logger.info('Worktree creating (background started)', { id, name })
 
         // Add pending worktree to cache so it appears instantly on all clients
@@ -970,6 +980,10 @@ export function useWorktreeEvents() {
         // between worktree:creating and worktree:created events).
         handleWorktreeReady(worktree, queryClient)
         clearPendingTimeout(worktree.id)
+
+        if (consumeWorktreeSilentReady(worktree.id)) {
+          return
+        }
 
         const openWorktreeAction = {
           label: 'Open',

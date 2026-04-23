@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   ArrowDownToLine,
   ArrowUpToLine,
@@ -7,7 +7,6 @@ import {
   Bug,
   ChevronRight,
   CircleDot,
-  ClipboardList,
   ExternalLink,
   Eye,
   FileText,
@@ -17,7 +16,6 @@ import {
   GitMerge,
   GitPullRequest,
   GitPullRequestArrow,
-  Hammer,
   Link2,
   MessageSquare,
   MoreHorizontal,
@@ -27,7 +25,6 @@ import {
   Shield,
   ShieldAlert,
   Sparkles,
-  Zap,
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -44,13 +41,8 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import type { CustomCliProfile, CliBackend } from '@/types/preferences'
-import type {
-  EffortLevel,
-  ExecutionMode,
-  McpServerInfo,
-  ThinkingLevel,
-} from '@/types/chat'
-import { groupServersByBackend, BACKEND_LABELS } from '@/services/mcp'
+import type { EffortLevel, McpServerInfo, ThinkingLevel } from '@/types/chat'
+import { groupServersByBackend, mcpKey } from '@/services/mcp'
 import type {
   LoadedIssueContext,
   LoadedPullRequestContext,
@@ -73,20 +65,21 @@ import {
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
+import { BackendLabel } from '@/components/ui/backend-label'
 
 interface MobileToolbarMenuProps {
   isDisabled: boolean
   hasOpenPr: boolean
   providerLocked?: boolean
-  selectedBackend: 'claude' | 'codex' | 'opencode'
+  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor'
   selectedProvider: string | null
-  backendModelLabel: string
+  backendModelLabel: ReactNode
+  backendModelLabelText: string
   selectedEffortLevel: EffortLevel
   selectedThinkingLevel: ThinkingLevel
   hideThinkingLevel?: boolean
   useAdaptiveThinking: boolean
   isCodex: boolean
-  executionMode: ExecutionMode
   customCliProfiles: CustomCliProfile[]
 
   uncommittedAdded: number
@@ -108,7 +101,6 @@ interface MobileToolbarMenuProps {
   onMerge: () => void
   onResolveConflicts: () => void
   onOpenBackendModelPicker: () => void
-  onSetExecutionMode: (mode: ExecutionMode) => void
 
   handlePullClick: () => void
   handlePushClick: () => void
@@ -145,12 +137,12 @@ export function MobileToolbarMenu({
   selectedBackend,
   selectedProvider,
   backendModelLabel,
+  backendModelLabelText,
   selectedEffortLevel,
   selectedThinkingLevel,
   hideThinkingLevel,
   useAdaptiveThinking,
   isCodex,
-  executionMode,
   customCliProfiles,
   uncommittedAdded,
   uncommittedRemoved,
@@ -170,7 +162,6 @@ export function MobileToolbarMenu({
   onMerge,
   onResolveConflicts,
   onOpenBackendModelPicker,
-  onSetExecutionMode,
   handlePullClick,
   handlePushClick,
   handleUncommittedDiffClick,
@@ -209,6 +200,7 @@ export function MobileToolbarMenu({
       <DropdownMenuTrigger asChild>
         <button
           type="button"
+          aria-label="More actions"
           className="flex @xl:hidden h-8 items-center gap-1 rounded-l-lg px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
           disabled={isDisabled}
         >
@@ -558,20 +550,18 @@ export function MobileToolbarMenu({
             G
           </span>
         </DropdownMenuItem>
-        {hasOpenPr && (
-          <DropdownMenuItem
-            onClick={() => {
-              setMenuOpen(false)
-              useUIStore.getState().setUpdatePrModalOpen(true)
-            }}
-          >
-            <RefreshCw className="h-4 w-4" />
-            PR Description
-            <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-              E
-            </span>
-          </DropdownMenuItem>
-        )}
+        <DropdownMenuItem
+          onClick={() => {
+            setMenuOpen(false)
+            useUIStore.getState().setUpdatePrModalOpen(true)
+          }}
+        >
+          <RefreshCw className="h-4 w-4" />
+          PR Description
+          <span className="ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+            E
+          </span>
+        </DropdownMenuItem>
 
         <DropdownMenuSeparator />
 
@@ -726,7 +716,10 @@ export function MobileToolbarMenu({
         <DropdownMenuItem onSelect={openBackendModelPicker}>
           <Sparkles className="h-4 w-4 text-foreground" />
           <span>Backend / Model</span>
-          <span className="ml-auto min-w-0 max-w-28 truncate text-right text-xs text-muted-foreground">
+          <span
+            className="ml-auto min-w-0 max-w-32 truncate text-right text-xs text-muted-foreground"
+            title={backendModelLabelText}
+          >
             {backendModelLabel}
           </span>
           <ChevronRight className="ml-2 h-4 w-4 shrink-0" />
@@ -800,38 +793,6 @@ export function MobileToolbarMenu({
 
         <DropdownMenuSub>
           <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
-            {executionMode === 'plan' && (
-              <ClipboardList className="mr-2 h-4 w-4" />
-            )}
-            {executionMode === 'build' && <Hammer className="mr-2 h-4 w-4" />}
-            {executionMode === 'yolo' && <Zap className="mr-2 h-4 w-4" />}
-            <span>Mode</span>
-            <span className="ml-auto w-16 text-right text-xs text-muted-foreground capitalize">
-              {executionMode}
-            </span>
-          </DropdownMenuSubTrigger>
-          <DropdownMenuSubContent>
-            <DropdownMenuRadioGroup
-              value={executionMode}
-              onValueChange={v => onSetExecutionMode(v as ExecutionMode)}
-            >
-              <DropdownMenuRadioItem value="plan">Plan</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="build">Build</DropdownMenuRadioItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuRadioItem
-                value="yolo"
-                className="text-red-600 focus:text-red-600 dark:text-red-400 dark:focus:text-red-400"
-              >
-                Yolo
-              </DropdownMenuRadioItem>
-            </DropdownMenuRadioGroup>
-          </DropdownMenuSubContent>
-        </DropdownMenuSub>
-
-        <DropdownMenuSeparator />
-
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
             <Plug
               className={cn(
                 'mr-2 h-4 w-4',
@@ -855,27 +816,32 @@ export function MobileToolbarMenu({
                       <>
                         {idx > 0 && <DropdownMenuSeparator />}
                         <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium py-1">
-                          {BACKEND_LABELS[backend] ?? backend}
+                          <BackendLabel
+                            backend={backend}
+                            badgeClassName="text-[8px] leading-3"
+                          />
                         </DropdownMenuLabel>
                       </>
                     )}
-                    {(grouped[backend] ?? []).map(server => (
-                      <DropdownMenuCheckboxItem
-                        key={`${backend}-${server.name}`}
-                        checked={
-                          !server.disabled &&
-                          enabledMcpServers.includes(server.name)
-                        }
-                        onCheckedChange={() => onToggleMcpServer(server.name)}
-                        disabled={server.disabled}
-                        className={server.disabled ? 'opacity-50' : undefined}
-                      >
-                        {server.name}
-                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                          {server.disabled ? 'disabled' : server.scope}
-                        </span>
-                      </DropdownMenuCheckboxItem>
-                    ))}
+                    {(grouped[backend] ?? []).map(server => {
+                      const key = mcpKey(backend, server.name)
+                      return (
+                        <DropdownMenuCheckboxItem
+                          key={`${backend}-${server.name}`}
+                          checked={
+                            !server.disabled && enabledMcpServers.includes(key)
+                          }
+                          onCheckedChange={() => onToggleMcpServer(key)}
+                          disabled={server.disabled}
+                          className={server.disabled ? 'opacity-50' : undefined}
+                        >
+                          {server.name}
+                          <span className="ml-auto pl-4 text-xs text-muted-foreground">
+                            {server.disabled ? 'disabled' : server.scope}
+                          </span>
+                        </DropdownMenuCheckboxItem>
+                      )
+                    })}
                   </div>
                 ))
               })()

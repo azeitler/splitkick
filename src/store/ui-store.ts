@@ -12,12 +12,19 @@ export type PreferencePane =
   | 'integrations'
   | 'experimental'
   | 'web-access'
+  | 'opinionated'
 
 export type OnboardingStartStep = 'claude' | 'gh' | null
 
 export type CliUpdateModalType = 'claude' | 'gh' | 'codex' | 'opencode' | null
 
-export type CliLoginModalType = 'claude' | 'gh' | 'codex' | 'opencode' | null
+export type CliLoginModalType =
+  | 'claude'
+  | 'gh'
+  | 'codex'
+  | 'opencode'
+  | 'cursor'
+  | null
 
 interface UIState {
   leftSidebarVisible: boolean
@@ -51,7 +58,7 @@ interface UIState {
   cliLoginModalType: CliLoginModalType
   cliLoginModalCommand: string | null
   cliLoginModalCommandArgs: string[] | null
-  cliLoginModalAction: 'login' | 'update'
+  cliLoginModalAction: 'login' | 'update' | 'install'
   /** Worktree IDs that should auto-trigger investigate-issue when created */
   autoInvestigateWorktreeIds: Set<string>
   /** Worktree IDs that should auto-trigger investigate-pr when created */
@@ -70,6 +77,9 @@ interface UIState {
   pendingAutoOpenSessionIds: Record<string, string>
   /** Whether a session chat modal is open (for magic command keybinding checks) */
   sessionChatModalOpen: boolean
+  /** Whether the chat toolbar is mounted — used to hide the global FloatingDock
+   *  because its burger-menu counterpart now lives in the chat toolbar. */
+  chatToolbarMounted: boolean
   /** Which worktree the session chat modal is for (for magic command worktree resolution) */
   sessionChatModalWorktreeId: string | null
   /** Whether a git diff modal is open (blocks execute_run keybinding) */
@@ -124,10 +134,10 @@ interface UIState {
   openCliUpdateModal: (type: 'claude' | 'gh' | 'codex' | 'opencode') => void
   closeCliUpdateModal: () => void
   openCliLoginModal: (
-    type: 'claude' | 'gh' | 'codex' | 'opencode',
+    type: 'claude' | 'gh' | 'codex' | 'opencode' | 'cursor',
     command: string,
     commandArgs?: string[],
-    action?: 'login' | 'update'
+    action?: 'login' | 'update' | 'install'
   ) => void
   closeCliLoginModal: () => void
   incrementPendingBackgroundCreations: () => void
@@ -151,6 +161,7 @@ interface UIState {
     sessionId?: string
   }
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
+  setChatToolbarMounted: (mounted: boolean) => void
   setGitDiffModalOpen: (open: boolean) => void
   toggleGitDiffSelectedFile: (filePath: string) => void
   clearGitDiffSelectedFiles: () => void
@@ -218,6 +229,7 @@ export const useUIStore = create<UIState>()(
       pendingAutoOpenSessionIds: {},
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
+      chatToolbarMounted: false,
       gitDiffModalOpen: false,
       gitDiffSelectedFiles: new Set<string>(),
       planDialogOpen: false,
@@ -648,6 +660,13 @@ export const useUIStore = create<UIState>()(
           'setSessionChatModalOpen'
         ),
 
+      setChatToolbarMounted: (mounted: boolean) =>
+        set(state =>
+          state.chatToolbarMounted === mounted
+            ? state
+            : { chatToolbarMounted: mounted }
+        ),
+
       setGitDiffModalOpen: (open: boolean) =>
         set({ gitDiffModalOpen: open }, undefined, 'setGitDiffModalOpen'),
 
@@ -701,14 +720,17 @@ export const useUIStore = create<UIState>()(
         ),
 
       setChatSearchOpen: (open: boolean) =>
-        set(state => {
-          if (state.chatSearchOpen === open) return state
-          return { chatSearchOpen: open }
-        }, undefined, 'setChatSearchOpen'),
+        set(
+          state => {
+            if (state.chatSearchOpen === open) return state
+            return { chatSearchOpen: open }
+          },
+          undefined,
+          'setChatSearchOpen'
+        ),
 
       setGitHubDashboardOpen: (open: boolean) =>
         set({ githubDashboardOpen: open }, undefined, 'setGitHubDashboardOpen'),
-
     }),
     {
       name: 'ui-store',

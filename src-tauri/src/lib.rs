@@ -12,10 +12,12 @@ mod background_tasks;
 mod chat;
 mod claude_cli;
 mod codex_cli;
+mod cursor_cli;
 mod gh_cli;
 pub mod http_server;
 mod opencode_cli;
 mod opencode_server;
+mod opinionated;
 mod platform;
 mod projects;
 mod terminal;
@@ -77,11 +79,11 @@ fn greet(name: &str) -> String {
 pub struct AppPreferences {
     pub theme: String,
     #[serde(default = "default_model")]
-    pub selected_model: String, // Claude model: opus, sonnet, haiku
+    pub selected_model: String, // Claude model: claude-opus-4-7, claude-opus-4-6, sonnet, haiku
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String, // Thinking level: off, think, megathink, ultrathink
     #[serde(default = "default_effort_level")]
-    pub default_effort_level: String, // Effort level for Opus 4.6: low, medium, high, max
+    pub default_effort_level: String, // Effort level for Opus adaptive thinking: low, medium, high, xhigh, max
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
     #[serde(default = "default_editor")]
@@ -91,11 +93,11 @@ pub struct AppPreferences {
     #[serde(default = "default_auto_branch_naming")]
     pub auto_branch_naming: bool, // Automatically generate branch names from first message
     #[serde(default = "default_branch_naming_model")]
-    pub branch_naming_model: String, // Model for generating branch names: haiku, sonnet, opus
+    pub branch_naming_model: String, // Model for generating branch names: haiku, sonnet, claude-opus-4-7, claude-opus-4-6
     #[serde(default = "default_auto_session_naming")]
     pub auto_session_naming: bool, // Automatically generate session names from first message
     #[serde(default = "default_session_naming_model")]
-    pub session_naming_model: String, // Model for generating session names: haiku, sonnet, opus
+    pub session_naming_model: String, // Model for generating session names: haiku, sonnet, claude-opus-4-7, claude-opus-4-6
     #[serde(default = "default_font_size")]
     pub ui_font_size: u32, // Font size for UI text in pixels (10-24)
     #[serde(default = "default_font_size")]
@@ -139,9 +141,9 @@ pub struct AppPreferences {
     #[serde(default = "default_allow_web_tools_in_plan_mode")]
     pub allow_web_tools_in_plan_mode: bool, // Allow WebFetch/WebSearch in plan mode without prompts
     #[serde(default = "default_waiting_sound")]
-    pub waiting_sound: String, // Sound when session is waiting for input: none, ding, chime, pop, choochoo
+    pub waiting_sound: String, // Sound when session is waiting for input: none, workwork
     #[serde(default = "default_review_sound")]
-    pub review_sound: String, // Sound when session finishes reviewing: none, ding, chime, pop, choochoo
+    pub review_sound: String, // Sound when session finishes reviewing: none, workwork
     #[serde(default)]
     pub http_server_enabled: bool, // Whether HTTP server is enabled
     #[serde(default)]
@@ -189,11 +191,13 @@ pub struct AppPreferences {
     #[serde(default = "default_execution_mode")]
     pub default_execution_mode: String, // Default execution mode: "plan", "build", or "yolo"
     #[serde(default = "default_backend")]
-    pub default_backend: String, // Default CLI backend: "claude", "codex", or "opencode"
+    pub default_backend: String, // Default CLI backend: "claude", "codex", "opencode", or "cursor"
     #[serde(default = "default_codex_model")]
     pub selected_codex_model: String, // Default Codex model
     #[serde(default = "default_opencode_model")]
     pub selected_opencode_model: String, // Default OpenCode model (provider/model)
+    #[serde(default = "default_cursor_model")]
+    pub selected_cursor_model: String, // Default Cursor model
     #[serde(default = "default_codex_reasoning_effort")]
     pub default_codex_reasoning_effort: String, // Codex reasoning effort: low, medium, high, xhigh
     #[serde(default)]
@@ -216,6 +220,10 @@ pub struct AppPreferences {
     pub build_thinking_level: Option<String>, // Thinking level override for build mode, None = use session thinking level
     #[serde(default)]
     pub yolo_thinking_level: Option<String>, // Thinking level override for yolo mode, None = use session thinking level
+    #[serde(default)]
+    pub build_effort_level: Option<String>, // Effort level override for build mode (Claude adaptive / Codex), None = use session effort
+    #[serde(default)]
+    pub yolo_effort_level: Option<String>, // Effort level override for yolo mode (Claude adaptive / Codex), None = use session effort
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_api_key: Option<String>, // Global Linear personal API key (inherited by all projects)
     #[serde(default = "default_cli_source")]
@@ -226,6 +234,8 @@ pub struct AppPreferences {
     pub opencode_cli_source: String, // OpenCode CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default = "default_cli_source")]
     pub gh_cli_source: String, // GitHub CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default)]
+    pub expand_tool_calls_by_default: bool, // Expand all tool call collapsibles by default (default: false)
 }
 
 fn default_true() -> Option<bool> {
@@ -272,7 +282,7 @@ fn default_auto_branch_naming() -> bool {
 }
 
 fn default_branch_naming_model() -> String {
-    "haiku".to_string() // Use Haiku by default for fast, cheap branch name generation
+    "sonnet".to_string()
 }
 
 fn default_auto_session_naming() -> bool {
@@ -280,7 +290,7 @@ fn default_auto_session_naming() -> bool {
 }
 
 fn default_session_naming_model() -> String {
-    "haiku".to_string() // Use Haiku by default for fast, cheap session name generation
+    "sonnet".to_string()
 }
 
 fn default_font_size() -> u32 {
@@ -296,7 +306,7 @@ fn default_chat_font() -> String {
 }
 
 fn default_model() -> String {
-    "opus".to_string()
+    "claude-opus-4-7".to_string()
 }
 
 fn default_thinking_level() -> String {
@@ -400,6 +410,10 @@ fn default_codex_model() -> String {
 
 fn default_opencode_model() -> String {
     "opencode/gpt-5.3-codex".to_string()
+}
+
+fn default_cursor_model() -> String {
+    "cursor/auto".to_string()
 }
 
 fn default_codex_reasoning_effort() -> String {
@@ -670,6 +684,14 @@ fn default_pr_content_prompt() -> String {
 <target_branch>{target_branch}</target_branch>
 <commit_count>{commit_count}</commit_count>
 </context>
+
+<related_context>
+{context}
+</related_context>
+
+<related_pull_requests>
+{related_pull_requests}
+</related_pull_requests>
 
 <commits>
 {commits}
@@ -1103,9 +1125,9 @@ pub struct MagicPromptModels {
     pub investigate_pr_model: String,
     #[serde(default = "default_model")]
     pub investigate_workflow_run_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub pr_content_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub commit_message_model: String,
     #[serde(default = "default_model")]
     pub code_review_model: String,
@@ -1113,11 +1135,11 @@ pub struct MagicPromptModels {
     pub context_summary_model: String,
     #[serde(default = "default_model")]
     pub resolve_conflicts_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub release_notes_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub session_naming_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub session_recap_model: String,
     #[serde(default = "default_model")]
     pub investigate_security_alert_model: String,
@@ -1129,8 +1151,8 @@ pub struct MagicPromptModels {
     pub review_comments_model: String,
 }
 
-fn default_haiku_model() -> String {
-    "haiku".to_string()
+fn default_sonnet_model() -> String {
+    "sonnet".to_string()
 }
 
 impl Default for MagicPromptModels {
@@ -1139,19 +1161,49 @@ impl Default for MagicPromptModels {
             investigate_issue_model: default_model(),
             investigate_pr_model: default_model(),
             investigate_workflow_run_model: default_model(),
-            pr_content_model: default_haiku_model(),
-            commit_message_model: default_haiku_model(),
+            pr_content_model: default_sonnet_model(),
+            commit_message_model: default_sonnet_model(),
             code_review_model: default_model(),
             context_summary_model: default_model(),
             resolve_conflicts_model: default_model(),
-            release_notes_model: default_haiku_model(),
-            session_naming_model: default_haiku_model(),
-            session_recap_model: default_haiku_model(),
+            release_notes_model: default_sonnet_model(),
+            session_naming_model: default_sonnet_model(),
+            session_recap_model: default_sonnet_model(),
             investigate_security_alert_model: default_model(),
             investigate_advisory_model: default_model(),
             investigate_linear_issue_model: default_model(),
             review_comments_model: default_model(),
         }
+    }
+}
+
+impl MagicPromptModels {
+    /// Upgrade legacy default model values left on existing installs:
+    /// fields that previously defaulted to `"opus"` (Opus 4.6) are bumped to
+    /// the new default (`"claude-opus-4-7"`). Users who explicitly picked
+    /// other models are untouched. Returns true if any field changed.
+    fn migrate_legacy_defaults(&mut self) -> bool {
+        let new_opus = default_model();
+        let opus_fields: [&mut String; 10] = [
+            &mut self.investigate_issue_model,
+            &mut self.investigate_pr_model,
+            &mut self.investigate_workflow_run_model,
+            &mut self.code_review_model,
+            &mut self.context_summary_model,
+            &mut self.resolve_conflicts_model,
+            &mut self.investigate_security_alert_model,
+            &mut self.investigate_advisory_model,
+            &mut self.investigate_linear_issue_model,
+            &mut self.review_comments_model,
+        ];
+        let mut changed = false;
+        for field in opus_fields {
+            if field == "opus" {
+                *field = new_opus.clone();
+                changed = true;
+            }
+        }
+        changed
     }
 }
 
@@ -1161,10 +1213,18 @@ pub fn is_opencode_model(model: &str) -> bool {
     model.starts_with("opencode/")
 }
 
+/// Returns true if the given model string identifies a Cursor model.
+/// Cursor model IDs are prefixed with "cursor/" (e.g. "cursor/auto").
+pub fn is_cursor_model(model: &str) -> bool {
+    model.starts_with("cursor/")
+}
+
 /// Returns true if the given model string identifies a Codex model.
 /// Codex model IDs contain "codex" or start with "gpt-", but NOT OpenCode models.
 pub fn is_codex_model(model: &str) -> bool {
-    !is_opencode_model(model) && (model.contains("codex") || model.starts_with("gpt-"))
+    !is_opencode_model(model)
+        && !is_cursor_model(model)
+        && (model.contains("codex") || model.starts_with("gpt-"))
 }
 
 /// Per-prompt provider overrides for magic prompts (None = use global default_provider)
@@ -1391,6 +1451,7 @@ impl Default for AppPreferences {
             default_backend: default_backend(),
             selected_codex_model: default_codex_model(),
             selected_opencode_model: default_opencode_model(),
+            selected_cursor_model: default_cursor_model(),
             default_codex_reasoning_effort: default_codex_reasoning_effort(),
             codex_multi_agent_enabled: false,
             codex_max_agent_threads: default_codex_max_agent_threads(),
@@ -1402,11 +1463,14 @@ impl Default for AppPreferences {
             yolo_backend: None,
             build_thinking_level: None,
             yolo_thinking_level: None,
+            build_effort_level: None,
+            yolo_effort_level: None,
             linear_api_key: None,
             claude_cli_source: default_cli_source(),
             codex_cli_source: default_cli_source(),
             opencode_cli_source: default_cli_source(),
             gh_cli_source: default_cli_source(),
+            expand_tool_calls_by_default: false,
         }
     }
 }
@@ -1598,8 +1662,19 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
     // so they auto-update when new defaults are shipped
     preferences.magic_prompts.migrate_defaults();
 
+    // Migrate legacy magic-prompt model names ("opus" → "claude-opus-4-7")
+    // and legacy auto-naming models ("haiku" → "sonnet")
+    let mut needs_resave = preferences.magic_prompt_models.migrate_legacy_defaults();
+    if preferences.branch_naming_model == "haiku" {
+        preferences.branch_naming_model = default_branch_naming_model();
+        needs_resave = true;
+    }
+    if preferences.session_naming_model == "haiku" {
+        preferences.session_naming_model = default_session_naming_model();
+        needs_resave = true;
+    }
+
     // Migrate CLI profiles: move settings_json from preferences.json to standalone files
-    let mut needs_resave = false;
     for profile in &mut preferences.custom_cli_profiles {
         let path = match get_cli_profile_path(&profile.name) {
             Ok(p) => p,
@@ -2904,6 +2979,7 @@ pub fn run() {
             // Project management commands
             projects::check_git_identity,
             projects::set_git_identity,
+            projects::browse_directory,
             projects::list_projects,
             projects::add_project,
             projects::init_git_in_folder,
@@ -2964,6 +3040,7 @@ pub fn run() {
             projects::get_review_prompt,
             projects::save_worktree_pr,
             projects::detect_and_link_pr,
+            projects::detect_open_pr_for_branch,
             projects::clear_worktree_pr,
             projects::update_worktree_cached_status,
             projects::rebase_worktree,
@@ -2983,10 +3060,12 @@ pub fn run() {
             projects::reorder_projects,
             projects::reorder_worktrees,
             projects::fetch_worktrees_status,
-            // Claude CLI skills & commands
+            // CLI skills & commands
             projects::list_claude_skills,
             projects::list_claude_commands,
             projects::resolve_claude_command,
+            projects::list_codex_skills,
+            projects::list_plugin_skills,
             // GitHub issues commands
             projects::list_github_issues,
             projects::search_github_issues,
@@ -3062,6 +3141,7 @@ pub fn run() {
             chat::get_sessions,
             chat::list_all_sessions,
             chat::get_session,
+            chat::load_older_session_messages,
             chat::create_session,
             chat::rename_session,
             chat::regenerate_session_name,
@@ -3150,6 +3230,12 @@ pub fn run() {
             codex_cli::get_codex_usage,
             codex_cli::get_available_codex_versions,
             codex_cli::install_codex_cli,
+            // Cursor CLI management commands
+            cursor_cli::check_cursor_cli_installed,
+            cursor_cli::detect_cursor_in_path,
+            cursor_cli::check_cursor_cli_auth,
+            cursor_cli::list_cursor_models,
+            cursor_cli::get_cursor_install_command,
             // OpenCode CLI management commands
             opencode_cli::check_opencode_cli_installed,
             opencode_cli::detect_opencode_in_path,
@@ -3181,6 +3267,9 @@ pub fn run() {
             list_http_bind_host_options,
             validate_http_bind_host,
             regenerate_http_token,
+            // Opinionated plugin commands
+            opinionated::check_opinionated_plugin_status,
+            opinionated::install_opinionated_plugin,
             // OpenCode server commands
             opencode_server::start_opencode_server,
             opencode_server::stop_opencode_server,

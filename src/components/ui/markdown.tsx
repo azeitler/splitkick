@@ -1,10 +1,23 @@
-import { memo, useState, useCallback, useRef, type ReactNode } from 'react'
+import {
+  memo,
+  useState,
+  useCallback,
+  useRef,
+  useMemo,
+  useContext,
+  createContext,
+  Children,
+  cloneElement,
+  isValidElement,
+  type ReactNode,
+  type ReactElement,
+} from 'react'
 import type { Components } from 'react-markdown'
 import ReactMarkdown from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
 import remend from 'remend'
-import { Copy, Check, Table } from 'lucide-react'
+import { Copy, Check, Table, ListChecks } from 'lucide-react'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
 import {
@@ -12,14 +25,42 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
+import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
+import { useChatStore } from '@/store/chat-store'
 
 interface MarkdownProps {
   children: string
   /** Enable streaming mode with incomplete markdown handling */
   streaming?: boolean
   className?: string
+  /** Chat message ID — enables per-table checklist persistence when set */
+  messageId?: string
+  /** Owning session ID — required alongside messageId for checklist persistence */
+  sessionId?: string
 }
+
+interface MarkdownTableContextValue {
+  messageId: string | null
+  sessionId: string | null
+}
+
+const MarkdownTableContext = createContext<MarkdownTableContextValue>({
+  messageId: null,
+  sessionId: null,
+})
+
+interface ChecklistInjectionContextValue {
+  checkedRows: Set<number> | null
+  onToggle: (rowIndex: number) => void
+}
+
+const ChecklistInjectionContext = createContext<ChecklistInjectionContextValue>(
+  {
+    checkedRows: null,
+    onToggle: () => undefined,
+  }
+)
 
 function extractText(node: ReactNode): string {
   if (typeof node === 'string') return node
@@ -69,9 +110,9 @@ function CodeBlock({ children }: { children: ReactNode }) {
 
 function extractTableData(table: HTMLTableElement): string[][] {
   return Array.from(table.querySelectorAll('tr')).map(row =>
-    Array.from(row.querySelectorAll('th, td')).map(cell =>
-      (cell.textContent ?? '').trim()
-    )
+    Array.from(row.querySelectorAll('th, td'))
+      .filter(cell => !(cell as HTMLElement).dataset.checklistCell)
+      .map(cell => (cell.textContent ?? '').trim())
   )
 }
 
@@ -89,11 +130,99 @@ function tableToMarkdown(data: string[][]): string {
   return [headerLine, separator, ...bodyLines].join('\n')
 }
 
-function TableBlock({ children }: { children: ReactNode }) {
+/**
+ * Prepend a leading checkbox cell into a row by cloning the tr element and
+ * injecting the new cell before the original children. `leading` must be a
+ * cell element (th/td) carrying data-checklist-cell so extraction ignores it
+ * for markdown / TSV copy.
+ */
+function cloneRowWithLeadingCell(
+  row: ReactNode,
+  leading: ReactNode
+): ReactNode {
+  if (!isValidElement(row)) return row
+  const rowEl = row as ReactElement<{ children?: ReactNode }>
+  const original = rowEl.props.children
+  return cloneElement(rowEl, {}, [leading, original])
+}
+
+function ChecklistAwareThead({ children }: { children?: ReactNode }) {
+  const { checkedRows } = useContext(ChecklistInjectionContext)
+  if (!checkedRows) {
+    return <thead className="bg-muted/50">{children}</thead>
+  }
+  const leading = (
+    <th
+      key="__checklist__"
+      data-checklist-cell="true"
+      className="w-10 px-2"
+      aria-hidden
+    />
+  )
+  const augmented = Children.map(children, row =>
+    cloneRowWithLeadingCell(row, leading)
+  )
+  return <thead className="bg-muted/50">{augmented}</thead>
+}
+
+function ChecklistAwareTbody({ children }: { children?: ReactNode }) {
+  const { checkedRows, onToggle } = useContext(ChecklistInjectionContext)
+  if (!checkedRows) {
+    return <tbody>{children}</tbody>
+  }
+  let rowIdx = 0
+  const augmented = Children.map(children, row => {
+    if (!isValidElement(row)) return row
+    const idx = rowIdx++
+    const isChecked = checkedRows.has(idx)
+    const leading = (
+      <td
+        key="__checklist__"
+        data-checklist-cell="true"
+        className="w-10 px-2 align-middle"
+      >
+        <Checkbox
+          checked={isChecked}
+          onCheckedChange={() => onToggle(idx)}
+          aria-label={`Toggle row ${idx + 1}`}
+          className="cursor-pointer"
+        />
+      </td>
+    )
+    return cloneRowWithLeadingCell(row, leading)
+  })
+  return <tbody>{augmented}</tbody>
+}
+
+interface TableBlockProps {
+  children: ReactNode
+  tableOffset: number
+}
+
+function TableBlock({ children, tableOffset }: TableBlockProps) {
   const tableRef = useRef<HTMLTableElement>(null)
   const [copiedFormat, setCopiedFormat] = useState<'markdown' | 'tsv' | null>(
     null
   )
+
+  const { messageId, sessionId: ctxSessionId } =
+    useContext(MarkdownTableContext)
+  const tableKey = messageId ? `${messageId}:${tableOffset}` : null
+
+  const storeSessionId = useChatStore(state => {
+    if (state.activeWorktreeId) {
+      return state.activeSessionIds[state.activeWorktreeId] ?? null
+    }
+    return null
+  })
+  const sessionId = ctxSessionId ?? storeSessionId
+  const checkedRows = useChatStore(state =>
+    sessionId && tableKey
+      ? (state.tableCheckedRows[sessionId]?.[tableKey] ?? null)
+      : null
+  )
+  const checklistEnabled = checkedRows !== null
+  const canUseChecklist = Boolean(sessionId && tableKey)
 
   const handleCopy = useCallback((format: 'markdown' | 'tsv') => {
     if (!tableRef.current) return
@@ -108,15 +237,55 @@ function TableBlock({ children }: { children: ReactNode }) {
     setTimeout(() => setCopiedFormat(null), 2000)
   }, [])
 
+  const handleToggleChecklist = useCallback(() => {
+    if (!sessionId || !tableKey) return
+    const store = useChatStore.getState()
+    if (store.tableCheckedRows[sessionId]?.[tableKey]) {
+      store.disableTableChecklist(sessionId, tableKey)
+    } else {
+      store.enableTableChecklist(sessionId, tableKey)
+    }
+  }, [sessionId, tableKey])
+
+  const handleToggleRow = useCallback(
+    (rowIndex: number) => {
+      if (!sessionId || !tableKey) return
+      useChatStore
+        .getState()
+        .toggleTableRowChecked(sessionId, tableKey, rowIndex)
+    },
+    [sessionId, tableKey]
+  )
+
+  const checklistCtxValue = useMemo(
+    () => ({ checkedRows, onToggle: handleToggleRow }),
+    [checkedRows, handleToggleRow]
+  )
+
   const btnClass =
     'opacity-50 hover:opacity-100 transition-opacity p-1.5 rounded-md hover:bg-background/80 text-muted-foreground hover:text-foreground cursor-pointer'
+  const activeBtnClass =
+    'opacity-100 transition-opacity p-1.5 rounded-md bg-background/80 text-foreground cursor-pointer'
 
   return (
-    <div className="relative my-5 overflow-x-auto">
-      <table ref={tableRef} className="min-w-full border-collapse text-sm">
-        {children}
-      </table>
-      <div className="absolute right-2 top-2 flex gap-0.5">
+    <div className="my-5">
+      <div className="mb-2 flex justify-end gap-0.5">
+        {canUseChecklist && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleToggleChecklist}
+                className={checklistEnabled ? activeBtnClass : btnClass}
+                aria-pressed={checklistEnabled}
+              >
+                <ListChecks className="size-4" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {checklistEnabled ? 'Turn off checklist' : 'Toggle checklist'}
+            </TooltipContent>
+          </Tooltip>
+        )}
         <Tooltip>
           <TooltipTrigger asChild>
             <button onClick={() => handleCopy('markdown')} className={btnClass}>
@@ -141,6 +310,13 @@ function TableBlock({ children }: { children: ReactNode }) {
           </TooltipTrigger>
           <TooltipContent>Copy for spreadsheet</TooltipContent>
         </Tooltip>
+      </div>
+      <div className="overflow-x-auto">
+        <ChecklistInjectionContext.Provider value={checklistCtxValue}>
+          <table ref={tableRef} className="min-w-full border-collapse text-sm">
+            {children}
+          </table>
+        </ChecklistInjectionContext.Provider>
       </div>
     </div>
   )
@@ -259,10 +435,32 @@ const components: Components = {
     <p className="my-3 leading-relaxed first:mt-0 last:mb-0">{children}</p>
   ),
 
+  // Task list checkboxes (from remark-gfm) → shadcn Checkbox for theme-aware styling
+  input: ({ type, checked, ...props }) => {
+    if (type === 'checkbox') {
+      return (
+        <Checkbox
+          checked={!!checked}
+          tabIndex={-1}
+          aria-readonly
+          className="mt-0.5 pointer-events-none"
+        />
+      )
+    }
+    return <input type={type} checked={checked} {...props} />
+  },
+
   // Tables
-  table: ({ children }) => <TableBlock>{children}</TableBlock>,
-  thead: ({ children }) => <thead className="bg-muted/50">{children}</thead>,
-  tbody: ({ children }) => <tbody>{children}</tbody>,
+  table: ({ children, node }) => {
+    const offset = node?.position?.start?.offset ?? 0
+    return <TableBlock tableOffset={offset}>{children}</TableBlock>
+  },
+  thead: ({ children }) => (
+    <ChecklistAwareThead>{children}</ChecklistAwareThead>
+  ),
+  tbody: ({ children }) => (
+    <ChecklistAwareTbody>{children}</ChecklistAwareTbody>
+  ),
   tr: ({ children }) => <tr className="border-b border-border">{children}</tr>,
   th: ({ children }) => (
     <th className="px-4 py-2.5 text-left font-semibold">{children}</th>
@@ -285,19 +483,28 @@ const Markdown = memo(function Markdown({
   children,
   streaming = false,
   className,
+  messageId,
+  sessionId,
 }: MarkdownProps) {
   // Apply remend preprocessing for streaming content to auto-close incomplete markdown
   const content = streaming ? remend(children) : children
 
+  const contextValue = useMemo(
+    () => ({ messageId: messageId ?? null, sessionId: sessionId ?? null }),
+    [messageId, sessionId]
+  )
+
   return (
     <div className={cn('markdown leading-relaxed break-words', className)}>
-      <ReactMarkdown
-        components={streaming ? streamingComponents : components}
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[rehypeRaw]}
-      >
-        {content}
-      </ReactMarkdown>
+      <MarkdownTableContext.Provider value={contextValue}>
+        <ReactMarkdown
+          components={streaming ? streamingComponents : components}
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[rehypeRaw]}
+        >
+          {content}
+        </ReactMarkdown>
+      </MarkdownTableContext.Provider>
     </div>
   )
 })

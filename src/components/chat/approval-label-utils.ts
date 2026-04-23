@@ -2,12 +2,14 @@ import {
   MODEL_OPTIONS,
   CODEX_MODEL_OPTIONS,
   OPENCODE_MODEL_OPTIONS,
+  CURSOR_MODEL_OPTIONS,
 } from './toolbar/toolbar-options'
 
 const ALL_MODEL_OPTIONS = [
   ...MODEL_OPTIONS,
   ...CODEX_MODEL_OPTIONS,
   ...OPENCODE_MODEL_OPTIONS,
+  ...CURSOR_MODEL_OPTIONS,
 ]
 
 /**
@@ -25,22 +27,33 @@ export function resolveApprovalLabel(
         selected_model?: string | null
         selected_codex_model?: string | null
         selected_opencode_model?: string | null
+        selected_cursor_model?: string | null
         default_backend?: string | null
       }
-    | undefined
+    | undefined,
+  sessionBackend?: string | null
 ): string | null {
   if (!preferences) return null
-  const model =
-    mode === 'yolo' ? preferences.yolo_model : preferences.build_model
-  const backend =
+  const modeBackend =
     mode === 'yolo' ? preferences.yolo_backend : preferences.build_backend
-  const resolvedBackend = backend ?? preferences.default_backend ?? 'claude'
+  const overridesApply =
+    !modeBackend || !sessionBackend || modeBackend === sessionBackend
+  const model = overridesApply
+    ? mode === 'yolo'
+      ? preferences.yolo_model
+      : preferences.build_model
+    : null
+  const backend = overridesApply ? modeBackend : null
+  const resolvedBackend =
+    backend ?? sessionBackend ?? preferences.default_backend ?? 'claude'
   const backendDefaultModel =
     resolvedBackend === 'codex'
       ? (preferences.selected_codex_model ?? 'gpt-5.4')
       : resolvedBackend === 'opencode'
         ? (preferences.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-        : (preferences.selected_model ?? null)
+        : resolvedBackend === 'cursor'
+          ? (preferences.selected_cursor_model ?? 'cursor/auto')
+          : (preferences.selected_model ?? null)
   const resolvedModel = model ?? backendDefaultModel
   if (!resolvedModel && !resolvedBackend) return null
   const modelLabel = resolvedModel

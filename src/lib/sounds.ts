@@ -3,21 +3,14 @@
  * Plays sounds when sessions complete or need input.
  */
 
-export type NotificationSound = 'none' | 'ding' | 'chime' | 'pop' | 'choochoo'
-
-export const notificationSoundOptions: {
-  value: NotificationSound
-  label: string
-}[] = [
-  { value: 'none', label: 'None' },
-  { value: 'ding', label: 'Ding' },
-  { value: 'chime', label: 'Chime' },
-  { value: 'pop', label: 'Pop' },
-  { value: 'choochoo', label: 'Choo-choo' },
-]
+import {
+  type NotificationSound,
+  notificationSoundOptions,
+} from '../types/preferences'
 
 const notificationSoundAssetMap: Partial<Record<NotificationSound, string>> = {
-  choochoo: '/sounds/peon-work-work.mp3',
+  workwork: '/sounds/work-work.mp3',
+  jobsdone: '/sounds/jobs-done.mp3',
 }
 
 // Single audio instance to prevent overlapping sounds

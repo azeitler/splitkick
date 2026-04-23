@@ -49,6 +49,7 @@ function mapCodexReasoningToEffort(
     case 'high':
       return 'high'
     case 'xhigh':
+      return 'xhigh'
     case 'max':
       return 'max'
     default:
@@ -57,12 +58,13 @@ function mapCodexReasoningToEffort(
 }
 
 function getDefaultModelForBackend(
-  backend: 'claude' | 'codex' | 'opencode' | undefined,
+  backend: 'claude' | 'codex' | 'opencode' | 'cursor' | undefined,
   preferences:
     | {
         selected_model?: string | null
         selected_codex_model?: string | null
         selected_opencode_model?: string | null
+        selected_cursor_model?: string | null
       }
     | undefined
 ): string {
@@ -72,7 +74,10 @@ function getDefaultModelForBackend(
   if (backend === 'opencode') {
     return preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex'
   }
-  return preferences?.selected_model ?? 'opus'
+  if (backend === 'cursor') {
+    return preferences?.selected_cursor_model ?? 'cursor/auto'
+  }
+  return preferences?.selected_model ?? 'claude-opus-4-7'
 }
 
 interface UseClearContextApprovalParams {
@@ -256,6 +261,9 @@ export function useClearContextApproval({
       const modeThinkingPref = isYolo
         ? preferences?.yolo_thinking_level
         : preferences?.build_thinking_level
+      const modeEffortPref = isYolo
+        ? preferences?.yolo_effort_level
+        : preferences?.build_effort_level
       const modeBackendOverride = modeBackendPref as
         | 'claude'
         | 'codex'
@@ -285,7 +293,7 @@ export function useClearContextApproval({
             preferences?.default_codex_reasoning_effort
           ) ?? 'high'
         effortLevel =
-          mapCodexReasoningToEffort(modeThinkingPref) ?? defaultCodexEffort
+          mapCodexReasoningToEffort(modeEffortPref) ?? defaultCodexEffort
       } else {
         const fallbackThinking = isThinkingLevel(preferences?.thinking_level)
           ? preferences.thinking_level
@@ -293,6 +301,7 @@ export function useClearContextApproval({
         thinkingLevel = isThinkingLevel(modeThinkingPref)
           ? modeThinkingPref
           : fallbackThinking
+        effortLevel = mapCodexReasoningToEffort(modeEffortPref)
       }
       const resolvedPlanFilePath =
         card.planFilePath || store.getPlanFilePath(sessionId)
@@ -341,7 +350,7 @@ export function useClearContextApproval({
       if (backend) {
         store.setSelectedBackend(
           newSession.id,
-          backend as 'claude' | 'codex' | 'opencode'
+          backend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model

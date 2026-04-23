@@ -504,10 +504,17 @@ export function useChatWindowEvents({
   }, [isModal, hasPendingPlanApproval, pendingPlanMessage, handlePlanApproval])
 
   // CMD+Up/Down: Scroll chat by one page with eased animation
+  // Plain Up/Down: Scroll by a small increment
   const scrollAnimationRef = useRef<number | null>(null)
+  const lastScrollAtRef = useRef<number>(0)
   useEffect(() => {
     const easeOut = (t: number) => 1 - (1 - t) ** 3
-    const handler = (e: CustomEvent<{ direction: 'up' | 'down' }>) => {
+    const handler = (
+      e: CustomEvent<{
+        direction: 'up' | 'down'
+        amount?: 'small' | 'page'
+      }>
+    ) => {
       const viewport = scrollViewportRef.current
       if (!viewport) return
       const { scrollTop, scrollHeight, clientHeight } = viewport
@@ -519,19 +526,28 @@ export function useChatWindowEvents({
         return
       if (e.detail.direction === 'up' && scrollTop < 2) return
       beginKeyboardScroll()
-      // Cancel any ongoing keyboard scroll animation
+      const isSmall = e.detail.amount === 'small'
+      const magnitude = isSmall ? 100 : viewport.clientHeight * 0.75
+      const delta = e.detail.direction === 'up' ? -magnitude : magnitude
+      const now = performance.now()
+      // Held-key repeat: previous press very recent → jump instantly so
+      // queued animations don't stack and cause lag.
+      const isRepeat = isSmall && now - lastScrollAtRef.current < 180
+      lastScrollAtRef.current = now
       if (scrollAnimationRef.current) {
         cancelAnimationFrame(scrollAnimationRef.current)
+        scrollAnimationRef.current = null
       }
-      const delta =
-        e.detail.direction === 'up'
-          ? -viewport.clientHeight * 0.75
-          : viewport.clientHeight * 0.75
+      if (isRepeat) {
+        viewport.scrollTop = scrollTop + delta
+        endKeyboardScroll()
+        return
+      }
+      const duration = isSmall ? 120 : 250
       const start = viewport.scrollTop
-      const startTime = performance.now()
-      const duration = 250
-      const step = (now: number) => {
-        const progress = Math.min((now - startTime) / duration, 1)
+      const startTime = now
+      const step = (t: number) => {
+        const progress = Math.min((t - startTime) / duration, 1)
         viewport.scrollTop = start + delta * easeOut(progress)
         if (progress < 1) {
           scrollAnimationRef.current = requestAnimationFrame(step)

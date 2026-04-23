@@ -663,6 +663,7 @@ pub fn load_sessions(
                 claude_session_id: None,
                 codex_thread_id: None,
                 opencode_session_id: None,
+                cursor_chat_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
                 selected_provider: None,
@@ -690,10 +691,14 @@ pub fn load_sessions(
                 pending_plan_message_id: None,
                 enabled_mcp_servers: None,
                 digest: None,
+                table_checked_rows: std::collections::HashMap::new(),
                 last_run_status: None,
                 last_run_execution_mode: None,
+                last_run_started_at: None,
                 label: None,
                 queued_messages: vec![],
+                total_runs: 0,
+                loaded_run_start_index: 0,
             }
         };
         sessions.push(session);
@@ -751,6 +756,7 @@ where
                 claude_session_id: None,
                 codex_thread_id: None,
                 opencode_session_id: None,
+                cursor_chat_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
                 selected_provider: None,
@@ -778,10 +784,14 @@ where
                 pending_plan_message_id: None,
                 enabled_mcp_servers: None,
                 digest: None,
+                table_checked_rows: std::collections::HashMap::new(),
                 last_run_status: None,
                 last_run_execution_mode: None,
+                last_run_started_at: None,
                 label: None,
                 queued_messages: vec![],
+                total_runs: 0,
+                loaded_run_start_index: 0,
             }
         };
         hydrated_sessions.push(session);

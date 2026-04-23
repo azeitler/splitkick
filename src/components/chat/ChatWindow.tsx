@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { invoke, listen } from '@/lib/transport'
+import { hydrateRunningSnapshot } from '@/lib/hydrate-running-snapshot'
 import { GitBranch, GitMerge, Layers, Loader2 } from 'lucide-react'
 import {
   useSession,
@@ -35,10 +36,12 @@ import {
   useSetSessionBackend,
   useSetSessionProvider,
   useCreateSession,
+  useLoadOlderMessages,
   markPlanApproved as markPlanApprovedService,
   chatQueryKeys,
 } from '@/services/chat'
 import { useWorktree, useProjects, useRunScripts } from '@/services/projects'
+import { markWorktreeSilentReady } from '@/services/worktree-silent-ready'
 import { useProjectsStore } from '@/store/projects-store'
 import type {
   Worktree,
@@ -409,6 +412,36 @@ export function ChatWindow({
     activeWorktreePath
   )
 
+  // Rebuild streamingContentBlocks from snapshot when opening a session whose
+  // last message is still running. Covers web-access click-to-open, sidebar
+  // navigation, and any other entry that bypasses App.tsx auto-resume.
+  useEffect(() => {
+    if (!deferredSessionId || !session) return
+    const lastMsg = session.messages.at(-1)
+    if (lastMsg?.role === 'assistant' && lastMsg.id.startsWith('running-')) {
+      hydrateRunningSnapshot(deferredSessionId, lastMsg)
+    }
+  }, [deferredSessionId, session])
+
+  const loadOlderMessages = useLoadOlderMessages()
+  const loadedRunStartIndex = session?.loaded_run_start_index ?? 0
+  const totalRuns = session?.total_runs ?? 0
+  const hasOlderOnDisk = loadedRunStartIndex > 0 && totalRuns > 0
+  const handleLoadOlderRuns = useCallback(() => {
+    if (!deferredSessionId || !hasOlderOnDisk || loadOlderMessages.isPending) {
+      return
+    }
+    loadOlderMessages.mutate({
+      sessionId: deferredSessionId,
+      beforeRunIndex: loadedRunStartIndex,
+    })
+  }, [
+    deferredSessionId,
+    hasOlderOnDisk,
+    loadedRunStartIndex,
+    loadOlderMessages,
+  ])
+
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
   const sessionModalOpen = useUIStore(state => state.sessionChatModalOpen)
@@ -545,12 +578,14 @@ export function ChatWindow({
   // Model string is definitive backend source (matches Rust safety net in send_chat_message).
   // Prevents race where setSessionModel invalidation refetches before setSessionBackend persists.
   const modelImpliedBackend: CliBackend | null =
-    session?.selected_model?.startsWith('opencode/')
-      ? 'opencode'
-      : session?.selected_model?.startsWith('codex') ||
-          session?.selected_model?.includes('codex')
-        ? 'codex'
-        : null
+    session?.selected_model?.startsWith('cursor/')
+      ? 'cursor'
+      : session?.selected_model?.startsWith('opencode/')
+        ? 'opencode'
+        : session?.selected_model?.startsWith('codex') ||
+            session?.selected_model?.includes('codex')
+          ? 'codex'
+          : null
   // Clamp to installed backends — prevents showing "Claude" when only Codex is installed
   const selectedBackend: CliBackend =
     modelImpliedBackend ??
@@ -560,13 +595,16 @@ export function ChatWindow({
       : resolvedBackend)
   const isCodexBackend = selectedBackend === 'codex'
   const isOpencodeBackend = selectedBackend === 'opencode'
+  const isCursorBackend = selectedBackend === 'cursor'
 
   // Per-session model selection, falls back to preferences default (backend-aware)
   const defaultModel: string = isCodexBackend
     ? (preferences?.selected_codex_model ?? 'gpt-5.4')
     : isOpencodeBackend
       ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-      : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
+      : isCursorBackend
+        ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+        : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
   const selectedModel: string = session?.selected_model ?? defaultModel
 
   // Per-session thinking level, falls back to preferences default
@@ -588,7 +626,7 @@ export function ChatWindow({
           low: 'low',
           medium: 'medium',
           high: 'high',
-          xhigh: 'max',
+          xhigh: 'xhigh',
         } as Record<string, EffortLevel>
       )[preferences?.default_codex_reasoning_effort ?? 'high'] ?? 'high')
     : ((preferences?.default_effort_level as EffortLevel) ?? 'high')
@@ -625,7 +663,7 @@ export function ChatWindow({
     activeProfile?.supports_thinking ??
     PREDEFINED_CLI_PROFILES.find(p => p.name === selectedProvider)
       ?.supports_thinking
-  const hideThinkingLevel = activeSupportsThinking === false
+  const hideThinkingLevel = activeSupportsThinking === false || isCursorBackend
 
   const isSending = isSendingForSession
 
@@ -825,11 +863,17 @@ export function ChatWindow({
   const buildThinkingLevelRef = useRef<string | null>(
     preferences?.build_thinking_level ?? null
   )
+  const buildEffortLevelRef = useRef<string | null>(
+    preferences?.build_effort_level ?? null
+  )
   const yoloBackendRef = useRef<string | null>(
     preferences?.yolo_backend ?? null
   )
   const yoloThinkingLevelRef = useRef<string | null>(
     preferences?.yolo_thinking_level ?? null
+  )
+  const yoloEffortLevelRef = useRef<string | null>(
+    preferences?.yolo_effort_level ?? null
   )
   const selectedProviderRef = useRef(selectedProvider)
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
@@ -851,8 +895,10 @@ export function ChatWindow({
   yoloModelRef.current = preferences?.yolo_model ?? null
   buildBackendRef.current = preferences?.build_backend ?? null
   buildThinkingLevelRef.current = preferences?.build_thinking_level ?? null
+  buildEffortLevelRef.current = preferences?.build_effort_level ?? null
   yoloBackendRef.current = preferences?.yolo_backend ?? null
   yoloThinkingLevelRef.current = preferences?.yolo_thinking_level ?? null
+  yoloEffortLevelRef.current = preferences?.yolo_effort_level ?? null
   selectedProviderRef.current = selectedProvider
   selectedThinkingLevelRef.current = selectedThinkingLevel
   selectedEffortLevelRef.current = selectedEffortLevel
@@ -879,6 +925,7 @@ export function ChatWindow({
 
   // Ref for approve button (passed to VirtualizedMessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
+  const triggerChatAttachRef = useRef<(() => void) | null>(null)
 
   // Terminal panel ref for imperative collapse/expand
   const terminalPanelRef = useRef<ImperativePanelHandle>(null)
@@ -977,8 +1024,12 @@ export function ChatWindow({
       selectedModelRef,
       buildModelRef,
       buildBackendRef,
+      buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
       yoloBackendRef,
+      yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedProviderRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
@@ -1053,12 +1104,13 @@ export function ChatWindow({
           ? (preferences?.selected_codex_model ?? 'gpt-5.4')
           : yoloBackend === 'opencode'
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-            : selectedModelRef.current)
+            : yoloBackend === 'cursor'
+              ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+              : selectedModelRef.current)
       const yoloOverride =
         yoloModelRef.current || yoloBackend
           ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
           : ''
-      if (yoloOverride) toast.info(`Yolo: ${yoloOverride}`)
       const message = yoloOverride
         ? `[Yolo: ${yoloOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
@@ -1071,7 +1123,7 @@ export function ChatWindow({
       if (yoloBackend) {
         store.setSelectedBackend(
           newSession.id,
-          yoloBackend as 'claude' | 'codex' | 'opencode'
+          yoloBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
@@ -1110,6 +1162,7 @@ export function ChatWindow({
 
       const effectiveYoloBackend = yoloBackend ?? session?.backend
       const yoloModeThinking = yoloThinkingLevelRef.current
+      const yoloModeEffort = yoloEffortLevelRef.current
       const yoloThinkingLevel: ThinkingLevel =
         effectiveYoloBackend === 'codex'
           ? 'off'
@@ -1117,16 +1170,12 @@ export function ChatWindow({
               selectedThinkingLevelRef.current) as ThinkingLevel)
       const yoloEffortLevel: EffortLevel | undefined =
         effectiveYoloBackend === 'codex'
-          ? ((
-              {
-                low: 'low',
-                medium: 'medium',
-                high: 'high',
-                xhigh: 'max',
-                max: 'max',
-              } as Record<string, EffortLevel>
-            )[yoloModeThinking ?? ''] ?? selectedEffortLevelRef.current)
-          : undefined
+          ? ((yoloModeEffort as EffortLevel | null) ??
+            selectedEffortLevelRef.current)
+          : useAdaptiveThinkingRef.current
+            ? ((yoloModeEffort as EffortLevel | null) ??
+              selectedEffortLevelRef.current)
+            : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: activeWorktreeId,
@@ -1151,8 +1200,10 @@ export function ChatWindow({
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       preferences?.selected_codex_model,
       preferences?.selected_opencode_model,
       session?.backend,
@@ -1222,12 +1273,13 @@ export function ChatWindow({
           ? (preferences?.selected_codex_model ?? 'gpt-5.4')
           : buildBackend === 'opencode'
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-            : selectedModelRef.current)
+            : buildBackend === 'cursor'
+              ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+              : selectedModelRef.current)
       const buildOverride =
         buildModelRef.current || buildBackend
           ? [buildBackend, buildModel].filter(Boolean).join(' / ')
           : ''
-      if (buildOverride) toast.info(`Build: ${buildOverride}`)
       const message = buildOverride
         ? `[Build: ${buildOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
@@ -1240,7 +1292,7 @@ export function ChatWindow({
       if (buildBackend) {
         store.setSelectedBackend(
           newSession.id,
-          buildBackend as 'claude' | 'codex' | 'opencode'
+          buildBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
@@ -1279,6 +1331,7 @@ export function ChatWindow({
 
       const effectiveBuildBackend = buildBackend ?? session?.backend
       const buildModeThinking = buildThinkingLevelRef.current
+      const buildModeEffort = buildEffortLevelRef.current
       const buildThinkingLevel: ThinkingLevel =
         effectiveBuildBackend === 'codex'
           ? 'off'
@@ -1286,16 +1339,12 @@ export function ChatWindow({
               selectedThinkingLevelRef.current) as ThinkingLevel)
       const buildEffortLevel: EffortLevel | undefined =
         effectiveBuildBackend === 'codex'
-          ? ((
-              {
-                low: 'low',
-                medium: 'medium',
-                high: 'high',
-                xhigh: 'max',
-                max: 'max',
-              } as Record<string, EffortLevel>
-            )[buildModeThinking ?? ''] ?? selectedEffortLevelRef.current)
-          : undefined
+          ? ((buildModeEffort as EffortLevel | null) ??
+            selectedEffortLevelRef.current)
+          : useAdaptiveThinkingRef.current
+            ? ((buildModeEffort as EffortLevel | null) ??
+              selectedEffortLevelRef.current)
+            : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: activeWorktreeId,
@@ -1320,8 +1369,10 @@ export function ChatWindow({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       preferences?.selected_codex_model,
       preferences?.selected_opencode_model,
       session?.backend,
@@ -1339,8 +1390,6 @@ export function ChatWindow({
         !projectId
       )
         return
-
-      const toastId = toast.loading('Creating worktree...')
 
       // Mark pending plan approved if exists
       if (pendingPlanMessage) {
@@ -1383,9 +1432,10 @@ export function ChatWindow({
           projectId,
         })
       } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`, { id: toastId })
+        toast.error(`Failed to create worktree: ${err}`)
         return
       }
+      markWorktreeSilentReady(pendingWorktree.id)
 
       // Wait for worktree to be ready
       let readyWorktree: Worktree
@@ -1422,11 +1472,9 @@ export function ChatWindow({
           )
         })
       } catch (err) {
-        toast.error(`Worktree creation failed: ${err}`, { id: toastId })
+        toast.error(`Worktree creation failed: ${err}`)
         return
       }
-
-      toast.loading('Sending plan...', { id: toastId })
 
       // Navigate to new worktree
       const projectsStore = useProjectsStore.getState()
@@ -1451,7 +1499,7 @@ export function ChatWindow({
           })
         }
       } catch (err) {
-        toast.error(`Failed to get session: ${err}`, { id: toastId })
+        toast.error(`Failed to get session: ${err}`)
         return
       }
 
@@ -1466,6 +1514,7 @@ export function ChatWindow({
       const modeThinkingRef = isYolo
         ? yoloThinkingLevelRef
         : buildThinkingLevelRef
+      const modeEffortRef = isYolo ? yoloEffortLevelRef : buildEffortLevelRef
       const modeBackend =
         (modeBackendRef.current as Session['backend']) ?? undefined
       const modeModel =
@@ -1474,12 +1523,13 @@ export function ChatWindow({
           ? (preferences?.selected_codex_model ?? 'gpt-5.4')
           : modeBackend === 'opencode'
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-            : selectedModelRef.current)
+            : modeBackend === 'cursor'
+              ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+              : selectedModelRef.current)
       const modeOverride =
         modeModelRef.current || modeBackend
           ? [modeBackend, modeModel].filter(Boolean).join(' / ')
           : ''
-      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
       const message = modeOverride
         ? `[${modeLabel}: ${modeOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
@@ -1492,7 +1542,7 @@ export function ChatWindow({
       if (modeBackend) {
         store.setSelectedBackend(
           newSession.id,
-          modeBackend as 'claude' | 'codex' | 'opencode'
+          modeBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       queryClient.setQueryData<Session>(
@@ -1534,6 +1584,7 @@ export function ChatWindow({
 
       const effectiveBackend = modeBackend ?? session?.backend
       const modeThinking = modeThinkingRef.current
+      const modeEffort = modeEffortRef.current
       const thinkingLevel: ThinkingLevel =
         effectiveBackend === 'codex'
           ? 'off'
@@ -1541,16 +1592,12 @@ export function ChatWindow({
               selectedThinkingLevelRef.current) as ThinkingLevel)
       const effortLevel: EffortLevel | undefined =
         effectiveBackend === 'codex'
-          ? ((
-              {
-                low: 'low',
-                medium: 'medium',
-                high: 'high',
-                xhigh: 'max',
-                max: 'max',
-              } as Record<string, EffortLevel>
-            )[modeThinking ?? ''] ?? selectedEffortLevelRef.current)
-          : undefined
+          ? ((modeEffort as EffortLevel | null) ??
+            selectedEffortLevelRef.current)
+          : useAdaptiveThinkingRef.current
+            ? ((modeEffort as EffortLevel | null) ??
+              selectedEffortLevelRef.current)
+            : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: readyWorktree.id,
@@ -1562,8 +1609,6 @@ export function ChatWindow({
         effortLevel,
         backend: modeBackend,
       })
-
-      toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
     },
     [
       activeSessionId,
@@ -1577,11 +1622,14 @@ export function ChatWindow({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       preferences?.selected_codex_model,
       preferences?.selected_opencode_model,
       session?.backend,
@@ -1944,9 +1992,12 @@ export function ChatWindow({
     buildModelRef,
     buildBackendRef,
     buildThinkingLevelRef,
+    buildEffortLevelRef,
     yoloModelRef,
     yoloBackendRef,
     yoloThinkingLevelRef,
+    yoloEffortLevelRef,
+    selectedBackendRef,
     getCustomProfileName: () => {
       return selectedProviderRef.current ?? undefined
     },
@@ -2042,8 +2093,12 @@ export function ChatWindow({
     runScripts,
     hasPendingPlanApproval,
     pendingPlanMessage,
-    handlePlanApproval,
-    handlePlanApprovalYolo,
+    handlePlanApproval: isCursorBackend
+      ? handleClearContextApprovalBuild
+      : handlePlanApproval,
+    handlePlanApprovalYolo: isCursorBackend
+      ? handleClearContextApproval
+      : handlePlanApprovalYolo,
     handleClearContextApproval,
     handleClearContextApprovalBuild,
     handleWorktreeBuildApproval,
@@ -2054,13 +2109,36 @@ export function ChatWindow({
   })
 
   // Combined floating-button approval callbacks (dispatch to streaming or pending variant)
+  // Cursor can't switch modes on a resumed session, so always use clear-context (new session)
   const floatingApprove = useCallback(() => {
-    if (pendingPlanMessage) handlePlanApproval(pendingPlanMessage.id)
-  }, [pendingPlanMessage, handlePlanApproval])
+    if (pendingPlanMessage) {
+      if (isCursorBackend) {
+        handleClearContextApprovalBuild(pendingPlanMessage.id)
+      } else {
+        handlePlanApproval(pendingPlanMessage.id)
+      }
+    }
+  }, [
+    pendingPlanMessage,
+    handlePlanApproval,
+    handleClearContextApprovalBuild,
+    isCursorBackend,
+  ])
 
   const floatingYoloApprove = useCallback(() => {
-    if (pendingPlanMessage) handlePlanApprovalYolo(pendingPlanMessage.id)
-  }, [pendingPlanMessage, handlePlanApprovalYolo])
+    if (pendingPlanMessage) {
+      if (isCursorBackend) {
+        handleClearContextApproval(pendingPlanMessage.id)
+      } else {
+        handlePlanApprovalYolo(pendingPlanMessage.id)
+      }
+    }
+  }, [
+    pendingPlanMessage,
+    handlePlanApprovalYolo,
+    handleClearContextApproval,
+    isCursorBackend,
+  ])
 
   const floatingClearContextBuildApprove = useCallback(() => {
     if (pendingPlanMessage)
@@ -2309,8 +2387,16 @@ export function ChatWindow({
                                   }
                                   approveButtonRef={approveButtonRef}
                                   isSending={isSending}
-                                  onPlanApproval={handlePlanApproval}
-                                  onPlanApprovalYolo={handlePlanApprovalYolo}
+                                  onPlanApproval={
+                                    isCursorBackend
+                                      ? handleClearContextApprovalBuild
+                                      : handlePlanApproval
+                                  }
+                                  onPlanApprovalYolo={
+                                    isCursorBackend
+                                      ? handleClearContextApproval
+                                      : handlePlanApprovalYolo
+                                  }
                                   onClearContextApproval={
                                     handleClearContextApproval
                                   }
@@ -2343,6 +2429,10 @@ export function ChatWindow({
                                     handleScrollToBottomHandled
                                   }
                                   completedDurationMs={completedDurationMs}
+                                  hasOlderOnDisk={hasOlderOnDisk}
+                                  isLoadingOlder={loadOlderMessages.isPending}
+                                  onLoadOlderRuns={handleLoadOlderRuns}
+                                  loadedRunStartIndex={loadedRunStartIndex}
                                 />
                               </>
                             )}
@@ -2519,7 +2609,8 @@ export function ChatWindow({
                       <FloatingButtons
                         showApproveButton={hasPendingPlanApproval}
                         showFindingsButton={!areFindingsVisible}
-                        isAtBottom={isAtBottom}
+                        isAtBottom={isAtBottom || messages.length === 0}
+                        isSending={isSending}
                         approveShortcut={approveShortcut}
                         onApprove={floatingApprove}
                         onYoloApprove={floatingYoloApprove}
@@ -2555,7 +2646,7 @@ export function ChatWindow({
                     {/* Input container - full width, centered content */}
                     <div className="bg-background">
                       <div className="mx-auto max-w-7xl">
-                        <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl">
+                        <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl xl:max-w-4xl">
                           {/* Input area - unified container with textarea and toolbar */}
                           <form
                             ref={formRef}
@@ -2565,6 +2656,11 @@ export function ChatWindow({
                               isDragging &&
                                 'ring-2 ring-primary ring-inset bg-primary/5'
                             )}
+                            style={
+                              isMobile
+                                ? { paddingBottom: 'var(--safe-area-bottom)' }
+                                : undefined
+                            }
                           >
                             {/* Pending file preview (@ mentions) */}
                             <FilePreview
@@ -2607,7 +2703,13 @@ export function ChatWindow({
                                 (todoSourceMessageId !== null &&
                                   todoSourceMessageId !==
                                     dismissedTodoMessageId)) && (
-                                <div className="px-4 md:px-6 pt-2 xl:hidden">
+                                <div
+                                  className={
+                                    terminalPanelOpen
+                                      ? 'px-4 md:px-6 pt-2'
+                                      : 'px-4 md:px-6 pt-2 xl:hidden'
+                                  }
+                                >
                                   <TodoWidget
                                     todos={normalizeTodosForDisplay(
                                       activeTodos,
@@ -2629,7 +2731,13 @@ export function ChatWindow({
                                 (agentSourceMessageId !== null &&
                                   agentSourceMessageId !==
                                     dismissedAgentMessageId)) && (
-                                <div className="px-4 md:px-6 pt-2 xl:hidden">
+                                <div
+                                  className={
+                                    terminalPanelOpen
+                                      ? 'px-4 md:px-6 pt-2'
+                                      : 'px-4 md:px-6 pt-2 xl:hidden'
+                                  }
+                                >
                                   <AgentWidget
                                     agents={activeAgents}
                                     isStreaming={agentIsFromStreaming}
@@ -2663,19 +2771,17 @@ export function ChatWindow({
                                 ) => {
                                   clearChatInputStateRef.current = handler
                                 }}
+                                onRegisterAttachHandler={handler => {
+                                  triggerChatAttachRef.current = handler
+                                }}
                                 formRef={formRef}
                                 inputRef={inputRef}
+                                installedBackends={installedBackends}
                               />
                             </div>
 
                             {/* Bottom toolbar */}
-                            <div
-                              style={
-                                isMobile
-                                  ? { paddingBottom: 'var(--safe-area-bottom)' }
-                                  : undefined
-                              }
-                            >
+                            <div>
                               <ChatToolbar
                                 isSending={isSending}
                                 hasPendingQuestions={hasPendingQuestions}
@@ -2753,6 +2859,9 @@ export function ChatWindow({
                                 onSetExecutionMode={
                                   handleToolbarSetExecutionMode
                                 }
+                                onAttach={() =>
+                                  triggerChatAttachRef.current?.()
+                                }
                                 onCancel={handleCancel}
                                 queuedMessageCount={
                                   currentQueuedMessages.length
@@ -2768,8 +2877,9 @@ export function ChatWindow({
                           </form>
 
                           {/* Side panel widgets (Tasks + Agents) for wide screens */}
-                          {(activeTodos.length > 0 ||
-                            activeAgents.length > 0) && (
+                          {!terminalPanelOpen &&
+                            (activeTodos.length > 0 ||
+                              activeAgents.length > 0) && (
                             <div className="hidden xl:flex flex-col gap-2 absolute left-full bottom-0 ml-3 w-64 z-20">
                               {activeTodos.length > 0 &&
                                 (dismissedTodoMessageId === null ||
@@ -2935,8 +3045,16 @@ export function ChatWindow({
                     }
                   : undefined
               }
-              onApprove={handlePlanDialogApprove}
-              onApproveYolo={handlePlanDialogApproveYolo}
+              onApprove={
+                isCursorBackend
+                  ? handlePlanDialogClearContextBuildApprove
+                  : handlePlanDialogApprove
+              }
+              onApproveYolo={
+                isCursorBackend
+                  ? handlePlanDialogClearContextApprove
+                  : handlePlanDialogApproveYolo
+              }
               onClearContextApprove={handlePlanDialogClearContextApprove}
               onClearContextBuildApprove={
                 handlePlanDialogClearContextBuildApprove
@@ -2969,8 +3087,16 @@ export function ChatWindow({
                     }
                   : undefined
               }
-              onApprove={handlePlanDialogApprove}
-              onApproveYolo={handlePlanDialogApproveYolo}
+              onApprove={
+                isCursorBackend
+                  ? handlePlanDialogClearContextBuildApprove
+                  : handlePlanDialogApprove
+              }
+              onApproveYolo={
+                isCursorBackend
+                  ? handlePlanDialogClearContextApprove
+                  : handlePlanDialogApproveYolo
+              }
               onClearContextApprove={handlePlanDialogClearContextApprove}
               onClearContextBuildApprove={
                 handlePlanDialogClearContextBuildApprove

@@ -493,8 +493,8 @@ export function useCommandContext(
   }, [themeContext])
 
   const getCurrentModel = useCallback((): ClaudeModel => {
-    // Default to opus - actual model comes from preferences
-    return 'opus'
+    // Default - actual model comes from preferences
+    return 'claude-opus-4-7'
   }, [])
 
   const getCurrentThinkingLevel = useCallback((): ThinkingLevel => {

@@ -20,6 +20,20 @@ import type {
 import type { Session } from '@/types/chat'
 import type { McpServerInfo } from '@/types/chat'
 
+const THINKING_LEVEL_VALUES = new Set<ThinkingLevel>([
+  'off',
+  'think',
+  'megathink',
+  'ultrathink',
+])
+
+function isThinkingLevel(
+  value: string | null | undefined
+): value is ThinkingLevel {
+  if (!value) return false
+  return THINKING_LEVEL_VALUES.has(value as ThinkingLevel)
+}
+
 interface UsePlanDialogApprovalParams {
   activeSessionId: string | null | undefined
   activeWorktreeId: string | null | undefined
@@ -28,8 +42,12 @@ interface UsePlanDialogApprovalParams {
   selectedModelRef: RefObject<string>
   buildModelRef: RefObject<string | null>
   buildBackendRef: RefObject<string | null>
+  buildThinkingLevelRef: RefObject<string | null>
+  buildEffortLevelRef: RefObject<string | null>
   yoloModelRef: RefObject<string | null>
   yoloBackendRef: RefObject<string | null>
+  yoloThinkingLevelRef: RefObject<string | null>
+  yoloEffortLevelRef: RefObject<string | null>
   selectedProviderRef: RefObject<string | null>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
   selectedEffortLevelRef: RefObject<EffortLevel>
@@ -37,7 +55,7 @@ interface UsePlanDialogApprovalParams {
   isCodexBackendRef: RefObject<boolean>
   mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
   enabledMcpServersRef: RefObject<string[]>
-  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode'>
+  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode' | 'cursor'>
   markAtBottom: () => void
 }
 
@@ -53,8 +71,12 @@ export function usePlanDialogApproval({
   selectedModelRef,
   buildModelRef,
   buildBackendRef,
+  buildThinkingLevelRef,
+  buildEffortLevelRef,
   yoloModelRef,
   yoloBackendRef,
+  yoloThinkingLevelRef,
+  yoloEffortLevelRef,
   selectedProviderRef,
   selectedThinkingLevelRef,
   selectedEffortLevelRef,
@@ -214,10 +236,49 @@ export function usePlanDialogApproval({
 
       setExecutionMode(activeSessionId, mode)
 
-      const modelOverride =
-        mode === 'yolo' ? yoloModelRef.current : buildModelRef.current
       const backendOverride =
         mode === 'yolo' ? yoloBackendRef.current : buildBackendRef.current
+      const overridesApply =
+        !backendOverride || backendOverride === selectedBackendRef.current
+
+      const modelOverride = overridesApply
+        ? mode === 'yolo'
+          ? yoloModelRef.current
+          : buildModelRef.current
+        : null
+
+      if (modelOverride) {
+        useChatStore.getState().setSelectedModel(activeSessionId, modelOverride)
+      }
+
+      const thinkingOverride = overridesApply
+        ? mode === 'yolo'
+          ? yoloThinkingLevelRef.current
+          : buildThinkingLevelRef.current
+        : null
+      const resolvedThinkingLevel: ThinkingLevel = isThinkingLevel(
+        thinkingOverride
+      )
+        ? thinkingOverride
+        : selectedThinkingLevelRef.current
+
+      if (isThinkingLevel(thinkingOverride)) {
+        useChatStore
+          .getState()
+          .setThinkingLevel(activeSessionId, resolvedThinkingLevel)
+      }
+
+      const effortOverride = overridesApply
+        ? mode === 'yolo'
+          ? yoloEffortLevelRef.current
+          : buildEffortLevelRef.current
+        : null
+      const resolvedEffortLevel: EffortLevel | undefined =
+        useAdaptiveThinkingRef.current || isCodexBackendRef.current
+          ? ((effortOverride as EffortLevel | null) ??
+            selectedEffortLevelRef.current)
+          : undefined
+
       const model = modelOverride ?? selectedModelRef.current
       const modeLabel = mode === 'yolo' ? 'Yolo' : 'Build'
       const overrideStr =
@@ -239,11 +300,8 @@ export function usePlanDialogApproval({
         model,
         provider: selectedProviderRef.current,
         executionMode: mode,
-        thinkingLevel: selectedThinkingLevelRef.current,
-        effortLevel:
-          useAdaptiveThinkingRef.current || isCodexBackendRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
+        thinkingLevel: resolvedThinkingLevel,
+        effortLevel: resolvedEffortLevel,
         mcpConfig: buildMcpConfigJson(
           mcpServersDataRef.current ?? [],
           enabledMcpServersRef.current,
@@ -268,7 +326,11 @@ export function usePlanDialogApproval({
       queryClient,
       selectedModelRef,
       buildModelRef,
+      buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
+      yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedProviderRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,

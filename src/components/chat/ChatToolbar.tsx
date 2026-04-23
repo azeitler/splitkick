@@ -1,5 +1,6 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
+import { useUIStore } from '@/store/ui-store'
 import {
   gitPush,
   triggerImmediateGitPoll,
@@ -8,13 +9,18 @@ import {
 } from '@/services/git-status'
 import { useChatStore } from '@/store/chat-store'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
-import { useAllBackendsMcpHealth, BACKEND_LABELS } from '@/services/mcp'
+import { useAllBackendsMcpHealth } from '@/services/mcp'
 import type { ClaudeModel } from '@/types/preferences'
-import type { EffortLevel, ThinkingLevel } from '@/types/chat'
+import {
+  getSupportedExecutionModes,
+  type EffortLevel,
+  type ThinkingLevel,
+} from '@/types/chat'
 import type { ChatToolbarProps } from '@/components/chat/toolbar/types'
 import { MobileToolbarMenu } from '@/components/chat/toolbar/MobileToolbarMenu'
 import { MobileBackendModelPickerSheet } from '@/components/chat/toolbar/MobileBackendModelPickerSheet'
 import { DesktopToolbarControls } from '@/components/chat/toolbar/DesktopToolbarControls'
+import { ExecutionModeDropdown } from '@/components/chat/toolbar/ExecutionModeDropdown'
 import { SendCancelButton } from '@/components/chat/toolbar/SendCancelButton'
 import { ContextViewerDialog } from '@/components/chat/toolbar/ContextViewerDialog'
 import {
@@ -30,6 +36,10 @@ import { useContextViewer } from '@/components/chat/toolbar/useContextViewer'
 import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { useIsMobile } from '@/hooks/use-mobile'
+import {
+  BackendLabel,
+  getBackendPlainLabel,
+} from '@/components/ui/backend-label'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export {
@@ -96,6 +106,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   onThinkingLevelChange,
   onEffortLevelChange,
   onSetExecutionMode,
+  onAttach,
   onCancel,
   queuedMessageCount,
   availableMcpServers,
@@ -107,7 +118,7 @@ export const ChatToolbar = memo(function ChatToolbar({
     statuses: mcpStatuses,
     isFetching: isHealthChecking,
     refetchAll: checkHealth,
-  } = useAllBackendsMcpHealth(installedBackends)
+  } = useAllBackendsMcpHealth(installedBackends, activeWorktreePath)
 
   const [providerDropdownOpen, setProviderDropdownOpen] = useState(false)
   const [thinkingDropdownOpen, setThinkingDropdownOpen] = useState(false)
@@ -133,6 +144,13 @@ export const ChatToolbar = memo(function ChatToolbar({
     setThinkingDropdownOpen,
   })
 
+  // Signal to FloatingDock that its burger counterpart now lives in this toolbar.
+  useEffect(() => {
+    const { setChatToolbarMounted } = useUIStore.getState()
+    setChatToolbarMounted(true)
+    return () => setChatToolbarMounted(false)
+  }, [])
+
   const { data: availableOpencodeModels } = useAvailableOpencodeModels({
     enabled: selectedBackend === 'opencode',
   })
@@ -152,10 +170,23 @@ export const ChatToolbar = memo(function ChatToolbar({
       availableMcpServers,
       enabledMcpServers,
     })
+  const availableExecutionModes = getSupportedExecutionModes(selectedBackend)
 
   const backendModelLabel = useMemo(
-    () =>
-      `${BACKEND_LABELS[selectedBackend] ?? selectedBackend} · ${selectedModelLabel}`,
+    () => (
+      <>
+        <BackendLabel
+          backend={selectedBackend}
+          badgeClassName="text-[9px] leading-3"
+        />
+        <span className="truncate">· {selectedModelLabel}</span>
+      </>
+    ),
+    [selectedBackend, selectedModelLabel]
+  )
+
+  const backendModelLabelText = useMemo(
+    () => `${getBackendPlainLabel(selectedBackend)} · ${selectedModelLabel}`,
     [selectedBackend, selectedModelLabel]
   )
 
@@ -191,10 +222,10 @@ export const ChatToolbar = memo(function ChatToolbar({
         provider !== '__anthropic__' &&
         (selectedModel === 'claude-opus-4-6[1m]' ||
           selectedModel === 'claude-sonnet-4-6[1m]' ||
-          selectedModel === 'opus-fast' ||
+          selectedModel === 'claude-opus-4-6-fast' ||
           selectedModel === 'claude-opus-4-6[1m]-fast')
       ) {
-        onModelChange('opus' as ClaudeModel)
+        onModelChange('claude-opus-4-6' as ClaudeModel)
       }
     },
     [onProviderChange, onModelChange, selectedModel]
@@ -278,7 +309,7 @@ export const ChatToolbar = memo(function ChatToolbar({
 
   return (
     <div className="@container flex justify-start px-4 py-2 md:px-6">
-      <div className="inline-flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap rounded-lg bg-transparent scrollbar-hide">
+      <div className="inline-flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap bg-transparent scrollbar-hide">
         <MobileToolbarMenu
           isDisabled={isSending || hasPendingQuestions}
           hasOpenPr={hasOpenPr}
@@ -286,12 +317,12 @@ export const ChatToolbar = memo(function ChatToolbar({
           selectedBackend={selectedBackend}
           selectedProvider={selectedProvider}
           backendModelLabel={backendModelLabel}
+          backendModelLabelText={backendModelLabelText}
           selectedEffortLevel={selectedEffortLevel}
           selectedThinkingLevel={selectedThinkingLevel}
           hideThinkingLevel={hideThinkingLevel}
           useAdaptiveThinking={useAdaptiveThinking}
           isCodex={isCodex}
-          executionMode={executionMode}
           customCliProfiles={customCliProfiles}
           uncommittedAdded={uncommittedAdded}
           uncommittedRemoved={uncommittedRemoved}
@@ -311,7 +342,6 @@ export const ChatToolbar = memo(function ChatToolbar({
           onMerge={onMerge}
           onResolveConflicts={onResolveConflicts}
           onOpenBackendModelPicker={() => setMobileBackendModelPickerOpen(true)}
-          onSetExecutionMode={onSetExecutionMode}
           handlePullClick={handlePullClick}
           handlePushClick={handlePushClick}
           handleUncommittedDiffClick={handleUncommittedDiffClick}
@@ -352,6 +382,17 @@ export const ChatToolbar = memo(function ChatToolbar({
             onBackendModelChange={onBackendModelChange}
           />
         )}
+
+        <div className="block @xl:hidden h-4 w-px shrink-0 bg-border/50" />
+
+        <ExecutionModeDropdown
+          executionMode={executionMode}
+          availableModes={availableExecutionModes}
+          disabled={hasPendingQuestions}
+          onSetExecutionMode={onSetExecutionMode}
+          className="flex @xl:hidden shrink-0"
+          align="end"
+        />
 
         <DesktopToolbarControls
           hasPendingQuestions={hasPendingQuestions}
@@ -394,8 +435,10 @@ export const ChatToolbar = memo(function ChatToolbar({
           onOpenProjectSettings={onOpenProjectSettings}
           onResolvePrConflicts={onResolvePrConflicts}
           onLoadContext={onLoadContext}
+          onAttach={onAttach}
           installedBackends={installedBackends}
           onSetExecutionMode={onSetExecutionMode}
+          availableExecutionModes={availableExecutionModes}
           onToggleMcpServer={onToggleMcpServer}
           handleModelChange={handleModelChange}
           handleBackendModelChange={onBackendModelChange}

@@ -99,7 +99,9 @@ async function hydrateCompletedSessionFromBackend(
 ): Promise<void> {
   const worktreePath = useChatStore.getState().worktreePaths[worktreeId]
   if (!worktreePath) {
-    queryClient.invalidateQueries({ queryKey: chatQueryKeys.session(sessionId) })
+    queryClient.invalidateQueries({
+      queryKey: chatQueryKeys.session(sessionId),
+    })
     return
   }
 
@@ -116,7 +118,9 @@ async function hydrateCompletedSessionFromBackend(
       error
     )
   } finally {
-    queryClient.invalidateQueries({ queryKey: chatQueryKeys.session(sessionId) })
+    queryClient.invalidateQueries({
+      queryKey: chatQueryKeys.session(sessionId),
+    })
   }
 }
 
@@ -884,12 +888,10 @@ export default function useStreamingEvents({
             // Question waiting state is persisted by the backend — no frontend persist needed.
           }
 
-          // Play waiting sound if not currently viewing this session
-          if (!isCurrentlyViewing) {
-            const waitingSound = (preferences?.waiting_sound ??
-              'none') as NotificationSound
-            playNotificationSound(waitingSound)
-          }
+          // Play waiting sound
+          const waitingSound = (preferences?.waiting_sound ??
+            'none') as NotificationSound
+          playNotificationSound(waitingSound)
         }
       } else if (event.payload.waiting_for_plan) {
         // Codex/Opencode plan-mode run completed with content — enter plan-waiting state.
@@ -1000,12 +1002,10 @@ export default function useStreamingEvents({
           }
         }
 
-        // Play waiting sound only if not currently viewing this session
-        if (!isCurrentlyViewing) {
-          const waitingSound = (preferences?.waiting_sound ??
-            'none') as NotificationSound
-          playNotificationSound(waitingSound)
-        }
+        // Play waiting sound
+        const waitingSound = (preferences?.waiting_sound ??
+          'none') as NotificationSound
+        playNotificationSound(waitingSound)
       } else {
         // No blocking tools — add optimistic message FIRST, then batch-clear state.
         // This eliminates the flicker gap where neither streaming nor persisted content is visible.
@@ -1102,12 +1102,10 @@ export default function useStreamingEvents({
 
         // Reviewing state is persisted by the backend — no frontend persist needed.
 
-        // Play review sound if not currently viewing this session
-        if (!isCurrentlyViewing) {
-          const reviewSound = (preferences?.review_sound ??
-            'none') as NotificationSound
-          playNotificationSound(reviewSound)
-        }
+        // Play review sound
+        const reviewSound = (preferences?.review_sound ??
+          'none') as NotificationSound
+        playNotificationSound(reviewSound)
 
         // Auto-save context (fire-and-forget, no blocking)
         if (preferences?.auto_save_context === true) {
@@ -1211,7 +1209,7 @@ export default function useStreamingEvents({
       })
     })
 
-    // Handle errors from Claude CLI
+    // Handle errors from any CLI backend (Claude, Codex, OpenCode, Cursor)
     const unlistenError = listen<ErrorEvent>('chat:error', event => {
       const { session_id, error } = event.payload
 
@@ -1521,14 +1519,14 @@ export default function useStreamingEvents({
         // - undo_send from backend, OR
         // - No content streamed yet (cancelled before any response)
         // BUT: Don't restore if there are queued messages (user chose "Skip to Next")
-        // Require substantial text (>50 chars) to count as meaningful partial response
-        // when there are no tool calls — short filler like "Planning." isn't worth preserving
+        // Any assistant output (text, tool call, thinking, content block) counts
+        // as a started response — if present, preserve it and leave input empty.
         const hasToolCalls = toolCalls && toolCalls.length > 0
-        const hasSubstantialText = !!content && content.trim().length > 50
+        const hasText = !!content && content.trim().length > 0
         const hasThinking = !!streamingThinkingContent[session_id]
         const hasContentBlocks = !!contentBlocks && contentBlocks.length > 0
         const hasContent =
-          hasToolCalls || hasSubstantialText || hasThinking || hasContentBlocks
+          hasToolCalls || hasText || hasThinking || hasContentBlocks
         const hasQueuedMessages =
           (useChatStore.getState().messageQueues[session_id] ?? []).length > 0
         const shouldRestoreMessage =
@@ -1601,8 +1599,12 @@ export default function useStreamingEvents({
             useChatStore.getState().clearLastSentAttachments(session_id)
           }
         } else {
-          // Partial response exists — attachments were consumed, don't restore
+          // Partial response exists — attachments were consumed, don't restore.
+          // Clear lastSentMessage so a later chat:error (e.g., codex turn.failed
+          // emitted after interrupt) can't fall back to restoring the prompt
+          // once streamingContents has been wiped by cancelSession().
           useChatStore.getState().clearLastSentAttachments(session_id)
+          useChatStore.getState().clearLastSentMessage(session_id)
           // Preserve partial response as optimistic message BEFORE clearing streaming state
           queryClient.setQueryData<Session>(
             chatQueryKeys.session(session_id),
@@ -1750,7 +1752,7 @@ export default function useStreamingEvents({
         case 'backend':
           store.setSelectedBackend(
             session_id,
-            value as 'claude' | 'codex' | 'opencode'
+            value as 'claude' | 'codex' | 'opencode' | 'cursor'
           )
           break
         case 'model':

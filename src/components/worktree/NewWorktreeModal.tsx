@@ -286,8 +286,10 @@ export function NewWorktreeModal() {
                 setSelectedIndex={setSelectedItemIndex}
                 onSelectPR={handlers.handleSelectPR}
                 onInvestigatePR={handlers.handleSelectPRAndInvestigate}
+                onStackPR={handlers.handleStackOnPR}
                 onPreviewPR={handlePreviewPR}
                 creatingFromNumber={handlers.creatingFromNumber}
+                stackingFromPR={handlers.stackingFromPR}
                 searchInputRef={searchInputRef}
                 onGhLogin={triggerGhLogin}
                 isGhInstalled={isGhInstalled}
@@ -364,7 +366,9 @@ export function NewWorktreeModal() {
                 selectedIndex={selectedItemIndex}
                 setSelectedIndex={setSelectedItemIndex}
                 onSelectBranch={handlers.handleSelectBranch}
+                onStackBranch={handlers.handleStackOnBranch}
                 creatingFromBranch={handlers.creatingFromBranch}
+                stackingFromBranch={handlers.stackingFromBranch}
                 searchInputRef={searchInputRef}
               />
             )}

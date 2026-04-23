@@ -60,6 +60,20 @@ export interface Project {
   linked_project_ids?: string[]
 }
 
+export interface DirEntry {
+  name: string
+  path: string
+  is_dir: boolean
+  is_git_repo: boolean
+  is_hidden: boolean
+}
+
+export interface BrowseDirectoryResult {
+  current_path: string
+  parent_path?: string
+  entries: DirEntry[]
+}
+
 /**
  * Check if a project entry is a folder
  */
@@ -81,6 +95,8 @@ export interface Worktree {
   path: string
   /** Git branch name (same as workspace name) */
   branch: string
+  /** Base branch this worktree was created from (undefined for legacy worktrees or base sessions) */
+  base_branch?: string
   /** Unix timestamp when worktree was created */
   created_at: number
   /** Output from setup script (if any) */

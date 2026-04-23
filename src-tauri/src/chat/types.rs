@@ -93,7 +93,7 @@ pub struct UsageData {
 // Message Types
 // ============================================================================
 
-/// Backend for a chat session (Claude CLI, Codex CLI, or OpenCode)
+/// Backend for a chat session (Claude CLI, Codex CLI, OpenCode, or Cursor)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Backend {
@@ -101,6 +101,7 @@ pub enum Backend {
     Claude,
     Codex,
     Opencode,
+    Cursor,
 }
 
 /// Role of a chat message sender
@@ -123,7 +124,7 @@ pub enum ThinkingLevel {
     Ultrathink,
 }
 
-/// Effort level for Opus 4.6 adaptive thinking
+/// Effort level for Opus adaptive thinking
 /// Controls --settings {"effort": "<level>"} via CLI
 /// Replaces ThinkingLevel when model is Opus (latest) on CLI >= 2.1.32
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -135,6 +136,7 @@ pub enum EffortLevel {
     Medium,
     #[default]
     High,
+    Xhigh,
     Max,
 }
 
@@ -146,6 +148,7 @@ impl EffortLevel {
             EffortLevel::Low => Some("low"),
             EffortLevel::Medium => Some("medium"),
             EffortLevel::High => Some("high"),
+            EffortLevel::Xhigh => Some("xhigh"),
             EffortLevel::Max => Some("max"),
         }
     }
@@ -517,6 +520,9 @@ pub struct Session {
     /// OpenCode session ID for resuming conversations
     #[serde(default)]
     pub opencode_session_id: Option<String>,
+    /// Cursor chat ID for resuming conversations
+    #[serde(default)]
+    pub cursor_chat_id: Option<String>,
     /// Selected model for this session
     #[serde(default)]
     pub selected_model: Option<String>,
@@ -603,6 +609,10 @@ pub struct Session {
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
+    /// Per-table checklist state: tableKey -> checked row indices.
+    /// Key = "{messageId}:{markdownOffset}". Presence = checklist mode on.
+    #[serde(default)]
+    pub table_checked_rows: HashMap<String, Vec<u32>>,
 
     // ========================================================================
     // Run recovery state (for showing correct status on app restart)
@@ -613,6 +623,9 @@ pub struct Session {
     /// Execution mode of the last run (plan/build/yolo)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_execution_mode: Option<String>,
+    /// Unix timestamp when the last run started
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_run_started_at: Option<u64>,
     /// User-assigned label with color (e.g. "Needs testing")
     #[serde(
         default,
@@ -627,6 +640,28 @@ pub struct Session {
     /// Messages queued for sending (persisted so they survive page refresh / sync across clients)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queued_messages: Vec<serde_json::Value>,
+
+    // ========================================================================
+    // Pagination metadata (populated by get_session)
+    // ========================================================================
+    /// Total number of runs in this session's metadata (for "more available" check)
+    #[serde(default)]
+    pub total_runs: usize,
+    /// Index (in metadata.runs) of the first run included in `messages`.
+    /// 0 means oldest run is loaded; > 0 means older runs exist on disk.
+    #[serde(default)]
+    pub loaded_run_start_index: usize,
+}
+
+/// Result of loading a window of session messages from disk.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoadedMessages {
+    /// Parsed messages for the requested window of runs (chronological order).
+    pub messages: Vec<ChatMessage>,
+    /// Total number of runs in this session's metadata.
+    pub total_runs: usize,
+    /// Index of the first run included in `messages`.
+    pub loaded_run_start_index: usize,
 }
 
 impl Session {
@@ -651,6 +686,7 @@ impl Session {
             claude_session_id: None,
             codex_thread_id: None,
             opencode_session_id: None,
+            cursor_chat_id: None,
             selected_model: None,
             selected_thinking_level: None,
             selected_provider: None,
@@ -679,10 +715,14 @@ impl Session {
             pending_plan_message_id: None,
             enabled_mcp_servers: None,
             digest: None,
+            table_checked_rows: HashMap::new(),
             last_run_status: None,
             last_run_execution_mode: None,
+            last_run_started_at: None,
             label: None,
             queued_messages: vec![],
+            total_runs: 0,
+            loaded_run_start_index: 0,
         }
     }
 
@@ -839,6 +879,7 @@ impl SessionMetadata {
             claude_session_id: self.claude_session_id.clone(),
             codex_thread_id: self.codex_thread_id.clone(),
             opencode_session_id: self.opencode_session_id.clone(),
+            cursor_chat_id: self.cursor_chat_id.clone(),
             selected_model: self.selected_model.clone(),
             selected_thinking_level: self.selected_thinking_level.clone(),
             selected_provider: self.selected_provider.clone(),
@@ -872,11 +913,15 @@ impl SessionMetadata {
             pending_plan_message_id: self.pending_plan_message_id.clone(),
             enabled_mcp_servers: self.enabled_mcp_servers.clone(),
             digest: self.digest.clone(),
+            table_checked_rows: self.table_checked_rows.clone(),
             // Populate from last run for status recovery on app restart
             last_run_status: last_run.map(|r| r.status.clone()),
             last_run_execution_mode: last_run.and_then(|r| r.execution_mode.clone()),
+            last_run_started_at: last_run.map(|r| r.started_at),
             label: self.label.clone(),
             queued_messages: self.queued_messages.clone(),
+            total_runs: self.runs.len(),
+            loaded_run_start_index: self.runs.len(),
         }
     }
 
@@ -888,6 +933,7 @@ impl SessionMetadata {
         self.claude_session_id = session.claude_session_id.clone();
         self.codex_thread_id = session.codex_thread_id.clone();
         self.opencode_session_id = session.opencode_session_id.clone();
+        self.cursor_chat_id = session.cursor_chat_id.clone();
         self.selected_model = session.selected_model.clone();
         self.selected_thinking_level = session.selected_thinking_level.clone();
         self.selected_provider = session.selected_provider.clone();
@@ -916,6 +962,7 @@ impl SessionMetadata {
         self.plan_file_path = session.plan_file_path.clone();
         self.pending_plan_message_id = session.pending_plan_message_id.clone();
         self.enabled_mcp_servers = session.enabled_mcp_servers.clone();
+        self.table_checked_rows = session.table_checked_rows.clone();
         self.label = session.label.clone();
         // NOTE: Do NOT overwrite queued_messages here. Queue state is managed
         // exclusively by enqueue/dequeue/remove/clear operations which use
@@ -1104,7 +1151,7 @@ pub struct RunEntry {
     /// Thinking level (off, think, megathink, ultrathink)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<String>,
-    /// Effort level for Opus 4.6 adaptive thinking (low, medium, high, max)
+    /// Effort level for Opus adaptive thinking (low, medium, high, xhigh, max)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_level: Option<String>,
     /// Unix timestamp when run started
@@ -1132,6 +1179,16 @@ pub struct RunEntry {
     /// Token usage for this run (captured from Claude CLI result)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub usage: Option<UsageData>,
+    /// Codex thread ID — persisted per-run so crash recovery can resume via thread/resume
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_thread_id: Option<String>,
+    /// Codex turn ID — set when a turn is in-flight, cleared on completion.
+    /// Presence indicates a turn was active when Jean crashed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_turn_id: Option<String>,
+    /// Cursor chat ID — persisted per-run so future runs can resume the same chat.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_chat_id: Option<String>,
 }
 
 /// Session metadata - single source of truth for session data and run history
@@ -1162,6 +1219,9 @@ pub struct SessionMetadata {
     /// OpenCode session ID for resuming conversations
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub opencode_session_id: Option<String>,
+    /// Cursor chat ID for resuming conversations
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cursor_chat_id: Option<String>,
     /// Selected model for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_model: Option<String>,
@@ -1242,6 +1302,9 @@ pub struct SessionMetadata {
     /// Persisted session digest (recap summary)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub digest: Option<SessionDigest>,
+    /// Per-table checklist state: tableKey -> checked row indices.
+    #[serde(default)]
+    pub table_checked_rows: HashMap<String, Vec<u32>>,
     /// User-assigned label with color (e.g. "Needs testing")
     #[serde(
         default,
@@ -1304,6 +1367,8 @@ pub struct SessionDebugInfo {
     pub manifest_file: Option<String>,
     /// Claude CLI session ID (if any)
     pub claude_session_id: Option<String>,
+    /// Cursor chat ID (if any)
+    pub cursor_chat_id: Option<String>,
     /// Path to Claude CLI's JSONL file (in ~/.claude/projects/)
     pub claude_jsonl_file: Option<String>,
     /// List of JSONL run log files for this session
@@ -1329,6 +1394,7 @@ impl SessionMetadata {
             claude_session_id: None,
             codex_thread_id: None,
             opencode_session_id: None,
+            cursor_chat_id: None,
             selected_model: None,
             selected_thinking_level: None,
             selected_provider: None,
@@ -1355,6 +1421,7 @@ impl SessionMetadata {
             pending_plan_message_id: None,
             enabled_mcp_servers: None,
             digest: None,
+            table_checked_rows: HashMap::new(),
             label: None,
             queued_messages: vec![],
             last_opened_at: None,
@@ -1719,6 +1786,9 @@ mod tests {
             claude_session_id: None,
             pid: Some(12345),
             usage: None,
+            codex_thread_id: None,
+            codex_turn_id: None,
+            cursor_chat_id: None,
         });
 
         assert!(metadata.find_run("run-1").is_some());
@@ -1755,6 +1825,9 @@ mod tests {
             claude_session_id: None,
             pid: None,
             usage: None,
+            codex_thread_id: None,
+            codex_turn_id: None,
+            cursor_chat_id: None,
         });
 
         assert!(metadata.latest_claude_session_id().is_none());
@@ -1777,6 +1850,9 @@ mod tests {
             claude_session_id: Some("claude-sess-abc".to_string()),
             pid: None,
             usage: None,
+            codex_thread_id: None,
+            codex_turn_id: None,
+            cursor_chat_id: None,
         });
 
         assert_eq!(metadata.latest_claude_session_id(), Some("claude-sess-abc"));
