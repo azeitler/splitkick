@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { invoke, listen } from '@/lib/transport'
+import { hydrateRunningSnapshot } from '@/lib/hydrate-running-snapshot'
 import { GitBranch, GitMerge, Layers, Loader2 } from 'lucide-react'
 import {
   useSession,
@@ -410,6 +411,17 @@ export function ChatWindow({
     activeWorktreeId,
     activeWorktreePath
   )
+
+  // Rebuild streamingContentBlocks from snapshot when opening a session whose
+  // last message is still running. Covers web-access click-to-open, sidebar
+  // navigation, and any other entry that bypasses App.tsx auto-resume.
+  useEffect(() => {
+    if (!deferredSessionId || !session) return
+    const lastMsg = session.messages.at(-1)
+    if (lastMsg?.role === 'assistant' && lastMsg.id.startsWith('running-')) {
+      hydrateRunningSnapshot(deferredSessionId, lastMsg)
+    }
+  }, [deferredSessionId, session])
 
   const loadOlderMessages = useLoadOlderMessages()
   const loadedRunStartIndex = session?.loaded_run_start_index ?? 0
@@ -2691,7 +2703,13 @@ export function ChatWindow({
                                 (todoSourceMessageId !== null &&
                                   todoSourceMessageId !==
                                     dismissedTodoMessageId)) && (
-                                <div className="px-4 md:px-6 pt-2 xl:hidden">
+                                <div
+                                  className={
+                                    terminalPanelOpen
+                                      ? 'px-4 md:px-6 pt-2'
+                                      : 'px-4 md:px-6 pt-2 xl:hidden'
+                                  }
+                                >
                                   <TodoWidget
                                     todos={normalizeTodosForDisplay(
                                       activeTodos,
@@ -2713,7 +2731,13 @@ export function ChatWindow({
                                 (agentSourceMessageId !== null &&
                                   agentSourceMessageId !==
                                     dismissedAgentMessageId)) && (
-                                <div className="px-4 md:px-6 pt-2 xl:hidden">
+                                <div
+                                  className={
+                                    terminalPanelOpen
+                                      ? 'px-4 md:px-6 pt-2'
+                                      : 'px-4 md:px-6 pt-2 xl:hidden'
+                                  }
+                                >
                                   <AgentWidget
                                     agents={activeAgents}
                                     isStreaming={agentIsFromStreaming}
@@ -2853,8 +2877,9 @@ export function ChatWindow({
                           </form>
 
                           {/* Side panel widgets (Tasks + Agents) for wide screens */}
-                          {(activeTodos.length > 0 ||
-                            activeAgents.length > 0) && (
+                          {!terminalPanelOpen &&
+                            (activeTodos.length > 0 ||
+                              activeAgents.length > 0) && (
                             <div className="hidden xl:flex flex-col gap-2 absolute left-full bottom-0 ml-3 w-64 z-20">
                               {activeTodos.length > 0 &&
                                 (dismissedTodoMessageId === null ||

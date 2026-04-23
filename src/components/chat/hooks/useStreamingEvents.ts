@@ -1599,8 +1599,12 @@ export default function useStreamingEvents({
             useChatStore.getState().clearLastSentAttachments(session_id)
           }
         } else {
-          // Partial response exists — attachments were consumed, don't restore
+          // Partial response exists — attachments were consumed, don't restore.
+          // Clear lastSentMessage so a later chat:error (e.g., codex turn.failed
+          // emitted after interrupt) can't fall back to restoring the prompt
+          // once streamingContents has been wiped by cancelSession().
           useChatStore.getState().clearLastSentAttachments(session_id)
+          useChatStore.getState().clearLastSentMessage(session_id)
           // Preserve partial response as optimistic message BEFORE clearing streaming state
           queryClient.setQueryData<Session>(
             chatQueryKeys.session(session_id),
