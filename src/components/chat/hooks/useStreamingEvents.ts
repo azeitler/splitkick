@@ -1519,14 +1519,14 @@ export default function useStreamingEvents({
         // - undo_send from backend, OR
         // - No content streamed yet (cancelled before any response)
         // BUT: Don't restore if there are queued messages (user chose "Skip to Next")
-        // Require substantial text (>50 chars) to count as meaningful partial response
-        // when there are no tool calls — short filler like "Planning." isn't worth preserving
+        // Any assistant output (text, tool call, thinking, content block) counts
+        // as a started response — if present, preserve it and leave input empty.
         const hasToolCalls = toolCalls && toolCalls.length > 0
-        const hasSubstantialText = !!content && content.trim().length > 50
+        const hasText = !!content && content.trim().length > 0
         const hasThinking = !!streamingThinkingContent[session_id]
         const hasContentBlocks = !!contentBlocks && contentBlocks.length > 0
         const hasContent =
-          hasToolCalls || hasSubstantialText || hasThinking || hasContentBlocks
+          hasToolCalls || hasText || hasThinking || hasContentBlocks
         const hasQueuedMessages =
           (useChatStore.getState().messageQueues[session_id] ?? []).length > 0
         const shouldRestoreMessage =
