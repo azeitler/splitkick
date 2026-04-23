@@ -15,11 +15,13 @@ import {
   CommandList,
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverAnchor } from '@/components/ui/popover'
-import { useClaudeSkills, useClaudeCommands } from '@/services/skills'
+import { useAllBackendSkills } from '@/services/skills'
 import type { ClaudeSkill, ClaudeCommand, PendingSkill } from '@/types/chat'
+import type { CliBackend } from '@/types/preferences'
 import { cn } from '@/lib/utils'
 import { generateId } from '@/lib/uuid'
 import { fuzzySearchItems } from '@/lib/fuzzy-search'
+import { getBackendLabel } from '@/components/ui/backend-label'
 
 export interface SlashPopoverHandle {
   moveUp: () => void
@@ -28,31 +30,38 @@ export interface SlashPopoverHandle {
 }
 
 interface SlashPopoverProps {
-  /** Whether the popover is open */
   open: boolean
-  /** Callback when popover should close */
   onOpenChange: (open: boolean) => void
-  /** Callback when a skill is selected (adds to pending, continues editing) */
   onSelectSkill: (skill: PendingSkill) => void
-  /** Callback when a command is selected (executes immediately) */
   onSelectCommand: (command: ClaudeCommand) => void
-  /** Current search query (text after /) */
   searchQuery: string
-  /** Position for the anchor (relative to textarea container) */
   anchorPosition: { top: number; left: number } | null
-  /** Reference to the form container for stable positioning */
   containerRef?: React.RefObject<HTMLElement | null>
-  /** Whether slash is at prompt start (enables commands) */
   isAtPromptStart: boolean
-  /** Worktree path for loading project-level commands/skills */
   worktreePath?: string | null
-  /** Ref to expose navigation methods to parent */
   handleRef?: React.RefObject<SlashPopoverHandle | null>
+  installedBackends?: CliBackend[]
 }
 
 type ListItem =
-  | { type: 'command'; data: ClaudeCommand }
-  | { type: 'skill'; data: ClaudeSkill }
+  | {
+      type: 'command'
+      backend: CliBackend
+      data: ClaudeCommand
+      pluginName?: string
+    }
+  | {
+      type: 'skill'
+      backend: CliBackend
+      data: ClaudeSkill
+      pluginName?: string
+    }
+
+interface RenderGroup {
+  key: string
+  heading: string
+  items: { item: ListItem; globalIndex: number }[]
+}
 
 export function SlashPopover({
   open,
@@ -65,32 +74,66 @@ export function SlashPopover({
   isAtPromptStart,
   worktreePath,
   handleRef,
+  installedBackends,
 }: SlashPopoverProps) {
-  const { data: skills = [] } = useClaudeSkills(worktreePath)
-  const { data: commands = [] } = useClaudeCommands(worktreePath)
+  const backendGroups = useAllBackendSkills(worktreePath, installedBackends)
   const listRef = useRef<HTMLDivElement>(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
 
-  // Filter and combine items based on search query and context (fuzzy match)
   const filteredItems = useMemo(() => {
     const items: ListItem[] = []
 
-    // Add commands first (only if at prompt start)
-    if (isAtPromptStart) {
-      fuzzySearchItems(commands, searchQuery, 10).forEach(cmd => {
-        items.push({ type: 'command', data: cmd })
+    for (const group of backendGroups) {
+      if (isAtPromptStart) {
+        fuzzySearchItems(group.commands, searchQuery, 10).forEach(cmd => {
+          items.push({
+            type: 'command',
+            backend: group.backend,
+            data: cmd,
+            pluginName: group.pluginName,
+          })
+        })
+      }
+      fuzzySearchItems(group.skills, searchQuery, 10).forEach(skill => {
+        items.push({
+          type: 'skill',
+          backend: group.backend,
+          data: skill,
+          pluginName: group.pluginName,
+        })
       })
     }
 
-    // Add skills
-    fuzzySearchItems(skills, searchQuery, 10).forEach(skill => {
-      items.push({ type: 'skill', data: skill })
+    return items.slice(0, 15)
+  }, [backendGroups, searchQuery, isAtPromptStart])
+
+  const renderGroups = useMemo(() => {
+    const groups: RenderGroup[] = []
+    let currentKey = ''
+    let currentGroup: RenderGroup | null = null
+
+    filteredItems.forEach((item, globalIndex) => {
+      const pluginSuffix = item.pluginName ? `-${item.pluginName}` : '-user'
+      const key = `${item.backend}-${item.type}${pluginSuffix}`
+      if (key !== currentKey) {
+        let heading: string
+        if (item.pluginName) {
+          heading = `${item.pluginName} Skills`
+        } else {
+          const backendLabel = getBackendLabel(item.backend)
+          const typeLabel = item.type === 'command' ? 'Commands' : 'Skills'
+          heading = `${backendLabel} ${typeLabel}`
+        }
+        currentGroup = { key, heading, items: [] }
+        groups.push(currentGroup)
+        currentKey = key
+      }
+      currentGroup?.items.push({ item, globalIndex })
     })
 
-    return items.slice(0, 15) // Limit total to 15
-  }, [skills, commands, searchQuery, isAtPromptStart])
+    return groups
+  }, [filteredItems])
 
-  // Clamp selectedIndex to valid range (handles case when filter reduces results)
   const clampedSelectedIndex = Math.min(
     selectedIndex,
     Math.max(0, filteredItems.length - 1)
@@ -117,7 +160,6 @@ export function SlashPopover({
     [onSelectCommand, onOpenChange]
   )
 
-  // Handle selecting the currently highlighted item
   const selectHighlighted = useCallback(() => {
     const item = filteredItems[clampedSelectedIndex]
     if (!item) return
@@ -134,7 +176,6 @@ export function SlashPopover({
     handleSelectSkill,
   ])
 
-  // Expose navigation methods via ref for parent to call
   useImperativeHandle(handleRef, () => {
     return {
       moveUp: () => {
@@ -149,7 +190,6 @@ export function SlashPopover({
     }
   }, [filteredItems.length, selectHighlighted])
 
-  // Scroll selected item into view
   useEffect(() => {
     const list = listRef.current
     if (!list) return
@@ -160,9 +200,6 @@ export function SlashPopover({
     selectedItem?.scrollIntoView({ block: 'nearest' })
   }, [clampedSelectedIndex])
 
-  // Calculate anchor position relative to form container for stable positioning
-  // When skill badges appear above the textarea, the ChatInput div shifts down.
-  // By anchoring to the form's top, the popover stays in the same position.
   const anchorRef = useRef<HTMLDivElement>(null)
   const [stableAnchorTop, setStableAnchorTop] = useState(0)
 
@@ -178,16 +215,11 @@ export function SlashPopover({
     const formRect = containerRef.current.getBoundingClientRect()
     const wrapperRect = anchorRef.current.parentElement?.getBoundingClientRect()
     if (wrapperRect) {
-      // Negative offset to position at form top instead of ChatInput top
       setStableAnchorTop(formRect.top - wrapperRect.top)
     }
   }, [open, anchorPosition, containerRef])
 
   if (!open || !anchorPosition) return null
-
-  // Split items by type for grouped rendering
-  const commandItems = filteredItems.filter(item => item.type === 'command')
-  const skillItems = filteredItems.filter(item => item.type === 'skill')
 
   const resolvedTop = containerRef ? stableAnchorTop : anchorPosition.top
 
@@ -216,26 +248,32 @@ export function SlashPopover({
               <CommandEmpty>No commands or skills found</CommandEmpty>
             ) : (
               <>
-                {commandItems.length > 0 && (
-                  <CommandGroup heading="Commands">
-                    {commandItems.map((item, localIndex) => {
-                      // Commands come first in filteredItems, so localIndex = globalIndex
-                      const globalIndex = localIndex
+                {renderGroups.map(group => (
+                  <CommandGroup key={group.key} heading={group.heading}>
+                    {group.items.map(({ item, globalIndex }) => {
                       const isSelected = globalIndex === clampedSelectedIndex
+                      const isCommand = item.type === 'command'
                       return (
                         <CommandItem
-                          key={`cmd-${item.data.name}`}
+                          key={`${item.type}-${item.backend}-${item.data.name}`}
                           data-index={globalIndex}
-                          value={`cmd-${item.data.name}`}
-                          onSelect={() => handleSelectCommand(item.data)}
+                          value={`${item.type}-${item.backend}-${item.data.name}`}
+                          onSelect={() =>
+                            isCommand
+                              ? handleSelectCommand(item.data as ClaudeCommand)
+                              : handleSelectSkill(item.data)
+                          }
                           className={cn(
                             'flex items-center gap-2 cursor-pointer',
-                            // Override cmdk's internal selection styling - we manage selection ourselves
                             'data-[selected=true]:bg-transparent data-[selected=true]:text-foreground',
                             isSelected && '!bg-accent !text-accent-foreground'
                           )}
                         >
-                          <Terminal className="h-4 w-4 shrink-0 text-blue-500" />
+                          {isCommand ? (
+                            <Terminal className="h-4 w-4 shrink-0 text-blue-500" />
+                          ) : (
+                            <Wand2 className="h-4 w-4 shrink-0 text-purple-500" />
+                          )}
                           <div className="flex flex-col min-w-0">
                             <span className="truncate text-sm font-medium">
                               /{item.data.name}
@@ -250,42 +288,7 @@ export function SlashPopover({
                       )
                     })}
                   </CommandGroup>
-                )}
-                {skillItems.length > 0 && (
-                  <CommandGroup heading="Skills">
-                    {skillItems.map((item, localIndex) => {
-                      // Skills come after commands, so globalIndex = commandItems.length + localIndex
-                      const globalIndex = commandItems.length + localIndex
-                      const isSelected = globalIndex === clampedSelectedIndex
-                      return (
-                        <CommandItem
-                          key={`skill-${item.data.name}`}
-                          data-index={globalIndex}
-                          value={`skill-${item.data.name}`}
-                          onSelect={() => handleSelectSkill(item.data)}
-                          className={cn(
-                            'flex items-center gap-2 cursor-pointer',
-                            // Override cmdk's internal selection styling - we manage selection ourselves
-                            'data-[selected=true]:bg-transparent data-[selected=true]:text-foreground',
-                            isSelected && '!bg-accent !text-accent-foreground'
-                          )}
-                        >
-                          <Wand2 className="h-4 w-4 shrink-0 text-purple-500" />
-                          <div className="flex flex-col min-w-0">
-                            <span className="truncate text-sm font-medium">
-                              /{item.data.name}
-                            </span>
-                            {item.data.description && (
-                              <span className="truncate text-xs text-muted-foreground">
-                                {item.data.description}
-                              </span>
-                            )}
-                          </div>
-                        </CommandItem>
-                      )
-                    })}
-                  </CommandGroup>
-                )}
+                ))}
               </>
             )}
           </CommandList>

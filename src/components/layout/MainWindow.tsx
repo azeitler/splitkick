@@ -1,7 +1,16 @@
-import { useMemo, useCallback, useRef, useEffect, useState, lazy, Suspense } from 'react'
+import {
+  useMemo,
+  useCallback,
+  useRef,
+  useEffect,
+  useState,
+  lazy,
+  Suspense,
+} from 'react'
 import { cn } from '@/lib/utils'
 import { TitleBar } from '@/components/titlebar/TitleBar'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useSwipeDown } from '@/hooks/useSwipeDown'
 import { DevModeBanner } from './DevModeBanner'
 import { SidebarWidthProvider } from './SidebarWidthContext'
 import { MainWindowContent } from './MainWindowContent'
@@ -190,14 +199,18 @@ export function MainWindow() {
   const newWorktreeModalOpen = useUIStore(state => state.newWorktreeModalOpen)
   const releaseNotesModalOpen = useUIStore(state => state.releaseNotesModalOpen)
   const updatePrModalOpen = useUIStore(state => state.updatePrModalOpen)
-  const reviewCommentsModalOpen = useUIStore(state => state.reviewCommentsModalOpen)
+  const reviewCommentsModalOpen = useUIStore(
+    state => state.reviewCommentsModalOpen
+  )
   const workflowRunsModalOpen = useUIStore(state => state.workflowRunsModalOpen)
   const cliUpdateModalOpen = useUIStore(state => state.cliUpdateModalOpen)
   const cliLoginModalOpen = useUIStore(state => state.cliLoginModalOpen)
   const updateModalVersion = useUIStore(state => state.updateModalVersion)
   const githubDashboardOpen = useUIStore(state => state.githubDashboardOpen)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
-  const addProjectDialogOpen = useProjectsStore(state => state.addProjectDialogOpen)
+  const addProjectDialogOpen = useProjectsStore(
+    state => state.addProjectDialogOpen
+  )
   const projectSettingsDialogOpen = useProjectsStore(
     state => state.projectSettingsDialogOpen
   )
@@ -208,6 +221,12 @@ export function MainWindow() {
   )
 
   const isMobile = useIsMobile()
+  const swipeDown = useSwipeDown({
+    onSwipeDown: useCallback(() => {
+      useUIStore.getState().setCommandPaletteOpen(true)
+    }, []),
+    enabled: isMobile,
+  })
 
   // Fetch worktree data for polling initialization
   const { data: worktree } = useWorktree(selectedWorktreeId ?? null)
@@ -262,13 +281,18 @@ export function MainWindow() {
   const [closeConfirmBranch, setCloseConfirmBranch] = useState<
     string | undefined
   >()
-  const [closeConfirmMode, setCloseConfirmMode] = useState<'worktree' | 'session'>('worktree')
+  const [closeConfirmMode, setCloseConfirmMode] = useState<
+    'worktree' | 'session'
+  >('worktree')
   const [closeConfirmOpen, setCloseConfirmOpen] = useState(false)
-  const handleConfirmRequired = useCallback((branchName?: string, mode?: 'worktree' | 'session') => {
-    setCloseConfirmBranch(branchName)
-    setCloseConfirmMode(mode ?? 'worktree')
-    setCloseConfirmOpen(true)
-  }, [])
+  const handleConfirmRequired = useCallback(
+    (branchName?: string, mode?: 'worktree' | 'session') => {
+      setCloseConfirmBranch(branchName)
+      setCloseConfirmMode(mode ?? 'worktree')
+      setCloseConfirmOpen(true)
+    },
+    []
+  )
   const { executeClose } = useCloseSessionOrWorktreeKeybinding(
     handleConfirmRequired
   )
@@ -284,7 +308,6 @@ export function MainWindow() {
     return () =>
       window.removeEventListener('command:open-archived-modal', handler)
   }, [])
-
 
   // Auto-cleanup old archived items on startup
   useArchiveCleanup()
@@ -364,12 +387,12 @@ export function MainWindow() {
   const shouldRenderOpenInModal = useRetainedMount(openInModalOpen)
   const shouldRenderRemotePickerModal = useRetainedMount(remotePickerOpen)
   const shouldRenderUpdatePrDialog = useRetainedMount(updatePrModalOpen)
-  const shouldRenderReviewCommentsDialog = useRetainedMount(reviewCommentsModalOpen)
+  const shouldRenderReviewCommentsDialog = useRetainedMount(
+    reviewCommentsModalOpen
+  )
   const shouldRenderWorkflowRunsModal = useRetainedMount(workflowRunsModalOpen)
   const shouldRenderMagicModal = useRetainedMount(magicModalOpen)
-  const shouldRenderReleaseNotesDialog = useRetainedMount(
-    releaseNotesModalOpen
-  )
+  const shouldRenderReleaseNotesDialog = useRetainedMount(releaseNotesModalOpen)
   const shouldRenderNewWorktreeModal = useRetainedMount(newWorktreeModalOpen)
   const shouldRenderAddProjectDialog = useRetainedMount(addProjectDialogOpen)
   const shouldRenderGitInitModal = useRetainedMount(gitInitModalOpen)
@@ -381,16 +404,34 @@ export function MainWindow() {
   // On Windows, use smaller border radius and remove it when maximized
   // On other platforms, use rounded-xl only in native app mode
   const roundedClass = isWindows
-    ? (!isMaximized && 'rounded-sm')
-    : (isNativeApp() && 'rounded-xl')
+    ? !isMaximized && 'rounded-sm'
+    : isNativeApp() && 'rounded-xl'
 
   return (
     <div
+      ref={isMobile ? swipeDown.containerRef : undefined}
       className={cn(
         'flex h-dvh w-full flex-col overflow-hidden bg-background',
         roundedClass
       )}
     >
+      {/* Mobile swipe-down pull indicator */}
+      {isMobile && swipeDown.isSwiping && (
+        <div
+          className="pointer-events-none absolute left-1/2 z-[60] flex -translate-x-1/2 items-center justify-center"
+          style={{ top: swipeDown.translateY - 8 }}
+        >
+          <div
+            className="rounded-full bg-muted-foreground/30 transition-transform"
+            style={{
+              width: 8 + swipeDown.progress * 24,
+              height: 8 + swipeDown.progress * 24,
+              opacity: 0.3 + swipeDown.progress * 0.7,
+            }}
+          />
+        </div>
+      )}
+
       {/* Title Bar - semi-transparent overlay */}
       <TitleBar title={windowTitle} className="absolute top-0 left-0 right-0" />
 
@@ -398,7 +439,7 @@ export function MainWindow() {
       <DevModeBanner />
 
       {/* Main Content Area */}
-      <div className="flex flex-1 overflow-hidden pt-9">
+      <div className="flex flex-1 overflow-hidden pt-8">
         {/* Left Sidebar with pixel-based width - only render after UI state is initialized */}
         {leftSidebarVisible && isInitialized && (
           <SidebarWidthProvider value={leftSidebarSize}>

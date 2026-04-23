@@ -18,7 +18,11 @@ import type {
   ThinkingLevel,
   WorktreeSessions,
 } from '@/types/chat'
-import type { Worktree, WorktreeCreatedEvent, WorktreeCreateErrorEvent } from '@/types/projects'
+import type {
+  Worktree,
+  WorktreeCreatedEvent,
+  WorktreeCreateErrorEvent,
+} from '@/types/projects'
 import type { SessionCardData } from '../session-card-utils'
 import {
   extractImagePaths,
@@ -26,6 +30,7 @@ import {
   extractTextFilePaths,
 } from '../message-content-utils'
 import { navigateToApprovedWorktree } from '../worktree-approval-navigation'
+import { markWorktreeSilentReady } from '@/services/worktree-silent-ready'
 
 const THINKING_LEVEL_VALUES = new Set<ThinkingLevel>([
   'off',
@@ -34,12 +39,16 @@ const THINKING_LEVEL_VALUES = new Set<ThinkingLevel>([
   'ultrathink',
 ])
 
-function isThinkingLevel(value: string | null | undefined): value is ThinkingLevel {
+function isThinkingLevel(
+  value: string | null | undefined
+): value is ThinkingLevel {
   if (!value) return false
   return THINKING_LEVEL_VALUES.has(value as ThinkingLevel)
 }
 
-function mapCodexReasoningToEffort(value: string | null | undefined): EffortLevel | undefined {
+function mapCodexReasoningToEffort(
+  value: string | null | undefined
+): EffortLevel | undefined {
   switch (value) {
     case 'low':
       return 'low'
@@ -48,6 +57,7 @@ function mapCodexReasoningToEffort(value: string | null | undefined): EffortLeve
     case 'high':
       return 'high'
     case 'xhigh':
+      return 'xhigh'
     case 'max':
       return 'max'
     default:
@@ -56,12 +66,13 @@ function mapCodexReasoningToEffort(value: string | null | undefined): EffortLeve
 }
 
 function getDefaultModelForBackend(
-  backend: 'claude' | 'codex' | 'opencode' | undefined,
+  backend: 'claude' | 'codex' | 'opencode' | 'cursor' | undefined,
   preferences:
     | {
         selected_model?: string | null
         selected_codex_model?: string | null
         selected_opencode_model?: string | null
+        selected_cursor_model?: string | null
       }
     | undefined
 ): string {
@@ -71,7 +82,10 @@ function getDefaultModelForBackend(
   if (backend === 'opencode') {
     return preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex'
   }
-  return preferences?.selected_model ?? 'opus'
+  if (backend === 'cursor') {
+    return preferences?.selected_cursor_model ?? 'cursor/auto'
+  }
+  return preferences?.selected_model ?? 'claude-opus-4-7'
 }
 
 interface UseWorktreeApprovalParams {
@@ -95,7 +109,11 @@ export function useWorktreeApproval({
   const sendMessage = useSendMessage()
 
   const handleWorktreeApproval = useCallback(
-    async (card: SessionCardData, updatedPlan?: string, mode: 'yolo' | 'build' = 'build') => {
+    async (
+      card: SessionCardData,
+      updatedPlan?: string,
+      mode: 'yolo' | 'build' = 'build'
+    ) => {
       if (!projectId) {
         toast.error('No project context available')
         return
@@ -103,7 +121,6 @@ export function useWorktreeApproval({
 
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
-      const toastId = toast.loading('Creating worktree...')
 
       // Step 1: Mark plan approved on original session
       if (messageId) {
@@ -166,7 +183,10 @@ export function useWorktreeApproval({
         waitingForInput: false,
         waitingForInputType: null,
       }).catch(err => {
-        console.error('[useWorktreeApproval] Failed to clear waiting state:', err)
+        console.error(
+          '[useWorktreeApproval] Failed to clear waiting state:',
+          err
+        )
       })
 
       // Step 2: Resolve plan content
@@ -175,23 +195,26 @@ export function useWorktreeApproval({
         try {
           planContent = await readPlanFile(card.planFilePath)
         } catch (err) {
-          toast.error(`Failed to read plan file: ${err}`, { id: toastId })
+          toast.error(`Failed to read plan file: ${err}`)
           return
         }
       }
       if (!planContent) {
-        toast.error('No plan content available', { id: toastId })
+        toast.error('No plan content available')
         return
       }
 
       // Step 3: Create new worktree
       let pendingWorktree: Worktree
       try {
-        pendingWorktree = await invoke<Worktree>('create_worktree', { projectId })
+        pendingWorktree = await invoke<Worktree>('create_worktree', {
+          projectId,
+        })
       } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`, { id: toastId })
+        toast.error(`Failed to create worktree: ${err}`)
         return
       }
+      markWorktreeSilentReady(pendingWorktree.id)
 
       // Step 4: Wait for worktree to be ready
       let readyWorktree: Worktree
@@ -203,30 +226,34 @@ export function useWorktreeApproval({
             reject(new Error('Worktree creation timed out'))
           }, 120_000)
 
-          const unlistenCreated = listen<WorktreeCreatedEvent>('worktree:created', event => {
-            if (event.payload.worktree.id === pendingWorktree.id) {
-              clearTimeout(timeout)
-              void unlistenCreated.then(fn => fn())
-              void unlistenError.then(fn => fn())
-              resolve(event.payload.worktree)
+          const unlistenCreated = listen<WorktreeCreatedEvent>(
+            'worktree:created',
+            event => {
+              if (event.payload.worktree.id === pendingWorktree.id) {
+                clearTimeout(timeout)
+                void unlistenCreated.then(fn => fn())
+                void unlistenError.then(fn => fn())
+                resolve(event.payload.worktree)
+              }
             }
-          })
+          )
 
-          const unlistenError = listen<WorktreeCreateErrorEvent>('worktree:error', event => {
-            if (event.payload.id === pendingWorktree.id) {
-              clearTimeout(timeout)
-              void unlistenCreated.then(fn => fn())
-              void unlistenError.then(fn => fn())
-              reject(new Error(event.payload.error))
+          const unlistenError = listen<WorktreeCreateErrorEvent>(
+            'worktree:error',
+            event => {
+              if (event.payload.id === pendingWorktree.id) {
+                clearTimeout(timeout)
+                void unlistenCreated.then(fn => fn())
+                void unlistenError.then(fn => fn())
+                reject(new Error(event.payload.error))
+              }
             }
-          })
+          )
         })
       } catch (err) {
-        toast.error(`Worktree creation failed: ${err}`, { id: toastId })
+        toast.error(`Worktree creation failed: ${err}`)
         return
       }
-
-      toast.loading('Sending plan...', { id: toastId })
 
       // Step 5: Use the default session auto-created by the backend, or create one if none exists
       let newSession: Session
@@ -244,7 +271,7 @@ export function useWorktreeApproval({
           })
         }
       } catch (err) {
-        toast.error(`Failed to get session: ${err}`, { id: toastId })
+        toast.error(`Failed to get session: ${err}`)
         return
       }
 
@@ -298,27 +325,52 @@ export function useWorktreeApproval({
       // Step 8: Send plan as first message with mode-specific overrides
       const isYolo = mode === 'yolo'
       const modeLabel = isYolo ? 'Yolo' : 'Build'
-      const originalBackend = card.session.backend as 'claude' | 'codex' | 'opencode' | undefined
-      const modeBackendPref = isYolo ? preferences?.yolo_backend : preferences?.build_backend
-      const modeModelPref = isYolo ? preferences?.yolo_model : preferences?.build_model
-      const modeThinkingPref = isYolo ? preferences?.yolo_thinking_level : preferences?.build_thinking_level
-      const modeBackendOverride = modeBackendPref as 'claude' | 'codex' | 'opencode' | null
-      const backend = (modeBackendOverride ?? originalBackend ?? undefined) as 'claude' | 'codex' | 'opencode' | undefined
-      const model = modeModelPref ??
+      const originalBackend = card.session.backend as
+        | 'claude'
+        | 'codex'
+        | 'opencode'
+        | undefined
+      const modeBackendPref = isYolo
+        ? preferences?.yolo_backend
+        : preferences?.build_backend
+      const modeModelPref = isYolo
+        ? preferences?.yolo_model
+        : preferences?.build_model
+      const modeThinkingPref = isYolo
+        ? preferences?.yolo_thinking_level
+        : preferences?.build_thinking_level
+      const modeEffortPref = isYolo
+        ? preferences?.yolo_effort_level
+        : preferences?.build_effort_level
+      const modeBackendOverride = modeBackendPref as
+        | 'claude'
+        | 'codex'
+        | 'opencode'
+        | null
+      const backend = (modeBackendOverride ?? originalBackend ?? undefined) as
+        | 'claude'
+        | 'codex'
+        | 'opencode'
+        | undefined
+      const model =
+        modeModelPref ??
         (modeBackendOverride
           ? getDefaultModelForBackend(backend, preferences)
-          : (card.session.selected_model ?? getDefaultModelForBackend(backend, preferences)))
-      const modeOverride = (modeModelPref || modeBackendOverride)
-        ? [backend, model].filter(Boolean).join(' / ')
-        : ''
-      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
+          : (card.session.selected_model ??
+            getDefaultModelForBackend(backend, preferences)))
+      const modeOverride =
+        modeModelPref || modeBackendOverride
+          ? [backend, model].filter(Boolean).join(' / ')
+          : ''
       let thinkingLevel: ThinkingLevel = 'off'
       let effortLevel: EffortLevel | undefined
       if (backend === 'codex') {
-        const defaultCodexEffort = mapCodexReasoningToEffort(
-          preferences?.default_codex_reasoning_effort
-        ) ?? 'high'
-        effortLevel = mapCodexReasoningToEffort(modeThinkingPref) ?? defaultCodexEffort
+        const defaultCodexEffort =
+          mapCodexReasoningToEffort(
+            preferences?.default_codex_reasoning_effort
+          ) ?? 'high'
+        effortLevel =
+          mapCodexReasoningToEffort(modeEffortPref) ?? defaultCodexEffort
       } else {
         const fallbackThinking = isThinkingLevel(preferences?.thinking_level)
           ? preferences.thinking_level
@@ -326,27 +378,41 @@ export function useWorktreeApproval({
         thinkingLevel = isThinkingLevel(modeThinkingPref)
           ? modeThinkingPref
           : fallbackThinking
+        effortLevel = mapCodexReasoningToEffort(modeEffortPref)
       }
-      const resolvedPlanFilePath = card.planFilePath || store.getPlanFilePath(sessionId)
-      const planFileLine = resolvedPlanFilePath ? `\nPlan file: ${resolvedPlanFilePath}\n` : ''
-      const configPrefix = modeOverride ? `[${modeLabel}: ${modeOverride}]\n` : ''
+      const resolvedPlanFilePath =
+        card.planFilePath || store.getPlanFilePath(sessionId)
+      const planFileLine = resolvedPlanFilePath
+        ? `\nPlan file: ${resolvedPlanFilePath}\n`
+        : ''
+      const configPrefix = modeOverride
+        ? `[${modeLabel}: ${modeOverride}]\n`
+        : ''
       let message = `${configPrefix}Execute this plan. Implement all changes described.${planFileLine}\n\n<plan>\n${planContent}\n</plan>`
 
       if (skillPaths.length > 0) {
         const skillRefs = skillPaths
-          .map(p => `[Skill: ${p} - Read and use this skill to guide your response]`)
+          .map(
+            p =>
+              `[Skill: ${p} - Read and use this skill to guide your response]`
+          )
           .join('\n')
         message = `${message}\n\n${skillRefs}`
       }
       if (imagePaths.length > 0) {
         const imageRefs = imagePaths
-          .map(p => `[Image attached: ${p} - Use the Read tool to view this image]`)
+          .map(
+            p => `[Image attached: ${p} - Use the Read tool to view this image]`
+          )
           .join('\n')
         message = `${message}\n\n${imageRefs}`
       }
       if (textFilePaths.length > 0) {
         const textFileRefs = textFilePaths
-          .map(p => `[Text file attached: ${p} - Use the Read tool to view this file]`)
+          .map(
+            p =>
+              `[Text file attached: ${p} - Use the Read tool to view this file]`
+          )
           .join('\n')
         message = `${message}\n\n${textFileRefs}`
       }
@@ -360,23 +426,36 @@ export function useWorktreeApproval({
       if (backend) {
         chatStore.setSelectedBackend(
           newSession.id,
-          backend as 'claude' | 'codex' | 'opencode'
+          backend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
 
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(newSession.id),
-        old => old ? { ...old, backend: backend ?? old.backend, selected_model: model } : old
+        old =>
+          old
+            ? { ...old, backend: backend ?? old.backend, selected_model: model }
+            : old
       )
 
       // Persist model and backend before sending
       await invoke('set_session_model', {
-        worktreeId: readyWorktree.id, worktreePath: readyWorktree.path, sessionId: newSession.id, model,
-      }).catch(err => console.error('[useWorktreeApproval] Failed to persist model:', err))
+        worktreeId: readyWorktree.id,
+        worktreePath: readyWorktree.path,
+        sessionId: newSession.id,
+        model,
+      }).catch(err =>
+        console.error('[useWorktreeApproval] Failed to persist model:', err)
+      )
       if (backend) {
         await invoke('set_session_backend', {
-          worktreeId: readyWorktree.id, worktreePath: readyWorktree.path, sessionId: newSession.id, backend,
-        }).catch(err => console.error('[useWorktreeApproval] Failed to persist backend:', err))
+          worktreeId: readyWorktree.id,
+          worktreePath: readyWorktree.path,
+          sessionId: newSession.id,
+          backend,
+        }).catch(err =>
+          console.error('[useWorktreeApproval] Failed to persist backend:', err)
+        )
       }
 
       sendMessage.mutate({
@@ -391,8 +470,6 @@ export function useWorktreeApproval({
         customProfileName: card.session.selected_provider ?? undefined,
         backend,
       })
-
-      toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
 
       // Optionally close the original session
       if (preferences?.close_original_on_clear_context) {
@@ -419,18 +496,14 @@ export function useWorktreeApproval({
             })
           )
           .catch(err =>
-            console.error('[useWorktreeApproval] Failed to close original session:', err)
+            console.error(
+              '[useWorktreeApproval] Failed to close original session:',
+              err
+            )
           )
       }
     },
-    [
-      worktreeId,
-      worktreePath,
-      projectId,
-      queryClient,
-      preferences,
-      sendMessage,
-    ]
+    [worktreeId, worktreePath, projectId, queryClient, preferences, sendMessage]
   )
 
   const handleWorktreeApprovalYolo = useCallback(

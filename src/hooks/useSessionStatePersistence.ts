@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import {
   useUpdateSessionState,
   useSessions,
@@ -10,6 +11,11 @@ import { logger } from '@/lib/logger'
 import type {
   QuestionAnswer,
   PermissionDenial,
+  CodexCommandApprovalRequest,
+  CodexPermissionRequest,
+  CodexUserInputRequest,
+  CodexMcpElicitationRequest,
+  CodexDynamicToolCallRequest,
   ExecutionMode,
   Session,
   WorktreeSessions,
@@ -61,6 +67,11 @@ interface SessionState {
   submittedAnswers: Record<string, QuestionAnswer[]>
   fixedFindings: string[]
   pendingPermissionDenials: PermissionDenial[]
+  pendingCodexCommandApprovalRequests: CodexCommandApprovalRequest[]
+  pendingCodexPermissionRequests: CodexPermissionRequest[]
+  pendingCodexUserInputRequests: CodexUserInputRequest[]
+  pendingCodexMcpElicitationRequests: CodexMcpElicitationRequest[]
+  pendingCodexDynamicToolCallRequests: CodexDynamicToolCallRequest[]
   deniedMessageContext: {
     message: string
     model: string
@@ -72,6 +83,7 @@ interface SessionState {
   pendingPlanMessageId: string | null
   enabledMcpServers: string[] | null
   selectedExecutionMode: ExecutionMode | null
+  tableCheckedRows: Record<string, number[]>
 }
 
 /**
@@ -85,9 +97,14 @@ export function useSessionStatePersistence() {
   // Subscribe to primitive values to trigger re-renders only when context actually changes.
   // Prefer full-view active session, fall back to canvas-modal selected session
   // (canvas modals don't set activeWorktreeId).
+  // Track modal worktree id so canvas-modal sessions still get persistence.
+  const modalWorktreeId = useUIStore(state =>
+    state.sessionChatModalOpen ? state.sessionChatModalWorktreeId : null
+  )
   const activeSessionId = useChatStore(state => {
-    if (state.activeWorktreeId) {
-      return state.activeSessionIds[state.activeWorktreeId] ?? null
+    const worktreeId = state.activeWorktreeId ?? modalWorktreeId
+    if (worktreeId) {
+      return state.activeSessionIds[worktreeId] ?? null
     }
     return null
   })
@@ -105,11 +122,16 @@ export function useSessionStatePersistence() {
       sessionWorktreeMap,
       worktreePaths,
     } = useChatStore.getState()
-    const wtId = activeWorktreeId ?? sessionWorktreeMap[activeSessionId] ?? null
+    const wtId =
+      activeWorktreeId ??
+      modalWorktreeId ??
+      sessionWorktreeMap[activeSessionId] ??
+      null
     const wtPath =
-      activeWorktreePath ?? (wtId ? (worktreePaths[wtId] ?? null) : null)
+      (activeWorktreeId ? activeWorktreePath : null) ??
+      (wtId ? (worktreePaths[wtId] ?? null) : null)
     return { effectiveWorktreeId: wtId, effectiveWorktreePath: wtPath }
-  }, [activeSessionId])
+  }, [activeSessionId, modalWorktreeId])
 
   // Load sessions to get session data
   const { data: sessionsData } = useSessions(
@@ -140,6 +162,11 @@ export function useSessionStatePersistence() {
         submittedAnswers,
         fixedFindings,
         pendingPermissionDenials,
+        pendingCodexCommandApprovalRequests,
+        pendingCodexPermissionRequests,
+        pendingCodexUserInputRequests,
+        pendingCodexMcpElicitationRequests,
+        pendingCodexDynamicToolCallRequests,
         deniedMessageContext,
         reviewingSessions,
         waitingForInputSessionIds,
@@ -147,6 +174,7 @@ export function useSessionStatePersistence() {
         pendingPlanMessageIds,
         enabledMcpServers,
         executionModes,
+        tableCheckedRows,
       } = useChatStore.getState()
 
       const ctx = deniedMessageContext[sessionId]
@@ -158,6 +186,16 @@ export function useSessionStatePersistence() {
         submittedAnswers: submittedAnswers[sessionId] ?? {},
         fixedFindings: Array.from(fixedFindings[sessionId] ?? new Set()),
         pendingPermissionDenials: pendingPermissionDenials[sessionId] ?? [],
+        pendingCodexCommandApprovalRequests:
+          pendingCodexCommandApprovalRequests[sessionId] ?? [],
+        pendingCodexPermissionRequests:
+          pendingCodexPermissionRequests[sessionId] ?? [],
+        pendingCodexUserInputRequests:
+          pendingCodexUserInputRequests[sessionId] ?? [],
+        pendingCodexMcpElicitationRequests:
+          pendingCodexMcpElicitationRequests[sessionId] ?? [],
+        pendingCodexDynamicToolCallRequests:
+          pendingCodexDynamicToolCallRequests[sessionId] ?? [],
         deniedMessageContext: ctx
           ? {
               message: ctx.message,
@@ -171,6 +209,11 @@ export function useSessionStatePersistence() {
         pendingPlanMessageId: pendingPlanMessageIds[sessionId] ?? null,
         enabledMcpServers: enabledMcpServers[sessionId] ?? null,
         selectedExecutionMode: executionModes[sessionId] ?? null,
+        tableCheckedRows: Object.fromEntries(
+          Object.entries(tableCheckedRows[sessionId] ?? {}).map(
+            ([key, set]) => [key, Array.from(set).sort((a, b) => a - b)]
+          )
+        ),
       }
     },
     []
@@ -197,6 +240,14 @@ export function useSessionStatePersistence() {
         submittedAnswers: state.submittedAnswers,
         fixedFindings: state.fixedFindings,
         pendingPermissionDenials: state.pendingPermissionDenials,
+        pendingCodexCommandApprovalRequests:
+          state.pendingCodexCommandApprovalRequests,
+        pendingCodexPermissionRequests: state.pendingCodexPermissionRequests,
+        pendingCodexUserInputRequests: state.pendingCodexUserInputRequests,
+        pendingCodexMcpElicitationRequests:
+          state.pendingCodexMcpElicitationRequests,
+        pendingCodexDynamicToolCallRequests:
+          state.pendingCodexDynamicToolCallRequests,
         deniedMessageContext: state.deniedMessageContext,
         isReviewing: state.isReviewing,
         // Only persist waitingForInput when clearing it (user approval action).
@@ -204,11 +255,14 @@ export function useSessionStatePersistence() {
         // which persists directly via invoke(). Persisting true here risks
         // cross-client overwrites: native client's pauseSession sets true in its
         // Zustand, then this debounced save writes it to disk after web cleared it.
-        waitingForInput: state.waitingForInput ? undefined : state.waitingForInput,
+        waitingForInput: state.waitingForInput
+          ? undefined
+          : state.waitingForInput,
         planFilePath: state.planFilePath,
         pendingPlanMessageId: state.pendingPlanMessageId,
         enabledMcpServers: state.enabledMcpServers,
         selectedExecutionMode: state.selectedExecutionMode,
+        tableCheckedRows: state.tableCheckedRows,
       })
     }, 500)
 
@@ -299,6 +353,56 @@ export function useSessionStatePersistence() {
       }
     }
 
+    if (
+      session.pending_codex_command_approval_requests &&
+      session.pending_codex_command_approval_requests.length > 0
+    ) {
+      updates.pendingCodexCommandApprovalRequests = {
+        ...currentState.pendingCodexCommandApprovalRequests,
+        [activeSessionId]: session.pending_codex_command_approval_requests,
+      }
+    }
+
+    if (
+      session.pending_codex_permission_requests &&
+      session.pending_codex_permission_requests.length > 0
+    ) {
+      updates.pendingCodexPermissionRequests = {
+        ...currentState.pendingCodexPermissionRequests,
+        [activeSessionId]: session.pending_codex_permission_requests,
+      }
+    }
+
+    if (
+      session.pending_codex_user_input_requests &&
+      session.pending_codex_user_input_requests.length > 0
+    ) {
+      updates.pendingCodexUserInputRequests = {
+        ...currentState.pendingCodexUserInputRequests,
+        [activeSessionId]: session.pending_codex_user_input_requests,
+      }
+    }
+
+    if (
+      session.pending_codex_mcp_elicitation_requests &&
+      session.pending_codex_mcp_elicitation_requests.length > 0
+    ) {
+      updates.pendingCodexMcpElicitationRequests = {
+        ...currentState.pendingCodexMcpElicitationRequests,
+        [activeSessionId]: session.pending_codex_mcp_elicitation_requests,
+      }
+    }
+
+    if (
+      session.pending_codex_dynamic_tool_call_requests &&
+      session.pending_codex_dynamic_tool_call_requests.length > 0
+    ) {
+      updates.pendingCodexDynamicToolCallRequests = {
+        ...currentState.pendingCodexDynamicToolCallRequests,
+        [activeSessionId]: session.pending_codex_dynamic_tool_call_requests,
+      }
+    }
+
     // Load denied message context
     if (session.denied_message_context) {
       updates.deniedMessageContext = {
@@ -385,13 +489,31 @@ export function useSessionStatePersistence() {
       }
     }
 
+    // Load per-table checklist state (tableKey -> Set of checked row indices)
+    if (
+      session.table_checked_rows &&
+      Object.keys(session.table_checked_rows).length > 0
+    ) {
+      const hydrated: Record<string, Set<number>> = {}
+      for (const [tableKey, rows] of Object.entries(
+        session.table_checked_rows
+      )) {
+        hydrated[tableKey] = new Set(rows)
+      }
+      updates.tableCheckedRows = {
+        ...currentState.tableCheckedRows,
+        [activeSessionId]: hydrated,
+      }
+    }
+
     // NOTE: Do NOT load queued_messages from session data into Zustand here.
     // Queue state is synced in real-time via the queue:updated Tauri event
     // (useMainWindowEventListeners). Loading from TanStack cache is redundant
     // and can restore stale data, causing double execution.
 
-    // When opening a session that's in plan-waiting state (Codex/Opencode plan mode),
+    // When opening a non-Claude session that's in plan-waiting state,
     // transition it to review — viewing the session acts as acknowledgment.
+    // Question-waiting sessions must NOT be auto-transitioned (user must answer).
     if (
       session.waiting_for_input &&
       session.waiting_for_input_type === 'plan' &&
@@ -472,7 +594,7 @@ export function useSessionStatePersistence() {
 
   // Auto-transition plan-waiting codex/opencode sessions to review when viewed.
   // This runs independently of the load effect and is NOT blocked by loadedSessionRef,
-  // handling cases where the session was already loaded when it entered plan-waiting.
+  // handling cases where the session was already loaded when it entered plan-waiting state.
   useEffect(() => {
     if (
       !activeSessionId ||
@@ -486,6 +608,7 @@ export function useSessionStatePersistence() {
     if (!session) return
 
     // Only for non-claude sessions in plan-waiting state
+    // Question-waiting sessions must NOT be auto-transitioned (user must answer).
     if (
       !session.waiting_for_input ||
       session.waiting_for_input_type !== 'plan' ||
@@ -580,6 +703,16 @@ export function useSessionStatePersistence() {
     let prevFixedFindings = useChatStore.getState().fixedFindings[sessionId]
     let prevPendingDenials =
       useChatStore.getState().pendingPermissionDenials[sessionId]
+    let prevPendingCodexCommandApprovalRequests =
+      useChatStore.getState().pendingCodexCommandApprovalRequests[sessionId]
+    let prevPendingCodexPermissionRequests =
+      useChatStore.getState().pendingCodexPermissionRequests[sessionId]
+    let prevPendingCodexUserInputRequests =
+      useChatStore.getState().pendingCodexUserInputRequests[sessionId]
+    let prevPendingCodexMcpElicitations =
+      useChatStore.getState().pendingCodexMcpElicitationRequests[sessionId]
+    let prevPendingCodexDynamicToolCalls =
+      useChatStore.getState().pendingCodexDynamicToolCallRequests[sessionId]
     let prevDeniedContext =
       useChatStore.getState().deniedMessageContext[sessionId]
     let prevReviewing = useChatStore.getState().reviewingSessions[sessionId]
@@ -591,6 +724,8 @@ export function useSessionStatePersistence() {
     let prevEnabledMcpServers =
       useChatStore.getState().enabledMcpServers[sessionId]
     let prevExecutionMode = useChatStore.getState().executionModes[sessionId]
+    let prevTableCheckedRows =
+      useChatStore.getState().tableCheckedRows[sessionId]
 
     const unsubscribe = useChatStore.subscribe(state => {
       if (isLoadingRef.current) return
@@ -599,6 +734,16 @@ export function useSessionStatePersistence() {
       const currentSubmitted = state.submittedAnswers[sessionId]
       const currentFixed = state.fixedFindings[sessionId]
       const currentDenials = state.pendingPermissionDenials[sessionId]
+      const currentCodexCommandApprovalRequests =
+        state.pendingCodexCommandApprovalRequests[sessionId]
+      const currentCodexPermissionRequests =
+        state.pendingCodexPermissionRequests[sessionId]
+      const currentCodexUserInputRequests =
+        state.pendingCodexUserInputRequests[sessionId]
+      const currentCodexMcpElicitations =
+        state.pendingCodexMcpElicitationRequests[sessionId]
+      const currentCodexDynamicToolCalls =
+        state.pendingCodexDynamicToolCallRequests[sessionId]
       const currentDeniedCtx = state.deniedMessageContext[sessionId]
       const currentReviewing = state.reviewingSessions[sessionId]
       const currentWaiting = state.waitingForInputSessionIds[sessionId]
@@ -606,25 +751,39 @@ export function useSessionStatePersistence() {
       const currentPendingPlanMessageId = state.pendingPlanMessageIds[sessionId]
       const currentEnabledMcpServers = state.enabledMcpServers[sessionId]
       const currentExecutionMode = state.executionModes[sessionId]
+      const currentTableCheckedRows = state.tableCheckedRows[sessionId]
 
       const hasChanges =
         currentAnswered !== prevAnsweredQuestions ||
         currentSubmitted !== prevSubmittedAnswers ||
         currentFixed !== prevFixedFindings ||
         currentDenials !== prevPendingDenials ||
+        currentCodexCommandApprovalRequests !==
+          prevPendingCodexCommandApprovalRequests ||
+        currentCodexPermissionRequests !== prevPendingCodexPermissionRequests ||
+        currentCodexUserInputRequests !== prevPendingCodexUserInputRequests ||
+        currentCodexMcpElicitations !== prevPendingCodexMcpElicitations ||
+        currentCodexDynamicToolCalls !== prevPendingCodexDynamicToolCalls ||
         currentDeniedCtx !== prevDeniedContext ||
         currentReviewing !== prevReviewing ||
         currentWaiting !== prevWaiting ||
         currentPlanFilePath !== prevPlanFilePath ||
         currentPendingPlanMessageId !== prevPendingPlanMessageId ||
         currentEnabledMcpServers !== prevEnabledMcpServers ||
-        currentExecutionMode !== prevExecutionMode
+        currentExecutionMode !== prevExecutionMode ||
+        currentTableCheckedRows !== prevTableCheckedRows
 
       if (hasChanges) {
         prevAnsweredQuestions = currentAnswered
         prevSubmittedAnswers = currentSubmitted
         prevFixedFindings = currentFixed
         prevPendingDenials = currentDenials
+        prevPendingCodexCommandApprovalRequests =
+          currentCodexCommandApprovalRequests
+        prevPendingCodexPermissionRequests = currentCodexPermissionRequests
+        prevPendingCodexUserInputRequests = currentCodexUserInputRequests
+        prevPendingCodexMcpElicitations = currentCodexMcpElicitations
+        prevPendingCodexDynamicToolCalls = currentCodexDynamicToolCalls
         prevDeniedContext = currentDeniedCtx
         prevReviewing = currentReviewing
         prevWaiting = currentWaiting
@@ -632,6 +791,7 @@ export function useSessionStatePersistence() {
         prevPendingPlanMessageId = currentPendingPlanMessageId
         prevEnabledMcpServers = currentEnabledMcpServers
         prevExecutionMode = currentExecutionMode
+        prevTableCheckedRows = currentTableCheckedRows
 
         const currentState = getCurrentSessionState(sessionId)
         debouncedSaveRef.current?.(currentState)

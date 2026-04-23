@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { getFilename } from '@/lib/path-utils'
 import { generateId } from '@/lib/uuid'
+import type { ModalTerminalDockMode } from '@/types/ui-state'
 
 /** A single terminal instance */
 export interface TerminalInstance {
@@ -17,6 +18,8 @@ interface TerminalState {
   activeTerminalIds: Record<string, string>
   // Set of running terminal IDs (have active PTY process)
   runningTerminals: Set<string>
+  // Set of terminal IDs that exited with non-zero exit code (crash/failure)
+  failedTerminals: Set<string>
   // Whether terminal panel is expanded (false = collapsed/minimized) - global since only one worktree visible
   terminalVisible: boolean
   // Whether terminal panel is open per worktree (worktreeId -> open)
@@ -25,7 +28,9 @@ interface TerminalState {
 
   // Modal terminal drawer state
   modalTerminalOpen: Record<string, boolean>
+  modalTerminalDockMode: ModalTerminalDockMode
   modalTerminalWidth: number
+  modalTerminalHeight: number
 
   setTerminalVisible: (visible: boolean) => void
   setTerminalPanelOpen: (worktreeId: string, open: boolean) => void
@@ -36,7 +41,9 @@ interface TerminalState {
   // Modal terminal drawer methods
   setModalTerminalOpen: (worktreeId: string, open: boolean) => void
   toggleModalTerminal: (worktreeId: string) => void
+  setModalTerminalDockMode: (dockMode: ModalTerminalDockMode) => void
   setModalTerminalWidth: (width: number) => void
+  setModalTerminalHeight: (height: number) => void
 
   // Terminal instance management
   addTerminal: (
@@ -52,6 +59,10 @@ interface TerminalState {
   // Running state (terminal has active PTY)
   setTerminalRunning: (terminalId: string, running: boolean) => void
   isTerminalRunning: (terminalId: string) => boolean
+
+  // Failed state (terminal exited with non-zero code)
+  setTerminalFailed: (terminalId: string, failed: boolean) => void
+  isTerminalFailed: (terminalId: string) => boolean
 
   // Start a run command (creates new terminal with command)
   startRun: (worktreeId: string, command: string) => string
@@ -77,21 +88,30 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   terminals: {},
   activeTerminalIds: {},
   runningTerminals: new Set(),
+  failedTerminals: new Set(),
   terminalVisible: false,
   terminalPanelOpen: {},
   terminalHeight: 30,
   modalTerminalOpen: {},
+  modalTerminalDockMode: 'floating',
   modalTerminalWidth: 400,
+  modalTerminalHeight: 280,
 
-  setTerminalVisible: visible => set({ terminalVisible: visible }),
+  setTerminalVisible: visible =>
+    set(state =>
+      state.terminalVisible === visible ? state : { terminalVisible: visible }
+    ),
 
   setTerminalPanelOpen: (worktreeId, open) =>
-    set(state => ({
-      terminalPanelOpen: {
-        ...state.terminalPanelOpen,
-        [worktreeId]: open,
-      },
-    })),
+    set(state => {
+      if ((state.terminalPanelOpen[worktreeId] ?? false) === open) return state
+      return {
+        terminalPanelOpen: {
+          ...state.terminalPanelOpen,
+          [worktreeId]: open,
+        },
+      }
+    }),
 
   isTerminalPanelOpen: worktreeId =>
     get().terminalPanelOpen[worktreeId] ?? false,
@@ -105,12 +125,18 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         : state.terminalPanelOpen,
     })),
 
-  setTerminalHeight: height => set({ terminalHeight: height }),
+  setTerminalHeight: height =>
+    set(state =>
+      state.terminalHeight === height ? state : { terminalHeight: height }
+    ),
 
   setModalTerminalOpen: (worktreeId, open) =>
-    set(state => ({
-      modalTerminalOpen: { ...state.modalTerminalOpen, [worktreeId]: open },
-    })),
+    set(state => {
+      if ((state.modalTerminalOpen[worktreeId] ?? false) === open) return state
+      return {
+        modalTerminalOpen: { ...state.modalTerminalOpen, [worktreeId]: open },
+      }
+    }),
 
   toggleModalTerminal: worktreeId =>
     set(state => ({
@@ -120,7 +146,24 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       },
     })),
 
-  setModalTerminalWidth: width => set({ modalTerminalWidth: width }),
+  setModalTerminalDockMode: dockMode =>
+    set(state =>
+      state.modalTerminalDockMode === dockMode
+        ? state
+        : { modalTerminalDockMode: dockMode }
+    ),
+
+  setModalTerminalWidth: width =>
+    set(state =>
+      state.modalTerminalWidth === width ? state : { modalTerminalWidth: width }
+    ),
+
+  setModalTerminalHeight: height =>
+    set(state =>
+      state.modalTerminalHeight === height
+        ? state
+        : { modalTerminalHeight: height }
+    ),
 
   addTerminal: (worktreeId, command = null, label) => {
     const id = generateTerminalId()
@@ -162,6 +205,10 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       const newRunning = new Set(state.runningTerminals)
       newRunning.delete(terminalId)
 
+      // Update failed terminals
+      const newFailed = new Set(state.failedTerminals)
+      newFailed.delete(terminalId)
+
       // Update active terminal if needed
       const currentActiveId = state.activeTerminalIds[worktreeId] ?? ''
       const newActiveId =
@@ -179,6 +226,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           [worktreeId]: newActiveId,
         },
         runningTerminals: newRunning,
+        failedTerminals: newFailed,
       }
     }),
 
@@ -200,6 +248,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
 
   setTerminalRunning: (terminalId, running) =>
     set(state => {
+      if (running === state.runningTerminals.has(terminalId)) return state
       const newSet = new Set(state.runningTerminals)
       if (running) {
         newSet.add(terminalId)
@@ -210,6 +259,20 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     }),
 
   isTerminalRunning: terminalId => get().runningTerminals.has(terminalId),
+
+  setTerminalFailed: (terminalId, failed) =>
+    set(state => {
+      if (failed === state.failedTerminals.has(terminalId)) return state
+      const newSet = new Set(state.failedTerminals)
+      if (failed) {
+        newSet.add(terminalId)
+      } else {
+        newSet.delete(terminalId)
+      }
+      return { failedTerminals: newSet }
+    }),
+
+  isTerminalFailed: terminalId => get().failedTerminals.has(terminalId),
 
   startRun: (worktreeId, command) => {
     const state = get()
@@ -236,6 +299,16 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       return existingTerminal.id
     }
 
+    // Clear stale failed IDs for this worktree's command terminals
+    const failedIds = terminals.filter(
+      t => t.command && state.failedTerminals.has(t.id)
+    )
+    if (failedIds.length > 0) {
+      const newFailed = new Set(state.failedTerminals)
+      for (const t of failedIds) newFailed.delete(t.id)
+      set({ failedTerminals: newFailed })
+    }
+
     // No existing running terminal, create a new one (addTerminal sets terminalPanelOpen)
     return get().addTerminal(worktreeId, command)
   },
@@ -245,10 +318,12 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     const terminals = state.terminals[worktreeId] ?? []
     const terminalIds = terminals.map(t => t.id)
 
-    // Remove all running terminal IDs for this worktree
+    // Remove all running/failed terminal IDs for this worktree
     const newRunning = new Set(state.runningTerminals)
+    const newFailed = new Set(state.failedTerminals)
     for (const id of terminalIds) {
       newRunning.delete(id)
+      newFailed.delete(id)
     }
 
     set({
@@ -261,6 +336,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         [worktreeId]: '',
       },
       runningTerminals: newRunning,
+      failedTerminals: newFailed,
       terminalPanelOpen: {
         ...state.terminalPanelOpen,
         [worktreeId]: false,

@@ -124,7 +124,7 @@ export function ContextsTab({
             placeholder="Search contexts and sessions..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="pl-9 h-8 text-sm"
+            className="pl-9 h-8 text-base md:text-sm"
           />
         </div>
       </div>
@@ -160,7 +160,9 @@ export function ContextsTab({
                     context={context}
                     index={index}
                     isSelected={index === selectedIndex}
-                    isLoading={loadingSlugs.has(context.filename.replace(/\.md$/, ''))}
+                    isLoading={loadingSlugs.has(
+                      context.filename.replace(/\.md$/, '')
+                    )}
                     isEditing={editingFilename === context.filename}
                     editValue={editValue}
                     setEditValue={setEditValue}

@@ -289,6 +289,28 @@ fn build_claude_args(
         }
     }
 
+    // Add linked project directories for read access
+    let linked_project_paths: Vec<String> = crate::projects::storage::load_projects_data(app)
+        .ok()
+        .and_then(|data| {
+            let worktree = data.find_worktree(worktree_id)?;
+            let project = data.find_project(&worktree.project_id)?;
+            Some(
+                project
+                    .linked_project_ids
+                    .iter()
+                    .filter_map(|id| data.find_project(id))
+                    .filter(|p| !p.path.trim().is_empty())
+                    .map(|p| p.path.clone())
+                    .collect(),
+            )
+        })
+        .unwrap_or_default();
+    for dir in &linked_project_paths {
+        args.push("--add-dir".to_string());
+        args.push(dir.clone());
+    }
+
     // Add Claude CLI skills and commands directories (~/.claude/skills and ~/.claude/commands)
     if let Some(home_dir) = dirs::home_dir() {
         let claude_dir = home_dir.join(".claude");
@@ -353,7 +375,7 @@ fn build_claude_args(
         }
         // If Off, don't send any thinking/effort settings (but still send custom profile if present)
     } else {
-        // Traditional thinking levels (Opus 4.5, Sonnet, Haiku)
+        // Traditional thinking levels (Sonnet, Haiku)
         if let Some(level) = thinking_level {
             let obj = settings_json.get_or_insert_with(|| serde_json::json!({}));
             if let Some(map) = obj.as_object_mut() {
@@ -391,12 +413,17 @@ fn build_claude_args(
         }
     }
 
-    // Allow embedded CLI binaries without approval via --allowedTools
-    // Claude wraps paths with spaces in quotes, so the actual command is:
-    // "/Users/.../Application Support/.../gh-cli/gh" --version
-    // Use *gh-cli/gh* to match regardless of quoting
+    // Allow embedded/resolved CLI binaries without approval via --allowedTools
+    // Claude wraps paths with spaces in quotes, so use glob patterns to match
+    let gh_binary = crate::gh_cli::config::resolve_gh_binary(app);
+    let gh_path_str = gh_binary.to_string_lossy();
     args.push("--allowedTools".to_string());
-    args.push("Bash(*gh-cli/gh*)".to_string());
+    args.push(format!("Bash(*{gh_path_str}*)"));
+    // Also allow the Jean-managed path pattern when user configured system PATH gh
+    if !gh_path_str.contains("gh-cli/gh") {
+        args.push("--allowedTools".to_string());
+        args.push("Bash(*gh-cli/gh*)".to_string());
+    }
     args.push("--allowedTools".to_string());
     args.push("Bash(*claude-cli/claude*)".to_string());
 
@@ -468,7 +495,7 @@ fn build_claude_args(
         }
     }
 
-    // Per-project custom system prompt
+    // Per-project custom system prompt + linked project instructions
     if let Ok(data) = load_projects_data(app) {
         if let Some(worktree) = data.find_worktree(worktree_id) {
             if let Some(project) = data.find_project(&worktree.project_id) {
@@ -477,6 +504,20 @@ fn build_claude_args(
                     if !prompt.is_empty() {
                         system_prompt_parts.push(prompt.to_string());
                     }
+                }
+
+                // Linked projects: inject instruction to check their directories
+                if !linked_project_paths.is_empty() {
+                    let dirs_list = linked_project_paths
+                        .iter()
+                        .map(|p| format!("- {p}"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    system_prompt_parts.push(format!(
+                        "This project is linked to other projects for cross-project context. \
+                         Check the following directories for additional instructions and documentation \
+                         (e.g., CLAUDE.md, AGENTS.md, docs/):\n{dirs_list}"
+                    ));
                 }
             }
         }

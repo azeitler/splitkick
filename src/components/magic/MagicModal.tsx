@@ -24,12 +24,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Button } from '@/components/ui/button'
+import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useWorktree, useProjects } from '@/services/projects'
 import { useLoadedIssueContexts, useLoadedPRContexts } from '@/services/github'
 import { usePreferences } from '@/services/preferences'
+import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { invoke } from '@/lib/transport'
 import { generateId } from '@/lib/uuid'
 import { openExternal } from '@/lib/platform'
@@ -53,13 +64,23 @@ import type {
 } from '@/types/projects'
 import type { Session } from '@/types/chat'
 import {
+  type CliBackend,
   DEFAULT_RESOLVE_CONFLICTS_PROMPT,
+  PREDEFINED_CLI_PROFILES,
+  resolveMagicPromptBackend,
   resolveMagicPromptProvider,
 } from '@/types/preferences'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
+import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { chatQueryKeys } from '@/services/chat'
 import { saveWorktreePr, projectsQueryKeys } from '@/services/projects'
 import { useQueryClient } from '@tanstack/react-query'
+import {
+  CODEX_MODEL_OPTIONS,
+  MODEL_OPTIONS,
+  OPENCODE_MODEL_OPTIONS,
+} from '@/components/chat/toolbar/toolbar-options'
+import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
 
 type MagicOption =
   | 'save-context'
@@ -120,6 +141,36 @@ interface MagicColumns {
   left: MagicSection[]
   right: MagicSection[]
   all: MagicSection[]
+}
+
+type InvestigateType = 'issue' | 'pr'
+type InvestigateSelectionMode = 'settings-default' | 'custom'
+type ResolveSelectionMode = 'settings-default' | 'custom'
+
+const INVESTIGATE_MODEL_KEYS = {
+  issue: 'investigate_issue_model',
+  pr: 'investigate_pr_model',
+} as const
+
+const INVESTIGATE_PROVIDER_KEYS = {
+  issue: 'investigate_issue_provider',
+  pr: 'investigate_pr_provider',
+} as const
+
+const INVESTIGATE_BACKEND_KEYS = {
+  issue: 'investigate_issue_backend',
+  pr: 'investigate_pr_backend',
+} as const
+
+const RESOLVE_CONFLICTS_MODEL_KEY = 'resolve_conflicts_model'
+const RESOLVE_CONFLICTS_PROVIDER_KEY = 'resolve_conflicts_provider'
+const RESOLVE_CONFLICTS_BACKEND_KEY = 'resolve_conflicts_backend'
+
+function formatMagicModalOpencodeLabel(value: string): string {
+  const formatted = formatOpencodeModelLabel(value)
+  return value.startsWith('opencode/')
+    ? formatted.replace(/\s+\(OpenCode\)$/, '')
+    : formatted
 }
 
 function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
@@ -193,7 +244,7 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
         { id: 'review', label: 'Review', icon: Eye, key: 'R' },
         {
           id: 'review-comments',
-          label: 'Review Comments',
+          label: 'PR Comments',
           icon: MessageSquare,
           key: 'V',
         },
@@ -284,9 +335,25 @@ export function MagicModal() {
     sessionChatModalWorktreeId
   const { data: worktree } = useWorktree(selectedWorktreeId)
   const contentRef = useRef<HTMLDivElement>(null)
+  const investigateContentRef = useRef<HTMLDivElement>(null)
   const hasInitializedRef = useRef(false)
   const [selectedOption, setSelectedOption] =
     useState<MagicOption>('save-context')
+  const [investigateDialogOpen, setInvestigateDialogOpen] = useState(false)
+  const [investigateType, setInvestigateType] =
+    useState<InvestigateType | null>(null)
+  const [investigateSelectionMode, setInvestigateSelectionMode] =
+    useState<InvestigateSelectionMode>('settings-default')
+  const [customInvestigateBackend, setCustomInvestigateBackend] =
+    useState<CliBackend>('claude')
+  const [customInvestigateModel, setCustomInvestigateModel] =
+    useState<string>('sonnet')
+  const [resolveDialogOpen, setResolveDialogOpen] = useState(false)
+  const [resolveSelectionMode, setResolveSelectionMode] =
+    useState<ResolveSelectionMode>('settings-default')
+  const [customResolveBackend, setCustomResolveBackend] =
+    useState<CliBackend>('claude')
+  const [customResolveModel, setCustomResolveModel] = useState<string>('sonnet')
 
   const hasOpenPr = Boolean(worktree?.pr_url)
 
@@ -308,8 +375,13 @@ export function MagicModal() {
 
   const sessionModalOpen = useUIStore(state => state.sessionChatModalOpen)
   // Whether MagicModal was opened from ProjectCanvasView (no active chat session)
-  const isOnCanvas = !useChatStore(state => state.activeWorktreePath) && !sessionModalOpen
+  const isOnCanvas =
+    !useChatStore(state => state.activeWorktreePath) && !sessionModalOpen
   const pickRemoteOrRun = useRemotePicker(worktree?.path)
+  const { installedBackends } = useInstalledBackends()
+  const { data: availableOpencodeModels } = useAvailableOpencodeModels({
+    enabled: installedBackends.includes('opencode'),
+  })
 
   // Build columns dynamically based on PR state
   const magicColumns = useMemo(() => buildMagicColumns(hasOpenPr), [hasOpenPr])
@@ -347,10 +419,356 @@ export function MagicModal() {
   const project = worktree
     ? projects?.find(p => p.id === worktree.project_id)
     : null
+  const opencodeModelOptions = useMemo(() => {
+    const models = availableOpencodeModels?.length
+      ? availableOpencodeModels
+      : OPENCODE_MODEL_OPTIONS.map(option => option.value)
+    return models.map(value => ({
+      value,
+      label: formatMagicModalOpencodeLabel(value),
+    }))
+  }, [availableOpencodeModels])
+
+  const investigateDefaults = useMemo(() => {
+    if (!investigateType) return null
+
+    const modelKey = INVESTIGATE_MODEL_KEYS[investigateType]
+    const providerKey = INVESTIGATE_PROVIDER_KEYS[investigateType]
+    const backendKey = INVESTIGATE_BACKEND_KEYS[investigateType]
+    const defaultBackend =
+      project?.default_backend ?? preferences?.default_backend ?? 'claude'
+    const backend =
+      resolveMagicPromptBackend(
+        preferences?.magic_prompt_backends,
+        backendKey,
+        defaultBackend
+      ) ?? 'claude'
+    const model =
+      preferences?.magic_prompt_models?.[modelKey] ??
+      (backend === 'codex'
+        ? (preferences?.selected_codex_model ?? 'gpt-5.4')
+        : backend === 'opencode'
+          ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+          : backend === 'cursor'
+            ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+            : (preferences?.selected_model ?? 'sonnet'))
+    const provider = resolveMagicPromptProvider(
+      preferences?.magic_prompt_providers,
+      providerKey,
+      preferences?.default_provider
+    )
+    return { backend, model, provider }
+  }, [investigateType, preferences, project?.default_backend])
+
+  const resolveDefaults = useMemo(() => {
+    const defaultBackend =
+      project?.default_backend ?? preferences?.default_backend ?? 'claude'
+    const backend =
+      resolveMagicPromptBackend(
+        preferences?.magic_prompt_backends,
+        RESOLVE_CONFLICTS_BACKEND_KEY,
+        defaultBackend
+      ) ?? 'claude'
+    const model =
+      preferences?.magic_prompt_models?.[RESOLVE_CONFLICTS_MODEL_KEY] ??
+      (backend === 'codex'
+        ? (preferences?.selected_codex_model ?? 'gpt-5.4')
+        : backend === 'opencode'
+          ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+          : backend === 'cursor'
+            ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+            : (preferences?.selected_model ?? 'sonnet'))
+    const provider = resolveMagicPromptProvider(
+      preferences?.magic_prompt_providers,
+      RESOLVE_CONFLICTS_PROVIDER_KEY,
+      preferences?.default_provider
+    )
+    return { backend, model, provider }
+  }, [preferences, project?.default_backend])
+
+  const getClaudeModelOptionsForProvider = useCallback(
+    (provider: string | null) => {
+      const profile = [
+        ...PREDEFINED_CLI_PROFILES,
+        ...(preferences?.custom_cli_profiles ?? []),
+      ].find(item => item.name === provider)
+      let opusModel: string | undefined
+      let sonnetModel: string | undefined
+      let haikuModel: string | undefined
+      if (profile?.settings_json) {
+        try {
+          const settings = JSON.parse(profile.settings_json)
+          const env = settings?.env
+          if (env) {
+            opusModel = env.ANTHROPIC_DEFAULT_OPUS_MODEL || env.ANTHROPIC_MODEL
+            sonnetModel =
+              env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL
+            haikuModel =
+              env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL
+          }
+        } catch {
+          // ignore invalid custom profile json
+        }
+      }
+
+      const suffix = (model?: string) => (model ? ` (${model})` : '')
+      return provider
+        ? [
+            { value: 'opus', label: `Opus${suffix(opusModel)}` },
+            { value: 'sonnet', label: `Sonnet${suffix(sonnetModel)}` },
+            { value: 'haiku', label: `Haiku${suffix(haikuModel)}` },
+          ]
+        : MODEL_OPTIONS
+    },
+    [preferences?.custom_cli_profiles]
+  )
+
+  const investigateClaudeProvider =
+    investigateDefaults?.provider &&
+    investigateDefaults.provider !== '__anthropic__'
+      ? investigateDefaults.provider
+      : null
+  const resolveClaudeProvider =
+    resolveDefaults.provider && resolveDefaults.provider !== '__anthropic__'
+      ? resolveDefaults.provider
+      : null
+
+  const investigateClaudeModelOptions = useMemo(
+    () => getClaudeModelOptionsForProvider(investigateClaudeProvider),
+    [getClaudeModelOptionsForProvider, investigateClaudeProvider]
+  )
+  const resolveClaudeModelOptions = useMemo(
+    () => getClaudeModelOptionsForProvider(resolveClaudeProvider),
+    [getClaudeModelOptionsForProvider, resolveClaudeProvider]
+  )
+
+  const getInvestigateModelOptions = useCallback(
+    (backend: CliBackend) => {
+      switch (backend) {
+        case 'codex':
+          return CODEX_MODEL_OPTIONS
+        case 'opencode':
+          return opencodeModelOptions
+        default:
+          return investigateClaudeModelOptions
+      }
+    },
+    [investigateClaudeModelOptions, opencodeModelOptions]
+  )
+
+  const customInvestigateModelOptions = useMemo(
+    () => getInvestigateModelOptions(customInvestigateBackend),
+    [customInvestigateBackend, getInvestigateModelOptions]
+  )
+
+  const effectiveCustomInvestigateModel = useMemo(() => {
+    return (
+      customInvestigateModelOptions.find(
+        option => option.value === customInvestigateModel
+      )?.value ??
+      customInvestigateModelOptions[0]?.value ??
+      ''
+    )
+  }, [customInvestigateModel, customInvestigateModelOptions])
+
+  const formatBackendLabel = useCallback((backend: CliBackend) => {
+    switch (backend) {
+      case 'codex':
+        return 'Codex'
+      case 'opencode':
+        return 'OpenCode'
+      default:
+        return 'Claude'
+    }
+  }, [])
+
+  const formatModelLabel = useCallback(
+    (backend: CliBackend, model: string) => {
+      const options = getInvestigateModelOptions(backend)
+      return options.find(option => option.value === model)?.label ?? model
+    },
+    [getInvestigateModelOptions]
+  )
+
+  const settingsDefaultSummary = investigateDefaults
+    ? `${formatBackendLabel(investigateDefaults.backend)} · ${formatModelLabel(
+        investigateDefaults.backend,
+        investigateDefaults.model
+      )}`
+    : ''
+  const customSelectionSummary = `${formatBackendLabel(
+    customInvestigateBackend
+  )} · ${formatModelLabel(
+    customInvestigateBackend,
+    effectiveCustomInvestigateModel
+  )}`
+
+  const handleCustomInvestigateBackendChange = useCallback(
+    (backend: string) => {
+      const nextBackend = backend as CliBackend
+      setCustomInvestigateBackend(nextBackend)
+      const nextOptions = getInvestigateModelOptions(nextBackend)
+      setCustomInvestigateModel(nextOptions[0]?.value ?? '')
+    },
+    [getInvestigateModelOptions]
+  )
+
+  const getResolveModelOptions = useCallback(
+    (backend: CliBackend) => {
+      switch (backend) {
+        case 'codex':
+          return CODEX_MODEL_OPTIONS
+        case 'opencode':
+          return opencodeModelOptions
+        default:
+          return resolveClaudeModelOptions
+      }
+    },
+    [opencodeModelOptions, resolveClaudeModelOptions]
+  )
+
+  const customResolveModelOptions = useMemo(
+    () => getResolveModelOptions(customResolveBackend),
+    [customResolveBackend, getResolveModelOptions]
+  )
+
+  const effectiveCustomResolveModel = useMemo(() => {
+    return (
+      customResolveModelOptions.find(
+        option => option.value === customResolveModel
+      )?.value ??
+      customResolveModelOptions[0]?.value ??
+      ''
+    )
+  }, [customResolveModel, customResolveModelOptions])
+
+  const resolveSettingsDefaultSummary = `${formatBackendLabel(
+    resolveDefaults.backend
+  )} · ${(() => {
+    const options = getResolveModelOptions(resolveDefaults.backend)
+    return (
+      options.find(option => option.value === resolveDefaults.model)?.label ??
+      resolveDefaults.model
+    )
+  })()}`
+  const resolveCustomSelectionSummary = `${formatBackendLabel(
+    customResolveBackend
+  )} · ${(() => {
+    const options = getResolveModelOptions(customResolveBackend)
+    return (
+      options.find(option => option.value === effectiveCustomResolveModel)
+        ?.label ?? effectiveCustomResolveModel
+    )
+  })()}`
+
+  const handleCustomResolveBackendChange = useCallback(
+    (backend: string) => {
+      const nextBackend = backend as CliBackend
+      setCustomResolveBackend(nextBackend)
+      const nextOptions = getResolveModelOptions(nextBackend)
+      setCustomResolveModel(nextOptions[0]?.value ?? '')
+    },
+    [getResolveModelOptions]
+  )
+
+  const dispatchInvestigateCommand = useCallback(() => {
+    if (!investigateType) return
+    const detail =
+      investigateSelectionMode === 'custom'
+        ? {
+            command: 'investigate',
+            type: investigateType,
+            override: {
+              backend: customInvestigateBackend,
+              model: effectiveCustomInvestigateModel,
+            },
+          }
+        : { command: 'investigate', type: investigateType }
+    window.dispatchEvent(new CustomEvent('magic-command', { detail }))
+    setInvestigateDialogOpen(false)
+  }, [
+    investigateType,
+    investigateSelectionMode,
+    customInvestigateBackend,
+    effectiveCustomInvestigateModel,
+  ])
+
+  useEffect(() => {
+    if (!investigateDialogOpen) {
+      setInvestigateSelectionMode('settings-default')
+      setInvestigateType(null)
+    }
+  }, [investigateDialogOpen])
+
+  useEffect(() => {
+    if (!investigateDefaults) return
+    const nextBackend = installedBackends.includes(investigateDefaults.backend)
+      ? investigateDefaults.backend
+      : (installedBackends[0] ?? 'claude')
+    const nextOptions = getInvestigateModelOptions(nextBackend)
+    const nextModel =
+      nextOptions.find(option => option.value === investigateDefaults.model)
+        ?.value ??
+      nextOptions[0]?.value ??
+      investigateDefaults.model
+    setCustomInvestigateBackend(nextBackend)
+    setCustomInvestigateModel(nextModel)
+  }, [getInvestigateModelOptions, installedBackends, investigateDefaults])
+
+  useEffect(() => {
+    if (!customInvestigateModelOptions.length) return
+    if (
+      !customInvestigateModelOptions.some(
+        option => option.value === customInvestigateModel
+      )
+    ) {
+      const firstOption = customInvestigateModelOptions[0]
+      if (firstOption) {
+        setCustomInvestigateModel(firstOption.value)
+      }
+    }
+  }, [customInvestigateModel, customInvestigateModelOptions])
+
+  useEffect(() => {
+    if (!resolveDialogOpen) {
+      setResolveSelectionMode('settings-default')
+    }
+  }, [resolveDialogOpen])
+
+  useEffect(() => {
+    const nextBackend = installedBackends.includes(resolveDefaults.backend)
+      ? resolveDefaults.backend
+      : (installedBackends[0] ?? 'claude')
+    const nextOptions = getResolveModelOptions(nextBackend)
+    const nextModel =
+      nextOptions.find(option => option.value === resolveDefaults.model)
+        ?.value ??
+      nextOptions[0]?.value ??
+      resolveDefaults.model
+    setCustomResolveBackend(nextBackend)
+    setCustomResolveModel(nextModel)
+  }, [getResolveModelOptions, installedBackends, resolveDefaults])
+
+  useEffect(() => {
+    if (!customResolveModelOptions.length) return
+    if (
+      !customResolveModelOptions.some(
+        option => option.value === customResolveModel
+      )
+    ) {
+      const firstOption = customResolveModelOptions[0]
+      if (firstOption) {
+        setCustomResolveModel(firstOption.value)
+      }
+    }
+  }, [customResolveModel, customResolveModelOptions])
 
   // Direct git execution for when ChatWindow isn't rendered (project canvas)
   const executeGitDirectly = useCallback(
-    async (option: MagicOption) => {
+    async (
+      option: MagicOption,
+      override?: { backend: CliBackend; model: string }
+    ) => {
       if (!selectedWorktreeId || !worktree?.path) return
 
       const { setWorktreeLoading, clearWorktreeLoading } =
@@ -359,6 +777,12 @@ export function MagicModal() {
       const doCommit = async (isPush: boolean, remote?: string) => {
         setWorktreeLoading(selectedWorktreeId, 'commit')
         const branch = worktree.branch ?? ''
+        const { gitDiffSelectedFiles, clearGitDiffSelectedFiles } =
+          useUIStore.getState()
+        const specificFiles =
+          gitDiffSelectedFiles.size > 0
+            ? Array.from(gitDiffSelectedFiles)
+            : null
         const toastId = toast.loading(
           isPush
             ? `Committing and pushing on ${branch}...`
@@ -379,15 +803,23 @@ export function MagicModal() {
                 'commit_message_provider',
                 preferences?.default_provider
               ),
-              reasoningEffort: preferences?.magic_prompt_efforts?.commit_message_effort ?? null,
+              reasoningEffort:
+                preferences?.magic_prompt_efforts?.commit_message_effort ??
+                null,
+              specificFiles,
             }
           )
+          clearGitDiffSelectedFiles()
           triggerImmediateGitPoll()
+          window.dispatchEvent(new CustomEvent('git-commit-completed'))
           if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
           if (result.push_fell_back) {
-            toast.warning('Could not push to PR branch, pushed to new branch instead', {
-              id: toastId,
-            })
+            toast.warning(
+              'Could not push to PR branch, pushed to new branch instead',
+              {
+                id: toastId,
+              }
+            )
           } else if (result.commit_hash) {
             const prefix = isPush ? 'Committed and pushed' : 'Committed'
             toast.success(`${prefix}: ${result.message.split('\n')[0]}`, {
@@ -425,10 +857,9 @@ export function MagicModal() {
             )
             triggerImmediateGitPoll()
             if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
-            toast.success(
-              `Reverted: ${result.commit_message}`,
-              { id: revertToastId }
-            )
+            toast.success(`Reverted: ${result.commit_message}`, {
+              id: revertToastId,
+            })
           } catch (error) {
             toast.error(`Failed to revert: ${error}`, { id: revertToastId })
           }
@@ -452,11 +883,18 @@ export function MagicModal() {
           const doPush = async (remote?: string) => {
             const toastId = toast.loading(`Pushing ${worktree.branch}...`)
             try {
-              const result = await gitPush(worktree.path, worktree.pr_number, remote)
+              const result = await gitPush(
+                worktree.path,
+                worktree.pr_number,
+                remote
+              )
               triggerImmediateGitPoll()
               if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
               if (result.fellBack) {
-                toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
+                toast.warning(
+                  'Could not push to PR branch, pushed to new branch instead',
+                  { id: toastId }
+                )
               } else {
                 toast.success('Changes pushed', { id: toastId })
               }
@@ -491,7 +929,8 @@ export function MagicModal() {
                   'pr_content_provider',
                   preferences?.default_provider
                 ),
-                reasoningEffort: preferences?.magic_prompt_efforts?.pr_content_effort ?? null,
+                reasoningEffort:
+                  preferences?.magic_prompt_efforts?.pr_content_effort ?? null,
               }
             )
             if (!result.existing) {
@@ -549,23 +988,28 @@ export function MagicModal() {
             const action = shouldDelete ? 'Deleting' : 'Archiving'
             const cleanupToastId = toast.loading(`${action} worktree...`)
             try {
-              await invoke(shouldDelete ? 'delete_worktree' : 'archive_worktree', {
-                worktreeId: selectedWorktreeId,
-              })
+              await invoke(
+                shouldDelete ? 'delete_worktree' : 'archive_worktree',
+                {
+                  worktreeId: selectedWorktreeId,
+                }
+              )
               queryClient.invalidateQueries({
                 queryKey: projectsQueryKeys.worktrees(worktree.project_id),
               })
               triggerImmediateGitPoll()
               if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
               const pastAction = shouldDelete ? 'Deleted' : 'Archived'
-              toast.success(
-                `${pastAction} "${worktree.name}"`,
-                { id: cleanupToastId }
-              )
-            } catch (cleanupError) {
-              toast.error(`Failed to ${action.toLowerCase()} worktree: ${cleanupError}`, {
+              toast.success(`${pastAction} "${worktree.name}"`, {
                 id: cleanupToastId,
               })
+            } catch (cleanupError) {
+              toast.error(
+                `Failed to ${action.toLowerCase()} worktree: ${cleanupError}`,
+                {
+                  id: cleanupToastId,
+                }
+              )
             }
           } catch (error) {
             toast.error(`Failed to merge PR: ${error}`, { id: mergePrToastId })
@@ -609,14 +1053,101 @@ export function MagicModal() {
             })
 
             // Inherit model/mode/thinking settings from current session
-            if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
+            if (currentSessionId)
+              copySessionSettings(currentSessionId, newSession.id)
+
+            const resolvedProvider = resolveMagicPromptProvider(
+              preferences?.magic_prompt_providers,
+              RESOLVE_CONFLICTS_PROVIDER_KEY,
+              preferences?.default_provider
+            )
+            const resolvedBackend =
+              override?.backend ??
+              resolveMagicPromptBackend(
+                preferences?.magic_prompt_backends,
+                RESOLVE_CONFLICTS_BACKEND_KEY,
+                project?.default_backend ??
+                  preferences?.default_backend ??
+                  'claude'
+              ) ??
+              'claude'
+            const resolvedModel =
+              override?.model ??
+              preferences?.magic_prompt_models?.[RESOLVE_CONFLICTS_MODEL_KEY] ??
+              (resolvedBackend === 'codex'
+                ? (preferences?.selected_codex_model ?? 'gpt-5.4')
+                : resolvedBackend === 'opencode'
+                  ? (preferences?.selected_opencode_model ??
+                    'opencode/gpt-5.3-codex')
+                  : resolvedBackend === 'cursor'
+                    ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+                    : (preferences?.selected_model ?? 'sonnet'))
+            const resolvedSessionProvider =
+              override?.backend && override.backend !== 'claude'
+                ? null
+                : resolvedProvider
+
+            useChatStore
+              .getState()
+              .setSelectedBackend(newSession.id, resolvedBackend)
+            useChatStore
+              .getState()
+              .setSelectedModel(newSession.id, resolvedModel)
+            useChatStore
+              .getState()
+              .setSelectedProvider(newSession.id, resolvedSessionProvider)
+            queryClient.setQueryData(
+              chatQueryKeys.session(newSession.id),
+              (old: Session | null | undefined) =>
+                old
+                  ? {
+                      ...old,
+                      backend: resolvedBackend,
+                      selected_model: resolvedModel,
+                      selected_provider: resolvedSessionProvider,
+                    }
+                  : {
+                      id: newSession.id,
+                      name: newSession.name,
+                      order: newSession.order,
+                      created_at: newSession.created_at,
+                      updated_at: newSession.updated_at,
+                      messages: [],
+                      backend: resolvedBackend,
+                      selected_model: resolvedModel,
+                      selected_provider: resolvedSessionProvider,
+                    }
+            )
+
+            // Persist to backend so model survives cache invalidations
+            invoke('set_session_backend', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              sessionId: newSession.id,
+              backend: resolvedBackend,
+            }).catch(() => undefined)
+            invoke('set_session_model', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              sessionId: newSession.id,
+              model: resolvedModel,
+            }).catch(() => undefined)
+            invoke('set_session_provider', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              sessionId: newSession.id,
+              provider: resolvedSessionProvider,
+            }).catch(() => undefined)
 
             // Open in SessionChatModal on canvas (not full ChatWindow)
             registerWorktreePath(selectedWorktreeId, worktree.path)
             setActiveSession(selectedWorktreeId, newSession.id)
             window.dispatchEvent(
               new CustomEvent('open-worktree-modal', {
-                detail: { worktreeId: selectedWorktreeId, worktreePath: worktree.path },
+                detail: {
+                  worktreeId: selectedWorktreeId,
+                  worktreePath: worktree.path,
+                },
               })
             )
 
@@ -695,7 +1226,11 @@ ${resolveInstructions}`
                     queryKey: projectsQueryKeys.worktrees(worktree.project_id),
                   })
                   queryClient.invalidateQueries({
-                    queryKey: [...projectsQueryKeys.all, 'worktree', selectedWorktreeId],
+                    queryKey: [
+                      ...projectsQueryKeys.all,
+                      'worktree',
+                      selectedWorktreeId,
+                    ],
                   })
                 }
               })
@@ -714,7 +1249,8 @@ ${resolveInstructions}`
                 'code_review_provider',
                 preferences?.default_provider
               ),
-              reasoningEffort: preferences?.magic_prompt_efforts?.code_review_effort ?? null,
+              reasoningEffort:
+                preferences?.magic_prompt_efforts?.code_review_effort ?? null,
               reviewRunId,
             })
 
@@ -735,7 +1271,8 @@ ${resolveInstructions}`
             setReviewResults(newSession.id, result)
 
             // Inherit model/mode/thinking settings from current session
-            if (currentReviewSessionId) copySessionSettings(currentReviewSessionId, newSession.id)
+            if (currentReviewSessionId)
+              copySessionSettings(currentReviewSessionId, newSession.id)
 
             // Navigate to ProjectCanvasView and auto-open session modal
             setActiveSession(selectedWorktreeId, newSession.id)
@@ -743,10 +1280,7 @@ ${resolveInstructions}`
             clearActiveWorktree()
             useUIStore
               .getState()
-              .markWorktreeForAutoOpenSession(
-                selectedWorktreeId,
-                newSession.id
-              )
+              .markWorktreeForAutoOpenSession(selectedWorktreeId, newSession.id)
 
             // Persist review results to session file
             invoke('update_session_state', {
@@ -765,31 +1299,32 @@ ${resolveInstructions}`
             toast.success(
               `Review done on ${reviewTarget} (${findingCount} findings)`,
               {
-              id: toastId,
-              action: {
-                label: 'Open',
-                onClick: () => {
-                  const {
-                    setActiveSession,
-                    clearActiveWorktree,
-                  } = useChatStore.getState()
-                  useProjectsStore.getState().selectWorktree(selectedWorktreeId)
-                  clearActiveWorktree()
-                  setActiveSession(selectedWorktreeId, newSession.id)
-                  setTimeout(() => {
-                    window.dispatchEvent(
-                      new CustomEvent('open-session-modal', {
-                        detail: {
-                          sessionId: newSession.id,
-                          worktreeId: selectedWorktreeId,
-                          worktreePath: worktree.path,
-                        },
-                      })
-                    )
-                  }, 50)
+                id: toastId,
+                action: {
+                  label: 'Open',
+                  onClick: () => {
+                    const { setActiveSession, clearActiveWorktree } =
+                      useChatStore.getState()
+                    useProjectsStore
+                      .getState()
+                      .selectWorktree(selectedWorktreeId)
+                    clearActiveWorktree()
+                    setActiveSession(selectedWorktreeId, newSession.id)
+                    setTimeout(() => {
+                      window.dispatchEvent(
+                        new CustomEvent('open-session-modal', {
+                          detail: {
+                            sessionId: newSession.id,
+                            worktreeId: selectedWorktreeId,
+                            worktreePath: worktree.path,
+                          },
+                        })
+                      )
+                    }, 50)
+                  },
                 },
-              },
-            })
+              }
+            )
           } catch (error) {
             const errorString = String(error)
             const cancelled =
@@ -819,6 +1354,38 @@ ${resolveInstructions}`
       pickRemoteOrRun,
     ]
   )
+
+  const dispatchResolveConflictsCommand = useCallback(() => {
+    const override =
+      resolveSelectionMode === 'custom'
+        ? {
+            backend: customResolveBackend,
+            model: effectiveCustomResolveModel,
+          }
+        : undefined
+
+    if (
+      CANVAS_ALLOWED_OPTIONS.has('resolve-conflicts') &&
+      !CANVAS_NAVIGATE_AND_DISPATCH_OPTIONS.has('resolve-conflicts') &&
+      !useChatStore.getState().activeWorktreePath
+    ) {
+      setResolveDialogOpen(false)
+      executeGitDirectly('resolve-conflicts', override)
+      return
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('magic-command', {
+        detail: { command: 'resolve-conflicts', override },
+      })
+    )
+    setResolveDialogOpen(false)
+  }, [
+    resolveSelectionMode,
+    customResolveBackend,
+    effectiveCustomResolveModel,
+    executeGitDirectly,
+  ])
 
   const executeAction = useCallback(
     async (option: MagicOption) => {
@@ -882,22 +1449,20 @@ ${resolveInstructions}`
           setMagicModalOpen(false)
           return
         }
-        window.dispatchEvent(
-          new CustomEvent('magic-command', {
-            detail: { command: 'investigate', type },
-          })
-        )
         setMagicModalOpen(false)
+        setInvestigateType(type)
+        setInvestigateDialogOpen(true)
         return
       }
 
-      // Update PR description: open the update dialog (requires open PR)
+      if (option === 'resolve-conflicts') {
+        setMagicModalOpen(false)
+        setResolveDialogOpen(true)
+        return
+      }
+
+      // Update PR description: always open the dialog; user can enter any PR number
       if (option === 'update-pr') {
-        if (!worktree?.pr_number) {
-          notify('No PR open for this worktree', undefined, { type: 'error' })
-          setMagicModalOpen(false)
-          return
-        }
         useUIStore.getState().setUpdatePrModalOpen(true)
         setMagicModalOpen(false)
         return
@@ -1017,93 +1582,403 @@ ${resolveInstructions}`
     [executeAction, selectedOption, allOptions]
   )
 
+  const handleInvestigateKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        dispatchInvestigateCommand()
+      }
+    },
+    [dispatchInvestigateCommand]
+  )
+
+  const handleResolveKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        dispatchResolveConflictsCommand()
+      }
+    },
+    [dispatchResolveConflictsCommand]
+  )
+
   return (
-    <Dialog open={magicModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent
-        ref={contentRef}
-        tabIndex={-1}
-        className="sm:max-w-[560px] p-0 outline-none"
-        onOpenAutoFocus={e => {
-          e.preventDefault()
-          contentRef.current?.focus()
-        }}
-        onKeyDown={handleKeyDown}
-      >
-        <DialogHeader className="px-4 pt-5 pb-2">
-          <DialogTitle className="flex items-center gap-2">
-            <Wand2 className="h-4 w-4" />
-            Magic
-          </DialogTitle>
-        </DialogHeader>
+    <>
+      <Dialog open={magicModalOpen} onOpenChange={handleOpenChange}>
+        <DialogContent
+          ref={contentRef}
+          tabIndex={-1}
+          className="sm:max-w-[560px] p-0 outline-none"
+          onOpenAutoFocus={e => {
+            e.preventDefault()
+            contentRef.current?.focus()
+          }}
+          onKeyDown={handleKeyDown}
+        >
+          <DialogHeader className="px-4 pt-5 pb-2">
+            <DialogTitle className="flex items-center gap-2">
+              <Wand2 className="h-4 w-4" />
+              Magic
+            </DialogTitle>
+          </DialogHeader>
 
-        <div className="pb-2 grid grid-cols-2">
-          {[magicColumns.left, magicColumns.right].map(
-            (columnSections, colIndex) => (
-              <div
-                key={colIndex}
-                className={cn(colIndex === 0 && 'border-r border-border')}
-              >
-                {columnSections.map((section, sectionIndex) => (
-                  <div key={section.header}>
-                    {/* Section header */}
-                    <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      {section.header}
+          <div className="pb-2 grid grid-cols-2">
+            {[magicColumns.left, magicColumns.right].map(
+              (columnSections, colIndex) => (
+                <div
+                  key={colIndex}
+                  className={cn(colIndex === 0 && 'border-r border-border')}
+                >
+                  {columnSections.map((section, sectionIndex) => (
+                    <div key={section.header}>
+                      <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        {section.header}
+                      </div>
+
+                      {section.options.map(option => {
+                        const Icon = option.icon
+                        const isSelected = selectedOption === option.id
+                        const isDisabled =
+                          (isOnCanvas &&
+                            !CANVAS_ALLOWED_OPTIONS.has(option.id)) ||
+                          (option.id === 'create-recap' && !activeSessionId) ||
+                          (option.id === 'investigate-issue' &&
+                            !hasIssueContexts) ||
+                          (option.id === 'investigate-pr' && !hasPrContexts) ||
+                          (option.id === 'review-comments' && !hasOpenPr) ||
+                          (option.id === 'merge-pr' && !hasOpenPr)
+
+                        return (
+                          <button
+                            key={option.id}
+                            onClick={() =>
+                              !isDisabled && executeAction(option.id)
+                            }
+                            onMouseEnter={() => setSelectedOption(option.id)}
+                            className={cn(
+                              'w-full flex items-center justify-between px-4 py-2 text-sm transition-colors',
+                              'focus:outline-none',
+                              isDisabled
+                                ? 'opacity-40 cursor-not-allowed'
+                                : 'hover:bg-accent',
+                              isSelected && !isDisabled && 'bg-accent'
+                            )}
+                          >
+                            <div className="flex items-center gap-3">
+                              <Icon className="h-4 w-4 text-muted-foreground" />
+                              <span>{option.label}</span>
+                            </div>
+                            <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                              {option.key}
+                            </kbd>
+                          </button>
+                        )
+                      })}
+
+                      {sectionIndex < columnSections.length - 1 && (
+                        <div className="my-1 mx-4 border-t border-border" />
+                      )}
                     </div>
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
-                    {/* Section options */}
-                    {section.options.map(option => {
-                      const Icon = option.icon
-                      const isSelected = selectedOption === option.id
-                      const isDisabled =
-                        (isOnCanvas &&
-                          !CANVAS_ALLOWED_OPTIONS.has(option.id)) ||
-                        (option.id === 'create-recap' && !activeSessionId) ||
-                        (option.id === 'investigate-issue' &&
-                          !hasIssueContexts) ||
-                        (option.id === 'investigate-pr' && !hasPrContexts) ||
-                        (option.id === 'update-pr' && !hasOpenPr) ||
-                        (option.id === 'review-comments' && !hasOpenPr) ||
-                        (option.id === 'merge-pr' && !hasOpenPr)
+      <Dialog
+        open={investigateDialogOpen}
+        onOpenChange={setInvestigateDialogOpen}
+      >
+        <DialogContent
+          ref={investigateContentRef}
+          tabIndex={-1}
+          className="sm:max-w-[520px] outline-none"
+          onOpenAutoFocus={e => {
+            e.preventDefault()
+            investigateContentRef.current?.focus()
+          }}
+          onKeyDown={handleInvestigateKeyDown}
+        >
+          <DialogHeader>
+            <DialogTitle>
+              Investigate {investigateType === 'pr' ? 'PR' : 'Issue'}
+            </DialogTitle>
+          </DialogHeader>
 
-                      return (
-                        <button
-                          key={option.id}
-                          onClick={() =>
-                            !isDisabled && executeAction(option.id)
-                          }
-                          onMouseEnter={() => setSelectedOption(option.id)}
-                          className={cn(
-                            'w-full flex items-center justify-between px-4 py-2 text-sm transition-colors',
-                            'focus:outline-none',
-                            isDisabled
-                              ? 'opacity-40 cursor-not-allowed'
-                              : 'hover:bg-accent',
-                            isSelected && !isDisabled && 'bg-accent'
-                          )}
-                        >
-                          <div className="flex items-center gap-3">
-                            <Icon className="h-4 w-4 text-muted-foreground" />
-                            <span>{option.label}</span>
-                          </div>
-                          <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                            {option.key}
-                          </kbd>
-                        </button>
-                      )
-                    })}
-
-                    {/* Separator between sections within column (not after last) */}
-                    {sectionIndex < columnSections.length - 1 && (
-                      <div className="my-1 mx-4 border-t border-border" />
-                    )}
+          <div className="space-y-4">
+            <RadioGroup
+              value={investigateSelectionMode}
+              onValueChange={value =>
+                setInvestigateSelectionMode(value as InvestigateSelectionMode)
+              }
+              className="space-y-3"
+            >
+              <div
+                className={cn(
+                  'flex items-start gap-3 rounded-lg border p-3 transition-colors',
+                  investigateSelectionMode === 'settings-default'
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-border'
+                )}
+              >
+                <RadioGroupItem
+                  value="settings-default"
+                  id="investigate-settings-default"
+                  className="mt-0.5"
+                />
+                <Label
+                  htmlFor="investigate-settings-default"
+                  className="flex-1 cursor-pointer"
+                >
+                  <div className="text-sm font-medium">
+                    Use Magic Prompt settings
                   </div>
-                ))}
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {settingsDefaultSummary}
+                  </div>
+                </Label>
               </div>
-            )
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
+
+              <div
+                className={cn(
+                  'space-y-3 rounded-lg border p-3 transition-colors',
+                  investigateSelectionMode === 'custom'
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-border'
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <RadioGroupItem
+                    value="custom"
+                    id="investigate-custom"
+                    className="mt-0.5"
+                  />
+                  <Label
+                    htmlFor="investigate-custom"
+                    className="flex-1 cursor-pointer"
+                  >
+                    <div className="text-sm font-medium">
+                      Choose backend + model
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {customSelectionSummary}
+                    </div>
+                  </Label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pl-7">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      Backend
+                    </Label>
+                    <Select
+                      value={customInvestigateBackend}
+                      onValueChange={handleCustomInvestigateBackendChange}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        onClick={() => setInvestigateSelectionMode('custom')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {installedBackends.includes('claude') && (
+                          <SelectItem value="claude">Claude</SelectItem>
+                        )}
+                        {installedBackends.includes('codex') && (
+                          <SelectItem value="codex">Codex</SelectItem>
+                        )}
+                        {installedBackends.includes('opencode') && (
+                          <SelectItem value="opencode">OpenCode</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      Model
+                    </Label>
+                    <Select
+                      value={effectiveCustomInvestigateModel}
+                      onValueChange={value => {
+                        setInvestigateSelectionMode('custom')
+                        setCustomInvestigateModel(value)
+                      }}
+                    >
+                      <SelectTrigger size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {customInvestigateModelOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </RadioGroup>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setInvestigateDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button onClick={dispatchInvestigateCommand}>Investigate</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resolveDialogOpen} onOpenChange={setResolveDialogOpen}>
+        <DialogContent
+          tabIndex={-1}
+          className="sm:max-w-[520px] outline-none"
+          onKeyDown={handleResolveKeyDown}
+        >
+          <DialogHeader>
+            <DialogTitle>Resolve conflicts</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <RadioGroup
+              value={resolveSelectionMode}
+              onValueChange={value =>
+                setResolveSelectionMode(value as ResolveSelectionMode)
+              }
+              className="space-y-3"
+            >
+              <div
+                className={cn(
+                  'flex items-start gap-3 rounded-lg border p-3 transition-colors',
+                  resolveSelectionMode === 'settings-default'
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-border'
+                )}
+              >
+                <RadioGroupItem
+                  value="settings-default"
+                  id="resolve-settings-default"
+                  className="mt-0.5"
+                />
+                <Label
+                  htmlFor="resolve-settings-default"
+                  className="flex-1 cursor-pointer"
+                >
+                  <div className="text-sm font-medium">
+                    Use Magic Prompt settings
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {resolveSettingsDefaultSummary}
+                  </div>
+                </Label>
+              </div>
+
+              <div
+                className={cn(
+                  'space-y-3 rounded-lg border p-3 transition-colors',
+                  resolveSelectionMode === 'custom'
+                    ? 'border-primary/40 bg-primary/5'
+                    : 'border-border'
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <RadioGroupItem
+                    value="custom"
+                    id="resolve-custom"
+                    className="mt-0.5"
+                  />
+                  <Label
+                    htmlFor="resolve-custom"
+                    className="flex-1 cursor-pointer"
+                  >
+                    <div className="text-sm font-medium">
+                      Choose backend + model
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {resolveCustomSelectionSummary}
+                    </div>
+                  </Label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 pl-7">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      Backend
+                    </Label>
+                    <Select
+                      value={customResolveBackend}
+                      onValueChange={handleCustomResolveBackendChange}
+                    >
+                      <SelectTrigger
+                        size="sm"
+                        onClick={() => setResolveSelectionMode('custom')}
+                      >
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {installedBackends.includes('claude') && (
+                          <SelectItem value="claude">Claude</SelectItem>
+                        )}
+                        {installedBackends.includes('codex') && (
+                          <SelectItem value="codex">Codex</SelectItem>
+                        )}
+                        {installedBackends.includes('opencode') && (
+                          <SelectItem value="opencode">OpenCode</SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">
+                      Model
+                    </Label>
+                    <Select
+                      value={effectiveCustomResolveModel}
+                      onValueChange={value => {
+                        setResolveSelectionMode('custom')
+                        setCustomResolveModel(value)
+                      }}
+                    >
+                      <SelectTrigger size="sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {customResolveModelOptions.map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            </RadioGroup>
+
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setResolveDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button onClick={dispatchResolveConflictsCommand}>
+                Resolve conflicts
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

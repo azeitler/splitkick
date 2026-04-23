@@ -82,10 +82,15 @@ export function useUIStatePersistence() {
       selectedProjectId,
       projectAccessTimestamps,
       dashboardWorktreeCollapseOverrides,
+      projectCanvasSettings,
     } = useProjectsStore.getState()
     const { leftSidebarSize, leftSidebarVisible } = useUIStore.getState()
-    const { modalTerminalOpen, modalTerminalWidth } =
-      useTerminalStore.getState()
+    const {
+      modalTerminalOpen,
+      modalTerminalDockMode,
+      modalTerminalWidth,
+      modalTerminalHeight,
+    } = useTerminalStore.getState()
 
     return {
       active_worktree_id: activeWorktreeId,
@@ -103,11 +108,22 @@ export function useUIStatePersistence() {
       pending_digest_session_ids: Object.keys(pendingDigestSessionIds),
       // Modal terminal drawer state
       modal_terminal_open: modalTerminalOpen,
+      modal_terminal_dock_mode: modalTerminalDockMode,
       modal_terminal_width: modalTerminalWidth,
+      modal_terminal_height: modalTerminalHeight,
       // Project access timestamps for recency sorting
       project_access_timestamps: projectAccessTimestamps,
       // Dashboard worktree collapse overrides
       dashboard_worktree_collapse_overrides: dashboardWorktreeCollapseOverrides,
+      // Project canvas settings per project
+      project_canvas_settings: Object.fromEntries(
+        Object.entries(projectCanvasSettings).map(([projectId, settings]) => [
+          projectId,
+          {
+            worktree_sort_mode: settings.worktreeSortMode,
+          },
+        ])
+      ),
       // Last opened worktree+session per project (convert camelCase → snake_case keys)
       last_opened_per_project: Object.fromEntries(
         Object.entries(lastOpenedPerProject).map(([projectId, entry]) => [
@@ -282,12 +298,31 @@ export function useUIStatePersistence() {
       })
       useTerminalStore.setState({ modalTerminalOpen })
     }
+    const modalTerminalDockMode =
+      uiState.modal_terminal_dock_mode ??
+      (uiState.modal_terminal_pinned ? 'right' : 'floating')
+    if (modalTerminalDockMode) {
+      logger.debug('Restoring modal terminal dock mode', {
+        dockMode: modalTerminalDockMode,
+      })
+      useTerminalStore.setState({
+        modalTerminalDockMode,
+      })
+    }
     if (uiState.modal_terminal_width != null) {
       logger.debug('Restoring modal terminal width', {
         width: uiState.modal_terminal_width,
       })
       useTerminalStore.setState({
         modalTerminalWidth: uiState.modal_terminal_width,
+      })
+    }
+    if (uiState.modal_terminal_height != null) {
+      logger.debug('Restoring modal terminal height', {
+        height: uiState.modal_terminal_height,
+      })
+      useTerminalStore.setState({
+        modalTerminalHeight: uiState.modal_terminal_height,
       })
     }
 
@@ -312,6 +347,23 @@ export function useUIStatePersistence() {
       useProjectsStore.setState({
         dashboardWorktreeCollapseOverrides: collapseOverrides,
       })
+    }
+
+    const projectCanvasSettings = uiState.project_canvas_settings ?? {}
+    if (Object.keys(projectCanvasSettings).length > 0) {
+      logger.debug('Restoring project canvas settings', {
+        count: Object.keys(projectCanvasSettings).length,
+      })
+      useProjectsStore.getState().setProjectCanvasSettings(
+        Object.fromEntries(
+          Object.entries(projectCanvasSettings).map(([projectId, settings]) => [
+            projectId,
+            {
+              worktreeSortMode: settings.worktree_sort_mode,
+            },
+          ])
+        )
+      )
     }
 
     // Restore last opened worktree+session per project (convert snake_case → camelCase keys)
@@ -349,6 +401,8 @@ export function useUIStatePersistence() {
       useProjectsStore.getState().projectAccessTimestamps
     let prevDashboardCollapseOverrides =
       useProjectsStore.getState().dashboardWorktreeCollapseOverrides
+    let prevProjectCanvasSettings =
+      useProjectsStore.getState().projectCanvasSettings
     let prevLeftSidebarSize = useUIStore.getState().leftSidebarSize
     let prevLeftSidebarVisible = useUIStore.getState().leftSidebarVisible
     let prevWorktreeId = useChatStore.getState().activeWorktreeId
@@ -358,10 +412,13 @@ export function useUIStatePersistence() {
     let prevReviewSidebarVisible = useChatStore.getState().reviewSidebarVisible
     let prevPendingDigestSessionIds =
       useChatStore.getState().pendingDigestSessionIds
-    let prevLastOpenedPerProject =
-      useChatStore.getState().lastOpenedPerProject
+    let prevLastOpenedPerProject = useChatStore.getState().lastOpenedPerProject
     let prevModalTerminalOpen = useTerminalStore.getState().modalTerminalOpen
+    let prevModalTerminalDockMode =
+      useTerminalStore.getState().modalTerminalDockMode
     let prevModalTerminalWidth = useTerminalStore.getState().modalTerminalWidth
+    let prevModalTerminalHeight =
+      useTerminalStore.getState().modalTerminalHeight
 
     // Subscribe to projects-store changes (expanded projects, folders, and selected project)
     const unsubProjects = useProjectsStore.subscribe(state => {
@@ -376,13 +433,16 @@ export function useUIStatePersistence() {
       const collapseOverridesChanged =
         state.dashboardWorktreeCollapseOverrides !==
         prevDashboardCollapseOverrides
+      const projectCanvasSettingsChanged =
+        state.projectCanvasSettings !== prevProjectCanvasSettings
 
       if (
         projectIdsChanged ||
         folderIdsChanged ||
         selectedProjectChanged ||
         accessTimestampsChanged ||
-        collapseOverridesChanged
+        collapseOverridesChanged ||
+        projectCanvasSettingsChanged
       ) {
         prevExpandedProjectIds = state.expandedProjectIds
         prevExpandedFolderIds = state.expandedFolderIds
@@ -390,6 +450,7 @@ export function useUIStatePersistence() {
         prevProjectAccessTimestamps = state.projectAccessTimestamps
         prevDashboardCollapseOverrides =
           state.dashboardWorktreeCollapseOverrides
+        prevProjectCanvasSettings = state.projectCanvasSettings
         const currentState = getCurrentUIState()
         debouncedSaveRef.current?.(currentState)
       }
@@ -447,11 +508,17 @@ export function useUIStatePersistence() {
     // Subscribe to terminal-store changes (modal terminal drawer state)
     const unsubTerminal = useTerminalStore.subscribe(state => {
       const openChanged = state.modalTerminalOpen !== prevModalTerminalOpen
+      const dockModeChanged =
+        state.modalTerminalDockMode !== prevModalTerminalDockMode
       const widthChanged = state.modalTerminalWidth !== prevModalTerminalWidth
+      const heightChanged =
+        state.modalTerminalHeight !== prevModalTerminalHeight
 
-      if (openChanged || widthChanged) {
+      if (openChanged || dockModeChanged || widthChanged || heightChanged) {
         prevModalTerminalOpen = state.modalTerminalOpen
+        prevModalTerminalDockMode = state.modalTerminalDockMode
         prevModalTerminalWidth = state.modalTerminalWidth
+        prevModalTerminalHeight = state.modalTerminalHeight
         const currentState = getCurrentUIState()
         debouncedSaveRef.current?.(currentState)
       }

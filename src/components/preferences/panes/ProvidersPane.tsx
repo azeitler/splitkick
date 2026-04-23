@@ -76,7 +76,7 @@ export const ProvidersPane: React.FC = () => {
               value={defaultProvider ?? 'default'}
               onValueChange={handleDefaultProviderChange}
             >
-              <SelectTrigger className="w-40">
+              <SelectTrigger className="w-full sm:w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -252,7 +252,7 @@ const CliProfilesEditor: React.FC<{
               setEditJson(e.target.value)
               setJsonError(null)
             }}
-            className="min-h-[120px] font-mono text-xs"
+            className="min-h-[120px] font-mono text-base md:text-xs"
           />
           <div className="flex items-center gap-2">
             <Switch

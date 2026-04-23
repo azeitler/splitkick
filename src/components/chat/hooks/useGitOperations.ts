@@ -32,9 +32,22 @@ import type {
 import type { Session } from '@/types/chat'
 import {
   DEFAULT_RESOLVE_CONFLICTS_PROMPT,
+  resolveMagicPromptBackend,
   resolveMagicPromptProvider,
+  type CliBackend,
   type AppPreferences,
 } from '@/types/preferences'
+import type { InvestigateOverride } from './useMagicCommands'
+
+interface SessionMutation<T> {
+  mutate: (args: T) => void
+}
+
+interface SessionSettingArgs {
+  sessionId: string
+  worktreeId: string
+  worktreePath: string
+}
 
 interface UseGitOperationsParams {
   activeWorktreeId: string | null | undefined
@@ -45,6 +58,11 @@ interface UseGitOperationsParams {
   queryClient: QueryClient
   inputRef: React.RefObject<HTMLTextAreaElement | null>
   preferences: AppPreferences | undefined
+  setSessionModel: SessionMutation<SessionSettingArgs & { model: string }>
+  setSessionBackend: SessionMutation<SessionSettingArgs & { backend: string }>
+  setSessionProvider: SessionMutation<
+    SessionSettingArgs & { provider: string | null }
+  >
 }
 
 interface UseGitOperationsReturn {
@@ -63,9 +81,9 @@ interface UseGitOperationsReturn {
   /** Validates and shows merge options dialog */
   handleMerge: () => Promise<void>
   /** Detects existing merge conflicts and opens resolution session */
-  handleResolveConflicts: () => Promise<void>
+  handleResolveConflicts: (override?: InvestigateOverride) => Promise<void>
   /** Fetches base branch and merges to create local conflict state for PR conflict resolution */
-  handleResolvePrConflicts: () => Promise<void>
+  handleResolvePrConflicts: (override?: InvestigateOverride) => Promise<void>
   /** Executes the actual merge with specified type */
   executeMerge: (mergeType: MergeType) => Promise<void>
   /** Whether merge dialog is open */
@@ -89,17 +107,119 @@ export function useGitOperations({
   queryClient,
   inputRef,
   preferences,
+  setSessionModel,
+  setSessionBackend,
+  setSessionProvider,
 }: UseGitOperationsParams): UseGitOperationsReturn {
   // Merge dialog state
   const [showMergeDialog, setShowMergeDialog] = useState(false)
   const [pendingMergeWorktree, setPendingMergeWorktree] =
     useState<Worktree | null>(null)
 
+  const applyResolveConflictSessionSelection = useCallback(
+    (
+      sessionId: string,
+      worktreeId: string,
+      worktreePath: string,
+      override?: InvestigateOverride
+    ) => {
+      const defaultBackend = (project?.default_backend ??
+        preferences?.default_backend ??
+        'claude') as CliBackend
+      const resolvedProvider = resolveMagicPromptProvider(
+        preferences?.magic_prompt_providers,
+        'resolve_conflicts_provider',
+        preferences?.default_provider
+      )
+      const backend = (override?.backend ??
+        resolveMagicPromptBackend(
+          preferences?.magic_prompt_backends,
+          'resolve_conflicts_backend',
+          defaultBackend
+        ) ??
+        defaultBackend) as CliBackend
+      const model =
+        override?.model ??
+        preferences?.magic_prompt_models?.resolve_conflicts_model ??
+        (backend === 'codex'
+          ? (preferences?.selected_codex_model ?? 'gpt-5.4')
+          : backend === 'opencode'
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            : backend === 'cursor'
+              ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+              : (preferences?.selected_model ?? 'sonnet'))
+      const provider =
+        override?.backend && override.backend !== 'claude'
+          ? null
+          : resolvedProvider
+
+      useChatStore.getState().setSelectedBackend(sessionId, backend)
+      useChatStore.getState().setSelectedModel(sessionId, model)
+      useChatStore.getState().setSelectedProvider(sessionId, provider)
+
+      queryClient.setQueryData(
+        chatQueryKeys.session(sessionId),
+        (old: Session | null | undefined) =>
+          old
+            ? {
+                ...old,
+                backend,
+                selected_model: model,
+                selected_provider: provider,
+              }
+            : {
+                id: sessionId,
+                name: '',
+                order: 0,
+                created_at: Math.floor(Date.now() / 1000),
+                updated_at: Math.floor(Date.now() / 1000),
+                messages: [],
+                backend,
+                selected_model: model,
+                selected_provider: provider,
+              }
+      )
+
+      // Persist to backend so model survives cache invalidations
+      setSessionBackend.mutate({
+        sessionId,
+        worktreeId,
+        worktreePath,
+        backend,
+      })
+      setSessionModel.mutate({
+        sessionId,
+        worktreeId,
+        worktreePath,
+        model,
+      })
+      setSessionProvider.mutate({
+        sessionId,
+        worktreeId,
+        worktreePath,
+        provider,
+      })
+    },
+    [
+      preferences,
+      project?.default_backend,
+      queryClient,
+      setSessionBackend,
+      setSessionModel,
+      setSessionProvider,
+    ]
+  )
+
   // Handle Commit - creates commit with AI-generated message (no push)
   const handleCommit = useCallback(async () => {
     if (!activeWorktreePath || !activeWorktreeId) return
 
     const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    const { gitDiffSelectedFiles, clearGitDiffSelectedFiles } =
+      useUIStore.getState()
+    const specificFiles =
+      gitDiffSelectedFiles.size > 0 ? Array.from(gitDiffSelectedFiles) : null
+
     setWorktreeLoading(activeWorktreeId, 'commit')
     const prefix =
       project?.name && worktree?.name
@@ -120,12 +240,16 @@ export function useGitOperations({
             'commit_message_provider',
             preferences?.default_provider
           ),
-          reasoningEffort: preferences?.magic_prompt_efforts?.commit_message_effort ?? null,
+          reasoningEffort:
+            preferences?.magic_prompt_efforts?.commit_message_effort ?? null,
+          specificFiles,
         }
       )
 
-      // Trigger git status refresh
+      // Clear selected files and trigger refresh
+      clearGitDiffSelectedFiles()
       triggerImmediateGitPoll()
+      window.dispatchEvent(new CustomEvent('git-commit-completed'))
 
       toast.success(`${prefix}: ${result.message.split('\n')[0]}`, {
         id: toastId,
@@ -154,6 +278,11 @@ export function useGitOperations({
 
       const { setWorktreeLoading, clearWorktreeLoading } =
         useChatStore.getState()
+      const { gitDiffSelectedFiles, clearGitDiffSelectedFiles } =
+        useUIStore.getState()
+      const specificFiles =
+        gitDiffSelectedFiles.size > 0 ? Array.from(gitDiffSelectedFiles) : null
+
       setWorktreeLoading(activeWorktreeId, 'commit')
       const prefix =
         project?.name && worktree?.name
@@ -176,12 +305,16 @@ export function useGitOperations({
               'commit_message_provider',
               preferences?.default_provider
             ),
-            reasoningEffort: preferences?.magic_prompt_efforts?.commit_message_effort ?? null,
+            reasoningEffort:
+              preferences?.magic_prompt_efforts?.commit_message_effort ?? null,
+            specificFiles,
           }
         )
 
-        // Trigger git status refresh
+        // Clear selected files and trigger refresh
+        clearGitDiffSelectedFiles()
         triggerImmediateGitPoll()
+        window.dispatchEvent(new CustomEvent('git-commit-completed'))
 
         if (result.push_permission_denied) {
           toast.error(
@@ -205,10 +338,9 @@ export function useGitOperations({
             { id: toastId }
           )
         } else if (result.commit_hash) {
-          toast.success(
-            `${prefix}: ${result.message.split('\n')[0]}`,
-            { id: toastId }
-          )
+          toast.success(`${prefix}: ${result.message.split('\n')[0]}`, {
+            id: toastId,
+          })
         } else {
           toast.success(`${prefix}: Pushed to remote`, { id: toastId })
         }
@@ -272,7 +404,11 @@ export function useGitOperations({
       const toastId = toast.loading(`Pushing ${branch}...`)
 
       try {
-        const result = await gitPush(activeWorktreePath, worktree?.pr_number, remote)
+        const result = await gitPush(
+          activeWorktreePath,
+          worktree?.pr_number,
+          remote
+        )
         triggerImmediateGitPoll()
         if (result.permissionDenied) {
           toast.error(
@@ -291,7 +427,10 @@ export function useGitOperations({
             }
           )
         } else if (result.fellBack) {
-          toast.warning('Could not push to PR branch, pushed to new branch instead', { id: toastId })
+          toast.warning(
+            'Could not push to PR branch, pushed to new branch instead',
+            { id: toastId }
+          )
         } else {
           toast.success('Changes pushed', { id: toastId })
         }
@@ -331,7 +470,8 @@ export function useGitOperations({
             'pr_content_provider',
             preferences?.default_provider
           ),
-          reasoningEffort: preferences?.magic_prompt_efforts?.pr_content_effort ?? null,
+          reasoningEffort:
+            preferences?.magic_prompt_efforts?.pr_content_effort ?? null,
         }
       )
 
@@ -382,178 +522,179 @@ export function useGitOperations({
   // If existingSessionId is provided, stores results on that session (in-place review from ChatWindow)
   // Creates a new session and stores review results in it
   const handleReview = useCallback(async () => {
-      if (!activeWorktreeId || !activeWorktreePath) return
+    if (!activeWorktreeId || !activeWorktreePath) return
 
-      const { setWorktreeLoading, clearWorktreeLoading } =
-        useChatStore.getState()
-      setWorktreeLoading(activeWorktreeId, 'review')
-      const branch = worktree?.branch ?? ''
-      const projectName = project?.name ?? 'project'
-      const worktreeName = worktree?.name ?? branch
-      const reviewTarget = `${projectName}/${worktreeName}`
-      const reviewRunId = generateId()
-      let cancelRequested = false
-      const toastId = toast.loading(`Reviewing ${reviewTarget}...`, {
-        cancel: {
-          label: 'Cancel',
-          onClick: () => {
-            cancelRequested = true
-            toast.loading(`Cancelling review for ${reviewTarget}...`, {
-              id: toastId,
+    const { setWorktreeLoading, clearWorktreeLoading } = useChatStore.getState()
+    setWorktreeLoading(activeWorktreeId, 'review')
+    const branch = worktree?.branch ?? ''
+    const projectName = project?.name ?? 'project'
+    const worktreeName = worktree?.name ?? branch
+    const reviewTarget = `${projectName}/${worktreeName}`
+    const reviewRunId = generateId()
+    let cancelRequested = false
+    const toastId = toast.loading(`Reviewing ${reviewTarget}...`, {
+      cancel: {
+        label: 'Cancel',
+        onClick: () => {
+          cancelRequested = true
+          toast.loading(`Cancelling review for ${reviewTarget}...`, {
+            id: toastId,
+          })
+          invoke<boolean>('cancel_review_with_ai', { reviewRunId })
+            .then(cancelled => {
+              if (cancelled) {
+                toast.info(`Review cancelled for ${reviewTarget}`, {
+                  id: toastId,
+                })
+              } else {
+                toast.info(`No active review to cancel for ${reviewTarget}`, {
+                  id: toastId,
+                })
+              }
             })
-            invoke<boolean>('cancel_review_with_ai', { reviewRunId })
-              .then(cancelled => {
-                if (cancelled) {
-                  toast.info(`Review cancelled for ${reviewTarget}`, {
-                    id: toastId,
-                  })
-                } else {
-                  toast.info(`No active review to cancel for ${reviewTarget}`, {
-                    id: toastId,
-                  })
-                }
-              })
-              .catch(error => {
-                toast.error(`Failed to cancel review: ${error}`, { id: toastId })
-              })
-          },
+            .catch(error => {
+              toast.error(`Failed to cancel review: ${error}`, { id: toastId })
+            })
         },
+      },
+    })
+
+    // Fire-and-forget: detect and link PR if not already linked
+    if (!worktree?.pr_number) {
+      invoke<DetectPrResponse | null>('detect_and_link_pr', {
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+      })
+        .then(result => {
+          if (result && worktree?.project_id) {
+            queryClient.invalidateQueries({
+              queryKey: projectsQueryKeys.worktrees(worktree.project_id),
+            })
+            queryClient.invalidateQueries({
+              queryKey: [
+                ...projectsQueryKeys.all,
+                'worktree',
+                activeWorktreeId,
+              ],
+            })
+          }
+        })
+        .catch(() => {
+          /* noop - PR detection is best-effort */
+        })
+    }
+
+    try {
+      const result = await invoke<ReviewResponse>('run_review_with_ai', {
+        worktreePath: activeWorktreePath,
+        customPrompt: preferences?.magic_prompts?.code_review,
+        model: preferences?.magic_prompt_models?.code_review_model,
+        customProfileName: resolveMagicPromptProvider(
+          preferences?.magic_prompt_providers,
+          'code_review_provider',
+          preferences?.default_provider
+        ),
+        reasoningEffort:
+          preferences?.magic_prompt_efforts?.code_review_effort ?? null,
+        reviewRunId,
       })
 
-      // Fire-and-forget: detect and link PR if not already linked
-      if (!worktree?.pr_number) {
-        invoke<DetectPrResponse | null>('detect_and_link_pr', {
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-        })
-          .then(result => {
-            if (result && worktree?.project_id) {
-              queryClient.invalidateQueries({
-                queryKey: projectsQueryKeys.worktrees(worktree.project_id),
-              })
-              queryClient.invalidateQueries({
-                queryKey: [...projectsQueryKeys.all, 'worktree', activeWorktreeId],
-              })
-            }
-          })
-          .catch(() => {
-            /* noop - PR detection is best-effort */
-          })
-      }
+      // Always create a new session for the review
+      const newSession = await invoke<Session>('create_session', {
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        name: 'Code Review',
+      })
+      const targetSessionId = newSession.id
 
-      try {
-        const result = await invoke<ReviewResponse>('run_review_with_ai', {
-          worktreePath: activeWorktreePath,
-          customPrompt: preferences?.magic_prompts?.code_review,
-          model: preferences?.magic_prompt_models?.code_review_model,
-          customProfileName: resolveMagicPromptProvider(
-            preferences?.magic_prompt_providers,
-            'code_review_provider',
-            preferences?.default_provider
-          ),
-          reasoningEffort: preferences?.magic_prompt_efforts?.code_review_effort ?? null,
-          reviewRunId,
-        })
+      // Store review results in Zustand (session-scoped, auto-opens sidebar)
+      const {
+        setReviewResults,
+        setActiveSession,
+        clearActiveWorktree,
+        copySessionSettings,
+        activeSessionIds,
+      } = useChatStore.getState()
+      const currentReviewSessionId = activeSessionIds[activeWorktreeId]
+      setReviewResults(targetSessionId, result)
 
-        // Always create a new session for the review
-        const newSession = await invoke<Session>('create_session', {
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-          name: 'Code Review',
-        })
-        const targetSessionId = newSession.id
+      // Inherit model/mode/thinking settings from current session
+      if (currentReviewSessionId)
+        copySessionSettings(currentReviewSessionId, targetSessionId)
 
-        // Store review results in Zustand (session-scoped, auto-opens sidebar)
-        const {
-          setReviewResults,
-          setActiveSession,
-          clearActiveWorktree,
-          copySessionSettings,
-          activeSessionIds,
-        } = useChatStore.getState()
-        const currentReviewSessionId = activeSessionIds[activeWorktreeId]
-        setReviewResults(targetSessionId, result)
+      // Navigate to ProjectCanvasView and open the review session
+      setActiveSession(activeWorktreeId, targetSessionId)
+      useProjectsStore.getState().selectWorktree(activeWorktreeId)
+      clearActiveWorktree()
+      useUIStore
+        .getState()
+        .markWorktreeForAutoOpenSession(activeWorktreeId, targetSessionId)
 
-        // Inherit model/mode/thinking settings from current session
-        if (currentReviewSessionId) copySessionSettings(currentReviewSessionId, targetSessionId)
+      // Persist review results to session file
+      invoke('update_session_state', {
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        sessionId: targetSessionId,
+        reviewResults: result,
+      }).catch(() => {
+        /* noop - best effort persist */
+      })
 
-        // Navigate to ProjectCanvasView and open the review session
-        setActiveSession(activeWorktreeId, targetSessionId)
-        useProjectsStore.getState().selectWorktree(activeWorktreeId)
-        clearActiveWorktree()
-        useUIStore
-          .getState()
-          .markWorktreeForAutoOpenSession(activeWorktreeId, targetSessionId)
+      // Invalidate sessions query to refresh tab bar
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(activeWorktreeId),
+      })
 
-        // Persist review results to session file
-        invoke('update_session_state', {
-          worktreeId: activeWorktreeId,
-          worktreePath: activeWorktreePath,
-          sessionId: targetSessionId,
-          reviewResults: result,
-        }).catch(() => {
-          /* noop - best effort persist */
-        })
-
-        // Invalidate sessions query to refresh tab bar
-        queryClient.invalidateQueries({
-          queryKey: chatQueryKeys.sessions(activeWorktreeId),
-        })
-
-        const findingCount = result.findings.length
-        toast.success(
-          `Review done on ${projectName}/${worktreeName} (${findingCount} findings)`,
-          {
-            id: toastId,
-            action: {
-              label: 'Open',
-              onClick: () => {
-                if (!activeWorktreePath) return
-                const {
-                  setActiveSession,
-                  clearActiveWorktree,
-                } = useChatStore.getState()
-                useProjectsStore.getState().selectWorktree(activeWorktreeId)
-                clearActiveWorktree()
-                setActiveSession(activeWorktreeId, targetSessionId)
-                useUIStore
-                  .getState()
-                  .markWorktreeForAutoOpenSession(
-                    activeWorktreeId,
-                    targetSessionId
-                  )
-              },
+      const findingCount = result.findings.length
+      toast.success(
+        `Review done on ${projectName}/${worktreeName} (${findingCount} findings)`,
+        {
+          id: toastId,
+          action: {
+            label: 'Open',
+            onClick: () => {
+              if (!activeWorktreePath) return
+              const { setActiveSession, clearActiveWorktree } =
+                useChatStore.getState()
+              useProjectsStore.getState().selectWorktree(activeWorktreeId)
+              clearActiveWorktree()
+              setActiveSession(activeWorktreeId, targetSessionId)
+              useUIStore
+                .getState()
+                .markWorktreeForAutoOpenSession(
+                  activeWorktreeId,
+                  targetSessionId
+                )
             },
-          }
-        )
-      } catch (error) {
-        const errorString = String(error)
-        const cancelled =
-          cancelRequested ||
-          errorString.toLowerCase().includes('cancelled') ||
-          errorString.toLowerCase().includes('canceled')
-        if (cancelled) {
-          toast.info(`Review cancelled for ${reviewTarget}`, { id: toastId })
-        } else {
-          toast.error(`Failed to review: ${error}`, { id: toastId })
+          },
         }
-      } finally {
-        clearWorktreeLoading(activeWorktreeId)
+      )
+    } catch (error) {
+      const errorString = String(error)
+      const cancelled =
+        cancelRequested ||
+        errorString.toLowerCase().includes('cancelled') ||
+        errorString.toLowerCase().includes('canceled')
+      if (cancelled) {
+        toast.info(`Review cancelled for ${reviewTarget}`, { id: toastId })
+      } else {
+        toast.error(`Failed to review: ${error}`, { id: toastId })
       }
-    },
-    [
-      activeWorktreeId,
-      activeWorktreePath,
-      worktree,
-      project?.name,
-      queryClient,
-      preferences?.magic_prompts?.code_review,
-      preferences?.magic_prompt_models?.code_review_model,
-      preferences?.magic_prompt_providers,
-      preferences?.default_provider,
-      preferences?.magic_prompt_efforts?.code_review_effort,
-    ]
-  )
+    } finally {
+      clearWorktreeLoading(activeWorktreeId)
+    }
+  }, [
+    activeWorktreeId,
+    activeWorktreePath,
+    worktree,
+    project?.name,
+    queryClient,
+    preferences?.magic_prompts?.code_review,
+    preferences?.magic_prompt_models?.code_review_model,
+    preferences?.magic_prompt_providers,
+    preferences?.default_provider,
+    preferences?.magic_prompt_efforts?.code_review_effort,
+  ])
 
   // Handle Merge - validates and shows merge options dialog
   const handleMerge = useCallback(async () => {
@@ -592,166 +733,211 @@ export function useGitOperations({
   }, [activeWorktreeId, worktree])
 
   // Handle Resolve Conflicts - detects existing merge conflicts and opens resolution session
-  const handleResolveConflicts = useCallback(async () => {
-    if (!activeWorktreeId || !worktree) return
+  const handleResolveConflicts = useCallback(
+    async (override?: InvestigateOverride) => {
+      if (!activeWorktreeId || !worktree) return
 
-    const toastId = toast.loading('Checking for merge conflicts...')
+      const toastId = toast.loading('Checking for merge conflicts...')
 
-    try {
-      const result = await invoke<MergeConflictsResponse>(
-        'get_merge_conflicts',
-        { worktreeId: activeWorktreeId }
-      )
+      try {
+        const result = await invoke<MergeConflictsResponse>(
+          'get_merge_conflicts',
+          { worktreeId: activeWorktreeId }
+        )
 
-      if (!result.has_conflicts) {
-        toast.info('No merge conflicts detected', { id: toastId })
-        return
-      }
+        if (!result.has_conflicts) {
+          toast.info('No merge conflicts detected', { id: toastId })
+          return
+        }
 
-      toast.warning(`Found conflicts in ${result.conflicts.length} file(s)`, {
-        id: toastId,
-        description: 'Opening conflict resolution session...',
-      })
+        toast.warning(`Found conflicts in ${result.conflicts.length} file(s)`, {
+          id: toastId,
+          description: 'Opening conflict resolution session...',
+        })
 
-      const { setActiveSession, setInputDraft, copySessionSettings, activeSessionIds } = useChatStore.getState()
-      const currentSessionId = activeSessionIds[activeWorktreeId]
+        const {
+          setActiveSession,
+          setInputDraft,
+          copySessionSettings,
+          activeSessionIds,
+        } = useChatStore.getState()
+        const currentSessionId = activeSessionIds[activeWorktreeId]
 
-      // Create a NEW session tab for conflict resolution
-      const newSession = await invoke<Session>('create_session', {
-        worktreeId: activeWorktreeId,
-        worktreePath: worktree.path,
-        name: 'Resolve conflicts',
-      })
+        // Create a NEW session tab for conflict resolution
+        const newSession = await invoke<Session>('create_session', {
+          worktreeId: activeWorktreeId,
+          worktreePath: worktree.path,
+          name: 'Resolve conflicts',
+        })
 
-      // Inherit model/mode/thinking settings from current session
-      if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
+        // Inherit model/mode/thinking settings from current session
+        if (currentSessionId)
+          copySessionSettings(currentSessionId, newSession.id)
+        applyResolveConflictSessionSelection(
+          newSession.id,
+          activeWorktreeId,
+          worktree.path,
+          override
+        )
 
-      // Set the new session as active
-      setActiveSession(activeWorktreeId, newSession.id)
+        // Set the new session as active
+        setActiveSession(activeWorktreeId, newSession.id)
 
-      // Build conflict resolution prompt with diff details
-      const conflictFiles = result.conflicts.join('\n- ')
-      const diffSection = result.conflict_diff
-        ? `\n\nHere is the diff showing the conflict details:\n\n\`\`\`diff\n${result.conflict_diff}\n\`\`\``
-        : ''
+        // Build conflict resolution prompt with diff details
+        const conflictFiles = result.conflicts.join('\n- ')
+        const diffSection = result.conflict_diff
+          ? `\n\nHere is the diff showing the conflict details:\n\n\`\`\`diff\n${result.conflict_diff}\n\`\`\``
+          : ''
 
-      const resolveInstructions =
-        preferences?.magic_prompts?.resolve_conflicts ??
-        DEFAULT_RESOLVE_CONFLICTS_PROMPT
+        const resolveInstructions =
+          preferences?.magic_prompts?.resolve_conflicts ??
+          DEFAULT_RESOLVE_CONFLICTS_PROMPT
 
-      const conflictPrompt = `I have merge conflicts that need to be resolved.
+        const conflictPrompt = `I have merge conflicts that need to be resolved.
 
 Conflicts in these files:
 - ${conflictFiles}${diffSection}
 
 ${resolveInstructions}`
 
-      // Set the input draft for the new session
-      setInputDraft(newSession.id, conflictPrompt)
+        // Set the input draft for the new session
+        setInputDraft(newSession.id, conflictPrompt)
 
-      // Invalidate queries to refresh session list in tab bar
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(activeWorktreeId),
-      })
+        // Invalidate queries to refresh session list in tab bar
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(activeWorktreeId),
+        })
 
-      // Focus input after a short delay to allow UI to update
-      setTimeout(() => {
-        inputRef.current?.focus()
-      }, 100)
-    } catch (error) {
-      toast.error(`Failed to check conflicts: ${error}`, { id: toastId })
-    }
-  }, [activeWorktreeId, worktree, preferences, queryClient, inputRef])
+        // Focus input after a short delay to allow UI to update
+        setTimeout(() => {
+          inputRef.current?.focus()
+        }, 100)
+      } catch (error) {
+        toast.error(`Failed to check conflicts: ${error}`, { id: toastId })
+      }
+    },
+    [
+      activeWorktreeId,
+      worktree,
+      preferences,
+      queryClient,
+      inputRef,
+      applyResolveConflictSessionSelection,
+    ]
+  )
 
   // Handle PR Conflicts - fetches base branch, merges locally to create conflict state
-  const handleResolvePrConflicts = useCallback(async () => {
-    if (!activeWorktreeId || !worktree) return
+  const handleResolvePrConflicts = useCallback(
+    async (override?: InvestigateOverride) => {
+      if (!activeWorktreeId || !worktree) return
 
-    const toastId = toast.loading(
-      'Fetching base branch and checking for conflicts...'
-    )
-
-    try {
-      const result = await invoke<MergeConflictsResponse>(
-        'fetch_and_merge_base',
-        { worktreeId: activeWorktreeId }
+      const toastId = toast.loading(
+        'Fetching base branch and checking for conflicts...'
       )
 
-      if (!result.has_conflicts) {
-        toast.success('No conflicts — base branch merged cleanly', {
-          id: toastId,
-        })
-        triggerImmediateGitPoll()
-
-        // Optimistically clear "Conflicts" button by updating cached PR status
-        const cached = queryClient.getQueryData<PrStatusEvent>(
-          prStatusQueryKeys.worktree(activeWorktreeId)
+      try {
+        const result = await invoke<MergeConflictsResponse>(
+          'fetch_and_merge_base',
+          { worktreeId: activeWorktreeId }
         )
-        if (cached) {
-          queryClient.setQueryData(
-            prStatusQueryKeys.worktree(activeWorktreeId),
-            { ...cached, mergeable: 'mergeable' }
+
+        if (!result.has_conflicts) {
+          toast.success('No conflicts — base branch merged cleanly', {
+            id: toastId,
+          })
+          triggerImmediateGitPoll()
+
+          // Optimistically clear "Conflicts" button by updating cached PR status
+          const cached = queryClient.getQueryData<PrStatusEvent>(
+            prStatusQueryKeys.worktree(activeWorktreeId)
           )
+          if (cached) {
+            queryClient.setQueryData(
+              prStatusQueryKeys.worktree(activeWorktreeId),
+              { ...cached, mergeable: 'mergeable' }
+            )
+          }
+          triggerImmediateRemotePoll()
+          return
         }
-        triggerImmediateRemotePoll()
-        return
-      }
 
-      toast.warning(`Found conflicts in ${result.conflicts.length} file(s)`, {
-        id: toastId,
-        description: 'Opening conflict resolution session...',
-      })
+        toast.warning(`Found conflicts in ${result.conflicts.length} file(s)`, {
+          id: toastId,
+          description: 'Opening conflict resolution session...',
+        })
 
-      const { setActiveSession, setInputDraft, copySessionSettings, activeSessionIds } = useChatStore.getState()
-      const currentSessionId = activeSessionIds[activeWorktreeId]
+        const {
+          setActiveSession,
+          setInputDraft,
+          copySessionSettings,
+          activeSessionIds,
+        } = useChatStore.getState()
+        const currentSessionId = activeSessionIds[activeWorktreeId]
 
-      // Create a NEW session tab for conflict resolution
-      const newSession = await invoke<Session>('create_session', {
-        worktreeId: activeWorktreeId,
-        worktreePath: worktree.path,
-        name: 'PR: resolve conflicts',
-      })
+        // Create a NEW session tab for conflict resolution
+        const newSession = await invoke<Session>('create_session', {
+          worktreeId: activeWorktreeId,
+          worktreePath: worktree.path,
+          name: 'PR: resolve conflicts',
+        })
 
-      // Inherit model/mode/thinking settings from current session
-      if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
+        // Inherit model/mode/thinking settings from current session
+        if (currentSessionId)
+          copySessionSettings(currentSessionId, newSession.id)
+        applyResolveConflictSessionSelection(
+          newSession.id,
+          activeWorktreeId,
+          worktree.path,
+          override
+        )
 
-      // Set the new session as active
-      setActiveSession(activeWorktreeId, newSession.id)
+        // Set the new session as active
+        setActiveSession(activeWorktreeId, newSession.id)
 
-      // Build conflict resolution prompt with diff details
-      const conflictFiles = result.conflicts.join('\n- ')
-      const diffSection = result.conflict_diff
-        ? `\n\nHere is the diff showing the conflict details:\n\n\`\`\`diff\n${result.conflict_diff}\n\`\`\``
-        : ''
+        // Build conflict resolution prompt with diff details
+        const conflictFiles = result.conflicts.join('\n- ')
+        const diffSection = result.conflict_diff
+          ? `\n\nHere is the diff showing the conflict details:\n\n\`\`\`diff\n${result.conflict_diff}\n\`\`\``
+          : ''
 
-      const baseBranch = project?.default_branch || 'main'
-      const resolveInstructions =
-        preferences?.magic_prompts?.resolve_conflicts ??
-        DEFAULT_RESOLVE_CONFLICTS_PROMPT
+        const baseBranch = project?.default_branch || 'main'
+        const resolveInstructions =
+          preferences?.magic_prompts?.resolve_conflicts ??
+          DEFAULT_RESOLVE_CONFLICTS_PROMPT
 
-      const conflictPrompt = `I merged \`origin/${baseBranch}\` into this branch to resolve PR conflicts, but there are merge conflicts.
+        const conflictPrompt = `I merged \`origin/${baseBranch}\` into this branch to resolve PR conflicts, but there are merge conflicts.
 
 Conflicts in these files:
 - ${conflictFiles}${diffSection}
 
 ${resolveInstructions}`
 
-      // Set the input draft for the new session
-      setInputDraft(newSession.id, conflictPrompt)
+        // Set the input draft for the new session
+        setInputDraft(newSession.id, conflictPrompt)
 
-      // Invalidate queries to refresh session list in tab bar
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(activeWorktreeId),
-      })
+        // Invalidate queries to refresh session list in tab bar
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(activeWorktreeId),
+        })
 
-      // Focus input after a short delay to allow UI to update
-      setTimeout(() => {
-        inputRef.current?.focus()
-      }, 100)
-    } catch (error) {
-      toast.error(`Failed to merge base branch: ${error}`, { id: toastId })
-    }
-  }, [activeWorktreeId, worktree, project, preferences, queryClient, inputRef])
+        // Focus input after a short delay to allow UI to update
+        setTimeout(() => {
+          inputRef.current?.focus()
+        }, 100)
+      } catch (error) {
+        toast.error(`Failed to merge base branch: ${error}`, { id: toastId })
+      }
+    },
+    [
+      activeWorktreeId,
+      worktree,
+      project,
+      preferences,
+      queryClient,
+      inputRef,
+      applyResolveConflictSessionSelection,
+    ]
+  )
 
   // Execute merge with merge type option
   const executeMerge = useCallback(
@@ -836,7 +1022,12 @@ ${resolveInstructions}`
             }
           )
 
-          const { setActiveSession, setInputDraft, copySessionSettings, activeSessionIds } = useChatStore.getState()
+          const {
+            setActiveSession,
+            setInputDraft,
+            copySessionSettings,
+            activeSessionIds,
+          } = useChatStore.getState()
           const currentSessionId = activeSessionIds[activeWorktreeId]
 
           // Create a NEW session tab on the CURRENT worktree for conflict resolution
@@ -847,7 +1038,8 @@ ${resolveInstructions}`
           })
 
           // Inherit model/mode/thinking settings from current session
-          if (currentSessionId) copySessionSettings(currentSessionId, newSession.id)
+          if (currentSessionId)
+            copySessionSettings(currentSessionId, newSession.id)
 
           // Set the new session as active
           setActiveSession(activeWorktreeId, newSession.id)

@@ -29,13 +29,23 @@ pub fn ensure_macos_path() {
 /// Detect the package manager that installed a binary by resolving symlinks.
 ///
 /// Returns `Some("homebrew")` if the canonical path contains `/homebrew/` or `/Cellar/`,
-/// `None` otherwise.
+/// `Some("npm")` if it contains `/node_modules/`, `None` otherwise.
 pub fn detect_package_manager(binary_path: &std::path::Path) -> Option<String> {
     let canonical = std::fs::canonicalize(binary_path).ok()?;
     let canonical_str = canonical.to_string_lossy();
 
     if canonical_str.contains("/homebrew/") || canonical_str.contains("/Cellar/") {
         return Some("homebrew".to_string());
+    }
+
+    // Check bun before generic node_modules — bun's global installs also use node_modules/
+    // e.g. ~/.bun/install/global/node_modules/@openai/codex/bin/codex.js
+    if canonical_str.contains("/.bun/") {
+        return Some("bun".to_string());
+    }
+
+    if canonical_str.contains("/node_modules/") {
+        return Some("npm".to_string());
     }
 
     None
@@ -194,8 +204,7 @@ pub fn write_binary_file(path: &std::path::Path, content: &[u8]) -> Result<(), S
     let temp_path = path.with_extension("tmp");
 
     // Write new binary to temp file (always a new inode)
-    std::fs::write(&temp_path, content)
-        .map_err(|e| format!("Failed to write temp file: {e}"))?;
+    std::fs::write(&temp_path, content).map_err(|e| format!("Failed to write temp file: {e}"))?;
 
     #[cfg(windows)]
     {

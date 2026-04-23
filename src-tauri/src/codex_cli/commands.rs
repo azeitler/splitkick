@@ -22,7 +22,7 @@ const GITHUB_API_ACCEPT: &str = "application/vnd.github+json";
 const GITHUB_API_VERSION: &str = "2022-11-28";
 
 /// Emergency fallback version when API fails AND no cache exists.
-const FALLBACK_CODEX_VERSION: &str = "0.1.2505301";
+const FALLBACK_CODEX_VERSION: &str = "0.116.0-alpha.12";
 const CODEX_VERSIONS_CACHE_FILE: &str = "codex-versions-cache.json";
 
 /// Extract version number from a tag like "v0.104.0" or "vrust-v0.104.0"
@@ -262,11 +262,12 @@ pub struct CodexPathDetection {
 /// Detect Codex CLI in system PATH (excluding Jean-managed binary)
 #[tauri::command]
 pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, String> {
-    log::trace!("Detecting Codex CLI in system PATH");
+    log::debug!("detect_codex_in_path: starting");
 
     let jean_managed_path = get_cli_binary_path(&app)
         .ok()
         .and_then(|p| std::fs::canonicalize(&p).ok());
+    log::debug!("detect_codex_in_path: jean_managed_path={jean_managed_path:?}");
 
     let which_cmd = if cfg!(target_os = "windows") {
         "where"
@@ -277,10 +278,30 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
     let output = match silent_command(which_cmd).arg("codex").output() {
         Ok(output) if output.status.success() => {
             // On Windows, `where` can return multiple paths; take only the first line
-            String::from_utf8_lossy(&output.stdout).lines().next().unwrap_or("").trim().to_string()
+            let raw = String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .next()
+                .unwrap_or("")
+                .trim()
+                .to_string();
+            log::debug!("detect_codex_in_path: `{which_cmd} codex` found: {raw:?}");
+            raw
         }
-        _ => {
-            log::trace!("Codex CLI not found in PATH");
+        Ok(output) => {
+            log::debug!(
+                "detect_codex_in_path: `{which_cmd} codex` exited with status={}, stderr={:?}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+            return Ok(CodexPathDetection {
+                found: false,
+                path: None,
+                version: None,
+                package_manager: None,
+            });
+        }
+        Err(e) => {
+            log::debug!("detect_codex_in_path: `{which_cmd} codex` failed to execute: {e}");
             return Ok(CodexPathDetection {
                 found: false,
                 path: None,
@@ -291,6 +312,7 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
     };
 
     if output.is_empty() {
+        log::debug!("detect_codex_in_path: which returned empty output");
         return Ok(CodexPathDetection {
             found: false,
             path: None,
@@ -305,7 +327,7 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
     if let Some(ref jean_path) = jean_managed_path {
         if let Ok(canonical_found) = std::fs::canonicalize(&found_path) {
             if canonical_found == *jean_path {
-                log::trace!("Found PATH codex is the Jean-managed binary, excluding");
+                log::debug!("detect_codex_in_path: found path is jean-managed binary, excluding");
                 return Ok(CodexPathDetection {
                     found: false,
                     path: None,
@@ -318,21 +340,39 @@ pub async fn detect_codex_in_path(app: AppHandle) -> Result<CodexPathDetection, 
 
     let version = match silent_command(&found_path).arg("--version").output() {
         Ok(ver_output) if ver_output.status.success() => {
-            let ver_str = String::from_utf8_lossy(&ver_output.stdout).trim().to_string();
+            let ver_str = String::from_utf8_lossy(&ver_output.stdout)
+                .trim()
+                .to_string();
+            log::debug!("detect_codex_in_path: raw --version output={ver_str:?}");
             let cleaned = ver_str
                 .split_whitespace()
                 .last()
                 .unwrap_or(&ver_str)
                 .trim_start_matches('v')
                 .to_string();
-            if cleaned.is_empty() { None } else { Some(cleaned) }
+            if cleaned.is_empty() {
+                None
+            } else {
+                Some(cleaned)
+            }
         }
-        _ => None,
+        Ok(ver_output) => {
+            log::debug!(
+                "detect_codex_in_path: --version failed, status={}, stderr={:?}",
+                ver_output.status,
+                String::from_utf8_lossy(&ver_output.stderr).trim()
+            );
+            None
+        }
+        Err(e) => {
+            log::debug!("detect_codex_in_path: --version command error: {e}");
+            None
+        }
     };
 
     let package_manager = crate::platform::detect_package_manager(&found_path);
 
-    log::trace!("Found Codex CLI in PATH: {output} (version: {version:?}, pkg_mgr: {package_manager:?})");
+    log::debug!("detect_codex_in_path: result path={output} version={version:?} pkg_mgr={package_manager:?}");
 
     Ok(CodexPathDetection {
         found: true,
@@ -667,12 +707,19 @@ async fn refresh_codex_access_token(
 /// Check if Codex CLI is installed and get its status
 #[tauri::command]
 pub async fn check_codex_cli_installed(app: AppHandle) -> Result<CodexCliStatus, String> {
-    log::trace!("Checking Codex CLI installation status");
+    log::debug!("check_codex_cli_installed: starting");
 
     let binary_path = resolve_cli_binary(&app);
+    log::debug!(
+        "check_codex_cli_installed: resolved binary_path={:?}",
+        binary_path
+    );
 
     if !binary_path.exists() {
-        log::trace!("Codex CLI not found at {:?}", binary_path);
+        log::debug!(
+            "check_codex_cli_installed: binary not found at {:?}",
+            binary_path
+        );
         return Ok(CodexCliStatus {
             installed: false,
             version: None,
@@ -684,6 +731,10 @@ pub async fn check_codex_cli_installed(app: AppHandle) -> Result<CodexCliStatus,
     let version = match silent_command(&binary_path).arg("--version").output() {
         Ok(output) if output.status.success() => {
             let version_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            log::debug!(
+                "check_codex_cli_installed: raw --version output={:?}",
+                version_str
+            );
             if version_str.is_empty() {
                 None
             } else {
@@ -696,14 +747,33 @@ pub async fn check_codex_cli_installed(app: AppHandle) -> Result<CodexCliStatus,
                 Some(version)
             }
         }
-        _ => None,
+        Ok(output) => {
+            log::debug!(
+                "check_codex_cli_installed: --version failed, exit_status={}, stderr={:?}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            );
+            None
+        }
+        Err(e) => {
+            log::debug!("check_codex_cli_installed: --version command error: {e}");
+            None
+        }
     };
 
-    Ok(CodexCliStatus {
+    let status = CodexCliStatus {
         installed: true,
-        version,
+        version: version.clone(),
         path: Some(binary_path.to_string_lossy().to_string()),
-    })
+    };
+    log::debug!(
+        "check_codex_cli_installed: returning installed={} version={:?} path={:?}",
+        status.installed,
+        status.version,
+        status.path
+    );
+
+    Ok(status)
 }
 
 /// Check if Codex CLI is authenticated
@@ -945,13 +1015,17 @@ struct CachedCodexVersions {
 }
 
 fn save_codex_versions_cache(app: &AppHandle, versions: &[CodexReleaseInfo]) {
-    let cache_path = match super::config::get_cli_dir(app) {
+    let cache_path = match super::config::ensure_cli_dir(app) {
         Ok(dir) => dir.join(CODEX_VERSIONS_CACHE_FILE),
         Err(e) => {
-            log::warn!("Cannot resolve Codex CLI dir for cache: {e}");
+            log::warn!("Cannot resolve/create Codex CLI dir for cache: {e}");
             return;
         }
     };
+    log::debug!(
+        "save_codex_versions_cache: writing {} versions to {cache_path:?}",
+        versions.len()
+    );
     let cached = CachedCodexVersions {
         versions: versions.to_vec(),
         fetched_at: SystemTime::now()
@@ -970,7 +1044,9 @@ fn save_codex_versions_cache(app: &AppHandle, versions: &[CodexReleaseInfo]) {
 }
 
 fn load_codex_versions_cache(app: &AppHandle) -> Option<Vec<CodexReleaseInfo>> {
-    let cache_path = super::config::get_cli_dir(app).ok()?.join(CODEX_VERSIONS_CACHE_FILE);
+    let cache_path = super::config::get_cli_dir(app)
+        .ok()?
+        .join(CODEX_VERSIONS_CACHE_FILE);
     let contents = std::fs::read_to_string(&cache_path).ok()?;
     let cached: CachedCodexVersions = serde_json::from_str(&contents).ok()?;
     if cached.versions.is_empty() {
@@ -1092,6 +1168,10 @@ fn get_codex_target() -> Result<&'static str, String> {
 
 /// Fetch the latest Codex CLI version from GitHub API.
 ///
+/// Uses the releases list endpoint instead of /releases/latest because all
+/// Codex releases are pre-releases (alpha), and GitHub's /latest endpoint
+/// only returns non-prerelease versions.
+///
 /// Falls back to disk cache or hardcoded version if the API is unreachable.
 async fn fetch_latest_codex_version(app: &AppHandle) -> Result<String, String> {
     log::trace!("Fetching latest Codex CLI version");
@@ -1099,7 +1179,7 @@ async fn fetch_latest_codex_version(app: &AppHandle) -> Result<String, String> {
     let client = build_github_client()?;
     let token = resolve_github_api_token(app);
     let mut request = client
-        .get(format!("{CODEX_RELEASES_API}/latest"))
+        .get(format!("{CODEX_RELEASES_API}?per_page=10"))
         .header("Accept", GITHUB_API_ACCEPT)
         .header("X-GitHub-Api-Version", GITHUB_API_VERSION);
     if let Some(ref token) = token {
@@ -1108,17 +1188,19 @@ async fn fetch_latest_codex_version(app: &AppHandle) -> Result<String, String> {
 
     if let Ok(resp) = request.send().await {
         if resp.status().is_success() {
-            if let Ok(release) = resp.json::<GitHubRelease>().await {
-                let version = extract_version_from_tag(&release.tag_name);
-                log::trace!("Latest Codex CLI version: {version}");
-                return Ok(version);
+            if let Ok(releases) = resp.json::<Vec<GitHubRelease>>().await {
+                if let Some(release) = releases.first() {
+                    let version = extract_version_from_tag(&release.tag_name);
+                    log::trace!("Latest Codex CLI version: {version}");
+                    return Ok(version);
+                }
             }
         }
     }
 
     log::warn!("Failed to fetch latest Codex version from API, using fallback");
     if let Some(cached) = load_codex_versions_cache(app) {
-        if let Some(first) = cached.into_iter().find(|v| !v.prerelease) {
+        if let Some(first) = cached.into_iter().next() {
             return Ok(first.version);
         }
     }
@@ -1126,10 +1208,21 @@ async fn fetch_latest_codex_version(app: &AppHandle) -> Result<String, String> {
 }
 
 /// Find the download URL for a specific asset by searching recent releases
-async fn find_asset_url(version: &str, asset_name: &str) -> Result<String, String> {
+async fn find_asset_url(
+    app: &AppHandle,
+    version: &str,
+    asset_name: &str,
+) -> Result<String, String> {
     let client = build_github_client()?;
-    let response = client
+    let token = resolve_github_api_token(app);
+    let mut request = client
         .get(CODEX_RELEASES_API)
+        .header("Accept", GITHUB_API_ACCEPT)
+        .header("X-GitHub-Api-Version", GITHUB_API_VERSION);
+    if let Some(ref token) = token {
+        request = request.bearer_auth(token);
+    }
+    let response = request
         .send()
         .await
         .map_err(|e| format!("Failed to fetch releases: {e}"))?;
@@ -1188,7 +1281,7 @@ pub async fn install_codex_cli(app: AppHandle, version: Option<String>) -> Resul
     let (asset_name, is_zip) = (format!("codex-{target}.tar.gz"), false);
 
     // Find the download URL from the release assets
-    let download_url = find_asset_url(&version, &asset_name).await?;
+    let download_url = find_asset_url(&app, &version, &asset_name).await?;
     log::trace!("Downloading from: {download_url}");
 
     // Emit progress: downloading

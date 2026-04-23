@@ -1,12 +1,20 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef, type FC } from 'react'
+import React, {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+  type FC,
+} from 'react'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Loader2, ChevronDown, Check, ChevronsUpDown } from 'lucide-react'
+import { Loader2, ChevronDown, Check, ChevronsUpDown, Play } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
+import { BackendLabel } from '@/components/ui/backend-label'
 import { Input } from '@/components/ui/input'
 import {
   Command,
@@ -51,10 +59,19 @@ import {
   useOpenCodePathDetection,
 } from '@/services/opencode-cli'
 import { useUIStore } from '@/store/ui-store'
+import {
+  getCursorInstallCommand,
+  useCursorCliStatus,
+  useCursorCliAuth,
+  useCursorPathDetection,
+  useAvailableCursorModels,
+  cursorCliQueryKeys,
+} from '@/services/cursor-cli'
 import type { ClaudeAuthStatus } from '@/types/claude-cli'
 import type { GhAuthStatus } from '@/types/gh-cli'
 import type { CodexAuthStatus } from '@/types/codex-cli'
 import type { OpenCodeAuthStatus } from '@/types/opencode-cli'
+import type { CursorAuthStatus } from '@/types/cursor-cli'
 import {
   Select,
   SelectContent,
@@ -97,6 +114,7 @@ import {
   type ClaudeModel,
   type CodexModel,
   type CodexReasoningEffort,
+  type CursorModel,
   type CliBackend,
   type TerminalApp,
   type EditorApp,
@@ -104,8 +122,14 @@ import {
   openInDefaultOptions,
   type OpenInDefault,
 } from '@/types/preferences'
-import { OPENCODE_MODEL_OPTIONS } from '@/components/chat/toolbar/toolbar-options'
-import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
+import {
+  CURSOR_MODEL_OPTIONS,
+  OPENCODE_MODEL_OPTIONS,
+} from '@/components/chat/toolbar/toolbar-options'
+import {
+  formatCursorModelLabel,
+  formatOpencodeModelLabel,
+} from '@/components/chat/toolbar/toolbar-utils'
 import { playNotificationSound } from '@/lib/sounds'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
@@ -116,19 +140,7 @@ import {
   setGitPollInterval,
   setRemotePollInterval,
 } from '@/services/git-status'
-
-/** Get [command, args] for updating a PATH-mode CLI, respecting package manager */
-function getPathUpdateAction(
-  cliPath: string | null | undefined,
-  packageManager: string | null | undefined,
-  brewPkg: string,
-  selfUpdateArgs: string[],
-): [string, string[]] {
-  if (packageManager === 'homebrew') {
-    return ['brew', ['upgrade', brewPkg]]
-  }
-  return [cliPath ?? brewPkg, selfUpdateArgs]
-}
+import { getPathUpdateAction } from '@/lib/cli-update'
 
 interface CleanupResult {
   deleted_worktrees: number
@@ -183,6 +195,7 @@ export const GeneralPane: React.FC = () => {
   const { data: codexPathDetection } = useCodexPathDetection()
   const { data: opencodePathDetection } = useOpenCodePathDetection()
   const { data: ghPathDetection } = useGhPathDetection()
+  const { data: cursorPathDetection } = useCursorPathDetection()
 
   // CLI status hooks
   const { data: cliStatus, isLoading: isCliLoading } = useClaudeCliStatus()
@@ -195,6 +208,8 @@ export const GeneralPane: React.FC = () => {
     !!claudeLatestStable &&
     isNewerVersion(claudeLatestStable.version, cliStatus.version)
   const { data: ghStatus, isLoading: isGhLoading } = useGhCliStatus()
+  const { data: cursorStatus, isLoading: isCursorLoading } =
+    useCursorCliStatus()
   const isGhPathSource = preferences?.gh_cli_source === 'path'
   const { data: ghVersions, isLoading: isGhVersionsLoading } =
     useAvailableGhVersions({ enabled: isGhPathSource && !!ghStatus?.installed })
@@ -206,7 +221,9 @@ export const GeneralPane: React.FC = () => {
   const { data: codexStatus, isLoading: isCodexLoading } = useCodexCliStatus()
   const isCodexPathSource = preferences?.codex_cli_source === 'path'
   const { data: codexVersions, isLoading: isCodexVersionsLoading } =
-    useAvailableCodexVersions({ enabled: isCodexPathSource && !!codexStatus?.installed })
+    useAvailableCodexVersions({
+      enabled: isCodexPathSource && !!codexStatus?.installed,
+    })
   const codexLatestStable = codexVersions?.find(v => !v.prerelease)
   const codexHasUpdate =
     !!codexStatus?.version &&
@@ -216,7 +233,9 @@ export const GeneralPane: React.FC = () => {
     useOpenCodeCliStatus()
   const isOpencodePathSource = preferences?.opencode_cli_source === 'path'
   const { data: opencodeVersions, isLoading: isOpencodeVersionsLoading } =
-    useAvailableOpencodeVersions({ enabled: isOpencodePathSource && !!opencodeStatus?.installed })
+    useAvailableOpencodeVersions({
+      enabled: isOpencodePathSource && !!opencodeStatus?.installed,
+    })
   const opencodeLatestStable = opencodeVersions?.find(v => !v.prerelease)
   const opencodeHasUpdate =
     !!opencodeStatus?.version &&
@@ -239,8 +258,16 @@ export const GeneralPane: React.FC = () => {
     useOpenCodeCliAuth({
       enabled: !!opencodeStatus?.installed,
     })
+  const { data: cursorAuth, isLoading: isCursorAuthLoading } = useCursorCliAuth(
+    {
+      enabled: !!cursorStatus?.installed,
+    }
+  )
   const { data: availableOpencodeModels } = useAvailableOpencodeModels({
     enabled: !!opencodeStatus?.installed,
+  })
+  const { data: availableCursorModels } = useAvailableCursorModels({
+    enabled: !!cursorStatus?.installed,
   })
 
   // Re-check CLI status when the source preference changes (handles initial load
@@ -279,13 +306,27 @@ export const GeneralPane: React.FC = () => {
     queryClient,
   ])
 
+  useEffect(() => {
+    if (!preferences?.build_backend) return
+    const backend = preferences.build_backend
+    if (backend === 'cursor' && !cursorStatus?.installed) {
+      patchPreferences.mutate({
+        build_backend: null,
+        build_model: null,
+        build_thinking_level: null,
+      })
+    }
+  }, [patchPreferences, preferences?.build_backend, cursorStatus?.installed])
+
   // Track which auth check is in progress (for manual refresh)
   const [checkingClaudeAuth, setCheckingClaudeAuth] = useState(false)
   const [checkingGhAuth, setCheckingGhAuth] = useState(false)
   const [checkingCodexAuth, setCheckingCodexAuth] = useState(false)
   const [checkingOpenCodeAuth, setCheckingOpenCodeAuth] = useState(false)
+  const [checkingCursorAuth, setCheckingCursorAuth] = useState(false)
   const [openCodeModelPopoverOpen, setOpenCodeModelPopoverOpen] =
     useState(false)
+  const [cursorModelPopoverOpen, setCursorModelPopoverOpen] = useState(false)
   const [buildModelPopoverOpen, setBuildModelPopoverOpen] = useState(false)
   const [yoloModelPopoverOpen, setYoloModelPopoverOpen] = useState(false)
 
@@ -362,6 +403,7 @@ export const GeneralPane: React.FC = () => {
         // Reset model and thinking/effort when backend changes
         build_model: null,
         build_thinking_level: null,
+        build_effort_level: null,
       })
     }
   }
@@ -381,6 +423,7 @@ export const GeneralPane: React.FC = () => {
         // Reset model and thinking/effort when backend changes
         yolo_model: null,
         yolo_thinking_level: null,
+        yolo_effort_level: null,
       })
     }
   }
@@ -397,6 +440,22 @@ export const GeneralPane: React.FC = () => {
     if (preferences) {
       patchPreferences.mutate({
         yolo_thinking_level: value === 'default' ? null : value,
+      })
+    }
+  }
+
+  const handleBuildEffortLevelChange = (value: string) => {
+    if (preferences) {
+      patchPreferences.mutate({
+        build_effort_level: value === 'default' ? null : value,
+      })
+    }
+  }
+
+  const handleYoloEffortLevelChange = (value: string) => {
+    if (preferences) {
+      patchPreferences.mutate({
+        yolo_effort_level: value === 'default' ? null : value,
       })
     }
   }
@@ -433,7 +492,9 @@ export const GeneralPane: React.FC = () => {
         { opencode_cli_source: value },
         {
           onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.all })
+            queryClient.invalidateQueries({
+              queryKey: opencodeCliQueryKeys.all,
+            })
           },
         }
       )
@@ -464,16 +525,24 @@ export const GeneralPane: React.FC = () => {
   const claudeInstalled = cliStatus?.installed
   const codexInstalled = codexStatus?.installed
   const opencodeInstalled = opencodeStatus?.installed
+  const cursorInstalled = cursorStatus?.installed
   const effectiveBackend = useMemo(() => {
     const installed: Record<string, boolean | undefined> = {
       claude: claudeInstalled,
       codex: codexInstalled,
       opencode: opencodeInstalled,
+      cursor: cursorInstalled,
     }
     if (installed[stored]) return stored
     const first = backendOptions.find(o => installed[o.value])
     return first?.value ?? stored
-  }, [stored, claudeInstalled, codexInstalled, opencodeInstalled])
+  }, [
+    stored,
+    claudeInstalled,
+    codexInstalled,
+    opencodeInstalled,
+    cursorInstalled,
+  ])
 
   const handleCodexModelChange = (value: CodexModel) => {
     if (preferences) {
@@ -492,6 +561,12 @@ export const GeneralPane: React.FC = () => {
   const handleOpenCodeModelChange = (value: string) => {
     if (preferences) {
       patchPreferences.mutate({ selected_opencode_model: value })
+    }
+  }
+
+  const handleCursorModelChange = (value: CursorModel) => {
+    if (preferences) {
+      patchPreferences.mutate({ selected_cursor_model: value })
     }
   }
 
@@ -514,6 +589,26 @@ export const GeneralPane: React.FC = () => {
   const selectedOpenCodeModelLabel =
     openCodeModelOptions.find(option => option.value === selectedOpenCodeModel)
       ?.label ?? formatOpenCodeModelLabelForSettings(selectedOpenCodeModel)
+  const selectedCursorModel =
+    preferences?.selected_cursor_model ?? 'cursor/auto'
+  const cursorModelOptions: { value: CursorModel; label: string }[] = (
+    availableCursorModels?.length
+      ? availableCursorModels.map(model => ({
+          value: `cursor/${model.id}` as CursorModel,
+          label: model.label || formatCursorModelLabel(model.id),
+        }))
+      : (CURSOR_MODEL_OPTIONS as { value: CursorModel; label: string }[])
+  ).map(option => ({
+    value: option.value,
+    label: option.label || formatCursorModelLabel(option.value),
+  }))
+  const selectedCursorModelLabel =
+    cursorModelOptions.find(option => option.value === selectedCursorModel)
+      ?.label ?? formatCursorModelLabel(selectedCursorModel)
+  const buildBackendOptions = backendOptions
+  const cursorAuthMessage = cursorAuth?.timed_out
+    ? 'Auth check timed out. Try again or run login manually.'
+    : cursorAuth?.error
 
   const handleCodexMultiAgentToggle = (enabled: boolean) => {
     if (preferences) {
@@ -727,7 +822,54 @@ export const GeneralPane: React.FC = () => {
     openCliLoginModal('opencode', opencodeStatus.path, ['auth', 'login'])
   }, [opencodeStatus?.path, openCliLoginModal])
 
+  const handleCursorLogin = useCallback(async () => {
+    if (!cursorStatus?.path) return
 
+    setCheckingCursorAuth(true)
+    try {
+      await queryClient.invalidateQueries({
+        queryKey: cursorCliQueryKeys.auth(),
+      })
+      const result = await queryClient.fetchQuery<CursorAuthStatus>({
+        queryKey: cursorCliQueryKeys.auth(),
+      })
+
+      if (result?.authenticated) {
+        toast.success('Cursor CLI is already authenticated')
+        return
+      }
+    } finally {
+      setCheckingCursorAuth(false)
+    }
+
+    openCliLoginModal('cursor', cursorStatus.path, ['login'])
+  }, [cursorStatus?.path, openCliLoginModal, queryClient])
+
+  const handleCursorRelogin = useCallback(() => {
+    if (!cursorStatus?.path) return
+    openCliLoginModal('cursor', cursorStatus.path, ['login'])
+  }, [cursorStatus?.path, openCliLoginModal])
+
+  const handleCursorUpdate = useCallback(() => {
+    if (!cursorStatus?.path) return
+    openCliLoginModal('cursor', cursorStatus.path, ['update'], 'update')
+  }, [cursorStatus?.path, openCliLoginModal])
+
+  const handleCursorInstall = useCallback(async () => {
+    try {
+      const installCommand = await getCursorInstallCommand()
+      openCliLoginModal(
+        'cursor',
+        installCommand.command,
+        installCommand.args,
+        'install'
+      )
+    } catch (error) {
+      toast.error('Failed to prepare Cursor Agent install command', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [openCliLoginModal])
 
   const handleCopyPath = useCallback((path: string | null | undefined) => {
     if (!path) return
@@ -785,7 +927,9 @@ export const GeneralPane: React.FC = () => {
               ) : cliStatus?.installed ? (
                 isPathSource ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">{cliStatus.version ?? 'Installed'}</span>
+                    <span className="text-sm">
+                      {cliStatus.version ?? 'Installed'}
+                    </span>
                     {isClaudeVersionsLoading ? (
                       <Loader2 className="size-4 animate-spin text-muted-foreground" />
                     ) : (
@@ -794,18 +938,34 @@ export const GeneralPane: React.FC = () => {
                         size="sm"
                         disabled={!claudeHasUpdate}
                         onClick={() => {
-                          const [cmd, args] = getPathUpdateAction(cliStatus.path, pathDetection?.package_manager, 'claude-code', ['update'])
-                          openCliLoginModal('claude', cmd, args)
+                          const action = getPathUpdateAction(
+                            cliStatus.path,
+                            pathDetection?.package_manager,
+                            'claude-code',
+                            ['update']
+                          )
+                          if (action) {
+                            openCliLoginModal(
+                              'claude',
+                              action[0],
+                              action[1],
+                              'update'
+                            )
+                          } else {
+                            openCliUpdateModal('claude')
+                          }
                         }}
                       >
-                        {claudeHasUpdate ? `Update to ${claudeLatestStable?.version}` : 'Up to date'}
+                        {claudeHasUpdate
+                          ? `Update to ${claudeLatestStable?.version}`
+                          : 'Up to date'}
                       </Button>
                     )}
                   </div>
                 ) : (
                   <Button
                     variant="outline"
-                    className="w-40 justify-between"
+                    className="w-full sm:w-40 justify-between"
                     onClick={() => openCliUpdateModal('claude')}
                   >
                     {cliStatus.version ?? 'Installed'}
@@ -814,7 +974,7 @@ export const GeneralPane: React.FC = () => {
                 )
               ) : (
                 <Button
-                  className="w-40"
+                  className="w-full sm:w-40"
                   onClick={() => openCliUpdateModal('claude')}
                 >
                   Install
@@ -828,16 +988,18 @@ export const GeneralPane: React.FC = () => {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        onClick={() => handleCopyPath(
-                          preferences?.claude_cli_source === 'path'
-                            ? pathDetection?.path
-                            : cliStatus?.path
-                        )}
+                        onClick={() =>
+                          handleCopyPath(
+                            preferences?.claude_cli_source === 'path'
+                              ? pathDetection?.path
+                              : cliStatus?.path
+                          )
+                        }
                         className="text-left hover:underline cursor-pointer"
                       >
                         {preferences?.claude_cli_source === 'path'
-                          ? pathDetection?.path ?? 'System PATH'
-                          : cliStatus?.path ?? 'Not installed'}
+                          ? (pathDetection?.path ?? 'System PATH')
+                          : (cliStatus?.path ?? 'Not installed')}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Click to copy path</TooltipContent>
@@ -848,15 +1010,12 @@ export const GeneralPane: React.FC = () => {
                   value={preferences?.claude_cli_source ?? 'jean'}
                   onValueChange={handleClaudeSourceChange}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-96">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="jean">Jean (managed)</SelectItem>
-                    <SelectItem
-                      value="path"
-                      disabled={!pathDetection?.found}
-                    >
+                    <SelectItem value="path" disabled={!pathDetection?.found}>
                       System PATH
                       {!pathDetection?.found && ' (not found)'}
                     </SelectItem>
@@ -912,7 +1071,9 @@ export const GeneralPane: React.FC = () => {
               ) : ghStatus?.installed ? (
                 isGhPathSource ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">{ghStatus.version ?? 'Installed'}</span>
+                    <span className="text-sm">
+                      {ghStatus.version ?? 'Installed'}
+                    </span>
                     {isGhVersionsLoading ? (
                       <Loader2 className="size-4 animate-spin text-muted-foreground" />
                     ) : (
@@ -921,18 +1082,34 @@ export const GeneralPane: React.FC = () => {
                         size="sm"
                         disabled={!ghHasUpdate}
                         onClick={() => {
-                          const [cmd, args] = getPathUpdateAction(ghStatus.path, ghPathDetection?.package_manager, 'gh', ['upgrade'])
-                          openCliLoginModal('gh', cmd, args)
+                          const action = getPathUpdateAction(
+                            ghStatus.path,
+                            ghPathDetection?.package_manager,
+                            'gh',
+                            null
+                          )
+                          if (action) {
+                            openCliLoginModal(
+                              'gh',
+                              action[0],
+                              action[1],
+                              'update'
+                            )
+                          } else {
+                            openCliUpdateModal('gh')
+                          }
                         }}
                       >
-                        {ghHasUpdate ? `Update to ${ghLatestStable?.version}` : 'Up to date'}
+                        {ghHasUpdate
+                          ? `Update to ${ghLatestStable?.version}`
+                          : 'Up to date'}
                       </Button>
                     )}
                   </div>
                 ) : (
                   <Button
                     variant="outline"
-                    className="w-40 justify-between"
+                    className="w-full sm:w-40 justify-between"
                     onClick={() => openCliUpdateModal('gh')}
                   >
                     {ghStatus.version ?? 'Installed'}
@@ -941,7 +1118,7 @@ export const GeneralPane: React.FC = () => {
                 )
               ) : (
                 <Button
-                  className="w-40"
+                  className="w-full sm:w-40"
                   onClick={() => openCliUpdateModal('gh')}
                 >
                   Install
@@ -955,16 +1132,18 @@ export const GeneralPane: React.FC = () => {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        onClick={() => handleCopyPath(
-                          preferences?.gh_cli_source === 'path'
-                            ? ghPathDetection?.path
-                            : ghStatus?.path
-                        )}
+                        onClick={() =>
+                          handleCopyPath(
+                            preferences?.gh_cli_source === 'path'
+                              ? ghPathDetection?.path
+                              : ghStatus?.path
+                          )
+                        }
                         className="text-left hover:underline cursor-pointer"
                       >
                         {preferences?.gh_cli_source === 'path'
-                          ? ghPathDetection?.path ?? 'System PATH'
-                          : ghStatus?.path ?? 'Not installed'}
+                          ? (ghPathDetection?.path ?? 'System PATH')
+                          : (ghStatus?.path ?? 'Not installed')}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Click to copy path</TooltipContent>
@@ -975,15 +1154,12 @@ export const GeneralPane: React.FC = () => {
                   value={preferences?.gh_cli_source ?? 'jean'}
                   onValueChange={handleGhSourceChange}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-96">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="jean">Jean (managed)</SelectItem>
-                    <SelectItem
-                      value="path"
-                      disabled={!ghPathDetection?.found}
-                    >
+                    <SelectItem value="path" disabled={!ghPathDetection?.found}>
                       System PATH
                       {!ghPathDetection?.found && ' (not found)'}
                     </SelectItem>
@@ -1050,7 +1226,9 @@ export const GeneralPane: React.FC = () => {
               ) : codexStatus?.installed ? (
                 isCodexPathSource ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">{codexStatus.version ?? 'Installed'}</span>
+                    <span className="text-sm">
+                      {codexStatus.version ?? 'Installed'}
+                    </span>
                     {isCodexVersionsLoading ? (
                       <Loader2 className="size-4 animate-spin text-muted-foreground" />
                     ) : (
@@ -1059,18 +1237,36 @@ export const GeneralPane: React.FC = () => {
                         size="sm"
                         disabled={!codexHasUpdate}
                         onClick={() => {
-                          const [cmd, args] = getPathUpdateAction(codexStatus.path, codexPathDetection?.package_manager, 'codex', ['update'])
-                          openCliLoginModal('codex', cmd, args)
+                          const action = getPathUpdateAction(
+                            codexStatus.path,
+                            codexPathDetection?.package_manager,
+                            'codex',
+                            null,
+                            '@openai/codex',
+                            codexLatestStable?.version
+                          )
+                          if (action) {
+                            openCliLoginModal(
+                              'codex',
+                              action[0],
+                              action[1],
+                              'update'
+                            )
+                          } else {
+                            openCliUpdateModal('codex')
+                          }
                         }}
                       >
-                        {codexHasUpdate ? `Update to ${codexLatestStable?.version}` : 'Up to date'}
+                        {codexHasUpdate
+                          ? `Update to ${codexLatestStable?.version}`
+                          : 'Up to date'}
                       </Button>
                     )}
                   </div>
                 ) : (
                   <Button
                     variant="outline"
-                    className="w-40 justify-between"
+                    className="w-full sm:w-40 justify-between"
                     onClick={() => openCliUpdateModal('codex')}
                   >
                     {codexStatus.version ?? 'Installed'}
@@ -1079,7 +1275,7 @@ export const GeneralPane: React.FC = () => {
                 )
               ) : (
                 <Button
-                  className="w-40"
+                  className="w-full sm:w-40"
                   onClick={() => openCliUpdateModal('codex')}
                 >
                   Install
@@ -1093,16 +1289,18 @@ export const GeneralPane: React.FC = () => {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        onClick={() => handleCopyPath(
-                          preferences?.codex_cli_source === 'path'
-                            ? codexPathDetection?.path
-                            : codexStatus?.path
-                        )}
+                        onClick={() =>
+                          handleCopyPath(
+                            preferences?.codex_cli_source === 'path'
+                              ? codexPathDetection?.path
+                              : codexStatus?.path
+                          )
+                        }
                         className="text-left hover:underline cursor-pointer"
                       >
                         {preferences?.codex_cli_source === 'path'
-                          ? codexPathDetection?.path ?? 'System PATH'
-                          : codexStatus?.path ?? 'Not installed'}
+                          ? (codexPathDetection?.path ?? 'System PATH')
+                          : (codexStatus?.path ?? 'Not installed')}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Click to copy path</TooltipContent>
@@ -1113,7 +1311,7 @@ export const GeneralPane: React.FC = () => {
                   value={preferences?.codex_cli_source ?? 'jean'}
                   onValueChange={handleCodexSourceChange}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-96">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1192,7 +1390,9 @@ export const GeneralPane: React.FC = () => {
               ) : opencodeStatus?.installed ? (
                 isOpencodePathSource ? (
                   <div className="flex items-center gap-2">
-                    <span className="text-sm">{opencodeStatus.version ?? 'Installed'}</span>
+                    <span className="text-sm">
+                      {opencodeStatus.version ?? 'Installed'}
+                    </span>
                     {isOpencodeVersionsLoading ? (
                       <Loader2 className="size-4 animate-spin text-muted-foreground" />
                     ) : (
@@ -1201,18 +1401,34 @@ export const GeneralPane: React.FC = () => {
                         size="sm"
                         disabled={!opencodeHasUpdate}
                         onClick={() => {
-                          const [cmd, args] = getPathUpdateAction(opencodeStatus.path, opencodePathDetection?.package_manager, 'opencode', ['upgrade'])
-                          openCliLoginModal('opencode', cmd, args)
+                          const action = getPathUpdateAction(
+                            opencodeStatus.path,
+                            opencodePathDetection?.package_manager,
+                            'opencode',
+                            ['upgrade']
+                          )
+                          if (action) {
+                            openCliLoginModal(
+                              'opencode',
+                              action[0],
+                              action[1],
+                              'update'
+                            )
+                          } else {
+                            openCliUpdateModal('opencode')
+                          }
                         }}
                       >
-                        {opencodeHasUpdate ? `Update to ${opencodeLatestStable?.version}` : 'Up to date'}
+                        {opencodeHasUpdate
+                          ? `Update to ${opencodeLatestStable?.version}`
+                          : 'Up to date'}
                       </Button>
                     )}
                   </div>
                 ) : (
                   <Button
                     variant="outline"
-                    className="w-40 justify-between"
+                    className="w-full sm:w-40 justify-between"
                     onClick={() => openCliUpdateModal('opencode')}
                   >
                     {opencodeStatus.version ?? 'Installed'}
@@ -1221,7 +1437,7 @@ export const GeneralPane: React.FC = () => {
                 )
               ) : (
                 <Button
-                  className="w-40"
+                  className="w-full sm:w-40"
                   onClick={() => openCliUpdateModal('opencode')}
                 >
                   Install
@@ -1235,16 +1451,18 @@ export const GeneralPane: React.FC = () => {
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        onClick={() => handleCopyPath(
-                          preferences?.opencode_cli_source === 'path'
-                            ? opencodePathDetection?.path
-                            : opencodeStatus?.path
-                        )}
+                        onClick={() =>
+                          handleCopyPath(
+                            preferences?.opencode_cli_source === 'path'
+                              ? opencodePathDetection?.path
+                              : opencodeStatus?.path
+                          )
+                        }
                         className="text-left hover:underline cursor-pointer"
                       >
                         {preferences?.opencode_cli_source === 'path'
-                          ? opencodePathDetection?.path ?? 'System PATH'
-                          : opencodeStatus?.path ?? 'Not installed'}
+                          ? (opencodePathDetection?.path ?? 'System PATH')
+                          : (opencodeStatus?.path ?? 'Not installed')}
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>Click to copy path</TooltipContent>
@@ -1255,7 +1473,7 @@ export const GeneralPane: React.FC = () => {
                   value={preferences?.opencode_cli_source ?? 'jean'}
                   onValueChange={handleOpencodeSourceChange}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-96">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1275,6 +1493,123 @@ export const GeneralPane: React.FC = () => {
         </SettingsSection>
       )}
 
+      {isNativeApp() && (
+        <SettingsSection
+          title={
+            <span className="inline-flex items-center gap-2">
+              <BackendLabel backend="cursor" />
+              <span>CLI</span>
+            </span>
+          }
+          anchorId="pref-general-section-cursor-cli"
+          actions={
+            cursorStatus?.installed ? (
+              checkingCursorAuth || isCursorAuthLoading ? (
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="size-3 animate-spin" />
+                  Checking...
+                </span>
+              ) : cursorAuth?.authenticated ? (
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  Logged in
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCursorRelogin}
+                  >
+                    Relogin
+                  </Button>
+                </span>
+              ) : (
+                <Button variant="outline" size="sm" onClick={handleCursorLogin}>
+                  Login
+                </Button>
+              )
+            ) : (
+              <Button variant="outline" size="sm" onClick={handleCursorInstall}>
+                Install
+              </Button>
+            )
+          }
+        >
+          <div className="space-y-4">
+            <InlineField
+              label={cursorStatus?.installed ? 'Version' : 'Status'}
+              description={
+                cursorStatus?.installed
+                  ? 'Cursor Agent can be logged in and self-updated from Jean.'
+                  : 'Cursor Agent can be installed from Jean or discovered from your system PATH.'
+              }
+            >
+              {isCursorLoading ? (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              ) : cursorStatus?.installed ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">
+                    {cursorStatus.version ?? 'Installed'}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCursorUpdate}
+                  >
+                    Run self-update
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">
+                    Not found in PATH
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCursorInstall}
+                  >
+                    Install now
+                  </Button>
+                </div>
+              )}
+            </InlineField>
+            {cursorStatus?.installed &&
+              !cursorAuth?.authenticated &&
+              cursorAuthMessage && (
+                <div className="text-xs text-muted-foreground">
+                  {cursorAuthMessage}
+                </div>
+              )}
+            {(cursorStatus?.installed || cursorPathDetection?.found) && (
+              <InlineField
+                label="Source"
+                description={
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() =>
+                          handleCopyPath(
+                            cursorPathDetection?.path ?? cursorStatus?.path
+                          )
+                        }
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {cursorPathDetection?.path ??
+                          cursorStatus?.path ??
+                          'System PATH'}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                }
+              >
+                <span className="text-sm text-muted-foreground">
+                  System PATH
+                </span>
+              </InlineField>
+            )}
+          </div>
+        </SettingsSection>
+      )}
+
       <SettingsSection
         title="Defaults"
         anchorId="pref-general-section-defaults"
@@ -1288,7 +1623,7 @@ export const GeneralPane: React.FC = () => {
               value={effectiveBackend}
               onValueChange={handleBackendChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1298,11 +1633,13 @@ export const GeneralPane: React.FC = () => {
                       ? cliStatus?.installed
                       : option.value === 'codex'
                         ? codexStatus?.installed
-                        : opencodeStatus?.installed
+                        : option.value === 'opencode'
+                          ? opencodeStatus?.installed
+                          : cursorStatus?.installed
                   )
                   .map(option => (
                     <SelectItem key={option.value} value={option.value}>
-                      {option.label}
+                      <BackendLabel backend={option.value} />
                     </SelectItem>
                   ))}
               </SelectContent>
@@ -1319,7 +1656,7 @@ export const GeneralPane: React.FC = () => {
                 patchPreferences.mutate({ default_execution_mode: value })
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1332,9 +1669,9 @@ export const GeneralPane: React.FC = () => {
 
           <InlineField
             label="Build execution"
-            description="Backend, model, and thinking/effort override when approving plans"
+            description="Backend, model, thinking, and effort override when approving plans"
           >
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               <div>
                 <Select
                   value={preferences?.build_backend ?? 'default'}
@@ -1345,9 +1682,9 @@ export const GeneralPane: React.FC = () => {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="default">Default</SelectItem>
-                    {backendOptions.map(option => (
+                    {buildBackendOptions.map(option => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                        <BackendLabel backend={option.value} />
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1428,6 +1765,78 @@ export const GeneralPane: React.FC = () => {
                       </Command>
                     </PopoverContent>
                   </Popover>
+                ) : preferences?.build_backend === 'cursor' ? (
+                  <Popover
+                    open={buildModelPopoverOpen}
+                    onOpenChange={setBuildModelPopoverOpen}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={buildModelPopoverOpen}
+                        className="w-full justify-between"
+                      >
+                        <span className="truncate text-left">
+                          {preferences?.build_model
+                            ? (cursorModelOptions.find(
+                                o => o.value === preferences.build_model
+                              )?.label ??
+                              formatCursorModelLabel(preferences.build_model))
+                            : 'Default model'}
+                        </span>
+                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-80 p-0">
+                      <Command>
+                        <CommandInput placeholder="Search models..." />
+                        <CommandList onWheel={e => e.stopPropagation()}>
+                          <CommandEmpty>No models found.</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem
+                              value="default"
+                              onSelect={() => {
+                                handleBuildModelChange('default')
+                                setBuildModelPopoverOpen(false)
+                              }}
+                            >
+                              Default model
+                              <Check
+                                className={cn(
+                                  'ml-auto h-4 w-4',
+                                  !preferences?.build_model ||
+                                    preferences.build_model === 'default'
+                                    ? 'opacity-100'
+                                    : 'opacity-0'
+                                )}
+                              />
+                            </CommandItem>
+                            {cursorModelOptions.map(option => (
+                              <CommandItem
+                                key={option.value}
+                                value={`${option.label} ${option.value}`}
+                                onSelect={() => {
+                                  handleBuildModelChange(option.value)
+                                  setBuildModelPopoverOpen(false)
+                                }}
+                              >
+                                <span className="truncate">{option.label}</span>
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-4 w-4',
+                                    preferences?.build_model === option.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 ) : (
                   <Select
                     value={preferences?.build_model ?? 'default'}
@@ -1459,27 +1868,30 @@ export const GeneralPane: React.FC = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {preferences?.build_backend === 'codex' ? (
-                      <>
-                        <SelectItem value="default">Default effort</SelectItem>
-                        {codexReasoningOptions.map(option => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </>
-                    ) : (
-                      <>
-                        <SelectItem value="default">
-                          Default thinking
-                        </SelectItem>
-                        {thinkingLevelOptions.map(option => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
+                    <SelectItem value="default">Default thinking</SelectItem>
+                    {thinkingLevelOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Select
+                  value={preferences?.build_effort_level ?? 'default'}
+                  onValueChange={handleBuildEffortLevelChange}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default effort</SelectItem>
+                    {effortLevelOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1488,9 +1900,9 @@ export const GeneralPane: React.FC = () => {
 
           <InlineField
             label="Yolo execution"
-            description="Backend, model, and thinking/effort override when yolo-approving plans"
+            description="Backend, model, thinking, and effort override when yolo-approving plans"
           >
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               <div>
                 <Select
                   value={preferences?.yolo_backend ?? 'default'}
@@ -1503,7 +1915,7 @@ export const GeneralPane: React.FC = () => {
                     <SelectItem value="default">Default</SelectItem>
                     {backendOptions.map(option => (
                       <SelectItem key={option.value} value={option.value}>
-                        {option.label}
+                        <BackendLabel backend={option.value} />
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -1584,6 +1996,78 @@ export const GeneralPane: React.FC = () => {
                       </Command>
                     </PopoverContent>
                   </Popover>
+                ) : preferences?.yolo_backend === 'cursor' ? (
+                  <Popover
+                    open={yoloModelPopoverOpen}
+                    onOpenChange={setYoloModelPopoverOpen}
+                  >
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={yoloModelPopoverOpen}
+                        className="w-full justify-between"
+                      >
+                        <span className="truncate text-left">
+                          {preferences?.yolo_model
+                            ? (cursorModelOptions.find(
+                                o => o.value === preferences.yolo_model
+                              )?.label ??
+                              formatCursorModelLabel(preferences.yolo_model))
+                            : 'Default model'}
+                        </span>
+                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent align="start" className="w-80 p-0">
+                      <Command>
+                        <CommandInput placeholder="Search models..." />
+                        <CommandList onWheel={e => e.stopPropagation()}>
+                          <CommandEmpty>No models found.</CommandEmpty>
+                          <CommandGroup>
+                            <CommandItem
+                              value="default"
+                              onSelect={() => {
+                                handleYoloModelChange('default')
+                                setYoloModelPopoverOpen(false)
+                              }}
+                            >
+                              Default model
+                              <Check
+                                className={cn(
+                                  'ml-auto h-4 w-4',
+                                  !preferences?.yolo_model ||
+                                    preferences.yolo_model === 'default'
+                                    ? 'opacity-100'
+                                    : 'opacity-0'
+                                )}
+                              />
+                            </CommandItem>
+                            {cursorModelOptions.map(option => (
+                              <CommandItem
+                                key={option.value}
+                                value={`${option.label} ${option.value}`}
+                                onSelect={() => {
+                                  handleYoloModelChange(option.value)
+                                  setYoloModelPopoverOpen(false)
+                                }}
+                              >
+                                <span className="truncate">{option.label}</span>
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-4 w-4',
+                                    preferences?.yolo_model === option.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 ) : (
                   <Select
                     value={preferences?.yolo_model ?? 'default'}
@@ -1615,27 +2099,30 @@ export const GeneralPane: React.FC = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {preferences?.yolo_backend === 'codex' ? (
-                      <>
-                        <SelectItem value="default">Default effort</SelectItem>
-                        {codexReasoningOptions.map(option => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </>
-                    ) : (
-                      <>
-                        <SelectItem value="default">
-                          Default thinking
-                        </SelectItem>
-                        {thinkingLevelOptions.map(option => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </>
-                    )}
+                    <SelectItem value="default">Default thinking</SelectItem>
+                    {thinkingLevelOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Select
+                  value={preferences?.yolo_effort_level ?? 'default'}
+                  onValueChange={handleYoloEffortLevelChange}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default effort</SelectItem>
+                    {effortLevelOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -1654,10 +2141,10 @@ export const GeneralPane: React.FC = () => {
             description="Claude model for AI assistance"
           >
             <Select
-              value={preferences?.selected_model ?? 'opus'}
+              value={preferences?.selected_model ?? 'claude-opus-4-7'}
               onValueChange={handleModelChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1678,7 +2165,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.thinking_level ?? 'off'}
               onValueChange={handleThinkingLevelChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1699,7 +2186,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.default_effort_level ?? 'high'}
               onValueChange={handleEffortLevelChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1731,10 +2218,7 @@ export const GeneralPane: React.FC = () => {
           {/* Codex subsection */}
           <div className="pt-2">
             <div className="text-sm font-semibold text-foreground/80 mb-3">
-              Codex{' '}
-              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                BETA
-              </span>
+              Codex
             </div>
           </div>
 
@@ -1746,7 +2230,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.selected_codex_model ?? 'gpt-5.4'}
               onValueChange={handleCodexModelChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1767,7 +2251,7 @@ export const GeneralPane: React.FC = () => {
               value={preferences?.default_codex_reasoning_effort ?? 'high'}
               onValueChange={handleCodexReasoningChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1809,10 +2293,7 @@ export const GeneralPane: React.FC = () => {
           {/* OpenCode subsection */}
           <div className="pt-2">
             <div className="text-sm font-semibold text-foreground/80 mb-3">
-              OpenCode{' '}
-              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                BETA
-              </span>
+              OpenCode
             </div>
           </div>
 
@@ -1876,6 +2357,73 @@ export const GeneralPane: React.FC = () => {
             </Popover>
           </InlineField>
 
+          {/* Cursor subsection */}
+          <div className="pt-2">
+            <div className="mb-3 text-sm font-semibold text-foreground/80">
+              <BackendLabel backend="cursor" />
+            </div>
+          </div>
+
+          <InlineField
+            label="Model"
+            description="Cursor model for AI assistance"
+          >
+            <Popover
+              open={cursorModelPopoverOpen}
+              onOpenChange={setCursorModelPopoverOpen}
+            >
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  role="combobox"
+                  aria-expanded={cursorModelPopoverOpen}
+                  aria-label="Select Cursor model"
+                  className="w-80 max-w-full justify-between"
+                >
+                  <span className="max-w-[16rem] truncate text-left">
+                    {selectedCursorModelLabel}
+                  </span>
+                  <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                align="start"
+                className="w-[var(--radix-popover-trigger-width)] p-0"
+              >
+                <Command>
+                  <CommandInput placeholder="Search models..." />
+                  <CommandList onWheel={e => e.stopPropagation()}>
+                    <CommandEmpty>No models found.</CommandEmpty>
+                    <CommandGroup>
+                      {cursorModelOptions.map(option => (
+                        <CommandItem
+                          key={option.value}
+                          value={`${option.label} ${option.value}`}
+                          onSelect={() => {
+                            handleCursorModelChange(option.value)
+                            setCursorModelPopoverOpen(false)
+                          }}
+                        >
+                          <span className="max-w-[18rem] truncate">
+                            {option.label}
+                          </span>
+                          <Check
+                            className={cn(
+                              'ml-auto h-4 w-4',
+                              selectedCursorModel === option.value
+                                ? 'opacity-100'
+                                : 'opacity-0'
+                            )}
+                          />
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+          </InlineField>
+
           {/* Shared settings */}
           <div className="pt-2">
             <div className="text-sm font-semibold text-foreground/80 mb-3">
@@ -1910,7 +2458,7 @@ export const GeneralPane: React.FC = () => {
                 value={preferences?.editor ?? 'zed'}
                 onValueChange={handleEditorChange}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full sm:min-w-96">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1933,7 +2481,7 @@ export const GeneralPane: React.FC = () => {
                 value={preferences?.terminal ?? 'terminal'}
                 onValueChange={handleTerminalChange}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full sm:min-w-96">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1956,7 +2504,7 @@ export const GeneralPane: React.FC = () => {
                 value={preferences?.open_in ?? 'editor'}
                 onValueChange={handleOpenInChange}
               >
-                <SelectTrigger>
+                <SelectTrigger className="w-full sm:min-w-96">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1978,7 +2526,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.git_poll_interval ?? 60)}
               onValueChange={handleGitPollIntervalChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1999,7 +2547,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.remote_poll_interval ?? 60)}
               onValueChange={handleRemotePollIntervalChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -2023,42 +2571,72 @@ export const GeneralPane: React.FC = () => {
             label="Waiting sound"
             description="Play when session needs your input"
           >
-            <Select
-              value={preferences?.waiting_sound ?? 'none'}
-              onValueChange={handleWaitingSoundChange}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {notificationSoundOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select
+                value={preferences?.waiting_sound ?? 'none'}
+                onValueChange={handleWaitingSoundChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {notificationSoundOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={
+                  !preferences?.waiting_sound ||
+                  preferences.waiting_sound === 'none'
+                }
+                onClick={() =>
+                  playNotificationSound(preferences?.waiting_sound ?? 'none')
+                }
+              >
+                <Play className="h-4 w-4" />
+              </Button>
+            </div>
           </InlineField>
 
           <InlineField
             label="Review sound"
             description="Play when session finishes"
           >
-            <Select
-              value={preferences?.review_sound ?? 'none'}
-              onValueChange={handleReviewSoundChange}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {notificationSoundOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex items-center gap-2">
+              <Select
+                value={preferences?.review_sound ?? 'none'}
+                onValueChange={handleReviewSoundChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {notificationSoundOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                disabled={
+                  !preferences?.review_sound ||
+                  preferences.review_sound === 'none'
+                }
+                onClick={() =>
+                  playNotificationSound(preferences?.review_sound ?? 'none')
+                }
+              >
+                <Play className="h-4 w-4" />
+              </Button>
+            </div>
           </InlineField>
         </div>
       </SettingsSection>
@@ -2115,7 +2693,7 @@ export const GeneralPane: React.FC = () => {
             description="Automatically save session context after each AI response"
           >
             <Switch
-              checked={preferences?.auto_save_context ?? true}
+              checked={preferences?.auto_save_context ?? false}
               onCheckedChange={checked => {
                 if (preferences) {
                   patchPreferences.mutate({
@@ -2136,6 +2714,22 @@ export const GeneralPane: React.FC = () => {
                 if (preferences) {
                   patchPreferences.mutate({
                     restore_last_session: checked,
+                  })
+                }
+              }}
+            />
+          </InlineField>
+
+          <InlineField
+            label="Expand tool calls by default"
+            description="Automatically expand tool call details in chat instead of showing a collapsed summary"
+          >
+            <Switch
+              checked={preferences?.expand_tool_calls_by_default ?? false}
+              onCheckedChange={checked => {
+                if (preferences) {
+                  patchPreferences.mutate({
+                    expand_tool_calls_by_default: checked,
                   })
                 }
               }}
@@ -2192,7 +2786,7 @@ export const GeneralPane: React.FC = () => {
                 }
               }}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -2229,7 +2823,7 @@ export const GeneralPane: React.FC = () => {
               value={String(preferences?.archive_retention_days ?? 30)}
               onValueChange={handleArchiveRetentionChange}
             >
-              <SelectTrigger>
+              <SelectTrigger className="w-full sm:min-w-96">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -2335,7 +2929,7 @@ const AiLanguageField: FC<{
     >
       <div className="flex items-center gap-2">
         <Input
-          className="w-40"
+          className="w-full sm:w-40"
           placeholder="Default"
           value={localValue}
           onChange={e => setLocalValue(e.target.value)}

@@ -12,12 +12,19 @@ export type PreferencePane =
   | 'integrations'
   | 'experimental'
   | 'web-access'
+  | 'opinionated'
 
 export type OnboardingStartStep = 'claude' | 'gh' | null
 
 export type CliUpdateModalType = 'claude' | 'gh' | 'codex' | 'opencode' | null
 
-export type CliLoginModalType = 'claude' | 'gh' | 'codex' | 'opencode' | null
+export type CliLoginModalType =
+  | 'claude'
+  | 'gh'
+  | 'codex'
+  | 'opencode'
+  | 'cursor'
+  | null
 
 interface UIState {
   leftSidebarVisible: boolean
@@ -51,6 +58,7 @@ interface UIState {
   cliLoginModalType: CliLoginModalType
   cliLoginModalCommand: string | null
   cliLoginModalCommandArgs: string[] | null
+  cliLoginModalAction: 'login' | 'update' | 'install'
   /** Worktree IDs that should auto-trigger investigate-issue when created */
   autoInvestigateWorktreeIds: Set<string>
   /** Worktree IDs that should auto-trigger investigate-pr when created */
@@ -69,10 +77,15 @@ interface UIState {
   pendingAutoOpenSessionIds: Record<string, string>
   /** Whether a session chat modal is open (for magic command keybinding checks) */
   sessionChatModalOpen: boolean
+  /** Whether the chat toolbar is mounted — used to hide the global FloatingDock
+   *  because its burger-menu counterpart now lives in the chat toolbar. */
+  chatToolbarMounted: boolean
   /** Which worktree the session chat modal is for (for magic command worktree resolution) */
   sessionChatModalWorktreeId: string | null
   /** Whether a git diff modal is open (blocks execute_run keybinding) */
   gitDiffModalOpen: boolean
+  /** File paths selected for commit in GitDiffModal (uncommitted tab only) */
+  gitDiffSelectedFiles: Set<string>
   /** Whether a plan dialog is open (blocks canvas approve keybindings) */
   planDialogOpen: boolean
   /** Whether the feature tour dialog is open */
@@ -121,9 +134,10 @@ interface UIState {
   openCliUpdateModal: (type: 'claude' | 'gh' | 'codex' | 'opencode') => void
   closeCliUpdateModal: () => void
   openCliLoginModal: (
-    type: 'claude' | 'gh' | 'codex' | 'opencode',
+    type: 'claude' | 'gh' | 'codex' | 'opencode' | 'cursor',
     command: string,
-    commandArgs?: string[]
+    commandArgs?: string[],
+    action?: 'login' | 'update' | 'install'
   ) => void
   closeCliLoginModal: () => void
   incrementPendingBackgroundCreations: () => void
@@ -147,12 +161,17 @@ interface UIState {
     sessionId?: string
   }
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
+  setChatToolbarMounted: (mounted: boolean) => void
   setGitDiffModalOpen: (open: boolean) => void
+  toggleGitDiffSelectedFile: (filePath: string) => void
+  clearGitDiffSelectedFiles: () => void
   setPlanDialogOpen: (open: boolean) => void
   setFeatureTourOpen: (open: boolean) => void
   setUIStateInitialized: (initialized: boolean) => void
   setPendingUpdateVersion: (version: string | null) => void
   setUpdateModalVersion: (version: string | null) => void
+  chatSearchOpen: boolean
+  setChatSearchOpen: (open: boolean) => void
   githubDashboardOpen: boolean
   setGitHubDashboardOpen: (open: boolean) => void
 }
@@ -199,6 +218,7 @@ export const useUIStore = create<UIState>()(
       cliLoginModalType: null,
       cliLoginModalCommand: null,
       cliLoginModalCommandArgs: null,
+      cliLoginModalAction: 'login',
       autoInvestigateWorktreeIds: new Set(),
       autoInvestigatePRWorktreeIds: new Set(),
       autoInvestigateSecurityAlertWorktreeIds: new Set(),
@@ -209,12 +229,15 @@ export const useUIStore = create<UIState>()(
       pendingAutoOpenSessionIds: {},
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
+      chatToolbarMounted: false,
       gitDiffModalOpen: false,
+      gitDiffSelectedFiles: new Set<string>(),
       planDialogOpen: false,
       featureTourOpen: false,
       uiStateInitialized: false,
       pendingUpdateVersion: null,
       updateModalVersion: null,
+      chatSearchOpen: false,
       githubDashboardOpen: false,
       toggleLeftSidebar: () =>
         set(
@@ -285,7 +308,11 @@ export const useUIStore = create<UIState>()(
         set({ onboardingOpen: open }, undefined, 'setOnboardingOpen'),
 
       setOnboardingManuallyTriggered: triggered =>
-        set({ onboardingManuallyTriggered: triggered }, undefined, 'setOnboardingManuallyTriggered'),
+        set(
+          { onboardingManuallyTriggered: triggered },
+          undefined,
+          'setOnboardingManuallyTriggered'
+        ),
 
       setOnboardingStartStep: step =>
         set({ onboardingStartStep: step }, undefined, 'setOnboardingStartStep'),
@@ -360,7 +387,11 @@ export const useUIStore = create<UIState>()(
       setUpdatePrModalOpen: open =>
         set({ updatePrModalOpen: open }, undefined, 'setUpdatePrModalOpen'),
       setReviewCommentsModalOpen: open =>
-        set({ reviewCommentsModalOpen: open }, undefined, 'setReviewCommentsModalOpen'),
+        set(
+          { reviewCommentsModalOpen: open },
+          undefined,
+          'setReviewCommentsModalOpen'
+        ),
 
       setWorkflowRunsModalOpen: (open, projectPath, branch) =>
         set(
@@ -387,13 +418,14 @@ export const useUIStore = create<UIState>()(
           'closeCliUpdateModal'
         ),
 
-      openCliLoginModal: (type, command, commandArgs) =>
+      openCliLoginModal: (type, command, commandArgs, action) =>
         set(
           {
             cliLoginModalOpen: true,
             cliLoginModalType: type,
             cliLoginModalCommand: command,
             cliLoginModalCommandArgs: commandArgs ?? null,
+            cliLoginModalAction: action ?? 'login',
           },
           undefined,
           'openCliLoginModal'
@@ -406,6 +438,7 @@ export const useUIStore = create<UIState>()(
             cliLoginModalType: null,
             cliLoginModalCommand: null,
             cliLoginModalCommandArgs: null,
+            cliLoginModalAction: 'login',
           },
           undefined,
           'closeCliLoginModal'
@@ -507,7 +540,9 @@ export const useUIStore = create<UIState>()(
         if (get().autoInvestigateSecurityAlertWorktreeIds.has(worktreeId)) {
           set(
             state => {
-              const newSet = new Set(state.autoInvestigateSecurityAlertWorktreeIds)
+              const newSet = new Set(
+                state.autoInvestigateSecurityAlertWorktreeIds
+              )
               newSet.delete(worktreeId)
               return { autoInvestigateSecurityAlertWorktreeIds: newSet }
             },
@@ -563,7 +598,9 @@ export const useUIStore = create<UIState>()(
         if (get().autoInvestigateLinearIssueWorktreeIds.has(worktreeId)) {
           set(
             state => {
-              const newSet = new Set(state.autoInvestigateLinearIssueWorktreeIds)
+              const newSet = new Set(
+                state.autoInvestigateLinearIssueWorktreeIds
+              )
               newSet.delete(worktreeId)
               return { autoInvestigateLinearIssueWorktreeIds: newSet }
             },
@@ -623,8 +660,37 @@ export const useUIStore = create<UIState>()(
           'setSessionChatModalOpen'
         ),
 
+      setChatToolbarMounted: (mounted: boolean) =>
+        set(state =>
+          state.chatToolbarMounted === mounted
+            ? state
+            : { chatToolbarMounted: mounted }
+        ),
+
       setGitDiffModalOpen: (open: boolean) =>
         set({ gitDiffModalOpen: open }, undefined, 'setGitDiffModalOpen'),
+
+      toggleGitDiffSelectedFile: (filePath: string) =>
+        set(
+          state => {
+            const next = new Set(state.gitDiffSelectedFiles)
+            if (next.has(filePath)) next.delete(filePath)
+            else next.add(filePath)
+            return { gitDiffSelectedFiles: next }
+          },
+          undefined,
+          'toggleGitDiffSelectedFile'
+        ),
+
+      clearGitDiffSelectedFiles: () =>
+        set(
+          state => {
+            if (state.gitDiffSelectedFiles.size === 0) return state
+            return { gitDiffSelectedFiles: new Set<string>() }
+          },
+          undefined,
+          'clearGitDiffSelectedFiles'
+        ),
 
       setPlanDialogOpen: (open: boolean) =>
         set({ planDialogOpen: open }, undefined, 'setPlanDialogOpen'),
@@ -651,6 +717,16 @@ export const useUIStore = create<UIState>()(
           { updateModalVersion: version },
           undefined,
           'setUpdateModalVersion'
+        ),
+
+      setChatSearchOpen: (open: boolean) =>
+        set(
+          state => {
+            if (state.chatSearchOpen === open) return state
+            return { chatSearchOpen: open }
+          },
+          undefined,
+          'setChatSearchOpen'
         ),
 
       setGitHubDashboardOpen: (open: boolean) =>

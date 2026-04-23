@@ -117,8 +117,8 @@ function JeanConfigWizardContent() {
                   is created (e.g. installing dependencies)
                 </li>
                 <li>
-                  <strong>Teardown</strong> runs before a worktree is deleted/archived
-                  (e.g. stopping services)
+                  <strong>Teardown</strong> runs before a worktree is
+                  deleted/archived (e.g. stopping services)
                 </li>
                 <li>
                   <strong>Run</strong> launches your dev server via the run
@@ -127,7 +127,9 @@ function JeanConfigWizardContent() {
               </ul>
               <div className="space-y-0.5 pt-1">
                 <p>
-                  <code className="text-foreground/80">$JEAN_WORKSPACE_PATH</code>
+                  <code className="text-foreground/80">
+                    $JEAN_WORKSPACE_PATH
+                  </code>
                   {' — worktree directory'}
                 </p>
                 <p>
@@ -152,7 +154,7 @@ function JeanConfigWizardContent() {
               placeholder="e.g. npm install"
               value={setupScript}
               onChange={e => setSetupScript(e.target.value)}
-              className="font-mono text-sm"
+              className="font-mono text-base md:text-sm"
               autoFocus
             />
             <p className="text-xs text-muted-foreground">
@@ -170,7 +172,7 @@ function JeanConfigWizardContent() {
               placeholder="e.g. docker compose down"
               value={teardownScript}
               onChange={e => setTeardownScript(e.target.value)}
-              className="font-mono text-sm"
+              className="font-mono text-base md:text-sm"
             />
             <p className="text-xs text-muted-foreground">
               Runs before each worktree is deleted
@@ -190,7 +192,7 @@ function JeanConfigWizardContent() {
                     next[i] = e.target.value
                     setRunScripts(next)
                   }}
-                  className="font-mono text-sm"
+                  className="font-mono text-base md:text-sm"
                 />
                 {runScripts.length > 1 && (
                   <Button
@@ -234,7 +236,7 @@ function JeanConfigWizardContent() {
                     next[i] = { ...entry, port: e.target.value }
                     setPorts(next)
                   }}
-                  className="font-mono text-sm w-24"
+                  className="font-mono text-base md:text-sm w-24"
                 />
                 <Input
                   placeholder="Label"
@@ -244,7 +246,7 @@ function JeanConfigWizardContent() {
                     next[i] = { ...entry, label: e.target.value }
                     setPorts(next)
                   }}
-                  className="text-sm"
+                  className="text-base md:text-sm"
                 />
                 <Button
                   variant="ghost"

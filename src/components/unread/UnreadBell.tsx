@@ -117,11 +117,12 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
       window.removeEventListener('command:open-unread-sessions', handler)
   }, [])
 
-  // Reset open state when all sessions are read so the popover
-  // doesn't auto-reappear when a new unread session arrives
-  useEffect(() => {
-    if (unreadCount === 0) setOpen(false)
-  }, [unreadCount])
+  // Synchronous reset: guarantees open=false is committed before unreadCount
+  // can bounce back (e.g. optimistic update overwritten by in-flight refetch).
+  // A useEffect would fire after render, missing fast 1→0→1 transitions.
+  if (unreadCount === 0 && open) {
+    setOpen(false)
+  }
 
   // Invalidate cache each time popover opens
   useEffect(() => {
@@ -156,9 +157,7 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
         }
       }
     }
-    return results.sort(
-      (a, b) => b.session.updated_at - a.session.updated_at
-    )
+    return results.sort((a, b) => b.session.updated_at - a.session.updated_at)
   }, [allSessions])
 
   const markSessionsReadOptimistically = useCallback(
@@ -210,50 +209,46 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
     [queryClient, unreadItems.length, markSessionsReadOptimistically]
   )
 
-  const handleSelect = useCallback((item: UnreadItem) => {
-    const { selectedProjectId, selectProject } =
-      useProjectsStore.getState()
-    const {
-      setActiveSession,
-      clearActiveWorktree,
-      setLastOpenedForProject,
-    } = useChatStore.getState()
+  const handleSelect = useCallback(
+    (item: UnreadItem) => {
+      const { selectedProjectId, selectProject } = useProjectsStore.getState()
+      const { setActiveSession, clearActiveWorktree, setLastOpenedForProject } =
+        useChatStore.getState()
 
-    const crossProject = selectedProjectId !== item.projectId
-    if (crossProject) {
-      selectProject(item.projectId)
-    }
+      const crossProject = selectedProjectId !== item.projectId
+      if (crossProject) {
+        selectProject(item.projectId)
+      }
 
-    // Navigate to ProjectCanvasView
-    clearActiveWorktree()
-    setActiveSession(item.worktreeId, item.session.id)
-    setLastOpenedForProject(item.projectId, item.worktreeId, item.session.id)
-    markSessionsReadOptimistically([item.session.id])
-    setOpen(false)
+      // Navigate to ProjectCanvasView
+      clearActiveWorktree()
+      setActiveSession(item.worktreeId, item.session.id)
+      setLastOpenedForProject(item.projectId, item.worktreeId, item.session.id)
+      markSessionsReadOptimistically([item.session.id])
+      setOpen(false)
 
-    if (crossProject) {
-      // Component remounts with new projectId key — use store-based auto-open
-      useUIStore
-        .getState()
-        .markWorktreeForAutoOpenSession(
-          item.worktreeId,
-          item.session.id
-        )
-    } else {
-      // Same project, component stays mounted — use event
-      setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent('open-session-modal', {
-            detail: {
-              sessionId: item.session.id,
-              worktreeId: item.worktreeId,
-              worktreePath: item.worktreePath,
-            },
-          })
-        )
-      }, 50)
-    }
-  }, [markSessionsReadOptimistically])
+      if (crossProject) {
+        // Component remounts with new projectId key — use store-based auto-open
+        useUIStore
+          .getState()
+          .markWorktreeForAutoOpenSession(item.worktreeId, item.session.id)
+      } else {
+        // Same project, component stays mounted — use event
+        setTimeout(() => {
+          window.dispatchEvent(
+            new CustomEvent('open-session-modal', {
+              detail: {
+                sessionId: item.session.id,
+                worktreeId: item.worktreeId,
+                worktreePath: item.worktreePath,
+              },
+            })
+          )
+        }, 50)
+      }
+    },
+    [markSessionsReadOptimistically]
+  )
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -313,8 +308,7 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
             className="relative z-[1] flex items-center gap-1.5 truncate rounded-md bg-background px-1.5 text-sm font-medium text-yellow-400 cursor-pointer"
           >
             <BellDot className="h-3.5 w-3.5 shrink-0 animate-[bell-ring_2s_ease-in-out_infinite]" />
-            {unreadCount} finished{' '}
-            {unreadCount === 1 ? 'session' : 'sessions'}
+            {unreadCount} finished {unreadCount === 1 ? 'session' : 'sessions'}
             {!isMobile && (
               <Kbd className="ml-1 h-4 px-1 text-[10px] opacity-60">
                 {formatShortcutDisplay('mod+shift+f')}
@@ -327,7 +321,7 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
         ref={contentRef}
         align="center"
         sideOffset={6}
-        className="w-[440px] p-0"
+        className="w-[min(440px,calc(100vw-2rem))] p-0"
         tabIndex={-1}
         onKeyDown={handleKeyDown}
         onEscapeKeyDown={e => e.stopPropagation()}
@@ -371,28 +365,29 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
                   onClick={() => handleSelect(item)}
                   onMouseEnter={() => setFocusedIndex(idx)}
                   className={cn(
-                    'w-full text-left px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors cursor-pointer flex items-center gap-2',
+                    'w-full text-left px-2 py-1.5 rounded-md hover:bg-accent/50 transition-colors cursor-pointer flex items-start gap-2',
                     focusedIndex === idx && 'bg-accent'
                   )}
                 >
                   <StatusIcon
                     className={cn(
-                      'h-3.5 w-3.5 shrink-0',
+                      'h-3.5 w-3.5 shrink-0 mt-0.5',
                       status?.className ?? 'text-muted-foreground'
                     )}
                   />
-                  <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50 shrink-0">
-                    {item.projectName}
-                  </span>
-                  <span className="text-[13px] truncate flex-1 min-w-0">
-                    {item.session.name}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground/60 min-w-0 max-w-[40%] truncate">
-                    {item.worktreeName}
-                  </span>
-                  <span className="text-[11px] text-muted-foreground/40 shrink-0">
-                    {formatRelativeTime(item.session.updated_at)}
-                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50 shrink-0">
+                        {item.projectName}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground/40 shrink-0 ml-auto">
+                        {formatRelativeTime(item.session.updated_at)}
+                      </span>
+                    </div>
+                    <span className="text-[13px] truncate block">
+                      {item.session.name}
+                    </span>
+                  </div>
                 </button>
               )
             })}

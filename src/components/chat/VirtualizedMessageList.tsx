@@ -1,6 +1,7 @@
 import {
   useRef,
   useEffect,
+  useLayoutEffect,
   useImperativeHandle,
   forwardRef,
   memo,
@@ -112,6 +113,14 @@ interface VirtualizedMessageListProps {
   onScrollToBottomHandled?: () => void
   /** Duration of last completed run (ms) — shown on last assistant message */
   completedDurationMs?: number | null
+  /** True when older runs exist on disk that haven't been loaded yet */
+  hasOlderOnDisk?: boolean
+  /** True while a load-older request is in flight */
+  isLoadingOlder?: boolean
+  /** Callback to fetch the next older window of runs from backend */
+  onLoadOlderRuns?: () => void
+  /** Run index of the oldest currently-loaded run (for label display) */
+  loadedRunStartIndex?: number
 }
 
 /**
@@ -156,11 +165,21 @@ export const VirtualizedMessageList = memo(
         shouldScrollToBottom,
         onScrollToBottomHandled,
         completedDurationMs,
+        hasOlderOnDisk = false,
+        isLoadingOlder = false,
+        onLoadOlderRuns,
+        loadedRunStartIndex = 0,
       },
       ref
     ) {
       const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
       const isLoadingMoreRef = useRef(false)
+      // Captured scroll height taken just before requesting an older-runs load.
+      // Used to restore scroll position after the prepended messages render.
+      const pendingPrependScrollHeightRef = useRef<number | null>(null)
+      // Messages length captured at request time, used to compute how many
+      // messages the backend actually prepended (varies per response).
+      const pendingPrependMessagesLengthRef = useRef<number | null>(null)
 
       // Track how many messages to render (from the end)
       const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT)
@@ -169,8 +188,9 @@ export const VirtualizedMessageList = memo(
       const startIndex = Math.max(0, messages.length - visibleCount)
       const visibleMessages = messages.slice(startIndex)
       const hasMoreMessages = startIndex > 0
+      const showLoadMoreButton = hasMoreMessages || hasOlderOnDisk
 
-      // Reset visible count when session changes (messages go to 0)
+      // Reset visible count when session changes
       const prevSessionRef = useRef(sessionId)
       useEffect(() => {
         if (sessionId !== prevSessionRef.current) {
@@ -194,28 +214,81 @@ export const VirtualizedMessageList = memo(
       }, [messages])
 
       // Load more messages when scrolling near the top.
-      // Uses flushSync so state update + DOM commit + scroll correction happen in one task.
+      // First expands the in-memory window; once exhausted, requests an older
+      // window from the backend (which prepends to `messages` async).
       const loadMore = useCallback(() => {
         const container = scrollContainerRef.current
-        if (!container || !hasMoreMessages || isLoadingMoreRef.current) return
+        if (!container || isLoadingMoreRef.current) return
 
-        isLoadingMoreRef.current = true
-        const scrollHeightBefore = container.scrollHeight
+        if (hasMoreMessages) {
+          isLoadingMoreRef.current = true
+          const scrollHeightBefore = container.scrollHeight
 
+          flushSync(() => {
+            setVisibleCount(prev =>
+              Math.min(prev + LOAD_MORE_COUNT, messages.length)
+            )
+          })
+
+          container.scrollTop += container.scrollHeight - scrollHeightBefore
+          isLoadingMoreRef.current = false
+          return
+        }
+
+        // No more in-memory messages — fetch older from disk if available.
+        if (
+          hasOlderOnDisk &&
+          !isLoadingOlder &&
+          onLoadOlderRuns &&
+          pendingPrependScrollHeightRef.current === null
+        ) {
+          pendingPrependScrollHeightRef.current = container.scrollHeight
+          pendingPrependMessagesLengthRef.current = messages.length
+          onLoadOlderRuns()
+        }
+      }, [
+        scrollContainerRef,
+        hasMoreMessages,
+        messages.length,
+        hasOlderOnDisk,
+        isLoadingOlder,
+        onLoadOlderRuns,
+      ])
+
+      // After backend prepend completes, expand visibleCount so the freshly-
+      // prepended messages actually render, then anchor scrollTop so the user's
+      // previously-visible message stays at the same viewport position.
+      // useLayoutEffect + flushSync ensures the expand and scroll adjustment
+      // happen in a single paint — no flash, no stale delta.
+      useLayoutEffect(() => {
+        const container = scrollContainerRef.current
+        const before = pendingPrependScrollHeightRef.current
+        const prevLen = pendingPrependMessagesLengthRef.current
+        if (!container || before === null || prevLen === null) return
+        if (isLoadingOlder) return
+
+        const prepended = messages.length - prevLen
+        pendingPrependScrollHeightRef.current = null
+        pendingPrependMessagesLengthRef.current = null
+
+        if (prepended <= 0) return
+
+        // Synchronously expand the visible window so prepended messages render
+        // this frame — without flushSync, scrollHeight below would be stale.
         flushSync(() => {
-          setVisibleCount(prev =>
-            Math.min(prev + LOAD_MORE_COUNT, messages.length)
-          )
+          setVisibleCount(prev => prev + prepended)
         })
 
-        container.scrollTop += container.scrollHeight - scrollHeightBefore
-        isLoadingMoreRef.current = false
-      }, [scrollContainerRef, hasMoreMessages, messages.length])
+        const delta = container.scrollHeight - before
+        if (delta > 0) {
+          container.scrollTop += delta
+        }
+      }, [scrollContainerRef, isLoadingOlder, messages.length])
 
       // Detect scroll to top
       useEffect(() => {
         const container = scrollContainerRef.current
-        if (!container || !hasMoreMessages) return
+        if (!container || (!hasMoreMessages && !hasOlderOnDisk)) return
 
         const handleScroll = () => {
           if (container.scrollTop < SCROLL_THRESHOLD) {
@@ -225,7 +298,7 @@ export const VirtualizedMessageList = memo(
 
         container.addEventListener('scroll', handleScroll, { passive: true })
         return () => container.removeEventListener('scroll', handleScroll)
-      }, [scrollContainerRef, hasMoreMessages, loadMore])
+      }, [scrollContainerRef, hasMoreMessages, hasOlderOnDisk, loadMore])
 
       // Expose methods to parent via ref
       useImperativeHandle(ref, () => ({
@@ -264,7 +337,10 @@ export const VirtualizedMessageList = memo(
             rect.top < containerRect.bottom && rect.bottom > containerRect.top
           )
         },
-        getVisibleRange: () => ({ start: startIndex, end: messages.length - 1 }),
+        getVisibleRange: () => ({
+          start: startIndex,
+          end: messages.length - 1,
+        }),
       }))
 
       // Handle scroll-to-bottom when new messages arrive
@@ -287,13 +363,18 @@ export const VirtualizedMessageList = memo(
 
       return (
         <div className="flex flex-col w-full">
-          {hasMoreMessages && (
+          {showLoadMoreButton && (
             <button
               type="button"
               onClick={loadMore}
-              className="w-full text-center text-muted-foreground text-xs py-2 opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
+              disabled={isLoadingOlder}
+              className="w-full text-center text-muted-foreground text-xs py-2 opacity-60 hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-wait"
             >
-              ↑ Load more ({startIndex} older messages)
+              {isLoadingOlder
+                ? 'Loading older messages…'
+                : hasMoreMessages
+                  ? `↑ Load more (${startIndex} older messages)`
+                  : `↑ Load older messages (${loadedRunStartIndex} older runs on disk)`}
             </button>
           )}
 
@@ -306,13 +387,18 @@ export const VirtualizedMessageList = memo(
             // Show completed duration on the last assistant message (from store),
             // or fall back to timestamp-based computation for persisted messages (after reload)
             let durationMs: number | null = null
-            if (message.role === 'assistant' && globalIndex === messages.length - 1 && completedDurationMs) {
+            if (
+              message.role === 'assistant' &&
+              globalIndex === messages.length - 1 &&
+              completedDurationMs
+            ) {
               durationMs = completedDurationMs
             } else if (message.role === 'assistant' && globalIndex > 0) {
               const prevMessage = messages[globalIndex - 1]
               if (prevMessage?.role === 'user') {
                 const deltaSecs = message.timestamp - prevMessage.timestamp
-                if (deltaSecs > 0 && deltaSecs < 3600) durationMs = deltaSecs * 1000
+                if (deltaSecs > 0 && deltaSecs < 3600)
+                  durationMs = deltaSecs * 1000
               }
             }
 
@@ -323,7 +409,9 @@ export const VirtualizedMessageList = memo(
                   if (el) messageRefs.current.set(globalIndex, el)
                   else messageRefs.current.delete(globalIndex)
                 }}
-                className={globalIndex === messages.length - 1 && isSending ? '' : 'pb-4'}
+                className={
+                  globalIndex === messages.length - 1 && isSending ? '' : 'pb-4'
+                }
               >
                 <MessageItem
                   message={message}
@@ -336,7 +424,9 @@ export const VirtualizedMessageList = memo(
                   approveShortcut={approveShortcut}
                   approveShortcutYolo={approveShortcutYolo}
                   approveShortcutClearContext={approveShortcutClearContext}
-                  approveShortcutClearContextBuild={approveShortcutClearContextBuild}
+                  approveShortcutClearContextBuild={
+                    approveShortcutClearContextBuild
+                  }
                   approveButtonRef={
                     globalIndex === lastPlanMessageIndex
                       ? approveButtonRef

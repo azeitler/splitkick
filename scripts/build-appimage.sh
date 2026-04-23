@@ -63,7 +63,7 @@ echo "==> Repackaging AppImage..."
 cd "$BUNDLE_DIR"
 
 # Remove old AppImage files
-rm -f Jean_*_amd64.AppImage Jean_*_arm64.AppImage Jean-x86_64.AppImage Jean-aarch64.AppImage
+rm -f Jean*.AppImage
 
 if [ ! -x "$LINUXDEPLOY_PLUGIN_BIN" ]; then
     echo "ERROR: linuxdeploy appimage plugin not found/executable at $LINUXDEPLOY_PLUGIN_BIN"
@@ -76,6 +76,7 @@ NO_STRIP=1 ARCH="$MACHINE_ARCH" "$LINUXDEPLOY_PLUGIN_BIN" --appdir Jean.AppDir 2
 # Rename to standard naming convention
 ARCH_LABEL="amd64"
 if [ "$MACHINE_ARCH" = "aarch64" ]; then
+    # Convention: "arm64" (not "aarch64") — must match jean.build download page
     ARCH_LABEL="arm64"
 fi
 
@@ -85,6 +86,21 @@ if [ -f "$OUTPUT_NAME" ]; then
     FINAL_NAME="Jean_${VERSION}_${ARCH_LABEL}.AppImage"
     mv "$OUTPUT_NAME" "$FINAL_NAME"
     echo "==> AppImage built successfully: $BUNDLE_DIR/$FINAL_NAME"
+
+    echo "==> Creating updater artifact (.tar.gz)..."
+    tar -czf "${FINAL_NAME}.tar.gz" "$FINAL_NAME"
+
+    if [ -n "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+        echo "==> Signing updater artifact..."
+        cd "$PROJECT_DIR"
+        bun run tauri signer sign \
+            --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+            --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" \
+            "$BUNDLE_DIR/${FINAL_NAME}.tar.gz"
+        echo "==> Updater artifacts created: ${FINAL_NAME}.tar.gz + .sig"
+    else
+        echo "WARN: TAURI_SIGNING_PRIVATE_KEY not set, skipping signature"
+    fi
 else
     echo "ERROR: Repackaging failed"
     exit 1

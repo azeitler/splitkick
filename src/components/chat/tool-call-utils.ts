@@ -1,5 +1,5 @@
-import type { ToolCall, ContentBlock, Todo } from '@/types/chat'
-import { isTodoWrite, isCollabToolCall } from '@/types/chat'
+import type { ToolCall, ContentBlock, Todo, PlanToolInput } from '@/types/chat'
+import { isTodoWrite, isCollabToolCall, isPlanToolCall } from '@/types/chat'
 
 /** Check if a tool is a task/agent container (Claude CLI uses both names) */
 function isAgentTool(name: string): boolean {
@@ -52,6 +52,7 @@ function isSpecialTool(toolCall: ToolCall): boolean {
   return (
     toolCall.name === 'AskUserQuestion' ||
     toolCall.name === 'ExitPlanMode' ||
+    toolCall.name === 'CodexPlan' ||
     toolCall.name === 'EnterPlanMode' ||
     toolCall.name === 'TodoWrite' ||
     toolCall.name === 'CodexTodoList'
@@ -119,6 +120,20 @@ export type TimelineItem =
   | { type: 'enterPlanMode'; tool: ToolCall; key: string }
   | { type: 'exitPlanMode'; tool: ToolCall; key: string }
   | { type: 'unknown'; rawType: string; rawData: unknown; key: string }
+
+export interface ResolvedPlanContent {
+  content: string | null
+  source: 'plan' | 'plan_preview' | 'message_text' | 'explanation' | null
+}
+
+export interface SplitTextAroundPlanResult {
+  beforePlan: string | null
+  plan: string | null
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
 
 /**
  * Merge consecutive stackable items (thinking + standalone tools) into stackedGroup
@@ -278,7 +293,13 @@ export function buildTimeline(
       if (!toolCall) continue
 
       // Handle special tools
-      if (toolCall.name === 'AskUserQuestion') {
+      if (
+        (toolCall.name === 'AskUserQuestion' || toolCall.name === 'question') &&
+        typeof toolCall.input === 'object' &&
+        toolCall.input !== null &&
+        'questions' in toolCall.input &&
+        Array.isArray((toolCall.input as { questions: unknown }).questions)
+      ) {
         // Skip if we've already processed this AskUserQuestion
         if (renderedAskUserQuestions.has(toolCall.id)) continue
         renderedAskUserQuestions.add(toolCall.id)
@@ -306,7 +327,7 @@ export function buildTimeline(
         seenAskUserQuestion = true
         continue
       }
-      if (toolCall.name === 'ExitPlanMode') {
+      if (isPlanToolCall(toolCall)) {
         result.push({
           type: 'exitPlanMode',
           tool: toolCall,
@@ -392,10 +413,192 @@ export function buildTimeline(
  * @returns The plan content if found, null otherwise
  */
 export function findPlanContent(toolCalls: ToolCall[]): string | null {
-  const exitPlanTool = toolCalls.find(tc => tc.name === 'ExitPlanMode')
-  if (!exitPlanTool) return null
-  const input = exitPlanTool.input as { plan?: string } | undefined
-  return input?.plan ?? null
+  return resolvePlanContent({ toolCalls }).content
+}
+
+/** Detect legacy formatted checkbox steps in the plan field */
+function looksLikeFormattedSteps(content: string): boolean {
+  const firstLine = content.trim().split('\n')[0] ?? ''
+  return /^- \[[ x-]\] /.test(firstLine)
+}
+
+function normalizePlanText(content: string): string {
+  return content.trim().replace(/\r\n/g, '\n')
+}
+
+function getPlanToolInput(toolCalls: ToolCall[]): PlanToolInput | undefined {
+  const planTool = toolCalls.find(isPlanToolCall)
+  return planTool?.input as PlanToolInput | undefined
+}
+
+function getPlanField(input: PlanToolInput | undefined): string | null {
+  return isNonEmptyString(input?.plan) ? input.plan : null
+}
+
+function getPlanPreviewField(input: PlanToolInput | undefined): string | null {
+  return isNonEmptyString(input?.plan_preview) ? input.plan_preview : null
+}
+
+export function splitTextAroundPlan(text: string): SplitTextAroundPlanResult {
+  const normalized = normalizePlanText(text)
+  if (!normalized) {
+    return { beforePlan: null, plan: null }
+  }
+
+  // Codex often emits intro prose followed by the actual plan as regular
+  // assistant text. Keep only the trailing `Plan:` section so PlanDisplay
+  // shows the actionable plan body without duplicating the intro prose.
+  const planHeadingMatch = normalized.match(/(^|\n)(Plan:\s*[\s\S]*)$/)
+  if (planHeadingMatch) {
+    const fullMatch = planHeadingMatch[0] ?? ''
+    const extracted = planHeadingMatch[2]?.trim() ?? null
+    const beforePlan = normalized
+      .slice(0, normalized.length - fullMatch.length)
+      .trim()
+
+    return {
+      beforePlan: beforePlan || null,
+      plan: extracted || null,
+    }
+  }
+
+  const firstLine = normalized.split('\n')[0] ?? ''
+  if (/^Plan:\s*/.test(firstLine)) {
+    return { beforePlan: null, plan: normalized }
+  }
+
+  return { beforePlan: normalized, plan: null }
+}
+
+function extractPlanSectionFromText(text: string): string | null {
+  return splitTextAroundPlan(text).plan
+}
+
+function extractPlanSectionFromCandidates(candidates: string[]): string | null {
+  for (const candidate of candidates) {
+    const extracted = extractPlanSectionFromText(candidate)
+    if (extracted) return extracted
+  }
+
+  return null
+}
+
+function collectPlanTextCandidates(params: {
+  messageContent?: string | null
+  contentBlocks?: ContentBlock[]
+}): string[] {
+  const candidates: string[] = []
+
+  if (params.messageContent?.trim()) {
+    candidates.push(params.messageContent)
+  }
+
+  if (params.contentBlocks?.length) {
+    const textBlocks = params.contentBlocks.flatMap(block =>
+      block.type === 'text' && block.text.trim() ? [block.text] : []
+    )
+
+    if (textBlocks.length > 1) {
+      candidates.push(textBlocks.join(''))
+    }
+
+    for (const text of textBlocks) {
+      candidates.push(text)
+    }
+  }
+
+  return candidates
+}
+
+export function resolvePlanContent(params: {
+  toolCalls: ToolCall[]
+  messageContent?: string | null
+  contentBlocks?: ContentBlock[]
+}): ResolvedPlanContent {
+  const input = getPlanToolInput(params.toolCalls)
+  const plan = getPlanField(input)
+  const planPreview = getPlanPreviewField(input)
+
+  if (plan && !looksLikeFormattedSteps(plan)) {
+    return { content: plan, source: 'plan' }
+  }
+
+  if (planPreview) {
+    return { content: planPreview, source: 'plan_preview' }
+  }
+
+  const extractedFromText = extractPlanSectionFromCandidates(
+    collectPlanTextCandidates(params)
+  )
+  if (extractedFromText) {
+    return { content: extractedFromText, source: 'message_text' }
+  }
+
+  if (isNonEmptyString(input?.explanation)) {
+    return { content: input.explanation, source: 'explanation' }
+  }
+
+  return { content: null, source: null }
+}
+
+export function isDuplicatePlanTextBlock(
+  text: string,
+  resolvedPlanContent: string | null
+): boolean {
+  if (!resolvedPlanContent) return false
+  // Direct match: the text block IS the plan content (Cursor CLI — no "Plan:" prefix)
+  if (normalizePlanText(text) === normalizePlanText(resolvedPlanContent))
+    return true
+  // "Plan:"-prefixed match: Codex emits intro prose + "Plan:\n..." section
+  const extracted = extractPlanSectionFromText(text)
+  if (!extracted) return false
+  return normalizePlanText(extracted) === normalizePlanText(resolvedPlanContent)
+}
+
+export function getPlanTextBlockIndicesToHide(
+  contentBlocks: ContentBlock[] | undefined,
+  resolvedPlanContent: string | null
+): Set<number> {
+  const hidden = new Set<number>()
+  if (!contentBlocks?.length || !resolvedPlanContent) return hidden
+
+  const textBlocks = contentBlocks.flatMap((block, index) =>
+    block.type === 'text' && block.text.trim()
+      ? [{ index, text: block.text }]
+      : []
+  )
+  if (textBlocks.length === 0) return hidden
+
+  const joinedText = textBlocks.map(block => block.text).join('')
+  // Direct match: all text blocks together ARE the plan (Cursor CLI — no "Plan:" prefix)
+  if (
+    normalizePlanText(joinedText) === normalizePlanText(resolvedPlanContent)
+  ) {
+    return new Set(textBlocks.map(block => block.index))
+  }
+  const extracted = extractPlanSectionFromText(joinedText)
+  if (!extracted) return hidden
+  if (normalizePlanText(extracted) !== normalizePlanText(resolvedPlanContent)) {
+    return hidden
+  }
+
+  const planStart = normalizePlanText(joinedText).indexOf(
+    normalizePlanText(extracted)
+  )
+  if (planStart < 0) return hidden
+
+  let offset = 0
+  for (const block of textBlocks) {
+    const normalizedBlock = normalizePlanText(block.text)
+    const start = offset
+    const end = start + normalizedBlock.length
+    if (end > planStart) {
+      hidden.add(block.index)
+    }
+    offset = end
+  }
+
+  return hidden
 }
 
 /**

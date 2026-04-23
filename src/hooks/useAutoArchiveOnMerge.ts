@@ -52,9 +52,9 @@ export function useAutoArchiveOnMerge() {
       try {
         // Check if worktree is already archived by looking at cached data
         // We need to find the project ID first
-        const projectsData = queryClient.getQueryData<{ id: string }[]>(
-          projectsQueryKeys.list()
-        )
+        const projectsData = queryClient.getQueryData<
+          { id: string; path: string }[]
+        >(projectsQueryKeys.list())
 
         if (!projectsData) {
           return
@@ -76,6 +76,18 @@ export function useAutoArchiveOnMerge() {
               return
             }
 
+            // Safety: never auto-archive/delete when worktree path matches project path
+            if (worktree.path === project.path) {
+              logger.debug(
+                'Worktree path matches project path, skipping auto-archive',
+                {
+                  worktreeId: status.worktree_id,
+                  worktreePath: worktree.path,
+                }
+              )
+              return
+            }
+
             // Archive or delete the worktree based on removal_behavior preference
             const shouldDelete = preferences?.removal_behavior === 'delete'
             const action = shouldDelete ? 'Deleting' : 'Archiving'
@@ -84,9 +96,12 @@ export function useAutoArchiveOnMerge() {
               prNumber: status.pr_number,
             })
 
-            await invoke(shouldDelete ? 'delete_worktree' : 'archive_worktree', {
-              worktreeId: status.worktree_id,
-            })
+            await invoke(
+              shouldDelete ? 'delete_worktree' : 'archive_worktree',
+              {
+                worktreeId: status.worktree_id,
+              }
+            )
 
             // Invalidate worktrees query to refresh the list
             queryClient.invalidateQueries({
@@ -111,7 +126,11 @@ export function useAutoArchiveOnMerge() {
         processedWorktrees.current.delete(status.worktree_id)
       }
     },
-    [preferences?.auto_archive_on_pr_merged, preferences?.removal_behavior, queryClient]
+    [
+      preferences?.auto_archive_on_pr_merged,
+      preferences?.removal_behavior,
+      queryClient,
+    ]
   )
 
   // Listen for PR status updates

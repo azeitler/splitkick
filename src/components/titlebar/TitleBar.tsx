@@ -1,8 +1,7 @@
 import type React from 'react'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import { WindowsWindowControls } from './WindowsWindowControls'
-import { isMacOS, openExternal } from '@/lib/platform'
+import { isLinux, isMacOS, openExternal } from '@/lib/platform'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -25,6 +24,7 @@ import { isNativeApp } from '@/lib/environment'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
+import { LinuxWindowControls } from './LinuxWindowControls'
 
 interface TitleBarProps {
   className?: string
@@ -62,7 +62,7 @@ export function TitleBar({
     <div
       {...(native ? { 'data-tauri-drag-region': true } : {})}
       className={cn(
-        'relative flex h-9 w-full shrink-0 items-center justify-between',
+        'relative flex h-8 w-full shrink-0 items-center justify-between',
         'bg-background/80 backdrop-blur-md md:px-2',
         native ? 'z-[60]' : 'z-50',
         className
@@ -76,8 +76,8 @@ export function TitleBar({
         {/* Left Action Buttons */}
         <div
           className={cn(
-            'relative z-10 flex items-center gap-1',
-            native && isMacOS ? 'pl-[85px]' : 'pl-2'
+            'relative z-10 flex items-center gap-1 pt-1',
+            native && isMacOS ? 'pl-[80px]' : 'pl-2'
           )}
         >
           <Tooltip>
@@ -89,9 +89,9 @@ export function TitleBar({
                 className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
               >
                 {leftSidebarVisible ? (
-                  <PanelLeftClose className="h-3 w-3" />
+                  <PanelLeftClose className="size-3.5" />
                 ) : (
-                  <PanelLeft className="h-3 w-3" />
+                  <PanelLeft className="size-3.5" />
                 )}
               </Button>
             </TooltipTrigger>
@@ -110,7 +110,7 @@ export function TitleBar({
                 size="icon"
                 className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
               >
-                <Settings className="h-3 w-3" />
+                <Settings className="size-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -134,7 +134,7 @@ export function TitleBar({
                   size="icon"
                   className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
                 >
-                  <Github className="h-3 w-3" />
+                  <Github className="size-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>GitHub</TooltipContent>
@@ -148,7 +148,7 @@ export function TitleBar({
                 size="icon"
                 className="h-6 w-6 rounded-none text-pink-500 hover:text-pink-400"
               >
-                <Heart className="h-3 w-3" />
+                <Heart className="size-3.5" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Sponsor</TooltipContent>
@@ -166,7 +166,7 @@ export function TitleBar({
 
       {/* Right side - Version + Windows/Linux window controls */}
       <div
-        className={cn('flex items-center', isMobile && 'pr-2')}
+        className={cn('flex items-center pt-1', isMobile && 'pr-2')}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         {isMobile && (
@@ -199,7 +199,7 @@ export function TitleBar({
             v{appVersion}
           </button>
         )}
-        {native && !isMacOS && <WindowsWindowControls />}
+        {native && isLinux && <LinuxWindowControls />}
       </div>
     </div>
   )
@@ -218,7 +218,7 @@ function UpdateIndicator() {
           }
           className="mr-1.5 flex items-center gap-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary hover:bg-primary/25 transition-colors cursor-pointer"
         >
-          <ArrowUpCircle className="size-3" />
+          <ArrowUpCircle className="size-3.5" />
           Update available
         </button>
       </TooltipTrigger>

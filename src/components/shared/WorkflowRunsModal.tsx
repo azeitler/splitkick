@@ -303,8 +303,10 @@ export function WorkflowRunsModal() {
 
       // Fall back to the user's currently-selected model (like useInvestigateHandlers does)
       const storeState = useChatStore.getState()
-      const currentActiveSessionId = storeState.activeSessionIds[storeState.activeWorktreeId ?? ''] ?? ''
-      const currentModel = storeState.selectedModels[currentActiveSessionId] ?? 'sonnet'
+      const currentActiveSessionId =
+        storeState.activeSessionIds[storeState.activeWorktreeId ?? ''] ?? ''
+      const currentModel =
+        storeState.selectedModels[currentActiveSessionId] ?? 'sonnet'
       const investigateModel =
         preferences?.magic_prompt_models?.investigate_workflow_run_model ??
         currentModel
@@ -314,9 +316,12 @@ export function WorkflowRunsModal() {
         preferences?.default_provider
       )
       const investigateBackend = resolveBackend(investigateModel)
-      const investigateCustomProfile = investigateProvider && investigateProvider !== '__anthropic__'
-        ? preferences?.custom_cli_profiles?.find(p => p.name === investigateProvider)?.name
-        : undefined
+      const investigateCustomProfile =
+        investigateProvider && investigateProvider !== '__anthropic__'
+          ? preferences?.custom_cli_profiles?.find(
+              p => p.name === investigateProvider
+            )?.name
+          : undefined
 
       // --- Find/create the target worktree ---
       let targetWorktreeId: string | null = null
@@ -402,7 +407,8 @@ export function WorkflowRunsModal() {
       const worktreePath = targetWorktreePath
 
       // Check if we're currently on the project canvas (no active worktree path)
-      const { activeWorktreePath, setActiveWorktree, setActiveSession } = useChatStore.getState()
+      const { activeWorktreePath, setActiveWorktree, setActiveSession } =
+        useChatStore.getState()
       const { selectWorktree } = useProjectsStore.getState()
       const isOnProjectCanvas = !activeWorktreePath
 
@@ -435,13 +441,28 @@ export function WorkflowRunsModal() {
         setSelectedModel(sessionId, investigateModel)
         setSelectedProvider(sessionId, investigateProvider)
         setSelectedBackend(sessionId, investigateBackend)
-        setExecutionMode(sessionId, 'build')
-        setExecutingMode(sessionId, 'build')
+        setExecutionMode(sessionId, 'yolo')
+        setExecutingMode(sessionId, 'yolo')
 
         // Persist model/backend/provider to session on disk
-        setSessionBackend.mutate({ sessionId, worktreeId, worktreePath, backend: investigateBackend })
-        setSessionModel.mutate({ sessionId, worktreeId, worktreePath, model: investigateModel })
-        setSessionProvider.mutate({ sessionId, worktreeId, worktreePath, provider: investigateProvider })
+        setSessionBackend.mutate({
+          sessionId,
+          worktreeId,
+          worktreePath,
+          backend: investigateBackend,
+        })
+        setSessionModel.mutate({
+          sessionId,
+          worktreeId,
+          worktreePath,
+          model: investigateModel,
+        })
+        setSessionProvider.mutate({
+          sessionId,
+          worktreeId,
+          worktreePath,
+          provider: investigateProvider,
+        })
 
         sendMessage.mutate({
           sessionId,
@@ -449,7 +470,7 @@ export function WorkflowRunsModal() {
           worktreePath,
           message: prompt,
           model: investigateModel,
-          executionMode: 'build',
+          executionMode: 'yolo',
           thinkingLevel: 'think',
           backend: investigateBackend,
           customProfileName: investigateCustomProfile,
@@ -465,7 +486,9 @@ export function WorkflowRunsModal() {
         // Open the session chat modal
         if (isOnProjectCanvas) {
           // On project canvas — let ProjectCanvasView auto-open the session modal overlay
-          useUIStore.getState().markWorktreeForAutoOpenSession(worktreeId, sessionId)
+          useUIStore
+            .getState()
+            .markWorktreeForAutoOpenSession(worktreeId, sessionId)
         } else {
           // Inside a worktree — dispatch event for ProjectCanvasView to handle
           window.dispatchEvent(

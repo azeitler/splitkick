@@ -8,10 +8,21 @@ import { useTerminalStore } from '@/store/terminal-store'
 import { ThemeProviderContext, type Theme } from '@/lib/theme-context'
 import { notify } from '@/lib/notifications'
 import { logger } from '@/lib/logger'
+import { copyToClipboard } from '@/lib/clipboard'
+import {
+  formatSessionDebugDetails,
+  resolveSessionDebugDetails,
+} from '@/lib/session-debug'
 import type { CommandContext } from '@/lib/commands/types'
 import type { AppPreferences, ClaudeModel } from '@/types/preferences'
 import { resolveMagicPromptProvider } from '@/types/preferences'
-import type { ThinkingLevel, ExecutionMode } from '@/types/chat'
+import type {
+  ThinkingLevel,
+  ExecutionMode,
+  SessionDebugInfo,
+  Backend,
+  Session,
+} from '@/types/chat'
 import type { Project, ReviewResponse } from '@/types/projects'
 import { useQueryClient } from '@tanstack/react-query'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
@@ -482,8 +493,8 @@ export function useCommandContext(
   }, [themeContext])
 
   const getCurrentModel = useCallback((): ClaudeModel => {
-    // Default to opus - actual model comes from preferences
-    return 'opus'
+    // Default - actual model comes from preferences
+    return 'claude-opus-4-7'
   }, [])
 
   const getCurrentThinkingLevel = useCallback((): ThinkingLevel => {
@@ -573,7 +584,8 @@ export function useCommandContext(
           'code_review_provider',
           preferences?.default_provider
         ),
-        reasoningEffort: preferences?.magic_prompt_efforts?.code_review_effort ?? null,
+        reasoningEffort:
+          preferences?.magic_prompt_efforts?.code_review_effort ?? null,
       })
 
       // Store review results in Zustand (also activates review tab)
@@ -662,6 +674,80 @@ export function useCommandContext(
     window.dispatchEvent(new CustomEvent('command:toggle-debug-mode'))
   }, [])
 
+  const copySessionDebugDetails = useCallback(async () => {
+    const chatState = useChatStore.getState()
+    const worktreeId =
+      chatState.activeWorktreeId ??
+      useProjectsStore.getState().selectedWorktreeId
+
+    if (!worktreeId) {
+      notify('No worktree selected', undefined, { type: 'error' })
+      return
+    }
+
+    const worktreePath =
+      chatState.getWorktreePath(worktreeId) ?? chatState.activeWorktreePath
+    if (!worktreePath) {
+      notify('No worktree path found', undefined, { type: 'error' })
+      return
+    }
+
+    const sessionId = chatState.getActiveSession(worktreeId)
+    if (!sessionId) {
+      notify('No session selected', undefined, { type: 'error' })
+      return
+    }
+
+    const selectedProjectId = useProjectsStore.getState().selectedProjectId
+    const session = queryClient.getQueryData<Session | null>(
+      chatQueryKeys.session(sessionId)
+    )
+    const projects = queryClient.getQueryData<Project[]>(
+      projectsQueryKeys.list()
+    )
+    const project = selectedProjectId
+      ? projects?.find(p => p.id === selectedProjectId)
+      : null
+    const resolvedDebugDetails = resolveSessionDebugDetails({
+      session,
+      selectedBackend: chatState.selectedBackends[sessionId] as
+        | Backend
+        | undefined,
+      selectedModel: chatState.selectedModels[sessionId],
+      selectedProvider: chatState.selectedProviders[sessionId],
+      project,
+      preferences,
+      installedBackends: installedBackends as Backend[],
+    })
+
+    try {
+      const debugInfo = await invoke<SessionDebugInfo>(
+        'get_session_debug_info',
+        {
+          worktreeId,
+          worktreePath,
+          sessionId,
+        }
+      )
+      const text = formatSessionDebugDetails({
+        sessionId,
+        selectedBackend: resolvedDebugDetails.selectedBackend,
+        selectedModel: resolvedDebugDetails.selectedModel,
+        providerDisplay: resolvedDebugDetails.providerDisplay,
+        debugInfo,
+      })
+      await copyToClipboard(text)
+      notify('Debug details copied to clipboard', undefined, {
+        type: 'success',
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      notify(`Failed to copy debug details: ${message}`, undefined, {
+        type: 'error',
+      })
+    }
+  }, [])
+
   // Session - Resume session (reconnect to Claude CLI)
   const resumeSession = useCallback(async () => {
     const { activeWorktreeId, getActiveSession } = useChatStore.getState()
@@ -726,7 +812,8 @@ export function useCommandContext(
           'session_naming_provider',
           preferences?.default_provider
         ),
-        reasoningEffort: preferences?.magic_prompt_efforts?.session_naming_effort ?? null,
+        reasoningEffort:
+          preferences?.magic_prompt_efforts?.session_naming_effort ?? null,
       })
       toast.success('Session title will update shortly', { id: toastId })
     } catch (error) {
@@ -833,6 +920,7 @@ export function useCommandContext(
 
       // Developer
       toggleDebugMode,
+      copySessionDebugDetails,
 
       // State getters
       hasActiveSession,
@@ -894,6 +982,7 @@ export function useCommandContext(
       restoreLastArchived,
       openUnreadSessions,
       toggleDebugMode,
+      copySessionDebugDetails,
       hasActiveSession,
       hasActiveWorktree,
       hasSelectedProject,

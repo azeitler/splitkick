@@ -15,11 +15,16 @@ import {
   type Todo,
   type QueuedMessage,
   type PermissionDenial,
+  type CodexCommandApprovalRequest,
+  type CodexPermissionRequest,
+  type CodexUserInputRequest,
+  type CodexMcpElicitationRequest,
+  type CodexDynamicToolCallRequest,
   type ExecutionMode,
   type SessionDigest,
   type LabelData,
   EXECUTION_MODE_CYCLE,
-  isExitPlanMode,
+  isPlanToolCall,
 } from '@/types/chat'
 import type { ReviewResponse } from '@/types/projects'
 import { invoke } from '@/lib/transport'
@@ -27,7 +32,7 @@ import type { ClaudeModel, CodexModel } from '@/types/preferences'
 export type { ClaudeModel, CodexModel }
 
 /** Default model to use when none is selected (fallback only - preferences take priority) */
-export const DEFAULT_MODEL: ClaudeModel = 'opus'
+export const DEFAULT_MODEL: ClaudeModel = 'claude-opus-4-7'
 
 /** Default Codex model */
 export const DEFAULT_CODEX_MODEL: CodexModel = 'gpt-5.4'
@@ -73,6 +78,10 @@ interface ChatUIState {
 
   // Fixed AI review findings per session (sessionId → fixed finding keys)
   fixedReviewFindings: Record<string, Set<string>>
+
+  // Per-table checklist state: sessionId → (tableKey → Set of checked row indices)
+  // Presence of tableKey = checklist mode enabled for that table
+  tableCheckedRows: Record<string, Record<string, Set<number>>>
 
   // Mapping of worktree IDs to paths (for looking up paths by ID)
   worktreePaths: Record<string, string>
@@ -121,8 +130,8 @@ interface ChatUIState {
   // Effort level per session (for Opus 4.6 adaptive thinking)
   effortLevels: Record<string, EffortLevel>
 
-  // Selected backend per session (claude, codex, or opencode)
-  selectedBackends: Record<string, 'claude' | 'codex' | 'opencode'>
+  // Selected backend per session (claude, codex, opencode, or cursor)
+  selectedBackends: Record<string, 'claude' | 'codex' | 'opencode' | 'cursor'>
 
   // Selected model per session (for tracking what model was used)
   selectedModels: Record<string, string>
@@ -190,6 +199,20 @@ interface ChatUIState {
 
   // Pending permission denials per session (waiting for user approval)
   pendingPermissionDenials: Record<string, PermissionDenial[]>
+  pendingCodexCommandApprovalRequests: Record<
+    string,
+    CodexCommandApprovalRequest[]
+  >
+  pendingCodexPermissionRequests: Record<string, CodexPermissionRequest[]>
+  pendingCodexUserInputRequests: Record<string, CodexUserInputRequest[]>
+  pendingCodexMcpElicitationRequests: Record<
+    string,
+    CodexMcpElicitationRequest[]
+  >
+  pendingCodexDynamicToolCallRequests: Record<
+    string,
+    CodexDynamicToolCallRequest[]
+  >
 
   // The original message context that triggered the denial (for re-send)
   deniedMessageContext: Record<
@@ -237,7 +260,9 @@ interface ChatUIState {
 
   // Pending magic command to execute when ChatWindow mounts (from canvas navigation)
   pendingMagicCommand: { command: string; prompt?: string } | null
-  setPendingMagicCommand: (cmd: { command: string; prompt?: string } | null) => void
+  setPendingMagicCommand: (
+    cmd: { command: string; prompt?: string } | null
+  ) => void
 
   // Actions - Session management
   setActiveSession: (
@@ -257,6 +282,15 @@ interface ChatUIState {
   markReviewFindingFixed: (sessionId: string, findingKey: string) => void
   isReviewFindingFixed: (sessionId: string, findingKey: string) => boolean
   clearFixedReviewFindings: (sessionId: string) => void
+
+  // Actions - Table checklist state (session-scoped, persisted)
+  enableTableChecklist: (sessionId: string, tableKey: string) => void
+  disableTableChecklist: (sessionId: string, tableKey: string) => void
+  toggleTableRowChecked: (
+    sessionId: string,
+    tableKey: string,
+    rowIndex: number
+  ) => void
 
   // Actions - Reviewing status management (persisted)
   setSessionReviewing: (sessionId: string, reviewing: boolean) => void
@@ -348,7 +382,7 @@ interface ChatUIState {
   // Actions - Selected backend (session-based)
   setSelectedBackend: (
     sessionId: string,
-    backend: 'claude' | 'codex' | 'opencode'
+    backend: 'claude' | 'codex' | 'opencode' | 'cursor'
   ) => void
 
   // Actions - Selected model (session-based)
@@ -480,6 +514,46 @@ interface ChatUIState {
   setPendingDenials: (sessionId: string, denials: PermissionDenial[]) => void
   clearPendingDenials: (sessionId: string) => void
   getPendingDenials: (sessionId: string) => PermissionDenial[]
+  setPendingCodexCommandApprovalRequests: (
+    sessionId: string,
+    requests: CodexCommandApprovalRequest[]
+  ) => void
+  clearPendingCodexCommandApprovalRequests: (sessionId: string) => void
+  getPendingCodexCommandApprovalRequests: (
+    sessionId: string
+  ) => CodexCommandApprovalRequest[]
+  setPendingCodexPermissionRequests: (
+    sessionId: string,
+    requests: CodexPermissionRequest[]
+  ) => void
+  clearPendingCodexPermissionRequests: (sessionId: string) => void
+  getPendingCodexPermissionRequests: (
+    sessionId: string
+  ) => CodexPermissionRequest[]
+  setPendingCodexUserInputRequests: (
+    sessionId: string,
+    requests: CodexUserInputRequest[]
+  ) => void
+  clearPendingCodexUserInputRequests: (sessionId: string) => void
+  getPendingCodexUserInputRequests: (
+    sessionId: string
+  ) => CodexUserInputRequest[]
+  setPendingCodexMcpElicitationRequests: (
+    sessionId: string,
+    requests: CodexMcpElicitationRequest[]
+  ) => void
+  clearPendingCodexMcpElicitationRequests: (sessionId: string) => void
+  getPendingCodexMcpElicitationRequests: (
+    sessionId: string
+  ) => CodexMcpElicitationRequest[]
+  setPendingCodexDynamicToolCallRequests: (
+    sessionId: string,
+    requests: CodexDynamicToolCallRequest[]
+  ) => void
+  clearPendingCodexDynamicToolCallRequests: (sessionId: string) => void
+  getPendingCodexDynamicToolCallRequests: (
+    sessionId: string
+  ) => CodexDynamicToolCallRequest[]
 
   // Actions - Denied message context (for re-send)
   setDeniedMessageContext: (
@@ -558,6 +632,7 @@ export const useChatStore = create<ChatUIState>()(
       reviewResults: {},
       reviewSidebarVisible: false,
       fixedReviewFindings: {},
+      tableCheckedRows: {},
       worktreePaths: {},
       sendingSessionIds: {},
       sendStartedAt: {},
@@ -594,6 +669,11 @@ export const useChatStore = create<ChatUIState>()(
       executingModes: {},
       approvedTools: {},
       pendingPermissionDenials: {},
+      pendingCodexCommandApprovalRequests: {},
+      pendingCodexPermissionRequests: {},
+      pendingCodexUserInputRequests: {},
+      pendingCodexMcpElicitationRequests: {},
+      pendingCodexDynamicToolCallRequests: {},
       deniedMessageContext: {},
       lastCompaction: {},
       compactingSessions: {},
@@ -627,11 +707,36 @@ export const useChatStore = create<ChatUIState>()(
         )
 
         if (options?.markOpened !== false) {
-          // Fire-and-forget: update last_opened_at on the backend
-          invoke('set_session_last_opened', { sessionId })
-            .then(() =>
+          // Update last_opened_at on the backend; for non-Claude waiting sessions
+          // this also transitions to review (returns true when transitioned).
+          invoke<boolean>('set_session_last_opened', { sessionId })
+            .then(transitioned => {
               window.dispatchEvent(new CustomEvent('session-opened'))
-            )
+              if (transitioned) {
+                // Sync Zustand state to match the backend transition
+                const s = get()
+                set(
+                  {
+                    reviewingSessions: {
+                      ...s.reviewingSessions,
+                      [sessionId]: true,
+                    },
+                    waitingForInputSessionIds: Object.fromEntries(
+                      Object.entries(s.waitingForInputSessionIds).filter(
+                        ([k]) => k !== sessionId
+                      )
+                    ),
+                    pendingPlanMessageIds: Object.fromEntries(
+                      Object.entries(s.pendingPlanMessageIds).filter(
+                        ([k]) => k !== sessionId
+                      )
+                    ),
+                  },
+                  undefined,
+                  'autoTransitionToReview'
+                )
+              }
+            })
             .catch(() => undefined)
         }
       },
@@ -706,6 +811,73 @@ export const useChatStore = create<ChatUIState>()(
           },
           undefined,
           'clearFixedReviewFindings'
+        ),
+
+      // Table checklist (session-scoped, persisted)
+      enableTableChecklist: (sessionId, tableKey) =>
+        set(
+          state => {
+            const sessionTables = state.tableCheckedRows[sessionId] ?? {}
+            if (tableKey in sessionTables) return state
+            return {
+              tableCheckedRows: {
+                ...state.tableCheckedRows,
+                [sessionId]: {
+                  ...sessionTables,
+                  [tableKey]: new Set<number>(),
+                },
+              },
+            }
+          },
+          undefined,
+          'enableTableChecklist'
+        ),
+
+      disableTableChecklist: (sessionId, tableKey) =>
+        set(
+          state => {
+            const sessionTables = state.tableCheckedRows[sessionId]
+            if (!sessionTables || !(tableKey in sessionTables)) return state
+            const { [tableKey]: _removed, ...restTables } = sessionTables
+            const nextSession = restTables
+            if (Object.keys(nextSession).length === 0) {
+              const { [sessionId]: __, ...restSessions } =
+                state.tableCheckedRows
+              return { tableCheckedRows: restSessions }
+            }
+            return {
+              tableCheckedRows: {
+                ...state.tableCheckedRows,
+                [sessionId]: nextSession,
+              },
+            }
+          },
+          undefined,
+          'disableTableChecklist'
+        ),
+
+      toggleTableRowChecked: (sessionId, tableKey, rowIndex) =>
+        set(
+          state => {
+            const sessionTables = state.tableCheckedRows[sessionId]
+            if (!sessionTables) return state
+            const existing = sessionTables[tableKey]
+            if (!existing) return state
+            const updated = new Set(existing)
+            if (updated.has(rowIndex)) {
+              updated.delete(rowIndex)
+            } else {
+              updated.add(rowIndex)
+            }
+            return {
+              tableCheckedRows: {
+                ...state.tableCheckedRows,
+                [sessionId]: { ...sessionTables, [tableKey]: updated },
+              },
+            }
+          },
+          undefined,
+          'toggleTableRowChecked'
         ),
 
       // Reviewing status management (persisted)
@@ -825,7 +997,9 @@ export const useChatStore = create<ChatUIState>()(
 
         // Fire-and-forget: update last_opened_at on the backend
         if (id) {
-          invoke('set_worktree_last_opened', { worktreeId: id }).catch(() => undefined)
+          invoke('set_worktree_last_opened', { worktreeId: id }).catch(
+            () => undefined
+          )
         }
       },
 
@@ -877,7 +1051,8 @@ export const useChatStore = create<ChatUIState>()(
             // Guard: skip no-op updates to avoid re-renders on every streaming chunk
             if (state.sendingSessionIds[sessionId]) return state
             const now = startTime ?? Date.now()
-            const { [sessionId]: _, ...restDurations } = state.completedDurations
+            const { [sessionId]: _, ...restDurations } =
+              state.completedDurations
             return {
               sendingSessionIds: {
                 ...state.sendingSessionIds,
@@ -894,7 +1069,10 @@ export const useChatStore = create<ChatUIState>()(
       removeSendingSession: sessionId =>
         set(
           state => {
-            console.log(`[Store] removeSendingSession id=${sessionId}`, { wasSending: !!state.sendingSessionIds[sessionId], currentSending: Object.keys(state.sendingSessionIds) })
+            console.log(`[Store] removeSendingSession id=${sessionId}`, {
+              wasSending: !!state.sendingSessionIds[sessionId],
+              currentSending: Object.keys(state.sendingSessionIds),
+            })
             const { [sessionId]: _, ...rest } = state.sendingSessionIds
             return { sendingSessionIds: rest }
           },
@@ -992,7 +1170,7 @@ export const useChatStore = create<ChatUIState>()(
         )) {
           if (
             state.sessionWorktreeMap[sessionId] === worktreeId &&
-            toolCalls.some(tc => isAskUserQuestion(tc) || isExitPlanMode(tc))
+            toolCalls.some(tc => isAskUserQuestion(tc) || isPlanToolCall(tc))
           ) {
             return true
           }
@@ -1043,8 +1221,38 @@ export const useChatStore = create<ChatUIState>()(
         set(
           state => {
             const existing = state.activeToolCalls[sessionId] ?? []
-            // Deduplicate by tool ID - NDJSON sync can emit same event multiple times
-            if (existing.some(tc => tc.id === toolCall.id)) {
+            const existingIndex = existing.findIndex(
+              tc => tc.id === toolCall.id
+            )
+            if (existingIndex !== -1) {
+              // Already exists — update input if the new one has richer or newer data
+              // (e.g., enriched question data or streaming Codex plan deltas)
+              const old = existing[existingIndex]
+              if (!old) return state
+              const oldEmpty =
+                old.input == null ||
+                (typeof old.input === 'object' &&
+                  Object.keys(old.input as object).length === 0)
+              const newHasData =
+                toolCall.input != null &&
+                typeof toolCall.input === 'object' &&
+                Object.keys(toolCall.input as object).length > 0
+              const inputChanged =
+                JSON.stringify(old.input ?? null) !==
+                JSON.stringify(toolCall.input ?? null)
+              if ((oldEmpty && newHasData) || (newHasData && inputChanged)) {
+                const updated = [...existing]
+                updated[existingIndex] = {
+                  ...old,
+                  input: toolCall.input,
+                }
+                return {
+                  activeToolCalls: {
+                    ...state.activeToolCalls,
+                    [sessionId]: updated,
+                  },
+                }
+              }
               return state
             }
             return {
@@ -1123,15 +1331,42 @@ export const useChatStore = create<ChatUIState>()(
 
       addToolBlock: (sessionId, toolCallId) =>
         set(
-          state => ({
-            streamingContentBlocks: {
-              ...state.streamingContentBlocks,
-              [sessionId]: [
-                ...(state.streamingContentBlocks[sessionId] ?? []),
-                { type: 'tool_use', tool_call_id: toolCallId },
-              ],
-            },
-          }),
+          state => {
+            const blocks = state.streamingContentBlocks[sessionId] ?? []
+            const nextBlocks = [
+              ...blocks.filter(
+                block =>
+                  !(
+                    block.type === 'tool_use' &&
+                    block.tool_call_id === toolCallId
+                  )
+              ),
+              { type: 'tool_use' as const, tool_call_id: toolCallId },
+            ]
+
+            const unchanged =
+              nextBlocks.length === blocks.length &&
+              nextBlocks.every((block, index) => {
+                const existing = blocks[index]
+                if (!existing || existing.type !== block.type) return false
+                if (block.type === 'tool_use') {
+                  return (
+                    existing.type === 'tool_use' &&
+                    existing.tool_call_id === block.tool_call_id
+                  )
+                }
+                return false
+              })
+
+            if (unchanged) return state
+
+            return {
+              streamingContentBlocks: {
+                ...state.streamingContentBlocks,
+                [sessionId]: nextBlocks,
+              },
+            }
+          },
           undefined,
           'addToolBlock'
         ),
@@ -1269,6 +1504,24 @@ export const useChatStore = create<ChatUIState>()(
                 state.deniedMessageContext
               newState.deniedMessageContext = restContext
             }
+            if (mode === 'yolo') {
+              const { [sessionId]: _cmd, ...restCommandApprovals } =
+                state.pendingCodexCommandApprovalRequests
+              const { [sessionId]: _, ...restPermissionRequests } =
+                state.pendingCodexPermissionRequests
+              const { [sessionId]: __, ...restUserInputs } =
+                state.pendingCodexUserInputRequests
+              const { [sessionId]: ___, ...restMcp } =
+                state.pendingCodexMcpElicitationRequests
+              const { [sessionId]: ____, ...restDynamic } =
+                state.pendingCodexDynamicToolCallRequests
+              newState.pendingCodexCommandApprovalRequests =
+                restCommandApprovals
+              newState.pendingCodexPermissionRequests = restPermissionRequests
+              newState.pendingCodexUserInputRequests = restUserInputs
+              newState.pendingCodexMcpElicitationRequests = restMcp
+              newState.pendingCodexDynamicToolCallRequests = restDynamic
+            }
             return newState
           },
           undefined,
@@ -1375,15 +1628,24 @@ export const useChatStore = create<ChatUIState>()(
             }
             const sb = state.selectedBackends[fromId]
             if (sb !== undefined) {
-              updates.selectedBackends = { ...state.selectedBackends, [toId]: sb }
+              updates.selectedBackends = {
+                ...state.selectedBackends,
+                [toId]: sb,
+              }
             }
             const sp = state.selectedProviders[fromId]
             if (sp !== undefined) {
-              updates.selectedProviders = { ...state.selectedProviders, [toId]: sp }
+              updates.selectedProviders = {
+                ...state.selectedProviders,
+                [toId]: sp,
+              }
             }
             const ms = state.enabledMcpServers[fromId]
             if (ms !== undefined) {
-              updates.enabledMcpServers = { ...state.enabledMcpServers, [toId]: ms }
+              updates.enabledMcpServers = {
+                ...state.enabledMcpServers,
+                [toId]: ms,
+              }
             }
             if (Object.keys(updates).length === 0) return state
             return updates
@@ -2041,6 +2303,156 @@ export const useChatStore = create<ChatUIState>()(
       getPendingDenials: sessionId =>
         get().pendingPermissionDenials[sessionId] ?? [],
 
+      setPendingCodexCommandApprovalRequests: (sessionId, requests) =>
+        set(
+          state => {
+            const current = state.pendingCodexCommandApprovalRequests[sessionId]
+            if (!current && requests.length === 0) return state
+            return {
+              pendingCodexCommandApprovalRequests: {
+                ...state.pendingCodexCommandApprovalRequests,
+                [sessionId]: requests,
+              },
+            }
+          },
+          undefined,
+          'setPendingCodexCommandApprovalRequests'
+        ),
+
+      clearPendingCodexCommandApprovalRequests: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } =
+              state.pendingCodexCommandApprovalRequests
+            return { pendingCodexCommandApprovalRequests: rest }
+          },
+          undefined,
+          'clearPendingCodexCommandApprovalRequests'
+        ),
+
+      getPendingCodexCommandApprovalRequests: sessionId =>
+        get().pendingCodexCommandApprovalRequests[sessionId] ?? [],
+
+      setPendingCodexPermissionRequests: (sessionId, requests) =>
+        set(
+          state => {
+            const current = state.pendingCodexPermissionRequests[sessionId]
+            if (!current && requests.length === 0) return state
+            return {
+              pendingCodexPermissionRequests: {
+                ...state.pendingCodexPermissionRequests,
+                [sessionId]: requests,
+              },
+            }
+          },
+          undefined,
+          'setPendingCodexPermissionRequests'
+        ),
+
+      clearPendingCodexPermissionRequests: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } =
+              state.pendingCodexPermissionRequests
+            return { pendingCodexPermissionRequests: rest }
+          },
+          undefined,
+          'clearPendingCodexPermissionRequests'
+        ),
+
+      getPendingCodexPermissionRequests: sessionId =>
+        get().pendingCodexPermissionRequests[sessionId] ?? [],
+
+      setPendingCodexUserInputRequests: (sessionId, requests) =>
+        set(
+          state => {
+            const current = state.pendingCodexUserInputRequests[sessionId]
+            if (!current && requests.length === 0) return state
+            return {
+              pendingCodexUserInputRequests: {
+                ...state.pendingCodexUserInputRequests,
+                [sessionId]: requests,
+              },
+            }
+          },
+          undefined,
+          'setPendingCodexUserInputRequests'
+        ),
+
+      clearPendingCodexUserInputRequests: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } =
+              state.pendingCodexUserInputRequests
+            return { pendingCodexUserInputRequests: rest }
+          },
+          undefined,
+          'clearPendingCodexUserInputRequests'
+        ),
+
+      getPendingCodexUserInputRequests: sessionId =>
+        get().pendingCodexUserInputRequests[sessionId] ?? [],
+
+      setPendingCodexMcpElicitationRequests: (sessionId, requests) =>
+        set(
+          state => {
+            const current = state.pendingCodexMcpElicitationRequests[sessionId]
+            if (!current && requests.length === 0) return state
+            return {
+              pendingCodexMcpElicitationRequests: {
+                ...state.pendingCodexMcpElicitationRequests,
+                [sessionId]: requests,
+              },
+            }
+          },
+          undefined,
+          'setPendingCodexMcpElicitationRequests'
+        ),
+
+      clearPendingCodexMcpElicitationRequests: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } =
+              state.pendingCodexMcpElicitationRequests
+            return { pendingCodexMcpElicitationRequests: rest }
+          },
+          undefined,
+          'clearPendingCodexMcpElicitationRequests'
+        ),
+
+      getPendingCodexMcpElicitationRequests: sessionId =>
+        get().pendingCodexMcpElicitationRequests[sessionId] ?? [],
+
+      setPendingCodexDynamicToolCallRequests: (sessionId, requests) =>
+        set(
+          state => {
+            const current = state.pendingCodexDynamicToolCallRequests[sessionId]
+            if (!current && requests.length === 0) return state
+            return {
+              pendingCodexDynamicToolCallRequests: {
+                ...state.pendingCodexDynamicToolCallRequests,
+                [sessionId]: requests,
+              },
+            }
+          },
+          undefined,
+          'setPendingCodexDynamicToolCallRequests'
+        ),
+
+      clearPendingCodexDynamicToolCallRequests: sessionId =>
+        set(
+          state => {
+            const { [sessionId]: _, ...rest } =
+              state.pendingCodexDynamicToolCallRequests
+            return { pendingCodexDynamicToolCallRequests: rest }
+          },
+          undefined,
+          'clearPendingCodexDynamicToolCallRequests'
+        ),
+
+      getPendingCodexDynamicToolCallRequests: sessionId =>
+        get().pendingCodexDynamicToolCallRequests[sessionId] ?? [],
+
       // Denied message context (for re-send)
       setDeniedMessageContext: (sessionId, context) =>
         set(
@@ -2101,8 +2513,11 @@ export const useChatStore = create<ChatUIState>()(
               state.waitingForInputSessionIds
             const { [sessionId]: _sp, ...streamingPlanApprovals } =
               state.streamingPlanApprovals
-            const { [sessionId]: _em, ...executingModes } =
-              state.executingModes
+            const { [sessionId]: _em, ...executingModes } = state.executingModes
+            const { [sessionId]: _pd, ...pendingPermissionDenials } =
+              state.pendingPermissionDenials
+            const { [sessionId]: _dc, ...deniedMessageContext } =
+              state.deniedMessageContext
             const { [sessionId]: _sa, ...sendStartedAtRest } =
               state.sendStartedAt
             return {
@@ -2113,6 +2528,8 @@ export const useChatStore = create<ChatUIState>()(
               waitingForInputSessionIds,
               streamingPlanApprovals,
               executingModes,
+              pendingPermissionDenials,
+              deniedMessageContext,
               sendStartedAt: sendStartedAtRest,
               completedDurations:
                 sendStarted > 0
@@ -2145,10 +2562,25 @@ export const useChatStore = create<ChatUIState>()(
               state.waitingForInputSessionIds
             const { [sessionId]: _sp, ...streamingPlanApprovals } =
               state.streamingPlanApprovals
-            const { [sessionId]: _em, ...executingModes } =
-              state.executingModes
+            const { [sessionId]: _em, ...executingModes } = state.executingModes
             const { [sessionId]: _pd, ...pendingPermissionDenials } =
               state.pendingPermissionDenials
+            const {
+              [sessionId]: _ccar,
+              ...pendingCodexCommandApprovalRequests
+            } = state.pendingCodexCommandApprovalRequests
+            const { [sessionId]: _cpr, ...pendingCodexPermissionRequests } =
+              state.pendingCodexPermissionRequests
+            const { [sessionId]: _cui, ...pendingCodexUserInputRequests } =
+              state.pendingCodexUserInputRequests
+            const {
+              [sessionId]: _cmcp,
+              ...pendingCodexMcpElicitationRequests
+            } = state.pendingCodexMcpElicitationRequests
+            const {
+              [sessionId]: _cdtc,
+              ...pendingCodexDynamicToolCallRequests
+            } = state.pendingCodexDynamicToolCallRequests
             const { [sessionId]: _dc, ...deniedMessageContext } =
               state.deniedMessageContext
             const { [sessionId]: _sa, ...sendStartedAtRest } =
@@ -2162,6 +2594,11 @@ export const useChatStore = create<ChatUIState>()(
               streamingPlanApprovals,
               executingModes,
               pendingPermissionDenials,
+              pendingCodexCommandApprovalRequests,
+              pendingCodexPermissionRequests,
+              pendingCodexUserInputRequests,
+              pendingCodexMcpElicitationRequests,
+              pendingCodexDynamicToolCallRequests,
               deniedMessageContext,
               sendStartedAt: sendStartedAtRest,
               completedDurations:
@@ -2196,8 +2633,7 @@ export const useChatStore = create<ChatUIState>()(
               state.streamingContents
             const { [sessionId]: _ss, ...sendingSessionIds } =
               state.sendingSessionIds
-            const { [sessionId]: _em, ...executingModes } =
-              state.executingModes
+            const { [sessionId]: _em, ...executingModes } = state.executingModes
             const { [sessionId]: _sa, ...sendStartedAtRest } =
               state.sendStartedAt
             return {
@@ -2236,6 +2672,10 @@ export const useChatStore = create<ChatUIState>()(
               state.sendingSessionIds
             const { [sessionId]: _wi, ...waitingForInputSessionIds } =
               state.waitingForInputSessionIds
+            const { [sessionId]: _pd, ...pendingPermissionDenials } =
+              state.pendingPermissionDenials
+            const { [sessionId]: _dc, ...deniedMessageContext } =
+              state.deniedMessageContext
             const { [sessionId]: _sa, ...sendStartedAtRest } =
               state.sendStartedAt
             return {
@@ -2244,6 +2684,8 @@ export const useChatStore = create<ChatUIState>()(
               activeToolCalls,
               sendingSessionIds,
               waitingForInputSessionIds,
+              pendingPermissionDenials,
+              deniedMessageContext,
               sendStartedAt: sendStartedAtRest,
               reviewingSessions: {
                 ...state.reviewingSessions,
@@ -2263,6 +2705,16 @@ export const useChatStore = create<ChatUIState>()(
               state.approvedTools
             const { [sessionId]: _denials, ...restDenials } =
               state.pendingPermissionDenials
+            const { [sessionId]: _commandReqs, ...restCommandReqs } =
+              state.pendingCodexCommandApprovalRequests
+            const { [sessionId]: _permissionReqs, ...restPermissionReqs } =
+              state.pendingCodexPermissionRequests
+            const { [sessionId]: _userInputReqs, ...restUserInputReqs } =
+              state.pendingCodexUserInputRequests
+            const { [sessionId]: _mcpReqs, ...restMcpReqs } =
+              state.pendingCodexMcpElicitationRequests
+            const { [sessionId]: _dynamicReqs, ...restDynamicReqs } =
+              state.pendingCodexDynamicToolCallRequests
             const { [sessionId]: _denied, ...restDenied } =
               state.deniedMessageContext
             const { [sessionId]: _reviewing, ...restReviewing } =
@@ -2281,6 +2733,11 @@ export const useChatStore = create<ChatUIState>()(
             return {
               approvedTools: restApproved,
               pendingPermissionDenials: restDenials,
+              pendingCodexCommandApprovalRequests: restCommandReqs,
+              pendingCodexPermissionRequests: restPermissionReqs,
+              pendingCodexUserInputRequests: restUserInputReqs,
+              pendingCodexMcpElicitationRequests: restMcpReqs,
+              pendingCodexDynamicToolCallRequests: restDynamicReqs,
               deniedMessageContext: restDenied,
               reviewingSessions: restReviewing,
               waitingForInputSessionIds: restWaiting,

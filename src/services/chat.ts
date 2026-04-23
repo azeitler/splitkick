@@ -13,24 +13,35 @@ import type {
   ArchivedSessionEntry,
   ChatMessage,
   ChatHistory,
+  LoadedMessages,
   Session,
   WorktreeSessions,
   Question,
   QuestionAnswer,
   ThinkingLevel,
   ExecutionMode,
+  EffortLevel,
   LabelData,
   QueuedMessage,
 } from '@/types/chat'
-import {
-  isTauri,
-  projectsQueryKeys,
-} from '@/services/projects'
+
+import { isTauri, projectsQueryKeys } from '@/services/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import type { ReviewResponse, Worktree } from '@/types/projects'
+
+/** Default number of recent runs loaded on initial session fetch. */
+export const INITIAL_RUN_LIMIT = 10
+/** Number of older runs to load per scroll-up batch. */
+export const OLDER_RUN_BATCH = 10
+
+/** Check if an error is from a WebSocket disconnect (suppress toasts during reconnect). */
+function isWsDisconnectError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error)
+  return msg.includes('WebSocket disconnected')
+}
 
 // Query keys for chat
 export const chatQueryKeys = {
@@ -162,6 +173,11 @@ export async function prefetchSessions(
     const executionModeUpdates: Record<string, ExecutionMode> = {}
     const labelUpdates: Record<string, LabelData> = {}
     const reviewResultsUpdates: Record<string, ReviewResponse> = {}
+    const answeredQuestionsUpdates: Record<string, Set<string>> = {}
+    const submittedAnswersUpdates: Record<
+      string,
+      Record<string, QuestionAnswer[]>
+    > = {}
     const fixedFindingsUpdates: Record<string, Set<string>> = {}
     for (const session of sessions.sessions) {
       if (session.is_reviewing) {
@@ -187,6 +203,17 @@ export async function prefetchSessions(
       }
       if (session.review_results) {
         reviewResultsUpdates[session.id] = session.review_results
+      }
+      if (session.answered_questions && session.answered_questions.length > 0) {
+        answeredQuestionsUpdates[session.id] = new Set(
+          session.answered_questions
+        )
+      }
+      if (
+        session.submitted_answers &&
+        Object.keys(session.submitted_answers).length > 0
+      ) {
+        submittedAnswersUpdates[session.id] = session.submitted_answers
       }
       if (session.fixed_findings && session.fixed_findings.length > 0) {
         fixedFindingsUpdates[session.id] = new Set(session.fixed_findings)
@@ -243,6 +270,18 @@ export async function prefetchSessions(
       storeUpdates.reviewResults = {
         ...currentState.reviewResults,
         ...reviewResultsUpdates,
+      }
+    }
+    if (Object.keys(answeredQuestionsUpdates).length > 0) {
+      storeUpdates.answeredQuestions = {
+        ...currentState.answeredQuestions,
+        ...answeredQuestionsUpdates,
+      }
+    }
+    if (Object.keys(submittedAnswersUpdates).length > 0) {
+      storeUpdates.submittedAnswers = {
+        ...currentState.submittedAnswers,
+        ...submittedAnswersUpdates,
       }
     }
     if (Object.keys(fixedFindingsUpdates).length > 0) {
@@ -318,29 +357,44 @@ export function useSession(
           worktreeId,
           worktreePath,
           sessionId,
+          limit: INITIAL_RUN_LIMIT,
         })
         logger.info('[useSession] loaded', {
           sessionId,
           messageCount: session.messages.length,
+          totalRuns: session.total_runs,
+          loadedFromRun: session.loaded_run_start_index,
           backend: session.backend,
         })
 
         // Preserve optimistic messages from sendMessage.onMutate that the
         // backend hasn't persisted yet (race: refetchOnMount fires before
         // the send_chat_message invoke writes the user message to disk).
+        // Also preserve messages the user loaded via scroll-up pagination:
+        // fresh fetch uses INITIAL_RUN_LIMIT so its loaded_run_start_index
+        // reflects only the last N runs — using it would wrongly re-show
+        // the "load older" button for runs the cache already contains.
         const cached = queryClient.getQueryData<Session>(
           chatQueryKeys.session(sessionId)
         )
-        if (
-          cached &&
-          cached.messages.length > session.messages.length
-        ) {
-          logger.warn('[useSession] preserving cached messages over fresh fetch', {
-            sessionId,
-            cachedCount: cached.messages.length,
-            diskCount: session.messages.length,
-          })
-          return { ...session, messages: cached.messages }
+        if (cached && cached.messages.length > session.messages.length) {
+          logger.warn(
+            '[useSession] preserving cached messages over fresh fetch',
+            {
+              sessionId,
+              cachedCount: cached.messages.length,
+              diskCount: session.messages.length,
+              cachedStart: cached.loaded_run_start_index,
+              freshStart: session.loaded_run_start_index,
+            }
+          )
+          return {
+            ...session,
+            messages: cached.messages,
+            // Keep cached pagination cursor (reflects what's actually in
+            // messages); fresh total_runs is still authoritative.
+            loaded_run_start_index: cached.loaded_run_start_index,
+          }
         }
 
         return session
@@ -355,6 +409,79 @@ export function useSession(
     // Respects staleTime; cross-client sync handled by cache:invalidate broadcast
     // from Rust after send_chat_message completes (JSONL fully written).
     refetchOnMount: true,
+  })
+}
+
+/**
+ * Hook to load an older window of messages for an already-cached session.
+ * Prepends the fetched messages into the existing `useSession` cache and
+ * advances `loaded_run_start_index` so subsequent calls walk backward.
+ */
+export function useLoadOlderMessages() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    retry: false,
+    mutationFn: async ({
+      sessionId,
+      beforeRunIndex,
+      limit = OLDER_RUN_BATCH,
+    }: {
+      sessionId: string
+      beforeRunIndex: number
+      limit?: number
+    }): Promise<LoadedMessages> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+      logger.debug('[useLoadOlderMessages] fetching', {
+        sessionId,
+        beforeRunIndex,
+        limit,
+      })
+      const result = await invoke<LoadedMessages>(
+        'load_older_session_messages',
+        {
+          sessionId,
+          beforeRunIndex,
+          limit,
+        }
+      )
+      logger.info('[useLoadOlderMessages] loaded', {
+        sessionId,
+        added: result.messages.length,
+        newStart: result.loaded_run_start_index,
+      })
+      return result
+    },
+    onSuccess: (loaded, { sessionId }) => {
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(sessionId),
+        old => {
+          if (!old) return old
+          // Guard: if backend returned empty (race) keep cache untouched.
+          if (loaded.messages.length === 0) {
+            return {
+              ...old,
+              total_runs: loaded.total_runs,
+              loaded_run_start_index: loaded.loaded_run_start_index,
+            }
+          }
+          return {
+            ...old,
+            messages: [...loaded.messages, ...old.messages],
+            total_runs: loaded.total_runs,
+            loaded_run_start_index: loaded.loaded_run_start_index,
+          }
+        }
+      )
+    },
+    onError: error => {
+      if (isWsDisconnectError(error)) return
+      const message = error instanceof Error ? error.message : String(error)
+      logger.error('Failed to load older messages', { error })
+      toast.error('Failed to load older messages', { description: message })
+    },
   })
 }
 
@@ -405,6 +532,7 @@ export function useCreateSession() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -454,6 +582,7 @@ export function useRenameSession() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -482,6 +611,11 @@ export function useUpdateSessionState() {
       submittedAnswers,
       fixedFindings,
       pendingPermissionDenials,
+      pendingCodexCommandApprovalRequests,
+      pendingCodexPermissionRequests,
+      pendingCodexUserInputRequests,
+      pendingCodexMcpElicitationRequests,
+      pendingCodexDynamicToolCallRequests,
       deniedMessageContext,
       isReviewing,
       waitingForInput,
@@ -490,6 +624,7 @@ export function useUpdateSessionState() {
       pendingPlanMessageId,
       enabledMcpServers,
       selectedExecutionMode,
+      tableCheckedRows,
     }: {
       worktreeId: string
       worktreePath: string
@@ -501,6 +636,48 @@ export function useUpdateSessionState() {
         tool_name: string
         tool_use_id: string
         tool_input: unknown
+        rpc_id?: number
+      }[]
+      pendingCodexCommandApprovalRequests?: {
+        rpc_id: number
+        item_id: string
+        thread_id: string
+        turn_id: string
+        approval_id?: string | null
+        command?: string | null
+        command_actions?: unknown
+        cwd?: string | null
+        reason?: string | null
+        network_approval_context?: unknown
+        proposed_execpolicy_amendment?: string[] | null
+        proposed_network_policy_amendments?: unknown
+      }[]
+      pendingCodexPermissionRequests?: {
+        rpc_id: number
+        item_id: string
+        permissions: unknown
+        reason?: string | null
+      }[]
+      pendingCodexUserInputRequests?: {
+        rpc_id: number
+        item_id: string
+        questions: unknown
+      }[]
+      pendingCodexMcpElicitationRequests?: {
+        rpc_id: number
+        server_name: string
+        message: string
+        mode: string
+        requested_schema?: unknown
+        url?: string
+        elicitation_id?: string | null
+        meta?: unknown
+      }[]
+      pendingCodexDynamicToolCallRequests?: {
+        rpc_id: number
+        call_id: string
+        tool: string
+        arguments: unknown
       }[]
       deniedMessageContext?: {
         message: string
@@ -514,6 +691,7 @@ export function useUpdateSessionState() {
       pendingPlanMessageId?: string | null
       enabledMcpServers?: string[] | null
       selectedExecutionMode?: ExecutionMode | null
+      tableCheckedRows?: Record<string, number[]>
     }): Promise<void> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -527,6 +705,11 @@ export function useUpdateSessionState() {
         submittedAnswers,
         fixedFindings,
         pendingPermissionDenials,
+        pendingCodexCommandApprovalRequests,
+        pendingCodexPermissionRequests,
+        pendingCodexUserInputRequests,
+        pendingCodexMcpElicitationRequests,
+        pendingCodexDynamicToolCallRequests,
         deniedMessageContext,
         isReviewing,
         waitingForInput,
@@ -535,6 +718,7 @@ export function useUpdateSessionState() {
         pendingPlanMessageId,
         enabledMcpServers,
         selectedExecutionMode,
+        tableCheckedRows,
       })
       logger.debug('Session state updated')
     },
@@ -596,12 +780,18 @@ export function useCloseSession() {
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
 
-      // Switch to the new active session so the UI doesn't show a blank screen
+      // Switch to the new active session — but only if the caller hasn't already
+      // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
       if (newActiveId) {
-        useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        const currentActive =
+          useChatStore.getState().activeSessionIds[worktreeId]
+        if (!currentActive || currentActive === sessionId) {
+          useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        }
       }
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -655,12 +845,18 @@ export function useArchiveSession() {
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
 
-      // Switch to the new active session so the UI doesn't show a blank screen
+      // Switch to the new active session — but only if the caller hasn't already
+      // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
       if (newActiveId) {
-        useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        const currentActive =
+          useChatStore.getState().activeSessionIds[worktreeId]
+        if (!currentActive || currentActive === sessionId) {
+          useChatStore.getState().setActiveSession(worktreeId, newActiveId)
+        }
       }
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message = error instanceof Error ? error.message : String(error)
       logger.error('Failed to archive session', { error })
       toast.error('Failed to archive session', { description: message })
@@ -704,6 +900,7 @@ export function useUnarchiveSession() {
       toast.success('Session restored')
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message = error instanceof Error ? error.message : String(error)
       logger.error('Failed to unarchive session', { error })
       toast.error('Failed to restore session', { description: message })
@@ -775,6 +972,7 @@ export function useRestoreSessionWithBase() {
       toast.success('Session restored')
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message = error instanceof Error ? error.message : String(error)
       logger.error('Failed to restore session with base', { error })
       toast.error('Failed to restore session', { description: message })
@@ -817,6 +1015,7 @@ export function useDeleteArchivedSession() {
       toast.success('Session permanently deleted')
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message = error instanceof Error ? error.message : String(error)
       logger.error('Failed to delete archived session', { error })
       toast.error('Failed to delete session', { description: message })
@@ -881,7 +1080,10 @@ export function useAllArchivedSessions() {
  * - When closing the last session, navigates to canvas instead of deleting the worktree
  */
 export function useCloseSessionOrWorktreeKeybinding(
-  onConfirmRequired?: (branchName?: string, mode?: 'worktree' | 'session') => void
+  onConfirmRequired?: (
+    branchName?: string,
+    mode?: 'worktree' | 'session'
+  ) => void
 ) {
   const archiveSession = useArchiveSession()
   const closeSession = useCloseSession()
@@ -953,11 +1155,7 @@ export function useCloseSessionOrWorktreeKeybinding(
       })
       useChatStore.getState().clearActiveWorktree()
     }
-  }, [
-    archiveSession,
-    closeSession,
-    queryClient,
-  ])
+  }, [archiveSession, closeSession, queryClient])
 
   useEffect(() => {
     const handleCloseSessionOrWorktree = () => {
@@ -1072,6 +1270,7 @@ export function useReorderSessions() {
           context.previousSessions
         )
       }
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1124,6 +1323,7 @@ export function useSetActiveSession() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1174,7 +1374,7 @@ export function useSendMessage() {
       model?: string
       executionMode?: ExecutionMode
       thinkingLevel?: ThinkingLevel
-      effortLevel?: string
+      effortLevel?: EffortLevel
       parallelExecutionPrompt?: string
       aiLanguage?: string
       allowedTools?: string[]
@@ -1187,7 +1387,9 @@ export function useSendMessage() {
         throw new Error('Not in Tauri context')
       }
 
-      console.log(`[SendMutation] mutationFn CALLED sessionId=${sessionId} worktreeId=${worktreeId}`)
+      console.log(
+        `[SendMutation] mutationFn CALLED sessionId=${sessionId} worktreeId=${worktreeId}`
+      )
       logger.debug('Sending chat message', {
         sessionId,
         worktreeId,
@@ -1195,7 +1397,7 @@ export function useSendMessage() {
         executionMode,
         thinkingLevel,
         effortLevel,
-          parallelExecutionPrompt,
+        parallelExecutionPrompt,
         aiLanguage,
         allowedTools,
         mcpConfig: mcpConfig ? '(set)' : undefined,
@@ -1210,7 +1412,7 @@ export function useSendMessage() {
         executionMode,
         thinkingLevel,
         effortLevel,
-          parallelExecutionPrompt,
+        parallelExecutionPrompt,
         aiLanguage,
         allowedTools,
         mcpConfig,
@@ -1228,6 +1430,8 @@ export function useSendMessage() {
       model,
       executionMode,
       thinkingLevel,
+      effortLevel,
+      backend,
     }) => {
       console.log(`[SendMutation] onMutate sessionId=${sessionId}`)
       // Cancel in-flight queries to avoid overwriting optimistic update
@@ -1250,7 +1454,13 @@ export function useSendMessage() {
         tool_calls: [],
         model,
         execution_mode: executionMode,
-        thinking_level: thinkingLevel,
+        thinking_level:
+          backend === 'cursor'
+            ? undefined
+            : effortLevel
+              ? undefined
+              : thinkingLevel,
+        effort_level: backend === 'cursor' ? undefined : effortLevel,
       }
 
       // Batch the optimistic user message AND sending state together so React
@@ -1292,8 +1502,15 @@ export function useSendMessage() {
 
       return { previous, worktreeId }
     },
-    onSuccess: (response, { sessionId, worktreeId, executionMode }) => {
-      console.log(`[SendMutation] onSuccess sessionId=${sessionId} cancelled=${response.cancelled}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
+    onSuccess: (response, { sessionId, worktreeId }) => {
+      console.log(
+        `[SendMutation] onSuccess sessionId=${sessionId} cancelled=${response.cancelled}`,
+        {
+          currentSending: Object.keys(
+            useChatStore.getState().sendingSessionIds
+          ),
+        }
+      )
       // All cancelled responses are handled by the chat:cancelled event handler,
       // which already correctly restores the user message (undo path) or preserves
       // the partial assistant response (preserve path). Letting onSuccess proceed
@@ -1303,29 +1520,7 @@ export function useSendMessage() {
         return
       }
 
-      // For Codex plan mode: inject synthetic ExitPlanMode tool call into the response
-      // so the plan approval UI renders (Codex has no native ExitPlanMode tool)
-      const { selectedBackends } = useChatStore.getState()
-      const isCodexPlan =
-        selectedBackends[sessionId] === 'codex' &&
-        executionMode === 'plan' &&
-        !response.cancelled &&
-        response.content.length > 0
-      let finalResponse = response
-      if (isCodexPlan) {
-        const syntheticId = `codex-plan-${sessionId}-${Date.now()}`
-        finalResponse = {
-          ...response,
-          tool_calls: [
-            ...response.tool_calls,
-            { id: syntheticId, name: 'ExitPlanMode', input: {} },
-          ],
-          content_blocks: [
-            ...(response.content_blocks ?? []),
-            { type: 'tool_use' as const, tool_call_id: syntheticId },
-          ],
-        }
-      }
+      const finalResponse = response
 
       // Replace the optimistic assistant message with the complete one from backend
       // This fixes a race condition where chat:done creates an optimistic message
@@ -1367,11 +1562,22 @@ export function useSendMessage() {
       const errorStr = String(error)
       // Tauri invoke errors are strings, not Error instances — extract from both
       const errorMessage =
-        error instanceof Error ? error.message : typeof error === 'string' ? error : errorStr
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : errorStr
       const isCancellation =
         errorStr.includes('cancelled') || errorMessage.includes('cancelled')
 
-      console.log(`[SendMutation] onError sessionId=${sessionId} isCancellation=${isCancellation} error=${errorMessage}`, { currentSending: Object.keys(useChatStore.getState().sendingSessionIds) })
+      console.log(
+        `[SendMutation] onError sessionId=${sessionId} isCancellation=${isCancellation} error=${errorMessage}`,
+        {
+          currentSending: Object.keys(
+            useChatStore.getState().sendingSessionIds
+          ),
+        }
+      )
 
       if (isCancellation) {
         logger.debug('Message cancelled', { sessionId })
@@ -1411,6 +1617,7 @@ export function useSendMessage() {
             ? 'Connection lost — refreshing...'
             : 'Response timed out — refreshing...',
           {
+            id: isDisconnect ? 'ws-disconnect-toast' : undefined,
             description: 'Your message was likely processed successfully.',
           }
         )
@@ -1420,12 +1627,16 @@ export function useSendMessage() {
       // Check if CLI produced streaming content before the error.
       // If so, the CLI likely ran — don't destroy the conversation by
       // rolling back to pre-send state. Instead, refetch from disk (#209).
-      const hasStreamedContent = !!useChatStore.getState().streamingContents[sessionId]
+      const hasStreamedContent =
+        !!useChatStore.getState().streamingContents[sessionId]
       if (hasStreamedContent) {
-        logger.warn('Error after CLI produced content, refetching instead of rollback', {
-          sessionId,
-          error: errorMessage,
-        })
+        logger.warn(
+          'Error after CLI produced content, refetching instead of rollback',
+          {
+            sessionId,
+            error: errorMessage,
+          }
+        )
         setError(sessionId, errorMessage || 'Unknown error occurred')
         queryClient.invalidateQueries({
           queryKey: chatQueryKeys.session(sessionId),
@@ -1503,6 +1714,7 @@ export function useClearSessionHistory() {
       toast.success('Chat history cleared')
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1548,6 +1760,7 @@ export function useClearChatHistory() {
       toast.success('Chat history cleared')
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1592,7 +1805,9 @@ export function useSetSessionModel() {
       logger.info('Session model saved')
     },
     onMutate: async ({ sessionId, model }) => {
-      await queryClient.cancelQueries({ queryKey: chatQueryKeys.session(sessionId) })
+      await queryClient.cancelQueries({
+        queryKey: chatQueryKeys.session(sessionId),
+      })
       const prev = queryClient.getQueryData(chatQueryKeys.session(sessionId))
       queryClient.setQueryData(
         chatQueryKeys.session(sessionId),
@@ -1611,8 +1826,12 @@ export function useSetSessionModel() {
     },
     onError: (error, _vars, context) => {
       if (context?.prev) {
-        queryClient.setQueryData(chatQueryKeys.session(context.sessionId), context.prev)
+        queryClient.setQueryData(
+          chatQueryKeys.session(context.sessionId),
+          context.prev
+        )
       }
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1657,6 +1876,7 @@ export function useSetSessionBackend() {
     // No query invalidation here — callers chain setSessionModel after,
     // which handles invalidation (avoids race where refetch overwrites optimistic update)
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1709,6 +1929,7 @@ export function useSetSessionProvider() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1764,6 +1985,7 @@ export function useSetSessionThinkingLevel() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1810,6 +2032,7 @@ export function useSetWorktreeModel() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -1863,6 +2086,7 @@ export function useSetWorktreeThinkingLevel() {
       })
     },
     onError: error => {
+      if (isWsDisconnectError(error)) return
       const message =
         error instanceof Error
           ? error.message
@@ -2055,7 +2279,12 @@ export function persistEnqueue(
   sessionId: string,
   message: QueuedMessage
 ): void {
-  invoke('enqueue_message', { worktreeId, worktreePath, sessionId, message }).catch(err => {
+  invoke('enqueue_message', {
+    worktreeId,
+    worktreePath,
+    sessionId,
+    message,
+  }).catch(err => {
     logger.error('Failed to persist enqueue', { err, sessionId })
   })
 }
@@ -2103,7 +2332,9 @@ export function persistClearQueue(
   worktreePath: string,
   sessionId: string
 ): void {
-  invoke('clear_message_queue', { worktreeId, worktreePath, sessionId }).catch(err => {
-    logger.error('Failed to persist clear queue', { err, sessionId })
-  })
+  invoke('clear_message_queue', { worktreeId, worktreePath, sessionId }).catch(
+    err => {
+      logger.error('Failed to persist clear queue', { err, sessionId })
+    }
+  )
 }

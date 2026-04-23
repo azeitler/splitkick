@@ -1,6 +1,6 @@
 [package]
 name = "jean"
-version = "0.1.31"
+version = "0.1.44"
 description = "Jean - AI Assistant"
 authors = ["Andras Bacsai"]
 edition = "2021"
@@ -20,6 +20,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["protocol-asset", "macos-private-api"] }
 tauri-plugin-opener = "2"
+tauri-plugin-window-state = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_yaml = "0.9"
@@ -47,11 +48,12 @@ tar = "0.4"      # For tar archive extraction (gh CLI on Linux)
 portable-pty = "0.8"  # For terminal/PTY support
 which = "7"           # For cross-platform executable detection
 axum = { version = "0.8", features = ["ws"] }  # HTTP server + WebSocket
-tower-http = { version = "0.6", features = ["cors", "fs"] }  # CORS middleware + static file serving
+tower-http = { version = "0.6", features = ["cors", "fs", "compression-br", "compression-gzip"] }  # CORS + static files + response compression
 tokio = { version = "1", features = ["sync", "macros"] }  # Channel for WS broadcast
 futures-util = "0.3"  # Stream utilities for WebSocket split
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }  # Image resize/compression on paste
 arboard = { version = "3", features = ["wayland-data-control"] }  # Native clipboard image read (Linux WebKitGTK fallback)
+if-addrs = "0.13"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

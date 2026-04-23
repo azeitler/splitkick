@@ -8,8 +8,42 @@ import {
   chatQueryKeys,
 } from '@/services/chat'
 import { invoke } from '@/lib/transport'
-import type { Session, WorktreeSessions } from '@/types/chat'
+import { useClaudeCliStatus } from '@/services/claude-cli'
+import { supportsAdaptiveThinking } from '@/lib/model-utils'
+import type {
+  EffortLevel,
+  Session,
+  ThinkingLevel,
+  WorktreeSessions,
+} from '@/types/chat'
 import type { SessionCardData } from '../session-card-utils'
+
+const THINKING_LEVEL_VALUES = new Set<ThinkingLevel>([
+  'off',
+  'think',
+  'megathink',
+  'ultrathink',
+])
+
+function isThinkingLevel(
+  value: string | null | undefined
+): value is ThinkingLevel {
+  if (!value) return false
+  return THINKING_LEVEL_VALUES.has(value as ThinkingLevel)
+}
+
+const EFFORT_LEVEL_VALUES = new Set<EffortLevel>([
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+])
+
+function isEffortLevel(value: string | null | undefined): value is EffortLevel {
+  if (!value) return false
+  return EFFORT_LEVEL_VALUES.has(value as EffortLevel)
+}
 
 interface UsePlanApprovalParams {
   worktreeId: string
@@ -46,6 +80,7 @@ export function usePlanApproval({
   const queryClient = useQueryClient()
   const { data: preferences } = usePreferences()
   const sendMessage = useSendMessage()
+  const { data: cliStatus } = useClaudeCliStatus()
 
   const {
     setExecutionMode,
@@ -63,7 +98,10 @@ export function usePlanApproval({
 
   const handlePlanApproval = useCallback(
     (card: SessionCardData, updatedPlan?: string) => {
-      console.warn('[usePlanApproval] handlePlanApproval (BUILD) CALLED', card.session.id)
+      console.warn(
+        '[usePlanApproval] handlePlanApproval (BUILD) CALLED',
+        card.session.id
+      )
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
       const originalPlan = card.planContent
@@ -115,11 +153,43 @@ export function usePlanApproval({
       setWaitingForInput(sessionId, false)
       setPendingPlanMessageId(sessionId, null)
 
-      const model = preferences?.selected_model ?? 'opus'
-      const thinkingLevel = preferences?.thinking_level ?? 'off'
-      const sessionBackend = card.session.backend
+      const sessionBackend =
+        card.session.backend ??
+        useChatStore.getState().selectedBackends[card.session.id] ??
+        preferences?.default_backend ??
+        'claude'
+      const buildBackendOverride = preferences?.build_backend
+      const overridesApply =
+        !buildBackendOverride || buildBackendOverride === sessionBackend
+      const model = overridesApply
+        ? (preferences?.build_model ??
+          preferences?.selected_model ??
+          'claude-opus-4-7')
+        : (preferences?.selected_model ?? 'claude-opus-4-7')
+      const buildThinkingOverride = overridesApply
+        ? preferences?.build_thinking_level
+        : null
+      const thinkingLevel: ThinkingLevel = isThinkingLevel(
+        buildThinkingOverride
+      )
+        ? buildThinkingOverride
+        : isThinkingLevel(preferences?.thinking_level)
+          ? preferences.thinking_level
+          : 'off'
 
       const isCodex = sessionBackend === 'codex'
+      const buildEffortOverride = overridesApply
+        ? preferences?.build_effort_level
+        : null
+      const effortAppliesBuild =
+        isCodex || supportsAdaptiveThinking(model, cliStatus?.version ?? null)
+      const effortLevel: EffortLevel | undefined = effortAppliesBuild
+        ? isEffortLevel(buildEffortOverride)
+          ? buildEffortOverride
+          : isEffortLevel(preferences?.default_effort_level)
+            ? preferences?.default_effort_level
+            : undefined
+        : undefined
       const baseMsg = isCodex
         ? 'Execute the plan you created. Implement all changes described.'
         : 'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
@@ -127,7 +197,9 @@ export function usePlanApproval({
         ? formatApprovalMessage(baseMsg, updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
       const buildInfo = [sessionBackend, model].filter(Boolean).join(' / ')
-      const message = buildInfo ? `[Build: ${buildInfo}]\n${rawMessage}` : rawMessage
+      const message = buildInfo
+        ? `[Build: ${buildInfo}]\n${rawMessage}`
+        : rawMessage
 
       // Chain: mark_plan_approved → update_session_state → broadcast → sendMessage
       // On WebSocket, commands dispatch concurrently via tokio::spawn.
@@ -139,33 +211,47 @@ export function usePlanApproval({
       // returns the already-updated backend data (prevents stale overwrites
       // of optimistic TanStack cache on web access).
       const markPromise = messageId
-        ? markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
-            .catch(err => { console.error('[usePlanApproval] markPlanApproved failed:', err) })
+        ? markPlanApproved(
+            worktreeId,
+            worktreePath,
+            sessionId,
+            messageId
+          ).catch(err => {
+            console.error('[usePlanApproval] markPlanApproved failed:', err)
+          })
         : Promise.resolve()
 
       markPromise
-        .then(() => invoke('update_session_state', {
-          worktreeId,
-          worktreePath,
-          sessionId,
-          waitingForInput: false,
-          waitingForInputType: null,
-          selectedExecutionMode: 'build',
-        }))
+        .then(() =>
+          invoke('update_session_state', {
+            worktreeId,
+            worktreePath,
+            sessionId,
+            waitingForInput: false,
+            waitingForInputType: null,
+            selectedExecutionMode: 'build',
+          })
+        )
         .then(() => {
           invoke('broadcast_session_setting', {
             sessionId,
             key: 'executionMode',
             value: 'build',
           }).catch(err => {
-            console.error('[usePlanApproval] Broadcast executionMode=build failed:', err)
+            console.error(
+              '[usePlanApproval] Broadcast executionMode=build failed:',
+              err
+            )
           })
           invoke('broadcast_session_setting', {
             sessionId,
             key: 'waitingForInput',
             value: 'false',
           }).catch(err => {
-            console.error('[usePlanApproval] Broadcast waitingForInput=false failed:', err)
+            console.error(
+              '[usePlanApproval] Broadcast waitingForInput=false failed:',
+              err
+            )
           })
         })
         .catch(err => {
@@ -186,6 +272,8 @@ export function usePlanApproval({
             model,
             executionMode: 'build',
             thinkingLevel,
+            effortLevel,
+            backend: sessionBackend,
             customProfileName: card.session.selected_provider ?? undefined,
           })
         })
@@ -196,6 +284,7 @@ export function usePlanApproval({
       queryClient,
       preferences,
       sendMessage,
+      cliStatus?.version,
       setExecutionMode,
       clearToolCalls,
       clearStreamingContentBlocks,
@@ -212,7 +301,10 @@ export function usePlanApproval({
 
   const handlePlanApprovalYolo = useCallback(
     (card: SessionCardData, updatedPlan?: string) => {
-      console.warn('[usePlanApproval] handlePlanApprovalYolo (YOLO) CALLED', card.session.id)
+      console.warn(
+        '[usePlanApproval] handlePlanApprovalYolo (YOLO) CALLED',
+        card.session.id
+      )
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
       const originalPlan = card.planContent
@@ -264,11 +356,42 @@ export function usePlanApproval({
       setWaitingForInput(sessionId, false)
       setPendingPlanMessageId(sessionId, null)
 
-      const model = preferences?.selected_model ?? 'opus'
-      const thinkingLevel = preferences?.thinking_level ?? 'off'
-      const sessionBackend = card.session.backend
+      const sessionBackend =
+        card.session.backend ??
+        useChatStore.getState().selectedBackends[card.session.id] ??
+        preferences?.default_backend ??
+        'claude'
+      const yoloBackendOverride = preferences?.yolo_backend
+      const overridesApplyYolo =
+        !yoloBackendOverride || yoloBackendOverride === sessionBackend
+      const model = overridesApplyYolo
+        ? (preferences?.yolo_model ??
+          preferences?.selected_model ??
+          'claude-opus-4-7')
+        : (preferences?.selected_model ?? 'claude-opus-4-7')
+      const yoloThinkingOverride = overridesApplyYolo
+        ? preferences?.yolo_thinking_level
+        : null
+      const thinkingLevel: ThinkingLevel = isThinkingLevel(yoloThinkingOverride)
+        ? yoloThinkingOverride
+        : isThinkingLevel(preferences?.thinking_level)
+          ? preferences.thinking_level
+          : 'off'
 
       const isCodexYolo = sessionBackend === 'codex'
+      const yoloEffortOverride = overridesApplyYolo
+        ? preferences?.yolo_effort_level
+        : null
+      const effortAppliesYolo =
+        isCodexYolo ||
+        supportsAdaptiveThinking(model, cliStatus?.version ?? null)
+      const effortLevel: EffortLevel | undefined = effortAppliesYolo
+        ? isEffortLevel(yoloEffortOverride)
+          ? yoloEffortOverride
+          : isEffortLevel(preferences?.default_effort_level)
+            ? preferences?.default_effort_level
+            : undefined
+        : undefined
       const baseMsgYolo = isCodexYolo
         ? 'Execute the plan you created. Implement all changes described.'
         : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
@@ -276,38 +399,54 @@ export function usePlanApproval({
         ? formatApprovalMessage(baseMsgYolo, updatedPlan, originalPlan)
         : `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
       const yoloInfo = [sessionBackend, model].filter(Boolean).join(' / ')
-      const message = yoloInfo ? `[Yolo: ${yoloInfo}]\n${rawMessage}` : rawMessage
+      const message = yoloInfo
+        ? `[Yolo: ${yoloInfo}]\n${rawMessage}`
+        : rawMessage
 
       // Chain: mark_plan_approved → update_session_state → broadcast → sendMessage
       // See handlePlanApproval comment for why sequencing matters.
       const markPromise = messageId
-        ? markPlanApproved(worktreeId, worktreePath, sessionId, messageId)
-            .catch(err => { console.error('[usePlanApproval] markPlanApproved failed:', err) })
+        ? markPlanApproved(
+            worktreeId,
+            worktreePath,
+            sessionId,
+            messageId
+          ).catch(err => {
+            console.error('[usePlanApproval] markPlanApproved failed:', err)
+          })
         : Promise.resolve()
 
       markPromise
-        .then(() => invoke('update_session_state', {
-          worktreeId,
-          worktreePath,
-          sessionId,
-          waitingForInput: false,
-          waitingForInputType: null,
-          selectedExecutionMode: 'yolo',
-        }))
+        .then(() =>
+          invoke('update_session_state', {
+            worktreeId,
+            worktreePath,
+            sessionId,
+            waitingForInput: false,
+            waitingForInputType: null,
+            selectedExecutionMode: 'yolo',
+          })
+        )
         .then(() => {
           invoke('broadcast_session_setting', {
             sessionId,
             key: 'executionMode',
             value: 'yolo',
           }).catch(err => {
-            console.error('[usePlanApproval] Broadcast executionMode=yolo failed:', err)
+            console.error(
+              '[usePlanApproval] Broadcast executionMode=yolo failed:',
+              err
+            )
           })
           invoke('broadcast_session_setting', {
             sessionId,
             key: 'waitingForInput',
             value: 'false',
           }).catch(err => {
-            console.error('[usePlanApproval] Broadcast waitingForInput=false failed:', err)
+            console.error(
+              '[usePlanApproval] Broadcast waitingForInput=false failed:',
+              err
+            )
           })
         })
         .catch(err => {
@@ -328,6 +467,8 @@ export function usePlanApproval({
             model,
             executionMode: 'yolo',
             thinkingLevel,
+            effortLevel,
+            backend: sessionBackend,
             customProfileName: card.session.selected_provider ?? undefined,
           })
         })
@@ -338,6 +479,7 @@ export function usePlanApproval({
       queryClient,
       preferences,
       sendMessage,
+      cliStatus?.version,
       setExecutionMode,
       clearToolCalls,
       clearStreamingContentBlocks,

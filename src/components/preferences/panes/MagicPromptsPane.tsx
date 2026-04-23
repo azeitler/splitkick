@@ -25,8 +25,15 @@ import {
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
-import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
-import { OPENCODE_MODEL_OPTIONS as OPENCODE_FALLBACK_OPTIONS } from '@/components/chat/toolbar/toolbar-options'
+import { useAvailableCursorModels } from '@/services/cursor-cli'
+import {
+  formatCursorModelLabel,
+  formatOpencodeModelLabel,
+} from '@/components/chat/toolbar/toolbar-utils'
+import {
+  CURSOR_MODEL_OPTIONS as CURSOR_FALLBACK_OPTIONS,
+  OPENCODE_MODEL_OPTIONS as OPENCODE_FALLBACK_OPTIONS,
+} from '@/components/chat/toolbar/toolbar-options'
 import {
   DEFAULT_INVESTIGATE_ISSUE_PROMPT,
   DEFAULT_INVESTIGATE_PR_PROMPT,
@@ -56,6 +63,7 @@ import {
   OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
   codexModelOptions,
   isCodexModel,
+  isCursorModel,
   type MagicPrompts,
   type MagicPromptModels,
   type MagicPromptProviders,
@@ -63,6 +71,7 @@ import {
   type MagicPromptModel,
 } from '@/types/preferences'
 import { cn } from '@/lib/utils'
+import { BackendLabel } from '@/components/ui/backend-label'
 
 interface VariableInfo {
   name: string
@@ -109,7 +118,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ISSUE_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'investigate_pr',
@@ -130,7 +139,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_PR_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'investigate_workflow_run',
@@ -157,7 +166,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'investigate_security_alert',
@@ -179,7 +188,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'investigate_advisory',
@@ -199,7 +208,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'investigate_linear_issue',
@@ -224,7 +233,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
     ],
   },
@@ -251,7 +260,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_CODE_REVIEW_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'review_comments',
@@ -273,7 +282,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_REVIEW_COMMENTS_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'commit_message',
@@ -319,6 +328,15 @@ const PROMPT_SECTIONS: PromptSection[] = [
             name: '{commit_count}',
             description: 'Number of commits in the PR',
           },
+          {
+            name: '{context}',
+            description: 'Loaded issue/PR/security/Linear context content',
+          },
+          {
+            name: '{related_pull_requests}',
+            description:
+              'Exact PR reference strings derived from merged PRs mentioned in commit subjects.',
+          },
           { name: '{commits}', description: 'List of commit messages' },
           { name: '{diff}', description: 'Git diff of all changes' },
         ],
@@ -334,7 +352,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
         description: 'Instructions appended to conflict resolution prompts.',
         variables: [],
         defaultValue: DEFAULT_RESOLVE_CONFLICTS_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-7',
       },
       {
         key: 'release_notes',
@@ -457,10 +475,9 @@ export function getMagicPromptItemId(key: keyof MagicPrompts): string {
 }
 
 const CLAUDE_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
-  { value: 'opus', label: 'Opus 4.6' },
-  { value: 'opus-4.5', label: 'Opus 4.5' },
+  { value: 'claude-opus-4-7', label: 'Opus 4.7' },
+  { value: 'claude-opus-4-6', label: 'Opus 4.6' },
   { value: 'sonnet', label: 'Sonnet 4.6' },
-  { value: 'sonnet-4.5', label: 'Sonnet 4.5' },
   { value: 'haiku', label: 'Haiku' },
 ]
 
@@ -487,6 +504,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
   const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const { data: availableOpencodeModels } = useAvailableOpencodeModels()
+  const { data: availableCursorModels } = useAvailableCursorModels()
   const { installedBackends } = useInstalledBackends()
 
   const formatOpenCodeLabel = (value: string) => {
@@ -505,6 +523,18 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
       label: formatOpenCodeLabel(value),
     }))
   }, [availableOpencodeModels])
+  const cursorModelOptions = useMemo(() => {
+    const models = availableCursorModels?.length
+      ? availableCursorModels.map(model => ({
+          value: `cursor/${model.id}`,
+          label: model.label || formatCursorModelLabel(model.id),
+        }))
+      : CURSOR_FALLBACK_OPTIONS
+    return models.map(option => ({
+      value: option.value as MagicPromptModel,
+      label: option.label || formatCursorModelLabel(option.value),
+    }))
+  }, [availableCursorModels])
 
   const currentPrompts = preferences?.magic_prompts ?? DEFAULT_MAGIC_PROMPTS
   const currentModels =
@@ -537,8 +567,16 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
   const currentModelIsOpenCode = currentModel
     ? currentModel.startsWith('opencode/')
     : false
+  const currentModelIsCursor = currentModel
+    ? isCursorModel(currentModel)
+    : false
   const filteredClaudeOptions = useMemo(() => {
-    if (!currentProvider || currentModelIsCodex || currentModelIsOpenCode) {
+    if (
+      !currentProvider ||
+      currentModelIsCodex ||
+      currentModelIsOpenCode ||
+      currentModelIsCursor
+    ) {
       return CLAUDE_MODEL_OPTIONS
     }
     const profile = profiles.find(p => p.name === currentProvider)
@@ -565,7 +603,13 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
     } catch {
       return CLAUDE_MODEL_OPTIONS
     }
-  }, [currentProvider, currentModelIsCodex, currentModelIsOpenCode, profiles])
+  }, [
+    currentProvider,
+    currentModelIsCodex,
+    currentModelIsCursor,
+    currentModelIsOpenCode,
+    profiles,
+  ])
 
   const isModified = currentPrompts[selectedKey] !== null
 
@@ -720,11 +764,13 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
       let defaultModel: MagicPromptModel | undefined
       if (selectedConfig.modelKey) {
         if (backend === 'claude') {
-          defaultModel = selectedConfig.defaultModel ?? 'haiku'
+          defaultModel = selectedConfig.defaultModel ?? 'sonnet'
         } else if (backend === 'codex') {
           defaultModel = CODEX_MODEL_OPTIONS[0]?.value
         } else if (backend === 'opencode') {
           defaultModel = opencodeModelOptions[0]?.value
+        } else if (backend === 'cursor') {
+          defaultModel = cursorModelOptions[0]?.value
         }
       }
       patchPreferences.mutate({
@@ -750,6 +796,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
       selectedConfig.backendKey,
       selectedConfig.modelKey,
       selectedConfig.defaultModel,
+      cursorModelOptions,
       opencodeModelOptions,
     ]
   )
@@ -908,6 +955,11 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                     {installedBackends.includes('opencode') && (
                       <SelectItem value="opencode">OpenCode</SelectItem>
                     )}
+                    {installedBackends.includes('cursor') && (
+                      <SelectItem value="cursor">
+                        <BackendLabel backend="cursor" />
+                      </SelectItem>
+                    )}
                     {installedBackends.includes('codex') && (
                       <SelectItem value="codex">Codex</SelectItem>
                     )}
@@ -918,8 +970,10 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
             {currentProvider !== undefined &&
               profiles.length > 0 &&
               !currentModelIsCodex &&
+              !currentModelIsCursor &&
               !currentModelIsOpenCode &&
               effectiveBackend !== 'opencode' &&
+              effectiveBackend !== 'cursor' &&
               effectiveBackend !== 'codex' && (
                 <>
                   <span className="text-xs text-muted-foreground">
@@ -963,13 +1017,16 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                             ...filteredClaudeOptions,
                             ...CODEX_MODEL_OPTIONS,
                             ...opencodeModelOptions,
+                            ...cursorModelOptions,
                           ]
                           return (
                             allOptions.find(o => o.value === currentModel)
                               ?.label ??
                             (currentModel.startsWith('opencode/')
                               ? formatOpenCodeLabel(currentModel)
-                              : currentModel)
+                              : isCursorModel(currentModel)
+                                ? formatCursorModelLabel(currentModel)
+                                : currentModel)
                           )
                         })()}
                       </span>
@@ -1059,6 +1116,32 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                             ))}
                           </CommandGroup>
                         )}
+                        {effectiveBackend === 'cursor' && (
+                          <CommandGroup
+                            heading={<BackendLabel backend="cursor" />}
+                          >
+                            {cursorModelOptions.map(opt => (
+                              <CommandItem
+                                key={opt.value}
+                                value={`${opt.label} ${opt.value}`}
+                                onSelect={() => {
+                                  handleModelChange(opt.value)
+                                  setModelPopoverOpen(false)
+                                }}
+                              >
+                                <span className="text-xs">{opt.label}</span>
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-3 w-3',
+                                    currentModel === opt.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
                       </CommandList>
                     </Command>
                   </PopoverContent>
@@ -1100,7 +1183,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
             value={localValue}
             onChange={e => handleChange(e.target.value)}
             onBlur={handleBlur}
-            className="flex-1 min-h-0 h-full font-mono text-xs resize-none"
+            className="flex-1 min-h-0 h-full font-mono text-base resize-none md:text-xs"
             placeholder={selectedConfig.defaultValue}
           />
         </div>

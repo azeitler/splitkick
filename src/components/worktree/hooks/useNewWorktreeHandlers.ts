@@ -41,20 +41,28 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     createWorktreeFromBranch,
   } = data
 
-  const { setActiveTab, setSearchQuery, setSelectedItemIndex, setIncludeClosed } =
-    setters
+  const {
+    setActiveTab,
+    setSearchQuery,
+    setSelectedItemIndex,
+    setIncludeClosed,
+  } = setters
 
   // In-flight state
   const [creatingFromNumber, setCreatingFromNumber] = useState<number | null>(
     null
   )
-  const [creatingFromLinearId, setCreatingFromLinearId] = useState<string | null>(
-    null
-  )
+  const [creatingFromLinearId, setCreatingFromLinearId] = useState<
+    string | null
+  >(null)
   const [creatingFromBranch, setCreatingFromBranch] = useState<string | null>(
     null
   )
   const [creatingFromGhsaId, setCreatingFromGhsaId] = useState<string | null>(
+    null
+  )
+  const [stackingFromPR, setStackingFromPR] = useState<number | null>(null)
+  const [stackingFromBranch, setStackingFromBranch] = useState<string | null>(
     null
   )
 
@@ -64,6 +72,8 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
       setCreatingFromLinearId(null)
       setCreatingFromBranch(null)
       setCreatingFromGhsaId(null)
+      setStackingFromPR(null)
+      setStackingFromBranch(null)
       setSearchQuery('')
       setSelectedItemIndex(0)
 
@@ -148,7 +158,9 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     if (hasBaseSession && baseSession) {
       const { selectWorktree } = useProjectsStore.getState()
       selectWorktree(baseSession.id)
-      useChatStore.getState().registerWorktreePath(baseSession.id, baseSession.path)
+      useChatStore
+        .getState()
+        .registerWorktreePath(baseSession.id, baseSession.path)
 
       // Close NewWorktreeModal first
       handleOpenChange(false)
@@ -156,7 +168,10 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
       // Open the base session in SessionChatModal via custom event
       window.dispatchEvent(
         new CustomEvent('open-worktree-modal', {
-          detail: { worktreeId: baseSession.id, worktreePath: baseSession.path },
+          detail: {
+            worktreeId: baseSession.id,
+            worktreePath: baseSession.path,
+          },
         })
       )
       toast.success(`Switched to base session: ${baseSession.name}`)
@@ -493,6 +508,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           ghsaId: alertDetail.ghsaId,
           cveId: alertDetail.cveId,
           manifestPath: alertDetail.manifestPath,
+          htmlUrl: alertDetail.htmlUrl,
         }
 
         if (background)
@@ -545,6 +561,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           ghsaId: alertDetail.ghsaId,
           cveId: alertDetail.cveId,
           manifestPath: alertDetail.manifestPath,
+          htmlUrl: alertDetail.htmlUrl,
         }
 
         if (background)
@@ -555,7 +572,9 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           securityContext,
           background,
         })
-        useUIStore.getState().markWorktreeForAutoInvestigateSecurityAlert(worktree.id)
+        useUIStore
+          .getState()
+          .markWorktreeForAutoInvestigateSecurityAlert(worktree.id)
 
         if (background) {
           setCreatingFromNumber(null)
@@ -601,6 +620,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
             vulnerableVersionRange: v.vulnerableVersionRange,
             patchedVersions: v.patchedVersions,
           })),
+          htmlUrl: advisoryDetail.htmlUrl,
         }
 
         if (background)
@@ -655,6 +675,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
             vulnerableVersionRange: v.vulnerableVersionRange,
             patchedVersions: v.patchedVersions,
           })),
+          htmlUrl: advisoryDetail.htmlUrl,
         }
 
         if (background)
@@ -665,7 +686,9 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
           advisoryContext,
           background,
         })
-        useUIStore.getState().markWorktreeForAutoInvestigateAdvisory(worktree.id)
+        useUIStore
+          .getState()
+          .markWorktreeForAutoInvestigateAdvisory(worktree.id)
 
         if (background) {
           setCreatingFromGhsaId(null)
@@ -760,7 +783,9 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
         })
 
         if (worktree) {
-          useUIStore.getState().markWorktreeForAutoInvestigateLinearIssue(worktree.id)
+          useUIStore
+            .getState()
+            .markWorktreeForAutoInvestigateLinearIssue(worktree.id)
         }
 
         if (background) {
@@ -776,11 +801,71 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     [selectedProjectId, createWorktree, handleOpenChange]
   )
 
+  // =========================================================================
+  // Stack handlers: create new worktree branched off a PR head or a branch
+  // =========================================================================
+
+  const handleStackOnPR = useCallback(
+    (pr: GitHubPullRequest, background = false) => {
+      if (!selectedProjectId) {
+        toast.error('No project selected')
+        return
+      }
+      setStackingFromPR(pr.number)
+      if (background)
+        useUIStore.getState().incrementPendingBackgroundCreations()
+      createWorktree.mutate(
+        {
+          projectId: selectedProjectId,
+          baseBranch: pr.headRefName,
+          background,
+        },
+        {
+          onError: () => setStackingFromPR(null),
+          onSuccess: () => {
+            if (background) setStackingFromPR(null)
+          },
+        }
+      )
+      if (!background) handleOpenChange(false)
+    },
+    [selectedProjectId, createWorktree, handleOpenChange]
+  )
+
+  const handleStackOnBranch = useCallback(
+    (branchName: string, background = false) => {
+      if (!selectedProjectId) {
+        toast.error('No project selected')
+        return
+      }
+      setStackingFromBranch(branchName)
+      if (background)
+        useUIStore.getState().incrementPendingBackgroundCreations()
+      createWorktree.mutate(
+        {
+          projectId: selectedProjectId,
+          baseBranch: branchName,
+          background,
+        },
+        {
+          onError: () => setStackingFromBranch(null),
+          onSuccess: () => {
+            if (background) setStackingFromBranch(null)
+          },
+        }
+      )
+      if (!background) handleOpenChange(false)
+    },
+    [selectedProjectId, createWorktree, handleOpenChange]
+  )
+
   return {
     creatingFromNumber,
     creatingFromLinearId,
     creatingFromBranch,
     creatingFromGhsaId,
+    stackingFromPR,
+    stackingFromBranch,
     handleOpenChange,
     handleCreateWorktree,
     handleBaseSession,
@@ -789,6 +874,8 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     handleSelectIssueAndInvestigate,
     handleSelectPR,
     handleSelectPRAndInvestigate,
+    handleStackOnPR,
+    handleStackOnBranch,
     handleSelectSecurityAlert,
     handleSelectSecurityAlertAndInvestigate,
     handleSelectAdvisory,

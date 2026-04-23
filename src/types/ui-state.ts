@@ -7,6 +7,12 @@
 // stored in the Session files. See useSessionStatePersistence.
 // Review results are also stored in Session files (review_results field).
 
+export interface ProjectCanvasSettingsState {
+  worktree_sort_mode?: 'created' | 'last_activity'
+}
+
+export type ModalTerminalDockMode = 'floating' | 'left' | 'right' | 'bottom'
+
 export interface UIState {
   active_worktree_id: string | null
   active_worktree_path: string | null
@@ -26,14 +32,25 @@ export interface UIState {
   pending_digest_session_ids: string[]
   /** Modal terminal drawer open state per worktree */
   modal_terminal_open?: Record<string, boolean>
-  /** Modal terminal drawer width in pixels */
+  /** Modal terminal dock mode */
+  modal_terminal_dock_mode?: ModalTerminalDockMode
+  /** Legacy pinned state; maps to right dock when true */
+  modal_terminal_pinned?: boolean
+  /** Modal terminal width in pixels for left/right dock */
   modal_terminal_width?: number
+  /** Modal terminal height in pixels for bottom dock */
+  modal_terminal_height?: number
   /** Last-accessed timestamps per project for recency sorting: projectId → unix ms */
   project_access_timestamps?: Record<string, number>
   /** Dashboard worktree collapse overrides: worktreeId → collapsed (true/false) */
   dashboard_worktree_collapse_overrides?: Record<string, boolean>
+  /** Project canvas settings per project */
+  project_canvas_settings?: Record<string, ProjectCanvasSettingsState>
   /** Last opened worktree+session per project: projectId → { worktree_id, session_id } */
-  last_opened_per_project?: Record<string, { worktree_id: string; session_id: string }>
+  last_opened_per_project?: Record<
+    string,
+    { worktree_id: string; session_id: string }
+  >
   version: number
 }
 
@@ -49,6 +66,9 @@ export const defaultUIState: UIState = {
   active_session_ids: {},
   pending_digest_session_ids: [],
   modal_terminal_open: {},
+  modal_terminal_dock_mode: 'floating',
   modal_terminal_width: 400,
+  modal_terminal_height: 280,
+  modal_terminal_pinned: false,
   version: 1,
 }

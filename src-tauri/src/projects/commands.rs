@@ -4,7 +4,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::mpsc;
 use std::sync::Mutex;
@@ -33,6 +33,10 @@ use super::linear_issues::{
     linear_context_to_detail, LinearIssueContext,
 };
 use super::names::generate_unique_workspace_name;
+use super::release_notes::{
+    build_pr_issue_refs_from_commit_range, build_pr_issue_refs_from_commit_subjects,
+    format_issue_groups, PrIssueRefsMap,
+};
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
 use super::types::{
     JeanConfig, MergeType, Project, SessionType, Worktree, WorktreeArchivedEvent,
@@ -46,6 +50,11 @@ use crate::codex_cli::resolve_cli_binary as resolve_codex_cli_binary;
 use crate::gh_cli::config::resolve_gh_binary;
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
+
+static RELEASE_NOTES_PAREN_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"\(([^)]*)\)").expect("valid release notes parenthetical regex"));
+static RELEASE_NOTES_LEADING_PR_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r"^\s*#(\d+)\b").expect("valid release notes PR regex"));
 
 /// Generate a unique name by appending 4 random alphanumeric chars,
 /// checking against both storage and git branches.
@@ -161,6 +170,100 @@ pub async fn set_git_identity(name: String, email: String) -> Result<(), String>
 pub struct GitIdentity {
     pub name: Option<String>,
     pub email: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub is_git_repo: bool,
+    pub is_hidden: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowseDirectoryResult {
+    pub current_path: String,
+    pub parent_path: Option<String>,
+    pub entries: Vec<DirEntry>,
+}
+
+#[tauri::command]
+pub async fn browse_directory(path: Option<String>) -> Result<BrowseDirectoryResult, String> {
+    let requested_path = path
+        .map(PathBuf::from)
+        .or_else(dirs::home_dir)
+        .ok_or_else(|| "No home directory found".to_string())?;
+
+    let current_path = requested_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to access directory: {e}"))?;
+
+    if !current_path.is_dir() {
+        return Err(format!(
+            "Path is not a directory: {}",
+            current_path.display()
+        ));
+    }
+
+    let parent_path = current_path
+        .parent()
+        .map(|parent| parent.display().to_string());
+    let mut entries = Vec::new();
+
+    let read_dir = std::fs::read_dir(&current_path)
+        .map_err(|e| format!("Failed to read directory {}: {e}", current_path.display()))?;
+
+    for entry_result in read_dir {
+        if entries.len() >= 500 {
+            break;
+        }
+
+        let entry = match entry_result {
+            Ok(entry) => entry,
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => continue,
+            Err(error) => return Err(format!("Failed to read directory entry: {error}")),
+        };
+
+        let path = entry.path();
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Failed to read metadata for {}: {error}",
+                    path.display()
+                ))
+            }
+        };
+
+        if !metadata.is_dir() {
+            continue;
+        }
+
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_hidden = name.starts_with('.');
+
+        entries.push(DirEntry {
+            name,
+            path: path.display().to_string(),
+            is_dir: true,
+            is_git_repo: path.join(".git").exists(),
+            is_hidden,
+        });
+    }
+
+    entries.sort_by(|a, b| match (a.is_hidden, b.is_hidden) {
+        (false, true) => std::cmp::Ordering::Less,
+        (true, false) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    Ok(BrowseDirectoryResult {
+        current_path: current_path.display().to_string(),
+        parent_path,
+        entries,
+    })
 }
 
 #[tauri::command]
@@ -699,6 +802,8 @@ pub async fn create_worktree(
         branch: name.clone(),
         pr_number: pr_context.as_ref().map(|ctx| ctx.number as u64),
         issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
+        security_alert_number: security_context.as_ref().map(|ctx| ctx.number as u64),
+        advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -711,6 +816,7 @@ pub async fn create_worktree(
         name: name.clone(),
         path: worktree_path_str.clone(),
         branch: name.clone(),
+        base_branch: Some(base.clone()),
         created_at,
         setup_output: None,
         setup_script: None,
@@ -720,6 +826,14 @@ pub async fn create_worktree(
         pr_url: None,
         issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         linear_issue_identifier: linear_context.as_ref().map(|ctx| ctx.identifier.clone()),
+        security_alert_number: security_context.as_ref().map(|ctx| ctx.number),
+        security_alert_url: security_context
+            .as_ref()
+            .and_then(|ctx| ctx.html_url.clone()),
+        advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
+        advisory_url: advisory_context
+            .as_ref()
+            .and_then(|ctx| ctx.html_url.clone()),
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -764,14 +878,31 @@ pub async fn create_worktree(
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
             log::trace!("Background: Creating git worktree {name_clone} at {worktree_path_clone}");
 
-            // Auto-pull base branch if enabled (non-blocking on failure)
-            if should_auto_pull {
-                log::trace!("Auto-pulling base branch {base_clone} before worktree creation");
-                match git::git_pull(&project_path, &base_clone, None) {
-                    Ok(_) => log::trace!("Successfully pulled base branch {base_clone}"),
-                    Err(e) => log::warn!("Failed to auto-pull base branch {base_clone}: {e}"),
+            // Fetch base branch if enabled, use origin/<base> for up-to-date start point.
+            // If the base is only available as a remote-tracking branch (e.g. stacking on a
+            // PR head that wasn't fetched locally), also use the origin/<base> ref.
+            let has_local_branch = git::branch_exists(&project_path, &base_clone);
+            let effective_base = if should_auto_pull {
+                log::trace!("Fetching base branch {base_clone} before worktree creation");
+                match git::git_fetch(&project_path, &base_clone, None) {
+                    Ok(_) => {
+                        log::trace!("Successfully fetched, using origin/{base_clone}");
+                        format!("origin/{base_clone}")
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to fetch base branch {base_clone}: {e}");
+                        if has_local_branch {
+                            base_clone.clone()
+                        } else {
+                            format!("origin/{base_clone}")
+                        }
+                    }
                 }
-            }
+            } else if has_local_branch {
+                base_clone.clone()
+            } else {
+                format!("origin/{base_clone}")
+            };
 
             // Check if path already exists
             let worktree_path = std::path::Path::new(&worktree_path_clone);
@@ -807,6 +938,8 @@ pub async fn create_worktree(
                     archived_worktree_id: archived_info.as_ref().map(|(id, _)| id.clone()),
                     archived_worktree_name: archived_info.map(|(_, name)| name),
                     issue_context: issue_context_clone.clone(),
+                    security_context: security_context_clone.clone(),
+                    advisory_context: advisory_context_clone.clone(),
                 };
                 if let Err(e) = app_clone.emit_all("worktree:path_exists", &path_exists_event) {
                     log::error!("Failed to emit worktree:path_exists event: {e}");
@@ -867,6 +1000,8 @@ pub async fn create_worktree(
                             suggested_name,
                             issue_context: issue_context_clone.clone(),
                             pr_context: pr_context_clone.clone(),
+                            security_context: security_context_clone.clone(),
+                            advisory_context: advisory_context_clone.clone(),
                         };
                         if let Err(e) =
                             app_clone.emit_all("worktree:branch_exists", &branch_exists_event)
@@ -893,7 +1028,7 @@ pub async fn create_worktree(
                 &project_path,
                 &worktree_path_clone,
                 &branch_for_worktree,
-                &base_clone,
+                &effective_base,
             ) {
                 log::error!("Background: Failed to create worktree: {e}");
                 let error_event = WorktreeCreateErrorEvent {
@@ -1207,8 +1342,8 @@ pub async fn create_worktree(
             // Check for jean.json setup script upfront so we can include it in the
             // initial worktree record. This lets the frontend know a setup script
             // will run (setup_script is set, but setup_output is still None).
-            let pending_setup_script = git::read_jean_config(&project_path)
-                .and_then(|config| config.scripts.setup);
+            let pending_setup_script =
+                git::read_jean_config(&project_path).and_then(|config| config.scripts.setup);
 
             // Save to storage and emit worktree:created BEFORE running setup script
             // so the UI can open immediately and the user can start typing.
@@ -1230,6 +1365,7 @@ pub async fn create_worktree(
                     name: name_clone.clone(),
                     path: worktree_path_clone.clone(),
                     branch: final_branch.clone(),
+                    base_branch: Some(base_clone.clone()),
                     created_at,
                     setup_output: None,
                     setup_script: pending_setup_script.clone(),
@@ -1241,6 +1377,16 @@ pub async fn create_worktree(
                     linear_issue_identifier: linear_context_clone
                         .as_ref()
                         .map(|ctx| ctx.identifier.clone()),
+                    security_alert_number: security_context_clone.as_ref().map(|ctx| ctx.number),
+                    security_alert_url: security_context_clone
+                        .as_ref()
+                        .and_then(|ctx| ctx.html_url.clone()),
+                    advisory_ghsa_id: advisory_context_clone
+                        .as_ref()
+                        .map(|ctx| ctx.ghsa_id.clone()),
+                    advisory_url: advisory_context_clone
+                        .as_ref()
+                        .and_then(|ctx| ctx.html_url.clone()),
                     cached_pr_status: None,
                     cached_check_status: None,
                     cached_behind_count: None,
@@ -1408,6 +1554,8 @@ pub async fn create_worktree_from_existing_branch(
         branch: name.clone(),
         pr_number: pr_context.as_ref().map(|ctx| ctx.number as u64),
         issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
+        security_alert_number: security_context.as_ref().map(|ctx| ctx.number as u64),
+        advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -1420,6 +1568,7 @@ pub async fn create_worktree_from_existing_branch(
         name: name.clone(),
         path: worktree_path_str.clone(),
         branch: name.clone(),
+        base_branch: Some(branch_name.clone()),
         created_at,
         setup_output: None,
         setup_script: None,
@@ -1429,6 +1578,14 @@ pub async fn create_worktree_from_existing_branch(
         pr_url: None,
         issue_number: issue_context.as_ref().map(|ctx| ctx.number),
         linear_issue_identifier: linear_context.as_ref().map(|ctx| ctx.identifier.clone()),
+        security_alert_number: security_context.as_ref().map(|ctx| ctx.number),
+        security_alert_url: security_context
+            .as_ref()
+            .and_then(|ctx| ctx.html_url.clone()),
+        advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
+        advisory_url: advisory_context
+            .as_ref()
+            .and_then(|ctx| ctx.html_url.clone()),
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -1506,6 +1663,8 @@ pub async fn create_worktree_from_existing_branch(
                     archived_worktree_id: archived_info.as_ref().map(|(id, _)| id.clone()),
                     archived_worktree_name: archived_info.map(|(_, name)| name),
                     issue_context: issue_context_clone.clone(),
+                    security_context: security_context_clone.clone(),
+                    advisory_context: advisory_context_clone.clone(),
                 };
                 if let Err(e) = app_clone.emit_all("worktree:path_exists", &path_exists_event) {
                     log::error!("Failed to emit worktree:path_exists event: {e}");
@@ -1789,18 +1948,29 @@ pub async fn create_worktree_from_existing_branch(
                     project_id: project_id_clone.clone(),
                     name: name_clone.clone(),
                     path: worktree_path_clone.clone(),
-                    branch: branch_name_clone,
+                    branch: branch_name_clone.clone(),
+                    base_branch: Some(branch_name_clone),
                     created_at,
                     setup_output,
                     setup_script,
                     setup_success,
                     session_type: SessionType::Worktree,
-                    pr_number: None,
+                    pr_number: pr_context_clone.as_ref().map(|ctx| ctx.number),
                     pr_url: None,
                     issue_number: issue_context_clone.as_ref().map(|ctx| ctx.number),
                     linear_issue_identifier: linear_context_clone
                         .as_ref()
                         .map(|ctx| ctx.identifier.clone()),
+                    security_alert_number: security_context_clone.as_ref().map(|ctx| ctx.number),
+                    security_alert_url: security_context_clone
+                        .as_ref()
+                        .and_then(|ctx| ctx.html_url.clone()),
+                    advisory_ghsa_id: advisory_context_clone
+                        .as_ref()
+                        .map(|ctx| ctx.ghsa_id.clone()),
+                    advisory_url: advisory_context_clone
+                        .as_ref()
+                        .and_then(|ctx| ctx.html_url.clone()),
                     cached_pr_status: None,
                     cached_check_status: None,
                     cached_behind_count: None,
@@ -2000,6 +2170,8 @@ pub async fn checkout_pr(
         branch: pr_detail.head_ref_name.clone(), // Use PR's actual branch name
         pr_number: Some(pr_number as u64),
         issue_number: None,
+        security_alert_number: None,
+        advisory_ghsa_id: None,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -2013,6 +2185,7 @@ pub async fn checkout_pr(
         name: final_worktree_name.clone(),
         path: worktree_path_str.clone(),
         branch: pr_detail.head_ref_name.clone(), // Use PR's actual branch name
+        base_branch: None,
         created_at,
         setup_output: None,
         setup_script: None,
@@ -2022,6 +2195,10 @@ pub async fn checkout_pr(
         pr_url: None,
         issue_number: None,
         linear_issue_identifier: None,
+        security_alert_number: None,
+        security_alert_url: None,
+        advisory_ghsa_id: None,
+        advisory_url: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -2087,13 +2264,27 @@ pub async fn checkout_pr(
                 );
             }
 
+            // Fetch latest base branch so the worktree starts from up-to-date code
+            let effective_base = match git::git_fetch(&project_path, &base_branch_clone, None) {
+                Ok(_) => {
+                    log::trace!(
+                        "Successfully fetched base branch, using origin/{base_branch_clone}"
+                    );
+                    format!("origin/{base_branch_clone}")
+                }
+                Err(e) => {
+                    log::warn!("Failed to fetch base branch: {e}, falling back to local {base_branch_clone}");
+                    base_branch_clone.clone()
+                }
+            };
+
             // Step 1: Create worktree with a temporary branch based on base branch
             // This gives us a working directory where we can run gh pr checkout
             if let Err(e) = git::create_worktree(
                 &project_path,
                 &worktree_path_clone,
                 &temp_branch_clone,
-                &base_branch_clone,
+                &effective_base,
             ) {
                 log::error!("Background: Failed to create worktree: {e}");
                 let error_event = WorktreeCreateErrorEvent {
@@ -2315,6 +2506,7 @@ pub async fn checkout_pr(
                     name: worktree_name_clone.clone(),
                     path: worktree_path_clone.clone(),
                     branch: actual_branch.clone(),
+                    base_branch: None,
                     created_at,
                     setup_output,
                     setup_script,
@@ -2324,6 +2516,10 @@ pub async fn checkout_pr(
                     pr_url: None,
                     issue_number: None,
                     linear_issue_identifier: None,
+                    security_alert_number: None,
+                    security_alert_url: None,
+                    advisory_ghsa_id: None,
+                    advisory_url: None,
                     cached_pr_status: None,
                     cached_check_status: None,
                     cached_behind_count: None,
@@ -2429,6 +2625,14 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
         worktree.path
     );
 
+    // SAFETY: Never delete a Base session — its path is the main repo root
+    if worktree.session_type == SessionType::Base {
+        return Err(
+            "Cannot delete a base session. Use the project settings to manage the base branch."
+                .to_string(),
+        );
+    }
+
     let project = data
         .find_project(&worktree.project_id)
         .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?
@@ -2457,6 +2661,12 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
     if let Err(e) = app.emit_all("worktree:deleting", &deleting_event) {
         log::error!("Failed to emit worktree:deleting event: {e}");
     }
+
+    // Collect session IDs now (before background thread) so we can clean up data dirs later
+    let session_ids: Vec<String> =
+        crate::chat::storage::load_sessions(&app, &worktree.path, &worktree_id)
+            .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
+            .unwrap_or_default();
 
     // Clone values for the background thread
     let app_clone = app.clone();
@@ -2561,6 +2771,26 @@ pub async fn delete_worktree(app: AppHandle, worktree_id: String) -> Result<(), 
             return;
         }
 
+        // Clean up session data directories and combined-context files
+        for sid in &session_ids {
+            if let Err(e) = crate::chat::storage::delete_session_data(&app_clone, sid) {
+                log::warn!("Failed to delete session data for {sid}: {e}");
+            }
+            crate::chat::storage::cleanup_combined_context_files(&app_clone, sid);
+        }
+
+        // Delete the sessions index file
+        if let Ok(app_data_dir) = app_clone.path().app_data_dir() {
+            let sessions_file = app_data_dir
+                .join("sessions")
+                .join(format!("{}.json", worktree_id_clone));
+            if sessions_file.exists() {
+                if let Err(e) = std::fs::remove_file(&sessions_file) {
+                    log::warn!("Failed to delete sessions file: {e}");
+                }
+            }
+        }
+
         // Emit success event
         log::trace!("Background: Worktree deleted successfully: {worktree_name}");
         let deleted_event = WorktreeDeletedEvent {
@@ -2608,6 +2838,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         name: project.default_branch.clone(),
         path: project.path.clone(), // Uses project's base directory directly
         branch: project.default_branch.clone(),
+        base_branch: None,
         created_at: now(),
         setup_output: None,
         setup_script: None,
@@ -2617,6 +2848,10 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         pr_url: None,
         issue_number: None,
         linear_issue_identifier: None,
+        security_alert_number: None,
+        security_alert_url: None,
+        advisory_ghsa_id: None,
+        advisory_url: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -2776,6 +3011,19 @@ async fn close_base_session_internal(
         );
         crate::chat::preserve_base_sessions(app, worktree_id, &worktree.project_id)?;
     } else {
+        // Clean close: delete session data directories before removing the index
+        let session_ids: Vec<String> =
+            crate::chat::storage::load_sessions(app, &worktree.path, worktree_id)
+                .map(|ws| ws.sessions.iter().map(|s| s.id.clone()).collect())
+                .unwrap_or_default();
+
+        for sid in &session_ids {
+            if let Err(e) = crate::chat::storage::delete_session_data(app, sid) {
+                log::warn!("Failed to delete session data for {sid}: {e}");
+            }
+            crate::chat::storage::cleanup_combined_context_files(app, sid);
+        }
+
         // Delete the sessions file entirely for a clean close
         if let Ok(sessions_file) = crate::chat::storage::get_sessions_path(app, worktree_id) {
             if sessions_file.exists() {
@@ -3001,6 +3249,7 @@ pub async fn import_worktree(
         name,
         path: path.clone(),
         branch,
+        base_branch: None,
         created_at: now(),
         setup_output: None,
         setup_script: None,
@@ -3010,6 +3259,10 @@ pub async fn import_worktree(
         pr_url: None,
         issue_number: None,
         linear_issue_identifier: None,
+        security_alert_number: None,
+        security_alert_url: None,
+        advisory_ghsa_id: None,
+        advisory_url: None,
         cached_pr_status: None,
         cached_check_status: None,
         cached_behind_count: None,
@@ -3414,20 +3667,16 @@ pub async fn open_worktree_in_terminal(
                 } else if crate::platform::executable_exists("warp") {
                     "warp".to_string()
                 } else {
-                    return Err(format!(
-                        "Warp not found. Checked: {known_path} and PATH"
-                    ));
+                    return Err(format!("Warp not found. Checked: {known_path} and PATH"));
                 };
                 log::trace!("Using Warp at: {warp_exe}");
                 std::process::Command::new(&warp_exe)
                     .current_dir(&worktree_path)
                     .spawn()
             }
-            "windows-terminal" => {
-                std::process::Command::new("wt")
-                    .args(["-d", &worktree_path])
-                    .spawn()
-            }
+            "windows-terminal" => std::process::Command::new("wt")
+                .args(["-d", &worktree_path])
+                .spawn(),
             _ => {
                 // Default: PowerShell
                 std::process::Command::new("powershell")
@@ -4612,6 +4861,61 @@ pub struct DetectPrResponse {
     pub title: String,
 }
 
+/// Detect an open PR for the current branch of a worktree without linking it.
+#[tauri::command]
+pub async fn detect_open_pr_for_branch(
+    app: AppHandle,
+    worktree_path: String,
+) -> Result<Option<DetectPrResponse>, String> {
+    log::trace!("Detecting open PR for branch at {worktree_path}");
+
+    let current_branch = git::get_current_branch(&worktree_path)?;
+    let repo = get_repo_identifier(&worktree_path)?;
+    let gh = resolve_gh_binary(&app);
+    let view_output = silent_command(&gh)
+        .args([
+            "api",
+            "--method",
+            "GET",
+            &format!("repos/{}/{}/pulls", repo.owner, repo.repo),
+            "-f",
+            "state=open",
+            "-f",
+            &format!("head={}:{}", repo.owner, current_branch),
+            "-f",
+            "per_page=1",
+        ])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh api: {e}"))?;
+
+    if !view_output.status.success() {
+        let stderr = String::from_utf8_lossy(&view_output.stderr);
+        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
+        }
+        return Err(format!("Failed to detect open PR for branch: {stderr}"));
+    }
+
+    if let Ok(view_json) = serde_json::from_slice::<serde_json::Value>(&view_output.stdout) {
+        if let Some(pr) = view_json.as_array().and_then(|items| items.first()) {
+            let pr_number = pr["number"].as_u64().unwrap_or(0) as u32;
+            let pr_url = pr["html_url"].as_str().unwrap_or("").to_string();
+            let title = pr["title"].as_str().unwrap_or("").to_string();
+
+            if pr_number > 0 && !pr_url.is_empty() {
+                return Ok(Some(DetectPrResponse {
+                    pr_number,
+                    pr_url,
+                    title,
+                }));
+            }
+        }
+    }
+
+    Ok(None)
+}
+
 /// Detect and link an existing PR for the current branch of a worktree.
 ///
 /// Runs `gh pr view` to check if a PR exists. If found, saves the PR info
@@ -4660,6 +4964,19 @@ pub async fn detect_and_link_pr(
     }
 
     log::trace!("No PR found for worktree {worktree_id}");
+
+    // Clear stale PR info if worktree previously had a PR linked
+    // (e.g., user switched away from a PR branch via `git switch`)
+    if let Ok(mut data) = load_projects_data(&app) {
+        if let Some(wt) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) {
+            if wt.pr_number.is_some() {
+                wt.pr_number = None;
+                wt.pr_url = None;
+                let _ = save_projects_data(&app, &data);
+            }
+        }
+    }
+
     Ok(None)
 }
 
@@ -4972,6 +5289,10 @@ const PR_CONTENT_PROMPT: &str = r#"<task>Generate a pull request title and descr
 {context}
 </related_context>
 
+<related_pull_requests>
+{related_pull_requests}
+</related_pull_requests>
+
 <commits>
 {commits}
 </commits>
@@ -5032,6 +5353,28 @@ fn extract_structured_output(output: &str) -> Result<String, String> {
     Err("No structured output found in Claude response".to_string())
 }
 
+fn build_claude_structured_output_args(model: &str, tools: &str, schema: &str) -> Vec<String> {
+    vec![
+        "--print".to_string(),
+        "--verbose".to_string(),
+        "--input-format".to_string(),
+        "stream-json".to_string(),
+        "--output-format".to_string(),
+        "stream-json".to_string(),
+        "--model".to_string(),
+        model.to_string(),
+        "--no-session-persistence".to_string(),
+        "--tools".to_string(),
+        tools.to_string(),
+        "--max-turns".to_string(),
+        "2".to_string(),
+        "--json-schema".to_string(),
+        schema.to_string(),
+        "--permission-mode".to_string(),
+        "plan".to_string(),
+    ]
+}
+
 /// Truncate a diff at file boundaries instead of mid-file.
 /// Splits on `\ndiff --git` markers and keeps complete file diffs until the budget is exceeded.
 fn truncate_diff_at_file_boundaries(diff: &str, max_chars: usize) -> String {
@@ -5068,7 +5411,11 @@ fn truncate_diff_at_file_boundaries(diff: &str, max_chars: usize) -> String {
 /// Get git diff between current branch and target branch
 fn get_branch_diff(repo_path: &str, target_branch: &str, head_ref: &str) -> Result<String, String> {
     let output = silent_command("git")
-        .args(["diff", "-U10", &format!("origin/{target_branch}...{head_ref}")])
+        .args([
+            "diff",
+            "-U10",
+            &format!("origin/{target_branch}...{head_ref}"),
+        ])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to get git diff: {e}"))?;
@@ -5084,9 +5431,17 @@ fn get_branch_diff(repo_path: &str, target_branch: &str, head_ref: &str) -> Resu
 }
 
 /// Get commit messages between current branch and target branch
-fn get_branch_commits(repo_path: &str, target_branch: &str, head_ref: &str) -> Result<String, String> {
+fn get_branch_commits(
+    repo_path: &str,
+    target_branch: &str,
+    head_ref: &str,
+) -> Result<String, String> {
     let output = silent_command("git")
-        .args(["log", "--oneline", &format!("origin/{target_branch}..{head_ref}")])
+        .args([
+            "log",
+            "--oneline",
+            &format!("origin/{target_branch}..{head_ref}"),
+        ])
         .current_dir(repo_path)
         .output()
         .map_err(|e| format!("Failed to get git log: {e}"))?;
@@ -5100,7 +5455,11 @@ fn get_branch_commits(repo_path: &str, target_branch: &str, head_ref: &str) -> R
 }
 
 /// Count commits between current branch and target branch
-fn count_branch_commits(repo_path: &str, target_branch: &str, head_ref: &str) -> Result<u32, String> {
+fn count_branch_commits(
+    repo_path: &str,
+    target_branch: &str,
+    head_ref: &str,
+) -> Result<u32, String> {
     let output = silent_command("git")
         .args([
             "rev-list",
@@ -5137,7 +5496,6 @@ fn generate_pr_content(
     reasoning_effort: Option<&str>,
     head_ref: &str,
 ) -> Result<PrContentResponse, String> {
-    // Get diff and commits
     let diff = get_branch_diff(repo_path, target_branch, head_ref)?;
     if diff.trim().is_empty() {
         return Err("No changes to create PR for".to_string());
@@ -5145,137 +5503,29 @@ fn generate_pr_content(
 
     let commits = get_branch_commits(repo_path, target_branch, head_ref)?;
     let commit_count = count_branch_commits(repo_path, target_branch, head_ref)?;
-
-    // Build prompt - use custom if provided and non-empty, otherwise use default
-    let prompt_template = custom_prompt
-        .filter(|p| !p.trim().is_empty())
-        .unwrap_or(PR_CONTENT_PROMPT);
-
-    let prompt = prompt_template
-        .replace("{current_branch}", current_branch)
-        .replace("{target_branch}", target_branch)
-        .replace("{commit_count}", &commit_count.to_string())
-        .replace("{context}", context)
-        .replace("{commits}", &commits)
-        .replace("{diff}", &diff);
-
-    let model_str = model.unwrap_or("haiku");
-
-    // Per-operation backend > project/global default_backend
-    let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
-
-    if backend == crate::chat::types::Backend::Opencode {
-        log::trace!("Generating PR content with OpenCode");
-        let json_str = crate::chat::opencode::execute_one_shot_opencode(
-            app,
-            &prompt,
-            model_str,
-            Some(PR_CONTENT_SCHEMA),
-            Some(std::path::Path::new(repo_path)),
-            reasoning_effort,
-        )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
-            log::error!("Failed to parse OpenCode PR content JSON: {e}, content: {json_str}");
-            format!("Failed to parse PR content: {e}")
-        });
-    }
-
-    if backend == crate::chat::types::Backend::Codex {
-        log::trace!("Generating PR content with Codex CLI (output-schema)");
-        let json_str = crate::chat::codex::execute_one_shot_codex(
-            app,
-            &prompt,
-            model_str,
-            PR_CONTENT_SCHEMA,
-            Some(std::path::Path::new(repo_path)),
-            reasoning_effort,
-        )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
-            log::error!("Failed to parse Codex PR content JSON: {e}, content: {json_str}");
-            format!("Failed to parse PR content: {e}")
-        });
-    }
-
-    log::trace!("Generating PR content with Claude CLI (JSON schema)");
-
-    let cli_path = resolve_cli_binary(app);
-    if !cli_path.exists() {
-        return Err("Claude CLI not installed".to_string());
-    }
-
-    let mut cmd = silent_command(&cli_path);
-    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
-        model_str,
-        "--no-session-persistence",
-        "--tools",
-        "",
-        "--max-turns",
-        "1",
-        "--json-schema",
-        PR_CONTENT_SCHEMA,
-    ]);
-
-    cmd.stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
-
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| format!("Failed to spawn Claude CLI: {e}"))?;
-
-    // Write prompt to stdin
-    {
-        let input_message = serde_json::json!({
-            "type": "user",
-            "message": {
-                "role": "user",
-                "content": prompt
-            }
-        });
-
-        let write_result = if let Some(stdin) = child.stdin.as_mut() {
-            writeln!(stdin, "{input_message}")
-        } else {
-            Err(std::io::Error::other("Failed to open stdin"))
-        };
-
-        if let Err(e) = write_result {
-            return Err(format!("Failed to write to stdin: {e}"));
-        }
-    }
-
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("Failed to wait for Claude CLI: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        return Err(format!(
-            "Claude CLI failed: stderr={}, stdout={}",
-            stderr.trim(),
-            stdout.trim()
-        ));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    log::trace!("Claude CLI PR generation stdout: {stdout}");
-
-    let json_content = extract_structured_output(&stdout)?;
-    log::trace!("Extracted PR content JSON: {json_content}");
-
-    serde_json::from_str(&json_content).map_err(|e| {
-        log::error!("Failed to parse PR content JSON: {e}, content: {json_content}");
-        format!("Failed to parse PR content: {e}")
-    })
+    let related_pr_issue_refs = build_pr_issue_refs_from_commit_range(
+        app,
+        repo_path,
+        &format!("origin/{target_branch}..{head_ref}"),
+    )
+    .unwrap_or_default();
+    generate_pr_content_from_inputs(
+        app,
+        repo_path,
+        current_branch,
+        target_branch,
+        custom_prompt,
+        model,
+        context,
+        custom_profile_name,
+        worktree_id,
+        magic_backend,
+        reasoning_effort,
+        &commits,
+        commit_count,
+        &diff,
+        &related_pr_issue_refs,
+    )
 }
 
 /// Parse PR number and URL from gh pr create output
@@ -5715,8 +5965,237 @@ pub async fn merge_github_pr(
 /// Response from updating a PR with AI-generated content
 #[derive(Debug, Clone, Serialize)]
 pub struct UpdatePrResponse {
+    pub pr_number: u32,
     pub title: String,
     pub body: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrGenerationTargetInfo {
+    number: u32,
+    #[serde(default)]
+    base_ref_name: String,
+    #[serde(default)]
+    head_ref_name: String,
+    #[serde(default)]
+    commits: Vec<PrGenerationCommit>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PrGenerationCommit {
+    #[serde(default)]
+    message_headline: String,
+}
+
+fn get_pr_generation_target_info(
+    gh: &std::path::Path,
+    repo_path: &str,
+    pr_number: u32,
+) -> Result<PrGenerationTargetInfo, String> {
+    let output = silent_command(gh)
+        .args([
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--json",
+            "number,baseRefName,headRefName,commits",
+        ])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr view: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
+        }
+        return Err(format!("Failed to load PR #{pr_number}: {stderr}"));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    serde_json::from_str::<PrGenerationTargetInfo>(&stdout)
+        .map_err(|e| format!("Failed to parse PR #{pr_number}: {e}"))
+}
+
+fn get_pr_generation_diff(
+    repo_path: &str,
+    pr_number: u32,
+    gh: &std::path::Path,
+) -> Result<String, String> {
+    let output = silent_command(gh)
+        .args(["pr", "diff", &pr_number.to_string()])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr diff: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to get diff for PR #{pr_number}: {stderr}"));
+    }
+
+    let diff = String::from_utf8_lossy(&output.stdout).to_string();
+    Ok(truncate_diff_at_file_boundaries(&diff, 200_000))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn generate_pr_content_from_inputs(
+    app: &AppHandle,
+    repo_path: &str,
+    current_branch: &str,
+    target_branch: &str,
+    custom_prompt: Option<&str>,
+    model: Option<&str>,
+    context: &str,
+    custom_profile_name: Option<&str>,
+    worktree_id: Option<&str>,
+    magic_backend: Option<&str>,
+    reasoning_effort: Option<&str>,
+    commits: &str,
+    commit_count: u32,
+    diff: &str,
+    related_pr_issue_refs: &PrIssueRefsMap,
+) -> Result<PrContentResponse, String> {
+    let related_pull_requests = format_related_pull_requests(related_pr_issue_refs);
+
+    let prompt_template = custom_prompt
+        .filter(|p| !p.trim().is_empty())
+        .unwrap_or(PR_CONTENT_PROMPT);
+
+    let prompt = prompt_template
+        .replace("{current_branch}", current_branch)
+        .replace("{target_branch}", target_branch)
+        .replace("{commit_count}", &commit_count.to_string())
+        .replace("{context}", context)
+        .replace("{related_pull_requests}", &related_pull_requests)
+        .replace("{commits}", commits)
+        .replace("{diff}", diff);
+
+    let model_str = model.unwrap_or("sonnet");
+    let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
+
+    if backend == crate::chat::types::Backend::Opencode {
+        log::trace!("Generating PR content with OpenCode");
+        let json_str = crate::chat::opencode::execute_one_shot_opencode(
+            app,
+            &prompt,
+            model_str,
+            Some(PR_CONTENT_SCHEMA),
+            Some(std::path::Path::new(repo_path)),
+            reasoning_effort,
+        )?;
+        let mut response: PrContentResponse = serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse OpenCode PR content JSON: {e}, content: {json_str}");
+            format!("Failed to parse PR content: {e}")
+        })?;
+        response.body = augment_pr_references_in_body(&response.body, related_pr_issue_refs);
+        return Ok(response);
+    }
+
+    if backend == crate::chat::types::Backend::Codex {
+        log::trace!("Generating PR content with Codex CLI (output-schema)");
+        let json_str = crate::chat::codex::execute_one_shot_codex(
+            app,
+            &prompt,
+            model_str,
+            PR_CONTENT_SCHEMA,
+            Some(std::path::Path::new(repo_path)),
+            reasoning_effort,
+        )?;
+        let mut response: PrContentResponse = serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Codex PR content JSON: {e}, content: {json_str}");
+            format!("Failed to parse PR content: {e}")
+        })?;
+        response.body = augment_pr_references_in_body(&response.body, related_pr_issue_refs);
+        return Ok(response);
+    }
+
+    if backend == crate::chat::types::Backend::Cursor {
+        log::trace!("Generating PR content with Cursor");
+        let json_str = crate::chat::cursor::execute_one_shot_cursor(
+            app,
+            &prompt,
+            model_str,
+            Some(std::path::Path::new(repo_path)),
+        )?;
+        let mut response: PrContentResponse = serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Cursor PR content JSON: {e}, content: {json_str}");
+            format!("Failed to parse PR content: {e}")
+        })?;
+        response.body = augment_pr_references_in_body(&response.body, related_pr_issue_refs);
+        return Ok(response);
+    }
+
+    log::trace!("Generating PR content with Claude CLI (JSON schema)");
+
+    let cli_path = resolve_cli_binary(app);
+    if !cli_path.exists() {
+        return Err("Claude CLI not installed".to_string());
+    }
+
+    let mut cmd = silent_command(&cli_path);
+    crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
+    cmd.args(build_claude_structured_output_args(
+        model_str,
+        "",
+        PR_CONTENT_SCHEMA,
+    ));
+
+    cmd.stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Claude CLI: {e}"))?;
+
+    {
+        let input_message = serde_json::json!({
+            "type": "user",
+            "message": {
+                "role": "user",
+                "content": prompt
+            }
+        });
+
+        let write_result = if let Some(stdin) = child.stdin.as_mut() {
+            writeln!(stdin, "{input_message}")
+        } else {
+            Err(std::io::Error::other("Failed to open stdin"))
+        };
+
+        if let Err(e) = write_result {
+            return Err(format!("Failed to write to stdin: {e}"));
+        }
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to wait for Claude CLI: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        return Err(format!(
+            "Claude CLI failed: stderr={}, stdout={}",
+            stderr.trim(),
+            stdout.trim()
+        ));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    log::trace!("Claude CLI PR generation stdout: {stdout}");
+
+    let json_content = extract_structured_output(&stdout)?;
+    log::trace!("Extracted PR content JSON: {json_content}");
+
+    let mut response: PrContentResponse = serde_json::from_str(&json_content).map_err(|e| {
+        log::error!("Failed to parse PR content JSON: {e}, content: {json_content}");
+        format!("Failed to parse PR content: {e}")
+    })?;
+    response.body = augment_pr_references_in_body(&response.body, related_pr_issue_refs);
+    Ok(response)
 }
 
 /// Generate AI content for updating a PR (does not apply changes)
@@ -5726,6 +6205,7 @@ pub struct UpdatePrResponse {
 pub async fn generate_pr_update_content(
     app: AppHandle,
     worktree_path: String,
+    pr_number: Option<u32>,
     session_id: Option<String>,
     custom_prompt: Option<String>,
     model: Option<String>,
@@ -5744,9 +6224,6 @@ pub async fn generate_pr_update_content(
     let project = data
         .find_project(&worktree.project_id)
         .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?;
-
-    let target_branch = &project.default_branch;
-    let current_branch = git::get_current_branch(&worktree_path)?;
 
     // Gather issue/PR context for this session AND worktree (same logic as create_pr_with_ai_content)
     let effective_session_id = session_id.as_deref().unwrap_or("");
@@ -5781,18 +6258,36 @@ pub async fn generate_pr_update_content(
         }
     }
 
-    // Generate PR content using Claude CLI — only include pushed commits
-    let remote_head = format!("origin/{current_branch}");
+    let selected_pr_number = pr_number
+        .or(worktree.pr_number)
+        .ok_or_else(|| "Enter a pull request number".to_string())?;
+    let gh = resolve_gh_binary(&app);
+    let pr_target = get_pr_generation_target_info(&gh, &worktree_path, selected_pr_number)?;
+    let commit_subjects = pr_target
+        .commits
+        .iter()
+        .map(|commit| commit.message_headline.clone())
+        .collect::<Vec<_>>();
+    let commits = commit_subjects.join("\n");
+    let commit_count = pr_target.commits.len() as u32;
+    let diff = get_pr_generation_diff(&worktree_path, selected_pr_number, &gh)?;
+    if diff.trim().is_empty() {
+        return Err(format!("No changes found for PR #{selected_pr_number}"));
+    }
+    let related_pr_issue_refs =
+        build_pr_issue_refs_from_commit_subjects(&app, &worktree_path, &commit_subjects)
+            .unwrap_or_default();
+
     let pr_magic_backend = crate::get_preferences_path(&app)
         .ok()
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
         .and_then(|p| p.magic_prompt_backends.pr_content_backend);
-    let mut pr_content = generate_pr_content(
+    let mut pr_content = generate_pr_content_from_inputs(
         &app,
         &worktree_path,
-        &current_branch,
-        target_branch,
+        &pr_target.head_ref_name,
+        &pr_target.base_ref_name,
         custom_prompt.as_deref(),
         model.as_deref(),
         &context_content,
@@ -5800,7 +6295,10 @@ pub async fn generate_pr_update_content(
         Some(worktree_id),
         pr_magic_backend.as_deref(),
         reasoning_effort.as_deref(),
-        &remote_head,
+        &commits,
+        commit_count,
+        &diff,
+        &related_pr_issue_refs,
     )?;
 
     // Gather Linear identifiers
@@ -5841,6 +6339,7 @@ pub async fn generate_pr_update_content(
     }
 
     Ok(UpdatePrResponse {
+        pr_number: selected_pr_number,
         title: pr_content.title,
         body: pr_content.body,
     })
@@ -6056,7 +6555,42 @@ fn get_recent_commits(repo_path: &str, count: u32) -> Result<String, String> {
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Stage only specific files. Resets the index first to ensure a clean state.
+fn stage_specific_files(repo_path: &str, files: &[String]) -> Result<(), String> {
+    // Reset staging area to ensure only the specified files are staged
+    let reset_output = silent_command("git")
+        .args(["reset", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to reset staging area: {e}"))?;
 
+    if !reset_output.status.success() {
+        let stderr = String::from_utf8_lossy(&reset_output.stderr);
+        // "Failed to resolve 'HEAD'" happens on initial commit — safe to ignore
+        if !stderr.contains("Failed to resolve") {
+            return Err(format!("Failed to reset staging area: {stderr}"));
+        }
+    }
+
+    // Stage only the specified files
+    let mut args = vec!["add", "--"];
+    for f in files {
+        args.push(f.as_str());
+    }
+
+    let output = silent_command("git")
+        .args(&args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to stage files: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to stage files: {stderr}"));
+    }
+
+    Ok(())
+}
 
 /// Stage all changes
 fn stage_all_changes(repo_path: &str) -> Result<(), String> {
@@ -6184,6 +6718,16 @@ fn generate_commit_message(
         });
     }
 
+    if backend == crate::chat::types::Backend::Cursor {
+        log::trace!("Generating commit message with Cursor");
+        let json_str =
+            crate::chat::cursor::execute_one_shot_cursor(app, prompt, model_str, working_dir)?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Cursor commit message JSON: {e}, content: {json_str}");
+            format!("Failed to parse commit message: {e}")
+        });
+    }
+
     log::trace!("Generating commit message with Claude CLI (JSON schema)");
 
     let cli_path = resolve_cli_binary(app);
@@ -6193,23 +6737,11 @@ fn generate_commit_message(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "",
-        "--max-turns",
-        "1",
-        "--json-schema",
         COMMIT_MESSAGE_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -6269,6 +6801,7 @@ pub async fn create_commit_with_ai(
     model: Option<String>,
     custom_profile_name: Option<String>,
     reasoning_effort: Option<String>,
+    specific_files: Option<Vec<String>>,
 ) -> Result<CreateCommitResponse, String> {
     log::trace!("Creating commit for: {worktree_path}");
 
@@ -6294,8 +6827,11 @@ pub async fn create_commit_with_ai(
         return Err("No changes to commit".to_string());
     }
 
-    // 2. Stage all changes
-    stage_all_changes(&worktree_path)?;
+    // 2. Stage changes (specific files or all)
+    match &specific_files {
+        Some(files) if !files.is_empty() => stage_specific_files(&worktree_path, files)?,
+        _ => stage_all_changes(&worktree_path)?,
+    }
 
     // 3. Get staged diff
     let diff = get_staged_diff(&worktree_path)?;
@@ -6606,7 +7142,7 @@ fn generate_review(
     magic_backend: Option<&str>,
     reasoning_effort: Option<&str>,
 ) -> Result<ReviewResponse, String> {
-    let model_str = model.unwrap_or("haiku");
+    let model_str = model.unwrap_or("sonnet");
 
     // Per-operation backend > project/global default_backend
     let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, worktree_id);
@@ -6636,6 +7172,16 @@ fn generate_review(
         });
     }
 
+    if backend == crate::chat::types::Backend::Cursor {
+        log::trace!("Running code review with Cursor");
+        let json_str =
+            crate::chat::cursor::execute_one_shot_cursor(app, prompt, model_str, working_dir)?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Cursor review JSON: {e}, content: {json_str}");
+            format!("Failed to parse review: {e}")
+        });
+    }
+
     let cli_path = resolve_cli_binary(app);
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
@@ -6645,23 +7191,11 @@ fn generate_review(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "none",
-        "--max-turns",
-        "1",
-        "--json-schema",
         REVIEW_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -7136,7 +7670,7 @@ fn generate_release_notes_content(
         .replace("{previous_release_name}", release_name)
         .replace("{commits}", &commits);
 
-    let model_str = model.unwrap_or("haiku");
+    let model_str = model.unwrap_or("sonnet");
 
     // Per-operation backend > global default_backend (no worktree for release notes)
     let backend = crate::chat::resolve_magic_prompt_backend(app, magic_backend, None);
@@ -7173,6 +7707,20 @@ fn generate_release_notes_content(
         });
     }
 
+    if backend == crate::chat::types::Backend::Cursor {
+        log::trace!("Generating release notes with Cursor");
+        let json_str = crate::chat::cursor::execute_one_shot_cursor(
+            app,
+            &prompt,
+            model_str,
+            Some(std::path::Path::new(project_path)),
+        )?;
+        return serde_json::from_str(&json_str).map_err(|e| {
+            log::error!("Failed to parse Cursor release notes JSON: {e}, content: {json_str}");
+            format!("Failed to parse release notes: {e}")
+        });
+    }
+
     let cli_path = resolve_cli_binary(app);
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
@@ -7182,23 +7730,11 @@ fn generate_release_notes_content(
 
     let mut cmd = silent_command(&cli_path);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
-    cmd.args([
-        "--print",
-        "--verbose",
-        "--input-format",
-        "stream-json",
-        "--output-format",
-        "stream-json",
-        "--model",
+    cmd.args(build_claude_structured_output_args(
         model_str,
-        "--no-session-persistence",
-        "--tools",
         "",
-        "--max-turns",
-        "1",
-        "--json-schema",
         RELEASE_NOTES_SCHEMA,
-    ]);
+    ));
 
     cmd.stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -7243,6 +7779,111 @@ fn generate_release_notes_content(
 
     serde_json::from_str::<ReleaseNotesResponse>(&json_content)
         .map_err(|e| format!("Failed to parse release notes response: {e}"))
+}
+
+fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> String {
+    RELEASE_NOTES_PAREN_RE
+        .replace_all(body, |captures: &regex::Captures<'_>| {
+            let Some(content_match) = captures.get(1) else {
+                return captures[0].to_string();
+            };
+            let content = content_match.as_str().trim();
+            let Some(pr_captures) = RELEASE_NOTES_LEADING_PR_RE.captures(content) else {
+                return captures[0].to_string();
+            };
+            let Some(pr_number_match) = pr_captures.get(1) else {
+                return captures[0].to_string();
+            };
+            let Ok(pr_number) = pr_number_match.as_str().parse::<u32>() else {
+                return captures[0].to_string();
+            };
+            let Some(issue_groups) = pr_issue_refs.get(&pr_number) else {
+                return captures[0].to_string();
+            };
+            if issue_groups.is_empty() {
+                return captures[0].to_string();
+            }
+
+            format!("(#{pr_number}, {})", format_issue_groups(issue_groups))
+        })
+        .into_owned()
+}
+
+fn format_related_pull_requests(pr_issue_refs: &PrIssueRefsMap) -> String {
+    if pr_issue_refs.is_empty() {
+        return "No merged pull requests were detected from commit subjects in this branch."
+            .to_string();
+    }
+
+    pr_issue_refs
+        .iter()
+        .map(|(pr_number, issue_groups)| {
+            format!(
+                "- PR #{pr_number}: use exact reference `(#{pr_number}, {})`",
+                format_issue_groups(issue_groups)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+#[cfg(test)]
+mod release_notes_body_tests {
+    use super::{augment_pr_references_in_body, format_related_pull_requests};
+    use std::collections::{BTreeMap, BTreeSet};
+
+    fn issue_map(
+        entries: &[(u32, &[(&str, &[u32])])],
+    ) -> BTreeMap<u32, BTreeMap<String, BTreeSet<u32>>> {
+        entries
+            .iter()
+            .map(|(pr, groups)| {
+                let grouped = groups
+                    .iter()
+                    .map(|(keyword, numbers)| {
+                        (
+                            (*keyword).to_string(),
+                            numbers.iter().copied().collect::<BTreeSet<u32>>(),
+                        )
+                    })
+                    .collect::<BTreeMap<_, _>>();
+                (*pr, grouped)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn augments_missing_issue_refs_for_known_pr() {
+        let body = "- Added support (#9503)";
+        let result =
+            augment_pr_references_in_body(body, &issue_map(&[(9503, &[("fixes", &[9501, 9504])])]));
+        assert_eq!(result, "- Added support (#9503, fixes #9501, #9504)");
+    }
+
+    #[test]
+    fn replaces_partial_issue_refs_with_full_authoritative_set() {
+        let body = "- Added support (#9503, fixes #9501)";
+        let result =
+            augment_pr_references_in_body(body, &issue_map(&[(9503, &[("fixes", &[9501, 9504])])]));
+        assert_eq!(result, "- Added support (#9503, fixes #9501, #9504)");
+    }
+
+    #[test]
+    fn leaves_unknown_pr_references_untouched() {
+        let body = "- Added support (#9503)";
+        let result = augment_pr_references_in_body(body, &BTreeMap::new());
+        assert_eq!(result, body);
+    }
+
+    #[test]
+    fn formats_related_pull_requests_guidance() {
+        let result =
+            format_related_pull_requests(&issue_map(&[(9503, &[("fixes", &[9501, 9504])])]));
+        assert_eq!(
+            result,
+            "- PR #9503: use exact reference `(#9503, fixes #9501, #9504)`"
+        );
+    }
 }
 
 /// Generate release notes comparing a tag to HEAD
@@ -7814,8 +8455,8 @@ pub async fn cleanup_old_archives(
     }
 
     // --- Clean up orphaned session data directories ---
-    let orphaned = crate::chat::storage::cleanup_orphaned_session_data(&app).unwrap_or(0);
-    deleted_sessions += orphaned;
+    // Background janitor only — not archive-related, not user-facing.
+    let _ = crate::chat::storage::cleanup_orphaned_session_data(&app);
 
     // --- Clean up orphaned context files ---
     let deleted_contexts =
@@ -8580,7 +9221,11 @@ fn resolve_command_interpolations(content: &str, working_dir: &str) -> String {
 
 /// Get home directory with Windows USERPROFILE fallback
 fn get_home_dir() -> Option<std::path::PathBuf> {
-    dirs::home_dir().or_else(|| std::env::var("USERPROFILE").ok().map(std::path::PathBuf::from))
+    dirs::home_dir().or_else(|| {
+        std::env::var("USERPROFILE")
+            .ok()
+            .map(std::path::PathBuf::from)
+    })
 }
 
 /// Collect skills from a directory into a map (later inserts override earlier ones)
@@ -8709,9 +9354,7 @@ fn collect_commands_from_dir(
 /// List Claude CLI skills from ~/.claude/skills/ and optionally <worktree>/.claude/skills/
 /// Skills are directories containing a SKILL.md file
 #[tauri::command]
-pub async fn list_claude_skills(
-    worktree_path: Option<String>,
-) -> Result<Vec<ClaudeSkill>, String> {
+pub async fn list_claude_skills(worktree_path: Option<String>) -> Result<Vec<ClaudeSkill>, String> {
     log::trace!("Listing Claude CLI skills (worktree: {worktree_path:?})");
 
     let mut skills_map = std::collections::HashMap::new();
@@ -8731,6 +9374,151 @@ pub async fn list_claude_skills(
     skills.sort_by(|a, b| a.name.cmp(&b.name));
     log::trace!("Found {} Claude CLI skills", skills.len());
     Ok(skills)
+}
+
+/// List Codex CLI skills from ~/.codex/skills/
+#[tauri::command]
+pub async fn list_codex_skills() -> Result<Vec<ClaudeSkill>, String> {
+    log::trace!("Listing Codex CLI skills");
+
+    let mut skills_map = std::collections::HashMap::new();
+
+    if let Some(home) = get_home_dir() {
+        collect_skills_from_dir(&home.join(".codex").join("skills"), &mut skills_map);
+    }
+
+    let mut skills: Vec<ClaudeSkill> = skills_map.into_values().collect();
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    log::trace!("Found {} Codex CLI skills", skills.len());
+    Ok(skills)
+}
+
+/// A group of skills from an installed Claude plugin
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PluginSkillGroup {
+    /// Plugin display name (e.g., "Superpowers", "Frontend Design")
+    pub plugin_name: String,
+    /// Skills found in this plugin's skills/ directory
+    pub skills: Vec<ClaudeSkill>,
+}
+
+/// Convert a plugin ID (e.g., "superpowers", "frontend-design") to a display name
+fn plugin_id_to_display_name(id: &str) -> String {
+    id.split('-')
+        .map(|word| {
+            let mut chars = word.chars();
+            match chars.next() {
+                None => String::new(),
+                Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// List skills from all installed and enabled Claude plugins
+#[tauri::command]
+pub async fn list_plugin_skills() -> Result<Vec<PluginSkillGroup>, String> {
+    log::trace!("Listing plugin skills");
+
+    let home = match get_home_dir() {
+        Some(h) => h,
+        None => return Ok(vec![]),
+    };
+
+    // Read installed_plugins.json
+    let installed_plugins_path = home
+        .join(".claude")
+        .join("plugins")
+        .join("installed_plugins.json");
+    let installed_content = match std::fs::read_to_string(&installed_plugins_path) {
+        Ok(c) => c,
+        Err(_) => return Ok(vec![]),
+    };
+
+    #[derive(serde::Deserialize)]
+    struct PluginEntry {
+        #[serde(rename = "installPath")]
+        install_path: String,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct InstalledPlugins {
+        plugins: std::collections::HashMap<String, Vec<PluginEntry>>,
+    }
+
+    let installed: InstalledPlugins = match serde_json::from_str(&installed_content) {
+        Ok(v) => v,
+        Err(e) => {
+            log::warn!("Failed to parse installed_plugins.json: {e}");
+            return Ok(vec![]);
+        }
+    };
+
+    // Read settings.json to check which plugins are enabled
+    let settings_path = home.join(".claude").join("settings.json");
+    let enabled_plugins: std::collections::HashMap<String, bool> =
+        std::fs::read_to_string(&settings_path)
+            .ok()
+            .and_then(|content| {
+                serde_json::from_str::<serde_json::Value>(&content)
+                    .ok()
+                    .and_then(|v| {
+                        v.get("enabledPlugins").and_then(|ep| {
+                            serde_json::from_value::<std::collections::HashMap<String, bool>>(
+                                ep.clone(),
+                            )
+                            .ok()
+                        })
+                    })
+            })
+            .unwrap_or_default();
+
+    let mut groups: Vec<PluginSkillGroup> = Vec::new();
+
+    // Sort plugin keys for deterministic ordering
+    let mut plugin_keys: Vec<&String> = installed.plugins.keys().collect();
+    plugin_keys.sort();
+
+    for plugin_key in plugin_keys {
+        // Skip disabled plugins (if enabledPlugins exists, only include explicitly enabled ones)
+        if !enabled_plugins.is_empty() && !enabled_plugins.get(plugin_key).copied().unwrap_or(false)
+        {
+            continue;
+        }
+
+        let entries = &installed.plugins[plugin_key];
+        if entries.is_empty() {
+            continue;
+        }
+
+        // Use the most recently added entry (last in array)
+        let entry = entries.last().unwrap();
+        let skills_dir = std::path::Path::new(&entry.install_path).join("skills");
+
+        let mut skills_map = std::collections::HashMap::new();
+        collect_skills_from_dir(&skills_dir, &mut skills_map);
+
+        if skills_map.is_empty() {
+            continue;
+        }
+
+        // Derive display name from the part before '@'
+        let plugin_id = plugin_key.split('@').next().unwrap_or(plugin_key);
+        let plugin_name = plugin_id_to_display_name(plugin_id);
+
+        let mut skills: Vec<ClaudeSkill> = skills_map.into_values().collect();
+        skills.sort_by(|a, b| a.name.cmp(&b.name));
+
+        groups.push(PluginSkillGroup {
+            plugin_name,
+            skills,
+        });
+    }
+
+    log::trace!("Found {} plugin skill groups", groups.len());
+    Ok(groups)
 }
 
 /// List Claude CLI custom commands from ~/.claude/commands/ and optionally <worktree>/.claude/commands/
@@ -8939,7 +9727,9 @@ pub struct RevertCommitResponse {
 }
 
 #[tauri::command]
-pub async fn revert_last_local_commit(worktree_path: String) -> Result<RevertCommitResponse, String> {
+pub async fn revert_last_local_commit(
+    worktree_path: String,
+) -> Result<RevertCommitResponse, String> {
     // Get the current HEAD commit hash and message before reverting
     let log_output = silent_command("git")
         .args(["log", "-1", "--format=%H%n%s"])
@@ -9096,5 +9886,18 @@ Body
 
         let result = extract_structured_output(output);
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_build_claude_structured_output_args_uses_two_turns_and_plan_mode() {
+        let args = build_claude_structured_output_args("sonnet", "none", REVIEW_SCHEMA);
+
+        assert!(args.windows(2).any(|w| w == ["--max-turns", "2"]));
+        assert!(args.windows(2).any(|w| w == ["--permission-mode", "plan"]));
+        assert!(args.windows(2).any(|w| w == ["--tools", "none"]));
+        assert!(args.windows(2).any(|w| w == ["--model", "sonnet"]));
+        assert!(args
+            .windows(2)
+            .any(|w| w == ["--json-schema", REVIEW_SCHEMA]));
     }
 }

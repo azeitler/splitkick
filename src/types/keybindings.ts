@@ -33,9 +33,12 @@ export type KeybindingAction =
   | 'cancel_prompt'
   | 'scroll_chat_up'
   | 'scroll_chat_down'
+  | 'scroll_chat_up_small'
+  | 'scroll_chat_down_small'
   | 'open_github_dashboard'
   | 'open_quick_menu'
   | 'open_usage_dropdown'
+  | 'search_chat'
 
 // Shortcut string format: "mod+key" where mod is cmd/ctrl
 // Examples: "mod+l", "mod+shift+p", "mod+1"
@@ -88,9 +91,12 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   cancel_prompt: 'mod+alt+backspace',
   scroll_chat_up: 'mod+arrowup',
   scroll_chat_down: 'mod+arrowdown',
+  scroll_chat_up_small: 'arrowup',
+  scroll_chat_down_small: 'arrowdown',
   open_github_dashboard: 'mod+shift+d',
   open_quick_menu: 'mod+period',
   open_usage_dropdown: 'mod+u',
+  search_chat: 'mod+f',
 }
 
 // UI definitions for the settings pane
@@ -328,9 +334,24 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     category: 'chat',
   },
   {
+    action: 'scroll_chat_up_small',
+    label: 'Scroll chat up (small)',
+    description: 'Scroll the chat message list up by a small increment',
+    default_shortcut: 'arrowup',
+    category: 'chat',
+  },
+  {
+    action: 'scroll_chat_down_small',
+    label: 'Scroll chat down (small)',
+    description: 'Scroll the chat message list down by a small increment',
+    default_shortcut: 'arrowdown',
+    category: 'chat',
+  },
+  {
     action: 'open_github_dashboard',
     label: 'GitHub Dashboard',
-    description: 'Open the GitHub Dashboard (issues, PRs, security across all projects)',
+    description:
+      'Open the GitHub Dashboard (issues, PRs, security across all projects)',
     default_shortcut: 'mod+shift+d',
     category: 'navigation',
   },
@@ -347,6 +368,13 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     description: 'Open the floating usage dropdown',
     default_shortcut: 'mod+u',
     category: 'navigation',
+  },
+  {
+    action: 'search_chat',
+    label: 'Search chat',
+    description: 'Open in-chat text search (find in messages)',
+    default_shortcut: 'mod+f',
+    category: 'chat',
   },
 ]
 
@@ -396,6 +424,8 @@ export function formatShortcutDisplay(
           return 'Tab'
         case 'escape':
           return 'Esc'
+        case 'backquote':
+          return '`'
         default:
           return part.toUpperCase()
       }

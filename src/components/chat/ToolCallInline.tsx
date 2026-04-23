@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { usePreferences } from '@/services/preferences'
 import {
   FileText,
   Edit,
@@ -22,6 +23,9 @@ import {
   Circle,
   Wand2,
   Image as ImageIcon,
+  FileCode,
+  List,
+  Code,
 } from 'lucide-react'
 import { diffLines } from 'diff'
 import type { ToolCall } from '@/types/chat'
@@ -34,6 +38,10 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+
+function shouldRenderRawOutput(toolCall: ToolCall): boolean {
+  return Boolean(toolCall.output) && toolCall.name !== 'FileChange'
+}
 
 interface ToolCallInlineProps {
   toolCall: ToolCall
@@ -57,7 +65,10 @@ export function ToolCallInline({
   isStreaming,
   isIncomplete,
 }: ToolCallInlineProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { data: preferences } = usePreferences()
+  const [isOpen, setIsOpen] = useState(
+    preferences?.expand_tool_calls_by_default ?? false
+  )
   const { icon, label, detail, filePath, expandedContent } =
     getToolDisplay(toolCall)
 
@@ -118,7 +129,7 @@ export function ToolCallInline({
             <div className="whitespace-pre-wrap text-xs text-muted-foreground">
               {expandedContent}
             </div>
-            {toolCall.output && (
+            {shouldRenderRawOutput(toolCall) && (
               <>
                 <div className="border-t border-border/30 my-2" />
                 <div className="text-xs text-muted-foreground/60 mb-1">
@@ -163,7 +174,10 @@ export function TaskCallInline({
   isStreaming,
   isIncomplete,
 }: TaskCallInlineProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { data: preferences } = usePreferences()
+  const [isOpen, setIsOpen] = useState(
+    preferences?.expand_tool_calls_by_default ?? false
+  )
   const input = taskToolCall.input as Record<string, unknown>
   const subagentType = input.subagent_type as string | undefined
   const description = input.description as string | undefined
@@ -279,7 +293,10 @@ export function StackedGroup({
   isStreaming,
   isIncomplete,
 }: StackedGroupProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { data: preferences } = usePreferences()
+  const [isOpen, setIsOpen] = useState(
+    preferences?.expand_tool_calls_by_default ?? false
+  )
 
   // Count thinking blocks and tools for summary
   let thinkingCount = 0
@@ -366,7 +383,10 @@ interface SubThinkingItemProps {
  * Similar style to SubToolItem but for thinking content
  */
 function SubThinkingItem({ thinking }: SubThinkingItemProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { data: preferences } = usePreferences()
+  const [isOpen, setIsOpen] = useState(
+    preferences?.expand_tool_calls_by_default ?? false
+  )
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -408,7 +428,10 @@ interface SubToolItemProps {
  * Even more minimal than ToolCallInline - just icon, label, and detail inline
  */
 function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { data: preferences } = usePreferences()
+  const [isOpen, setIsOpen] = useState(
+    preferences?.expand_tool_calls_by_default ?? false
+  )
   const { icon, label, detail, filePath, expandedContent } =
     getToolDisplay(toolCall)
 
@@ -461,7 +484,7 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
             <div className="whitespace-pre-wrap text-[0.625rem] text-muted-foreground/70">
               {expandedContent}
             </div>
-            {toolCall.output && (
+            {shouldRenderRawOutput(toolCall) && (
               <>
                 <div className="border-t border-border/20 my-1.5" />
                 <div className="text-[0.625rem] text-muted-foreground/50 mb-0.5">
@@ -507,7 +530,9 @@ function DiffView({
 
   return (
     <div className={className}>
-      <div className="text-muted-foreground mb-1.5 font-mono">Path: {filePath}</div>
+      <div className="text-muted-foreground mb-1.5 font-mono">
+        Path: {filePath}
+      </div>
       <div className="rounded border border-border/30 overflow-auto max-h-64">
         {parts.map((part, i) => {
           const lines = part.value.replace(/\n$/, '').split('\n')
@@ -537,6 +562,32 @@ interface CodexFileChange {
   diff?: string
   kind?: { type?: string; move_path?: string | null }
   path?: string
+}
+
+function parseCodexFileChanges(input: unknown): CodexFileChange[] {
+  if (Array.isArray(input)) {
+    return input as CodexFileChange[]
+  }
+
+  if (input && typeof input === 'object') {
+    return [input as CodexFileChange]
+  }
+
+  if (typeof input === 'string') {
+    try {
+      const parsed = JSON.parse(input) as unknown
+      if (Array.isArray(parsed)) {
+        return parsed as CodexFileChange[]
+      }
+      if (parsed && typeof parsed === 'object') {
+        return [parsed as CodexFileChange]
+      }
+    } catch {
+      return []
+    }
+  }
+
+  return []
 }
 
 /** Renders a pre-computed unified diff patch with colored +/- lines */
@@ -569,11 +620,7 @@ function PatchDiffView({ patch }: { patch: string }) {
 
 /** Renders one or more Codex file changes with diffs */
 function FileChangeDiffView({ input }: { input: unknown }) {
-  const changes: CodexFileChange[] = Array.isArray(input)
-    ? (input as CodexFileChange[])
-    : input && typeof input === 'object'
-      ? [input as CodexFileChange]
-      : []
+  const changes = parseCodexFileChanges(input)
 
   if (changes.length === 0) {
     return <span>No file changes</span>
@@ -582,7 +629,9 @@ function FileChangeDiffView({ input }: { input: unknown }) {
   return (
     <div className="space-y-3">
       {changes.map((change, idx) => {
-        const filename = change.path ? getFilename(change.path) : `file ${idx + 1}`
+        const filename = change.path
+          ? getFilename(change.path)
+          : `file ${idx + 1}`
         const changeType = change.kind?.type ?? 'update'
         const typeColor =
           changeType === 'create'
@@ -596,7 +645,9 @@ function FileChangeDiffView({ input }: { input: unknown }) {
         return (
           <div key={change.path ?? idx}>
             <div className="flex items-center gap-1.5 mb-1">
-              <span className={cn('font-mono truncate', typeColor)}>{filename}</span>
+              <span className={cn('font-mono truncate', typeColor)}>
+                {filename}
+              </span>
               <span
                 className={cn(
                   'text-[0.625rem] uppercase font-medium px-1 rounded',
@@ -614,7 +665,9 @@ function FileChangeDiffView({ input }: { input: unknown }) {
             {change.diff ? (
               <PatchDiffView patch={change.diff} />
             ) : (
-              <div className="text-muted-foreground/50 italic">No diff available</div>
+              <div className="text-muted-foreground/50 italic">
+                No diff available
+              </div>
             )}
           </div>
         )
@@ -624,7 +677,7 @@ function FileChangeDiffView({ input }: { input: unknown }) {
 }
 
 function getToolDisplay(toolCall: ToolCall): ToolDisplay {
-  const input = toolCall.input as Record<string, unknown>
+  const input = (toolCall.input ?? {}) as Record<string, unknown>
 
   switch (toolCall.name) {
     case 'Read': {
@@ -850,34 +903,72 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
 
     case 'FileChange': {
       // Codex file_change items — input is the raw "changes" JSON
-      const changes = input as Record<string, unknown>
+      const changes =
+        input && typeof input === 'object'
+          ? (input as Record<string, unknown>)
+          : {}
       const filePath = (changes.file ?? changes.path ?? changes.file_path) as
         | string
         | undefined
+      const fallbackChanges = !filePath
+        ? parseCodexFileChanges(toolCall.output)
+        : []
+      const fallbackFilePath =
+        fallbackChanges.length === 1
+          ? (fallbackChanges[0]?.path as string | undefined)
+          : undefined
       const filename = filePath ? getFilename(filePath) : undefined
 
       // If input is an array of changes, summarize
       const isArray = Array.isArray(toolCall.input)
-      const fileCount = isArray ? (toolCall.input as unknown[]).length : undefined
-      const detail = isArray
-        ? `${fileCount} file${fileCount === 1 ? '' : 's'}`
-        : filename
+      const isFallbackArray = !isArray && fallbackChanges.length > 1
+      const fileCount = isArray
+        ? (toolCall.input as unknown[]).length
+        : isFallbackArray
+          ? fallbackChanges.length
+          : undefined
+      const detail =
+        isArray || isFallbackArray
+          ? `${fileCount} file${fileCount === 1 ? '' : 's'}`
+          : (filename ??
+            (fallbackFilePath ? getFilename(fallbackFilePath) : undefined))
 
       return {
         icon: <FileText className="h-4 w-4 shrink-0" />,
         label: 'File Change',
         detail,
-        filePath,
-        expandedContent: <FileChangeDiffView input={toolCall.input} />,
+        filePath: filePath ?? fallbackFilePath,
+        expandedContent: (
+          <FileChangeDiffView
+            input={toolCall.input ?? toolCall.output ?? null}
+          />
+        ),
       }
     }
 
     case 'EnterPlanMode': {
+      const title = input.title as string | undefined
+      const instructions = Array.isArray(input.instructions)
+        ? input.instructions.filter(
+            (instruction): instruction is string =>
+              typeof instruction === 'string' && instruction.trim().length > 0
+          )
+        : []
+      const banner = input.banner as string | undefined
+      const markdownBody =
+        instructions.length > 0
+          ? `${title ?? 'Plan mode instructions'}:\n${instructions
+              .map(instruction => `- ${instruction}`)
+              .join('\n')}`
+          : (banner ?? 'Switched to plan mode')
       return {
         icon: <Brain className="h-4 w-4 shrink-0" />,
         label: 'Entered plan mode',
-        detail: undefined,
-        expandedContent: 'Switched to plan mode',
+        detail:
+          instructions.length > 0
+            ? 'Read-only analysis instructions'
+            : undefined,
+        expandedContent: <Markdown>{markdownBody}</Markdown>,
       }
     }
 
@@ -888,14 +979,14 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
         typeof args === 'string'
           ? args
           : args
-          ? JSON.stringify(args)
-          : undefined
+            ? JSON.stringify(args)
+            : undefined
       const expandedArgs =
         typeof args === 'string'
           ? args
           : args
-          ? JSON.stringify(args, null, 2)
-          : undefined
+            ? JSON.stringify(args, null, 2)
+            : undefined
       return {
         icon: <Wand2 className="h-4 w-4 shrink-0 text-purple-500" />,
         label: skillName ? `Skill: ${skillName}` : 'Skill',
@@ -912,6 +1003,71 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
             )}
           </div>
         ),
+      }
+    }
+
+    // OpenCode-only tools
+    case 'apply_patch': {
+      const patchText = input.patchText as string | undefined
+      const fileCount = patchText
+        ? (patchText.match(/^---\s/gm) || []).length
+        : 0
+      return {
+        icon: <FileCode className="h-4 w-4 shrink-0" />,
+        label: 'Apply Patch',
+        detail:
+          fileCount > 0
+            ? `${fileCount} file${fileCount === 1 ? '' : 's'}`
+            : undefined,
+        expandedContent: patchText ? patchText : 'No patch text',
+      }
+    }
+
+    case 'multiedit': {
+      const edits = input.edits as { filePath?: string }[] | undefined
+      const fileCount = edits?.length ?? 0
+      return {
+        icon: <Edit className="h-4 w-4 shrink-0" />,
+        label: 'Multi Edit',
+        detail:
+          fileCount > 0
+            ? `${fileCount} edit${fileCount === 1 ? '' : 's'}`
+            : undefined,
+        expandedContent: JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'CodeSearch': {
+      const query = input.query as string | undefined
+      return {
+        icon: <Search className="h-4 w-4 shrink-0" />,
+        label: 'Code Search',
+        detail: query,
+        expandedContent: toolCall.output ?? JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'list': {
+      const path = input.path as string | undefined
+      return {
+        icon: <List className="h-4 w-4 shrink-0" />,
+        label: 'List',
+        detail: path,
+        expandedContent: toolCall.output ?? `Path: ${path ?? '(cwd)'}`,
+      }
+    }
+
+    case 'lsp': {
+      const action = input.action as string | undefined
+      const filePath = input.filePath as string | undefined
+      const filename = filePath ? getFilename(filePath) : undefined
+      return {
+        icon: <Code className="h-4 w-4 shrink-0" />,
+        label: 'LSP',
+        detail: action
+          ? `${action}${filename ? ` ${filename}` : ''}`
+          : filename,
+        expandedContent: toolCall.output ?? JSON.stringify(input, null, 2),
       }
     }
 

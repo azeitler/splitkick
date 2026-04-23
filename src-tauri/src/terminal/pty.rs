@@ -115,17 +115,14 @@ pub fn spawn_terminal(
     cmd.env("JEAN_WORKTREE_PATH", &worktree_path);
 
     // Spawn the shell
-    let child = pair
-        .slave
-        .spawn_command(cmd)
-        .map_err(|e| {
-            log::error!(
-                "Failed to spawn terminal {terminal_id}: {e} (cwd={cwd}, command={:?}, args={:?})",
-                command,
-                command_args
-            );
-            format!("Failed to spawn shell: {e}")
-        })?;
+    let child = pair.slave.spawn_command(cmd).map_err(|e| {
+        log::error!(
+            "Failed to spawn terminal {terminal_id}: {e} (cwd={cwd}, command={:?}, args={:?})",
+            command,
+            command_args
+        );
+        format!("Failed to spawn shell: {e}")
+    })?;
 
     log::trace!("Spawned terminal process");
 

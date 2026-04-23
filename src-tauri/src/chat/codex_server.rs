@@ -399,6 +399,23 @@ pub fn send_response(id: u64, result: Value) -> Result<(), String> {
     write_message(&server.stdin_writer, &response)
 }
 
+/// Send a JSON-RPC error response.
+pub fn send_error_response(id: u64, code: i64, message: &str) -> Result<(), String> {
+    let guard = CODEX_SERVER.lock().unwrap();
+    let server = guard.as_ref().ok_or("Codex app-server not running")?;
+
+    let response = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": id,
+        "error": {
+            "code": code,
+            "message": message,
+        },
+    });
+
+    write_message(&server.stdin_writer, &response)
+}
+
 /// Send a JSON-RPC notification (no id, no response expected).
 #[allow(dead_code)]
 pub fn send_notification(method: &str, params: Value) -> Result<(), String> {
@@ -514,6 +531,8 @@ fn reader_loop(
             }
         };
 
+        log::debug!("[codex-raw] {line}");
+
         let has_method = msg.get("method").is_some();
         let has_id = msg.get("id").is_some();
         let has_result = msg.get("result").is_some();
@@ -550,7 +569,7 @@ fn reader_loop(
 
             route_server_request(&active_sessions, id, method, params);
         } else {
-            log::trace!("Unclassified app-server message: {line}");
+            log::debug!("[codex-raw] Unclassified message: {line}");
         }
     }
 
@@ -617,14 +636,23 @@ fn route_server_request(
     method: String,
     params: Value,
 ) {
-    let thread_id = params.get("threadId").and_then(|v| v.as_str());
+    let thread_id = params
+        .get("threadId")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
 
     if let Some(tid) = thread_id {
         let sessions = active_sessions.lock().unwrap();
-        if let Some(ctx) = sessions.get(tid) {
-            let _ = ctx
+        if let Some(ctx) = sessions.get(&tid) {
+            let session_id = ctx.session_id.clone();
+            if let Err(e) = ctx
                 .event_tx
-                .send(ServerEvent::ServerRequest { id, method, params });
+                .send(ServerEvent::ServerRequest { id, method, params })
+            {
+                log::error!(
+                    "Failed to route approval to session {session_id} (thread {tid}, rpc_id={id}): {e}"
+                );
+            }
         } else {
             log::warn!("No active session for approval request on thread {tid}");
         }

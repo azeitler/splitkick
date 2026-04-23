@@ -567,8 +567,7 @@ pub fn cleanup_orphaned_pasted_files(app: &AppHandle) -> Result<u32, String> {
     let mut referenced_paths = std::collections::HashSet::new();
 
     for session_id in &referenced_session_ids {
-        let messages =
-            super::run_log::load_session_messages(app, session_id).unwrap_or_default();
+        let messages = super::run_log::load_session_messages(app, session_id).unwrap_or_default();
         for message in &messages {
             for path in super::commands::extract_image_paths(&message.content) {
                 referenced_paths.insert(path);
@@ -597,9 +596,7 @@ pub fn cleanup_orphaned_pasted_files(app: &AppHandle) -> Result<u32, String> {
             for entry in entries.flatten() {
                 let path = entry.path();
                 // Skip non-files and temp files
-                if !path.is_file()
-                    || path.extension().is_some_and(|ext| ext == "tmp")
-                {
+                if !path.is_file() || path.extension().is_some_and(|ext| ext == "tmp") {
                     continue;
                 }
 
@@ -659,12 +656,14 @@ pub fn load_sessions(
                 order: entry.order,
                 created_at: now,
                 updated_at: now,
+                last_message_at: None,
                 messages: vec![],
                 message_count: Some(entry.message_count),
                 backend: super::commands::resolve_default_backend(app, Some(worktree_id)),
                 claude_session_id: None,
                 codex_thread_id: None,
                 opencode_session_id: None,
+                cursor_chat_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
                 selected_provider: None,
@@ -678,6 +677,11 @@ pub fn load_sessions(
                 fixed_findings: vec![],
                 review_results: None,
                 pending_permission_denials: vec![],
+                pending_codex_permission_requests: vec![],
+                pending_codex_command_approval_requests: vec![],
+                pending_codex_user_input_requests: vec![],
+                pending_codex_mcp_elicitation_requests: vec![],
+                pending_codex_dynamic_tool_call_requests: vec![],
                 denied_message_context: None,
                 is_reviewing: false,
                 waiting_for_input: false,
@@ -687,10 +691,14 @@ pub fn load_sessions(
                 pending_plan_message_id: None,
                 enabled_mcp_servers: None,
                 digest: None,
+                table_checked_rows: std::collections::HashMap::new(),
                 last_run_status: None,
                 last_run_execution_mode: None,
+                last_run_started_at: None,
                 label: None,
                 queued_messages: vec![],
+                total_runs: 0,
+                loaded_run_start_index: 0,
             }
         };
         sessions.push(session);
@@ -741,12 +749,14 @@ where
                 order: entry.order,
                 created_at: now,
                 updated_at: now,
+                last_message_at: None,
                 messages: vec![],
                 message_count: Some(entry.message_count),
                 backend: super::commands::resolve_default_backend(app, Some(worktree_id)),
                 claude_session_id: None,
                 codex_thread_id: None,
                 opencode_session_id: None,
+                cursor_chat_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
                 selected_provider: None,
@@ -760,6 +770,11 @@ where
                 fixed_findings: vec![],
                 review_results: None,
                 pending_permission_denials: vec![],
+                pending_codex_permission_requests: vec![],
+                pending_codex_command_approval_requests: vec![],
+                pending_codex_user_input_requests: vec![],
+                pending_codex_mcp_elicitation_requests: vec![],
+                pending_codex_dynamic_tool_call_requests: vec![],
                 denied_message_context: None,
                 is_reviewing: false,
                 waiting_for_input: false,
@@ -769,10 +784,14 @@ where
                 pending_plan_message_id: None,
                 enabled_mcp_servers: None,
                 digest: None,
+                table_checked_rows: std::collections::HashMap::new(),
                 last_run_status: None,
                 last_run_execution_mode: None,
+                last_run_started_at: None,
                 label: None,
                 queued_messages: vec![],
+                total_runs: 0,
+                loaded_run_start_index: 0,
             }
         };
         hydrated_sessions.push(session);

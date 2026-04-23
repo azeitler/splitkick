@@ -4,9 +4,7 @@ import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import {
-  chatQueryKeys,
-} from '@/services/chat'
+import { chatQueryKeys } from '@/services/chat'
 import { projectsQueryKeys } from '@/services/projects'
 import { buildMcpConfigJson } from '@/services/mcp'
 import { resolveBackend, supportsAdaptiveThinking } from '@/lib/model-utils'
@@ -18,6 +16,7 @@ import {
   DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
   DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
+  resolveMagicPromptBackend,
   resolveMagicPromptProvider,
 } from '@/types/preferences'
 import type { Project, Worktree } from '@/types/projects'
@@ -29,6 +28,7 @@ import type {
   McpServerInfo,
 } from '@/types/chat'
 import type { AppPreferences } from '@/types/preferences'
+import type { InvestigateOverride } from './useMagicCommands'
 
 // Re-export for the caller
 export interface WorkflowRunDetail {
@@ -40,13 +40,13 @@ export interface WorkflowRunDetail {
   projectPath?: string | null
 }
 
-
 interface UseInvestigateHandlersParams {
   activeSessionId: string | null | undefined
   activeWorktreeId: string | null | undefined
   activeWorktreePath: string | null | undefined
   inputRef: RefObject<HTMLTextAreaElement | null>
   preferences: AppPreferences | undefined
+  defaultBackend: string
   selectedModelRef: RefObject<string>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
   selectedEffortLevelRef: RefObject<EffortLevel>
@@ -63,8 +63,19 @@ interface UseInvestigateHandlersParams {
   setSessionBackend: { mutate: (args: any) => void }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setSessionModel: { mutate: (args: any) => void }
-  createSession: { mutate: (args: { worktreeId: string; worktreePath: string }, opts?: { onSuccess?: (session: { id: string }) => void; onError?: (error: unknown) => void }) => void }
-  resolveCustomProfile: (model: string, provider: string | null) => { model: string; customProfileName: string | undefined }
+  createSession: {
+    mutate: (
+      args: { worktreeId: string; worktreePath: string },
+      opts?: {
+        onSuccess?: (session: { id: string }) => void
+        onError?: (error: unknown) => void
+      }
+    ) => void
+  }
+  resolveCustomProfile: (
+    model: string,
+    provider: string | null
+  ) => { model: string; customProfileName: string | undefined }
   cliVersion: string | null
   worktreeProjectId: string | null | undefined
 }
@@ -80,6 +91,7 @@ export function useInvestigateHandlers({
   activeWorktreePath,
   inputRef,
   preferences,
+  defaultBackend,
   selectedModelRef,
   selectedThinkingLevelRef,
   selectedEffortLevelRef,
@@ -99,29 +111,91 @@ export function useInvestigateHandlers({
 }: UseInvestigateHandlersParams) {
   const queryClient = useQueryClient()
 
+  const primeSessionSelection = useCallback(
+    (
+      sessionId: string,
+      backend: Session['backend'],
+      model: string,
+      provider: string | null
+    ) => {
+      const now = Math.floor(Date.now() / 1000)
+
+      queryClient.setQueryData(
+        chatQueryKeys.session(sessionId),
+        (old: Session | null | undefined) =>
+          old
+            ? {
+                ...old,
+                backend,
+                selected_model: model,
+                selected_provider: provider,
+              }
+            : {
+                id: sessionId,
+                name: '',
+                order: 0,
+                created_at: now,
+                updated_at: now,
+                messages: [],
+                backend,
+                selected_model: model,
+                selected_provider: provider,
+              }
+      )
+    },
+    [queryClient]
+  )
+
   const handleInvestigate = useCallback(
-    async (type: 'issue' | 'pr' | 'security-alert' | 'advisory' | 'linear-issue') => {
+    async (
+      type: 'issue' | 'pr' | 'security-alert' | 'advisory' | 'linear-issue',
+      override?: InvestigateOverride
+    ) => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
       const modelKey =
-        type === 'issue' ? 'investigate_issue_model'
-          : type === 'pr' ? 'investigate_pr_model'
-          : type === 'security-alert' ? 'investigate_security_alert_model'
-          : type === 'linear-issue' ? 'investigate_linear_issue_model'
-          : 'investigate_advisory_model' as const
+        type === 'issue'
+          ? 'investigate_issue_model'
+          : type === 'pr'
+            ? 'investigate_pr_model'
+            : type === 'security-alert'
+              ? 'investigate_security_alert_model'
+              : type === 'linear-issue'
+                ? 'investigate_linear_issue_model'
+                : ('investigate_advisory_model' as const)
       const providerKey =
-        type === 'issue' ? 'investigate_issue_provider'
-          : type === 'pr' ? 'investigate_pr_provider'
-          : type === 'security-alert' ? 'investigate_security_alert_provider'
-          : type === 'linear-issue' ? 'investigate_linear_issue_provider'
-          : 'investigate_advisory_provider' as const
+        type === 'issue'
+          ? 'investigate_issue_provider'
+          : type === 'pr'
+            ? 'investigate_pr_provider'
+            : type === 'security-alert'
+              ? 'investigate_security_alert_provider'
+              : type === 'linear-issue'
+                ? 'investigate_linear_issue_provider'
+                : ('investigate_advisory_provider' as const)
+      const backendKey =
+        type === 'issue'
+          ? 'investigate_issue_backend'
+          : type === 'pr'
+            ? 'investigate_pr_backend'
+            : type === 'security-alert'
+              ? 'investigate_security_alert_backend'
+              : type === 'linear-issue'
+                ? 'investigate_linear_issue_backend'
+                : ('investigate_advisory_backend' as const)
       const investigateModel =
-        preferences?.magic_prompt_models?.[modelKey] ?? selectedModelRef.current
-      const investigateProvider = resolveMagicPromptProvider(
+        override?.model ??
+        preferences?.magic_prompt_models?.[modelKey] ??
+        selectedModelRef.current
+      const resolvedInvestigateProvider = resolveMagicPromptProvider(
         preferences?.magic_prompt_providers,
         providerKey,
         preferences?.default_provider
       )
+      const investigateProvider =
+        override?.backend && override.backend !== 'claude'
+          ? null
+          : resolvedInvestigateProvider
       const { customProfileName: resolvedInvestigateProfile } =
         resolveCustomProfile(investigateModel, investigateProvider)
 
@@ -167,7 +241,11 @@ export function useInvestigateHandlers({
           .replace(/\{prRefs\}/g, refs)
       } else if (type === 'security-alert') {
         const contexts = await queryClient.fetchQuery({
-          queryKey: ['investigate-contexts', 'security-alert', activeWorktreeId],
+          queryKey: [
+            'investigate-contexts',
+            'security-alert',
+            activeWorktreeId,
+          ],
           queryFn: () =>
             invoke<{ number: number; packageName: string; severity: string }[]>(
               'list_loaded_security_contexts',
@@ -175,9 +253,12 @@ export function useInvestigateHandlers({
             ),
           staleTime: 0,
         })
-        const refs = (contexts ?? []).map(c => `#${c.number} ${c.packageName} (${c.severity})`).join(', ')
+        const refs = (contexts ?? [])
+          .map(c => `#${c.number} ${c.packageName} (${c.severity})`)
+          .join(', ')
         const word = (contexts ?? []).length === 1 ? 'alert' : 'alerts'
-        const customPrompt = preferences?.magic_prompts?.investigate_security_alert
+        const customPrompt =
+          preferences?.magic_prompts?.investigate_security_alert
         const template =
           customPrompt && customPrompt.trim()
             ? customPrompt
@@ -189,23 +270,42 @@ export function useInvestigateHandlers({
         const projectId = worktreeProjectId ?? ''
         const [contexts, contentItems] = await Promise.all([
           queryClient.fetchQuery({
-            queryKey: ['investigate-contexts', 'linear-issue', activeWorktreeId],
+            queryKey: [
+              'investigate-contexts',
+              'linear-issue',
+              activeWorktreeId,
+            ],
             queryFn: () =>
-              invoke<{ identifier: string; title: string; commentCount: number; projectName: string }[]>(
-                'list_loaded_linear_issue_contexts',
-                { sessionId: activeWorktreeId, worktreeId: activeWorktreeId, projectId }
-              ),
+              invoke<
+                {
+                  identifier: string
+                  title: string
+                  commentCount: number
+                  projectName: string
+                }[]
+              >('list_loaded_linear_issue_contexts', {
+                sessionId: activeWorktreeId,
+                worktreeId: activeWorktreeId,
+                projectId,
+              }),
             staleTime: 0,
           }),
           invoke<{ identifier: string; title: string; content: string }[]>(
             'get_linear_issue_context_contents',
-            { sessionId: activeWorktreeId, worktreeId: activeWorktreeId, projectId }
+            {
+              sessionId: activeWorktreeId,
+              worktreeId: activeWorktreeId,
+              projectId,
+            }
           ),
         ])
         const refs = (contexts ?? []).map(c => c.identifier).join(', ')
         const word = (contexts ?? []).length === 1 ? 'issue' : 'issues'
-        const linearContext = (contentItems ?? []).map(c => c.content).join('\n\n---\n\n')
-        const customPrompt = preferences?.magic_prompts?.investigate_linear_issue
+        const linearContext = (contentItems ?? [])
+          .map(c => c.content)
+          .join('\n\n---\n\n')
+        const customPrompt =
+          preferences?.magic_prompts?.investigate_linear_issue
         const template =
           customPrompt && customPrompt.trim()
             ? customPrompt
@@ -224,7 +324,9 @@ export function useInvestigateHandlers({
             ),
           staleTime: 0,
         })
-        const refs = (contexts ?? []).map(c => `${c.ghsaId} (${c.severity})`).join(', ')
+        const refs = (contexts ?? [])
+          .map(c => `${c.ghsaId} (${c.severity})`)
+          .join(', ')
         const word = (contexts ?? []).length === 1 ? 'advisory' : 'advisories'
         const customPrompt = preferences?.magic_prompts?.investigate_advisory
         const template =
@@ -266,7 +368,14 @@ export function useInvestigateHandlers({
         !investigateIsCustom &&
         supportsAdaptiveThinking(investigateModel, cliVersion)
 
-      const investigateBackend = resolveBackend(investigateModel)
+      const investigateBackend =
+        override?.backend ??
+        resolveMagicPromptBackend(
+          preferences?.magic_prompt_backends,
+          backendKey,
+          defaultBackend
+        ) ??
+        resolveBackend(investigateModel)
 
       setSessionBackend.mutate({
         sessionId: activeSessionId,
@@ -282,21 +391,18 @@ export function useInvestigateHandlers({
       })
 
       {
-        const { setSelectedBackend: setZustandBackend, setSelectedModel: setZustandModel } =
-          useChatStore.getState()
+        const {
+          setSelectedBackend: setZustandBackend,
+          setSelectedModel: setZustandModel,
+        } = useChatStore.getState()
         setZustandBackend(activeSessionId, investigateBackend)
         setZustandModel(activeSessionId, investigateModel)
       }
-      queryClient.setQueryData(
-        chatQueryKeys.session(activeSessionId),
-        (old: Session | null | undefined) =>
-          old
-            ? {
-                ...old,
-                backend: investigateBackend,
-                selected_model: investigateModel,
-              }
-            : old
+      primeSessionSelection(
+        activeSessionId,
+        investigateBackend,
+        investigateModel,
+        investigateProvider
       )
 
       sendMessage.mutate(
@@ -345,6 +451,7 @@ export function useInvestigateHandlers({
       preferences?.magic_prompts?.parallel_execution,
       preferences?.magic_prompt_models,
       preferences?.magic_prompt_providers,
+      preferences?.magic_prompt_backends,
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
@@ -360,6 +467,8 @@ export function useInvestigateHandlers({
       mcpServersDataRef,
       enabledMcpServersRef,
       worktreeProjectId,
+      defaultBackend,
+      primeSessionSelection,
     ]
   )
 
@@ -472,6 +581,13 @@ export function useInvestigateHandlers({
       const worktreeId = targetWorktreeId
       const worktreePath = targetWorktreePath
 
+      const projectsForBackend = queryClient.getQueryData<Project[]>(
+        projectsQueryKeys.list()
+      )
+      const projectForBackend = projectsForBackend?.find(
+        p => p.path === detail.projectPath
+      )
+
       const investigateIsCustom = Boolean(
         investigateProvider && investigateProvider !== '__anthropic__'
       )
@@ -479,7 +595,12 @@ export function useInvestigateHandlers({
         !investigateIsCustom &&
         supportsAdaptiveThinking(investigateModel, cliVersion)
 
-      const investigateBackend = resolveBackend(investigateModel)
+      const investigateBackend =
+        resolveMagicPromptBackend(
+          preferences?.magic_prompt_backends,
+          'investigate_workflow_run_backend',
+          projectForBackend?.default_backend ?? defaultBackend
+        ) ?? resolveBackend(investigateModel)
 
       const sendInvestigateMessage = (targetSessionId: string) => {
         const {
@@ -496,7 +617,7 @@ export function useInvestigateHandlers({
         addSendingSession(targetSessionId)
         setSelectedModel(targetSessionId, investigateModel)
         setSelectedProvider(targetSessionId, investigateProvider)
-        setExecutingMode(targetSessionId, executionModeRef.current)
+        setExecutingMode(targetSessionId, 'yolo')
 
         setSessionBackend.mutate({
           sessionId: targetSessionId,
@@ -517,21 +638,18 @@ export function useInvestigateHandlers({
           provider: investigateProvider,
         })
         {
-          const { setSelectedBackend: setZustandBackend, setSelectedModel: setZustandModel } =
-            useChatStore.getState()
+          const {
+            setSelectedBackend: setZustandBackend,
+            setSelectedModel: setZustandModel,
+          } = useChatStore.getState()
           setZustandBackend(targetSessionId, investigateBackend)
           setZustandModel(targetSessionId, investigateModel)
         }
-        queryClient.setQueryData(
-          chatQueryKeys.session(targetSessionId),
-          (old: Session | null | undefined) =>
-            old
-              ? {
-                  ...old,
-                  backend: investigateBackend,
-                  selected_model: investigateModel,
-                }
-              : old
+        primeSessionSelection(
+          targetSessionId,
+          investigateBackend,
+          investigateModel,
+          investigateProvider
         )
 
         sendMessage.mutate(
@@ -541,7 +659,7 @@ export function useInvestigateHandlers({
             worktreePath,
             message: prompt,
             model: investigateModel,
-            executionMode: executionModeRef.current,
+            executionMode: 'yolo',
             thinkingLevel: selectedThinkingLevelRef.current,
             effortLevel: investigateUseAdaptive
               ? selectedEffortLevelRef.current
@@ -581,6 +699,21 @@ export function useInvestigateHandlers({
         { worktreeId, worktreePath },
         {
           onSuccess: session => {
+            useChatStore
+              .getState()
+              .setSelectedBackend(session.id, investigateBackend)
+            useChatStore
+              .getState()
+              .setSelectedModel(session.id, investigateModel)
+            useChatStore
+              .getState()
+              .setSelectedProvider(session.id, investigateProvider)
+            primeSessionSelection(
+              session.id,
+              investigateBackend,
+              investigateModel,
+              investigateProvider
+            )
             setActiveSession(worktreeId, session.id)
             sendInvestigateMessage(session.id)
           },
@@ -601,6 +734,7 @@ export function useInvestigateHandlers({
       preferences?.parallel_execution_prompt_enabled,
       preferences?.magic_prompts?.parallel_execution,
       preferences?.magic_prompt_providers,
+      preferences?.magic_prompt_backends,
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
@@ -617,6 +751,8 @@ export function useInvestigateHandlers({
       executionModeRef,
       mcpServersDataRef,
       enabledMcpServersRef,
+      defaultBackend,
+      primeSessionSelection,
     ]
   )
 
@@ -643,9 +779,13 @@ export function useInvestigateHandlers({
         reviewCommentsProvider && reviewCommentsProvider !== '__anthropic__'
       )
       const useAdaptive =
-        !isCustom &&
-        supportsAdaptiveThinking(reviewCommentsModel, cliVersion)
-      const reviewCommentsBackend = resolveBackend(reviewCommentsModel)
+        !isCustom && supportsAdaptiveThinking(reviewCommentsModel, cliVersion)
+      const reviewCommentsBackend =
+        resolveMagicPromptBackend(
+          preferences?.magic_prompt_backends,
+          'review_comments_backend',
+          defaultBackend
+        ) ?? resolveBackend(reviewCommentsModel)
 
       // Helper to send the message once we have a session ID
       const sendInSession = (sessionId: string) => {
@@ -696,8 +836,19 @@ export function useInvestigateHandlers({
                   ...old,
                   backend: reviewCommentsBackend,
                   selected_model: reviewCommentsModel,
+                  selected_provider: reviewCommentsProvider,
                 }
-              : old
+              : {
+                  id: sessionId,
+                  name: '',
+                  order: 0,
+                  created_at: Math.floor(Date.now() / 1000),
+                  updated_at: Math.floor(Date.now() / 1000),
+                  messages: [],
+                  backend: reviewCommentsBackend,
+                  selected_model: reviewCommentsModel,
+                  selected_provider: reviewCommentsProvider,
+                }
         )
 
         sendMessage.mutate(
@@ -742,6 +893,21 @@ export function useInvestigateHandlers({
             if (currentSessionId) {
               copySessionSettings(currentSessionId, session.id)
             }
+            useChatStore
+              .getState()
+              .setSelectedBackend(session.id, reviewCommentsBackend)
+            useChatStore
+              .getState()
+              .setSelectedModel(session.id, reviewCommentsModel)
+            useChatStore
+              .getState()
+              .setSelectedProvider(session.id, reviewCommentsProvider)
+            primeSessionSelection(
+              session.id,
+              reviewCommentsBackend,
+              reviewCommentsModel,
+              reviewCommentsProvider
+            )
             setActiveSession(worktreeId, session.id)
             queryClient.invalidateQueries({
               queryKey: chatQueryKeys.sessions(worktreeId),
@@ -763,6 +929,7 @@ export function useInvestigateHandlers({
       preferences?.magic_prompts?.parallel_execution,
       preferences?.magic_prompt_models?.review_comments_model,
       preferences?.magic_prompt_providers,
+      preferences?.magic_prompt_backends,
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
@@ -779,8 +946,14 @@ export function useInvestigateHandlers({
       executionModeRef,
       mcpServersDataRef,
       enabledMcpServersRef,
+      defaultBackend,
+      primeSessionSelection,
     ]
   )
 
-  return { handleInvestigate, handleInvestigateWorkflowRun, handleReviewComments }
+  return {
+    handleInvestigate,
+    handleInvestigateWorkflowRun,
+    handleReviewComments,
+  }
 }

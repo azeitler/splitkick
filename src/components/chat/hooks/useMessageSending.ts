@@ -2,7 +2,12 @@ import { useCallback, type RefObject } from 'react'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
 import { useChatStore } from '@/store/chat-store'
-import { chatQueryKeys, cancelChatMessage, persistEnqueue } from '@/services/chat'
+import {
+  chatQueryKeys,
+  cancelChatMessage,
+  persistEnqueue,
+} from '@/services/chat'
+import { skillQueryKeys } from '@/services/skills'
 import { buildMcpConfigJson } from '@/services/mcp'
 import { DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
 import type {
@@ -30,7 +35,7 @@ interface UseMessageSendingParams {
   isCodexBackendRef: RefObject<boolean>
   mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
   enabledMcpServersRef: RefObject<string[]>
-  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode'>
+  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode' | 'cursor'>
   preferences:
     | {
         custom_cli_profiles?: { name: string }[]
@@ -132,13 +137,16 @@ export function useMessageSending({
       }
 
       if (queuedMsg.pendingTextFiles.length > 0) {
+        if (!message) {
+          message = 'Please check the attached text as reference.'
+        }
         const textFileRefs = queuedMsg.pendingTextFiles
           .map(
             tf =>
               `[Text file attached: ${tf.path} - Use the Read tool to view this file]`
           )
           .join('\n')
-        message = message ? `${message}\n\n${textFileRefs}` : textFileRefs
+        message = `${message}\n\n${textFileRefs}`
       }
 
       return message
@@ -151,7 +159,9 @@ export function useMessageSending({
     (queuedMsg: QueuedMessage) => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
-      console.log(`[Send] sendMessageNow sessionId=${activeSessionId} worktreeId=${activeWorktreeId}`)
+      console.log(
+        `[Send] sendMessageNow sessionId=${activeSessionId} worktreeId=${activeWorktreeId}`
+      )
 
       const {
         setLastSentMessage,
@@ -349,7 +359,9 @@ export function useMessageSending({
       } = useChatStore.getState()
       const liveInputValue = inputRef.current?.value
       const textMessage = (
-        liveInputValue ?? inputDrafts[activeSessionId ?? ''] ?? ''
+        liveInputValue ??
+        inputDrafts[activeSessionId ?? ''] ??
+        ''
       ).trim()
       const images = getPendingImages(activeSessionId ?? '')
       const files = getPendingFiles(activeSessionId ?? '')
@@ -378,7 +390,32 @@ export function useMessageSending({
         return
       }
 
-      const message = textMessage
+      let message = textMessage
+      if (textMessage.startsWith('/')) {
+        const slashName = textMessage.slice(1).split(/\s/)[0] ?? ''
+        const params = textMessage.slice(1 + slashName.length).trim()
+        const claudeSkills =
+          queryClient.getQueryData<{ name: string }[]>(
+            skillQueryKeys.claudeSkills(activeWorktreePath)
+          ) ?? []
+        const codexSkills =
+          queryClient.getQueryData<{ name: string }[]>(
+            skillQueryKeys.codexSkills()
+          ) ?? []
+        const isSkill =
+          claudeSkills.some(s => s.name === slashName) ||
+          codexSkills.some(s => s.name === slashName)
+        if (!isSkill) {
+          const claudeCommands =
+            queryClient.getQueryData<{ name: string; path: string }[]>(
+              skillQueryKeys.claudeCommands(activeWorktreePath)
+            ) ?? []
+          const cmd = claudeCommands.find(c => c.name === slashName)
+          if (cmd) {
+            message = `Run the /${slashName} command from ${cmd.path}${params ? ` with arguments: ${params}` : ''}`
+          }
+        }
+      }
 
       if (
         images.length > 0 ||
@@ -441,11 +478,18 @@ export function useMessageSending({
       markAtBottom()
 
       const isSendingNow = checkIsSendingNow(activeSessionId)
-      console.log(`[Send] handleSubmit sessionId=${activeSessionId} isSending=${isSendingNow}`)
+      console.log(
+        `[Send] handleSubmit sessionId=${activeSessionId} isSending=${isSendingNow}`
+      )
       if (isSendingNow) {
         console.log(`[Send] handleSubmit ENQUEUING (session is sending)`)
         enqueueMessage(activeSessionId, queuedMessage)
-        persistEnqueue(activeWorktreeId, activeWorktreePath, activeSessionId, queuedMessage)
+        persistEnqueue(
+          activeWorktreeId,
+          activeWorktreePath,
+          activeSessionId,
+          queuedMessage
+        )
         return
       }
 
@@ -465,11 +509,17 @@ export function useMessageSending({
 
   // Handle cancellation of running Claude process
   const handleCancel = useCallback(async () => {
-    console.log('[Cancel] handleCancel called', { activeSessionId, activeWorktreeId })
+    console.log('[Cancel] handleCancel called', {
+      activeSessionId,
+      activeWorktreeId,
+    })
     if (!activeSessionId || !activeWorktreeId) return
     const sending =
       useChatStore.getState().sendingSessionIds[activeSessionId] ?? false
-    console.log('[Cancel] sendingSessionIds check', { sending, allSending: Object.keys(useChatStore.getState().sendingSessionIds) })
+    console.log('[Cancel] sendingSessionIds check', {
+      sending,
+      allSending: Object.keys(useChatStore.getState().sendingSessionIds),
+    })
     if (!sending) return
 
     const cancelled = await cancelChatMessage(activeSessionId, activeWorktreeId)

@@ -94,6 +94,10 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
 }
 
 .dark {
@@ -217,6 +221,15 @@
   inherits: false;
 }
 
+/* Failed terminal: static red square (no spinning) */
+.square-spinner-failed {
+  --spinner-color: oklch(0.637 0.237 25.331); /* red-500 */
+  position: relative;
+  background: color-mix(in srgb, var(--spinner-color) 25%, transparent);
+  border: 1px solid var(--spinner-color);
+  border-radius: 2px;
+}
+
 /* Animated border for session cards in running state.
    Uses transform:rotate on an oversized conic-gradient pseudo-element
    (WebKit doesn't support @property animation needed for the from-angle approach). */
@@ -308,6 +321,14 @@
   animation: collapsible-up 150ms ease-out;
 }
 
+/* Force GPU compositing layer on scroll viewport to prevent WebKit blank-screen bug.
+   Without this, rapid programmatic scrollTop changes during CSS collapse animations
+   can leave the viewport visually blank until a user scroll gesture forces a repaint. */
+.will-change-scroll {
+  will-change: scroll-position;
+  -webkit-transform: translateZ(0);
+}
+
 /* Bell ring animation for unread notifications */
 @keyframes bell-ring {
   0%,
@@ -337,7 +358,8 @@
 
 /* Pulsing glow for running terminal icon indicator */
 @keyframes icon-glow {
-  0%, 100% {
+  0%,
+  100% {
     filter: drop-shadow(0 0 2px rgba(250, 204, 21, 0.5));
   }
   50% {
@@ -355,6 +377,14 @@
     box-sizing: border-box;
   }
 
+  html,
+  body,
+  #root {
+    min-height: 100%;
+    min-height: 100dvh;
+    background: var(--background);
+  }
+
   html {
     @apply bg-background;
   }
@@ -366,6 +396,10 @@
     min-height: 100dvh;
     min-width: 100vw;
     position: relative;
+  }
+
+  #root {
+    isolation: isolate;
   }
 
   /* Desktop-only styles — applied when body has .native-app class */
@@ -507,7 +541,6 @@ kbd {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
-
 /* Settings search highlight flash */
 @keyframes settings-highlight-flash {
   0% {
@@ -534,6 +567,20 @@ kbd {
   filter: invert(1);
 }
 
+/* Chat search highlights (CSS Custom Highlight API) */
+::highlight(chat-search) {
+  background-color: rgba(250, 204, 21, 0.4);
+}
+::highlight(chat-search-active) {
+  background-color: rgba(251, 146, 60, 0.75);
+}
+.dark ::highlight(chat-search) {
+  background-color: rgba(250, 204, 21, 0.3);
+}
+.dark ::highlight(chat-search-active) {
+  background-color: rgba(251, 146, 60, 0.6);
+}
+
 /* Custom scrollbar styling to match Radix ScrollArea */
 .custom-scrollbar::-webkit-scrollbar {
   width: 10px;
@@ -546,4 +593,16 @@ kbd {
   border-radius: 9999px;
   border: 1px solid transparent;
   background-clip: padding-box;
+}
+
+.xterm,
+.xterm .xterm-viewport,
+.xterm .xterm-screen,
+.xterm .xterm-screen canvas {
+  background-color: var(--background) !important;
+}
+
+.xterm .composition-view {
+  background-color: var(--background) !important;
+  color: var(--foreground) !important;
 }

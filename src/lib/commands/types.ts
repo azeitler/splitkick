@@ -106,6 +106,7 @@ export interface CommandContext {
 
   // Developer
   toggleDebugMode: () => void
+  copySessionDebugDetails: () => Promise<void>
 
   // State getters for isAvailable checks
   hasActiveSession: () => boolean

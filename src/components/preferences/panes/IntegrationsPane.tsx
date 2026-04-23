@@ -94,7 +94,7 @@ export const IntegrationsPane: React.FC = () => {
               placeholder="lin_api_..."
               value={displayedLinearApiKey}
               onChange={e => setLocalLinearApiKey(e.target.value)}
-              className="flex-1 text-sm font-mono"
+              className="flex-1 text-base md:text-sm font-mono"
             />
             <Button
               variant="outline"

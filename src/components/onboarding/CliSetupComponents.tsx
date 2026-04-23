@@ -107,7 +107,7 @@ export function SetupState({
                 placeholder="2.74.0"
                 value={selectedVersion ?? ''}
                 onChange={e => onVersionChange(e.target.value.trim())}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:text-sm"
               />
             </div>
           </div>
@@ -295,7 +295,12 @@ export function AuthLoginState({
 
       const observer = new ResizeObserver(entries => {
         const entry = entries[0]
-        if (!entry || entry.contentRect.width === 0 || entry.contentRect.height === 0) return
+        if (
+          !entry ||
+          entry.contentRect.width === 0 ||
+          entry.contentRect.height === 0
+        )
+          return
 
         if (!initialized.current) {
           initialized.current = true
@@ -313,14 +318,31 @@ export function AuthLoginState({
   )
 
   useEffect(() => {
-    dbg('AuthLoginState MOUNTED:', cliName, 'terminalId:', terminalId, 'command:', command, 'args:', commandArgs)
-    return () => dbg('AuthLoginState UNMOUNTED:', cliName, 'terminalId:', terminalId)
+    dbg(
+      'AuthLoginState MOUNTED:',
+      cliName,
+      'terminalId:',
+      terminalId,
+      'command:',
+      command,
+      'args:',
+      commandArgs
+    )
+    return () =>
+      dbg('AuthLoginState UNMOUNTED:', cliName, 'terminalId:', terminalId)
   }, [cliName, terminalId, command, commandArgs])
 
   // Auto-advance when the auth process exits successfully
   useEffect(() => {
     setOnStopped(terminalId, (exitCode, signal) => {
-      dbg('AuthLoginState terminal stopped:', cliName, 'exitCode:', exitCode, 'signal:', signal)
+      dbg(
+        'AuthLoginState terminal stopped:',
+        cliName,
+        'exitCode:',
+        exitCode,
+        'signal:',
+        signal
+      )
       if (exitCode === 0) {
         dbg('AuthLoginState: exit 0, calling onComplete in 1.5s')
         // Brief delay so user can see the success output
@@ -360,10 +382,9 @@ export function AuthLoginState({
         </p>
       </div>
 
-      <div
-        ref={containerCallbackRef}
-        className="w-full h-[300px] rounded-md bg-[#1a1a1a] overflow-hidden"
-      />
+      <div className="h-[300px] w-full overflow-hidden rounded-md border border-border bg-background p-3 sm:p-4">
+        <div ref={containerCallbackRef} className="h-full w-full" />
+      </div>
 
       {exitStatus && (
         <div className="rounded-md border border-destructive/40 bg-destructive/5 p-3">
@@ -433,7 +454,16 @@ export function CliPathSelector({
   onSelectJean,
 }: CliPathSelectorProps) {
   useEffect(() => {
-    dbg('CliPathSelector MOUNTED:', cliName, 'pathVersion:', pathVersion, 'pathPath:', pathPath, 'isLoading:', isLoading)
+    dbg(
+      'CliPathSelector MOUNTED:',
+      cliName,
+      'pathVersion:',
+      pathVersion,
+      'pathPath:',
+      pathPath,
+      'isLoading:',
+      isLoading
+    )
     return () => dbg('CliPathSelector UNMOUNTED:', cliName)
   }, [cliName, pathVersion, pathPath, isLoading])
 
@@ -482,5 +512,6 @@ export function CliPathSelector({
 }
 
 /** @deprecated Use CliPathSelector instead */
-export const ClaudePathSelector = (props: Omit<CliPathSelectorProps, 'cliName'>) =>
-  CliPathSelector({ ...props, cliName: 'Claude CLI' })
+export const ClaudePathSelector = (
+  props: Omit<CliPathSelectorProps, 'cliName'>
+) => CliPathSelector({ ...props, cliName: 'Claude CLI' })

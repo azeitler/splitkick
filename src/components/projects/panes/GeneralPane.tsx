@@ -48,6 +48,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { BackendLabel } from '@/components/ui/backend-label'
 
 const SettingsSection: React.FC<{
   title: string
@@ -138,8 +139,7 @@ export function GeneralPane({
       : null
 
   const displayedName = localName ?? project?.name ?? ''
-  const nameChanged =
-    localName !== null && localName !== (project?.name ?? '')
+  const nameChanged = localName !== null && localName !== (project?.name ?? '')
 
   const handleSaveName = useCallback(() => {
     if (localName === null) return
@@ -246,8 +246,12 @@ export function GeneralPane({
         { projectId, linearTeamId: value === 'all' ? '' : value },
         {
           onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: linearQueryKeys.issues(projectId) })
-            queryClient.invalidateQueries({ queryKey: ['linear', 'issue-search', projectId] })
+            queryClient.invalidateQueries({
+              queryKey: linearQueryKeys.issues(projectId),
+            })
+            queryClient.invalidateQueries({
+              queryKey: ['linear', 'issue-search', projectId],
+            })
           },
         }
       )
@@ -278,7 +282,7 @@ export function GeneralPane({
             <Input
               value={displayedName}
               onChange={e => setLocalName(e.target.value)}
-              className="flex-1 text-sm"
+              className="flex-1 text-base md:text-sm"
             />
             <Button
               size="sm"
@@ -463,17 +467,10 @@ export function GeneralPane({
             <SelectContent>
               <SelectItem value="global-default">Use global default</SelectItem>
               <SelectItem value="claude">Claude</SelectItem>
-              <SelectItem value="codex">
-                Codex{' '}
-                <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                  BETA
-                </span>
-              </SelectItem>
-              <SelectItem value="opencode">
-                OpenCode{' '}
-                <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                  BETA
-                </span>
+              <SelectItem value="codex">Codex</SelectItem>
+              <SelectItem value="opencode">OpenCode</SelectItem>
+              <SelectItem value="cursor">
+                <BackendLabel backend="cursor" />
               </SelectItem>
             </SelectContent>
           </Select>
@@ -497,7 +494,7 @@ export function GeneralPane({
               placeholder="~/jean (default)"
               value={displayedWorktreesDir}
               onChange={e => setLocalWorktreesDir(e.target.value)}
-              className="flex-1 text-sm"
+              className="flex-1 text-base md:text-sm"
             />
             <Button
               variant="outline"
@@ -545,7 +542,7 @@ export function GeneralPane({
               placeholder="lin_api_..."
               value={displayedLinearApiKey}
               onChange={e => setLocalLinearApiKey(e.target.value)}
-              className="flex-1 text-sm font-mono"
+              className="flex-1 text-base md:text-sm font-mono"
             />
             <Button
               variant="outline"
@@ -614,10 +611,7 @@ export function GeneralPane({
                 disabled={teamsLoading}
               >
                 <RefreshCw
-                  className={cn(
-                    'h-4 w-4',
-                    teamsLoading && 'animate-spin'
-                  )}
+                  className={cn('h-4 w-4', teamsLoading && 'animate-spin')}
                 />
               </Button>
             </div>
@@ -635,7 +629,7 @@ export function GeneralPane({
             value={displayedSystemPrompt}
             onChange={e => setLocalSystemPrompt(e.target.value)}
             rows={4}
-            className="resize-y text-sm"
+            className="resize-y text-base md:text-sm"
           />
           <Button
             size="sm"

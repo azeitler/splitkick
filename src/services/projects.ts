@@ -31,6 +31,7 @@ import type { AppPreferences } from '@/types/preferences'
 import type { AdvisoryContext } from '@/types/github'
 import { hasBackend } from '@/lib/environment'
 import { openExternal, preOpenWindow } from '@/lib/platform'
+import { consumeWorktreeSilentReady } from '@/services/worktree-silent-ready'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -502,6 +503,7 @@ export function useCreateWorktree() {
         ghsaId: string
         cveId?: string
         manifestPath: string
+        htmlUrl?: string
       }
       /** Advisory context to pass when creating a worktree from a repository advisory */
       advisoryContext?: AdvisoryContext
@@ -683,6 +685,7 @@ export function useCreateWorktreeFromExistingBranch() {
         ghsaId: string
         cveId?: string
         manifestPath: string
+        htmlUrl?: string
       }
       /** Advisory context to pass when creating a worktree from a repository advisory */
       advisoryContext?: AdvisoryContext
@@ -916,8 +919,17 @@ export function useWorktreeEvents() {
     // Listen for creation starting - add pending worktree immediately
     unlistenPromises.push(
       listen<WorktreeCreatingEvent>('worktree:creating', event => {
-        const { id, project_id, name, path, branch, pr_number, issue_number } =
-          event.payload
+        const {
+          id,
+          project_id,
+          name,
+          path,
+          branch,
+          pr_number,
+          issue_number,
+          security_alert_number,
+          advisory_ghsa_id,
+        } = event.payload
         logger.info('Worktree creating (background started)', { id, name })
 
         // Add pending worktree to cache so it appears instantly on all clients
@@ -934,6 +946,8 @@ export function useWorktreeEvents() {
               branch,
               pr_number,
               issue_number,
+              security_alert_number,
+              advisory_ghsa_id,
               created_at: Math.floor(Date.now() / 1000),
               status: 'pending' as const,
               session_type: 'worktree' as Worktree['session_type'],
@@ -961,7 +975,15 @@ export function useWorktreeEvents() {
           name: worktree.name,
         })
 
+        // Update cache FIRST, then clear timeout — ensures the safety timeout
+        // survives if the cache update is a no-op (e.g. cache was invalidated
+        // between worktree:creating and worktree:created events).
+        handleWorktreeReady(worktree, queryClient)
         clearPendingTimeout(worktree.id)
+
+        if (consumeWorktreeSilentReady(worktree.id)) {
+          return
+        }
 
         const openWorktreeAction = {
           label: 'Open',
@@ -978,25 +1000,25 @@ export function useWorktreeEvents() {
             // canvas is mounting (lazy-loaded), and a deferred event dispatch
             // for when it's already mounted. The auto-open effect consumes the
             // mark, so only one will take effect.
-            useUIStore
-              .getState()
-              .markWorktreeForAutoOpenSession(worktree.id)
+            useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
             setTimeout(() => {
               window.dispatchEvent(
                 new CustomEvent('open-worktree-modal', {
-                  detail: { worktreeId: worktree.id, worktreePath: worktree.path },
+                  detail: {
+                    worktreeId: worktree.id,
+                    worktreePath: worktree.path,
+                  },
                 })
               )
             }, 0)
           },
         }
 
-        toast.success('Worktree ready', {
+        toast.success(`Worktree ready: ${worktree.name}`, {
           id: `worktree-creating-${worktree.id}`,
+          duration: 5000,
           action: openWorktreeAction,
         })
-
-        handleWorktreeReady(worktree, queryClient)
       })
     )
 
@@ -1010,12 +1032,16 @@ export function useWorktreeEvents() {
           success: setup_success,
         })
 
-        // Update worktree in query cache with setup results
+        // Update worktree in query cache with setup results.
+        // Also ensure status is 'ready' as a safety net — if the earlier
+        // worktree:created handler failed to transition from 'pending', this
+        // guarantees the loading indicator is cleared.
         const updateWorktree = (worktree: Worktree): Worktree => ({
           ...worktree,
           setup_output,
           setup_script,
           setup_success,
+          status: 'ready' as const,
         })
         queryClient.setQueryData<Worktree[]>(
           projectsQueryKeys.worktrees(project_id),
@@ -1120,7 +1146,9 @@ export function useWorktreeEvents() {
 
         // Close SessionChatModal if it's open for this worktree
         window.dispatchEvent(
-          new CustomEvent('close-worktree-modal', { detail: { worktreeId: id } })
+          new CustomEvent('close-worktree-modal', {
+            detail: { worktreeId: id },
+          })
         )
       })
     )
@@ -1950,7 +1978,9 @@ export function useOpenWorktreeInFinder() {
         throw new Error('Not in Tauri context')
       }
 
-      logger.debug(`Opening worktree in ${getFileManagerName()}`, { worktreePath })
+      logger.debug(`Opening worktree in ${getFileManagerName()}`, {
+        worktreePath,
+      })
       await invoke('open_worktree_in_finder', { worktreePath })
       logger.info(`Opened worktree in ${getFileManagerName()}`)
     },
@@ -1962,7 +1992,9 @@ export function useOpenWorktreeInFinder() {
             ? error
             : 'Unknown error occurred'
       logger.error(`Failed to open in ${getFileManagerName()}`, { error })
-      toast.error(`Failed to open in ${getFileManagerName()}`, { description: message })
+      toast.error(`Failed to open in ${getFileManagerName()}`, {
+        description: message,
+      })
     },
   })
 }
@@ -2174,6 +2206,34 @@ export function usePorts(worktreePath: string | null) {
     },
     enabled: !!worktreePath,
     staleTime: 30_000,
+  })
+}
+
+/**
+ * A TCP port actively listened on by a terminal's child process.
+ * Detected at runtime via lsof (macOS/Linux only).
+ */
+export interface TerminalPortInfo {
+  terminalId: string
+  port: number
+  processName: string
+  localAddress: string
+}
+
+/**
+ * Hook to discover TCP LISTEN ports owned by terminal processes.
+ * Polls every 5s when enabled. Returns empty array on non-native platforms.
+ */
+export function useTerminalListeningPorts(enabled: boolean) {
+  return useQuery<TerminalPortInfo[]>({
+    queryKey: ['terminal-listening-ports'],
+    queryFn: async () => {
+      if (!isTauri()) return []
+      return invoke<TerminalPortInfo[]>('get_terminal_listening_ports')
+    },
+    enabled,
+    refetchInterval: 5_000,
+    staleTime: 3_000,
   })
 }
 
@@ -2463,7 +2523,11 @@ export function useUpdateProjectSettings() {
         throw new Error('Not in Tauri context')
       }
 
-      logger.debug('Updating project settings', { projectId, name, defaultBranch })
+      logger.debug('Updating project settings', {
+        projectId,
+        name,
+        defaultBranch,
+      })
       const project = await invoke<Project>('update_project_settings', {
         projectId,
         name,

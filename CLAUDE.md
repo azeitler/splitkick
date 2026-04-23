@@ -10,6 +10,10 @@ This repository is a template with sensible defaults for building Tauri React ap
 
 ## Core Rules
 
+### Codex App Server schema
+
+If you need to check some codex app-server related things, use "codex app-server generate-json-schema --out ./codex-schema" to generate schema and check local dir ./codex-schema for schemas.
+
 ### New Sessions
 
 - Read @docs/tasks.md for task management
@@ -173,7 +177,9 @@ To diagnose unnecessary re-renders, temporarily install [why-did-you-render](htt
 2. Create `src/wdyr.ts`:
    ```typescript
    if (import.meta.env.DEV) {
-     const whyDidYouRender = (await import('@welldone-software/why-did-you-render')).default
+     const whyDidYouRender = (
+       await import('@welldone-software/why-did-you-render')
+     ).default
      whyDidYouRender(React, { trackAllPureComponents: false })
    }
    ```
@@ -317,6 +323,7 @@ The helper is defined in `src-tauri/src/platform/process.rs` and exported via `p
 #### Canvas Views Architecture
 
 **"Canvas"** refers to **ProjectCanvasView** (`src/components/dashboard/ProjectCanvasView.tsx`):
+
 - Project-level canvas showing worktrees as compact list rows (with section headers)
 - Sessions are opened via `SessionChatModal` overlay
 - Navigation: clicking "back" from ChatWindow returns to ProjectCanvasView via `clearActiveWorktree()`
@@ -348,7 +355,7 @@ Images pasted or dropped into chat are processed before saving (`process_image()
 
 Three files need updating when adding a new model option:
 
-1. **`src/types/preferences.ts`** — Add to `ClaudeModel` type union and `modelOptions` array (full labels like "Claude Sonnet 4.6"). Model IDs use short names: `opus`, `opus-4.5`, `sonnet`, `sonnet-4.5`, `haiku`
+1. **`src/types/preferences.ts`** — Add to `ClaudeModel` type union and `modelOptions` array (full labels like "Claude Sonnet 4.6"). Model IDs use short names: `opus`, `sonnet`, `haiku`
 2. **`src/store/chat-store.ts`** — Add to duplicated `ClaudeModel` type union (line ~27)
 3. **`src/components/chat/ChatToolbar.tsx`** — Add to `MODEL_OPTIONS` array (short labels like "Sonnet 4.6")
 

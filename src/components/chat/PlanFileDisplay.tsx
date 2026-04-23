@@ -1,15 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ChevronRight, FileText, AlertCircle } from 'lucide-react'
 import { readPlanFile } from '@/services/chat'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import { getFilename } from '@/lib/path-utils'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
+import { Collapsible, CollapsibleTrigger } from '@/components/ui/collapsible'
 
 interface PlanDisplayBaseProps {
   className?: string
@@ -32,8 +28,9 @@ interface PlanDisplayInlineProps extends PlanDisplayBaseProps {
 type PlanDisplayProps = PlanDisplayFileProps | PlanDisplayInlineProps
 
 /**
- * Display plan content in a collapsible section
- * Can render inline content directly or fetch from a file path
+ * Display plan content in a collapsible section.
+ * Uses conditional rendering (no CSS animation) to avoid scroll timing races
+ * when plans collapse programmatically (approval or follow-up message).
  */
 export function PlanDisplay({
   content: inlineContent,
@@ -43,10 +40,15 @@ export function PlanDisplay({
 }: PlanDisplayProps) {
   const [isOpen, setIsOpen] = useState(!defaultCollapsed)
 
-  // Sync collapse when plan gets approved (defaultCollapsed transitions to true)
-  useEffect(() => {
-    if (defaultCollapsed) setIsOpen(false)
-  }, [defaultCollapsed])
+  // Render-time sync: when defaultCollapsed transitions to true, close immediately
+  // in the same render frame (no useEffect delay). React re-renders before commit.
+  // See: https://react.dev/reference/react/useState#storing-information-from-previous-renders
+  const [prevDefaultCollapsed, setPrevDefaultCollapsed] =
+    useState(defaultCollapsed)
+  if (defaultCollapsed && !prevDefaultCollapsed) {
+    setPrevDefaultCollapsed(true)
+    setIsOpen(false)
+  }
 
   // Extract filename from path for display (only for file-based plans)
   const filename = filePath ? getFilename(filePath) : null
@@ -123,13 +125,36 @@ export function PlanDisplay({
           )}
         />
       </CollapsibleTrigger>
-      <CollapsibleContent>
+      {isOpen && (
         <div className="border-t border-border/50 px-3 py-3">
           <div>
-            <Markdown className="text-sm">{content}</Markdown>
+            <Markdown
+              className={cn(
+                'text-sm leading-7',
+                '[&_p]:my-0',
+                '[&_p+ul]:mt-3',
+                '[&_p+ol]:mt-3',
+                '[&_ul]:my-3',
+                '[&_ul]:pl-5',
+                '[&_ol]:my-3',
+                '[&_ol]:pl-5',
+                '[&_li]:my-1.5',
+                '[&_ul.contains-task-list]:list-none',
+                '[&_ul.contains-task-list]:pl-0',
+                '[&_ul.contains-task-list>li]:list-none',
+                '[&_ul.contains-task-list>li]:marker:content-none',
+                '[&_ul.contains-task-list>li]:flex',
+                '[&_ul.contains-task-list>li]:items-start',
+                '[&_ul.contains-task-list>li]:gap-2.5',
+                '[&_ul.contains-task-list>li]:py-0.5',
+                '[&_ul.contains-task-list>li:has(button[data-state=checked])]:opacity-60'
+              )}
+            >
+              {content}
+            </Markdown>
           </div>
         </div>
-      </CollapsibleContent>
+      )}
     </Collapsible>
   )
 }

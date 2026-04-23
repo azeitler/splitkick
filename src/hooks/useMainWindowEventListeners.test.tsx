@@ -6,12 +6,15 @@ import {
   addTerminalTabForShortcut,
   closeActiveTerminalTabForShortcut,
   getTerminalShortcutWorktreeId,
+  shouldLetPlanDialogHandleAction,
   switchActiveTerminalTabByIndexForShortcut,
 } from './useMainWindowEventListeners'
 
 const { mockInvoke, mockListen, mockDisposeTerminal } = vi.hoisted(() => ({
   mockInvoke: vi.fn().mockResolvedValue(undefined),
-  mockListen: vi.fn().mockResolvedValue(() => {}),
+  mockListen: vi.fn().mockResolvedValue(() => {
+    /* noop cleanup */
+  }),
   mockDisposeTerminal: vi.fn(),
 }))
 
@@ -92,11 +95,14 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
       terminals: {},
       activeTerminalIds: {},
       runningTerminals: new Set(),
+      failedTerminals: new Set(),
       terminalVisible: false,
       terminalPanelOpen: {},
       terminalHeight: 30,
       modalTerminalOpen: {},
+      modalTerminalDockMode: 'floating',
       modalTerminalWidth: 400,
+      modalTerminalHeight: 280,
     })
 
     useUIStore.setState({
@@ -141,6 +147,21 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
     expect(getTerminalShortcutWorktreeId()).toBe('modal-worktree')
   })
 
+  it('resolves terminal shortcuts when the modal terminal is docked', () => {
+    focusTerminal()
+
+    useUIStore.setState({
+      sessionChatModalOpen: true,
+      sessionChatModalWorktreeId: 'modal-worktree',
+    })
+    useTerminalStore.setState({
+      modalTerminalOpen: { 'modal-worktree': true },
+      modalTerminalDockMode: 'bottom',
+    })
+
+    expect(getTerminalShortcutWorktreeId()).toBe('modal-worktree')
+  })
+
   it('uses the terminal shortcut path to open a new terminal tab for the modal worktree', () => {
     focusTerminal()
 
@@ -166,9 +187,9 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
 
     expect(addTerminalTabForShortcut()).toBe(true)
 
-    expect(useTerminalStore.getState().terminals['modal-worktree']).toHaveLength(
-      2
-    )
+    expect(
+      useTerminalStore.getState().terminals['modal-worktree']
+    ).toHaveLength(2)
   })
 
   it('uses the terminal shortcut path to close the active terminal tab for the modal worktree', () => {
@@ -201,9 +222,9 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
     })
     expect(mockDisposeTerminal).toHaveBeenCalledWith('term-1')
     expect(useTerminalStore.getState().terminals['modal-worktree']).toEqual([])
-    expect(useTerminalStore.getState().modalTerminalOpen['modal-worktree']).toBe(
-      false
-    )
+    expect(
+      useTerminalStore.getState().modalTerminalOpen['modal-worktree']
+    ).toBe(false)
   })
 
   it('switches the active terminal tab by index for the modal worktree', () => {
@@ -236,9 +257,9 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
     })
 
     expect(switchActiveTerminalTabByIndexForShortcut(1)).toBe(true)
-    expect(useTerminalStore.getState().activeTerminalIds['modal-worktree']).toBe(
-      'term-2'
-    )
+    expect(
+      useTerminalStore.getState().activeTerminalIds['modal-worktree']
+    ).toBe('term-2')
   })
 
   it('consumes invalid terminal tab indexes without falling back to session switching', () => {
@@ -265,8 +286,28 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
     })
 
     expect(switchActiveTerminalTabByIndexForShortcut(8)).toBe(true)
-    expect(useTerminalStore.getState().activeTerminalIds['modal-worktree']).toBe(
-      'term-1'
+    expect(
+      useTerminalStore.getState().activeTerminalIds['modal-worktree']
+    ).toBe('term-1')
+  })
+})
+
+describe('shouldLetPlanDialogHandleAction', () => {
+  it('returns true for approve actions when the plan dialog is open', () => {
+    expect(shouldLetPlanDialogHandleAction('approve_plan', true)).toBe(true)
+    expect(shouldLetPlanDialogHandleAction('approve_plan_yolo', true)).toBe(
+      true
     )
+    expect(
+      shouldLetPlanDialogHandleAction('approve_plan_worktree_build', true)
+    ).toBe(true)
+    expect(
+      shouldLetPlanDialogHandleAction('approve_plan_worktree_yolo', true)
+    ).toBe(true)
+  })
+
+  it('returns false for non-approve actions or when the dialog is closed', () => {
+    expect(shouldLetPlanDialogHandleAction('open_plan', true)).toBe(false)
+    expect(shouldLetPlanDialogHandleAction('approve_plan', false)).toBe(false)
   })
 })

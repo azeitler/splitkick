@@ -12,10 +12,12 @@ mod background_tasks;
 mod chat;
 mod claude_cli;
 mod codex_cli;
+mod cursor_cli;
 mod gh_cli;
 pub mod http_server;
 mod opencode_cli;
 mod opencode_server;
+mod opinionated;
 mod platform;
 mod projects;
 mod terminal;
@@ -77,11 +79,11 @@ fn greet(name: &str) -> String {
 pub struct AppPreferences {
     pub theme: String,
     #[serde(default = "default_model")]
-    pub selected_model: String, // Claude model: opus, sonnet, haiku
+    pub selected_model: String, // Claude model: claude-opus-4-7, claude-opus-4-6, sonnet, haiku
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String, // Thinking level: off, think, megathink, ultrathink
     #[serde(default = "default_effort_level")]
-    pub default_effort_level: String, // Effort level for Opus 4.6: low, medium, high, max
+    pub default_effort_level: String, // Effort level for Opus adaptive thinking: low, medium, high, xhigh, max
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
     #[serde(default = "default_editor")]
@@ -91,11 +93,11 @@ pub struct AppPreferences {
     #[serde(default = "default_auto_branch_naming")]
     pub auto_branch_naming: bool, // Automatically generate branch names from first message
     #[serde(default = "default_branch_naming_model")]
-    pub branch_naming_model: String, // Model for generating branch names: haiku, sonnet, opus
+    pub branch_naming_model: String, // Model for generating branch names: haiku, sonnet, claude-opus-4-7, claude-opus-4-6
     #[serde(default = "default_auto_session_naming")]
     pub auto_session_naming: bool, // Automatically generate session names from first message
     #[serde(default = "default_session_naming_model")]
-    pub session_naming_model: String, // Model for generating session names: haiku, sonnet, opus
+    pub session_naming_model: String, // Model for generating session names: haiku, sonnet, claude-opus-4-7, claude-opus-4-6
     #[serde(default = "default_font_size")]
     pub ui_font_size: u32, // Font size for UI text in pixels (10-24)
     #[serde(default = "default_font_size")]
@@ -139,9 +141,9 @@ pub struct AppPreferences {
     #[serde(default = "default_allow_web_tools_in_plan_mode")]
     pub allow_web_tools_in_plan_mode: bool, // Allow WebFetch/WebSearch in plan mode without prompts
     #[serde(default = "default_waiting_sound")]
-    pub waiting_sound: String, // Sound when session is waiting for input: none, ding, chime, pop, choochoo
+    pub waiting_sound: String, // Sound when session is waiting for input: none, workwork
     #[serde(default = "default_review_sound")]
-    pub review_sound: String, // Sound when session finishes reviewing: none, ding, chime, pop, choochoo
+    pub review_sound: String, // Sound when session finishes reviewing: none, workwork
     #[serde(default)]
     pub http_server_enabled: bool, // Whether HTTP server is enabled
     #[serde(default)]
@@ -151,7 +153,9 @@ pub struct AppPreferences {
     #[serde(default)]
     pub http_server_token: Option<String>, // Persisted auth token (generated once)
     #[serde(default)]
-    pub http_server_localhost_only: bool, // Bind to localhost only (more secure)
+    pub http_server_bind_host: Option<String>, // Explicit bind host (localhost or specific IP)
+    #[serde(default)]
+    pub http_server_localhost_only: bool, // Legacy fallback when no explicit bind host is set
     #[serde(default = "default_http_server_token_required")]
     pub http_server_token_required: bool, // Require token for web access (default true)
     #[serde(default = "default_removal_behavior")]
@@ -187,11 +191,13 @@ pub struct AppPreferences {
     #[serde(default = "default_execution_mode")]
     pub default_execution_mode: String, // Default execution mode: "plan", "build", or "yolo"
     #[serde(default = "default_backend")]
-    pub default_backend: String, // Default CLI backend: "claude", "codex", or "opencode"
+    pub default_backend: String, // Default CLI backend: "claude", "codex", "opencode", or "cursor"
     #[serde(default = "default_codex_model")]
     pub selected_codex_model: String, // Default Codex model
     #[serde(default = "default_opencode_model")]
     pub selected_opencode_model: String, // Default OpenCode model (provider/model)
+    #[serde(default = "default_cursor_model")]
+    pub selected_cursor_model: String, // Default Cursor model
     #[serde(default = "default_codex_reasoning_effort")]
     pub default_codex_reasoning_effort: String, // Codex reasoning effort: low, medium, high, xhigh
     #[serde(default)]
@@ -214,6 +220,10 @@ pub struct AppPreferences {
     pub build_thinking_level: Option<String>, // Thinking level override for build mode, None = use session thinking level
     #[serde(default)]
     pub yolo_thinking_level: Option<String>, // Thinking level override for yolo mode, None = use session thinking level
+    #[serde(default)]
+    pub build_effort_level: Option<String>, // Effort level override for build mode (Claude adaptive / Codex), None = use session effort
+    #[serde(default)]
+    pub yolo_effort_level: Option<String>, // Effort level override for yolo mode (Claude adaptive / Codex), None = use session effort
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub linear_api_key: Option<String>, // Global Linear personal API key (inherited by all projects)
     #[serde(default = "default_cli_source")]
@@ -224,6 +234,8 @@ pub struct AppPreferences {
     pub opencode_cli_source: String, // OpenCode CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default = "default_cli_source")]
     pub gh_cli_source: String, // GitHub CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default)]
+    pub expand_tool_calls_by_default: bool, // Expand all tool call collapsibles by default (default: false)
 }
 
 fn default_true() -> Option<bool> {
@@ -270,7 +282,7 @@ fn default_auto_branch_naming() -> bool {
 }
 
 fn default_branch_naming_model() -> String {
-    "haiku".to_string() // Use Haiku by default for fast, cheap branch name generation
+    "sonnet".to_string()
 }
 
 fn default_auto_session_naming() -> bool {
@@ -278,7 +290,7 @@ fn default_auto_session_naming() -> bool {
 }
 
 fn default_session_naming_model() -> String {
-    "haiku".to_string() // Use Haiku by default for fast, cheap session name generation
+    "sonnet".to_string()
 }
 
 fn default_font_size() -> u32 {
@@ -294,7 +306,7 @@ fn default_chat_font() -> String {
 }
 
 fn default_model() -> String {
-    "opus".to_string()
+    "claude-opus-4-7".to_string()
 }
 
 fn default_thinking_level() -> String {
@@ -400,6 +412,10 @@ fn default_opencode_model() -> String {
     "opencode/gpt-5.3-codex".to_string()
 }
 
+fn default_cursor_model() -> String {
+    "cursor/auto".to_string()
+}
+
 fn default_codex_reasoning_effort() -> String {
     "high".to_string()
 }
@@ -432,12 +448,108 @@ fn default_http_server_token_required() -> bool {
     true // Require token by default for security
 }
 
+fn normalize_http_bind_host(bind_host: Option<&str>) -> Option<String> {
+    bind_host
+        .map(str::trim)
+        .filter(|host| !host.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn resolve_http_server_bind_host(prefs: &AppPreferences) -> String {
+    normalize_http_bind_host(prefs.http_server_bind_host.as_deref()).unwrap_or_else(|| {
+        if prefs.http_server_localhost_only {
+            "127.0.0.1".to_string()
+        } else {
+            "0.0.0.0".to_string()
+        }
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{resolve_http_server_bind_host, AppPreferences};
+    use serde_json::json;
+
+    #[test]
+    fn resolve_http_server_bind_host_prefers_explicit_host() {
+        let mut prefs = AppPreferences::default();
+        prefs.http_server_bind_host = Some(" 100.110.76.47 ".to_string());
+        prefs.http_server_localhost_only = true;
+
+        assert_eq!(resolve_http_server_bind_host(&prefs), "100.110.76.47");
+    }
+
+    #[test]
+    fn resolve_http_server_bind_host_falls_back_to_legacy_boolean() {
+        let mut prefs = AppPreferences::default();
+        prefs.http_server_bind_host = None;
+        prefs.http_server_localhost_only = true;
+        assert_eq!(resolve_http_server_bind_host(&prefs), "127.0.0.1");
+
+        prefs.http_server_localhost_only = false;
+        assert_eq!(resolve_http_server_bind_host(&prefs), "0.0.0.0");
+    }
+
+    #[test]
+    fn app_preferences_preserve_review_comments_magic_prompt_overrides() {
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        let object = prefs_json.as_object_mut().unwrap();
+
+        object.insert(
+            "magic_prompt_models".to_string(),
+            json!({
+                "review_comments_model": "gpt-5.4",
+            }),
+        );
+        object.insert(
+            "magic_prompt_providers".to_string(),
+            json!({
+                "review_comments_provider": "foo",
+            }),
+        );
+        object.insert(
+            "magic_prompt_backends".to_string(),
+            json!({
+                "review_comments_backend": "codex",
+            }),
+        );
+        object.insert(
+            "magic_prompt_efforts".to_string(),
+            json!({
+                "review_comments_effort": "medium",
+            }),
+        );
+
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+
+        assert_eq!(prefs.magic_prompt_models.review_comments_model, "gpt-5.4");
+        assert_eq!(
+            prefs
+                .magic_prompt_providers
+                .review_comments_provider
+                .as_deref(),
+            Some("foo")
+        );
+        assert_eq!(
+            prefs
+                .magic_prompt_backends
+                .review_comments_backend
+                .as_deref(),
+            Some("codex")
+        );
+        assert_eq!(
+            prefs.magic_prompt_efforts.review_comments_effort.as_deref(),
+            Some("medium")
+        );
+    }
+}
+
 fn default_removal_behavior() -> String {
     "delete".to_string()
 }
 
 fn default_auto_save_context() -> bool {
-    true // Enabled by default
+    false // Disabled by default
 }
 
 fn default_auto_pull_base_branch() -> bool {
@@ -572,6 +684,14 @@ fn default_pr_content_prompt() -> String {
 <target_branch>{target_branch}</target_branch>
 <commit_count>{commit_count}</commit_count>
 </context>
+
+<related_context>
+{context}
+</related_context>
+
+<related_pull_requests>
+{related_pull_requests}
+</related_pull_requests>
 
 <commits>
 {commits}
@@ -837,6 +957,154 @@ Investigate the loaded Linear {linearWord} ({linearRefs})
         .to_string()
 }
 
+fn default_release_notes_prompt() -> String {
+    r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).
+
+## Commits since {tag}
+
+{commits}
+
+## Instructions
+
+- Write a concise release title
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
+- Use bullet points with brief descriptions
+- Reference PR numbers if visible in commit messages
+- Skip merge commits and trivial changes (typos, formatting)
+- Write in past tense ("Added", "Fixed", "Improved")
+- Keep it concise and user-facing (skip internal implementation details)"#
+        .to_string()
+}
+
+fn default_session_naming_prompt() -> String {
+    r#"<task>Generate a short, human-friendly name for this chat session based on the user's request.</task>
+
+<rules>
+- Maximum 4-5 words total
+- Use sentence case (only capitalize first word)
+- Be descriptive but concise
+- Focus on the main topic or goal
+- No special characters or punctuation
+- No generic names like "Chat session" or "New task"
+- Do NOT use commit-style prefixes like "Add", "Fix", "Update", "Refactor"
+</rules>
+
+<user_request>
+{message}
+</user_request>
+
+<output_format>
+Respond with ONLY the raw JSON object, no markdown, no code fences, no explanation:
+{"session_name": "Your session name here"}
+</output_format>"#
+        .to_string()
+}
+
+fn default_global_system_prompt() -> String {
+    r#"### 1. Plan Mode Default
+- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
+- If something goes sideways, STOP and re-plan immediately - don't keep pushing
+- Use plan mode for verification steps, not just building
+- Write detailed specs upfront to reduce ambiguity
+- Make the plan extremely concise. Sacrifice grammar for the sake of concision.
+- At the end of each plan, give me a list of unresolved questions to answer, if any.
+
+### 2. Subagent Strategy to keep main context window clean
+- Offload research, exploration, and parallel analysis to subagents
+- For complex problems, throw more compute at it via subagents
+- One task per subagent for focused execution
+
+### 3. Self-Improvement Loop
+- After ANY correction from the user: update '.ai/lessons.md' with the pattern
+- Write rules for yourself that prevent the same mistake
+- Ruthlessly iterate on these lessons until mistake rate drops
+- Review lessons at session start for relevant project
+
+### 4. Verification Before Done
+- Never mark a task complete without proving it works
+- Diff behavior between main and your changes when relevant
+- Ask yourself: "Would a staff engineer approve this?"
+- Run tests, check logs, demonstrate correctness
+
+### 5. Demand Elegance (Balanced)
+- For non-trivial changes: pause and ask "is there a more elegant way?"
+- If a fix feels hacky: "Knowing everything I know now, implement the elegant solution"
+- Skip this for simple, obvious fixes - don't over-engineer
+- Challenge your own work before presenting it
+
+### 6. Autonomous Bug Fixing
+- When given a bug report: just fix it. Don't ask for hand-holding
+- Point at logs, errors, failing tests -> then resolve them
+- Zero context switching required from the user
+- Go fix failing CI tests without being told how
+
+## Task Management
+1. **Plan First**: Write plan to '.ai/todo.md' with checkable items
+2. **Verify Plan**: Check in before starting implementation
+3. **Track Progress**: Mark items complete as you go
+4. **Explain Changes**: High-level summary at each step
+5. **Document Results**: Add review to '.ai/todo.md'
+6. **Capture Lessons**: Update '.ai/lessons.md' after corrections
+
+## Core Principles
+- **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
+
+## Important!
+
+- After each finished task, please write a few bullet points on how to test the changes."#
+        .to_string()
+}
+
+fn default_session_recap_prompt() -> String {
+    r#"You are a summarization assistant. Your ONLY job is to summarize the following conversation transcript. Do NOT continue the conversation or take any actions. Just summarize.
+
+CONVERSATION TRANSCRIPT:
+{conversation}
+
+END OF TRANSCRIPT.
+
+Now provide a brief summary with exactly two fields:
+- chat_summary: One sentence (max 100 chars) describing the overall goal and current status
+- last_action: One sentence (max 200 chars) describing what was just completed in the last exchange"#
+        .to_string()
+}
+
+fn default_review_comments_prompt() -> String {
+    r#"<task>
+
+Address the following review comments from PR #{prNumber}
+
+</task>
+
+
+<review_comments>
+{reviewComments}
+</review_comments>
+
+
+<instructions>
+
+1. Read each review comment carefully, noting the file path, line numbers, and diff context
+2. Understand what the reviewer is asking for in each comment
+3. Make the requested changes to address each comment
+4. If a comment is unclear or you disagree with it, explain your reasoning
+5. After making changes, briefly summarize what you changed for each comment
+
+</instructions>
+
+
+<guidelines>
+
+- Be thorough but focused — address exactly what was requested
+- If a comment requires a larger refactor, explain the scope before proceeding
+- Run tests after making changes to ensure nothing is broken
+
+</guidelines>"#
+        .to_string()
+}
+
 fn default_parallel_execution_prompt() -> String {
     r#"In plan mode, structure plans so subagents can work simultaneously. In build/execute mode, use subagents in parallel for faster implementation.
 
@@ -857,9 +1125,9 @@ pub struct MagicPromptModels {
     pub investigate_pr_model: String,
     #[serde(default = "default_model")]
     pub investigate_workflow_run_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub pr_content_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub commit_message_model: String,
     #[serde(default = "default_model")]
     pub code_review_model: String,
@@ -867,11 +1135,11 @@ pub struct MagicPromptModels {
     pub context_summary_model: String,
     #[serde(default = "default_model")]
     pub resolve_conflicts_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub release_notes_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub session_naming_model: String,
-    #[serde(default = "default_haiku_model")]
+    #[serde(default = "default_sonnet_model")]
     pub session_recap_model: String,
     #[serde(default = "default_model")]
     pub investigate_security_alert_model: String,
@@ -879,10 +1147,12 @@ pub struct MagicPromptModels {
     pub investigate_advisory_model: String,
     #[serde(default = "default_model")]
     pub investigate_linear_issue_model: String,
+    #[serde(default = "default_model")]
+    pub review_comments_model: String,
 }
 
-fn default_haiku_model() -> String {
-    "haiku".to_string()
+fn default_sonnet_model() -> String {
+    "sonnet".to_string()
 }
 
 impl Default for MagicPromptModels {
@@ -891,18 +1161,49 @@ impl Default for MagicPromptModels {
             investigate_issue_model: default_model(),
             investigate_pr_model: default_model(),
             investigate_workflow_run_model: default_model(),
-            pr_content_model: default_haiku_model(),
-            commit_message_model: default_haiku_model(),
+            pr_content_model: default_sonnet_model(),
+            commit_message_model: default_sonnet_model(),
             code_review_model: default_model(),
             context_summary_model: default_model(),
             resolve_conflicts_model: default_model(),
-            release_notes_model: default_haiku_model(),
-            session_naming_model: default_haiku_model(),
-            session_recap_model: default_haiku_model(),
+            release_notes_model: default_sonnet_model(),
+            session_naming_model: default_sonnet_model(),
+            session_recap_model: default_sonnet_model(),
             investigate_security_alert_model: default_model(),
             investigate_advisory_model: default_model(),
             investigate_linear_issue_model: default_model(),
+            review_comments_model: default_model(),
         }
+    }
+}
+
+impl MagicPromptModels {
+    /// Upgrade legacy default model values left on existing installs:
+    /// fields that previously defaulted to `"opus"` (Opus 4.6) are bumped to
+    /// the new default (`"claude-opus-4-7"`). Users who explicitly picked
+    /// other models are untouched. Returns true if any field changed.
+    fn migrate_legacy_defaults(&mut self) -> bool {
+        let new_opus = default_model();
+        let opus_fields: [&mut String; 10] = [
+            &mut self.investigate_issue_model,
+            &mut self.investigate_pr_model,
+            &mut self.investigate_workflow_run_model,
+            &mut self.code_review_model,
+            &mut self.context_summary_model,
+            &mut self.resolve_conflicts_model,
+            &mut self.investigate_security_alert_model,
+            &mut self.investigate_advisory_model,
+            &mut self.investigate_linear_issue_model,
+            &mut self.review_comments_model,
+        ];
+        let mut changed = false;
+        for field in opus_fields {
+            if field == "opus" {
+                *field = new_opus.clone();
+                changed = true;
+            }
+        }
+        changed
     }
 }
 
@@ -912,10 +1213,18 @@ pub fn is_opencode_model(model: &str) -> bool {
     model.starts_with("opencode/")
 }
 
+/// Returns true if the given model string identifies a Cursor model.
+/// Cursor model IDs are prefixed with "cursor/" (e.g. "cursor/auto").
+pub fn is_cursor_model(model: &str) -> bool {
+    model.starts_with("cursor/")
+}
+
 /// Returns true if the given model string identifies a Codex model.
 /// Codex model IDs contain "codex" or start with "gpt-", but NOT OpenCode models.
 pub fn is_codex_model(model: &str) -> bool {
-    !is_opencode_model(model) && (model.contains("codex") || model.starts_with("gpt-"))
+    !is_opencode_model(model)
+        && !is_cursor_model(model)
+        && (model.contains("codex") || model.starts_with("gpt-"))
 }
 
 /// Per-prompt provider overrides for magic prompts (None = use global default_provider)
@@ -949,6 +1258,8 @@ pub struct MagicPromptProviders {
     pub investigate_advisory_provider: Option<String>,
     #[serde(default)]
     pub investigate_linear_issue_provider: Option<String>,
+    #[serde(default)]
+    pub review_comments_provider: Option<String>,
 }
 
 /// Per-prompt backend overrides for magic prompts (None = use project/global default_backend)
@@ -982,6 +1293,8 @@ pub struct MagicPromptBackends {
     pub investigate_advisory_backend: Option<String>,
     #[serde(default)]
     pub investigate_linear_issue_backend: Option<String>,
+    #[serde(default)]
+    pub review_comments_backend: Option<String>,
 }
 
 /// Per-prompt reasoning effort overrides for magic prompts (None = use model default)
@@ -1015,6 +1328,8 @@ pub struct MagicPromptReasoningEfforts {
     pub investigate_advisory_effort: Option<String>,
     #[serde(default)]
     pub investigate_linear_issue_effort: Option<String>,
+    #[serde(default)]
+    pub review_comments_effort: Option<String>,
 }
 
 impl MagicPrompts {
@@ -1022,7 +1337,7 @@ impl MagicPrompts {
     /// This ensures users who never customized a prompt get auto-updated defaults.
     fn migrate_defaults(&mut self) {
         type DefaultEntry<'a> = (fn() -> String, &'a mut Option<String>);
-        let defaults: [DefaultEntry; 12] = [
+        let defaults: [DefaultEntry; 17] = [
             (
                 default_investigate_issue_prompt,
                 &mut self.investigate_issue,
@@ -1040,10 +1355,14 @@ impl MagicPrompts {
                 default_investigate_workflow_run_prompt,
                 &mut self.investigate_workflow_run,
             ),
+            (default_release_notes_prompt, &mut self.release_notes),
+            (default_session_naming_prompt, &mut self.session_naming),
             (
                 default_parallel_execution_prompt,
                 &mut self.parallel_execution,
             ),
+            (default_global_system_prompt, &mut self.global_system_prompt),
+            (default_session_recap_prompt, &mut self.session_recap),
             (
                 default_investigate_security_alert_prompt,
                 &mut self.investigate_security_alert,
@@ -1056,6 +1375,7 @@ impl MagicPrompts {
                 default_investigate_linear_issue_prompt,
                 &mut self.investigate_linear_issue,
             ),
+            (default_review_comments_prompt, &mut self.review_comments),
         ];
 
         for (default_fn, field) in defaults {
@@ -1108,6 +1428,7 @@ impl Default for AppPreferences {
             http_server_auto_start: false,
             http_server_port: default_http_server_port(),
             http_server_token: None,
+            http_server_bind_host: None,
             http_server_localhost_only: true, // Default to localhost-only for security
             http_server_token_required: default_http_server_token_required(),
             removal_behavior: default_removal_behavior(),
@@ -1130,6 +1451,7 @@ impl Default for AppPreferences {
             default_backend: default_backend(),
             selected_codex_model: default_codex_model(),
             selected_opencode_model: default_opencode_model(),
+            selected_cursor_model: default_cursor_model(),
             default_codex_reasoning_effort: default_codex_reasoning_effort(),
             codex_multi_agent_enabled: false,
             codex_max_agent_threads: default_codex_max_agent_threads(),
@@ -1141,11 +1463,14 @@ impl Default for AppPreferences {
             yolo_backend: None,
             build_thinking_level: None,
             yolo_thinking_level: None,
+            build_effort_level: None,
+            yolo_effort_level: None,
             linear_api_key: None,
             claude_cli_source: default_cli_source(),
             codex_cli_source: default_cli_source(),
             opencode_cli_source: default_cli_source(),
             gh_cli_source: default_cli_source(),
+            expand_tool_calls_by_default: false,
         }
     }
 }
@@ -1206,9 +1531,21 @@ pub struct UIState {
     #[serde(default)]
     pub modal_terminal_open: std::collections::HashMap<String, bool>,
 
-    /// Modal terminal drawer width in pixels
+    /// Modal terminal dock mode
+    #[serde(default)]
+    pub modal_terminal_dock_mode: Option<String>,
+
+    /// Legacy pinned state; maps to right dock when true
+    #[serde(default)]
+    pub modal_terminal_pinned: Option<bool>,
+
+    /// Modal terminal width in pixels for left/right dock
     #[serde(default)]
     pub modal_terminal_width: Option<f64>,
+
+    /// Modal terminal height in pixels for bottom dock
+    #[serde(default)]
+    pub modal_terminal_height: Option<f64>,
 
     /// Last-accessed timestamps per project for recency sorting (projectId → unix ms)
     #[serde(default)]
@@ -1217,6 +1554,10 @@ pub struct UIState {
     /// Dashboard worktree collapse overrides: worktreeId → collapsed (true/false)
     #[serde(default)]
     pub dashboard_worktree_collapse_overrides: std::collections::HashMap<String, bool>,
+
+    /// Project canvas settings per project
+    #[serde(default)]
+    pub project_canvas_settings: std::collections::HashMap<String, ProjectCanvasSettings>,
 
     /// Last opened worktree+session per project: projectId → { worktree_id, session_id }
     #[serde(default)]
@@ -1237,6 +1578,12 @@ pub struct LastOpenedEntry {
     pub session_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProjectCanvasSettings {
+    #[serde(default)]
+    pub worktree_sort_mode: Option<String>,
+}
+
 impl Default for UIState {
     fn default() -> Self {
         Self {
@@ -1252,9 +1599,13 @@ impl Default for UIState {
             review_sidebar_visible: None,
             pending_digest_session_ids: Vec::new(),
             modal_terminal_open: std::collections::HashMap::new(),
+            modal_terminal_dock_mode: None,
+            modal_terminal_pinned: None,
             modal_terminal_width: None,
+            modal_terminal_height: None,
             project_access_timestamps: std::collections::HashMap::new(),
             dashboard_worktree_collapse_overrides: std::collections::HashMap::new(),
+            project_canvas_settings: std::collections::HashMap::new(),
             last_opened_per_project: std::collections::HashMap::new(),
             version: default_ui_state_version(),
         }
@@ -1311,8 +1662,19 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
     // so they auto-update when new defaults are shipped
     preferences.magic_prompts.migrate_defaults();
 
+    // Migrate legacy magic-prompt model names ("opus" → "claude-opus-4-7")
+    // and legacy auto-naming models ("haiku" → "sonnet")
+    let mut needs_resave = preferences.magic_prompt_models.migrate_legacy_defaults();
+    if preferences.branch_naming_model == "haiku" {
+        preferences.branch_naming_model = default_branch_naming_model();
+        needs_resave = true;
+    }
+    if preferences.session_naming_model == "haiku" {
+        preferences.session_naming_model = default_session_naming_model();
+        needs_resave = true;
+    }
+
     // Migrate CLI profiles: move settings_json from preferences.json to standalone files
-    let mut needs_resave = false;
     for profile in &mut preferences.custom_cli_profiles {
         let path = match get_cli_profile_path(&profile.name) {
             Ok(p) => p,
@@ -1760,7 +2122,7 @@ async fn start_http_server(
 
     let prefs = load_preferences(app.clone()).await?;
     let actual_port = port.unwrap_or(prefs.http_server_port);
-    let localhost_only = prefs.http_server_localhost_only;
+    let bind_host = resolve_http_server_bind_host(&prefs);
     let token_required = prefs.http_server_token_required;
 
     // Generate or load token
@@ -1793,7 +2155,7 @@ async fn start_http_server(
         app.clone(),
         actual_port,
         token,
-        localhost_only,
+        bind_host,
         token_required,
     )
     .await?;
@@ -1802,8 +2164,11 @@ async fn start_http_server(
         url: Some(handle.url.clone()),
         token: Some(handle.token.clone()),
         port: Some(handle.port),
+        bind_host: Some(handle.bind_host.clone()),
         localhost_only: Some(handle.localhost_only),
     };
+    let bind_host_for_log = handle.bind_host.clone();
+    let localhost_only_for_log = handle.localhost_only;
 
     // Store the handle
     let handle_state = app.try_state::<Arc<Mutex<Option<http_server::server::HttpServerHandle>>>>();
@@ -1813,9 +2178,10 @@ async fn start_http_server(
     }
 
     log::info!(
-        "HTTP server started: {} (localhost_only: {})",
+        "HTTP server started: {} (bind_host: {}, localhost_only: {})",
         status.url.as_deref().unwrap_or("unknown"),
-        localhost_only
+        bind_host_for_log,
+        localhost_only_for_log
     );
     Ok(status)
 }
@@ -1853,12 +2219,12 @@ async fn start_http_server_headless(
     let port = overrides.port.unwrap_or(default_port);
 
     // Host: CLI --host overrides bind_all_interfaces and preference
-    let localhost_only = if let Some(ref host) = overrides.host {
-        host == "127.0.0.1" || host == "localhost" || host == "::1"
+    let bind_host = if let Some(ref host) = overrides.host {
+        host.clone()
     } else if bind_all_interfaces {
-        false
+        "0.0.0.0".to_string()
     } else {
-        prefs.http_server_localhost_only
+        resolve_http_server_bind_host(&prefs)
     };
 
     // Token required: --no-token overrides preference
@@ -1899,15 +2265,18 @@ async fn start_http_server_headless(
 
     // Start the server
     let handle =
-        http_server::server::start_server(app.clone(), port, token, localhost_only, token_required)
+        http_server::server::start_server(app.clone(), port, token, bind_host, token_required)
             .await?;
     let status = http_server::server::ServerStatus {
         running: true,
         url: Some(handle.url.clone()),
         token: Some(handle.token.clone()),
         port: Some(handle.port),
+        bind_host: Some(handle.bind_host.clone()),
         localhost_only: Some(handle.localhost_only),
     };
+    let bind_host_for_log = handle.bind_host.clone();
+    let localhost_only_for_log = handle.localhost_only;
 
     // Store the handle
     let handle_state = app.try_state::<Arc<Mutex<Option<http_server::server::HttpServerHandle>>>>();
@@ -1917,9 +2286,10 @@ async fn start_http_server_headless(
     }
 
     log::info!(
-        "HTTP server started: {} (localhost_only: {})",
+        "HTTP server started: {} (bind_host: {}, localhost_only: {})",
         status.url.as_deref().unwrap_or("unknown"),
-        localhost_only
+        bind_host_for_log,
+        localhost_only_for_log
     );
     Ok(status)
 }
@@ -1929,6 +2299,16 @@ async fn get_http_server_status(
     app: AppHandle,
 ) -> Result<http_server::server::ServerStatus, String> {
     Ok(http_server::server::get_server_status(app).await)
+}
+
+#[tauri::command]
+fn list_http_bind_host_options() -> Result<Vec<http_server::server::BindHostOption>, String> {
+    Ok(http_server::server::list_bind_host_options())
+}
+
+#[tauri::command]
+fn validate_http_bind_host(host: String) -> Result<String, String> {
+    http_server::server::validate_bind_host(&host)
 }
 
 #[tauri::command]
@@ -2120,7 +2500,9 @@ fn print_cli_help() {
     println!();
     println!("Options:");
     println!("  --headless          Run without GUI (HTTP server only)");
-    println!("  --host <addr>       Bind address (default: 0.0.0.0 in headless)");
+    println!(
+        "  --host <addr>       Bind to an IP address or localhost (default: 0.0.0.0 in headless)"
+    );
     println!("  --port <port>       HTTP server port (overrides saved preference)");
     println!("  --token <token>     Use specific auth token (not persisted)");
     println!("  --no-token          Disable token authentication");
@@ -2313,6 +2695,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_window_state::Builder::new().build())
         .setup(move |app| {
             let setup_start = std::time::Instant::now();
             log::info!("Startup: setup() begin");
@@ -2596,6 +2979,7 @@ pub fn run() {
             // Project management commands
             projects::check_git_identity,
             projects::set_git_identity,
+            projects::browse_directory,
             projects::list_projects,
             projects::add_project,
             projects::init_git_in_folder,
@@ -2656,6 +3040,7 @@ pub fn run() {
             projects::get_review_prompt,
             projects::save_worktree_pr,
             projects::detect_and_link_pr,
+            projects::detect_open_pr_for_branch,
             projects::clear_worktree_pr,
             projects::update_worktree_cached_status,
             projects::rebase_worktree,
@@ -2675,10 +3060,12 @@ pub fn run() {
             projects::reorder_projects,
             projects::reorder_worktrees,
             projects::fetch_worktrees_status,
-            // Claude CLI skills & commands
+            // CLI skills & commands
             projects::list_claude_skills,
             projects::list_claude_commands,
             projects::resolve_claude_command,
+            projects::list_codex_skills,
+            projects::list_plugin_skills,
             // GitHub issues commands
             projects::list_github_issues,
             projects::search_github_issues,
@@ -2748,11 +3135,13 @@ pub fn run() {
             terminal::has_active_terminal,
             terminal::get_run_scripts,
             terminal::get_ports,
+            terminal::get_terminal_listening_ports,
             terminal::kill_all_terminals,
             // Chat commands - Session management
             chat::get_sessions,
             chat::list_all_sessions,
             chat::get_session,
+            chat::load_older_session_messages,
             chat::create_session,
             chat::rename_session,
             chat::regenerate_session_name,
@@ -2782,11 +3171,18 @@ pub fn run() {
             chat::save_cancelled_message,
             chat::mark_plan_approved,
             chat::approve_codex_command,
+            chat::respond_codex_command_approval,
+            chat::respond_codex_file_change_approval,
+            chat::respond_codex_permissions_request,
+            chat::respond_codex_user_input_request,
+            chat::respond_codex_mcp_elicitation,
+            chat::respond_codex_dynamic_tool_call,
             // Chat commands - Queue management (cross-client sync)
             chat::enqueue_message,
             chat::dequeue_message,
             chat::remove_queued_message,
             chat::clear_message_queue,
+            chat::answer_opencode_question,
             // Chat commands - Image handling
             chat::read_clipboard_image,
             chat::save_pasted_image,
@@ -2834,6 +3230,12 @@ pub fn run() {
             codex_cli::get_codex_usage,
             codex_cli::get_available_codex_versions,
             codex_cli::install_codex_cli,
+            // Cursor CLI management commands
+            cursor_cli::check_cursor_cli_installed,
+            cursor_cli::detect_cursor_in_path,
+            cursor_cli::check_cursor_cli_auth,
+            cursor_cli::list_cursor_models,
+            cursor_cli::get_cursor_install_command,
             // OpenCode CLI management commands
             opencode_cli::check_opencode_cli_installed,
             opencode_cli::detect_opencode_in_path,
@@ -2862,7 +3264,12 @@ pub fn run() {
             start_http_server,
             stop_http_server,
             get_http_server_status,
+            list_http_bind_host_options,
+            validate_http_bind_host,
             regenerate_http_token,
+            // Opinionated plugin commands
+            opinionated::check_opinionated_plugin_status,
+            opinionated::install_opinionated_plugin,
             // OpenCode server commands
             opencode_server::start_opencode_server,
             opencode_server::stop_opencode_server,

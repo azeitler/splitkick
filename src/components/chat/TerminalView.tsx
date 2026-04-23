@@ -10,6 +10,7 @@ import {
 import { Kbd } from '@/components/ui/kbd'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import { cn } from '@/lib/utils'
+import { MODAL_TERMINAL_SECONDARY_ROW_CLASS } from './modal-terminal-layout'
 import '@xterm/xterm/css/xterm.css'
 
 const EMPTY_TERMINALS: TerminalInstance[] = []
@@ -178,12 +179,12 @@ export function TerminalView({
   // When collapsed, show collapsed bar but keep terminals mounted (hidden) to preserve state
   if (isCollapsed) {
     return (
-      <div className="flex h-full flex-col bg-[#1a1a1a]">
+      <div className="flex h-full flex-col bg-background">
         {/* Collapsed bar */}
         <button
           type="button"
           onClick={onExpand}
-          className="flex h-full w-full items-center gap-2 px-3 text-xs text-neutral-400 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
+          className="flex h-full w-full items-center gap-2 px-3 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
         >
           <Terminal className="h-3.5 w-3.5" />
           <span>Terminal</span>
@@ -212,9 +213,14 @@ export function TerminalView({
   }
 
   return (
-    <div className="flex h-full flex-col bg-[#1a1a1a]">
+    <div className="flex h-full flex-col bg-background">
       {/* Tab bar - fixed height for consistency */}
-      <div className="flex h-8 items-stretch border-b border-neutral-700">
+      <div
+        className={cn(
+          'flex items-stretch border-b border-border',
+          MODAL_TERMINAL_SECONDARY_ROW_CLASS
+        )}
+      >
         <div className="flex min-w-0 items-center overflow-x-auto">
           {terminals.map((terminal, index) => {
             const isActive = terminal.id === activeTerminalId
@@ -228,10 +234,10 @@ export function TerminalView({
                 type="button"
                 onClick={() => handleSelectTerminal(terminal.id)}
                 className={cn(
-                  'group flex shrink-0 items-center gap-1.5 border-r border-neutral-700 px-3 py-1.5 text-xs transition-colors',
+                  'group flex shrink-0 items-center gap-1.5 border-r border-border px-3 py-1.5 text-xs transition-colors',
                   isActive
-                    ? 'bg-neutral-800 text-neutral-200'
-                    : 'text-neutral-400 hover:bg-neutral-800/50 hover:text-neutral-300'
+                    ? 'bg-muted text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
                 )}
               >
                 {/* Running indicator */}
@@ -244,8 +250,8 @@ export function TerminalView({
                     className={cn(
                       'h-3.5 px-1 text-[9px]',
                       isActive
-                        ? 'bg-neutral-700 text-neutral-200'
-                        : 'bg-neutral-800/80 text-neutral-400'
+                        ? 'bg-background/80 text-foreground'
+                        : 'bg-background/60 text-muted-foreground'
                     )}
                   >
                     {shortcutLabel}
@@ -265,7 +271,7 @@ export function TerminalView({
                     }
                   }}
                   className={cn(
-                    'rounded p-0.5 opacity-0 transition-opacity hover:bg-neutral-600 group-hover:opacity-100',
+                    'rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100',
                     isActive && 'opacity-50'
                   )}
                 >
@@ -280,7 +286,7 @@ export function TerminalView({
         <button
           type="button"
           onClick={handleAddTerminal}
-          className="flex shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-neutral-300"
+          className="flex shrink-0 items-center px-2 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
           aria-label="New terminal"
         >
           <Plus className="h-3.5 w-3.5" />
@@ -295,7 +301,7 @@ export function TerminalView({
             <button
               type="button"
               onClick={handleMinimize}
-              className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-neutral-300"
+              className="flex h-full shrink-0 items-center px-2 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
               aria-label="Minimize terminal"
             >
               <Minus className="h-3.5 w-3.5" />
@@ -305,7 +311,7 @@ export function TerminalView({
             <button
               type="button"
               onClick={handleCloseAll}
-              className="flex h-full shrink-0 items-center px-2 text-neutral-400 transition-colors hover:bg-neutral-800/50 hover:text-red-400"
+              className="flex h-full shrink-0 items-center px-2 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-red-400"
               aria-label="Close all terminals"
             >
               <X className="h-3.5 w-3.5" />

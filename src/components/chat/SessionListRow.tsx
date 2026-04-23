@@ -26,7 +26,11 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { getResumeCommand, statusConfig, type SessionCardProps } from './session-card-utils'
+import {
+  getResumeCommand,
+  statusConfig,
+  type SessionCardProps,
+} from './session-card-utils'
 
 export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
   function SessionListRow(
@@ -113,7 +117,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                 onKeyDown={handleRenameKeyDown}
                 onClick={e => e.stopPropagation()}
                 onDoubleClick={e => e.stopPropagation()}
-                className="flex-1 min-w-0 bg-transparent text-sm outline-none ring-1 ring-ring rounded px-1"
+                className="flex-1 min-w-0 bg-transparent text-base outline-none ring-1 ring-ring rounded px-1 md:text-sm"
               />
             ) : (
               <span className="flex-1 truncate text-sm">
@@ -145,13 +149,12 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             {/* Approve buttons */}
             {card.hasExitPlanMode &&
               !card.hasQuestion &&
-              card.session.backend !== 'codex' &&
+              !card.isSending &&
               onApprove &&
               onYolo && (
                 <div className="flex items-center gap-1 shrink-0">
                   <Button
                     className="h-5 px-1.5 text-[10px] rounded"
-                    disabled={card.isSending}
                     onClick={e => {
                       e.stopPropagation()
                       onApprove()
@@ -165,7 +168,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                   <Button
                     variant="destructive"
                     className="h-5 px-1.5 text-[10px] rounded"
-                    disabled={card.isSending}
                     onClick={e => {
                       e.stopPropagation()
                       onYolo()
@@ -182,7 +184,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                     <Button
                       variant="destructive"
                       className="h-5 px-1.5 text-[10px] rounded"
-                      disabled={card.isSending}
                       onClick={e => {
                         e.stopPropagation()
                         onClearContextApprove()
@@ -200,7 +201,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                     <Button
                       variant="outline"
                       className="h-5 px-1.5 text-[10px] rounded"
-                      disabled={card.isSending}
                       onClick={e => {
                         e.stopPropagation()
                         onWorktreeBuildApprove()
@@ -218,7 +218,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                     <Button
                       variant="outline"
                       className="h-5 px-1.5 text-[10px] rounded"
-                      disabled={card.isSending}
                       onClick={e => {
                         e.stopPropagation()
                         onWorktreeYoloApprove()
@@ -239,9 +238,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
         <ContextMenuContent className="w-48">
           {onRenameStart && (
             <ContextMenuItem
-              onSelect={() =>
-                onRenameStart(card.session.id, card.session.name)
-              }
+              onSelect={() => onRenameStart(card.session.id, card.session.name)}
             >
               <Pencil className="mr-2 h-4 w-4" />
               Rename

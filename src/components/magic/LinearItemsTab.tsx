@@ -1,4 +1,12 @@
-import { Search, Loader2, RefreshCw, AlertCircle, X, Eye, RotateCw } from 'lucide-react'
+import {
+  Search,
+  Loader2,
+  RefreshCw,
+  AlertCircle,
+  X,
+  Eye,
+  RotateCw,
+} from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import {
@@ -107,7 +115,9 @@ export function LinearItemsTab({
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button
-                        onClick={() => onRefreshLoaded(ctx.identifier, ctx.identifier)}
+                        onClick={() =>
+                          onRefreshLoaded(ctx.identifier, ctx.identifier)
+                        }
                         disabled={loadingLinearIds.has(ctx.identifier)}
                         className="p-1 rounded hover:bg-accent-foreground/10 disabled:opacity-50"
                       >
@@ -154,7 +164,7 @@ export function LinearItemsTab({
               placeholder="Search issues by identifier, title, or description..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              className="pl-9 h-8 text-sm"
+              className="pl-9 h-8 text-base md:text-sm"
             />
           </div>
           <Tooltip>
@@ -205,17 +215,20 @@ export function LinearItemsTab({
             </div>
           ))}
 
-        {!isLoading && !error && filteredIssues.length === 0 && !isSearching && (
-          <div className="flex items-center justify-center py-8">
-            <span className="text-sm text-muted-foreground">
-              {searchQuery
-                ? 'No issues match your search'
-                : hasLoadedContexts
-                  ? 'All active issues already loaded'
-                  : 'No active issues found'}
-            </span>
-          </div>
-        )}
+        {!isLoading &&
+          !error &&
+          filteredIssues.length === 0 &&
+          !isSearching && (
+            <div className="flex items-center justify-center py-8">
+              <span className="text-sm text-muted-foreground">
+                {searchQuery
+                  ? 'No issues match your search'
+                  : hasLoadedContexts
+                    ? 'All active issues already loaded'
+                    : 'No active issues found'}
+              </span>
+            </div>
+          )}
 
         {!isLoading && !error && filteredIssues.length === 0 && isSearching && (
           <div className="flex items-center justify-center py-8">

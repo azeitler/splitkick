@@ -1,4 +1,5 @@
 import type { LabelData } from '@/types/chat'
+import type { AdvisoryContext, SecurityAlertContext } from '@/types/github'
 
 /**
  * Type of session (base branch or worktree)
@@ -59,6 +60,20 @@ export interface Project {
   linked_project_ids?: string[]
 }
 
+export interface DirEntry {
+  name: string
+  path: string
+  is_dir: boolean
+  is_git_repo: boolean
+  is_hidden: boolean
+}
+
+export interface BrowseDirectoryResult {
+  current_path: string
+  parent_path?: string
+  entries: DirEntry[]
+}
+
 /**
  * Check if a project entry is a folder
  */
@@ -80,6 +95,8 @@ export interface Worktree {
   path: string
   /** Git branch name (same as workspace name) */
   branch: string
+  /** Base branch this worktree was created from (undefined for legacy worktrees or base sessions) */
+  base_branch?: string
   /** Unix timestamp when worktree was created */
   created_at: number
   /** Output from setup script (if any) */
@@ -100,6 +117,14 @@ export interface Worktree {
   issue_number?: number
   /** Linear issue identifier (e.g. "ENG-123", if created from a Linear issue) */
   linear_issue_identifier?: string
+  /** Dependabot security alert number (if created from a security alert) */
+  security_alert_number?: number
+  /** Dependabot security alert URL on GitHub */
+  security_alert_url?: string
+  /** Repository security advisory GHSA ID (if created from an advisory) */
+  advisory_ghsa_id?: string
+  /** Repository security advisory URL on GitHub */
+  advisory_url?: string
   /** Cached PR display status (draft, open, review, merged, closed) */
   cached_pr_status?: string
   /** Cached CI check status (success, failure, pending, error) */
@@ -149,6 +174,8 @@ export interface WorktreeCreatingEvent {
   branch: string
   pr_number?: number
   issue_number?: number
+  security_alert_number?: number
+  advisory_ghsa_id?: string
 }
 
 /** Event payload when worktree creation completes */
@@ -242,6 +269,10 @@ export interface WorktreePathExistsEvent {
       createdAt: string
     }[]
   }
+  /** Security alert context to use when creating a new worktree with the suggested name */
+  security_context?: SecurityAlertContext
+  /** Advisory context to use when creating a new worktree with the suggested name */
+  advisory_context?: AdvisoryContext
 }
 
 /** Event emitted when worktree creation fails because branch already exists */
@@ -285,6 +316,10 @@ export interface WorktreeBranchExistsEvent {
     }[]
     diff?: string
   }
+  /** Security alert context to use when creating a new worktree with the suggested name */
+  security_context?: SecurityAlertContext
+  /** Advisory context to use when creating a new worktree with the suggested name */
+  advisory_context?: AdvisoryContext
 }
 
 // =============================================================================

@@ -6,18 +6,15 @@ import { isMacOS, isWindows } from '../lib/platform'
 // Notification Sounds
 // =============================================================================
 
-export type NotificationSound = 'none' | 'ding' | 'chime' | 'pop' | 'choochoo'
+export type NotificationSound = 'none' | 'workwork' | 'jobsdone'
 
 export const notificationSoundOptions: {
   value: NotificationSound
   label: string
 }[] = [
   { value: 'none', label: 'None' },
-  // More sounds will be added later:
-  // { value: 'ding', label: 'Ding' },
-  // { value: 'chime', label: 'Chime' },
-  // { value: 'pop', label: 'Pop' },
-  // { value: 'choochoo', label: 'Choo-choo' },
+  { value: 'workwork', label: 'Work Work' },
+  { value: 'jobsdone', label: "Job's Done" },
 ]
 
 // =============================================================================
@@ -179,6 +176,10 @@ export const DEFAULT_PR_CONTENT_PROMPT = `<task>Generate a pull request title an
 <related_context>
 {context}
 </related_context>
+
+<related_pull_requests>
+{related_pull_requests}
+</related_pull_requests>
 
 <commits>
 {commits}
@@ -653,21 +654,21 @@ export interface MagicPromptReasoningEfforts {
 
 /** Default models for each magic prompt */
 export const DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
-  investigate_issue_model: 'opus',
-  investigate_pr_model: 'opus',
-  investigate_workflow_run_model: 'opus',
-  pr_content_model: 'haiku',
-  commit_message_model: 'haiku',
-  code_review_model: 'opus',
-  context_summary_model: 'opus',
-  resolve_conflicts_model: 'opus',
-  release_notes_model: 'haiku',
-  session_naming_model: 'haiku',
-  session_recap_model: 'haiku',
-  investigate_security_alert_model: 'opus',
-  investigate_advisory_model: 'opus',
-  investigate_linear_issue_model: 'opus',
-  review_comments_model: 'opus',
+  investigate_issue_model: 'claude-opus-4-7',
+  investigate_pr_model: 'claude-opus-4-7',
+  investigate_workflow_run_model: 'claude-opus-4-7',
+  pr_content_model: 'sonnet',
+  commit_message_model: 'sonnet',
+  code_review_model: 'claude-opus-4-7',
+  context_summary_model: 'claude-opus-4-7',
+  resolve_conflicts_model: 'claude-opus-4-7',
+  release_notes_model: 'sonnet',
+  session_naming_model: 'sonnet',
+  session_recap_model: 'sonnet',
+  investigate_security_alert_model: 'claude-opus-4-7',
+  investigate_advisory_model: 'claude-opus-4-7',
+  investigate_linear_issue_model: 'claude-opus-4-7',
+  review_comments_model: 'claude-opus-4-7',
 }
 
 /** Codex preset: heavy tasks use top model, light tasks use mini */
@@ -747,9 +748,10 @@ export const CODEX_DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts = {
 }
 
 /** OpenCode preset: same as Codex */
-export const OPENCODE_DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts = {
-  ...CODEX_DEFAULT_MAGIC_PROMPT_EFFORTS,
-}
+export const OPENCODE_DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts =
+  {
+    ...CODEX_DEFAULT_MAGIC_PROMPT_EFFORTS,
+  }
 
 /**
  * Per-prompt provider overrides. null = use global default_provider.
@@ -854,8 +856,7 @@ function makeBackendsPreset(backend: string): MagicPromptBackends {
   }
 }
 
-export const CLAUDE_DEFAULT_MAGIC_PROMPT_BACKENDS =
-  makeBackendsPreset('claude')
+export const CLAUDE_DEFAULT_MAGIC_PROMPT_BACKENDS = makeBackendsPreset('claude')
 export const CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS = makeBackendsPreset('codex')
 export const OPENCODE_DEFAULT_MAGIC_PROMPT_BACKENDS =
   makeBackendsPreset('opencode')
@@ -882,6 +883,23 @@ export function resolveMagicPromptProvider(
   return value !== undefined ? value : (globalDefaultProvider ?? null)
 }
 
+/**
+ * Resolve a magic prompt backend for a given key.
+ * Explicit per-prompt backend wins. When unset/null, fall back to the
+ * project/global default backend supplied by the caller.
+ */
+export function resolveMagicPromptBackend(
+  backends: MagicPromptBackends | undefined,
+  key: keyof MagicPromptBackends,
+  defaultBackend: CliBackend | string | null | undefined
+): CliBackend | null {
+  const merged = { ...DEFAULT_MAGIC_PROMPT_BACKENDS, ...backends }
+  const value = merged[key]
+  return (
+    value !== undefined && value !== null ? value : (defaultBackend ?? null)
+  ) as CliBackend | null
+}
+
 // Types that match the Rust AppPreferences struct
 // Only contains settings that should be persisted to disk
 // Note: Field names use snake_case to match Rust struct exactly
@@ -889,7 +907,7 @@ export interface AppPreferences {
   theme: string
   selected_model: ClaudeModel // Claude model ID passed to --model flag
   thinking_level: ThinkingLevel // Thinking level: 'off' | 'think' | 'megathink' | 'ultrathink'
-  default_effort_level: EffortLevel // Effort level for Opus 4.6 adaptive thinking: 'low' | 'medium' | 'high' | 'max'
+  default_effort_level: EffortLevel // Effort level for Opus adaptive thinking: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty' | 'iterm2' | 'powershell' | 'windows-terminal'
   editor: EditorApp // Editor app: 'zed' | 'vscode' | 'cursor' | 'xcode'
   open_in: OpenInDefault // Default Open In action: 'editor' | 'terminal' | 'finder' | 'github'
@@ -922,8 +940,9 @@ export interface AppPreferences {
   http_server_enabled: boolean // Whether HTTP server is enabled
   http_server_port: number // HTTP server port (default 3456)
   http_server_token: string | null // Auth token for HTTP/WS access
+  http_server_bind_host: string | null // Explicit bind host for HTTP server, null = use legacy fallback
   http_server_auto_start: boolean // Auto-start HTTP server on launch
-  http_server_localhost_only: boolean // Bind to localhost only (more secure)
+  http_server_localhost_only: boolean // Legacy localhost-only fallback when no bind host is set
   http_server_token_required: boolean // Require token for web access (default true)
   removal_behavior: RemovalBehavior // What happens when closing sessions/worktrees: 'archive' or 'delete'
   auto_save_context: boolean // Auto-save context after each session completion
@@ -941,9 +960,10 @@ export interface AppPreferences {
 
   confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
   default_execution_mode: ExecutionMode // Default execution mode for new sessions: 'plan', 'build', or 'yolo'
-  default_backend: CliBackend // Default CLI backend for new sessions: 'claude', 'codex', or 'opencode'
+  default_backend: CliBackend // Default CLI backend for new sessions: 'claude', 'codex', 'opencode', or 'cursor'
   selected_codex_model: CodexModel // Default Codex model
   selected_opencode_model: string // Default OpenCode model (provider/model)
+  selected_cursor_model: CursorModel // Default Cursor model
   default_codex_reasoning_effort: CodexReasoningEffort // Default reasoning effort for Codex: 'low' | 'medium' | 'high' | 'xhigh'
   codex_multi_agent_enabled: boolean // Enable Codex multi-agent collaboration (experimental)
   codex_max_agent_threads: number // Max concurrent agent threads (1-8) when multi-agent is enabled
@@ -955,12 +975,15 @@ export interface AppPreferences {
   yolo_backend: string | null // Backend override for yolo plan approval, null = use session backend
   build_thinking_level: string | null // Thinking level override for build mode, null = use session thinking level
   yolo_thinking_level: string | null // Thinking level override for yolo mode, null = use session thinking level
+  build_effort_level: string | null // Effort level override for build mode (Claude adaptive / Codex), null = use session effort
+  yolo_effort_level: string | null // Effort level override for yolo mode (Claude adaptive / Codex), null = use session effort
   linear_api_key: string | null // Global Linear personal API key (inherited by all projects)
   magic_models_auto_initialized: boolean // Whether magic prompt models were auto-set based on installed backends
   claude_cli_source: 'jean' | 'path' // Claude CLI source: 'jean' (managed) or 'path' (system PATH)
   codex_cli_source: 'jean' | 'path' // Codex CLI source: 'jean' (managed) or 'path' (system PATH)
   opencode_cli_source: 'jean' | 'path' // OpenCode CLI source: 'jean' (managed) or 'path' (system PATH)
   gh_cli_source: 'jean' | 'path' // GitHub CLI source: 'jean' (managed) or 'path' (system PATH)
+  expand_tool_calls_by_default: boolean // Expand all tool call collapsibles by default
 }
 
 export interface CustomCliProfile {
@@ -1052,25 +1075,26 @@ export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
 ]
 
 export type ClaudeModel =
-  | 'opus'
+  | 'claude-opus-4-7'
+  | 'claude-opus-4-6'
+  | 'claude-opus-4-5-20251101'
   | 'claude-opus-4-6[1m]'
-  | 'opus-fast'
+  | 'claude-opus-4-6-fast'
   | 'claude-opus-4-6[1m]-fast'
-  | 'opus-4.5'
+  | 'opus' // Legacy/provider-alias: resolved by CLI via ANTHROPIC_DEFAULT_OPUS_MODEL env
   | 'sonnet'
   | 'claude-sonnet-4-6[1m]'
-  | 'sonnet-4.5'
   | 'haiku'
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
-  { value: 'opus', label: 'Claude Opus 4.6' },
+  { value: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
+  { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
+  { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
   { value: 'claude-opus-4-6[1m]', label: 'Claude Opus 4.6 (1M)' },
-  { value: 'opus-fast', label: 'Claude Opus 4.6 Fast' },
+  { value: 'claude-opus-4-6-fast', label: 'Claude Opus 4.6 Fast' },
   { value: 'claude-opus-4-6[1m]-fast', label: 'Claude Opus 4.6 (1M) Fast' },
-  { value: 'opus-4.5', label: 'Claude Opus 4.5' },
   { value: 'sonnet', label: 'Claude Sonnet 4.6' },
   { value: 'claude-sonnet-4-6[1m]', label: 'Claude Sonnet 4.6 (1M)' },
-  { value: 'sonnet-4.5', label: 'Claude Sonnet 4.5' },
   { value: 'haiku', label: 'Claude Haiku' },
 ]
 
@@ -1089,6 +1113,7 @@ export const effortLevelOptions: {
   { value: 'low', label: 'Low', description: 'Minimal thinking' },
   { value: 'medium', label: 'Medium', description: 'Moderate thinking' },
   { value: 'high', label: 'High', description: 'Deep reasoning' },
+  { value: 'xhigh', label: 'xHigh', description: 'Extra high (Opus 4.7)' },
   { value: 'max', label: 'Max', description: 'No limits' },
 ]
 
@@ -1099,6 +1124,7 @@ export const effortLevelOptions: {
 export type CodexModel =
   | 'gpt-5.4'
   | 'gpt-5.4-fast'
+  | 'gpt-5.4-mini'
   | 'gpt-5.3'
   | 'gpt-5.3-codex'
   | 'gpt-5.2-codex'
@@ -1109,6 +1135,7 @@ export type CodexModel =
 export const codexModelOptions: { value: CodexModel; label: string }[] = [
   { value: 'gpt-5.4', label: 'GPT 5.4' },
   { value: 'gpt-5.4-fast', label: 'GPT 5.4 - Fast' },
+  { value: 'gpt-5.4-mini', label: 'GPT 5.4 Mini' },
   { value: 'gpt-5.3', label: 'GPT 5.3' },
   { value: 'gpt-5.3-codex', label: 'GPT 5.3 Codex' },
   { value: 'gpt-5.2-codex', label: 'GPT 5.2 Codex' },
@@ -1138,18 +1165,33 @@ export function normalizeCodexModel(model: string): CodexModel {
 
 export type CodexReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
 
-export type MagicPromptReasoningEffort = 'low' | 'medium' | 'high' | null
+export type MagicPromptReasoningEffort =
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | null
 
 // =============================================================================
 // Magic Prompt Model (unified type for both Claude and Codex)
 // =============================================================================
 
 export type OpenCodeModel = `opencode/${string}`
-export type MagicPromptModel = ClaudeModel | CodexModel | OpenCodeModel
+export type CursorModel = `cursor/${string}`
+export type MagicPromptModel =
+  | ClaudeModel
+  | CodexModel
+  | OpenCodeModel
+  | CursorModel
 
 /** Check if a model string identifies an OpenCode model */
 export function isOpenCodeModel(model: string): model is OpenCodeModel {
   return model.startsWith('opencode/')
+}
+
+/** Check if a model string identifies a Cursor model */
+export function isCursorModel(model: string): model is CursorModel {
+  return model.startsWith('cursor/')
 }
 
 /** Check if a model string identifies a Codex model */
@@ -1173,14 +1215,14 @@ export const codexReasoningOptions: {
 // CLI Backend
 // =============================================================================
 
-export type CliBackend = 'claude' | 'codex' | 'opencode'
+export type CliBackend = 'claude' | 'codex' | 'opencode' | 'cursor'
 
 export const backendOptions: { value: CliBackend; label: string }[] = [
   { value: 'claude', label: 'Claude' },
   { value: 'codex', label: 'Codex' },
   { value: 'opencode', label: 'OpenCode' },
+  { value: 'cursor', label: 'Cursor' },
 ]
-
 
 export type TerminalApp =
   | 'terminal'
@@ -1457,16 +1499,16 @@ export function getEditorLabel(editor: EditorApp | undefined): string {
 
 export const defaultPreferences: AppPreferences = {
   theme: 'system',
-  selected_model: 'opus',
+  selected_model: 'claude-opus-4-7',
   thinking_level: 'ultrathink',
   default_effort_level: 'high',
   terminal: isWindows ? 'powershell' : 'terminal',
   editor: 'zed',
   open_in: 'editor',
   auto_branch_naming: true,
-  branch_naming_model: 'haiku',
+  branch_naming_model: 'sonnet',
   auto_session_naming: true,
-  session_naming_model: 'haiku',
+  session_naming_model: 'sonnet',
   ui_font_size: FONT_SIZE_DEFAULT,
   chat_font_size: FONT_SIZE_DEFAULT,
   ui_font: 'geist',
@@ -1492,11 +1534,12 @@ export const defaultPreferences: AppPreferences = {
   http_server_enabled: false,
   http_server_port: 3456,
   http_server_token: null,
+  http_server_bind_host: null,
   http_server_auto_start: false,
   http_server_localhost_only: true, // Default to localhost-only for security
   http_server_token_required: true, // Default: require token for security
   removal_behavior: 'delete', // Default: delete (permanent)
-  auto_save_context: true, // Default: enabled
+  auto_save_context: false, // Default: disabled
   auto_pull_base_branch: true, // Default: enabled
   auto_archive_on_pr_merged: true, // Default: enabled
   debug_mode_enabled: false, // Default: disabled
@@ -1513,6 +1556,7 @@ export const defaultPreferences: AppPreferences = {
   default_backend: 'claude', // Default: Claude
   selected_codex_model: 'gpt-5.4', // Default: latest Codex model
   selected_opencode_model: 'opencode/gpt-5.3-codex', // Default OpenCode model
+  selected_cursor_model: 'cursor/auto', // Default Cursor model
   default_codex_reasoning_effort: 'high', // Default: high reasoning
   codex_multi_agent_enabled: false, // Default: disabled
   codex_max_agent_threads: 3, // Default: 3 threads
@@ -1524,10 +1568,13 @@ export const defaultPreferences: AppPreferences = {
   yolo_backend: null, // Default: use session backend
   build_thinking_level: null, // Default: use session thinking level
   yolo_thinking_level: null, // Default: use session thinking level
+  build_effort_level: null, // Default: use session effort level
+  yolo_effort_level: null, // Default: use session effort level
   linear_api_key: null, // Default: no global Linear API key
   magic_models_auto_initialized: false, // Default: not yet auto-set
   claude_cli_source: 'jean', // Default: Jean-managed
   codex_cli_source: 'jean', // Default: Jean-managed
   opencode_cli_source: 'jean', // Default: Jean-managed
   gh_cli_source: 'jean', // Default: Jean-managed
+  expand_tool_calls_by_default: false, // Default: collapsed
 }

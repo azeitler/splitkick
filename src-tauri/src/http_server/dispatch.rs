@@ -52,6 +52,11 @@ pub async fn dispatch_command(
             let result = crate::projects::list_projects(app.clone()).await?;
             to_value(result)
         }
+        "browse_directory" => {
+            let path: Option<String> = from_field_opt(&args, "path")?;
+            let result = crate::projects::browse_directory(path).await?;
+            to_value(result)
+        }
         "add_project" => {
             let path: String = from_field(&args, "path")?;
             let parent_id: Option<String> = field_opt(&args, "parentId", "parent_id")?;
@@ -252,6 +257,12 @@ pub async fn dispatch_command(
             }
             to_value(result)
         }
+        "detect_open_pr_for_branch" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let result =
+                crate::projects::detect_open_pr_for_branch(app.clone(), worktree_path).await?;
+            to_value(result)
+        }
         "clear_worktree_pr" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             crate::projects::clear_worktree_pr(app.clone(), worktree_id).await?;
@@ -296,6 +307,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
             let reasoning_effort: Option<String> =
                 field_opt(&args, "reasoningEffort", "reasoning_effort")?;
+            let specific_files: Option<Vec<String>> =
+                field_opt(&args, "specificFiles", "specific_files")?;
             let result = crate::projects::create_commit_with_ai(
                 app.clone(),
                 worktree_path,
@@ -306,14 +319,14 @@ pub async fn dispatch_command(
                 model,
                 custom_profile_name,
                 reasoning_effort,
+                specific_files,
             )
             .await?;
             to_value(result)
         }
         "revert_last_local_commit" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let result =
-                crate::projects::revert_last_local_commit(worktree_path).await?;
+            let result = crate::projects::revert_last_local_commit(worktree_path).await?;
             emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
@@ -722,9 +735,28 @@ pub async fn dispatch_command(
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let session_id: String = field(&args, "sessionId", "session_id")?;
-            let result =
-                crate::chat::get_session(app.clone(), worktree_id, worktree_path, session_id)
-                    .await?;
+            let limit: Option<usize> = from_field_opt(&args, "limit")?;
+            let result = crate::chat::get_session(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                session_id,
+                limit,
+            )
+            .await?;
+            to_value(result)
+        }
+        "load_older_session_messages" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let before_run_index: usize = field(&args, "beforeRunIndex", "before_run_index")?;
+            let limit: usize = from_field(&args, "limit")?;
+            let result = crate::chat::load_older_session_messages(
+                app.clone(),
+                session_id,
+                before_run_index,
+                limit,
+            )
+            .await?;
             to_value(result)
         }
         "create_session" => {
@@ -831,7 +863,13 @@ pub async fn dispatch_command(
                     }
                     Some(crate::chat::types::ThinkingLevel::Off)
                 }
-                Some("max" | "xhigh") => {
+                Some("xhigh") => {
+                    if effort_level.is_none() {
+                        effort_level = Some(crate::chat::types::EffortLevel::Xhigh);
+                    }
+                    Some(crate::chat::types::ThinkingLevel::Off)
+                }
+                Some("max") => {
                     if effort_level.is_none() {
                         effort_level = Some(crate::chat::types::EffortLevel::Max);
                     }
@@ -1018,8 +1056,8 @@ pub async fn dispatch_command(
         // Chat - File operations
         // =====================================================================
         "read_file_content" => {
-            let file_path: String = field(&args, "filePath", "file_path")?;
-            let result = crate::chat::read_file_content(file_path).await?;
+            let path: String = from_field(&args, "path")?;
+            let result = crate::chat::read_file_content(path).await?;
             to_value(result)
         }
         "read_plan_file" => {
@@ -1122,6 +1160,15 @@ pub async fn dispatch_command(
         // =====================================================================
         "get_http_server_status" => {
             let result = crate::http_server::server::get_server_status(app.clone()).await;
+            to_value(result)
+        }
+        "list_http_bind_host_options" => {
+            let result = crate::http_server::server::list_bind_host_options();
+            to_value(result)
+        }
+        "validate_http_bind_host" => {
+            let host: String = from_field(&args, "host")?;
+            let result = crate::http_server::server::validate_bind_host(&host)?;
             to_value(result)
         }
 
@@ -1342,6 +1389,14 @@ pub async fn dispatch_command(
             let result = crate::projects::list_claude_commands(worktree_path).await?;
             to_value(result)
         }
+        "list_codex_skills" => {
+            let result = crate::projects::list_codex_skills().await?;
+            to_value(result)
+        }
+        "list_plugin_skills" => {
+            let result = crate::projects::list_plugin_skills().await?;
+            to_value(result)
+        }
         "search_github_issues" => {
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let query: String = from_field(&args, "query")?;
@@ -1449,6 +1504,10 @@ pub async fn dispatch_command(
             let result = crate::terminal::get_ports(worktree_path).await;
             to_value(result)
         }
+        "get_terminal_listening_ports" => {
+            // NATIVE ONLY: lsof not available in browser mode
+            Ok(Value::Array(vec![]))
+        }
 
         // =====================================================================
         // Session Management (additional)
@@ -1469,6 +1528,41 @@ pub async fn dispatch_command(
                     "pendingPermissionDenials",
                     "pending_permission_denials",
                 )?;
+            let pending_codex_permission_requests: Option<
+                Vec<crate::chat::types::CodexPermissionRequest>,
+            > = field_opt(
+                &args,
+                "pendingCodexPermissionRequests",
+                "pending_codex_permission_requests",
+            )?;
+            let pending_codex_command_approval_requests: Option<
+                Vec<crate::chat::types::CodexCommandApprovalRequest>,
+            > = field_opt(
+                &args,
+                "pendingCodexCommandApprovalRequests",
+                "pending_codex_command_approval_requests",
+            )?;
+            let pending_codex_user_input_requests: Option<
+                Vec<crate::chat::types::CodexUserInputRequest>,
+            > = field_opt(
+                &args,
+                "pendingCodexUserInputRequests",
+                "pending_codex_user_input_requests",
+            )?;
+            let pending_codex_mcp_elicitation_requests: Option<
+                Vec<crate::chat::types::CodexMcpElicitationRequest>,
+            > = field_opt(
+                &args,
+                "pendingCodexMcpElicitationRequests",
+                "pending_codex_mcp_elicitation_requests",
+            )?;
+            let pending_codex_dynamic_tool_call_requests: Option<
+                Vec<crate::chat::types::CodexDynamicToolCallRequest>,
+            > = field_opt(
+                &args,
+                "pendingCodexDynamicToolCallRequests",
+                "pending_codex_dynamic_tool_call_requests",
+            )?;
             let denied_message_context: Option<Option<crate::chat::types::DeniedMessageContext>> =
                 field_opt(&args, "deniedMessageContext", "denied_message_context")?;
             let is_reviewing: Option<bool> = field_opt(&args, "isReviewing", "is_reviewing")?;
@@ -1500,6 +1594,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "enabledMcpServers", "enabled_mcp_servers")?;
             let selected_execution_mode: Option<Option<String>> =
                 field_opt(&args, "selectedExecutionMode", "selected_execution_mode")?;
+            let table_checked_rows: Option<std::collections::HashMap<String, Vec<u32>>> =
+                field_opt(&args, "tableCheckedRows", "table_checked_rows")?;
             crate::chat::update_session_state(
                 app.clone(),
                 worktree_id,
@@ -1509,6 +1605,11 @@ pub async fn dispatch_command(
                 submitted_answers,
                 fixed_findings,
                 pending_permission_denials,
+                pending_codex_permission_requests,
+                pending_codex_command_approval_requests,
+                pending_codex_user_input_requests,
+                pending_codex_mcp_elicitation_requests,
+                pending_codex_dynamic_tool_call_requests,
                 denied_message_context,
                 is_reviewing,
                 waiting_for_input,
@@ -1520,6 +1621,7 @@ pub async fn dispatch_command(
                 review_results,
                 enabled_mcp_servers,
                 selected_execution_mode,
+                table_checked_rows,
             )
             .await?;
             emit_cache_invalidation(app, &["sessions"]);
@@ -1717,6 +1819,26 @@ pub async fn dispatch_command(
             crate::claude_cli::install_claude_cli(app.clone(), version).await?;
             Ok(Value::Null)
         }
+        "check_cursor_cli_installed" => {
+            let result = crate::cursor_cli::check_cursor_cli_installed(app.clone()).await?;
+            to_value(result)
+        }
+        "detect_cursor_in_path" => {
+            let result = crate::cursor_cli::detect_cursor_in_path(app.clone()).await?;
+            to_value(result)
+        }
+        "check_cursor_cli_auth" => {
+            let result = crate::cursor_cli::check_cursor_cli_auth(app.clone()).await?;
+            to_value(result)
+        }
+        "list_cursor_models" => {
+            let result = crate::cursor_cli::list_cursor_models(app.clone()).await?;
+            to_value(result)
+        }
+        "get_cursor_install_command" => {
+            let result = crate::cursor_cli::get_cursor_install_command(app.clone()).await?;
+            to_value(result)
+        }
         "check_opencode_cli_installed" => {
             let result = crate::opencode_cli::check_opencode_cli_installed(app.clone()).await?;
             to_value(result)
@@ -1828,6 +1950,57 @@ pub async fn dispatch_command(
             crate::chat::approve_codex_command(session_id, rpc_id, decision)?;
             Ok(Value::Null)
         }
+        "respond_codex_command_approval" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let response: Value = from_field(&args, "response")?;
+            crate::chat::respond_codex_command_approval(session_id, rpc_id, response)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_file_change_approval" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let decision: String = from_field(&args, "decision")?;
+            crate::chat::respond_codex_file_change_approval(session_id, rpc_id, decision)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_permissions_request" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let permissions: Value = from_field(&args, "permissions")?;
+            let scope: Option<String> = from_field_opt(&args, "scope")?;
+            crate::chat::respond_codex_permissions_request(session_id, rpc_id, permissions, scope)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_user_input_request" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let answers: std::collections::HashMap<String, Value> = from_field(&args, "answers")?;
+            crate::chat::respond_codex_user_input_request(session_id, rpc_id, answers)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_mcp_elicitation" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let action: String = from_field(&args, "action")?;
+            let content: Option<Value> = from_field_opt(&args, "content")?;
+            let meta: Option<Value> = from_field_opt(&args, "meta")?;
+            crate::chat::respond_codex_mcp_elicitation(session_id, rpc_id, action, content, meta)?;
+            Ok(Value::Null)
+        }
+        "respond_codex_dynamic_tool_call" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
+            let success: bool = from_field(&args, "success")?;
+            let content_items: Vec<Value> = field(&args, "contentItems", "content_items")?;
+            crate::chat::respond_codex_dynamic_tool_call(
+                session_id,
+                rpc_id,
+                success,
+                content_items,
+            )?;
+            Ok(Value::Null)
+        }
 
         // =====================================================================
         // Queue management (cross-client sync)
@@ -1879,13 +2052,27 @@ pub async fn dispatch_command(
                 .await?;
             Ok(Value::Null)
         }
+        "answer_opencode_question" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let tool_call_id: String = field(&args, "toolCallId", "tool_call_id")?;
+            let answers: Vec<Vec<String>> = from_field(&args, "answers")?;
+            crate::chat::answer_opencode_question(
+                app.clone(),
+                worktree_path,
+                tool_call_id,
+                answers,
+            )
+            .await?;
+            Ok(Value::Null)
+        }
 
         // =====================================================================
         // Chat (additional)
         // =====================================================================
         "check_mcp_health" => {
             let backend: Option<String> = from_field_opt(&args, "backend")?;
-            let result = crate::chat::check_mcp_health(app.clone(), backend).await?;
+            let worktree_path: Option<String> = field_opt(&args, "worktreePath", "worktree_path")?;
+            let result = crate::chat::check_mcp_health(app.clone(), backend, worktree_path).await?;
             to_value(result)
         }
         "get_mcp_servers" => {
@@ -1956,8 +2143,9 @@ pub async fn dispatch_command(
         }
         "set_session_last_opened" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
-            crate::chat::set_session_last_opened(app.clone(), session_id).await?;
-            Ok(Value::Null)
+            let transitioned =
+                crate::chat::set_session_last_opened(app.clone(), session_id).await?;
+            to_value(transitioned)
         }
         "set_sessions_last_opened_bulk" => {
             let session_ids: Vec<String> = field(&args, "sessionIds", "session_ids")?;
@@ -2032,6 +2220,7 @@ pub async fn dispatch_command(
         }
         "generate_pr_update_content" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let pr_number: Option<u32> = field_opt(&args, "prNumber", "pr_number")?;
             let session_id: Option<String> = field_opt(&args, "sessionId", "session_id")?;
             let custom_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
@@ -2042,6 +2231,7 @@ pub async fn dispatch_command(
             let result = crate::projects::generate_pr_update_content(
                 app.clone(),
                 worktree_path,
+                pr_number,
                 session_id,
                 custom_prompt,
                 model,
@@ -2261,6 +2451,21 @@ pub async fn dispatch_command(
             let state = app.state::<crate::background_tasks::BackgroundTaskManager>();
             crate::background_tasks::commands::set_pr_worktrees_for_polling(state, worktrees)?;
             Ok(Value::Null)
+        }
+
+        // =====================================================================
+        // Opinionated plugin commands
+        // =====================================================================
+        "check_opinionated_plugin_status" => {
+            let plugin_name: String = from_field(&args, "pluginName")?;
+            let result = crate::opinionated::check_opinionated_plugin_status(plugin_name).await?;
+            to_value(result)
+        }
+        "install_opinionated_plugin" => {
+            let plugin_name: String = from_field(&args, "pluginName")?;
+            let result =
+                crate::opinionated::install_opinionated_plugin(app.clone(), plugin_name).await?;
+            to_value(result)
         }
 
         // =====================================================================

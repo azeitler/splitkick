@@ -22,6 +22,22 @@ import {
   type KeybindingsMap,
 } from '@/types/keybindings'
 
+const PLAN_DIALOG_APPROVAL_ACTIONS = new Set<KeybindingAction>([
+  'approve_plan',
+  'approve_plan_yolo',
+  'approve_plan_clear_context',
+  'approve_plan_clear_context_build',
+  'approve_plan_worktree_build',
+  'approve_plan_worktree_yolo',
+])
+
+export function shouldLetPlanDialogHandleAction(
+  action: KeybindingAction,
+  planDialogOpen: boolean
+): boolean {
+  return planDialogOpen && PLAN_DIALOG_APPROVAL_ACTIONS.has(action)
+}
+
 export function getTerminalShortcutWorktreeId(): string | null {
   const activeElement = document.activeElement
   const terminalFocused =
@@ -79,7 +95,9 @@ export function closeActiveTerminalTabForShortcut(): boolean {
   return true
 }
 
-export function switchActiveTerminalTabByIndexForShortcut(index: number): boolean {
+export function switchActiveTerminalTabByIndexForShortcut(
+  index: number
+): boolean {
   const worktreeId = getTerminalShortcutWorktreeId()
   if (!worktreeId) return false
 
@@ -171,10 +189,11 @@ function executeKeybindingAction(
       if (!targetWorktreePath && targetWorktreeId) {
         const projectId = useProjectsStore.getState().selectedProjectId
         if (projectId) {
-          const worktrees = queryClient.getQueryData<{ id: string; path: string }[]>(
-            projectsQueryKeys.worktrees(projectId)
-          )
-          targetWorktreePath = worktrees?.find(w => w.id === targetWorktreeId)?.path ?? null
+          const worktrees = queryClient.getQueryData<
+            { id: string; path: string }[]
+          >(projectsQueryKeys.worktrees(projectId))
+          targetWorktreePath =
+            worktrees?.find(w => w.id === targetWorktreeId)?.path ?? null
         }
       }
 
@@ -183,20 +202,22 @@ function executeKeybindingAction(
         break
       }
 
+      const resolvedWorktreePath = targetWorktreePath
+
       // Fetch run scripts - use fetchQuery to handle uncached dashboard worktrees
       ;(async () => {
         let runScripts = queryClient.getQueryData<string[]>([
           'run-scripts',
-          targetWorktreePath,
+          resolvedWorktreePath,
         ])
 
         if (runScripts === undefined) {
           try {
             runScripts = await queryClient.fetchQuery<string[]>({
-              queryKey: ['run-scripts', targetWorktreePath],
+              queryKey: ['run-scripts', resolvedWorktreePath],
               queryFn: () =>
                 invoke<string[]>('get_run_scripts', {
-                  worktreePath: targetWorktreePath,
+                  worktreePath: resolvedWorktreePath,
                 }),
             })
           } catch {
@@ -235,7 +256,7 @@ function executeKeybindingAction(
           // Canvas view: start PTY headlessly (no terminal UI mounted yet)
           startHeadless(terminalId, {
             worktreeId: targetWorktreeId,
-            worktreePath: targetWorktreePath!,
+            worktreePath: resolvedWorktreePath,
             command: firstScript,
           })
         }
@@ -407,6 +428,31 @@ function executeKeybindingAction(
         new CustomEvent('scroll-chat', { detail: { direction: 'down' } })
       )
       break
+    case 'scroll_chat_up_small':
+      window.dispatchEvent(
+        new CustomEvent('scroll-chat', {
+          detail: { direction: 'up', amount: 'small' },
+        })
+      )
+      break
+    case 'scroll_chat_down_small':
+      window.dispatchEvent(
+        new CustomEvent('scroll-chat', {
+          detail: { direction: 'down', amount: 'small' },
+        })
+      )
+      break
+    case 'search_chat': {
+      logger.debug('Keybinding: search_chat')
+      const uiStoreSearch = useUIStore.getState()
+      if (!uiStoreSearch.chatSearchOpen) {
+        uiStoreSearch.setChatSearchOpen(true)
+      } else {
+        // If open, dispatch event so the component can decide to close or re-focus
+        window.dispatchEvent(new CustomEvent('chat-search-toggle'))
+      }
+      break
+    }
     case 'open_github_dashboard':
       useUIStore.getState().setGitHubDashboardOpen(true)
       break
@@ -478,17 +524,15 @@ export function useMainWindowEventListeners() {
         return
       }
 
-      // Skip when a blocking modal/dialog is open - let it handle its own shortcuts
-      const uiState = useUIStore.getState()
+      // Skip when any modal/dialog is open - let it handle its own shortcuts.
+      // Covers all shadcn/Radix Dialog + AlertDialog instances automatically
+      // (including future modals) via their data-state attribute.
+      // Also skip when a Radix DropdownMenu / Select is open so its built-in
+      // arrow-key navigation isn't hijacked (e.g. by scroll_chat_*).
       if (
-        uiState.loadContextModalOpen ||
-        uiState.magicModalOpen ||
-        uiState.openInModalOpen ||
-        uiState.newWorktreeModalOpen ||
-        uiState.commandPaletteOpen ||
-        uiState.preferencesOpen ||
-        uiState.releaseNotesModalOpen ||
-        uiState.updatePrModalOpen
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]'
+        )
       )
         return
       if (useProjectsStore.getState().projectSettingsDialogOpen) return
@@ -501,7 +545,7 @@ export function useMainWindowEventListeners() {
         if (terminalShortcutWorktreeId) {
           const kb = keybindingsRef.current
           const digitMatch = e.code.match(/^Digit(\d)$/)
-          const digit = digitMatch ? parseInt(digitMatch[1]!, 10) : NaN
+          const digit = digitMatch?.[1] ? parseInt(digitMatch[1], 10) : NaN
 
           if (
             (e.metaKey || e.ctrlKey) &&
@@ -528,7 +572,10 @@ export function useMainWindowEventListeners() {
             closeActiveTerminalTabForShortcut()
             return
           }
-          if (shortcut === kb.toggle_terminal || shortcut === kb.cancel_prompt) {
+          if (
+            shortcut === kb.toggle_terminal ||
+            shortcut === kb.cancel_prompt
+          ) {
             // Let these fall through to the normal keybinding handler below
           } else {
             // Block all other shortcuts
@@ -541,7 +588,7 @@ export function useMainWindowEventListeners() {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
         // Use e.code (physical key) since e.key can vary with CMD held on macOS
         const digitMatch = e.code.match(/^Digit(\d)$/)
-        const digit = digitMatch ? parseInt(digitMatch[1]!, 10) : NaN
+        const digit = digitMatch?.[1] ? parseInt(digitMatch[1], 10) : NaN
         if (digit >= 1 && digit <= 9) {
           e.preventDefault()
           e.stopPropagation()
@@ -577,6 +624,25 @@ export function useMainWindowEventListeners() {
       const keybindings = keybindingsRef.current
       for (const [action, binding] of Object.entries(keybindings)) {
         if (binding === shortcut) {
+          if (
+            shouldLetPlanDialogHandleAction(
+              action as KeybindingAction,
+              useUIStore.getState().planDialogOpen
+            )
+          ) {
+            return
+          }
+          // Scope small-scroll arrow keys to ChatWindow context
+          // so canvas/list arrow navigation still works elsewhere
+          if (
+            action === 'scroll_chat_up_small' ||
+            action === 'scroll_chat_down_small'
+          ) {
+            const chatVisible =
+              !!useChatStore.getState().activeWorktreeId ||
+              useUIStore.getState().sessionChatModalOpen
+            if (!chatVisible) return
+          }
           e.preventDefault()
           e.stopPropagation()
           executeKeybindingAction(
@@ -655,7 +721,11 @@ export function useMainWindowEventListeners() {
 
         listen('menu-magic-menu', () => {
           logger.debug('Magic menu event received from native menu')
-          executeKeybindingAction('open_magic_modal', commandContext, queryClient)
+          executeKeybindingAction(
+            'open_magic_modal',
+            commandContext,
+            queryClient
+          )
         }),
 
         // Branch naming events (automatic branch renaming based on first message)

@@ -12,6 +12,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { ChatSearchBar } from './ChatSearchBar'
 import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
@@ -34,12 +35,18 @@ import {
   useSetSessionBackend,
   useSetSessionProvider,
   useCreateSession,
+  useLoadOlderMessages,
   markPlanApproved as markPlanApprovedService,
   chatQueryKeys,
 } from '@/services/chat'
 import { useWorktree, useProjects, useRunScripts } from '@/services/projects'
+import { markWorktreeSilentReady } from '@/services/worktree-silent-ready'
 import { useProjectsStore } from '@/store/projects-store'
-import type { Worktree, WorktreeCreatedEvent, WorktreeCreateErrorEvent } from '@/types/projects'
+import type {
+  Worktree,
+  WorktreeCreatedEvent,
+  WorktreeCreateErrorEvent,
+} from '@/types/projects'
 import {
   useLoadedIssueContexts,
   useLoadedPRContexts,
@@ -66,13 +73,27 @@ import type {
   PendingImage,
   PendingTextFile,
   PendingSkill,
+  CodexCommandApprovalRequest,
+  CodexPermissionRequest,
+  CodexUserInputRequest,
+  CodexMcpElicitationRequest,
+  CodexDynamicToolCallRequest,
   PermissionDenial,
   PendingFile,
 } from '@/types/chat'
-import { isAskUserQuestion, isExitPlanMode } from '@/types/chat'
+import {
+  isAskUserQuestion,
+  isPlanToolCall,
+  normalizeCodexQuestions,
+} from '@/types/chat'
 import { getFilename, normalizePath } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { PermissionApproval } from './PermissionApproval'
+import { AskUserQuestion } from './AskUserQuestion'
+import { CodexCommandApprovalRequestCard } from './CodexCommandApprovalRequest'
+import { CodexPermissionsRequest } from './CodexPermissionsRequest'
+import { CodexMcpElicitationRequest as CodexMcpElicitationRequestCard } from './CodexMcpElicitationRequest'
+import { CodexDynamicToolCallRequest as CodexDynamicToolCallRequestCard } from './CodexDynamicToolCallRequest'
 import { SetupScriptOutput } from './SetupScriptOutput'
 import { TodoWidget } from './TodoWidget'
 import { AgentWidget } from './AgentWidget'
@@ -120,7 +141,12 @@ import { copyToClipboard, copyHtmlToClipboard } from '@/lib/clipboard'
 import { useClaudeCliStatus } from '@/services/claude-cli'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
-import type { QueuedMessage, Session, SessionDigest, WorktreeSessions } from '@/types/chat'
+import type {
+  QueuedMessage,
+  Session,
+  SessionDigest,
+  WorktreeSessions,
+} from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
 import { FileDiffModal } from './FileDiffModal'
 
@@ -159,6 +185,7 @@ import { useChatWindowEvents } from './hooks/useChatWindowEvents'
 import { useInvestigateHandlers } from './hooks/useInvestigateHandlers'
 import { useMcpServerResolution } from './hooks/useMcpServerResolution'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useToolbarHandlers } from './hooks/useToolbarHandlers'
 import { useMessageSending } from './hooks/useMessageSending'
 import { usePlanState } from './hooks/usePlanState'
@@ -178,6 +205,11 @@ const EMPTY_PENDING_FILES: PendingFile[] = []
 const EMPTY_PENDING_SKILLS: PendingSkill[] = []
 const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = []
 const EMPTY_PERMISSION_DENIALS: PermissionDenial[] = []
+const EMPTY_CODEX_PERMISSION_REQUESTS: CodexPermissionRequest[] = []
+const EMPTY_CODEX_COMMAND_APPROVAL_REQUESTS: CodexCommandApprovalRequest[] = []
+const EMPTY_CODEX_USER_INPUT_REQUESTS: CodexUserInputRequest[] = []
+const EMPTY_CODEX_MCP_ELICITATION_REQUESTS: CodexMcpElicitationRequest[] = []
+const EMPTY_CODEX_DYNAMIC_TOOL_CALL_REQUESTS: CodexDynamicToolCallRequest[] = []
 
 interface ChatWindowProps {
   /** When true, hides terminal panel and other elements not needed in modal */
@@ -193,6 +225,7 @@ export function ChatWindow({
   worktreeId: propWorktreeId,
   worktreePath: propWorktreePath,
 }: ChatWindowProps = {}) {
+  const isMobile = useIsMobile()
   // PERFORMANCE: Use focused selectors instead of whole-store destructuring
   // This prevents re-renders when other sessions' state changes (e.g., streaming chunks)
 
@@ -229,15 +262,11 @@ export function ChatWindow({
   )
   // Timestamp when current send started (for elapsed timer)
   const sendStartedAt = useChatStore(state =>
-    activeSessionId
-      ? (state.sendStartedAt[activeSessionId] ?? null)
-      : null
+    activeSessionId ? (state.sendStartedAt[activeSessionId] ?? null) : null
   )
   // Duration of last completed run (ms) — stored by completeSession
   const completedDurationMs = useChatStore(state =>
-    activeSessionId
-      ? (state.completedDurations[activeSessionId] ?? null)
-      : null
+    activeSessionId ? (state.completedDurations[activeSessionId] ?? null) : null
   )
   // Session label for top-right badge
   const sessionLabel = useChatStore(state =>
@@ -266,9 +295,6 @@ export function ChatWindow({
     activeSessionId
       ? (state.reviewingSessions[activeSessionId] ?? false)
       : false
-  )
-  const isStreamingPlanApproved = useChatStore(
-    state => state.isStreamingPlanApproved
   )
   // Terminal panel visibility (per-worktree)
   const terminalVisible = useTerminalStore(state => state.terminalVisible)
@@ -384,6 +410,25 @@ export function ChatWindow({
     activeWorktreeId,
     activeWorktreePath
   )
+
+  const loadOlderMessages = useLoadOlderMessages()
+  const loadedRunStartIndex = session?.loaded_run_start_index ?? 0
+  const totalRuns = session?.total_runs ?? 0
+  const hasOlderOnDisk = loadedRunStartIndex > 0 && totalRuns > 0
+  const handleLoadOlderRuns = useCallback(() => {
+    if (!deferredSessionId || !hasOlderOnDisk || loadOlderMessages.isPending) {
+      return
+    }
+    loadOlderMessages.mutate({
+      sessionId: deferredSessionId,
+      beforeRunIndex: loadedRunStartIndex,
+    })
+  }, [
+    deferredSessionId,
+    hasOlderOnDisk,
+    loadedRunStartIndex,
+    loadOlderMessages,
+  ])
 
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
@@ -509,8 +554,10 @@ export function ChatWindow({
   const zustandBackend = useChatStore(state =>
     deferredSessionId ? state.selectedBackends[deferredSessionId] : undefined
   )
-  const projectDefaultBackend = (project?.default_backend ?? null) as CliBackend | null
-  const globalDefaultBackend = (preferences?.default_backend ?? 'claude') as CliBackend
+  const projectDefaultBackend = (project?.default_backend ??
+    null) as CliBackend | null
+  const globalDefaultBackend = (preferences?.default_backend ??
+    'claude') as CliBackend
   const resolvedBackend: CliBackend =
     (session?.backend as CliBackend) ??
     zustandBackend ??
@@ -519,23 +566,33 @@ export function ChatWindow({
   // Model string is definitive backend source (matches Rust safety net in send_chat_message).
   // Prevents race where setSessionModel invalidation refetches before setSessionBackend persists.
   const modelImpliedBackend: CliBackend | null =
-    session?.selected_model?.startsWith('opencode/') ? 'opencode'
-    : (session?.selected_model?.startsWith('codex') || session?.selected_model?.includes('codex')) ? 'codex'
-    : null
+    session?.selected_model?.startsWith('cursor/')
+      ? 'cursor'
+      : session?.selected_model?.startsWith('opencode/')
+        ? 'opencode'
+        : session?.selected_model?.startsWith('codex') ||
+            session?.selected_model?.includes('codex')
+          ? 'codex'
+          : null
   // Clamp to installed backends — prevents showing "Claude" when only Codex is installed
-  const selectedBackend: CliBackend = modelImpliedBackend
-    ?? (installedBackends.length > 0 && !installedBackends.includes(resolvedBackend)
+  const selectedBackend: CliBackend =
+    modelImpliedBackend ??
+    (installedBackends.length > 0 &&
+    !installedBackends.includes(resolvedBackend)
       ? (installedBackends[0] as CliBackend)
       : resolvedBackend)
   const isCodexBackend = selectedBackend === 'codex'
   const isOpencodeBackend = selectedBackend === 'opencode'
+  const isCursorBackend = selectedBackend === 'cursor'
 
   // Per-session model selection, falls back to preferences default (backend-aware)
   const defaultModel: string = isCodexBackend
     ? (preferences?.selected_codex_model ?? 'gpt-5.4')
     : isOpencodeBackend
       ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-      : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
+      : isCursorBackend
+        ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+        : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
   const selectedModel: string = session?.selected_model ?? defaultModel
 
   // Per-session thinking level, falls back to preferences default
@@ -557,7 +614,7 @@ export function ChatWindow({
           low: 'low',
           medium: 'medium',
           high: 'high',
-          xhigh: 'max',
+          xhigh: 'xhigh',
         } as Record<string, EffortLevel>
       )[preferences?.default_codex_reasoning_effort ?? 'high'] ?? 'high')
     : ((preferences?.default_effort_level as EffortLevel) ?? 'high')
@@ -594,7 +651,7 @@ export function ChatWindow({
     activeProfile?.supports_thinking ??
     PREDEFINED_CLI_PROFILES.find(p => p.name === selectedProvider)
       ?.supports_thinking
-  const hideThinkingLevel = activeSupportsThinking === false
+  const hideThinkingLevel = activeSupportsThinking === false || isCursorBackend
 
   const isSending = isSendingForSession
 
@@ -701,13 +758,53 @@ export function ChatWindow({
         EMPTY_PERMISSION_DENIALS)
       : EMPTY_PERMISSION_DENIALS
   )
+  const pendingCodexPermissionRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexPermissionRequests[deferredSessionId] ??
+        EMPTY_CODEX_PERMISSION_REQUESTS)
+      : EMPTY_CODEX_PERMISSION_REQUESTS
+  )
+  const pendingCodexCommandApprovalRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexCommandApprovalRequests[deferredSessionId] ??
+        EMPTY_CODEX_COMMAND_APPROVAL_REQUESTS)
+      : EMPTY_CODEX_COMMAND_APPROVAL_REQUESTS
+  )
+  const pendingCodexUserInputRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexUserInputRequests[deferredSessionId] ??
+        EMPTY_CODEX_USER_INPUT_REQUESTS)
+      : EMPTY_CODEX_USER_INPUT_REQUESTS
+  )
+  const pendingCodexMcpElicitationRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexMcpElicitationRequests[deferredSessionId] ??
+        EMPTY_CODEX_MCP_ELICITATION_REQUESTS)
+      : EMPTY_CODEX_MCP_ELICITATION_REQUESTS
+  )
+  const pendingCodexDynamicToolCallRequests = useChatStore(state =>
+    deferredSessionId
+      ? (state.pendingCodexDynamicToolCallRequests[deferredSessionId] ??
+        EMPTY_CODEX_DYNAMIC_TOOL_CALL_REQUESTS)
+      : EMPTY_CODEX_DYNAMIC_TOOL_CALL_REQUESTS
+  )
   const showPermissionApproval = shouldShowPermissionApproval({
     pendingDenialsCount: pendingDenials.length,
     isSending,
     executionMode,
     isCodexBackend,
   })
-
+  const activeCodexCommandApprovalRequest =
+    pendingCodexCommandApprovalRequests[0]
+  const activeCodexPermissionRequest = pendingCodexPermissionRequests[0]
+  const activeCodexUserInputRequest = pendingCodexUserInputRequests[0]
+  const activeCodexMcpElicitationRequest = pendingCodexMcpElicitationRequests[0]
+  const activeCodexDynamicToolCallRequest =
+    pendingCodexDynamicToolCallRequests[0]
+  const activeCodexUserInputQuestions = useMemo(
+    () => normalizeCodexQuestions(activeCodexUserInputRequest?.questions),
+    [activeCodexUserInputRequest]
+  )
 
   // PERFORMANCE: Pre-compute last assistant message to avoid rescanning in multiple memos
   // This reference only changes when the actual last assistant message changes
@@ -748,10 +845,24 @@ export function ChatWindow({
   const selectedModelRef = useRef(selectedModel)
   const buildModelRef = useRef<string | null>(preferences?.build_model ?? null)
   const yoloModelRef = useRef<string | null>(preferences?.yolo_model ?? null)
-  const buildBackendRef = useRef<string | null>(preferences?.build_backend ?? null)
-  const buildThinkingLevelRef = useRef<string | null>(preferences?.build_thinking_level ?? null)
-  const yoloBackendRef = useRef<string | null>(preferences?.yolo_backend ?? null)
-  const yoloThinkingLevelRef = useRef<string | null>(preferences?.yolo_thinking_level ?? null)
+  const buildBackendRef = useRef<string | null>(
+    preferences?.build_backend ?? null
+  )
+  const buildThinkingLevelRef = useRef<string | null>(
+    preferences?.build_thinking_level ?? null
+  )
+  const buildEffortLevelRef = useRef<string | null>(
+    preferences?.build_effort_level ?? null
+  )
+  const yoloBackendRef = useRef<string | null>(
+    preferences?.yolo_backend ?? null
+  )
+  const yoloThinkingLevelRef = useRef<string | null>(
+    preferences?.yolo_thinking_level ?? null
+  )
+  const yoloEffortLevelRef = useRef<string | null>(
+    preferences?.yolo_effort_level ?? null
+  )
   const selectedProviderRef = useRef(selectedProvider)
   const selectedThinkingLevelRef = useRef(selectedThinkingLevel)
   const selectedEffortLevelRef = useRef(selectedEffortLevel)
@@ -772,8 +883,10 @@ export function ChatWindow({
   yoloModelRef.current = preferences?.yolo_model ?? null
   buildBackendRef.current = preferences?.build_backend ?? null
   buildThinkingLevelRef.current = preferences?.build_thinking_level ?? null
+  buildEffortLevelRef.current = preferences?.build_effort_level ?? null
   yoloBackendRef.current = preferences?.yolo_backend ?? null
   yoloThinkingLevelRef.current = preferences?.yolo_thinking_level ?? null
+  yoloEffortLevelRef.current = preferences?.yolo_effort_level ?? null
   selectedProviderRef.current = selectedProvider
   selectedThinkingLevelRef.current = selectedThinkingLevel
   selectedEffortLevelRef.current = selectedEffortLevel
@@ -800,6 +913,7 @@ export function ChatWindow({
 
   // Ref for approve button (passed to VirtualizedMessageList)
   const approveButtonRef = useRef<HTMLButtonElement>(null)
+  const triggerChatAttachRef = useRef<(() => void) | null>(null)
 
   // Terminal panel ref for imperative collapse/expand
   const terminalPanelRef = useRef<ImperativePanelHandle>(null)
@@ -862,18 +976,18 @@ export function ChatWindow({
     lastAssistantMessage,
   })
 
-  // Plan state: pending plan message, streaming plan, content, file path
+  // Plan state: finished pending plan, content, file path
   const {
     pendingPlanMessage,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     latestPlanContent,
     latestPlanFilePath,
   } = usePlanState({
     sessionMessages: session?.messages,
     currentToolCalls,
+    currentStreamingContent: streamingContent,
+    currentStreamingContentBlocks,
     isSending,
-    activeSessionId,
-    isStreamingPlanApproved,
   })
 
   // State for plan dialog
@@ -898,8 +1012,12 @@ export function ChatWindow({
       selectedModelRef,
       buildModelRef,
       buildBackendRef,
+      buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
       yoloBackendRef,
+      yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedProviderRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
@@ -908,7 +1026,7 @@ export function ChatWindow({
       mcpServersDataRef,
       enabledMcpServersRef,
       selectedBackendRef,
-      scrollToBottom,
+      markAtBottom,
     })
 
   // Clear context approval handler for PlanDialog
@@ -966,17 +1084,21 @@ export function ChatWindow({
       store.setActiveSession(activeWorktreeId, newSession.id)
 
       // Send plan as first message in YOLO mode
-      const yoloBackend = (yoloBackendRef.current as Session['backend']) ?? undefined
-      const yoloModel = yoloModelRef.current ??
+      const yoloBackend =
+        (yoloBackendRef.current as Session['backend']) ?? undefined
+      const yoloModel =
+        yoloModelRef.current ??
         (yoloBackend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.4')
           : yoloBackend === 'opencode'
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-            : selectedModelRef.current)
-      const yoloOverride = (yoloModelRef.current || yoloBackend)
-        ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
-        : ''
-      if (yoloOverride) toast.info(`Yolo: ${yoloOverride}`)
+            : yoloBackend === 'cursor'
+              ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+              : selectedModelRef.current)
+      const yoloOverride =
+        yoloModelRef.current || yoloBackend
+          ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
+          : ''
       const message = yoloOverride
         ? `[Yolo: ${yoloOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
@@ -989,45 +1111,59 @@ export function ChatWindow({
       if (yoloBackend) {
         store.setSelectedBackend(
           newSession.id,
-          yoloBackend as 'claude' | 'codex' | 'opencode'
+          yoloBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(newSession.id),
-        old => old ? { ...old, backend: yoloBackend ?? old.backend, selected_model: yoloModel } : old
+        old =>
+          old
+            ? {
+                ...old,
+                backend: yoloBackend ?? old.backend,
+                selected_model: yoloModel,
+              }
+            : old
       )
 
       // Persist model and backend to Rust session BEFORE sending so send_chat_message
       // reads the updated session state (both use with_sessions_mut, so ordering matters)
       await invoke('set_session_model', {
-        worktreeId: activeWorktreeId, worktreePath: activeWorktreePath,
-        sessionId: newSession.id, model: yoloModel,
-      }).catch(err => console.error('[PlanDialog CC Yolo] Failed to persist model:', err))
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        sessionId: newSession.id,
+        model: yoloModel,
+      }).catch(err =>
+        console.error('[PlanDialog CC Yolo] Failed to persist model:', err)
+      )
       if (yoloBackend) {
         await invoke('set_session_backend', {
-          worktreeId: activeWorktreeId, worktreePath: activeWorktreePath,
-          sessionId: newSession.id, backend: yoloBackend,
-        }).catch(err => console.error('[PlanDialog CC Yolo] Failed to persist backend:', err))
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          sessionId: newSession.id,
+          backend: yoloBackend,
+        }).catch(err =>
+          console.error('[PlanDialog CC Yolo] Failed to persist backend:', err)
+        )
       }
 
       const effectiveYoloBackend = yoloBackend ?? session?.backend
       const yoloModeThinking = yoloThinkingLevelRef.current
+      const yoloModeEffort = yoloEffortLevelRef.current
       const yoloThinkingLevel: ThinkingLevel =
         effectiveYoloBackend === 'codex'
           ? 'off'
-          : ((yoloModeThinking ?? selectedThinkingLevelRef.current) as ThinkingLevel)
+          : ((yoloModeThinking ??
+              selectedThinkingLevelRef.current) as ThinkingLevel)
       const yoloEffortLevel: EffortLevel | undefined =
         effectiveYoloBackend === 'codex'
-          ? (({
-              low: 'low',
-              medium: 'medium',
-              high: 'high',
-              xhigh: 'max',
-              max: 'max',
-            } as Record<string, EffortLevel>)[yoloModeThinking ?? ''] ??
+          ? ((yoloModeEffort as EffortLevel | null) ??
             selectedEffortLevelRef.current)
-          : undefined
+          : useAdaptiveThinkingRef.current
+            ? ((yoloModeEffort as EffortLevel | null) ??
+              selectedEffortLevelRef.current)
+            : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: activeWorktreeId,
@@ -1052,8 +1188,10 @@ export function ChatWindow({
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       preferences?.selected_codex_model,
       preferences?.selected_opencode_model,
       session?.backend,
@@ -1115,17 +1253,21 @@ export function ChatWindow({
       store.setActiveSession(activeWorktreeId, newSession.id)
 
       // Send plan as first message in build mode using build overrides
-      const buildBackend = (buildBackendRef.current as Session['backend']) ?? undefined
-      const buildModel = buildModelRef.current ??
+      const buildBackend =
+        (buildBackendRef.current as Session['backend']) ?? undefined
+      const buildModel =
+        buildModelRef.current ??
         (buildBackend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.4')
           : buildBackend === 'opencode'
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-            : selectedModelRef.current)
-      const buildOverride = (buildModelRef.current || buildBackend)
-        ? [buildBackend, buildModel].filter(Boolean).join(' / ')
-        : ''
-      if (buildOverride) toast.info(`Build: ${buildOverride}`)
+            : buildBackend === 'cursor'
+              ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+              : selectedModelRef.current)
+      const buildOverride =
+        buildModelRef.current || buildBackend
+          ? [buildBackend, buildModel].filter(Boolean).join(' / ')
+          : ''
       const message = buildOverride
         ? `[Build: ${buildOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
@@ -1138,45 +1280,59 @@ export function ChatWindow({
       if (buildBackend) {
         store.setSelectedBackend(
           newSession.id,
-          buildBackend as 'claude' | 'codex' | 'opencode'
+          buildBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(newSession.id),
-        old => old ? { ...old, backend: buildBackend ?? old.backend, selected_model: buildModel } : old
+        old =>
+          old
+            ? {
+                ...old,
+                backend: buildBackend ?? old.backend,
+                selected_model: buildModel,
+              }
+            : old
       )
 
       // Persist model and backend to Rust session BEFORE sending so send_chat_message
       // reads the updated session state (both use with_sessions_mut, so ordering matters)
       await invoke('set_session_model', {
-        worktreeId: activeWorktreeId, worktreePath: activeWorktreePath,
-        sessionId: newSession.id, model: buildModel,
-      }).catch(err => console.error('[PlanDialog CC Build] Failed to persist model:', err))
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        sessionId: newSession.id,
+        model: buildModel,
+      }).catch(err =>
+        console.error('[PlanDialog CC Build] Failed to persist model:', err)
+      )
       if (buildBackend) {
         await invoke('set_session_backend', {
-          worktreeId: activeWorktreeId, worktreePath: activeWorktreePath,
-          sessionId: newSession.id, backend: buildBackend,
-        }).catch(err => console.error('[PlanDialog CC Build] Failed to persist backend:', err))
+          worktreeId: activeWorktreeId,
+          worktreePath: activeWorktreePath,
+          sessionId: newSession.id,
+          backend: buildBackend,
+        }).catch(err =>
+          console.error('[PlanDialog CC Build] Failed to persist backend:', err)
+        )
       }
 
       const effectiveBuildBackend = buildBackend ?? session?.backend
       const buildModeThinking = buildThinkingLevelRef.current
+      const buildModeEffort = buildEffortLevelRef.current
       const buildThinkingLevel: ThinkingLevel =
         effectiveBuildBackend === 'codex'
           ? 'off'
-          : ((buildModeThinking ?? selectedThinkingLevelRef.current) as ThinkingLevel)
+          : ((buildModeThinking ??
+              selectedThinkingLevelRef.current) as ThinkingLevel)
       const buildEffortLevel: EffortLevel | undefined =
         effectiveBuildBackend === 'codex'
-          ? (({
-              low: 'low',
-              medium: 'medium',
-              high: 'high',
-              xhigh: 'max',
-              max: 'max',
-            } as Record<string, EffortLevel>)[buildModeThinking ?? ''] ??
+          ? ((buildModeEffort as EffortLevel | null) ??
             selectedEffortLevelRef.current)
-          : undefined
+          : useAdaptiveThinkingRef.current
+            ? ((buildModeEffort as EffortLevel | null) ??
+              selectedEffortLevelRef.current)
+            : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: activeWorktreeId,
@@ -1201,8 +1357,10 @@ export function ChatWindow({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       preferences?.selected_codex_model,
       preferences?.selected_opencode_model,
       session?.backend,
@@ -1213,9 +1371,13 @@ export function ChatWindow({
   const handlePlanDialogWorktreeApprove = useCallback(
     async (editedPlanContent: string, mode: 'build' | 'yolo') => {
       const projectId = worktree?.project_id
-      if (!activeSessionId || !activeWorktreeId || !activeWorktreePath || !projectId) return
-
-      const toastId = toast.loading('Creating worktree...')
+      if (
+        !activeSessionId ||
+        !activeWorktreeId ||
+        !activeWorktreePath ||
+        !projectId
+      )
+        return
 
       // Mark pending plan approved if exists
       if (pendingPlanMessage) {
@@ -1254,11 +1416,14 @@ export function ChatWindow({
       // Create new worktree
       let pendingWorktree: Worktree
       try {
-        pendingWorktree = await invoke<Worktree>('create_worktree', { projectId })
+        pendingWorktree = await invoke<Worktree>('create_worktree', {
+          projectId,
+        })
       } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`, { id: toastId })
+        toast.error(`Failed to create worktree: ${err}`)
         return
       }
+      markWorktreeSilentReady(pendingWorktree.id)
 
       // Wait for worktree to be ready
       let readyWorktree: Worktree
@@ -1270,30 +1435,34 @@ export function ChatWindow({
             reject(new Error('Worktree creation timed out'))
           }, 120_000)
 
-          const unlistenCreated = listen<WorktreeCreatedEvent>('worktree:created', event => {
-            if (event.payload.worktree.id === pendingWorktree.id) {
-              clearTimeout(timeout)
-              void unlistenCreated.then(fn => fn())
-              void unlistenError.then(fn => fn())
-              resolve(event.payload.worktree)
+          const unlistenCreated = listen<WorktreeCreatedEvent>(
+            'worktree:created',
+            event => {
+              if (event.payload.worktree.id === pendingWorktree.id) {
+                clearTimeout(timeout)
+                void unlistenCreated.then(fn => fn())
+                void unlistenError.then(fn => fn())
+                resolve(event.payload.worktree)
+              }
             }
-          })
+          )
 
-          const unlistenError = listen<WorktreeCreateErrorEvent>('worktree:error', event => {
-            if (event.payload.id === pendingWorktree.id) {
-              clearTimeout(timeout)
-              void unlistenCreated.then(fn => fn())
-              void unlistenError.then(fn => fn())
-              reject(new Error(event.payload.error))
+          const unlistenError = listen<WorktreeCreateErrorEvent>(
+            'worktree:error',
+            event => {
+              if (event.payload.id === pendingWorktree.id) {
+                clearTimeout(timeout)
+                void unlistenCreated.then(fn => fn())
+                void unlistenError.then(fn => fn())
+                reject(new Error(event.payload.error))
+              }
             }
-          })
+          )
         })
       } catch (err) {
-        toast.error(`Worktree creation failed: ${err}`, { id: toastId })
+        toast.error(`Worktree creation failed: ${err}`)
         return
       }
-
-      toast.loading('Sending plan...', { id: toastId })
 
       // Navigate to new worktree
       const projectsStore = useProjectsStore.getState()
@@ -1318,7 +1487,7 @@ export function ChatWindow({
           })
         }
       } catch (err) {
-        toast.error(`Failed to get session: ${err}`, { id: toastId })
+        toast.error(`Failed to get session: ${err}`)
         return
       }
 
@@ -1330,18 +1499,25 @@ export function ChatWindow({
       const modeLabel = isYolo ? 'Yolo' : 'Build'
       const modeBackendRef = isYolo ? yoloBackendRef : buildBackendRef
       const modeModelRef = isYolo ? yoloModelRef : buildModelRef
-      const modeThinkingRef = isYolo ? yoloThinkingLevelRef : buildThinkingLevelRef
-      const modeBackend = (modeBackendRef.current as Session['backend']) ?? undefined
-      const modeModel = modeModelRef.current ??
+      const modeThinkingRef = isYolo
+        ? yoloThinkingLevelRef
+        : buildThinkingLevelRef
+      const modeEffortRef = isYolo ? yoloEffortLevelRef : buildEffortLevelRef
+      const modeBackend =
+        (modeBackendRef.current as Session['backend']) ?? undefined
+      const modeModel =
+        modeModelRef.current ??
         (modeBackend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.4')
           : modeBackend === 'opencode'
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-            : selectedModelRef.current)
-      const modeOverride = (modeModelRef.current || modeBackend)
-        ? [modeBackend, modeModel].filter(Boolean).join(' / ')
-        : ''
-      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
+            : modeBackend === 'cursor'
+              ? (preferences?.selected_cursor_model ?? 'cursor/auto')
+              : selectedModelRef.current)
+      const modeOverride =
+        modeModelRef.current || modeBackend
+          ? [modeBackend, modeModel].filter(Boolean).join(' / ')
+          : ''
       const message = modeOverride
         ? `[${modeLabel}: ${modeOverride}]\nExecute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
         : `Execute this plan. Implement all changes described.\n\n<plan>\n${editedPlanContent}\n</plan>`
@@ -1354,42 +1530,62 @@ export function ChatWindow({
       if (modeBackend) {
         store.setSelectedBackend(
           newSession.id,
-          modeBackend as 'claude' | 'codex' | 'opencode'
+          modeBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
         )
       }
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(newSession.id),
-        old => old ? { ...old, backend: modeBackend ?? old.backend, selected_model: modeModel } : old
+        old =>
+          old
+            ? {
+                ...old,
+                backend: modeBackend ?? old.backend,
+                selected_model: modeModel,
+              }
+            : old
       )
 
       await invoke('set_session_model', {
-        worktreeId: readyWorktree.id, worktreePath: readyWorktree.path,
-        sessionId: newSession.id, model: modeModel,
-      }).catch(err => console.error(`[PlanDialog WT ${modeLabel}] Failed to persist model:`, err))
+        worktreeId: readyWorktree.id,
+        worktreePath: readyWorktree.path,
+        sessionId: newSession.id,
+        model: modeModel,
+      }).catch(err =>
+        console.error(
+          `[PlanDialog WT ${modeLabel}] Failed to persist model:`,
+          err
+        )
+      )
       if (modeBackend) {
         await invoke('set_session_backend', {
-          worktreeId: readyWorktree.id, worktreePath: readyWorktree.path,
-          sessionId: newSession.id, backend: modeBackend,
-        }).catch(err => console.error(`[PlanDialog WT ${modeLabel}] Failed to persist backend:`, err))
+          worktreeId: readyWorktree.id,
+          worktreePath: readyWorktree.path,
+          sessionId: newSession.id,
+          backend: modeBackend,
+        }).catch(err =>
+          console.error(
+            `[PlanDialog WT ${modeLabel}] Failed to persist backend:`,
+            err
+          )
+        )
       }
 
       const effectiveBackend = modeBackend ?? session?.backend
       const modeThinking = modeThinkingRef.current
+      const modeEffort = modeEffortRef.current
       const thinkingLevel: ThinkingLevel =
         effectiveBackend === 'codex'
           ? 'off'
-          : ((modeThinking ?? selectedThinkingLevelRef.current) as ThinkingLevel)
+          : ((modeThinking ??
+              selectedThinkingLevelRef.current) as ThinkingLevel)
       const effortLevel: EffortLevel | undefined =
         effectiveBackend === 'codex'
-          ? (({
-              low: 'low',
-              medium: 'medium',
-              high: 'high',
-              xhigh: 'max',
-              max: 'max',
-            } as Record<string, EffortLevel>)[modeThinking ?? ''] ??
+          ? ((modeEffort as EffortLevel | null) ??
             selectedEffortLevelRef.current)
-          : undefined
+          : useAdaptiveThinkingRef.current
+            ? ((modeEffort as EffortLevel | null) ??
+              selectedEffortLevelRef.current)
+            : undefined
       sendMessage.mutate({
         sessionId: newSession.id,
         worktreeId: readyWorktree.id,
@@ -1401,8 +1597,6 @@ export function ChatWindow({
         effortLevel,
         backend: modeBackend,
       })
-
-      toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
     },
     [
       activeSessionId,
@@ -1416,11 +1610,14 @@ export function ChatWindow({
       buildModelRef,
       buildBackendRef,
       buildThinkingLevelRef,
+      buildEffortLevelRef,
       yoloModelRef,
       yoloBackendRef,
       yoloThinkingLevelRef,
+      yoloEffortLevelRef,
       selectedThinkingLevelRef,
       selectedEffortLevelRef,
+      useAdaptiveThinkingRef,
       preferences?.selected_codex_model,
       preferences?.selected_opencode_model,
       session?.backend,
@@ -1428,12 +1625,14 @@ export function ChatWindow({
   )
 
   const handlePlanDialogWorktreeBuildApprove = useCallback(
-    (editedPlanContent: string) => handlePlanDialogWorktreeApprove(editedPlanContent, 'build'),
+    (editedPlanContent: string) =>
+      handlePlanDialogWorktreeApprove(editedPlanContent, 'build'),
     [handlePlanDialogWorktreeApprove]
   )
 
   const handlePlanDialogWorktreeYoloApprove = useCallback(
-    (editedPlanContent: string) => handlePlanDialogWorktreeApprove(editedPlanContent, 'yolo'),
+    (editedPlanContent: string) =>
+      handlePlanDialogWorktreeApprove(editedPlanContent, 'yolo'),
     [handlePlanDialogWorktreeApprove]
   )
 
@@ -1461,7 +1660,9 @@ export function ChatWindow({
       // Switch to new session
       store.setActiveSession(activeWorktreeId, newSession.id)
 
-      const model = preferences?.magic_prompt_models?.code_review_model ?? selectedModelRef.current
+      const model =
+        preferences?.magic_prompt_models?.code_review_model ??
+        selectedModelRef.current
       store.setExecutionMode(newSession.id, executionMode)
       store.setLastSentMessage(newSession.id, message)
       store.setError(newSession.id, null)
@@ -1553,6 +1754,9 @@ export function ChatWindow({
     queryClient,
     inputRef,
     preferences,
+    setSessionModel,
+    setSessionBackend,
+    setSessionProvider,
   })
 
   // Wrap push/pull/commit-and-push with remote picker for multi-remote repos
@@ -1560,7 +1764,9 @@ export function ChatWindow({
 
   const handlePushWithPicker = useCallback(
     () =>
-      worktree?.pr_number ? handlePush() : pickRemoteOrRun(remote => handlePush(remote)),
+      worktree?.pr_number
+        ? handlePush()
+        : pickRemoteOrRun(remote => handlePush(remote)),
     [worktree?.pr_number, pickRemoteOrRun, handlePush]
   )
 
@@ -1576,8 +1782,6 @@ export function ChatWindow({
     () => pickRemoteOrRun(remote => handlePull(remote)),
     [pickRemoteOrRun, handlePull]
   )
-
-
 
   // Global cancel keyboard shortcut (Cmd+Option+Backspace / Ctrl+Alt+Backspace)
   // ChatInput handles this when focused, but we need a global handler for when
@@ -1621,7 +1825,7 @@ export function ChatWindow({
   // PERFORMANCE: Stable callbacks for ChatToolbar to prevent re-renders
   const {
     handleToolbarModelChange,
-    handleToolbarBackendChange,
+    handleToolbarBackendModelChange,
     handleTabBackendSwitch,
     handleToolbarProviderChange,
     handleToolbarThinkingLevelChange,
@@ -1654,33 +1858,39 @@ export function ChatWindow({
   })
 
   // Investigate issue/PR and workflow run handlers
-  const { handleInvestigate, handleInvestigateWorkflowRun, handleReviewComments } =
-    useInvestigateHandlers({
-      activeSessionId,
-      activeWorktreeId,
-      activeWorktreePath,
-      inputRef,
-      preferences,
-      selectedModelRef,
-      selectedThinkingLevelRef,
-      selectedEffortLevelRef,
-      executionModeRef,
-      mcpServersDataRef,
-      enabledMcpServersRef,
-      activeWorktreeIdRef,
-      activeWorktreePathRef,
-      sendMessage,
-      setSessionProvider,
-      setSessionBackend,
-      setSessionModel,
-      createSession,
-      resolveCustomProfile,
-      cliVersion: cliStatus?.version ?? null,
-      worktreeProjectId: worktree?.project_id,
-    })
+  const {
+    handleInvestigate,
+    handleInvestigateWorkflowRun,
+    handleReviewComments,
+  } = useInvestigateHandlers({
+    activeSessionId,
+    activeWorktreeId,
+    activeWorktreePath,
+    inputRef,
+    preferences,
+    defaultBackend: projectDefaultBackend ?? globalDefaultBackend,
+    selectedModelRef,
+    selectedThinkingLevelRef,
+    selectedEffortLevelRef,
+    executionModeRef,
+    mcpServersDataRef,
+    enabledMcpServersRef,
+    activeWorktreeIdRef,
+    activeWorktreePathRef,
+    sendMessage,
+    setSessionProvider,
+    setSessionBackend,
+    setSessionModel,
+    createSession,
+    resolveCustomProfile,
+    cliVersion: cliStatus?.version ?? null,
+    worktreeProjectId: worktree?.project_id,
+  })
 
   // Linked projects modal state
-  const linkedProjectsModalOpen = useUIStore(state => state.linkedProjectsModalOpen)
+  const linkedProjectsModalOpen = useUIStore(
+    state => state.linkedProjectsModalOpen
+  )
   const handleLinkedProjects = useCallback(() => {
     useUIStore.getState().setLinkedProjectsModalOpen(true)
   }, [])
@@ -1745,19 +1955,21 @@ export function ChatWindow({
     handleSkipQuestion,
     handlePlanApproval,
     handlePlanApprovalYolo,
-    handleStreamingPlanApproval,
-    handleStreamingPlanApprovalYolo,
     handleClearContextApproval,
-    handleStreamingClearContextApproval,
     handleClearContextApprovalBuild,
-    handleStreamingClearContextApprovalBuild,
     handleWorktreeBuildApproval,
-    handleStreamingWorktreeBuildApproval,
     handleWorktreeYoloApproval,
-    handleStreamingWorktreeYoloApproval,
     handlePermissionApproval,
     handlePermissionApprovalYolo,
     handlePermissionDeny,
+    handleCodexCommandApproval,
+    handleCodexPermissionRequest,
+    handleCodexPermissionRequestDecline,
+    handleCodexUserInputAnswer,
+    handleCodexMcpElicitationAccept,
+    handleCodexMcpElicitationDecline,
+    handleCodexMcpElicitationCancel,
+    handleCodexDynamicToolCallUnsupported,
     handleFixFinding,
     handleFixAllFindings,
   } = useMessageHandlers({
@@ -1768,9 +1980,12 @@ export function ChatWindow({
     buildModelRef,
     buildBackendRef,
     buildThinkingLevelRef,
+    buildEffortLevelRef,
     yoloModelRef,
     yoloBackendRef,
     yoloThinkingLevelRef,
+    yoloEffortLevelRef,
+    selectedBackendRef,
     getCustomProfileName: () => {
       return selectedProviderRef.current ?? undefined
     },
@@ -1783,6 +1998,7 @@ export function ChatWindow({
     createSession,
     queryClient,
     scrollToBottom,
+    markAtBottom,
     inputRef,
     pendingPlanMessage,
     projectIdRef,
@@ -1863,52 +2079,71 @@ export function ChatWindow({
     handleSaveContext,
     handleLoadContext,
     runScripts,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingPlanApproval,
-    handleStreamingPlanApprovalYolo,
-    handlePlanApproval,
-    handlePlanApprovalYolo,
+    handlePlanApproval: isCursorBackend
+      ? handleClearContextApprovalBuild
+      : handlePlanApproval,
+    handlePlanApprovalYolo: isCursorBackend
+      ? handleClearContextApproval
+      : handlePlanApprovalYolo,
     handleClearContextApproval,
-    handleStreamingClearContextApproval,
     handleClearContextApprovalBuild,
-    handleStreamingClearContextApprovalBuild,
-    isCodexBackend,
+    handleWorktreeBuildApproval,
+    handleWorktreeYoloApproval,
     scrollViewportRef,
     beginKeyboardScroll,
     endKeyboardScroll,
   })
 
   // Combined floating-button approval callbacks (dispatch to streaming or pending variant)
+  // Cursor can't switch modes on a resumed session, so always use clear-context (new session)
   const floatingApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingPlanApproval()
-    else if (pendingPlanMessage) handlePlanApproval(pendingPlanMessage.id)
-  }, [hasStreamingPlan, handleStreamingPlanApproval, pendingPlanMessage, handlePlanApproval])
+    if (pendingPlanMessage) {
+      if (isCursorBackend) {
+        handleClearContextApprovalBuild(pendingPlanMessage.id)
+      } else {
+        handlePlanApproval(pendingPlanMessage.id)
+      }
+    }
+  }, [
+    pendingPlanMessage,
+    handlePlanApproval,
+    handleClearContextApprovalBuild,
+    isCursorBackend,
+  ])
 
   const floatingYoloApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingPlanApprovalYolo()
-    else if (pendingPlanMessage) handlePlanApprovalYolo(pendingPlanMessage.id)
-  }, [hasStreamingPlan, handleStreamingPlanApprovalYolo, pendingPlanMessage, handlePlanApprovalYolo])
+    if (pendingPlanMessage) {
+      if (isCursorBackend) {
+        handleClearContextApproval(pendingPlanMessage.id)
+      } else {
+        handlePlanApprovalYolo(pendingPlanMessage.id)
+      }
+    }
+  }, [
+    pendingPlanMessage,
+    handlePlanApprovalYolo,
+    handleClearContextApproval,
+    isCursorBackend,
+  ])
 
   const floatingClearContextBuildApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingClearContextApprovalBuild()
-    else if (pendingPlanMessage) handleClearContextApprovalBuild(pendingPlanMessage.id)
-  }, [hasStreamingPlan, handleStreamingClearContextApprovalBuild, pendingPlanMessage, handleClearContextApprovalBuild])
+    if (pendingPlanMessage)
+      handleClearContextApprovalBuild(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handleClearContextApprovalBuild])
 
   const floatingClearContextApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingClearContextApproval()
-    else if (pendingPlanMessage) handleClearContextApproval(pendingPlanMessage.id)
-  }, [hasStreamingPlan, handleStreamingClearContextApproval, pendingPlanMessage, handleClearContextApproval])
+    if (pendingPlanMessage) handleClearContextApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handleClearContextApproval])
 
   const floatingWorktreeBuildApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingWorktreeBuildApproval()
-    else if (pendingPlanMessage) handleWorktreeBuildApproval(pendingPlanMessage.id)
-  }, [hasStreamingPlan, handleStreamingWorktreeBuildApproval, pendingPlanMessage, handleWorktreeBuildApproval])
+    if (pendingPlanMessage) handleWorktreeBuildApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handleWorktreeBuildApproval])
 
   const floatingWorktreeYoloApprove = useCallback(() => {
-    if (hasStreamingPlan) handleStreamingWorktreeYoloApproval()
-    else if (pendingPlanMessage) handleWorktreeYoloApproval(pendingPlanMessage.id)
-  }, [hasStreamingPlan, handleStreamingWorktreeYoloApproval, pendingPlanMessage, handleWorktreeYoloApproval])
+    if (pendingPlanMessage) handleWorktreeYoloApproval(pendingPlanMessage.id)
+  }, [pendingPlanMessage, handleWorktreeYoloApproval])
 
   // Pending attachment removal, slash command execution, queue management
   const {
@@ -1950,7 +2185,7 @@ export function ChatWindow({
       if (
         m &&
         m.role === 'assistant' &&
-        m.tool_calls?.some(tc => isExitPlanMode(tc))
+        m.tool_calls?.some(tc => isPlanToolCall(tc))
       ) {
         return i
       }
@@ -2022,14 +2257,14 @@ export function ChatWindow({
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
         {showReviewFullWidth && activeSessionId ? (
           <div className="flex-1 min-h-0">
-            <ReviewResultsPanel sessionId={activeSessionId} onSendFix={handleReviewFix} />
+            <ReviewResultsPanel
+              sessionId={activeSessionId}
+              onSendFix={handleReviewFix}
+            />
           </div>
         ) : (
-        <ResizablePanelGroup direction="horizontal" className="flex-1">
-            <ResizablePanel
-              defaultSize={100}
-              minSize={40}
-            >
+          <ResizablePanelGroup direction="horizontal" className="flex-1">
+            <ResizablePanel defaultSize={100} minSize={40}>
               <ResizablePanelGroup direction="vertical" className="h-full">
                 <ResizablePanel
                   defaultSize={terminalVisible ? 70 : 100}
@@ -2050,6 +2285,7 @@ export function ChatWindow({
                           {sessionLabel.name}
                         </span>
                       )}
+                      <ChatSearchBar scrollContainerRef={scrollViewportRef} />
                       {/* Bottom fade gradient so messages don't hard-cut at the input area */}
                       <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-8 bg-gradient-to-b from-transparent to-background" />
                       {/* Session digest reminder (shows when opening a session that had activity while out of focus) */}
@@ -2059,6 +2295,7 @@ export function ChatWindow({
                       <ScrollArea
                         className="h-full w-full"
                         viewportRef={scrollViewportRef}
+                        viewportClassName="will-change-scroll"
                         onScroll={handleScroll}
                       >
                         <div className="mx-auto max-w-7xl px-4 pt-4 pb-6 md:px-6 min-w-0 w-full">
@@ -2082,6 +2319,7 @@ export function ChatWindow({
                               )}
                             {/* Setup script running indicator */}
                             {worktree?.setup_script &&
+                              worktree.setup_success == null &&
                               !setupScriptResult && (
                                 <div className="my-2 flex items-center gap-2 rounded border border-muted bg-muted/30 px-3 py-2 font-mono text-sm text-muted-foreground">
                                   <Loader2 className="h-4 w-4 animate-spin shrink-0" />
@@ -2110,67 +2348,95 @@ export function ChatWindow({
                               </div>
                             ) : (
                               <>
-                              {messages.length === 0 && !isSending && activeSessionId && (
-                                <RecentContexts
-                                  sessionId={activeSessionId}
-                                  queryClient={queryClient}
-                                  projectId={worktree?.project_id}
+                                {messages.length === 0 &&
+                                  !isSending &&
+                                  activeSessionId && (
+                                    <RecentContexts
+                                      sessionId={activeSessionId}
+                                      queryClient={queryClient}
+                                      projectId={worktree?.project_id}
+                                    />
+                                  )}
+                                <VirtualizedMessageList
+                                  ref={virtualizedListRef}
+                                  messages={messages}
+                                  scrollContainerRef={scrollViewportRef}
+                                  totalMessages={messages.length}
+                                  lastPlanMessageIndex={lastPlanMessageIndex}
+                                  sessionId={deferredSessionId ?? ''}
+                                  worktreePath={activeWorktreePath ?? ''}
+                                  approveShortcut={approveShortcut}
+                                  approveShortcutYolo={approveShortcutYolo}
+                                  approveShortcutClearContext={
+                                    approveShortcutClearContext
+                                  }
+                                  approveShortcutClearContextBuild={
+                                    approveShortcutClearContextBuild
+                                  }
+                                  approveButtonRef={approveButtonRef}
+                                  isSending={isSending}
+                                  onPlanApproval={
+                                    isCursorBackend
+                                      ? handleClearContextApprovalBuild
+                                      : handlePlanApproval
+                                  }
+                                  onPlanApprovalYolo={
+                                    isCursorBackend
+                                      ? handleClearContextApproval
+                                      : handlePlanApprovalYolo
+                                  }
+                                  onClearContextApproval={
+                                    handleClearContextApproval
+                                  }
+                                  onClearContextApprovalBuild={
+                                    handleClearContextApprovalBuild
+                                  }
+                                  onWorktreeBuildApproval={
+                                    worktree?.project_id
+                                      ? handleWorktreeBuildApproval
+                                      : undefined
+                                  }
+                                  onWorktreeYoloApproval={
+                                    worktree?.project_id
+                                      ? handleWorktreeYoloApproval
+                                      : undefined
+                                  }
+                                  onQuestionAnswer={handleQuestionAnswer}
+                                  onQuestionSkip={handleSkipQuestion}
+                                  onFileClick={setViewingFilePath}
+                                  onEditedFileClick={setViewingFilePath}
+                                  onFixFinding={handleFixFinding}
+                                  onFixAllFindings={handleFixAllFindings}
+                                  isQuestionAnswered={isQuestionAnswered}
+                                  getSubmittedAnswers={getSubmittedAnswers}
+                                  areQuestionsSkipped={areQuestionsSkipped}
+                                  isFindingFixed={isFindingFixed}
+                                  onCopyToInput={handleCopyToInput}
+                                  shouldScrollToBottom={isAtBottom}
+                                  onScrollToBottomHandled={
+                                    handleScrollToBottomHandled
+                                  }
+                                  completedDurationMs={completedDurationMs}
+                                  hasOlderOnDisk={hasOlderOnDisk}
+                                  isLoadingOlder={loadOlderMessages.isPending}
+                                  onLoadOlderRuns={handleLoadOlderRuns}
+                                  loadedRunStartIndex={loadedRunStartIndex}
                                 />
-                              )}
-                              <VirtualizedMessageList
-                                ref={virtualizedListRef}
-                                messages={messages}
-                                scrollContainerRef={scrollViewportRef}
-                                totalMessages={messages.length}
-                                lastPlanMessageIndex={lastPlanMessageIndex}
-                                sessionId={deferredSessionId ?? ''}
-                                worktreePath={activeWorktreePath ?? ''}
-                                approveShortcut={approveShortcut}
-                                approveShortcutYolo={approveShortcutYolo}
-                                approveShortcutClearContext={approveShortcutClearContext}
-                                approveShortcutClearContextBuild={approveShortcutClearContextBuild}
-                                approveButtonRef={approveButtonRef}
-                                isSending={isSending}
-                                onPlanApproval={handlePlanApproval}
-                                onPlanApprovalYolo={handlePlanApprovalYolo}
-                                onClearContextApproval={handleClearContextApproval}
-                                onClearContextApprovalBuild={handleClearContextApprovalBuild}
-                                onWorktreeBuildApproval={worktree?.project_id ? handleWorktreeBuildApproval : undefined}
-                                onWorktreeYoloApproval={worktree?.project_id ? handleWorktreeYoloApproval : undefined}
-                                onQuestionAnswer={handleQuestionAnswer}
-                                onQuestionSkip={handleSkipQuestion}
-                                onFileClick={setViewingFilePath}
-                                onEditedFileClick={setViewingFilePath}
-                                onFixFinding={handleFixFinding}
-                                onFixAllFindings={handleFixAllFindings}
-                                isQuestionAnswered={isQuestionAnswered}
-                                getSubmittedAnswers={getSubmittedAnswers}
-                                areQuestionsSkipped={areQuestionsSkipped}
-                                isFindingFixed={isFindingFixed}
-                                onCopyToInput={handleCopyToInput}
-                                hideApproveButtons={isCodexBackend}
-                                shouldScrollToBottom={isAtBottom}
-                                onScrollToBottomHandled={
-                                  handleScrollToBottomHandled
-                                }
-                                completedDurationMs={completedDurationMs}
-                              />
                               </>
                             )}
                             {/* Streaming response + elapsed timer in one wrapper to avoid space-y-4 gap */}
                             {isSending && activeSessionId && (
                               <div>
-                                {(currentStreamingContentBlocks.length > 0 || currentToolCalls.length > 0 || streamingContent.trim().length > 0) && (
+                                {(currentStreamingContentBlocks.length > 0 ||
+                                  currentToolCalls.length > 0 ||
+                                  streamingContent.trim().length > 0) && (
                                   <StreamingMessage
                                     sessionId={activeSessionId}
-                                    contentBlocks={currentStreamingContentBlocks}
+                                    contentBlocks={
+                                      currentStreamingContentBlocks
+                                    }
                                     toolCalls={currentToolCalls}
                                     streamingContent={streamingContent}
-                                    selectedThinkingLevel={selectedThinkingLevel}
-                                    approveShortcut={approveShortcut}
-                                    approveShortcutYolo={approveShortcutYolo}
-                                    approveShortcutClearContext={approveShortcutClearContext}
-                                    approveShortcutClearContextBuild={approveShortcutClearContextBuild}
                                     onQuestionAnswer={handleQuestionAnswer}
                                     onQuestionSkip={handleSkipQuestion}
                                     onFileClick={setViewingFilePath}
@@ -2178,38 +2444,14 @@ export function ChatWindow({
                                     isQuestionAnswered={isQuestionAnswered}
                                     getSubmittedAnswers={getSubmittedAnswers}
                                     areQuestionsSkipped={areQuestionsSkipped}
-                                    isStreamingPlanApproved={
-                                      isStreamingPlanApproved
-                                    }
-                                    onStreamingPlanApproval={
-                                      handleStreamingPlanApproval
-                                    }
-                                    onStreamingPlanApprovalYolo={
-                                      handleStreamingPlanApprovalYolo
-                                    }
-                                    onStreamingClearContextApproval={
-                                      handleStreamingClearContextApproval
-                                    }
-                                    onStreamingClearContextApprovalBuild={
-                                      handleStreamingClearContextApprovalBuild
-                                    }
-                                    onStreamingWorktreeBuildApproval={
-                                      worktree?.project_id
-                                        ? handleStreamingWorktreeBuildApproval
-                                        : undefined
-                                    }
-                                    onStreamingWorktreeYoloApproval={
-                                      worktree?.project_id
-                                        ? handleStreamingWorktreeYoloApproval
-                                        : undefined
-                                    }
-                                    hideApproveButtons={isCodexBackend}
                                   />
                                 )}
                                 <StreamingStatusBar
                                   isSending={isSending}
                                   sendStartedAt={sendStartedAt}
-                                  streamingExecutionMode={streamingExecutionMode}
+                                  streamingExecutionMode={
+                                    streamingExecutionMode
+                                  }
                                   restoredRunStatus={
                                     !isSending &&
                                     !isWaitingForInput &&
@@ -2226,16 +2468,115 @@ export function ChatWindow({
                             )}
 
                             {/* Permission approval UI - shown when tools require approval (never in yolo mode) */}
-                            {showPermissionApproval &&
-                              activeSessionId && (
-                                <PermissionApproval
-                                  sessionId={activeSessionId}
-                                  denials={pendingDenials}
-                                  onApprove={handlePermissionApproval}
-                                  onApproveYolo={handlePermissionApprovalYolo}
-                                  onDeny={handlePermissionDeny}
+                            {showPermissionApproval && activeSessionId && (
+                              <PermissionApproval
+                                sessionId={activeSessionId}
+                                denials={pendingDenials}
+                                onApprove={handlePermissionApproval}
+                                onApproveYolo={handlePermissionApprovalYolo}
+                                onDeny={handlePermissionDeny}
+                              />
+                            )}
+
+                            {activeCodexCommandApprovalRequest && (
+                              <CodexCommandApprovalRequestCard
+                                request={activeCodexCommandApprovalRequest}
+                                onApprove={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'accept'
+                                  )
+                                }
+                                onApproveYolo={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'acceptForSession'
+                                  )
+                                }
+                                onDecline={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'decline'
+                                  )
+                                }
+                                onCancel={() =>
+                                  handleCodexCommandApproval(
+                                    activeCodexCommandApprovalRequest,
+                                    'cancel'
+                                  )
+                                }
+                              />
+                            )}
+
+                            {activeCodexPermissionRequest && (
+                              <CodexPermissionsRequest
+                                request={activeCodexPermissionRequest}
+                                onGrant={scope =>
+                                  handleCodexPermissionRequest(
+                                    activeCodexPermissionRequest,
+                                    scope
+                                  )
+                                }
+                                onDecline={() =>
+                                  handleCodexPermissionRequestDecline(
+                                    activeCodexPermissionRequest
+                                  )
+                                }
+                              />
+                            )}
+
+                            {activeCodexUserInputRequest &&
+                              activeCodexUserInputQuestions.length > 0 && (
+                                <AskUserQuestion
+                                  toolCallId={
+                                    activeCodexUserInputRequest.item_id ||
+                                    `codex-user-input-${activeCodexUserInputRequest.rpc_id}`
+                                  }
+                                  questions={activeCodexUserInputQuestions}
+                                  onSubmit={(_toolCallId, answers) =>
+                                    handleCodexUserInputAnswer(
+                                      activeCodexUserInputRequest,
+                                      answers,
+                                      activeCodexUserInputQuestions
+                                    )
+                                  }
+                                  isSkipped={false}
                                 />
                               )}
+
+                            {activeCodexMcpElicitationRequest && (
+                              <CodexMcpElicitationRequestCard
+                                request={activeCodexMcpElicitationRequest}
+                                onAccept={(content, meta) =>
+                                  handleCodexMcpElicitationAccept(
+                                    activeCodexMcpElicitationRequest,
+                                    content,
+                                    meta
+                                  )
+                                }
+                                onDecline={() =>
+                                  handleCodexMcpElicitationDecline(
+                                    activeCodexMcpElicitationRequest
+                                  )
+                                }
+                                onCancel={() =>
+                                  handleCodexMcpElicitationCancel(
+                                    activeCodexMcpElicitationRequest
+                                  )
+                                }
+                              />
+                            )}
+
+                            {activeCodexDynamicToolCallRequest && (
+                              <CodexDynamicToolCallRequestCard
+                                request={activeCodexDynamicToolCallRequest}
+                                onRespondUnsupported={() =>
+                                  handleCodexDynamicToolCallUnsupported(
+                                    activeCodexDynamicToolCallRequest
+                                  )
+                                }
+                              />
+                            )}
 
                             {/* Queued messages - shown inline after streaming/messages */}
                             {activeSessionId && (
@@ -2254,20 +2595,30 @@ export function ChatWindow({
 
                       {/* Floating scroll buttons */}
                       <FloatingButtons
-                        showApproveButton={!isCodexBackend && (!!pendingPlanMessage || hasStreamingPlan)}
+                        showApproveButton={hasPendingPlanApproval}
                         showFindingsButton={!areFindingsVisible}
-                        isAtBottom={isAtBottom}
+                        isAtBottom={isAtBottom || messages.length === 0}
+                        isSending={isSending}
                         approveShortcut={approveShortcut}
                         onApprove={floatingApprove}
                         onYoloApprove={floatingYoloApprove}
-                        onClearContextBuildApprove={floatingClearContextBuildApprove}
+                        onClearContextBuildApprove={
+                          floatingClearContextBuildApprove
+                        }
                         onClearContextApprove={floatingClearContextApprove}
-                        onWorktreeBuildApprove={worktree?.project_id ? floatingWorktreeBuildApprove : undefined}
-                        onWorktreeYoloApprove={worktree?.project_id ? floatingWorktreeYoloApprove : undefined}
+                        onWorktreeBuildApprove={
+                          worktree?.project_id
+                            ? floatingWorktreeBuildApprove
+                            : undefined
+                        }
+                        onWorktreeYoloApprove={
+                          worktree?.project_id
+                            ? floatingWorktreeYoloApprove
+                            : undefined
+                        }
                         onScrollToFindings={scrollToFindings}
                         onScrollToBottom={scrollToBottom}
                       />
-
                     </div>
 
                     {/* Error banner - shows when request fails */}
@@ -2281,18 +2632,23 @@ export function ChatWindow({
                     )}
 
                     {/* Input container - full width, centered content */}
-                    <div>
+                    <div className="bg-background">
                       <div className="mx-auto max-w-7xl">
-                        <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl">
+                        <div className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl xl:max-w-4xl">
                           {/* Input area - unified container with textarea and toolbar */}
                           <form
                             ref={formRef}
                             onSubmit={handleSubmit}
                             className={cn(
-                              'relative overflow-hidden border-t border-border bg-sidebar transition-[background-color,box-shadow] duration-150 sm:rounded-lg sm:border',
+                              'relative overflow-hidden border-t border-border bg-card transition-[background-color,box-shadow] duration-150 sm:rounded-lg sm:border',
                               isDragging &&
                                 'ring-2 ring-primary ring-inset bg-primary/5'
                             )}
+                            style={
+                              isMobile
+                                ? { paddingBottom: 'var(--safe-area-bottom)' }
+                                : undefined
+                            }
                           >
                             {/* Pending file preview (@ mentions) */}
                             <FilePreview
@@ -2391,86 +2747,109 @@ export function ChatWindow({
                                 ) => {
                                   clearChatInputStateRef.current = handler
                                 }}
+                                onRegisterAttachHandler={handler => {
+                                  triggerChatAttachRef.current = handler
+                                }}
                                 formRef={formRef}
                                 inputRef={inputRef}
+                                installedBackends={installedBackends}
                               />
                             </div>
 
                             {/* Bottom toolbar */}
-                            <ChatToolbar
-                              isSending={isSending}
-                              hasPendingQuestions={hasPendingQuestions}
-                              hasPendingAttachments={hasPendingAttachments}
-                              hasInputValue={hasInputValue}
-                              executionMode={executionMode}
-                              selectedBackend={selectedBackend}
-                              sessionHasMessages={
-                                (session?.messages?.length ?? 0) > 0
-                              }
-                              selectedModel={selectedModel}
-                              selectedProvider={selectedProvider}
-                              providerLocked={
-                                (session?.messages?.length ?? 0) > 0
-                              }
-                              selectedThinkingLevel={selectedThinkingLevel}
-                              selectedEffortLevel={selectedEffortLevel}
-                              useAdaptiveThinking={useAdaptiveThinkingFlag}
-                              hideThinkingLevel={hideThinkingLevel}
-                              baseBranch={gitStatus?.base_branch ?? 'main'}
-                              uncommittedAdded={uncommittedAdded}
-                              uncommittedRemoved={uncommittedRemoved}
-                              branchDiffAdded={branchDiffAdded}
-                              branchDiffRemoved={branchDiffRemoved}
-                              prUrl={worktree?.pr_url}
-                              prNumber={worktree?.pr_number}
-                              displayStatus={displayStatus}
-                              checkStatus={checkStatus}
-                              mergeableStatus={mergeableStatus}
-                              activeWorktreePath={activeWorktreePath}
-                              worktreeId={activeWorktreeId ?? null}
-                              activeSessionId={activeSessionId}
-                              projectId={worktree?.project_id}
-                              loadedIssueContexts={loadedIssueContexts ?? []}
-                              loadedPRContexts={loadedPRContexts ?? []}
-                              loadedSecurityContexts={loadedSecurityContexts ?? []}
-                              loadedAdvisoryContexts={loadedAdvisoryContexts ?? []}
-                              loadedLinearContexts={loadedLinearContexts ?? []}
-                              attachedSavedContexts={
-                                attachedSavedContexts ?? []
-                              }
-                              onOpenMagicModal={handleOpenMagicModal}
-                              onSaveContext={handleSaveContext}
-                              onLoadContext={handleLoadContext}
-                              onCommit={handleCommit}
-                              onCommitAndPush={handleCommitAndPushWithPicker}
-                              onOpenPr={handleOpenPr}
-                              onReview={() => handleReview()}
-                              onMerge={handleMerge}
-                              onResolvePrConflicts={handleResolvePrConflicts}
-                              onResolveConflicts={handleResolveConflicts}
-                              hasOpenPr={Boolean(worktree?.pr_url)}
-                              onSetDiffRequest={setDiffRequest}
-                              installedBackends={installedBackends}
-                              onBackendChange={handleToolbarBackendChange}
-                              onModelChange={handleToolbarModelChange}
-                              onProviderChange={handleToolbarProviderChange}
-                              customCliProfiles={
-                                preferences?.custom_cli_profiles ?? []
-                              }
-                              onThinkingLevelChange={
-                                handleToolbarThinkingLevelChange
-                              }
-                              onEffortLevelChange={
-                                handleToolbarEffortLevelChange
-                              }
-                              onSetExecutionMode={handleToolbarSetExecutionMode}
-                              onCancel={handleCancel}
-                              queuedMessageCount={currentQueuedMessages.length}
-                              availableMcpServers={availableMcpServers}
-                              enabledMcpServers={enabledMcpServers}
-                              onToggleMcpServer={handleToggleMcpServer}
-                              onOpenProjectSettings={handleOpenProjectSettings}
-                            />
+                            <div>
+                              <ChatToolbar
+                                isSending={isSending}
+                                hasPendingQuestions={hasPendingQuestions}
+                                hasPendingAttachments={hasPendingAttachments}
+                                hasInputValue={hasInputValue}
+                                executionMode={executionMode}
+                                selectedBackend={selectedBackend}
+                                sessionHasMessages={
+                                  (session?.messages?.length ?? 0) > 0
+                                }
+                                selectedModel={selectedModel}
+                                selectedProvider={selectedProvider}
+                                providerLocked={
+                                  (session?.messages?.length ?? 0) > 0
+                                }
+                                selectedThinkingLevel={selectedThinkingLevel}
+                                selectedEffortLevel={selectedEffortLevel}
+                                useAdaptiveThinking={useAdaptiveThinkingFlag}
+                                hideThinkingLevel={hideThinkingLevel}
+                                baseBranch={gitStatus?.base_branch ?? 'main'}
+                                uncommittedAdded={uncommittedAdded}
+                                uncommittedRemoved={uncommittedRemoved}
+                                branchDiffAdded={branchDiffAdded}
+                                branchDiffRemoved={branchDiffRemoved}
+                                prUrl={worktree?.pr_url}
+                                prNumber={worktree?.pr_number}
+                                displayStatus={displayStatus}
+                                checkStatus={checkStatus}
+                                mergeableStatus={mergeableStatus}
+                                activeWorktreePath={activeWorktreePath}
+                                worktreeId={activeWorktreeId ?? null}
+                                activeSessionId={activeSessionId}
+                                projectId={worktree?.project_id}
+                                loadedIssueContexts={loadedIssueContexts ?? []}
+                                loadedPRContexts={loadedPRContexts ?? []}
+                                loadedSecurityContexts={
+                                  loadedSecurityContexts ?? []
+                                }
+                                loadedAdvisoryContexts={
+                                  loadedAdvisoryContexts ?? []
+                                }
+                                loadedLinearContexts={
+                                  loadedLinearContexts ?? []
+                                }
+                                attachedSavedContexts={
+                                  attachedSavedContexts ?? []
+                                }
+                                onOpenMagicModal={handleOpenMagicModal}
+                                onSaveContext={handleSaveContext}
+                                onLoadContext={handleLoadContext}
+                                onCommit={handleCommit}
+                                onCommitAndPush={handleCommitAndPushWithPicker}
+                                onOpenPr={handleOpenPr}
+                                onReview={() => handleReview()}
+                                onMerge={handleMerge}
+                                onResolvePrConflicts={handleResolvePrConflicts}
+                                onBackendModelChange={
+                                  handleToolbarBackendModelChange
+                                }
+                                onResolveConflicts={handleResolveConflicts}
+                                hasOpenPr={Boolean(worktree?.pr_url)}
+                                onSetDiffRequest={setDiffRequest}
+                                installedBackends={installedBackends}
+                                onModelChange={handleToolbarModelChange}
+                                onProviderChange={handleToolbarProviderChange}
+                                customCliProfiles={
+                                  preferences?.custom_cli_profiles ?? []
+                                }
+                                onThinkingLevelChange={
+                                  handleToolbarThinkingLevelChange
+                                }
+                                onEffortLevelChange={
+                                  handleToolbarEffortLevelChange
+                                }
+                                onSetExecutionMode={
+                                  handleToolbarSetExecutionMode
+                                }
+                                onAttach={() =>
+                                  triggerChatAttachRef.current?.()
+                                }
+                                onCancel={handleCancel}
+                                queuedMessageCount={
+                                  currentQueuedMessages.length
+                                }
+                                availableMcpServers={availableMcpServers}
+                                enabledMcpServers={enabledMcpServers}
+                                onToggleMcpServer={handleToggleMcpServer}
+                                onOpenProjectSettings={
+                                  handleOpenProjectSettings
+                                }
+                              />
+                            </div>
                           </form>
 
                           {/* Side panel widgets (Tasks + Agents) for wide screens */}
@@ -2558,7 +2937,10 @@ export function ChatWindow({
                   onExpand={handleReviewSidebarExpand}
                 >
                   {activeSessionId && (
-                    <ReviewResultsPanel sessionId={activeSessionId} onSendFix={handleReviewFix} />
+                    <ReviewResultsPanel
+                      sessionId={activeSessionId}
+                      onSendFix={handleReviewFix}
+                    />
                   )}
                 </ResizablePanel>
               </>
@@ -2627,6 +3009,7 @@ export function ChatWindow({
                 setPlanDialogContent(null)
               }}
               editable={true}
+              disabled={isSending}
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
@@ -2637,13 +3020,30 @@ export function ChatWindow({
                     }
                   : undefined
               }
-              onApprove={handlePlanDialogApprove}
-              onApproveYolo={handlePlanDialogApproveYolo}
+              onApprove={
+                isCursorBackend
+                  ? handlePlanDialogClearContextBuildApprove
+                  : handlePlanDialogApprove
+              }
+              onApproveYolo={
+                isCursorBackend
+                  ? handlePlanDialogClearContextApprove
+                  : handlePlanDialogApproveYolo
+              }
               onClearContextApprove={handlePlanDialogClearContextApprove}
-              onClearContextBuildApprove={handlePlanDialogClearContextBuildApprove}
-              onWorktreeBuildApprove={worktree?.project_id ? handlePlanDialogWorktreeBuildApprove : undefined}
-              onWorktreeYoloApprove={worktree?.project_id ? handlePlanDialogWorktreeYoloApprove : undefined}
-              hideApproveButtons={isCodexBackend}
+              onClearContextBuildApprove={
+                handlePlanDialogClearContextBuildApprove
+              }
+              onWorktreeBuildApprove={
+                worktree?.project_id
+                  ? handlePlanDialogWorktreeBuildApprove
+                  : undefined
+              }
+              onWorktreeYoloApprove={
+                worktree?.project_id
+                  ? handlePlanDialogWorktreeYoloApprove
+                  : undefined
+              }
             />
           ) : latestPlanFilePath ? (
             <PlanDialog
@@ -2651,6 +3051,7 @@ export function ChatWindow({
               isOpen={isPlanDialogOpen}
               onClose={() => setIsPlanDialogOpen(false)}
               editable={true}
+              disabled={isSending}
               approvalContext={
                 activeWorktreeId && activeWorktreePath && activeSessionId
                   ? {
@@ -2661,13 +3062,30 @@ export function ChatWindow({
                     }
                   : undefined
               }
-              onApprove={handlePlanDialogApprove}
-              onApproveYolo={handlePlanDialogApproveYolo}
+              onApprove={
+                isCursorBackend
+                  ? handlePlanDialogClearContextBuildApprove
+                  : handlePlanDialogApprove
+              }
+              onApproveYolo={
+                isCursorBackend
+                  ? handlePlanDialogClearContextApprove
+                  : handlePlanDialogApproveYolo
+              }
               onClearContextApprove={handlePlanDialogClearContextApprove}
-              onClearContextBuildApprove={handlePlanDialogClearContextBuildApprove}
-              onWorktreeBuildApprove={worktree?.project_id ? handlePlanDialogWorktreeBuildApprove : undefined}
-              onWorktreeYoloApprove={worktree?.project_id ? handlePlanDialogWorktreeYoloApprove : undefined}
-              hideApproveButtons={isCodexBackend}
+              onClearContextBuildApprove={
+                handlePlanDialogClearContextBuildApprove
+              }
+              onWorktreeBuildApprove={
+                worktree?.project_id
+                  ? handlePlanDialogWorktreeBuildApprove
+                  : undefined
+              }
+              onWorktreeYoloApprove={
+                worktree?.project_id
+                  ? handlePlanDialogWorktreeYoloApprove
+                  : undefined
+              }
             />
           ) : null)}
 

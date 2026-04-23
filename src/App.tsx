@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
+  connectTransport,
+  ingestBootstrapEvents,
   invoke,
   useWsConnectionStatus,
   useWsDataReady,
@@ -8,7 +10,6 @@ import {
   useWsAuthError,
   preloadInitialData,
   refetchInitialData,
-  consumeReconnectData,
   setAppDataDir,
   hasPreloadedData,
   type InitialData,
@@ -28,10 +29,14 @@ import ErrorBoundary from './components/ErrorBoundary'
 import { useClaudeCliStatus, useClaudeCliAuth } from './services/claude-cli'
 import { useCodexCliStatus, useCodexCliAuth } from './services/codex-cli'
 import { useGhCliStatus, useGhCliAuth } from './services/gh-cli'
-import { useOpencodeCliStatus, useOpencodeCliAuth } from './services/opencode-cli'
+import {
+  useOpencodeCliStatus,
+  useOpencodeCliAuth,
+} from './services/opencode-cli'
 import { useUIStore } from './store/ui-store'
 import type { AppPreferences } from './types/preferences'
 import { useChatStore } from './store/chat-store'
+import { useProjectsStore } from './store/projects-store'
 import { useFontSettings } from './hooks/use-font-settings'
 import { useZoom } from './hooks/use-zoom'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
@@ -107,6 +112,7 @@ function App() {
   // Track preloading state for web view
   const [isPreloading, setIsPreloading] = useState(!isNativeApp())
   const queryClient = useQueryClient()
+  const hasStartedTransportRef = useRef(false)
 
   // Holds the update object so the title bar indicator can trigger install later
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -213,6 +219,13 @@ function App() {
             chatQueryKeys.sessions(worktreeId),
             sessionsData
           )
+          // Also seed the 'with-counts' variant used by ProjectCanvasView.
+          // The /api/init endpoint fetches with include_message_counts=true,
+          // so this data is valid for both keys.
+          queryClient.setQueryData(
+            [...chatQueryKeys.sessions(worktreeId), 'with-counts'],
+            sessionsData
+          )
 
           // Extract session state for Zustand store
           const wts = sessionsData as WorktreeSessions
@@ -255,10 +268,32 @@ function App() {
             ...worktreePaths,
           }
         }
+        // Clear stale waiting/reviewing state for sessions actively running a turn.
+        // The server persists these flags from the previous turn's completion;
+        // if a new turn is in-flight they're stale and would show approve buttons.
+        if (data.runningSessions?.length) {
+          const runningSessionIds = new Set(data.runningSessions)
+          for (const sessionId of data.runningSessions) {
+            runningSessionIds.add(sessionId)
+          }
+          const filteredReviewingUpdates = Object.fromEntries(
+            Object.entries(reviewingUpdates).filter(
+              ([sessionId]) => !runningSessionIds.has(sessionId)
+            )
+          )
+          const filteredWaitingUpdates = Object.fromEntries(
+            Object.entries(waitingUpdates).filter(
+              ([sessionId]) => !runningSessionIds.has(sessionId)
+            )
+          )
+          storeUpdates.reviewingSessions = filteredReviewingUpdates
+          storeUpdates.waitingForInputSessionIds = filteredWaitingUpdates
+        } else {
+          storeUpdates.reviewingSessions = reviewingUpdates
+          storeUpdates.waitingForInputSessionIds = waitingUpdates
+        }
         // Replace (not merge) reviewing/waiting state — server is source of truth.
         // Merging would keep stale entries from sessions that changed while disconnected.
-        storeUpdates.reviewingSessions = reviewingUpdates
-        storeUpdates.waitingForInputSessionIds = waitingUpdates
         if (Object.keys(storeUpdates).length > 0) {
           beginSessionStateHydration()
           try {
@@ -297,23 +332,51 @@ function App() {
       // This clears sessions that finished while disconnected and restores
       // sessions that are still running — server is source of truth.
       const runningSendingIds: Record<string, boolean> = {}
+      const runningSendStartedAt: Record<string, number> = {}
       if (data.runningSessions?.length) {
         for (const sessionId of data.runningSessions) {
           runningSendingIds[sessionId] = true
+          const startedAt = data.sessionsByWorktree
+            ? Object.values(data.sessionsByWorktree)
+                .flatMap(ws => (ws as WorktreeSessions).sessions)
+                .find(session => session.id === sessionId)?.last_run_started_at
+            : undefined
+          if (startedAt) {
+            runningSendStartedAt[sessionId] = startedAt * 1000
+          }
         }
       }
       useChatStore.setState(state => {
         const current = state.sendingSessionIds
+        const currentSendStartedAt = state.sendStartedAt
         // Check if anything actually changed to avoid unnecessary re-renders
         const currentKeys = Object.keys(current)
         const newKeys = Object.keys(runningSendingIds)
+        const currentStartKeys = Object.keys(currentSendStartedAt).filter(
+          key => runningSendingIds[key]
+        )
+        const newStartKeys = Object.keys(runningSendStartedAt)
         if (
           currentKeys.length === newKeys.length &&
-          newKeys.every(k => current[k])
+          newKeys.every(k => current[k]) &&
+          currentStartKeys.length === newStartKeys.length &&
+          newStartKeys.every(
+            k => currentSendStartedAt[k] === runningSendStartedAt[k]
+          )
         ) {
           return state
         }
-        return { sendingSessionIds: runningSendingIds }
+        return {
+          sendingSessionIds: runningSendingIds,
+          sendStartedAt: {
+            ...Object.fromEntries(
+              Object.entries(currentSendStartedAt).filter(
+                ([sessionId]) => !runningSendingIds[sessionId]
+              )
+            ),
+            ...runningSendStartedAt,
+          },
+        }
       })
       // Note: Git status is included in worktree cached_* fields, no separate cache needed
       // Seed preferences into cache
@@ -336,13 +399,16 @@ function App() {
   useEffect(() => {
     if (isNativeApp()) return
 
-    preloadInitialData()
+    const initialSelectedProjectId =
+      useProjectsStore.getState().selectedProjectId
+    preloadInitialData(initialSelectedProjectId)
       .then(data => {
         if (data) {
           logger.info('Preloaded initial data via HTTP', {
             projects: Array.isArray(data.projects) ? data.projects.length : 0,
           })
           seedCache(data)
+          ingestBootstrapEvents(data.replayEvents ?? [])
           setWsDataReady(true)
         }
       })
@@ -369,6 +435,14 @@ function App() {
   // Global streaming event listeners - must be at App level so they stay active
   // even when ChatWindow is unmounted (e.g., when viewing a different worktree)
   useStreamingEvents({ queryClient })
+
+  // Browser mode: only open WebSocket after preload + listener registration.
+  // This lets us replay buffered server events before live events start arriving.
+  useEffect(() => {
+    if (isNativeApp() || isPreloading || hasStartedTransportRef.current) return
+    hasStartedTransportRef.current = true
+    connectTransport()
+  }, [isPreloading])
 
   // Global queue processor - must be at App level so queued messages execute
   // even when the worktree is not focused (ChatWindow unmounted)
@@ -403,36 +477,49 @@ function App() {
       // so the server loads the correct sessions even when ui_state.json
       // on disk is stale (debounced save hasn't flushed yet).
       const activeSessionIds = useChatStore.getState().activeSessionIds
-      const prefetch = consumeReconnectData()
-      const dataPromise = prefetch ?? refetchInitialData(activeSessionIds)
-      logger.info('WebSocket reconnected, re-fetching initial data via HTTP', {
-        prefetched: !!prefetch,
-      })
+      const selectedProjectId = useProjectsStore.getState().selectedProjectId
+      const dataPromise = refetchInitialData(
+        activeSessionIds,
+        selectedProjectId
+      )
+      logger.info('WebSocket reconnected, re-fetching initial data via HTTP')
       dataPromise
         .then(data => {
           if (data) {
             seedCache(data)
+            ingestBootstrapEvents(data.replayEvents ?? [])
             logger.info('Reconnect: re-seeded cache from HTTP')
-          }
-          setWsDataReady(true)
-          // Invalidate non-preloaded queries after a frame so the seeded
-          // cache renders first (prevents flash of stale → fresh data).
-          requestAnimationFrame(() => {
-            queryClient.invalidateQueries({
-              predicate: query => {
-                const key = query.queryKey[0]
-                return (
-                  key !== 'projects' &&
-                  key !== 'preferences' &&
-                  key !== 'ui-state' &&
-                  key !== 'chat'
-                )
-              },
+            setWsDataReady(true)
+            // Invalidate non-preloaded queries after a frame so the seeded
+            // cache renders first (prevents flash of stale → fresh data).
+            requestAnimationFrame(() => {
+              queryClient.invalidateQueries({
+                predicate: query => {
+                  const key = query.queryKey[0]
+                  return (
+                    key !== 'projects' &&
+                    key !== 'preferences' &&
+                    key !== 'ui-state' &&
+                    key !== 'chat'
+                  )
+                },
+              })
             })
-          })
+          } else {
+            // HTTP fetch returned null (server not ready yet) — invalidate
+            // everything so TanStack Query refetches via WebSocket.
+            logger.warn(
+              'Reconnect: HTTP re-fetch returned no data, invalidating all queries'
+            )
+            setWsDataReady(true)
+            queryClient.invalidateQueries()
+          }
         })
         .catch(err => {
-          logger.warn('Reconnect: HTTP re-fetch failed, falling back to query invalidation', { error: err })
+          logger.warn(
+            'Reconnect: HTTP re-fetch failed, falling back to query invalidation',
+            { error: err }
+          )
           setWsDataReady(true)
           // Fallback: invalidate everything so TanStack Query refetches via WebSocket
           queryClient.invalidateQueries()
@@ -518,7 +605,8 @@ function App() {
     const ghReady = !!ghStatus?.installed && !!ghAuth?.authenticated
     const claudeReady = !!claudeStatus?.installed && !!claudeAuth?.authenticated
     const codexReady = !!codexStatus?.installed && !!codexAuth?.authenticated
-    const opencodeReady = !!opencodeStatus?.installed && !!opencodeAuth?.authenticated
+    const opencodeReady =
+      !!opencodeStatus?.installed && !!opencodeAuth?.authenticated
     const hasAiBackendReady = claudeReady || codexReady || opencodeReady
 
     if (useUIStore.getState().onboardingDismissed) return
@@ -577,7 +665,9 @@ function App() {
           store.setOnboardingManuallyTriggered(false)
         } else {
           const manuallyTriggered = store.onboardingManuallyTriggered
-          const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
+          const prefs = queryClient.getQueryData<AppPreferences>([
+            'preferences',
+          ])
           if (manuallyTriggered || (prefs && !prefs.has_seen_feature_tour)) {
             store.setOnboardingManuallyTriggered(false)
             setTimeout(() => {
@@ -709,7 +799,10 @@ function App() {
               worktree_id: session.worktree_id,
             })
             const store = useChatStore.getState()
-            store.addSendingSession(session.session_id, session.started_at * 1000)
+            store.addSendingSession(
+              session.session_id,
+              session.started_at * 1000
+            )
 
             let sessionSnapshot = queryClient.getQueryData<Session>(
               chatQueryKeys.session(session.session_id)
@@ -717,19 +810,25 @@ function App() {
             let worktreePath = store.getWorktreePath(session.worktree_id)
             if (!worktreePath) {
               try {
-                const worktree = await invoke<{ path: string }>('get_worktree', {
-                  worktreeId: session.worktree_id,
-                })
+                const worktree = await invoke<{ path: string }>(
+                  'get_worktree',
+                  {
+                    worktreeId: session.worktree_id,
+                  }
+                )
                 if (worktree.path) {
                   worktreePath = worktree.path
                   store.registerWorktreePath(session.worktree_id, worktree.path)
                 }
               } catch (error) {
-                logger.warn('Failed to resolve worktree path for resumable run', {
-                  session_id: session.session_id,
-                  worktree_id: session.worktree_id,
-                  error,
-                })
+                logger.warn(
+                  'Failed to resolve worktree path for resumable run',
+                  {
+                    session_id: session.session_id,
+                    worktree_id: session.worktree_id,
+                    error,
+                  }
+                )
               }
             }
             if (worktreePath) {
@@ -744,10 +843,13 @@ function App() {
                   sessionSnapshot
                 )
               } catch (error) {
-                logger.warn('Failed to load session snapshot for resumable run', {
-                  session_id: session.session_id,
-                  error,
-                })
+                logger.warn(
+                  'Failed to load session snapshot for resumable run',
+                  {
+                    session_id: session.session_id,
+                    error,
+                  }
+                )
               }
             }
 
@@ -847,10 +949,7 @@ function App() {
   }
 
   const showReconnectOverlay =
-    !isNativeApp() &&
-    hadWsConnectionRef.current &&
-    !wsDataReady &&
-    !wsAuthError
+    !isNativeApp() && hadWsConnectionRef.current && !wsDataReady && !wsAuthError
 
   return (
     <ErrorBoundary>

@@ -1,6 +1,10 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 
+export interface ProjectCanvasSettings {
+  worktreeSortMode?: 'created' | 'last_activity'
+}
+
 interface ProjectsUIState {
   // Selection state
   selectedProjectId: string | null
@@ -20,6 +24,9 @@ interface ProjectsUIState {
 
   // Last-accessed timestamps per project (for recency sorting in command palette)
   projectAccessTimestamps: Record<string, number>
+
+  // Project canvas settings per project
+  projectCanvasSettings: Record<string, ProjectCanvasSettings>
 
   // Add project dialog state
   addProjectDialogOpen: boolean
@@ -83,6 +90,13 @@ interface ProjectsUIState {
   closeJeanConfigWizard: () => void
   setEditingFolderId: (id: string | null) => void
   setProjectAccessTimestamps: (timestamps: Record<string, number>) => void
+  setProjectCanvasSettings: (
+    settings: Record<string, ProjectCanvasSettings>
+  ) => void
+  setProjectCanvasWorktreeSortMode: (
+    projectId: string,
+    sortMode: 'created' | 'last_activity'
+  ) => void
 }
 
 export const useProjectsStore = create<ProjectsUIState>()(
@@ -96,6 +110,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       dashboardWorktreeCollapseOverrides: {},
       expandedFolderIds: new Set<string>(),
       projectAccessTimestamps: {},
+      projectCanvasSettings: {},
       addProjectDialogOpen: false,
       addProjectParentFolderId: null,
       projectSettingsDialogOpen: false,
@@ -216,6 +231,34 @@ export const useProjectsStore = create<ProjectsUIState>()(
           { dashboardWorktreeCollapseOverrides: overrides },
           undefined,
           'setDashboardWorktreeCollapseOverrides'
+        ),
+
+      setProjectCanvasSettings: settings =>
+        set(
+          { projectCanvasSettings: settings },
+          undefined,
+          'setProjectCanvasSettings'
+        ),
+
+      setProjectCanvasWorktreeSortMode: (projectId, sortMode) =>
+        set(
+          state => {
+            const currentSortMode =
+              state.projectCanvasSettings[projectId]?.worktreeSortMode
+            if (currentSortMode === sortMode) return state
+
+            return {
+              projectCanvasSettings: {
+                ...state.projectCanvasSettings,
+                [projectId]: {
+                  ...state.projectCanvasSettings[projectId],
+                  worktreeSortMode: sortMode,
+                },
+              },
+            }
+          },
+          undefined,
+          'setProjectCanvasWorktreeSortMode'
         ),
 
       // Folder expansion actions

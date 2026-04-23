@@ -280,7 +280,7 @@ export function OpenInModal() {
                 const url = remotes?.[0]?.url
                 if (url) openExternal(`${url}/tree/${branch}`)
               } else {
-                openRemotePicker(targetPath!, remoteName => {
+                openRemotePicker(targetPath as string, remoteName => {
                   const remote = remotes.find(r => r.name === remoteName)
                   if (remote) openExternal(`${remote.url}/tree/${branch}`)
                 })

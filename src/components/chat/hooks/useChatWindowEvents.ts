@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useCallback, useEffect, useRef, type RefObject } from 'react'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
@@ -37,11 +37,23 @@ interface UseChatWindowEventsParams {
   gitStatus: { base_branch?: string } | null | undefined
   setDiffRequest: (
     req:
-      | { type: 'uncommitted' | 'branch'; worktreePath: string; baseBranch: string }
+      | {
+          type: 'uncommitted' | 'branch'
+          worktreePath: string
+          baseBranch: string
+        }
       | null
       | ((
-          prev: { type: 'uncommitted' | 'branch'; worktreePath: string; baseBranch: string } | null
-        ) => { type: 'uncommitted' | 'branch'; worktreePath: string; baseBranch: string } | null)
+          prev: {
+            type: 'uncommitted' | 'branch'
+            worktreePath: string
+            baseBranch: string
+          } | null
+        ) => {
+          type: 'uncommitted' | 'branch'
+          worktreePath: string
+          baseBranch: string
+        } | null)
   ) => void
   // Auto-scroll
   isAtBottom: boolean
@@ -50,7 +62,12 @@ interface UseChatWindowEventsParams {
   isSending: boolean
   currentQueuedMessages: QueuedMessage[]
   // Create session
-  createSession: { mutate: (args: { worktreeId: string; worktreePath: string }, opts?: { onSuccess?: (session: { id: string }) => void }) => void }
+  createSession: {
+    mutate: (
+      args: { worktreeId: string; worktreePath: string },
+      opts?: { onSuccess?: (session: { id: string }) => void }
+    ) => void
+  }
   // Debug/preferences
   preferences: { debug_mode_enabled?: boolean } | undefined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -61,18 +78,14 @@ interface UseChatWindowEventsParams {
   // Run scripts
   runScripts: string[]
   // Plan approval (keyboard shortcuts)
-  hasStreamingPlan: boolean
+  hasPendingPlanApproval: boolean
   pendingPlanMessage: { id: string } | null | undefined
-  handleStreamingPlanApproval: () => void
-  handleStreamingPlanApprovalYolo: () => void
   handlePlanApproval: (messageId: string) => void
   handlePlanApprovalYolo: (messageId: string) => void
   handleClearContextApproval: (messageId: string) => void
-  handleStreamingClearContextApproval: () => void
   handleClearContextApprovalBuild: (messageId: string) => void
-  handleStreamingClearContextApprovalBuild: () => void
-  /** Whether the active session uses Codex backend (no native approval flow) */
-  isCodexBackend: boolean
+  handleWorktreeBuildApproval: (messageId: string) => void
+  handleWorktreeYoloApproval: (messageId: string) => void
   /** Ref to the chat scroll viewport for keyboard scrolling */
   scrollViewportRef: RefObject<HTMLDivElement | null>
   /** Begin a user-initiated keyboard scroll: cancels auto-scroll, blocks handleScroll */
@@ -115,29 +128,60 @@ export function useChatWindowEvents({
   handleSaveContext,
   handleLoadContext,
   runScripts,
-  hasStreamingPlan,
+  hasPendingPlanApproval,
   pendingPlanMessage,
-  handleStreamingPlanApproval,
-  handleStreamingPlanApprovalYolo,
   handlePlanApproval,
   handlePlanApprovalYolo,
   handleClearContextApproval,
-  handleStreamingClearContextApproval,
   handleClearContextApprovalBuild,
-  handleStreamingClearContextApprovalBuild,
-  isCodexBackend,
+  handleWorktreeBuildApproval,
+  handleWorktreeYoloApproval,
   scrollViewportRef,
   beginKeyboardScroll,
   endKeyboardScroll,
 }: UseChatWindowEventsParams) {
   const isMobile = useIsMobile()
+  const focusChatInput = useCallback(() => {
+    inputRef.current?.focus()
+  }, [inputRef])
 
   // Focus input on mount, session change, or worktree change (skip on mobile to avoid keyboard popup)
   useEffect(() => {
     if (!isMobile) {
-      inputRef.current?.focus()
+      focusChatInput()
     }
-  }, [activeSessionId, activeWorktreeId, inputRef, isMobile])
+  }, [activeSessionId, activeWorktreeId, focusChatInput, isMobile])
+
+  // When opening a worktree with a visible terminal, xterm can asynchronously
+  // steal focus after the chat input focused. Re-assert focus for a short
+  // window, but only if focus is still on the body or inside the terminal.
+  useEffect(() => {
+    if (isMobile || !activeWorktreeId) return
+
+    const shouldReassertFocus = () => {
+      const activeElement = document.activeElement as HTMLElement | null
+      return (
+        !activeElement ||
+        activeElement === document.body ||
+        activeElement.tagName === 'BODY' ||
+        !!activeElement.closest('.xterm')
+      )
+    }
+
+    const timeouts = [0, 75, 200].map(delay =>
+      window.setTimeout(() => {
+        if (shouldReassertFocus()) {
+          focusChatInput()
+        }
+      }, delay)
+    )
+
+    return () => {
+      for (const timeout of timeouts) {
+        window.clearTimeout(timeout)
+      }
+    }
+  }, [activeWorktreeId, focusChatInput, isMobile])
 
   // Scroll to bottom on worktree switch
   useEffect(() => {
@@ -162,10 +206,10 @@ export function useChatWindowEvents({
 
   // CMD+L / toolbar selection: Focus chat input
   useEffect(() => {
-    const handler = () => inputRef.current?.focus()
+    const handler = () => focusChatInput()
     window.addEventListener('focus-chat-input', handler)
     return () => window.removeEventListener('focus-chat-input', handler)
-  }, [inputRef])
+  }, [focusChatInput])
 
   // P key: Open plan dialog
   useEffect(() => {
@@ -181,7 +225,12 @@ export function useChatWindowEvents({
     }
     window.addEventListener('open-plan', handler)
     return () => window.removeEventListener('open-plan', handler)
-  }, [latestPlanContent, latestPlanFilePath, setPlanDialogContent, setIsPlanDialogOpen])
+  }, [
+    latestPlanContent,
+    latestPlanFilePath,
+    setPlanDialogContent,
+    setIsPlanDialogOpen,
+  ])
 
   // R key: Open recap dialog
   useEffect(() => {
@@ -282,7 +331,8 @@ export function useChatWindowEvents({
     const handler = () => {
       const store = useChatStore.getState()
       store.cycleExecutionMode(activeSessionId)
-      const mode = useChatStore.getState().executionModes[activeSessionId] ?? 'plan'
+      const mode =
+        useChatStore.getState().executionModes[activeSessionId] ?? 'plan'
       // Broadcast to other clients (native ↔ web access)
       invoke('broadcast_session_setting', {
         sessionId: activeSessionId,
@@ -316,7 +366,11 @@ export function useChatWindowEvents({
       setDiffRequest(prev => {
         if (requestedType) {
           // Explicit type from button click — open or switch to that type
-          return { type: requestedType, worktreePath: activeWorktreePath, baseBranch }
+          return {
+            type: requestedType,
+            worktreePath: activeWorktreePath,
+            baseBranch,
+          }
         }
         if (prev) {
           // CMD+G toggle between types
@@ -325,7 +379,11 @@ export function useChatWindowEvents({
             type: prev.type === 'uncommitted' ? 'branch' : 'uncommitted',
           }
         }
-        return { type: 'uncommitted', worktreePath: activeWorktreePath, baseBranch }
+        return {
+          type: 'uncommitted',
+          worktreePath: activeWorktreePath,
+          baseBranch,
+        }
       })
     }
     window.addEventListener('open-git-diff', handler)
@@ -413,7 +471,8 @@ export function useChatWindowEvents({
       })
     }
     window.addEventListener('command:toggle-debug-mode', handler)
-    return () => window.removeEventListener('command:toggle-debug-mode', handler)
+    return () =>
+      window.removeEventListener('command:toggle-debug-mode', handler)
   }, [preferences, patchPreferences])
 
   // Set chat input from external (conflict resolution flow)
@@ -432,55 +491,63 @@ export function useChatWindowEvents({
       window.removeEventListener('set-chat-input', handler as EventListener)
   }, [activeSessionId, inputRef])
 
-  // Approve plan keyboard shortcut (no-op for Codex which has no native approval flow)
+  // Approve plan keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingPlanApproval()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handlePlanApproval(pendingPlanMessage.id)
       }
     }
     window.addEventListener('approve-plan', handler)
     return () => window.removeEventListener('approve-plan', handler)
-  }, [
-    isModal,
-    isCodexBackend,
-    hasStreamingPlan,
-    pendingPlanMessage,
-    handleStreamingPlanApproval,
-    handlePlanApproval,
-  ])
+  }, [isModal, hasPendingPlanApproval, pendingPlanMessage, handlePlanApproval])
 
   // CMD+Up/Down: Scroll chat by one page with eased animation
+  // Plain Up/Down: Scroll by a small increment
   const scrollAnimationRef = useRef<number | null>(null)
+  const lastScrollAtRef = useRef<number>(0)
   useEffect(() => {
     const easeOut = (t: number) => 1 - (1 - t) ** 3
-    const handler = (e: CustomEvent<{ direction: 'up' | 'down' }>) => {
+    const handler = (
+      e: CustomEvent<{
+        direction: 'up' | 'down'
+        amount?: 'small' | 'page'
+      }>
+    ) => {
       const viewport = scrollViewportRef.current
       if (!viewport) return
       const { scrollTop, scrollHeight, clientHeight } = viewport
       // Skip if already at the boundary
-      if (e.detail.direction === 'down' && scrollHeight - scrollTop - clientHeight < 2) return
+      if (
+        e.detail.direction === 'down' &&
+        scrollHeight - scrollTop - clientHeight < 2
+      )
+        return
       if (e.detail.direction === 'up' && scrollTop < 2) return
       beginKeyboardScroll()
-      // Cancel any ongoing keyboard scroll animation
+      const isSmall = e.detail.amount === 'small'
+      const magnitude = isSmall ? 100 : viewport.clientHeight * 0.75
+      const delta = e.detail.direction === 'up' ? -magnitude : magnitude
+      const now = performance.now()
+      // Held-key repeat: previous press very recent → jump instantly so
+      // queued animations don't stack and cause lag.
+      const isRepeat = isSmall && now - lastScrollAtRef.current < 180
+      lastScrollAtRef.current = now
       if (scrollAnimationRef.current) {
         cancelAnimationFrame(scrollAnimationRef.current)
+        scrollAnimationRef.current = null
       }
-      const delta =
-        e.detail.direction === 'up'
-          ? -viewport.clientHeight * 0.75
-          : viewport.clientHeight * 0.75
+      if (isRepeat) {
+        viewport.scrollTop = scrollTop + delta
+        endKeyboardScroll()
+        return
+      }
+      const duration = isSmall ? 120 : 250
       const start = viewport.scrollTop
-      const startTime = performance.now()
-      const duration = 250
-      const step = (now: number) => {
-        const progress = Math.min((now - startTime) / duration, 1)
+      const startTime = now
+      const step = (t: number) => {
+        const progress = Math.min((t - startTime) / duration, 1)
         viewport.scrollTop = start + delta * easeOut(progress)
         if (progress < 1) {
           scrollAnimationRef.current = requestAnimationFrame(step)
@@ -501,16 +568,11 @@ export function useChatWindowEvents({
     }
   }, [scrollViewportRef, beginKeyboardScroll, endKeyboardScroll])
 
-  // Approve plan yolo keyboard shortcut (no-op for Codex)
+  // Approve plan yolo keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingPlanApprovalYolo()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handlePlanApprovalYolo(pendingPlanMessage.id)
       }
     }
@@ -518,58 +580,80 @@ export function useChatWindowEvents({
     return () => window.removeEventListener('approve-plan-yolo', handler)
   }, [
     isModal,
-    isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingPlanApprovalYolo,
     handlePlanApprovalYolo,
   ])
 
-  // Clear context and yolo keyboard shortcut (no-op for Codex)
+  // Clear context and yolo keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingClearContextApproval()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handleClearContextApproval(pendingPlanMessage.id)
       }
     }
     window.addEventListener('approve-plan-clear-context', handler)
-    return () => window.removeEventListener('approve-plan-clear-context', handler)
+    return () =>
+      window.removeEventListener('approve-plan-clear-context', handler)
   }, [
     isModal,
-    isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingClearContextApproval,
     handleClearContextApproval,
   ])
 
-  // Clear context and build keyboard shortcut (no-op for Codex)
+  // Clear context and build keyboard shortcut
   useEffect(() => {
-    if (isCodexBackend) return
     const handler = () => {
       if (!isModal && useUIStore.getState().sessionChatModalOpen) return
-      if (hasStreamingPlan) {
-        handleStreamingClearContextApprovalBuild()
-        return
-      }
-      if (pendingPlanMessage) {
+      if (hasPendingPlanApproval && pendingPlanMessage) {
         handleClearContextApprovalBuild(pendingPlanMessage.id)
       }
     }
     window.addEventListener('approve-plan-clear-context-build', handler)
-    return () => window.removeEventListener('approve-plan-clear-context-build', handler)
+    return () =>
+      window.removeEventListener('approve-plan-clear-context-build', handler)
   }, [
     isModal,
-    isCodexBackend,
-    hasStreamingPlan,
+    hasPendingPlanApproval,
     pendingPlanMessage,
-    handleStreamingClearContextApprovalBuild,
     handleClearContextApprovalBuild,
+  ])
+
+  // Worktree build keyboard shortcut
+  useEffect(() => {
+    const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
+      if (hasPendingPlanApproval && pendingPlanMessage) {
+        handleWorktreeBuildApproval(pendingPlanMessage.id)
+      }
+    }
+    window.addEventListener('approve-plan-worktree-build', handler)
+    return () =>
+      window.removeEventListener('approve-plan-worktree-build', handler)
+  }, [
+    isModal,
+    hasPendingPlanApproval,
+    pendingPlanMessage,
+    handleWorktreeBuildApproval,
+  ])
+
+  // Worktree yolo keyboard shortcut
+  useEffect(() => {
+    const handler = () => {
+      if (!isModal && useUIStore.getState().sessionChatModalOpen) return
+      if (hasPendingPlanApproval && pendingPlanMessage) {
+        handleWorktreeYoloApproval(pendingPlanMessage.id)
+      }
+    }
+    window.addEventListener('approve-plan-worktree-yolo', handler)
+    return () =>
+      window.removeEventListener('approve-plan-worktree-yolo', handler)
+  }, [
+    isModal,
+    hasPendingPlanApproval,
+    pendingPlanMessage,
+    handleWorktreeYoloApproval,
   ])
 }

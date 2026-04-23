@@ -17,6 +17,7 @@ import {
   FlaskConical,
   Globe,
   Search,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -71,6 +72,7 @@ import { UsagePane } from './panes/UsagePane'
 import { IntegrationsPane } from './panes/IntegrationsPane'
 import { ExperimentalPane } from './panes/ExperimentalPane'
 import { WebAccessPane } from './panes/WebAccessPane'
+import { OpinionatedPane } from './panes/OpinionatedPane'
 import {
   searchPreferenceEntries,
   type PreferenceSearchEntry,
@@ -81,6 +83,17 @@ const navigationItems = [
     id: 'general' as const,
     name: 'General',
     icon: Settings,
+  },
+  {
+    id: 'opinionated' as const,
+    name: 'Opinionated',
+    icon: Sparkles,
+  },
+  {
+    id: 'web-access' as const,
+    name: 'Web Access',
+    icon: Globe,
+    desktopOnly: true,
   },
   {
     id: 'providers' as const,
@@ -123,16 +136,11 @@ const navigationItems = [
     name: 'Experimental',
     icon: FlaskConical,
   },
-  {
-    id: 'web-access' as const,
-    name: 'Web Access (Experimental)',
-    icon: Globe,
-    desktopOnly: true,
-  },
 ]
 
 const paneIconMap: Record<PreferencePane, LucideIcon> = {
   general: Settings,
+  opinionated: Sparkles,
   providers: Blocks,
   usage: BarChart3,
   appearance: Palette,
@@ -164,8 +172,10 @@ const getPaneTitle = (pane: PreferencePane): string => {
       return 'Integrations'
     case 'experimental':
       return 'Experimental'
+    case 'opinionated':
+      return 'Opinionated'
     case 'web-access':
-      return 'Web Access (Experimental)'
+      return 'Web Access'
     default:
       return 'General'
   }
@@ -678,6 +688,11 @@ export function PreferencesDialog() {
               {activePane === 'experimental' && (
                 <div id="pref-pane-experimental">
                   <ExperimentalPane />
+                </div>
+              )}
+              {activePane === 'opinionated' && (
+                <div id="pref-pane-opinionated">
+                  <OpinionatedPane />
                 </div>
               )}
               {activePane === 'web-access' && (

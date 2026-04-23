@@ -3,6 +3,7 @@ import { useChatStore } from './chat-store'
 import type {
   ToolCall,
   QueuedMessage,
+  CodexCommandApprovalRequest,
   PermissionDenial,
   PendingImage,
   PendingTextFile,
@@ -47,6 +48,7 @@ describe('ChatStore', () => {
       executingModes: {},
       approvedTools: {},
       pendingPermissionDenials: {},
+      pendingCodexCommandApprovalRequests: {},
       deniedMessageContext: {},
       lastCompaction: {},
       compactingSessions: {},
@@ -102,6 +104,48 @@ describe('ChatStore', () => {
       const state = useChatStore.getState()
       expect(state.activeWorktreeId).toBeNull()
       expect(state.activeWorktreePath).toBeNull()
+    })
+
+    // Regression: sidebar click must clear activeWorktreePath so MainWindowContent
+    // renders ProjectCanvasView (with topbar + session tabs) instead of bare ChatWindow.
+    // This mirrors the sequence in WorktreeItem.handleClick and handleSessionSelect.
+    it('sidebar worktree click clears activeWorktreePath before opening session modal', () => {
+      const store = useChatStore.getState()
+
+      // Simulate: user previously navigated into ChatWindow (activeWorktreePath is set)
+      store.setActiveWorktree('worktree-1', '/path/to/worktree-1')
+      expect(useChatStore.getState().activeWorktreePath).toBe(
+        '/path/to/worktree-1'
+      )
+
+      // Simulate: WorktreeItem.handleClick sequence
+      // 1. clearActiveWorktree() ensures ProjectCanvasView renders
+      store.clearActiveWorktree()
+      // 2. setActiveSession() picks the session to show in the modal
+      store.setActiveSession('worktree-2', 'session-abc')
+
+      const state = useChatStore.getState()
+      // activeWorktreePath must be null so MainWindowContent renders ProjectCanvasView
+      expect(state.activeWorktreePath).toBeNull()
+      expect(state.activeWorktreeId).toBeNull()
+      // The target session is correctly set
+      expect(state.activeSessionIds['worktree-2']).toBe('session-abc')
+    })
+
+    it('sidebar session select clears activeWorktreePath before setting session', () => {
+      const store = useChatStore.getState()
+
+      // Simulate: already viewing a worktree in ChatWindow mode
+      store.setActiveWorktree('worktree-1', '/path/to/worktree-1')
+
+      // Simulate: WorktreeItem.handleSessionSelect sequence
+      store.clearActiveWorktree()
+      store.setActiveSession('worktree-1', 'session-xyz')
+
+      const state = useChatStore.getState()
+      // Must be null for ProjectCanvasView to mount and receive open-session-modal event
+      expect(state.activeWorktreePath).toBeNull()
+      expect(state.activeSessionIds['worktree-1']).toBe('session-xyz')
     })
 
     it('registers worktree path', () => {
@@ -334,6 +378,21 @@ describe('ChatStore', () => {
       expect(blocks[1]).toEqual({ type: 'tool_use', tool_call_id: 'tool-1' })
     })
 
+    it('re-appends existing tool block to preserve latest chronology', () => {
+      const { addTextBlock, addToolBlock, getStreamingContentBlocks } =
+        useChatStore.getState()
+
+      addToolBlock('session-1', 'plan-1')
+      addTextBlock('session-1', 'after')
+      addToolBlock('session-1', 'plan-1')
+
+      const blocks = getStreamingContentBlocks('session-1')
+      expect(blocks).toEqual([
+        { type: 'text', text: 'after' },
+        { type: 'tool_use', tool_call_id: 'plan-1' },
+      ])
+    })
+
     it('adds thinking block', () => {
       const { addThinkingBlock, getStreamingContentBlocks } =
         useChatStore.getState()
@@ -406,7 +465,6 @@ describe('ChatStore', () => {
       setThinkingLevel('session-1', 'think')
       expect(getThinkingLevel('session-1')).toBe('think')
     })
-
   })
 
   describe('question answering', () => {
@@ -563,6 +621,46 @@ describe('ChatStore', () => {
       clearPendingDenials('session-1')
 
       expect(getPendingDenials('session-1')).toHaveLength(0)
+    })
+  })
+
+  describe('pending Codex command approval requests', () => {
+    const requests: CodexCommandApprovalRequest[] = [
+      {
+        rpc_id: 1,
+        item_id: 'item-1',
+        thread_id: 'thread-1',
+        turn_id: 'turn-1',
+        command: 'npm test',
+      },
+    ]
+
+    it('sets and gets pending command approval requests', () => {
+      const {
+        setPendingCodexCommandApprovalRequests,
+        getPendingCodexCommandApprovalRequests,
+      } = useChatStore.getState()
+
+      setPendingCodexCommandApprovalRequests('session-1', requests)
+
+      expect(getPendingCodexCommandApprovalRequests('session-1')).toEqual(
+        requests
+      )
+    })
+
+    it('clears pending command approval requests', () => {
+      const {
+        setPendingCodexCommandApprovalRequests,
+        clearPendingCodexCommandApprovalRequests,
+        getPendingCodexCommandApprovalRequests,
+      } = useChatStore.getState()
+
+      setPendingCodexCommandApprovalRequests('session-1', requests)
+      clearPendingCodexCommandApprovalRequests('session-1')
+
+      expect(getPendingCodexCommandApprovalRequests('session-1')).toHaveLength(
+        0
+      )
     })
   })
 
@@ -779,11 +877,8 @@ describe('ChatStore', () => {
     })
 
     it('clears pending text files', () => {
-      const {
-        addPendingTextFile,
-        clearPendingTextFiles,
-        getPendingTextFiles,
-      } = useChatStore.getState()
+      const { addPendingTextFile, clearPendingTextFiles, getPendingTextFiles } =
+        useChatStore.getState()
 
       addPendingTextFile('session-1', mockTextFile)
       clearPendingTextFiles('session-1')
