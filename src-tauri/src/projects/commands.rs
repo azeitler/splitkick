@@ -82,7 +82,13 @@ fn now() -> u64 {
 
 fn sanitize_folder_name(name: &str) -> String {
     name.chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect()
 }
 
@@ -598,7 +604,8 @@ pub async fn create_worktree(
 
     // Generate workspace name - use custom name, PR-based name, issue-based name, or random name
     let name = if let Some(custom) = custom_name {
-        // Use the provided custom name directly (already validated as unique by caller)
+        // Use the provided custom name. Uniqueness is enforced downstream via
+        // worktree:branch_exists / worktree:path_exists events (BranchConflictDialog).
         custom
     } else if let Some(ref ctx) = pr_context {
         let pr_branch = ctx.head_ref_name.clone();
@@ -1426,10 +1433,12 @@ pub async fn create_worktree_from_existing_branch(
     // Use the branch name as the worktree name
     let name = branch_name.clone();
 
-    // Build worktree path: <base>/<project-name>/<workspace-name>
+    // Build worktree path: <base>/<project-name>/<folder-name>
+    // Use sanitized name for folder path (branch name may contain slashes)
     let project_worktrees_dir =
         get_project_worktrees_dir(&project.name, project.worktrees_dir.as_deref())?;
-    let worktree_path = project_worktrees_dir.join(&name);
+    let folder_name = sanitize_folder_name(&name);
+    let worktree_path = project_worktrees_dir.join(&folder_name);
     let worktree_path_str = worktree_path
         .to_str()
         .ok_or_else(|| "Invalid worktree path".to_string())?
@@ -9167,6 +9176,20 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_sanitize_folder_name() {
+        assert_eq!(sanitize_folder_name("simple"), "simple");
+        assert_eq!(sanitize_folder_name("feat/worktree-1"), "feat_worktree-1");
+        assert_eq!(sanitize_folder_name("feat/sub/branch"), "feat_sub_branch");
+        assert_eq!(sanitize_folder_name("feat.ext"), "feat_ext");
+        assert_eq!(sanitize_folder_name(".."), "__");
+        assert_eq!(sanitize_folder_name(""), "");
+        assert_eq!(sanitize_folder_name("-leading-hyphen"), "-leading-hyphen");
+        assert_eq!(sanitize_folder_name("café"), "café");
+        assert_eq!(sanitize_folder_name("a b\tc"), "a_b_c");
+        assert_eq!(sanitize_folder_name("back\\slash"), "back_slash");
+    }
+
+    #[test]
     fn test_parse_command_content_with_allowed_tools_list() {
         let content = r#"---
 allowed-tools: [Read, "Bash(git status:*)"]
@@ -9208,7 +9231,7 @@ Body
     #[test]
     fn test_parse_command_content_with_allowed_tools_string_ignores_empty_entries() {
         let content = r#"---
-allowed-tools: Read, , Bash(git status:*),
+allowed-tools: Read, , Bash(git status:*),   
 ---
 
 Body

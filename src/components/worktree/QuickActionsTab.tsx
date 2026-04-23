@@ -19,6 +19,21 @@ export interface QuickActionsTabProps {
   jeanConfig: JeanConfig | null | undefined
 }
 
+const INVALID_BRANCH_CHAR = /[\s:?*~^[\\]/
+
+function isInvalidBranchName(trimmed: string): boolean {
+  if (trimmed.length === 0) return false
+  return (
+    INVALID_BRANCH_CHAR.test(trimmed) ||
+    trimmed.startsWith('/') ||
+    trimmed.endsWith('/') ||
+    trimmed.startsWith('.') ||
+    trimmed.endsWith('.') ||
+    trimmed.includes('..') ||
+    trimmed.endsWith('.lock')
+  )
+}
+
 export function QuickActionsTab({
   hasBaseSession,
   onCreateWorktree,
@@ -31,6 +46,9 @@ export function QuickActionsTab({
   const setupScript = jeanConfig?.scripts.setup
   const runScripts = normalizeRunScripts(jeanConfig?.scripts.run)
 
+  const trimmedBranchName = customBranchName.trim()
+  const isInvalid = isInvalidBranchName(trimmedBranchName)
+
   const handleRunClick = () => {
     if (!projectId) return
     if (runScripts.length === 0) {
@@ -40,7 +58,8 @@ export function QuickActionsTab({
   }
 
   const handleCreateClick = () => {
-    onCreateWorktree(customBranchName.trim() || undefined)
+    if (isInvalid) return
+    onCreateWorktree(trimmedBranchName || undefined)
     setCustomBranchName('')
   }
 
@@ -99,15 +118,25 @@ export function QuickActionsTab({
             value={customBranchName}
             onChange={e => setCustomBranchName(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter' && !isCreating) handleCreateClick()
+              if (e.key === 'Enter' && !isCreating && !isInvalid)
+                handleCreateClick()
             }}
             placeholder="Branch name (optional)"
             disabled={isCreating}
-            className="mt-1 w-full max-w-[180px] px-2 py-1 text-xs text-center rounded border border-border bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50"
+            aria-invalid={isInvalid}
+            className={cn(
+              'mt-1 w-full max-w-[180px] px-2 py-1 text-xs text-center rounded border bg-background focus:outline-none focus:ring-1 focus:ring-ring disabled:opacity-50',
+              isInvalid ? 'border-destructive' : 'border-border'
+            )}
           />
+          {isInvalid && (
+            <span className="text-xs text-destructive">
+              Invalid branch name
+            </span>
+          )}
           <button
             onClick={handleCreateClick}
-            disabled={isCreating}
+            disabled={isCreating || isInvalid}
             className={cn(
               'px-3 py-1 rounded text-xs transition-colors',
               'bg-primary text-primary-foreground hover:bg-primary/90',
