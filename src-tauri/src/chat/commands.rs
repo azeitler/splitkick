@@ -1039,6 +1039,8 @@ pub async fn restore_session_with_base(
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
         cached_unpushed_count: None,
+        pr_push_remote: None,
+        pr_push_branch: None,
         order: 0,
         label: None,
         archived_at: None,

@@ -847,6 +847,8 @@ pub async fn create_worktree(
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
         cached_unpushed_count: None,
+        pr_push_remote: None,
+        pr_push_branch: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
         label: None,
@@ -1400,6 +1402,8 @@ pub async fn create_worktree(
                     cached_base_branch_behind_count: None,
                     cached_worktree_ahead_count: None,
                     cached_unpushed_count: None,
+                    pr_push_remote: None,
+                    pr_push_branch: None,
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
@@ -1599,6 +1603,8 @@ pub async fn create_worktree_from_existing_branch(
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
         cached_unpushed_count: None,
+        pr_push_remote: None,
+        pr_push_branch: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
         label: None,
@@ -1984,6 +1990,8 @@ pub async fn create_worktree_from_existing_branch(
                     cached_base_branch_behind_count: None,
                     cached_worktree_ahead_count: None,
                     cached_unpushed_count: None,
+                    pr_push_remote: None,
+                    pr_push_branch: None,
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
@@ -2212,6 +2220,8 @@ pub async fn checkout_pr(
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
         cached_unpushed_count: None,
+        pr_push_remote: None,
+        pr_push_branch: None,
         order: 0, // Will be updated in background thread
         archived_at: None,
         label: None,
@@ -2533,6 +2543,8 @@ pub async fn checkout_pr(
                     cached_base_branch_behind_count: None,
                     cached_worktree_ahead_count: None,
                     cached_unpushed_count: None,
+                    pr_push_remote: None,
+                    pr_push_branch: None,
                     order: max_order + 1,
                     archived_at: None,
                     label: None,
@@ -2865,6 +2877,8 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
         cached_unpushed_count: None,
+        pr_push_remote: None,
+        pr_push_branch: None,
         order: 0, // Base sessions are always first
         archived_at: None,
         label: None,
@@ -3276,6 +3290,8 @@ pub async fn import_worktree(
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
         cached_unpushed_count: None,
+        pr_push_remote: None,
+        pr_push_branch: None,
         order: max_order + 1,
         archived_at: None,
         label: None,
@@ -4972,6 +4988,8 @@ pub async fn detect_and_link_pr(
             if wt.pr_number.is_some() {
                 wt.pr_number = None;
                 wt.pr_url = None;
+                wt.pr_push_remote = None;
+                wt.pr_push_branch = None;
                 let _ = save_projects_data(&app, &data);
             }
         }
@@ -4997,6 +5015,8 @@ pub async fn clear_worktree_pr(app: AppHandle, worktree_id: String) -> Result<()
 
     worktree.pr_number = None;
     worktree.pr_url = None;
+    worktree.pr_push_remote = None;
+    worktree.pr_push_branch = None;
 
     save_projects_data(&app, &data)?;
 
@@ -7480,6 +7500,24 @@ pub struct GitPushResponse {
     pub permission_denied: bool,
 }
 
+/// Store the remote+branch that was successfully pushed to on the matching worktree.
+/// Enables `get_branch_status` to count unpushed commits against the right ref,
+/// which matters for fork PRs where the fork remote differs from @{upstream}.
+fn persist_pr_push_target(
+    app: &tauri::AppHandle,
+    worktree_path: &str,
+    pushed_remote: &str,
+    pushed_branch: &str,
+) -> Result<(), String> {
+    let mut data = load_projects_data(app)?;
+    if let Some(wt) = data.worktrees.iter_mut().find(|w| w.path == worktree_path) {
+        wt.pr_push_remote = Some(pushed_remote.to_string());
+        wt.pr_push_branch = Some(pushed_branch.to_string());
+        save_projects_data(app, &data)?;
+    }
+    Ok(())
+}
+
 /// Push current branch to remote. If pr_number is provided, uses PR-aware push
 /// that handles fork remotes and uses --force-with-lease.
 #[tauri::command]
@@ -7493,6 +7531,18 @@ pub async fn git_push(
     match pr_number {
         Some(pr) => {
             let result = git::git_push_to_pr(&worktree_path, pr, &resolve_gh_binary(&app))?;
+            if let (Some(pushed_remote), Some(pushed_branch)) =
+                (&result.pushed_remote, &result.pushed_branch)
+            {
+                if let Err(e) = persist_pr_push_target(
+                    &app,
+                    &worktree_path,
+                    pushed_remote,
+                    pushed_branch,
+                ) {
+                    log::warn!("Failed to persist PR push target: {e}");
+                }
+            }
             Ok(GitPushResponse {
                 output: result.output,
                 fell_back: result.fell_back,
@@ -8977,6 +9027,8 @@ pub async fn fetch_worktrees_status(app: AppHandle, project_id: String) -> Resul
                 base_branch: base_branch_clone,
                 pr_number: worktree.pr_number,
                 pr_url: worktree.pr_url.clone(),
+                pr_push_remote: worktree.pr_push_remote.clone(),
+                pr_push_branch: worktree.pr_push_branch.clone(),
             };
 
             // Fetch git status (this may take a moment as it runs git commands)
