@@ -665,10 +665,10 @@ pub async fn check_gh_cli_auth(app: AppHandle) -> Result<GhAuthStatus, String> {
     }
 
     // Run gh auth status to check authentication
-    log::trace!("Running auth check: {:?} auth status", binary_path);
+    log::trace!("Running auth check: {:?} auth status --active", binary_path);
 
     let output = silent_command(&binary_path)
-        .args(["auth", "status"])
+        .args(["auth", "status", "--active"])
         .output()
         .map_err(|e| format!("Failed to execute GitHub CLI: {e}"))?;
 
