@@ -132,7 +132,7 @@ export function DirectoryBrowser({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-auto sm:!max-w-2xl sm:!h-auto sm:!max-h-[85vh] sm:!rounded-lg flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>{title ?? 'Browse directories'}</DialogTitle>
           <DialogDescription>
@@ -143,7 +143,7 @@ export function DirectoryBrowser({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 py-4 pr-1">
           <div className="space-y-1.5">
             <Label htmlFor="directory-browser-path" className="text-xs">
               Current path
@@ -182,20 +182,22 @@ export function DirectoryBrowser({
             </div>
           )}
 
-          <div className="flex items-center justify-between gap-3">
-            <label className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Switch checked={showHidden} onCheckedChange={setShowHidden} />
-              <span>Show hidden folders</span>
-            </label>
-            {mode === 'save' && result && (
-              <p className="truncate text-xs text-muted-foreground">
-                Will use: {buildSavePath(result.current_path, nameInput)}
-              </p>
-            )}
-          </div>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Switch checked={showHidden} onCheckedChange={setShowHidden} />
+            <span>Show hidden folders</span>
+          </label>
+
+          {mode === 'save' && result && (
+            <p className="text-xs text-muted-foreground break-all">
+              Will use:{' '}
+              <span className="font-mono">
+                {buildSavePath(result.current_path, nameInput)}
+              </span>
+            </p>
+          )}
 
           <div className="rounded-lg border">
-            <ScrollArea className="h-72">
+            <ScrollArea className="h-60 sm:h-72">
               <div className="p-2">
                 {result?.parent_path && (
                   <DirectoryRow
