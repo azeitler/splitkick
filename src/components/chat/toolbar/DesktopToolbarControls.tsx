@@ -204,10 +204,7 @@ export function DesktopToolbarControls({
 
   return (
     <>
-      <DockBurgerButton
-        activeMcpCount={activeMcpCount}
-        onAttach={onAttach}
-      />
+      <DockBurgerButton activeMcpCount={activeMcpCount} onAttach={onAttach} />
 
       <div className="h-4 w-px bg-border/50" />
 
@@ -692,7 +689,6 @@ export function DesktopToolbarControls({
         className="hidden @xl:flex"
         onCloseAutoFocus={focusChatInput}
       />
-
     </>
   )
 }

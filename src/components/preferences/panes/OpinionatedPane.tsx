@@ -2,7 +2,6 @@ import React, { useCallback, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import { openExternal } from '@/lib/platform'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -13,6 +12,7 @@ import {
   RefreshCw,
 } from 'lucide-react'
 import { toast } from 'sonner'
+import { SettingsSection } from '../SettingsSection'
 
 interface UsageStep {
   label?: string
@@ -89,23 +89,6 @@ interface PluginStatus {
   installed: boolean
   version: string | null
 }
-
-const SettingsSection: React.FC<{
-  title: string
-  description?: string
-  children: React.ReactNode
-}> = ({ title, description, children }) => (
-  <div className="space-y-4">
-    <div>
-      <h3 className="text-lg font-medium text-foreground">{title}</h3>
-      {description && (
-        <p className="text-sm text-muted-foreground mt-1">{description}</p>
-      )}
-      <Separator className="mt-2" />
-    </div>
-    {children}
-  </div>
-)
 
 function PluginCard({ plugin }: { plugin: PluginDefinition }) {
   const [status, setStatus] = useState<PluginStatus | null>(null)
@@ -243,6 +226,7 @@ export const OpinionatedPane: React.FC = () => {
       <SettingsSection
         title="Recommended Plugins"
         description="Curated tools that enhance your development workflow with Claude."
+        anchorId="pref-opinionated-section-recommended-plugins"
       >
         <div className="space-y-3">
           {PLUGINS.map(plugin => (
