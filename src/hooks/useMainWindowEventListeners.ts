@@ -164,7 +164,6 @@ function executeKeybindingAction(
       break
     case 'execute_run': {
       logger.debug('Keybinding: execute_run')
-      if (!isNativeApp()) break
 
       // Skip if git diff modal is open
       const uiStore = useUIStore.getState()

@@ -135,7 +135,6 @@ import { buildMcpConfigJson } from '@/services/mcp'
 import type { McpServerInfo } from '@/types/chat'
 import { useGitStatus } from '@/services/git-status'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
-import { isNativeApp } from '@/lib/environment'
 import { supportsAdaptiveThinking } from '@/lib/model-utils'
 import { copyToClipboard, copyHtmlToClipboard } from '@/lib/clipboard'
 import { useClaudeCliStatus } from '@/services/claude-cli'
@@ -2897,29 +2896,26 @@ export function ChatWindow({
                   </div>
                 </ResizablePanel>
 
-                {/* Terminal panel - only render when panel is open (native app only, not in modal) */}
-                {!isModal &&
-                  isNativeApp() &&
-                  activeWorktreePath &&
-                  terminalPanelOpen && (
-                    <>
-                      <ResizableHandle withHandle />
-                      <ResizablePanel
-                        ref={terminalPanelRef}
-                        defaultSize={terminalVisible ? 30 : 4}
-                        minSize={terminalVisible ? 15 : 4}
-                        collapsible
-                        collapsedSize={4}
-                        onCollapse={handleTerminalCollapse}
+                {/* Terminal panel - only render when panel is open (not in modal) */}
+                {!isModal && activeWorktreePath && terminalPanelOpen && (
+                  <>
+                    <ResizableHandle withHandle />
+                    <ResizablePanel
+                      ref={terminalPanelRef}
+                      defaultSize={terminalVisible ? 30 : 4}
+                      minSize={terminalVisible ? 15 : 4}
+                      collapsible
+                      collapsedSize={4}
+                      onCollapse={handleTerminalCollapse}
+                      onExpand={handleTerminalExpand}
+                    >
+                      <TerminalPanel
+                        isCollapsed={!terminalVisible}
                         onExpand={handleTerminalExpand}
-                      >
-                        <TerminalPanel
-                          isCollapsed={!terminalVisible}
-                          onExpand={handleTerminalExpand}
-                        />
-                      </ResizablePanel>
-                    </>
-                  )}
+                      />
+                    </ResizablePanel>
+                  </>
+                )}
               </ResizablePanelGroup>
             </ResizablePanel>
 
