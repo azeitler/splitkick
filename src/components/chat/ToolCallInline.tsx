@@ -676,6 +676,17 @@ function FileChangeDiffView({ input }: { input: unknown }) {
   )
 }
 
+function formatWakeupDelay(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return 'now'
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.round(seconds % 60)
+  if (mins < 60) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`
+  const hours = Math.floor(mins / 60)
+  const remMins = mins % 60
+  return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`
+}
+
 function getToolDisplay(toolCall: ToolCall): ToolDisplay {
   const input = (toolCall.input ?? {}) as Record<string, unknown>
 
@@ -1106,6 +1117,30 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
         label: 'Context Compaction',
         detail: undefined,
         expandedContent: toolCall.output ?? JSON.stringify(input, null, 2),
+      }
+    }
+
+    case 'ScheduleWakeup': {
+      const delaySeconds =
+        typeof input.delaySeconds === 'number' ? input.delaySeconds : undefined
+      const prompt = typeof input.prompt === 'string' ? input.prompt : undefined
+      const reason = typeof input.reason === 'string' ? input.reason : undefined
+      const detail = delaySeconds
+        ? `in ${formatWakeupDelay(delaySeconds)}`
+        : undefined
+      const bodyParts: string[] = []
+      if (reason) bodyParts.push(`**Reason:** ${reason}`)
+      if (prompt) bodyParts.push(`**Prompt:**\n\n${prompt}`)
+      const markdownBody = bodyParts.join('\n\n')
+      return {
+        icon: <Clock className="h-4 w-4 shrink-0" />,
+        label: 'Scheduled Wakeup',
+        detail,
+        expandedContent: markdownBody ? (
+          <Markdown>{markdownBody}</Markdown>
+        ) : (
+          JSON.stringify(input, null, 2)
+        ),
       }
     }
 

@@ -14,10 +14,7 @@ use serde::Deserialize;
 
 /// Look up persisted pr_push_remote/pr_push_branch for a worktree. Returns (None, None)
 /// if the worktree isn't found or projects data can't be loaded.
-fn lookup_pr_push_target(
-    app: &AppHandle,
-    worktree_id: &str,
-) -> (Option<String>, Option<String>) {
+fn lookup_pr_push_target(app: &AppHandle, worktree_id: &str) -> (Option<String>, Option<String>) {
     match load_projects_data(app) {
         Ok(data) => data
             .worktrees
@@ -30,9 +27,7 @@ fn lookup_pr_push_target(
 }
 
 /// Build a map of worktree_id → (pr_push_remote, pr_push_branch) from persisted data.
-fn load_pr_push_targets(
-    app: &AppHandle,
-) -> HashMap<String, (Option<String>, Option<String>)> {
+fn load_pr_push_targets(app: &AppHandle) -> HashMap<String, (Option<String>, Option<String>)> {
     match load_projects_data(app) {
         Ok(data) => data
             .worktrees

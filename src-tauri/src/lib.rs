@@ -2880,6 +2880,17 @@ pub fn run() {
                 });
             }
 
+            // Load any persisted ScheduleWakeup entries so the polling loop
+            // can fire them (including any that expired while the app was closed).
+            match chat::wakeup::load_all_from_disk(&app.handle().clone()) {
+                Ok(count) => {
+                    if count > 0 {
+                        log::info!("Loaded {count} pending ScheduleWakeup entr(ies) from disk");
+                    }
+                }
+                Err(e) => log::warn!("Failed to load pending ScheduleWakeup entries: {e}"),
+            }
+
             // Initialize background task manager
             let task_manager = background_tasks::BackgroundTaskManager::new(app.handle().clone());
             task_manager.start();
@@ -3183,6 +3194,9 @@ pub fn run() {
             chat::remove_queued_message,
             chat::clear_message_queue,
             chat::answer_opencode_question,
+            // Chat commands - ScheduleWakeup support
+            chat::cancel_session_wakeup,
+            chat::get_scheduled_wakeup,
             // Chat commands - Image handling
             chat::read_clipboard_image,
             chat::save_pasted_image,

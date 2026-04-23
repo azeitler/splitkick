@@ -7534,12 +7534,9 @@ pub async fn git_push(
             if let (Some(pushed_remote), Some(pushed_branch)) =
                 (&result.pushed_remote, &result.pushed_branch)
             {
-                if let Err(e) = persist_pr_push_target(
-                    &app,
-                    &worktree_path,
-                    pushed_remote,
-                    pushed_branch,
-                ) {
+                if let Err(e) =
+                    persist_pr_push_target(&app, &worktree_path, pushed_remote, pushed_branch)
+                {
                     log::warn!("Failed to persist PR push target: {e}");
                 }
             }
