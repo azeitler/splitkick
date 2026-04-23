@@ -543,17 +543,16 @@ kbd {
 }
 /* Settings search highlight flash */
 @keyframes settings-highlight-flash {
-  0% {
+  0%,
+  100% {
     background-color: transparent;
     box-shadow: none;
   }
   15% {
     background-color: color-mix(in srgb, var(--primary) 12%, transparent);
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 25%, transparent);
-  }
-  100% {
-    background-color: transparent;
-    box-shadow: none;
+    box-shadow:
+      0 0 0 8px color-mix(in srgb, var(--primary) 12%, transparent),
+      0 0 0 10px color-mix(in srgb, var(--primary) 25%, transparent);
   }
 }
 .settings-search-highlight {

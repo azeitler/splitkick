@@ -8,7 +8,6 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -31,6 +30,7 @@ import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
 import { openExternal } from '@/lib/platform'
 import { copyToClipboard } from '@/lib/clipboard'
+import { SettingsSection } from '../SettingsSection'
 
 const LOOPBACK_BIND_HOSTS = new Set(['localhost', '127.0.0.1', '::1'])
 const WILDCARD_BIND_HOSTS = new Set(['0.0.0.0', '::'])
@@ -71,20 +71,6 @@ function hasUsableBoundUrl(url: string | null | undefined): boolean {
 function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
-
-const SettingsSection: React.FC<{
-  title: string
-  anchorId?: string
-  children: React.ReactNode
-}> = ({ title, anchorId, children }) => (
-  <div id={anchorId} className="space-y-4">
-    <div>
-      <h3 className="text-lg font-medium text-foreground">{title}</h3>
-      <Separator className="mt-2" />
-    </div>
-    {children}
-  </div>
-)
 
 const InlineField: React.FC<{
   label: string

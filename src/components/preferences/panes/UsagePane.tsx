@@ -1,30 +1,17 @@
 import React from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Separator } from '@/components/ui/separator'
 import {
   useCodexCliAuth,
   useCodexCliStatus,
   useCodexUsage,
 } from '@/services/codex-cli'
+import { SettingsSection } from '../SettingsSection'
+
 interface UsageWindow {
   usedPercent: number
   resetsAt: number | null
 }
-
-const SettingsSection: React.FC<{
-  title: string
-  anchorId?: string
-  children: React.ReactNode
-}> = ({ title, anchorId, children }) => (
-  <div id={anchorId} className="space-y-4">
-    <div>
-      <h3 className="text-lg font-medium text-foreground">{title}</h3>
-      <Separator className="mt-2" />
-    </div>
-    {children}
-  </div>
-)
 
 const UsageRow: React.FC<{
   label: string

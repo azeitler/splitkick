@@ -11,7 +11,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Loader2, ChevronDown, Check, ChevronsUpDown, Play } from 'lucide-react'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { Button } from '@/components/ui/button'
 import { BackendLabel } from '@/components/ui/backend-label'
@@ -141,29 +140,12 @@ import {
   setRemotePollInterval,
 } from '@/services/git-status'
 import { getPathUpdateAction } from '@/lib/cli-update'
+import { SettingsSection } from '../SettingsSection'
 
 interface CleanupResult {
   deleted_worktrees: number
   deleted_sessions: number
 }
-
-const SettingsSection: React.FC<{
-  title: React.ReactNode
-  actions?: React.ReactNode
-  anchorId?: string
-  children: React.ReactNode
-}> = ({ title, actions, anchorId, children }) => (
-  <div id={anchorId} className="space-y-4">
-    <div>
-      <div className="flex items-center gap-3">
-        <h3 className="text-lg font-medium text-foreground">{title}</h3>
-        {actions && <div className="flex items-center gap-2">{actions}</div>}
-      </div>
-      <Separator className="mt-2" />
-    </div>
-    {children}
-  </div>
-)
 
 const InlineField: React.FC<{
   label: string

@@ -1,10 +1,4 @@
-import {
-  useState,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-} from 'react'
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import {
   Settings,
   Palette,
@@ -16,7 +10,6 @@ import {
   Puzzle,
   FlaskConical,
   Globe,
-  Search,
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
@@ -42,13 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-  CommandList,
-} from '@/components/ui/command'
 import {
   Sidebar,
   SidebarContent,
@@ -77,6 +63,7 @@ import {
   searchPreferenceEntries,
   type PreferenceSearchEntry,
 } from './preferences-search'
+import { PreferencesSearchBar } from './PreferencesSearchBar'
 
 const navigationItems = [
   {
@@ -224,9 +211,8 @@ export function PreferencesDialog() {
   const [searchValue, setSearchValue] = useState('')
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchSelection, setSearchSelection] = useState('')
-  const [pendingJump, setPendingJump] = useState<PreferenceSearchEntry | null>(
-    null
-  )
+  const pendingJumpRef = useRef<PreferenceSearchEntry | null>(null)
+  const [pendingJumpTick, setPendingJumpTick] = useState(0)
   const [searchTargetAction, setSearchTargetAction] =
     useState<KeybindingAction | null>(null)
   const [searchTargetPromptKey, setSearchTargetPromptKey] = useState<
@@ -238,6 +224,7 @@ export function PreferencesDialog() {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const searchContainerRef = useRef<HTMLDivElement>(null)
   const mobileSearchContainerRef = useRef<HTMLDivElement>(null)
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
 
   const searchResults = useMemo(
     () => searchPreferenceEntries(searchValue, 30),
@@ -269,7 +256,7 @@ export function PreferencesDialog() {
   const handlePaneSelect = useCallback(
     (pane: PreferencePane) => {
       resetSearch()
-      setPendingJump(null)
+      pendingJumpRef.current = null
       setSearchTargetAction(null)
       setSearchTargetPromptKey(null)
       setActivePane(pane)
@@ -281,7 +268,8 @@ export function PreferencesDialog() {
     (entry: PreferenceSearchEntry) => {
       setActivePane(entry.pane)
       resetSearch()
-      setPendingJump(entry)
+      pendingJumpRef.current = entry
+      setPendingJumpTick(t => t + 1)
       setSearchTargetAction(entry.keybindingAction ?? null)
       setSearchTargetPromptKey(entry.detailKey ?? null)
     },
@@ -295,7 +283,7 @@ export function PreferencesDialog() {
         setActivePane('general')
         setSearchValue('')
         setSearchOpen(false)
-        setPendingJump(null)
+        pendingJumpRef.current = null
         setSearchTargetAction(null)
         setSearchTargetPromptKey(null)
       }
@@ -312,29 +300,162 @@ export function PreferencesDialog() {
     }
   }, [preferencesOpen, preferencesPane])
 
-  // Scroll-to and highlight on pending jump
+  // Scroll-to and highlight on pending jump. Retries across RAF frames so
+  // newly-mounted panes (especially heavy ones like GeneralPane) have time to
+  // commit DOM. Uses an instant initial jump plus a ResizeObserver on the pane
+  // wrapper to re-anchor while async content (TanStack Query data, CLI status,
+  // auth, preferences) finishes loading and pushes the target down. Observer
+  // stops on any user scroll gesture so we don't fight them.
   useEffect(() => {
-    if (!pendingJump) return
-    if (pendingJump.pane !== activePane) return
+    const jump = pendingJumpRef.current
+    if (!jump) return
+    if (jump.pane !== activePane) return
+    // Clear the ref now so repeated effect runs (e.g. from pane state updates)
+    // don't re-trigger scrolling.
+    pendingJumpRef.current = null
 
-    const raf = window.requestAnimationFrame(() => {
-      const anchorId = pendingJump.anchorId ?? pendingJump.fallbackAnchorId
-      if (!anchorId) return
+    const log = (msg: string, data?: unknown) => {
+      // eslint-disable-next-line no-console
+      console.log(`[pref-scroll] ${msg}`, data ?? '')
+    }
 
-      const target = document.getElementById(anchorId)
-      if (!target) return
-
-      target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-      target.classList.add('settings-search-highlight')
-      const onEnd = () => {
-        target.classList.remove('settings-search-highlight')
-        target.removeEventListener('animationend', onEnd)
-      }
-      target.addEventListener('animationend', onEnd)
+    const anchorId = jump.anchorId ?? jump.fallbackAnchorId
+    log('effect start', {
+      entryId: jump.id,
+      pane: jump.pane,
+      activePane,
+      anchorId,
+      anchorFromEntry: jump.anchorId,
+      fallback: jump.fallbackAnchorId,
     })
-    setPendingJump(null)
-    return () => window.cancelAnimationFrame(raf)
-  }, [activePane, pendingJump])
+    if (!anchorId) {
+      log('no anchorId, bail')
+      return
+    }
+
+    const SCROLL_TOP_PADDING = 16
+    const MAX_ATTEMPTS = 20
+    const REALIGN_WINDOW_MS = 1500
+    let attempts = 0
+    let rafId: number | null = null
+    let cancelled = false
+    let observer: ResizeObserver | null = null
+    let realignTimeout: ReturnType<typeof setTimeout> | null = null
+    let userInterrupted = false
+
+    const performScroll = (
+      target: HTMLElement,
+      container: HTMLElement,
+      tag: string
+    ) => {
+      const containerRect = container.getBoundingClientRect()
+      const targetRect = target.getBoundingClientRect()
+      const offset = targetRect.top - containerRect.top - SCROLL_TOP_PADDING
+      const newTop = container.scrollTop + offset
+      log(`scroll (${tag})`, {
+        containerTop: containerRect.top,
+        containerHeight: container.clientHeight,
+        scrollHeight: container.scrollHeight,
+        scrollTopBefore: container.scrollTop,
+        targetTop: targetRect.top,
+        targetOffsetTop: target.offsetTop,
+        offset,
+        newTop,
+        overflowY: getComputedStyle(container).overflowY,
+      })
+      container.scrollTo({ top: newTop, behavior: 'auto' })
+      window.requestAnimationFrame(() => {
+        log(`scrollTop after (${tag})`, container.scrollTop)
+      })
+    }
+
+    const realign = () => {
+      if (cancelled || userInterrupted) return
+      const target = document.getElementById(anchorId)
+      const container = scrollContainerRef.current
+      if (target && container) performScroll(target, container, 'realign')
+    }
+
+    const stopRealignment = () => {
+      if (userInterrupted) return
+      userInterrupted = true
+      log('stopRealignment')
+      if (observer) {
+        observer.disconnect()
+        observer = null
+      }
+      if (realignTimeout) {
+        clearTimeout(realignTimeout)
+        realignTimeout = null
+      }
+      const container = scrollContainerRef.current
+      if (container) {
+        container.removeEventListener('wheel', stopRealignment)
+        container.removeEventListener('touchstart', stopRealignment)
+        container.removeEventListener('keydown', stopRealignment)
+      }
+    }
+
+    const tryScroll = () => {
+      if (cancelled) return
+      const target = document.getElementById(anchorId)
+      const container = scrollContainerRef.current
+
+      log(`tryScroll attempt ${attempts}`, {
+        targetFound: !!target,
+        containerFound: !!container,
+        targetTagName: target?.tagName,
+        targetClass: target?.className,
+      })
+
+      if (target && container) {
+        performScroll(target, container, 'initial')
+
+        target.classList.add('settings-search-highlight')
+        const onEnd = () => {
+          target.classList.remove('settings-search-highlight')
+          target.removeEventListener('animationend', onEnd)
+        }
+        target.addEventListener('animationend', onEnd)
+
+        const paneWrapper = document.getElementById(`pref-pane-${jump.pane}`)
+        log('pane wrapper', {
+          id: `pref-pane-${jump.pane}`,
+          found: !!paneWrapper,
+        })
+        if (paneWrapper) {
+          observer = new ResizeObserver(() => {
+            log('ResizeObserver fired')
+            realign()
+          })
+          observer.observe(paneWrapper)
+        }
+
+        container.addEventListener('wheel', stopRealignment, { passive: true })
+        container.addEventListener('touchstart', stopRealignment, {
+          passive: true,
+        })
+        container.addEventListener('keydown', stopRealignment)
+
+        realignTimeout = setTimeout(stopRealignment, REALIGN_WINDOW_MS)
+        return
+      }
+
+      if (attempts++ < MAX_ATTEMPTS) {
+        rafId = window.requestAnimationFrame(tryScroll)
+      } else {
+        log('gave up after max attempts', { anchorId })
+      }
+    }
+
+    rafId = window.requestAnimationFrame(tryScroll)
+
+    return () => {
+      cancelled = true
+      if (rafId !== null) window.cancelAnimationFrame(rafId)
+      stopRealignment()
+    }
+  }, [activePane, pendingJumpTick])
 
   // Close search dropdown on click outside
   useEffect(() => {
@@ -487,86 +608,22 @@ export function PreferencesDialog() {
                 </Breadcrumb>
 
                 <div className="ml-auto hidden md:flex items-center gap-2">
-                  {/* Search bar — right side of header */}
-                  <div
-                    ref={searchContainerRef}
-                    className="relative shrink-0"
-                  >
-                    <Command
-                      value={effectiveSearchSelection}
-                      onValueChange={setSearchSelection}
-                      shouldFilter={false}
-                      className="bg-transparent overflow-visible h-auto w-auto"
-                    >
-                      <div className="flex h-8 w-52 items-center gap-2 rounded-md border border-input bg-background px-2.5 text-sm focus-within:ring-1 focus-within:ring-ring focus-within:border-ring transition-colors">
-                        <Search className="size-3.5 shrink-0 text-muted-foreground" />
-                        <input
-                          ref={searchInputRef}
-                          placeholder="Search settings..."
-                          value={searchValue}
-                          onChange={e => {
-                            setSearchValue(e.target.value)
-                            setSearchOpen(true)
-                          }}
-                          onFocus={() => {
-                            if (searchValue.trim()) setSearchOpen(true)
-                          }}
-                          className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground text-sm"
-                        />
-                        {!searchValue && (
-                          <kbd className="pointer-events-none text-[10px] font-mono text-muted-foreground/60">
-                            /
-                          </kbd>
-                        )}
-                      </div>
-
-                      {searchOpen && isSearching && (
-                        <CommandList className="absolute top-full right-0 mt-1.5 w-80 max-h-[360px] overflow-y-auto rounded-lg border border-border bg-popover shadow-lg z-50">
-                          {searchResults.length === 0 ? (
-                            <CommandEmpty>No settings found.</CommandEmpty>
-                          ) : (
-                            groupedResults.map(group => {
-                              const Icon = paneIconMap[group.pane]
-                              return (
-                                <CommandGroup
-                                  key={group.pane}
-                                  heading={
-                                    <span className="flex items-center gap-1.5">
-                                      <Icon className="size-3" />
-                                      {group.title}
-                                    </span>
-                                  }
-                                >
-                                  {group.items.map(result => (
-                                    <CommandItem
-                                      key={result.id}
-                                      value={result.id}
-                                      onSelect={() =>
-                                        handleSearchResultSelect(result)
-                                      }
-                                    >
-                                      <div className="flex min-w-0 flex-1 items-center gap-2">
-                                        <span className="truncate text-sm">
-                                          {result.title}
-                                        </span>
-                                        {result.sectionTitle &&
-                                          result.sectionTitle !==
-                                            result.paneTitle && (
-                                          <span className="text-xs text-muted-foreground truncate">
-                                            {result.sectionTitle}
-                                          </span>
-                                        )}
-                                      </div>
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              )
-                            })
-                          )}
-                        </CommandList>
-                      )}
-                    </Command>
-                  </div>
+                  <PreferencesSearchBar
+                    variant="desktop"
+                    searchValue={searchValue}
+                    onSearchValueChange={setSearchValue}
+                    searchOpen={searchOpen}
+                    onSearchOpenChange={setSearchOpen}
+                    selectedId={effectiveSearchSelection}
+                    onSelectedIdChange={setSearchSelection}
+                    isSearching={isSearching}
+                    searchResults={searchResults}
+                    groupedResults={groupedResults}
+                    paneIconMap={paneIconMap}
+                    onResultSelect={handleSearchResultSelect}
+                    inputRef={searchInputRef}
+                    containerRef={searchContainerRef}
+                  />
 
                   <ModalCloseButton
                     className="relative z-10 shrink-0"
@@ -576,72 +633,25 @@ export function PreferencesDialog() {
               </div>
             </header>
 
-            <div className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 min-h-0 custom-scrollbar">
-              {/* Mobile search bar */}
-              <div
-                ref={mobileSearchContainerRef}
-                className="relative md:hidden"
-              >
-                <Command
-                  value={effectiveSearchSelection}
-                  onValueChange={setSearchSelection}
-                  shouldFilter={false}
-                  className="bg-transparent overflow-visible"
-                >
-                  <div className="flex h-9 w-full items-center gap-2 rounded-md border border-input bg-background px-3 text-sm focus-within:ring-1 focus-within:ring-ring focus-within:border-ring transition-colors">
-                    <Search className="size-3.5 shrink-0 text-muted-foreground" />
-                    <input
-                      placeholder="Search settings..."
-                      value={searchValue}
-                      onChange={e => {
-                        setSearchValue(e.target.value)
-                        setSearchOpen(true)
-                      }}
-                      onFocus={() => {
-                        if (searchValue.trim()) setSearchOpen(true)
-                      }}
-                      className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground text-sm"
-                    />
-                  </div>
-
-                  {searchOpen && isSearching && (
-                    <CommandList className="absolute top-full left-0 right-0 mt-1.5 max-h-[320px] overflow-y-auto rounded-lg border border-border bg-popover shadow-lg z-50">
-                      {searchResults.length === 0 ? (
-                        <CommandEmpty>No settings found.</CommandEmpty>
-                      ) : (
-                        groupedResults.map(group => {
-                          const Icon = paneIconMap[group.pane]
-                          return (
-                            <CommandGroup
-                              key={group.pane}
-                              heading={
-                                <span className="flex items-center gap-1.5">
-                                  <Icon className="size-3" />
-                                  {group.title}
-                                </span>
-                              }
-                            >
-                              {group.items.map(result => (
-                                <CommandItem
-                                  key={result.id}
-                                  value={result.id}
-                                  onSelect={() =>
-                                    handleSearchResultSelect(result)
-                                  }
-                                >
-                                  <span className="truncate text-sm">
-                                    {result.title}
-                                  </span>
-                                </CommandItem>
-                              ))}
-                            </CommandGroup>
-                          )
-                        })
-                      )}
-                    </CommandList>
-                  )}
-                </Command>
-              </div>
+            <div
+              ref={scrollContainerRef}
+              className="flex flex-1 flex-col gap-4 overflow-y-auto p-4 min-h-0 custom-scrollbar"
+            >
+              <PreferencesSearchBar
+                variant="mobile"
+                searchValue={searchValue}
+                onSearchValueChange={setSearchValue}
+                searchOpen={searchOpen}
+                onSearchOpenChange={setSearchOpen}
+                selectedId={effectiveSearchSelection}
+                onSelectedIdChange={setSearchSelection}
+                isSearching={isSearching}
+                searchResults={searchResults}
+                groupedResults={groupedResults}
+                paneIconMap={paneIconMap}
+                onResultSelect={handleSearchResultSelect}
+                containerRef={mobileSearchContainerRef}
+              />
 
               {activePane === 'general' && (
                 <div id="pref-pane-general">

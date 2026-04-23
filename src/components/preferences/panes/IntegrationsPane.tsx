@@ -1,24 +1,10 @@
 import React, { useState } from 'react'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Loader2 } from 'lucide-react'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
-
-const SettingsSection: React.FC<{
-  title: string
-  anchorId?: string
-  children: React.ReactNode
-}> = ({ title, anchorId, children }) => (
-  <div id={anchorId} className="space-y-4">
-    <div>
-      <h3 className="text-lg font-medium text-foreground">{title}</h3>
-      <Separator className="mt-2" />
-    </div>
-    {children}
-  </div>
-)
+import { SettingsSection } from '../SettingsSection'
 
 const InlineField: React.FC<{
   label: string

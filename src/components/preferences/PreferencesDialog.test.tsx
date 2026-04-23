@@ -131,10 +131,9 @@ describe('PreferencesDialog', () => {
       render(<PreferencesDialog />)
 
       const dialog = screen.getByRole('dialog')
-      const mobileSearchInput =
-        dialog.querySelector<HTMLInputElement>(
-          'div.md\\:hidden input[placeholder="Search settings..."]'
-        )
+      const mobileSearchInput = dialog.querySelector<HTMLInputElement>(
+        'div.md\\:hidden input[placeholder="Search settings..."]'
+      )
 
       if (!mobileSearchInput) {
         throw new Error('Expected mobile search input to be rendered')

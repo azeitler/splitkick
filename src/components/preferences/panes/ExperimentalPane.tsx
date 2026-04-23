@@ -7,24 +7,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { Separator } from '@/components/ui/separator'
 import { Switch } from '@/components/ui/switch'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { modelOptions, type ClaudeModel } from '@/types/preferences'
-
-const SettingsSection: React.FC<{
-  title: string
-  anchorId?: string
-  children: React.ReactNode
-}> = ({ title, anchorId, children }) => (
-  <div id={anchorId} className="space-y-4">
-    <div>
-      <h3 className="text-lg font-medium text-foreground">{title}</h3>
-      <Separator className="mt-2" />
-    </div>
-    {children}
-  </div>
-)
+import { SettingsSection } from '../SettingsSection'
 
 const InlineField: React.FC<{
   label: string
