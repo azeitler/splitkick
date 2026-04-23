@@ -4,7 +4,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::mpsc;
 use std::sync::Mutex;
@@ -170,6 +170,100 @@ pub async fn set_git_identity(name: String, email: String) -> Result<(), String>
 pub struct GitIdentity {
     pub name: Option<String>,
     pub email: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DirEntry {
+    pub name: String,
+    pub path: String,
+    pub is_dir: bool,
+    pub is_git_repo: bool,
+    pub is_hidden: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowseDirectoryResult {
+    pub current_path: String,
+    pub parent_path: Option<String>,
+    pub entries: Vec<DirEntry>,
+}
+
+#[tauri::command]
+pub async fn browse_directory(path: Option<String>) -> Result<BrowseDirectoryResult, String> {
+    let requested_path = path
+        .map(PathBuf::from)
+        .or_else(dirs::home_dir)
+        .ok_or_else(|| "No home directory found".to_string())?;
+
+    let current_path = requested_path
+        .canonicalize()
+        .map_err(|e| format!("Failed to access directory: {e}"))?;
+
+    if !current_path.is_dir() {
+        return Err(format!(
+            "Path is not a directory: {}",
+            current_path.display()
+        ));
+    }
+
+    let parent_path = current_path
+        .parent()
+        .map(|parent| parent.display().to_string());
+    let mut entries = Vec::new();
+
+    let read_dir = std::fs::read_dir(&current_path)
+        .map_err(|e| format!("Failed to read directory {}: {e}", current_path.display()))?;
+
+    for entry_result in read_dir {
+        if entries.len() >= 500 {
+            break;
+        }
+
+        let entry = match entry_result {
+            Ok(entry) => entry,
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => continue,
+            Err(error) => return Err(format!("Failed to read directory entry: {error}")),
+        };
+
+        let path = entry.path();
+        let metadata = match entry.metadata() {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Failed to read metadata for {}: {error}",
+                    path.display()
+                ))
+            }
+        };
+
+        if !metadata.is_dir() {
+            continue;
+        }
+
+        let name = entry.file_name().to_string_lossy().to_string();
+        let is_hidden = name.starts_with('.');
+
+        entries.push(DirEntry {
+            name,
+            path: path.display().to_string(),
+            is_dir: true,
+            is_git_repo: path.join(".git").exists(),
+            is_hidden,
+        });
+    }
+
+    entries.sort_by(|a, b| match (a.is_hidden, b.is_hidden) {
+        (false, true) => std::cmp::Ordering::Less,
+        (true, false) => std::cmp::Ordering::Greater,
+        _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
+    });
+
+    Ok(BrowseDirectoryResult {
+        current_path: current_path.display().to_string(),
+        parent_path,
+        entries,
+    })
 }
 
 #[tauri::command]
