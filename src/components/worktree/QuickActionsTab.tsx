@@ -76,7 +76,7 @@ export function QuickActionsTab({
             'border border-border'
           )}
         >
-          <GitBranch className="h-10 w-10 text-muted-foreground" />
+          <GitBranch className="h-10 w-10 shrink-0 text-muted-foreground" />
           <div className="flex flex-col items-center gap-1.5">
             <span className="font-medium text-base">
               {hasBaseSession ? 'Switch to Base Session' : 'New Base Session'}
@@ -98,9 +98,9 @@ export function QuickActionsTab({
           )}
         >
           {isCreating ? (
-            <Loader2 className="h-10 w-10 text-muted-foreground animate-spin" />
+            <Loader2 className="h-10 w-10 shrink-0 text-muted-foreground animate-spin" />
           ) : (
-            <Plus className="h-10 w-10 text-muted-foreground" />
+            <Plus className="h-10 w-10 shrink-0 text-muted-foreground" />
           )}
           <div className="flex flex-col items-center gap-1.5">
             <span className="font-medium text-base">New Worktree</span>
