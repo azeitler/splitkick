@@ -699,6 +699,7 @@ pub fn load_sessions(
                 queued_messages: vec![],
                 total_runs: 0,
                 loaded_run_start_index: 0,
+                scheduled_wakeup: None,
             }
         };
         sessions.push(session);
@@ -792,6 +793,7 @@ where
                 queued_messages: vec![],
                 total_runs: 0,
                 loaded_run_start_index: 0,
+                scheduled_wakeup: None,
             }
         };
         hydrated_sessions.push(session);

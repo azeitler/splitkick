@@ -257,6 +257,44 @@ export interface Session {
   total_runs?: number
   /** Index (in metadata.runs) of the first run included in `messages`. 0 = oldest loaded. */
   loaded_run_start_index?: number
+  /** Pending ScheduleWakeup request (one per session, last-wins) */
+  scheduled_wakeup?: ScheduledWakeup
+}
+
+/**
+ * ScheduleWakeup request originating from the Claude CLI tool.
+ * Serialized with snake_case (persisted data — Pattern A).
+ */
+export interface ScheduledWakeup {
+  fire_at_unix: number
+  scheduled_at_unix: number
+  delay_seconds: number
+  prompt: string
+  reason: string
+  tool_call_id: string
+}
+
+/** Emitted by Rust when a ScheduleWakeup timer fires. */
+export interface WakeupFiredEvent {
+  session_id: string
+  worktree_id: string
+  worktree_path: string
+  prompt: string
+  tool_call_id: string
+}
+
+/** Emitted by Rust when a ScheduleWakeup is newly scheduled (UI countdown). */
+export interface WakeupScheduledEvent {
+  session_id: string
+  worktree_id: string
+  wakeup: ScheduledWakeup
+}
+
+/** Emitted by Rust when a ScheduleWakeup is cancelled. */
+export interface WakeupCancelledEvent {
+  session_id: string
+  worktree_id: string
+  tool_call_id: string | null
 }
 
 /**

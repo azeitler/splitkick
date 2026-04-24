@@ -1144,6 +1144,22 @@ pub fn tail_claude_output(
                                             log::error!("Failed to emit tool_use: {e}");
                                         }
 
+                                        // Register ScheduleWakeup so the stored prompt
+                                        // fires back into this session after delaySeconds.
+                                        if name == "ScheduleWakeup" {
+                                            if let Err(e) = super::wakeup::schedule_from_tool_input(
+                                                app,
+                                                session_id,
+                                                worktree_id,
+                                                &id,
+                                                &input,
+                                            ) {
+                                                log::error!(
+                                                    "ScheduleWakeup schedule failed (session={session_id}): {e}"
+                                                );
+                                            }
+                                        }
+
                                         // Emit tool_block event
                                         let block_event = ToolBlockEvent {
                                             session_id: session_id.to_string(),

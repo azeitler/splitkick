@@ -1039,6 +1039,8 @@ pub async fn restore_session_with_base(
         cached_base_branch_behind_count: None,
         cached_worktree_ahead_count: None,
         cached_unpushed_count: None,
+        pr_push_remote: None,
+        pr_push_branch: None,
         order: 0,
         label: None,
         archived_at: None,
@@ -6080,6 +6082,22 @@ pub async fn clear_message_queue(
     .ok();
 
     Ok(())
+}
+
+/// Cancel the pending ScheduleWakeup for a session (user-initiated).
+#[tauri::command]
+pub async fn cancel_session_wakeup(app: AppHandle, session_id: String) -> Result<bool, String> {
+    let cleared = super::wakeup::cancel(&app, &session_id)?;
+    Ok(cleared.is_some())
+}
+
+/// Fetch the pending ScheduleWakeup for a session (UI hydration).
+#[tauri::command]
+pub async fn get_scheduled_wakeup(
+    app: AppHandle,
+    session_id: String,
+) -> Result<Option<super::types::ScheduledWakeup>, String> {
+    super::wakeup::get_for_session(&app, &session_id)
 }
 
 /// Answer a pending OpenCode question by calling the OpenCode Question.reply API.
