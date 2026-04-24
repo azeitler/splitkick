@@ -13,7 +13,6 @@ import {
   ShieldAlert,
   Sparkles,
   Terminal,
-  Wand2,
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -255,12 +254,6 @@ export function DockBurgerButton({
         className="min-w-[240px]"
         onEscapeKeyDown={e => e.stopPropagation()}
       >
-        <DropdownMenuItem
-          onClick={() => useUIStore.getState().setMagicModalOpen(true)}
-        >
-          <Wand2 className="mr-2 h-4 w-4" />
-          Magic
-        </DropdownMenuItem>
         {onAttach && (
           <DropdownMenuItem onClick={onAttach}>
             <Paperclip className="mr-2 h-4 w-4" />
