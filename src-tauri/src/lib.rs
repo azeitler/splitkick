@@ -3197,6 +3197,7 @@ pub fn run() {
             // Chat commands - ScheduleWakeup support
             chat::cancel_session_wakeup,
             chat::get_scheduled_wakeup,
+            chat::list_pending_wakeups,
             // Chat commands - Image handling
             chat::read_clipboard_image,
             chat::save_pasted_image,

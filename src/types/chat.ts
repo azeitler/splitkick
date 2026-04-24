@@ -66,6 +66,19 @@ export function normalizeExecutionModeForBackend(
 }
 
 /**
+ * A live event attached to a long-running tool call (Monitor notifications, etc.).
+ * Events accumulate as the tool runs; the final tool_result still populates `output`.
+ */
+export interface ToolLiveEvent {
+  /** Event classification emitted by the backend. */
+  kind: 'monitor_event' | 'monitor_status' | 'monitor_done'
+  /** Raw JSON payload — shape depends on `kind`. */
+  payload: unknown
+  /** Unix ms timestamp when the event was received. */
+  ts_ms: number
+}
+
+/**
  * A tool call made by Claude during a response
  */
 export interface ToolCall {
@@ -79,6 +92,10 @@ export interface ToolCall {
   output?: string
   /** Parent tool use ID for sub-agent tool calls (for parallel task attribution) */
   parent_tool_use_id?: string
+  /** Live events streamed during long-running tools (e.g. Monitor). */
+  events?: ToolLiveEvent[]
+  /** Current lifecycle status for long-running tools. */
+  status?: 'armed' | 'running' | 'done' | 'timeout' | 'error'
 }
 
 export interface PlanStep {
@@ -272,6 +289,13 @@ export interface ScheduledWakeup {
   prompt: string
   reason: string
   tool_call_id: string
+}
+
+/** Returned by `list_pending_wakeups` — hydrates the UI store on mount. */
+export interface PendingWakeupEntry {
+  session_id: string
+  worktree_id: string
+  wakeup: ScheduledWakeup
 }
 
 /** Emitted by Rust when a ScheduleWakeup timer fires. */
@@ -484,6 +508,20 @@ export interface ToolResultEvent {
   worktree_id: string // Kept for backward compatibility
   tool_use_id: string
   output: string
+}
+
+/**
+ * Event payload for live tool events (e.g. Monitor notifications).
+ * Unlike tool_result (atomic), tool_event arrives incrementally while a
+ * long-running tool is armed.
+ */
+export interface ToolEventEvent {
+  session_id: string
+  worktree_id: string
+  tool_use_id: string
+  kind: 'monitor_event' | 'monitor_status' | 'monitor_done'
+  payload: unknown
+  ts_ms: number
 }
 
 // ============================================================================

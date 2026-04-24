@@ -6100,6 +6100,13 @@ pub async fn get_scheduled_wakeup(
     super::wakeup::get_for_session(&app, &session_id)
 }
 
+/// List all currently-pending ScheduleWakeup entries across sessions.
+/// Used by the frontend at mount to hydrate the indicator store.
+#[tauri::command]
+pub async fn list_pending_wakeups() -> Result<Vec<super::wakeup::PendingWakeupEntry>, String> {
+    Ok(super::wakeup::list_pending())
+}
+
 /// Answer a pending OpenCode question by calling the OpenCode Question.reply API.
 /// This unblocks the in-flight HTTP POST that is waiting for the question to be answered.
 #[tauri::command]

@@ -346,6 +346,39 @@ pub fn get_for_session(
     Ok(storage::load_metadata(app, session_id)?.and_then(|m| m.scheduled_wakeup))
 }
 
+/// Entry returned by `list_pending`: session context + wakeup payload.
+#[derive(Debug, Clone, Serialize)]
+pub struct PendingWakeupEntry {
+    pub session_id: String,
+    pub worktree_id: String,
+    pub wakeup: ScheduledWakeup,
+}
+
+/// Return all currently-pending wakeups from the in-memory map. Used by the
+/// frontend on mount to hydrate the store so reloads do not leave historical
+/// ScheduleWakeup tool_use blocks stuck in the "pending" spinner state.
+pub fn list_pending() -> Vec<PendingWakeupEntry> {
+    let map = SCHEDULER.lock().unwrap();
+    let mut out = Vec::new();
+    for (fire_at, list) in map.iter() {
+        for e in list {
+            out.push(PendingWakeupEntry {
+                session_id: e.session_id.clone(),
+                worktree_id: e.worktree_id.clone(),
+                wakeup: ScheduledWakeup {
+                    fire_at_unix: *fire_at,
+                    scheduled_at_unix: e.scheduled_at_unix,
+                    delay_seconds: e.delay_seconds,
+                    prompt: e.prompt.clone(),
+                    reason: e.reason.clone(),
+                    tool_call_id: e.tool_call_id.clone(),
+                },
+            });
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

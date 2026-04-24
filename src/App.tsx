@@ -66,6 +66,18 @@ function WebLoadingScreen() {
   )
 }
 
+/** Full-screen overlay shown while the WebSocket reconnects so stale cached data isn't visible. */
+function WsReconnectOverlay() {
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-3">
+        <div className="size-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        <span className="text-sm text-muted-foreground">Reconnecting…</span>
+      </div>
+    </div>
+  )
+}
+
 /** Full-screen auth error overlay for web access mode. */
 function WsAuthErrorOverlay() {
   const authError = useWsAuthError()
@@ -936,6 +948,9 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider>
         <MainWindow />
+        {!isNativeApp() && !isPreloading && !wsDataReady && (
+          <WsReconnectOverlay />
+        )}
         {!isNativeApp() && <WsAuthErrorOverlay />}
       </ThemeProvider>
     </ErrorBoundary>

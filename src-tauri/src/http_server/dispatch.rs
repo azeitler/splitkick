@@ -2076,6 +2076,10 @@ pub async fn dispatch_command(
             let wakeup = crate::chat::get_scheduled_wakeup(app.clone(), session_id).await?;
             to_value(wakeup)
         }
+        "list_pending_wakeups" => {
+            let entries = crate::chat::list_pending_wakeups().await?;
+            to_value(entries)
+        }
 
         // =====================================================================
         // Chat (additional)

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Archive,
   Command,
@@ -86,6 +86,7 @@ export function DockBurgerButton({
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [resumeCommand, setResumeCommand] = useState<string | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
   const activeBackend = (selectedBackend ??
     preferences?.default_backend ??
@@ -147,9 +148,14 @@ export function DockBurgerButton({
     })
   }, [getActiveResumeCommand])
 
-  // Global shortcut — same event the FloatingDock listens to.
+  // Global shortcut — only respond when this instance is the visible variant.
+  // Both desktop + mobile burgers mount; CSS (`hidden`/`@xl:hidden`) hides one.
+  // `offsetParent === null` is true for `display: none`, so the hidden variant skips.
   useEffect(() => {
-    const handler = () => toggleMenu()
+    const handler = () => {
+      if (!triggerRef.current || triggerRef.current.offsetParent === null) return
+      toggleMenu()
+    }
     window.addEventListener('toggle-quick-menu', handler)
     return () => window.removeEventListener('toggle-quick-menu', handler)
   }, [toggleMenu])
@@ -232,6 +238,7 @@ export function DockBurgerButton({
     <DropdownMenu open={menuOpen} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
         <button
+          ref={triggerRef}
           type="button"
           title={`Menu (${menuShortcut})`}
           className={cn(
