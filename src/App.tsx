@@ -5,6 +5,7 @@ import {
   ingestBootstrapEvents,
   invoke,
   useWsConnectionStatus,
+  useWsDataReady,
   setWsDataReady,
   useWsAuthError,
   preloadInitialData,
@@ -448,7 +449,20 @@ function App() {
   // On first connect: invalidate non-preloaded queries.
   // On reconnect: re-fetch bulk data via HTTP to restore everything fast.
   const wsConnected = useWsConnectionStatus()
+  const wsDataReady = useWsDataReady()
   const hadWsConnectionRef = useRef(false)
+
+  // Show a loading toast while reconnecting (browser mode only).
+  // Dismiss once the socket is back AND bulk data has been re-seeded.
+  useEffect(() => {
+    if (isNativeApp()) return
+    if (!wsConnected && hadWsConnectionRef.current) {
+      toast.loading('Reconnecting…', { id: 'ws-reconnect' })
+    } else if (wsConnected && wsDataReady) {
+      toast.dismiss('ws-reconnect')
+    }
+  }, [wsConnected, wsDataReady])
+
   useEffect(() => {
     if (isNativeApp() || !wsConnected) return
 

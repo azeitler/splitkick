@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -52,11 +53,14 @@ interface DockBurgerButtonProps {
   activeMcpCount?: number
   /** Attach-images handler — opens native file picker (see ChatWindow). */
   onAttach?: () => void
+  /** Extra classes merged onto the trigger button (e.g. responsive visibility). */
+  className?: string
 }
 
 export function DockBurgerButton({
   activeMcpCount = 0,
   onAttach,
+  className,
 }: DockBurgerButtonProps = {}) {
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
@@ -230,7 +234,10 @@ export function DockBurgerButton({
         <button
           type="button"
           title={`Menu (${menuShortcut})`}
-          className="flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+          className={cn(
+            'flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground',
+            className
+          )}
         >
           <Menu className="h-3.5 w-3.5" />
         </button>
