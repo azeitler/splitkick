@@ -912,6 +912,7 @@ export function SessionChatModal({
                         variant="ghost"
                         size="sm"
                         className="h-7 px-2 text-xs"
+                        aria-label="Toggle terminal"
                         onClick={() => {
                           useTerminalStore
                             .getState()
@@ -935,6 +936,7 @@ export function SessionChatModal({
                           variant="ghost"
                           size="sm"
                           className="h-7 px-2 text-xs"
+                          aria-label="Run"
                           onClick={handleRun}
                         >
                           <Play
@@ -962,6 +964,7 @@ export function SessionChatModal({
                             variant="ghost"
                             size="sm"
                             className="h-7 rounded-r-none px-2 text-xs"
+                            aria-label="Run first command"
                             onClick={handleRun}
                           >
                             <Play
@@ -986,6 +989,7 @@ export function SessionChatModal({
                             variant="ghost"
                             size="sm"
                             className="h-7 rounded-l-none border-l border-border/50 px-1 text-xs"
+                            aria-label="Choose run command"
                           >
                             <ChevronDown className="h-3 w-3" />
                           </Button>
@@ -1012,6 +1016,7 @@ export function SessionChatModal({
                       variant="ghost"
                       size="sm"
                       className="h-7 w-7 p-0 flex sm:hidden"
+                      aria-label="More actions"
                     >
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
@@ -1070,7 +1075,9 @@ export function SessionChatModal({
                         GitHub
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuSeparator />
+                    {(isNativeApp() || worktree?.branch) && (
+                      <DropdownMenuSeparator />
+                    )}
                     <DropdownMenuItem
                       onSelect={() =>
                         useTerminalStore

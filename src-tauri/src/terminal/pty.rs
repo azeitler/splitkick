@@ -180,7 +180,7 @@ pub fn spawn_terminal(
                         terminal_id: terminal_id_clone.clone(),
                         data,
                     };
-                    if let Err(e) = app_clone.emit_all("terminal:output", &event) {
+                    if let Err(e) = app_clone.emit_all_owned("terminal:output", event) {
                         log::error!("Failed to emit terminal:output event: {e}");
                     }
                 }
