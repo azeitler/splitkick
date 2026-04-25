@@ -416,6 +416,11 @@ export function ChatWindow({
   // navigation, and any other entry that bypasses App.tsx auto-resume.
   useEffect(() => {
     if (!deferredSessionId || !session) return
+    // Skip hydration while THIS client is actively sending — live chat:chunk
+    // rebuilds streaming state incrementally. Injecting a refetched running
+    // snapshot mid-send duplicates the prior assistant bubble (see answer
+    // submission flow in handleQuestionAnswer).
+    if (useChatStore.getState().sendingSessionIds[deferredSessionId]) return
     const lastMsg = session.messages.at(-1)
     if (lastMsg?.role === 'assistant' && lastMsg.id.startsWith('running-')) {
       hydrateRunningSnapshot(deferredSessionId, lastMsg)
