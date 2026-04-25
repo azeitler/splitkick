@@ -1970,7 +1970,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     <div className="relative flex h-full flex-col">
       <div className="flex-1 flex flex-col overflow-auto">
         {/* Header with Search - sticky over content */}
-        <div className="sticky top-0 z-10 relative grid grid-cols-[auto_1fr_auto] items-center gap-4 bg-background/60 backdrop-blur-md px-4 py-2 sm:py-3 border-b border-border/30 sm:min-h-[61px]">
+        <div className="sticky top-0 z-10 relative grid grid-cols-[auto_1fr_auto] items-center gap-4 bg-background/60 px-4 py-2 sm:py-3 border-b border-border/30 sm:min-h-[61px]">
           <div className="flex flex-col shrink-0">
             <div className="flex items-center gap-2">
               <h2 className="truncate text-lg font-semibold">{project.name}</h2>
@@ -2183,7 +2183,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
               {/* Mobile: full-width search overlay */}
               {isMobile && isMobileSearchOpen && (
-                <div className="absolute inset-0 z-20 flex items-center gap-2 bg-background/95 backdrop-blur-md px-4">
+                <div className="absolute inset-0 z-20 flex items-center gap-2 bg-background/95 px-4">
                   <div className="relative flex-1">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input

@@ -1,6 +1,7 @@
 import React, { useCallback, useState } from 'react'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -27,6 +28,7 @@ import {
   type FileEditMode,
 } from '@/types/preferences'
 import { isMacOS } from '@/lib/platform'
+import { invoke } from '@/lib/transport'
 import { SettingsSection } from '../SettingsSection'
 
 const InlineField: React.FC<{
@@ -120,6 +122,19 @@ export const AppearancePane: React.FC = () => {
     [patchPreferences]
   )
 
+  const handleVibrancyChange = useCallback(
+    async (checked: boolean) => {
+      patchPreferences.mutate({ window_vibrancy: checked })
+      try {
+        await invoke('set_window_vibrancy', { enabled: checked })
+      } catch {
+        // Revert on failure
+        patchPreferences.mutate({ window_vibrancy: !checked })
+      }
+    },
+    [patchPreferences]
+  )
+
   return (
     <div className="space-y-6">
       <SettingsSection title="Theme" anchorId="pref-appearance-section-theme">
@@ -197,6 +212,19 @@ export const AppearancePane: React.FC = () => {
               </SelectContent>
             </Select>
           </InlineField>
+
+          {isMacOS && (
+            <InlineField
+              label="Window transparency"
+              description="Translucent window with desktop blur (uses significant GPU)"
+            >
+              <Switch
+                checked={preferences?.window_vibrancy ?? false}
+                onCheckedChange={handleVibrancyChange}
+                disabled={patchPreferences.isPending}
+              />
+            </InlineField>
+          )}
         </div>
       </SettingsSection>
 

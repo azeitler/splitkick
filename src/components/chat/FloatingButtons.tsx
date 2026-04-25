@@ -164,7 +164,7 @@ export const FloatingButtons = memo(function FloatingButtons({
           <button
             type="button"
             onClick={onScrollToFindings}
-            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md backdrop-blur-sm transition-colors hover:bg-muted hover:text-foreground"
+            className="flex h-8 items-center gap-1.5 rounded-lg bg-muted/90 px-3 text-sm text-muted-foreground shadow-md transition-colors hover:bg-muted hover:text-foreground"
           >
             <AlertCircle className="h-3.5 w-3.5" />
             <span>Findings</span>

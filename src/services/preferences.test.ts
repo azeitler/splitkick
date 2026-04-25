@@ -162,6 +162,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -289,6 +290,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -389,6 +391,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithDeprecatedFastModel)
 
@@ -489,6 +492,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -591,6 +595,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -693,6 +698,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -793,6 +799,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

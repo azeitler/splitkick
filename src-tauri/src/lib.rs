@@ -236,6 +236,8 @@ pub struct AppPreferences {
     pub gh_cli_source: String, // GitHub CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default)]
     pub expand_tool_calls_by_default: bool, // Expand all tool call collapsibles by default (default: false)
+    #[serde(default)]
+    pub window_vibrancy: bool, // macOS window vibrancy effect (high GPU cost, default false)
 }
 
 fn default_true() -> Option<bool> {
@@ -1471,6 +1473,7 @@ impl Default for AppPreferences {
             opencode_cli_source: default_cli_source(),
             gh_cli_source: default_cli_source(),
             expand_tool_calls_by_default: false,
+            window_vibrancy: false,
         }
     }
 }
@@ -1803,6 +1806,35 @@ async fn patch_preferences(app: AppHandle, patch: Value) -> Result<(), String> {
     let merged: AppPreferences =
         serde_json::from_value(current_json).map_err(|e| format!("Merge error: {e}"))?;
     save_preferences(app, merged).await
+}
+
+#[tauri::command]
+async fn set_window_vibrancy(app: AppHandle, enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::window::Effect;
+        if let Some(window) = app.get_webview_window("main") {
+            if enabled {
+                window
+                    .set_effects(tauri::utils::config::WindowEffectsConfig {
+                        effects: vec![Effect::Sidebar],
+                        radius: Some(12.0),
+                        state: Some(tauri::window::EffectState::Active),
+                        color: None,
+                    })
+                    .map_err(|e| format!("Failed to set vibrancy: {e}"))?;
+            } else {
+                window
+                    .set_effects(None)
+                    .map_err(|e| format!("Failed to clear vibrancy: {e}"))?;
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, enabled);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -2783,6 +2815,33 @@ pub fn run() {
 
             log::info!("Startup: projects loaded + asset scopes registered at {:?}", setup_start.elapsed());
 
+            // Apply window vibrancy from saved preferences (macOS only)
+            #[cfg(target_os = "macos")]
+            if !headless {
+                let vibrancy_handle = app.handle().clone();
+                let prefs_path = get_preferences_path(&vibrancy_handle);
+                if let Ok(prefs_path) = prefs_path {
+                    if prefs_path.exists() {
+                        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
+                            if let Ok(prefs) = serde_json::from_str::<AppPreferences>(&contents) {
+                                if prefs.window_vibrancy {
+                                    if let Some(window) = vibrancy_handle.get_webview_window("main") {
+                                        use tauri::window::Effect;
+                                        let _ = window.set_effects(tauri::utils::config::WindowEffectsConfig {
+                                            effects: vec![Effect::Sidebar],
+                                            radius: Some(12.0),
+                                            state: Some(tauri::window::EffectState::Active),
+                                            color: None,
+                                        });
+                                        log::info!("Applied window vibrancy from saved preferences");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // NOTE: Run recovery (crash recovery) is handled by check_resumable_sessions
             // which the frontend calls once it's ready. Previously this was done here in
             // setup(), but that caused a double-invocation bug: the second call from the
@@ -2979,6 +3038,7 @@ pub fn run() {
             load_preferences,
             save_preferences,
             patch_preferences,
+            set_window_vibrancy,
             save_cli_profile,
             delete_cli_profile,
             load_ui_state,

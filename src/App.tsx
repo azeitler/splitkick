@@ -85,7 +85,7 @@ function WsAuthErrorOverlay() {
   if (!authError) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90">
       <div className="mx-4 max-w-md rounded-lg border border-destructive/50 bg-background p-6 shadow-lg">
         <div className="flex items-center gap-2 text-destructive">
           <svg
@@ -545,6 +545,20 @@ function App() {
   useEffect(() => {
     if (isNativeApp()) {
       document.body.classList.add('native-app')
+    }
+  }, [])
+
+  // Pause animations when window loses focus to save GPU
+  useEffect(() => {
+    const onBlur = () =>
+      document.documentElement.classList.add('window-blurred')
+    const onFocus = () =>
+      document.documentElement.classList.remove('window-blurred')
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocus)
     }
   }, [])
 
