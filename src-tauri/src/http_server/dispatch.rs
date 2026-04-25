@@ -1083,6 +1083,7 @@ pub async fn dispatch_command(
             let pr_url: Option<String> = field_opt(&args, "prUrl", "pr_url")?;
             let state = app.state::<crate::background_tasks::BackgroundTaskManager>();
             crate::background_tasks::commands::set_active_worktree_for_polling(
+                app.clone(),
                 state,
                 worktree_id,
                 worktree_path,
@@ -2079,6 +2080,20 @@ pub async fn dispatch_command(
             .await?;
             Ok(Value::Null)
         }
+        "cancel_session_wakeup" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let cleared = crate::chat::cancel_session_wakeup(app.clone(), session_id).await?;
+            to_value(cleared)
+        }
+        "get_scheduled_wakeup" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let wakeup = crate::chat::get_scheduled_wakeup(app.clone(), session_id).await?;
+            to_value(wakeup)
+        }
+        "list_pending_wakeups" => {
+            let entries = crate::chat::list_pending_wakeups().await?;
+            to_value(entries)
+        }
 
         // =====================================================================
         // Chat (additional)
@@ -2457,13 +2472,21 @@ pub async fn dispatch_command(
         "set_all_worktrees_for_polling" => {
             let worktrees = from_field(&args, "worktrees")?;
             let state = app.state::<crate::background_tasks::BackgroundTaskManager>();
-            crate::background_tasks::commands::set_all_worktrees_for_polling(state, worktrees)?;
+            crate::background_tasks::commands::set_all_worktrees_for_polling(
+                app.clone(),
+                state,
+                worktrees,
+            )?;
             Ok(Value::Null)
         }
         "set_pr_worktrees_for_polling" => {
             let worktrees = from_field(&args, "worktrees")?;
             let state = app.state::<crate::background_tasks::BackgroundTaskManager>();
-            crate::background_tasks::commands::set_pr_worktrees_for_polling(state, worktrees)?;
+            crate::background_tasks::commands::set_pr_worktrees_for_polling(
+                app.clone(),
+                state,
+                worktrees,
+            )?;
             Ok(Value::Null)
         }
 
