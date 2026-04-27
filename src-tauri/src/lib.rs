@@ -1808,6 +1808,32 @@ async fn patch_preferences(app: AppHandle, patch: Value) -> Result<(), String> {
     save_preferences(app, merged).await
 }
 
+#[cfg(target_os = "macos")]
+fn apply_macos_window_opacity(window: &tauri::WebviewWindow, opaque: bool) -> Result<(), String> {
+    use objc2_app_kit::{NSColor, NSWindow};
+
+    let ns_window_ptr = window
+        .ns_window()
+        .map_err(|e| format!("ns_window: {e}"))?;
+    if ns_window_ptr.is_null() {
+        return Err("ns_window pointer is null".into());
+    }
+    let ptr_addr = ns_window_ptr as usize;
+
+    window
+        .run_on_main_thread(move || unsafe {
+            let ns_window: &NSWindow = &*(ptr_addr as *const NSWindow);
+            ns_window.setOpaque(opaque);
+            let bg = if opaque {
+                NSColor::windowBackgroundColor()
+            } else {
+                NSColor::clearColor()
+            };
+            ns_window.setBackgroundColor(Some(&bg));
+        })
+        .map_err(|e| format!("run_on_main_thread: {e}"))
+}
+
 #[tauri::command]
 async fn set_window_vibrancy(app: AppHandle, enabled: bool) -> Result<(), String> {
     #[cfg(target_os = "macos")]
@@ -1815,6 +1841,8 @@ async fn set_window_vibrancy(app: AppHandle, enabled: bool) -> Result<(), String
         use tauri::window::Effect;
         if let Some(window) = app.get_webview_window("main") {
             if enabled {
+                // Window must be transparent for the vibrancy effect to be visible.
+                apply_macos_window_opacity(&window, false)?;
                 window
                     .set_effects(tauri::utils::config::WindowEffectsConfig {
                         effects: vec![Effect::Sidebar],
@@ -1827,6 +1855,9 @@ async fn set_window_vibrancy(app: AppHandle, enabled: bool) -> Result<(), String
                 window
                     .set_effects(None)
                     .map_err(|e| format!("Failed to clear vibrancy: {e}"))?;
+                // Make the window opaque so the compositor stops blending the
+                // transparent backing layer (huge WindowServer GPU win).
+                apply_macos_window_opacity(&window, true)?;
             }
         }
     }
@@ -2815,29 +2846,38 @@ pub fn run() {
 
             log::info!("Startup: projects loaded + asset scopes registered at {:?}", setup_start.elapsed());
 
-            // Apply window vibrancy from saved preferences (macOS only)
+            // Apply window vibrancy / opacity from saved preferences (macOS only).
+            // The bundled tauri.conf.json sets `transparent: true` so vibrancy is
+            // possible at runtime, but the default preference is opaque. Without
+            // this branch the compositor would keep blending a transparent
+            // backing layer for every user that hasn't enabled vibrancy.
             #[cfg(target_os = "macos")]
             if !headless {
                 let vibrancy_handle = app.handle().clone();
-                let prefs_path = get_preferences_path(&vibrancy_handle);
-                if let Ok(prefs_path) = prefs_path {
+                let mut want_vibrancy = false;
+                if let Ok(prefs_path) = get_preferences_path(&vibrancy_handle) {
                     if prefs_path.exists() {
                         if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
                             if let Ok(prefs) = serde_json::from_str::<AppPreferences>(&contents) {
-                                if prefs.window_vibrancy {
-                                    if let Some(window) = vibrancy_handle.get_webview_window("main") {
-                                        use tauri::window::Effect;
-                                        let _ = window.set_effects(tauri::utils::config::WindowEffectsConfig {
-                                            effects: vec![Effect::Sidebar],
-                                            radius: Some(12.0),
-                                            state: Some(tauri::window::EffectState::Active),
-                                            color: None,
-                                        });
-                                        log::info!("Applied window vibrancy from saved preferences");
-                                    }
-                                }
+                                want_vibrancy = prefs.window_vibrancy;
                             }
                         }
+                    }
+                }
+                if let Some(window) = vibrancy_handle.get_webview_window("main") {
+                    if want_vibrancy {
+                        use tauri::window::Effect;
+                        let _ = apply_macos_window_opacity(&window, false);
+                        let _ = window.set_effects(tauri::utils::config::WindowEffectsConfig {
+                            effects: vec![Effect::Sidebar],
+                            radius: Some(12.0),
+                            state: Some(tauri::window::EffectState::Active),
+                            color: None,
+                        });
+                        log::info!("Applied window vibrancy from saved preferences");
+                    } else {
+                        let _ = apply_macos_window_opacity(&window, true);
+                        log::info!("Window opaque (vibrancy disabled in preferences)");
                     }
                 }
             }

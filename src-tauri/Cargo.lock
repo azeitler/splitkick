@@ -2496,6 +2496,7 @@ dependencies = [
  "image",
  "libc",
  "log",
+ "objc2-app-kit",
  "once_cell",
  "portable-pty",
  "rand 0.8.5",

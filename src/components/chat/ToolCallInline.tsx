@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useRef, useCallback } from 'react'
+import { useTickRef } from '@/hooks/useTickRef'
 import { usePreferences } from '@/services/preferences'
 import { useChatStore } from '@/store/chat-store'
 import {
@@ -693,16 +694,22 @@ function formatWakeupDelay(seconds: number): string {
   return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`
 }
 
-/** Live-ticking remaining seconds for a pending ScheduleWakeup. */
-function useWakeupRemaining(fireAtUnix: number | undefined): number | null {
-  const [, setTick] = useState(0)
-  useEffect(() => {
-    if (!fireAtUnix) return
-    const id = setInterval(() => setTick(t => t + 1), 1000)
-    return () => clearInterval(id)
+/** Live countdown text for a pending ScheduleWakeup — mutates DOM directly, no re-renders. */
+function WakeupCountdownText({ fireAtUnix }: { fireAtUnix: number }) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const onTick = useCallback(() => {
+    if (!ref.current) return
+    const remaining = Math.max(0, fireAtUnix - Math.floor(Date.now() / 1000))
+    ref.current.textContent =
+      remaining <= 0 ? 'firing…' : `fires in ${formatWakeupDelay(remaining)}`
   }, [fireAtUnix])
-  if (!fireAtUnix) return null
-  return Math.max(0, fireAtUnix - Math.floor(Date.now() / 1000))
+  useTickRef(onTick)
+  const initial = Math.max(0, fireAtUnix - Math.floor(Date.now() / 1000))
+  return (
+    <span ref={ref}>
+      {initial <= 0 ? 'firing…' : `fires in ${formatWakeupDelay(initial)}`}
+    </span>
+  )
 }
 
 interface ScheduleWakeupIndicatorProps {
@@ -734,13 +741,11 @@ function ScheduleWakeupIcon({ toolCallId }: ScheduleWakeupIndicatorProps) {
 /** Collapsed-row detail text that live-ticks until fire_at_unix. */
 function ScheduleWakeupCountdown({ toolCallId }: ScheduleWakeupIndicatorProps) {
   const entry = useChatStore(state => state.scheduledWakeups[toolCallId])
-  const remaining = useWakeupRemaining(entry?.fire_at_unix)
   const status = entry?.status ?? 'fired'
   if (status === 'cancelled') return <span>cancelled</span>
   if (status === 'pending') {
-    if (remaining === null) return null
-    if (remaining <= 0) return <span>firing…</span>
-    return <span>fires in {formatWakeupDelay(remaining)}</span>
+    if (!entry?.fire_at_unix) return null
+    return <WakeupCountdownText fireAtUnix={entry.fire_at_unix} />
   }
   return <span>fired</span>
 }

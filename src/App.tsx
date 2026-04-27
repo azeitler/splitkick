@@ -69,7 +69,7 @@ function WebLoadingScreen() {
 /** Full-screen overlay shown while the WebSocket reconnects so stale cached data isn't visible. */
 function WsReconnectOverlay() {
   return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/95">
       <div className="flex flex-col items-center gap-3">
         <div className="size-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
         <span className="text-sm text-muted-foreground">Reconnecting…</span>
