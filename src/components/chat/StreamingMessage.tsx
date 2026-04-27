@@ -42,8 +42,6 @@ interface StreamingMessageProps {
   onQuestionSkip: (toolCallId: string) => void
   /** Callback when user clicks a file path */
   onFileClick: (path: string) => void
-  /** Callback when user clicks an edited file badge (opens diff modal) */
-  onEditedFileClick: (path: string) => void
   /** Check if a question has been answered */
   isQuestionAnswered: (sessionId: string, toolCallId: string) => boolean
   /** Get submitted answers for a question */
@@ -67,7 +65,6 @@ export const StreamingMessage = memo(function StreamingMessage({
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
-  onEditedFileClick,
   isQuestionAnswered,
   getSubmittedAnswers,
   areQuestionsSkipped,
@@ -372,10 +369,7 @@ export const StreamingMessage = memo(function StreamingMessage({
       )}
 
       {/* Show edited files during streaming */}
-      <EditedFilesDisplay
-        toolCalls={toolCalls}
-        onFileClick={onEditedFileClick}
-      />
+      <EditedFilesDisplay toolCalls={toolCalls} />
     </div>
   )
 })

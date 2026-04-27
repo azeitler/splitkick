@@ -56,6 +56,8 @@ import { MessageSettingsBadges } from '@/components/chat/MessageSettingsBadges'
 interface MessageItemProps {
   /** The message to render */
   message: ChatMessage
+  /** All messages in the session (for computing subsequent edits) */
+  allMessages?: ChatMessage[]
   /** Index of this message in the message list */
   messageIndex: number
   /** Total number of messages (to determine if this is the last message) */
@@ -102,8 +104,6 @@ interface MessageItemProps {
   onQuestionSkip: (toolCallId: string) => void
   /** Callback when user clicks a file path */
   onFileClick: (path: string) => void
-  /** Callback when user clicks an edited file badge (opens diff modal) */
-  onEditedFileClick: (path: string) => void
   /** Callback when user fixes a finding */
   onFixFinding: (finding: ReviewFinding, suggestion?: string) => Promise<void>
   /** Callback when user fixes all findings */
@@ -135,6 +135,7 @@ interface MessageItemProps {
  */
 export const MessageItem = memo(function MessageItem({
   message,
+  allMessages,
   messageIndex,
   totalMessages,
   lastPlanMessageIndex,
@@ -156,7 +157,6 @@ export const MessageItem = memo(function MessageItem({
   onQuestionAnswer,
   onQuestionSkip,
   onFileClick,
-  onEditedFileClick,
   onFixFinding,
   onFixAllFindings,
   isQuestionAnswered,
@@ -734,7 +734,9 @@ export const MessageItem = memo(function MessageItem({
         !skipToolCalls && (
           <EditedFilesDisplay
             toolCalls={message.tool_calls}
-            onFileClick={onEditedFileClick}
+            worktreePath={worktreePath}
+            allMessages={allMessages}
+            messageIndex={messageIndex}
           />
         )}
 

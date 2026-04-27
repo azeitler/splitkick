@@ -148,8 +148,6 @@ import type {
   WorktreeSessions,
 } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
-import { FileDiffModal } from './FileDiffModal'
-
 // Lazy-loaded heavy modals (code splitting)
 const GitDiffModal = lazy(() =>
   import('./GitDiffModal').then(mod => ({ default: mod.GitDiffModal }))
@@ -969,9 +967,6 @@ export function ChatWindow({
     useUIStore.getState().setGitDiffModalOpen(!!diffRequest)
     return () => useUIStore.getState().setGitDiffModalOpen(false)
   }, [diffRequest])
-
-  // State for single file diff modal (opened by clicking edited file badges)
-  const [editedFilePath, setEditedFilePath] = useState<string | null>(null)
 
   // Active todos and agents from streaming/persisted tool calls (with dismissal tracking)
   const {
@@ -2420,7 +2415,6 @@ export function ChatWindow({
                                   onQuestionAnswer={handleQuestionAnswer}
                                   onQuestionSkip={handleSkipQuestion}
                                   onFileClick={setViewingFilePath}
-                                  onEditedFileClick={setViewingFilePath}
                                   onFixFinding={handleFixFinding}
                                   onFixAllFindings={handleFixAllFindings}
                                   isQuestionAnswered={isQuestionAnswered}
@@ -2456,7 +2450,6 @@ export function ChatWindow({
                                     onQuestionAnswer={handleQuestionAnswer}
                                     onQuestionSkip={handleSkipQuestion}
                                     onFileClick={setViewingFilePath}
-                                    onEditedFileClick={setViewingFilePath}
                                     isQuestionAnswered={isQuestionAnswered}
                                     getSubmittedAnswers={getSubmittedAnswers}
                                     areQuestionsSkipped={areQuestionsSkipped}
@@ -2994,13 +2987,6 @@ export function ChatWindow({
             branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
           />
         </Suspense>
-
-        {/* Single file diff modal for viewing edited file changes */}
-        <FileDiffModal
-          filePath={editedFilePath}
-          worktreePath={activeWorktreePath ?? ''}
-          onClose={() => setEditedFilePath(null)}
-        />
 
         {/* Load Context modal for selecting saved contexts */}
         <Suspense fallback={null}>

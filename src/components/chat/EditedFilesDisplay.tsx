@@ -1,5 +1,6 @@
-import { memo } from 'react'
-import type { ToolCall } from '@/types/chat'
+import { memo, useMemo, useState } from 'react'
+import { diffLines } from 'diff'
+import type { ToolCall, ChatMessage } from '@/types/chat'
 import { Badge } from '@/components/ui/badge'
 import { getFilename } from '@/lib/path-utils'
 import {
@@ -7,11 +8,12 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
+import { MessageDiffModal } from './MessageDiffModal'
+import type { EditTool } from './MessageDiffModal'
 
-/** Type guard to check if a tool call is Edit */
 function isEditTool(
   toolCall: ToolCall
-): toolCall is ToolCall & { input: { file_path: string } } {
+): toolCall is ToolCall & { input: EditTool['input'] } {
   return (
     toolCall.name === 'Edit' &&
     typeof toolCall.input === 'object' &&
@@ -20,30 +22,80 @@ function isEditTool(
   )
 }
 
-interface EditedFilesDisplayProps {
-  toolCalls: ToolCall[] | undefined
-  onFileClick: (path: string) => void
+function computeEditStats(
+  oldStr: string | undefined,
+  newStr: string | undefined
+): { additions: number; deletions: number } {
+  const changes = diffLines(oldStr ?? '', newStr ?? '')
+  let additions = 0
+  let deletions = 0
+  for (const part of changes) {
+    const count = part.count ?? 0
+    if (part.added) additions += count
+    else if (part.removed) deletions += count
+  }
+  return { additions, deletions }
 }
 
-/**
- * Display edited files at the bottom of assistant messages
- * Collects all Edit tool calls and shows unique file paths
- * Clicking a file opens it in the file content modal
- * Memoized to prevent re-renders when parent state changes
- */
+interface EditedFilesDisplayProps {
+  toolCalls: ToolCall[] | undefined
+  worktreePath?: string
+  allMessages?: ChatMessage[]
+  messageIndex?: number
+}
+
 export const EditedFilesDisplay = memo(function EditedFilesDisplay({
   toolCalls,
-  onFileClick,
+  worktreePath,
+  allMessages,
+  messageIndex,
 }: EditedFilesDisplayProps) {
-  if (!toolCalls) return null
+  const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
 
-  const editTools = toolCalls.filter(isEditTool)
-  if (editTools.length === 0) return null
-
-  // Deduplicate by file path
-  const uniqueFilePaths = Array.from(
-    new Set(editTools.map(t => t.input.file_path))
+  const editTools = useMemo(
+    () => (toolCalls ?? []).filter(isEditTool),
+    [toolCalls]
   )
+
+  const uniqueFilePaths = useMemo(
+    () => Array.from(new Set(editTools.map(t => t.input.file_path))),
+    [editTools]
+  )
+
+  const fileStats = useMemo(() => {
+    const map = new Map<string, { additions: number; deletions: number }>()
+    for (const tool of editTools) {
+      const prev = map.get(tool.input.file_path) ?? {
+        additions: 0,
+        deletions: 0,
+      }
+      const delta = computeEditStats(tool.input.old_string, tool.input.new_string)
+      map.set(tool.input.file_path, {
+        additions: prev.additions + delta.additions,
+        deletions: prev.deletions + delta.deletions,
+      })
+    }
+    return map
+  }, [editTools])
+
+  const selectedEdits = useMemo(
+    () =>
+      selectedFilePath
+        ? editTools.filter(t => t.input.file_path === selectedFilePath)
+        : [],
+    [editTools, selectedFilePath]
+  )
+
+  // All Edit tool calls on selectedFilePath from messages AFTER this one
+  const subsequentEdits = useMemo(() => {
+    if (!selectedFilePath || !allMessages || messageIndex == null) return []
+    return allMessages
+      .slice(messageIndex + 1)
+      .flatMap(msg => (msg.tool_calls ?? []).filter(isEditTool))
+      .filter(t => t.input.file_path === selectedFilePath)
+  }, [selectedFilePath, allMessages, messageIndex])
+
+  if (editTools.length === 0) return null
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground/70">
@@ -51,20 +103,42 @@ export const EditedFilesDisplay = memo(function EditedFilesDisplay({
         Edited {uniqueFilePaths.length} file
         {uniqueFilePaths.length === 1 ? '' : 's'}:
       </span>
-      {uniqueFilePaths.map(filePath => (
-        <Tooltip key={filePath}>
-          <TooltipTrigger asChild>
-            <Badge
-              variant="outline"
-              className="cursor-pointer"
-              onClick={() => onFileClick(filePath)}
-            >
-              {getFilename(filePath)}
-            </Badge>
-          </TooltipTrigger>
-          <TooltipContent>{filePath}</TooltipContent>
-        </Tooltip>
-      ))}
+
+      {uniqueFilePaths.map(filePath => {
+        const stats = fileStats.get(filePath)
+        return (
+          <Tooltip key={filePath}>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className="cursor-pointer gap-1.5"
+                onClick={() => setSelectedFilePath(filePath)}
+              >
+                {getFilename(filePath)}
+                {stats && (stats.additions > 0 || stats.deletions > 0) && (
+                  <span className="flex items-center font-mono text-xs opacity-80">
+                    <span className="text-green-500">+{stats.additions}</span>
+                    <span className="text-muted-foreground mx-0.5">/</span>
+                    <span className="text-red-500">-{stats.deletions}</span>
+                  </span>
+                )}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>{filePath}</TooltipContent>
+          </Tooltip>
+        )
+      })}
+
+      {selectedFilePath && (
+        <MessageDiffModal
+          isOpen={true}
+          onClose={() => setSelectedFilePath(null)}
+          filePath={selectedFilePath}
+          edits={selectedEdits}
+          subsequentEdits={subsequentEdits}
+          worktreePath={worktreePath}
+        />
+      )}
     </div>
   )
 })
