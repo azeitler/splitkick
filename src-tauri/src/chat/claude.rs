@@ -358,6 +358,13 @@ fn build_claude_args(
     args.push("--permission-mode".to_string());
     args.push(perm_mode.to_string());
 
+    // In build/yolo, remove ExitPlanMode entirely so Claude can't loop back
+    // into plan-approval after the user already approved one.
+    if matches!(execution_mode.unwrap_or("plan"), "build" | "yolo") {
+        args.push("--disallowedTools".to_string());
+        args.push("ExitPlanMode".to_string());
+    }
+
     // Custom profile settings: resolve name → file path, pass to --settings (secrets stay in file, not in ps)
     if let Some(name) = custom_profile_name {
         if !name.is_empty() {

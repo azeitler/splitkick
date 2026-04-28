@@ -2884,42 +2884,43 @@ export function ChatWindow({
                           {!terminalPanelOpen &&
                             (activeTodos.length > 0 ||
                               activeAgents.length > 0) && (
-                            <div className="hidden xl:flex flex-col gap-2 absolute left-full bottom-0 ml-3 w-64 z-20">
-                              {activeTodos.length > 0 &&
-                                (dismissedTodoMessageId === null ||
-                                  (todoSourceMessageId !== null &&
-                                    todoSourceMessageId !==
-                                      dismissedTodoMessageId)) && (
-                                  <TodoWidget
-                                    todos={normalizeTodosForDisplay(
-                                      activeTodos,
-                                      isFromStreaming
-                                    )}
-                                    isStreaming={isSending}
-                                    onClose={() =>
-                                      setDismissedTodoMessageId(
-                                        todoSourceMessageId ?? '__streaming__'
-                                      )
-                                    }
-                                  />
-                                )}
-                              {activeAgents.length > 0 &&
-                                (dismissedAgentMessageId === null ||
-                                  (agentSourceMessageId !== null &&
-                                    agentSourceMessageId !==
-                                      dismissedAgentMessageId)) && (
-                                  <AgentWidget
-                                    agents={activeAgents}
-                                    isStreaming={agentIsFromStreaming}
-                                    onClose={() =>
-                                      setDismissedAgentMessageId(
-                                        agentSourceMessageId ?? '__streaming__'
-                                      )
-                                    }
-                                  />
-                                )}
-                            </div>
-                          )}
+                              <div className="hidden xl:flex flex-col gap-2 absolute left-full bottom-0 ml-3 w-64 z-20">
+                                {activeTodos.length > 0 &&
+                                  (dismissedTodoMessageId === null ||
+                                    (todoSourceMessageId !== null &&
+                                      todoSourceMessageId !==
+                                        dismissedTodoMessageId)) && (
+                                    <TodoWidget
+                                      todos={normalizeTodosForDisplay(
+                                        activeTodos,
+                                        isFromStreaming
+                                      )}
+                                      isStreaming={isSending}
+                                      onClose={() =>
+                                        setDismissedTodoMessageId(
+                                          todoSourceMessageId ?? '__streaming__'
+                                        )
+                                      }
+                                    />
+                                  )}
+                                {activeAgents.length > 0 &&
+                                  (dismissedAgentMessageId === null ||
+                                    (agentSourceMessageId !== null &&
+                                      agentSourceMessageId !==
+                                        dismissedAgentMessageId)) && (
+                                    <AgentWidget
+                                      agents={activeAgents}
+                                      isStreaming={agentIsFromStreaming}
+                                      onClose={() =>
+                                        setDismissedAgentMessageId(
+                                          agentSourceMessageId ??
+                                            '__streaming__'
+                                        )
+                                      }
+                                    />
+                                  )}
+                              </div>
+                            )}
                         </div>
                       </div>
                     </div>

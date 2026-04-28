@@ -23,6 +23,7 @@ import {
   Sparkles,
   Tag,
   Terminal,
+  Globe,
   Play,
   Plus,
   Trash2,
@@ -45,6 +46,7 @@ import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { useChatStore } from '@/store/chat-store'
 import { useTerminalStore } from '@/store/terminal-store'
+import { useBrowserStore } from '@/store/browser-store'
 import { useUIStore } from '@/store/ui-store'
 import {
   useSessions,
@@ -69,6 +71,7 @@ import { copyToClipboard } from '@/lib/clipboard'
 import { toast } from 'sonner'
 import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
+import { ModalBrowserDrawer } from '@/components/browser/ModalBrowserDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { DevToolsDropdown } from './DevToolsDropdown'
 import {
@@ -252,6 +255,8 @@ export function SessionChatModal({
   const modalTerminalDockMode = useTerminalStore(
     state => state.modalTerminalDockMode
   )
+  const hasBottomTerminal =
+    isModalTerminalOpen && modalTerminalDockMode === 'bottom'
   const hasRunningTerminal = useTerminalStore(state => {
     const terminals = state.terminals[worktreeId] ?? []
     return terminals.some(t => state.runningTerminals.has(t.id))
@@ -755,12 +760,15 @@ export function SessionChatModal({
         const terminalAncestor = target?.closest?.(
           '[data-terminal-root="true"]'
         )
-        const { planDialogOpen, gitDiffModalOpen } = useUIStore.getState()
+        const { planDialogOpen, gitDiffModalOpen, contextViewerOpen } =
+          useUIStore.getState()
 
         // Don't close if PlanDialog is open — let it handle ESC
         if (planDialogOpen) return
         // Don't close if GitDiffModal is open — let it handle ESC
         if (gitDiffModalOpen) return
+        // Don't close if ContextViewerDialog is open — let it handle ESC
+        if (contextViewerOpen) return
         // Don't close if CloseWorktreeDialog is open — let it handle ESC
         if (closeConfirmOpen) return
         // Don't close if ESC originated inside a child dialog/sheet portal
@@ -785,7 +793,7 @@ export function SessionChatModal({
         className={cn(
           'absolute inset-0 z-10 flex min-w-0 overflow-hidden bg-background pt-[3px]',
           !isMobile && 'pb-2',
-          modalTerminalDockMode === 'bottom' ? 'flex-col' : 'flex-row'
+          hasBottomTerminal ? 'flex-col' : 'flex-row'
         )}
         style={
           isMobile
@@ -812,6 +820,7 @@ export function SessionChatModal({
             dockMode="left"
           />
         )}
+        <ModalBrowserDrawer worktreeId={worktreeId} dockMode="left" />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="shrink-0 border-b sm:text-left">
             <div
@@ -929,6 +938,24 @@ export function SessionChatModal({
                       </kbd>
                     </TooltipContent>
                   </Tooltip>
+                  {isNativeApp() && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-xs"
+                          aria-label="Toggle browser"
+                          onClick={() => {
+                            useBrowserStore.getState().toggleModal(worktreeId)
+                          }}
+                        >
+                          <Globe className="h-3 w-3" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Browser</TooltipContent>
+                    </Tooltip>
+                  )}
                   {runScripts.length === 1 && (
                     <Tooltip>
                       <TooltipTrigger asChild>
@@ -1431,6 +1458,9 @@ export function SessionChatModal({
               />
             )}
           </div>
+          {/* Browser bottom drawer mounts inside center column (flex-col) so
+              it pins below chat area without breaking outer flex-row siblings. */}
+          <ModalBrowserDrawer worktreeId={worktreeId} dockMode="bottom" />
         </div>
 
         {isModalTerminalOpen && modalTerminalDockMode === 'right' && (
@@ -1440,6 +1470,7 @@ export function SessionChatModal({
             dockMode="right"
           />
         )}
+        <ModalBrowserDrawer worktreeId={worktreeId} dockMode="right" />
         {isModalTerminalOpen && modalTerminalDockMode === 'bottom' && (
           <ModalTerminalDrawer
             worktreeId={worktreeId}
@@ -1454,6 +1485,7 @@ export function SessionChatModal({
             dockMode="floating"
           />
         )}
+        <ModalBrowserDrawer worktreeId={worktreeId} dockMode="floating" />
       </div>
       <LabelModal
         isOpen={labelModalOpen}

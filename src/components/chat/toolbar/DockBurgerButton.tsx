@@ -152,7 +152,8 @@ export function DockBurgerButton({
   // `offsetParent === null` is true for `display: none`, so the hidden variant skips.
   useEffect(() => {
     const handler = () => {
-      if (!triggerRef.current || triggerRef.current.offsetParent === null) return
+      if (!triggerRef.current || triggerRef.current.offsetParent === null)
+        return
       toggleMenu()
     }
     window.addEventListener('toggle-quick-menu', handler)

@@ -9,6 +9,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
 mod background_tasks;
+mod browser;
 mod chat;
 mod claude_cli;
 mod codex_cli;
@@ -1547,6 +1548,46 @@ pub struct UIState {
     #[serde(default)]
     pub modal_terminal_height: Option<f64>,
 
+    /// Browser tabs persisted per worktree (worktreeId → list of {id, url, title})
+    #[serde(default)]
+    pub browser_tabs: std::collections::HashMap<String, Vec<BrowserTabPersisted>>,
+
+    /// Active browser tab id per worktree
+    #[serde(default)]
+    pub browser_active_tab_ids: std::collections::HashMap<String, String>,
+
+    /// Browser side-pane open state per worktree
+    #[serde(default)]
+    pub browser_side_pane_open: std::collections::HashMap<String, bool>,
+
+    /// Browser side-pane width in pixels (global)
+    #[serde(default)]
+    pub browser_side_pane_width: Option<f64>,
+
+    /// Browser modal drawer open state per worktree
+    #[serde(default)]
+    pub browser_modal_open: std::collections::HashMap<String, bool>,
+
+    /// Browser modal drawer dock mode
+    #[serde(default)]
+    pub browser_modal_dock_mode: Option<String>,
+
+    /// Browser modal drawer width in pixels for left/right dock
+    #[serde(default)]
+    pub browser_modal_width: Option<f64>,
+
+    /// Browser modal drawer height in pixels for bottom dock
+    #[serde(default)]
+    pub browser_modal_height: Option<f64>,
+
+    /// Browser bottom panel open state per worktree
+    #[serde(default)]
+    pub browser_bottom_panel_open: std::collections::HashMap<String, bool>,
+
+    /// Browser bottom panel height in pixels (global)
+    #[serde(default)]
+    pub browser_bottom_panel_height: Option<f64>,
+
     /// Last-accessed timestamps per project for recency sorting (projectId → unix ms)
     #[serde(default)]
     pub project_access_timestamps: std::collections::HashMap<String, f64>,
@@ -1578,6 +1619,14 @@ pub struct LastOpenedEntry {
     pub session_id: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BrowserTabPersisted {
+    pub id: String,
+    pub url: String,
+    #[serde(default)]
+    pub title: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProjectCanvasSettings {
     #[serde(default)]
@@ -1603,6 +1652,16 @@ impl Default for UIState {
             modal_terminal_pinned: None,
             modal_terminal_width: None,
             modal_terminal_height: None,
+            browser_tabs: std::collections::HashMap::new(),
+            browser_active_tab_ids: std::collections::HashMap::new(),
+            browser_side_pane_open: std::collections::HashMap::new(),
+            browser_side_pane_width: None,
+            browser_modal_open: std::collections::HashMap::new(),
+            browser_modal_dock_mode: None,
+            browser_modal_width: None,
+            browser_modal_height: None,
+            browser_bottom_panel_open: std::collections::HashMap::new(),
+            browser_bottom_panel_height: None,
             project_access_timestamps: std::collections::HashMap::new(),
             dashboard_worktree_collapse_overrides: std::collections::HashMap::new(),
             project_canvas_settings: std::collections::HashMap::new(),
@@ -1779,10 +1838,18 @@ async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result
 
     log::trace!("Successfully saved preferences to {prefs_path:?}");
 
-    // Sync native menu accelerator for magic menu (macOS only)
+    // Sync native menu accelerators (macOS only)
     #[cfg(target_os = "macos")]
-    if let Some(shortcut) = prefs_for_disk.keybindings.get("open_magic_modal") {
-        sync_magic_menu_accelerator(&app, shortcut);
+    {
+        if let Some(shortcut) = prefs_for_disk.keybindings.get("open_magic_modal") {
+            sync_magic_menu_accelerator(&app, shortcut);
+        }
+        if let Some(shortcut) = prefs_for_disk.keybindings.get("toggle_terminal") {
+            sync_menu_item_accelerator(&app, "toggle-terminal", shortcut);
+        }
+        if let Some(shortcut) = prefs_for_disk.keybindings.get("toggle_browser") {
+            sync_menu_item_accelerator(&app, "toggle-browser", shortcut);
+        }
     }
 
     Ok(())
@@ -2340,6 +2407,8 @@ fn shortcut_to_accelerator(shortcut: &str) -> String {
             "space" => "Space",
             "comma" => ",",
             "period" => ".",
+            "backquote" => "Backquote",
+            "slash" => "/",
             other => other, // single letters/digits pass through as-is
         })
         .collect::<Vec<_>>()
@@ -2349,14 +2418,20 @@ fn shortcut_to_accelerator(shortcut: &str) -> String {
 /// Update the native magic menu accelerator to match the user's keybinding preference
 #[cfg(target_os = "macos")]
 fn sync_magic_menu_accelerator(app: &AppHandle, shortcut: &str) {
+    sync_menu_item_accelerator(app, "magic-menu", shortcut);
+}
+
+/// Generic helper to sync a menu item's accelerator from a frontend shortcut string.
+#[cfg(target_os = "macos")]
+fn sync_menu_item_accelerator(app: &AppHandle, item_id: &str, shortcut: &str) {
     use tauri::menu::MenuItemKind;
     if let Some(menu) = app.menu() {
-        if let Some(MenuItemKind::MenuItem(item)) = menu.get("magic-menu") {
+        if let Some(MenuItemKind::MenuItem(item)) = menu.get(item_id) {
             let accel = shortcut_to_accelerator(shortcut);
             if let Err(e) = item.set_accelerator(Some(&accel)) {
-                log::error!("Failed to set magic menu accelerator to '{accel}': {e}");
+                log::error!("Failed to set '{item_id}' accelerator to '{accel}': {e}");
             } else {
-                log::trace!("Updated magic menu accelerator to '{accel}'");
+                log::trace!("Updated '{item_id}' accelerator to '{accel}'");
             }
         }
     }
@@ -2398,10 +2473,24 @@ fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
         .build()?;
 
     // Build the View submenu
-    // Note: Accelerators removed since keybindings are user-configurable in preferences
+    // Native menu accelerators are needed for shortcuts that must fire even when
+    // a child Webview (e.g. embedded browser tab) holds focus. Tauri intercepts
+    // the accelerator before the keystroke reaches any webview's document, which
+    // bypasses the document.keydown listener wiring used for other shortcuts.
     let view_submenu = SubmenuBuilder::new(app, "View")
         .item(&MenuItemBuilder::with_id("toggle-left-sidebar", "Toggle Left Sidebar").build(app)?)
         .item(&MenuItemBuilder::with_id("toggle-right-sidebar", "Toggle Right Sidebar").build(app)?)
+        .separator()
+        .item(
+            &MenuItemBuilder::with_id("toggle-terminal", "Toggle Terminal")
+                .accelerator("CmdOrCtrl+Backquote")
+                .build(app)?,
+        )
+        .item(
+            &MenuItemBuilder::with_id("toggle-browser", "Toggle Browser")
+                .accelerator("CmdOrCtrl+Shift+Backquote")
+                .build(app)?,
+        )
         .build()?;
 
     // Build the Window submenu
@@ -2873,6 +2962,18 @@ pub fn run() {
                                 Err(e) => log::error!("Failed to emit menu-magic-menu event: {e}"),
                             }
                         }
+                        "toggle-terminal" => {
+                            log::trace!("Toggle Terminal menu item clicked");
+                            if let Err(e) = app.emit("menu-toggle-terminal", ()) {
+                                log::error!("Failed to emit menu-toggle-terminal event: {e}");
+                            }
+                        }
+                        "toggle-browser" => {
+                            log::trace!("Toggle Browser menu item clicked");
+                            if let Err(e) = app.emit("menu-toggle-browser", ()) {
+                                log::error!("Failed to emit menu-toggle-browser event: {e}");
+                            }
+                        }
                         _ => {
                             log::trace!("Unhandled menu event: {:?}", event.id());
                         }
@@ -3148,6 +3249,21 @@ pub fn run() {
             terminal::get_ports,
             terminal::get_terminal_listening_ports,
             terminal::kill_all_terminals,
+            // Browser commands (native-only — not exposed via http_server::dispatch)
+            browser::browser_create,
+            browser::browser_navigate,
+            browser::browser_back,
+            browser::browser_forward,
+            browser::browser_reload,
+            browser::browser_stop,
+            browser::browser_set_bounds,
+            browser::browser_set_visible,
+            browser::browser_set_focus,
+            browser::browser_get_url,
+            browser::browser_close,
+            browser::browser_report_title,
+            browser::get_active_browser_tabs,
+            browser::has_active_browser_tab,
             // Chat commands - Session management
             chat::get_sessions,
             chat::list_all_sessions,
