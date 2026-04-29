@@ -1,4 +1,4 @@
-type Listener = (now: number) => void
+type Listener = () => void
 
 class TickStore {
   private listeners = new Set<Listener>()
@@ -18,7 +18,7 @@ class TickStore {
 
   private tick = () => {
     this.now = Date.now()
-    this.listeners.forEach(l => l(this.now))
+    this.listeners.forEach(l => l())
   }
 
   private start() {

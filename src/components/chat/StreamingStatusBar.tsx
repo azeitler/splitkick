@@ -4,7 +4,7 @@ import {
   StatusIndicator,
   type IndicatorVariant,
 } from '@/components/ui/status-indicator'
-import { ElapsedTime } from './hooks/useElapsedTime'
+import { useElapsedTime } from './hooks/useElapsedTime'
 
 interface StreamingStatusBarProps {
   isSending: boolean
@@ -37,6 +37,8 @@ export const StreamingStatusBar = memo(function StreamingStatusBar({
   restoredRunStatus,
   restoredExecutionMode,
 }: StreamingStatusBarProps) {
+  const elapsed = useElapsedTime(isSending ? sendStartedAt : null)
+
   const showRestored = !isSending && restoredRunStatus === 'running'
   const visible = isSending || showRestored
   const activeMode = isSending ? streamingExecutionMode : restoredExecutionMode
@@ -55,9 +57,7 @@ export const StreamingStatusBar = memo(function StreamingStatusBar({
           {getModeLabel(restoredExecutionMode)}
         </span>
       ) : (
-        <span className="leading-none">
-          <ElapsedTime startTime={isSending ? sendStartedAt : null} />
-        </span>
+        <span className="leading-none">{elapsed ?? '0s'}</span>
       )}
     </div>
   )
