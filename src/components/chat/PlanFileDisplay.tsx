@@ -110,7 +110,7 @@ export function PlanDisplay({
         className
       )}
     >
-      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50 cursor-pointer">
+      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
         <FileText className="h-4 w-4 shrink-0" />
         <span className="font-medium">Plan</span>
         {filename && (
