@@ -837,7 +837,7 @@ export function SessionChatModal({
               )}
             >
               <div className="flex items-center gap-2 min-w-0">
-                <h2 className="text-sm font-medium min-w-0 truncate">
+                <h2 className="text-sm font-medium min-w-0 flex-1 truncate">
                   {project && !isMobile && (
                     <span className="text-muted-foreground font-normal">
                       <button
@@ -854,9 +854,9 @@ export function SessionChatModal({
                 </h2>
                 {worktree?.base_branch &&
                   worktree.base_branch !== project?.default_branch && (
-                    <span className="inline-flex items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                    <span className="inline-flex shrink min-w-0 items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
                       <GitBranchPlus className="h-2.5 w-2.5" />
-                      <span className="max-w-40 truncate">
+                      <span className="max-w-16 sm:max-w-40 truncate">
                         {worktree.base_branch}
                       </span>
                       {stackedOnPR && (

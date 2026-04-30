@@ -136,7 +136,7 @@ export function PlanDisplay({
         className
       )}
     >
-      <CollapsibleTrigger className="flex w-full items-center gap-2 pl-9 pr-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
+      <CollapsibleTrigger className="flex w-full items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
         <FileText className="h-4 w-4 shrink-0" />
         <span className="font-medium">Plan</span>
         {filename && (
@@ -157,7 +157,7 @@ export function PlanDisplay({
             type="button"
             onClick={handleCopy}
             aria-label="Copy plan markdown"
-            className="absolute left-2 top-1.5 opacity-50 hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-background/80 text-muted-foreground hover:text-foreground cursor-pointer"
+            className="absolute right-8 top-1/2 -translate-y-1/2 opacity-50 hover:opacity-100 transition-opacity p-1 rounded-md hover:bg-background/80 text-muted-foreground hover:text-foreground cursor-pointer"
           >
             {copied ? (
               <Check className="size-3.5" />
