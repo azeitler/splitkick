@@ -991,7 +991,21 @@ export interface AppPreferences {
   opencode_cli_source: 'jean' | 'path' // OpenCode CLI source: 'jean' (managed) or 'path' (system PATH)
   gh_cli_source: 'jean' | 'path' // GitHub CLI source: 'jean' (managed) or 'path' (system PATH)
   expand_tool_calls_by_default: boolean // Expand all tool call collapsibles by default
+  terminal_background: TerminalBackgroundMode // Override the terminal background independently of the app theme
+  terminal_background_custom: string | null // Hex color used when terminal_background === 'custom'
 }
+
+export type TerminalBackgroundMode = 'auto' | 'light' | 'dark' | 'custom'
+
+export const terminalBackgroundOptions: {
+  value: TerminalBackgroundMode
+  label: string
+}[] = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+  { value: 'custom', label: 'Custom color' },
+]
 
 export interface CustomCliProfile {
   name: string // Display name, e.g. "OpenRouter"
@@ -1588,4 +1602,6 @@ export const defaultPreferences: AppPreferences = {
   opencode_cli_source: 'jean', // Default: Jean-managed
   gh_cli_source: 'jean', // Default: Jean-managed
   expand_tool_calls_by_default: false, // Default: collapsed
+  terminal_background: 'auto',
+  terminal_background_custom: null,
 }

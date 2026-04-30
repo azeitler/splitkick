@@ -16,6 +16,7 @@ import {
   syntaxThemeDarkOptions,
   syntaxThemeLightOptions,
   fileEditModeOptions,
+  terminalBackgroundOptions,
   FONT_SIZE_DEFAULT,
   ZOOM_LEVEL_DEFAULT,
   uiFontScaleTicks,
@@ -25,8 +26,11 @@ import {
   type ChatFont,
   type SyntaxTheme,
   type FileEditMode,
+  type TerminalBackgroundMode,
 } from '@/types/preferences'
 import { isMacOS } from '@/lib/platform'
+import { Input } from '@/components/ui/input'
+import { isValidHex } from '@/lib/terminal-theme'
 import { SettingsSection } from '../SettingsSection'
 
 const InlineField: React.FC<{
@@ -109,6 +113,20 @@ export const AppearancePane: React.FC = () => {
   const handleSyntaxThemeChange = useCallback(
     (field: 'syntax_theme_dark' | 'syntax_theme_light', value: SyntaxTheme) => {
       patchPreferences.mutate({ [field]: value })
+    },
+    [patchPreferences]
+  )
+
+  const handleTerminalBackgroundModeChange = useCallback(
+    (value: TerminalBackgroundMode) => {
+      patchPreferences.mutate({ terminal_background: value })
+    },
+    [patchPreferences]
+  )
+
+  const handleTerminalBackgroundCustomChange = useCallback(
+    (value: string | null) => {
+      patchPreferences.mutate({ terminal_background_custom: value })
     },
     [patchPreferences]
   )
@@ -197,6 +215,70 @@ export const AppearancePane: React.FC = () => {
               </SelectContent>
             </Select>
           </InlineField>
+
+          <InlineField
+            label="Terminal background"
+            description="Pick a background color for the terminal panel"
+          >
+            <Select
+              value={preferences?.terminal_background ?? 'auto'}
+              onValueChange={value =>
+                handleTerminalBackgroundModeChange(
+                  value as TerminalBackgroundMode
+                )
+              }
+              disabled={patchPreferences.isPending}
+            >
+              <SelectTrigger className="w-96">
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                {terminalBackgroundOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          {preferences?.terminal_background === 'custom' && (
+            <InlineField
+              label="Custom terminal color"
+              description="Choose any color you like for the terminal background"
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={
+                    isValidHex(preferences?.terminal_background_custom)
+                      ? preferences!.terminal_background_custom!
+                      : '#101010'
+                  }
+                  onChange={e =>
+                    handleTerminalBackgroundCustomChange(e.target.value)
+                  }
+                  disabled={patchPreferences.isPending}
+                  className="h-9 w-12 cursor-pointer rounded border"
+                  aria-label="Pick terminal background color"
+                />
+                <Input
+                  value={preferences?.terminal_background_custom ?? ''}
+                  onChange={e => {
+                    const v = e.target.value.trim()
+                    if (v === '') {
+                      handleTerminalBackgroundCustomChange(null)
+                    } else if (isValidHex(v)) {
+                      handleTerminalBackgroundCustomChange(v)
+                    }
+                  }}
+                  placeholder="#101010"
+                  className="w-40 font-mono"
+                  spellCheck={false}
+                />
+              </div>
+            </InlineField>
+          )}
         </div>
       </SettingsSection>
 

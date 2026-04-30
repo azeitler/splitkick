@@ -27,6 +27,7 @@ import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/store/ui-store'
 import { useShallow } from 'zustand/react/shallow'
 import { useTerminal } from '@/hooks/useTerminal'
+import { useTerminalBackgroundColor } from '@/hooks/useTerminalThemeSync'
 import { disposeTerminal, setOnStopped } from '@/lib/terminal-instances'
 import { BackendLabel } from '@/components/ui/backend-label'
 
@@ -142,6 +143,8 @@ function CliLoginModalContent({
     command,
     commandArgs,
   })
+
+  const terminalBg = useTerminalBackgroundColor()
 
   // Use callback ref to detect when container is mounted (Dialog uses portal)
   const containerCallbackRef = useCallback(
@@ -271,7 +274,10 @@ function CliLoginModalContent({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 min-h-0 w-full overflow-hidden rounded-md border border-border bg-background p-3 sm:p-4">
+        <div
+          className="flex-1 min-h-0 w-full overflow-hidden rounded-md border border-border p-3 sm:p-4"
+          style={{ backgroundColor: terminalBg }}
+        >
           <div ref={containerCallbackRef} className="h-full w-full" />
         </div>
 
