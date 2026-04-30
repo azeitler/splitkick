@@ -55,6 +55,135 @@ static RELEASE_NOTES_PAREN_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\(([^)]*)\)").expect("valid release notes parenthetical regex"));
 static RELEASE_NOTES_LEADING_PR_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^\s*#(\d+)\b").expect("valid release notes PR regex"));
+static LINK_TAG_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"<link\b[^>]*>"#).expect("valid link tag regex"));
+static HTML_REL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\brel=["']([^"']+)["']"#).expect("valid html rel regex"));
+static HTML_HREF_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\bhref=["']([^"'?]+)"#).expect("valid html href regex"));
+static OBJ_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{[^}]*\}"#).expect("valid object regex"));
+static OBJ_REL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\brel\s*:\s*["']([^"']+)["']"#).expect("valid object rel regex"));
+static OBJ_HREF_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\bhref\s*:\s*["']([^"'?]+)"#).expect("valid object href regex"));
+
+const FAVICON_CANDIDATES: &[&str] = &[
+    "favicon.svg",
+    "favicon.ico",
+    "favicon.png",
+    "apple-touch-icon.png",
+    "public/favicon.svg",
+    "public/favicon.ico",
+    "public/favicon.png",
+    "public/apple-touch-icon.png",
+    "app/favicon.ico",
+    "app/favicon.png",
+    "app/icon.svg",
+    "app/icon.png",
+    "app/icon.ico",
+    "src/favicon.ico",
+    "src/favicon.svg",
+    "src/app/favicon.ico",
+    "src/app/icon.svg",
+    "src/app/icon.png",
+    "assets/icon.svg",
+    "assets/icon.png",
+    "assets/logo.svg",
+    "assets/logo.png",
+    ".idea/icon.svg",
+];
+
+const ICON_SOURCE_FILES: &[&str] = &[
+    "index.html",
+    "public/index.html",
+    "app/routes/__root.tsx",
+    "src/routes/__root.tsx",
+    "app/root.tsx",
+    "src/root.tsx",
+    "src/index.html",
+];
+
+fn path_within_project(project_path: &Path, candidate: &Path) -> bool {
+    let project_path = project_path
+        .canonicalize()
+        .unwrap_or_else(|_| project_path.to_path_buf());
+    let candidate = candidate
+        .canonicalize()
+        .unwrap_or_else(|_| candidate.to_path_buf());
+    candidate.starts_with(project_path)
+}
+
+fn icon_href_candidates(project_path: &Path, href: &str) -> Vec<PathBuf> {
+    let clean = href.trim_start_matches('/');
+    vec![
+        project_path.join("public").join(clean),
+        project_path.join(clean),
+    ]
+}
+
+fn extract_icon_href(source: &str) -> Option<String> {
+    for tag in LINK_TAG_RE.find_iter(source) {
+        let tag = tag.as_str();
+        let rel = HTML_REL_RE.captures(tag).and_then(|c| c.get(1));
+        let href = HTML_HREF_RE.captures(tag).and_then(|c| c.get(1));
+        if let (Some(rel), Some(href)) = (rel, href) {
+            let rel = rel.as_str().to_lowercase();
+            if matches!(rel.as_str(), "icon" | "shortcut icon" | "apple-touch-icon") {
+                return Some(href.as_str().to_string());
+            }
+        }
+    }
+
+    for object in OBJ_RE.find_iter(source) {
+        let object = object.as_str();
+        let rel = OBJ_REL_RE.captures(object).and_then(|c| c.get(1));
+        let href = OBJ_HREF_RE.captures(object).and_then(|c| c.get(1));
+        if let (Some(rel), Some(href)) = (rel, href) {
+            let rel = rel.as_str().to_lowercase();
+            if matches!(rel.as_str(), "icon" | "shortcut icon" | "apple-touch-icon") {
+                return Some(href.as_str().to_string());
+            }
+        }
+    }
+
+    None
+}
+
+fn detect_project_default_avatar_path(project_path: &str) -> Option<String> {
+    let project_path = Path::new(project_path);
+
+    for candidate in FAVICON_CANDIDATES {
+        let path = project_path.join(candidate);
+        if path.is_file() && path_within_project(project_path, &path) {
+            return Some(path.display().to_string());
+        }
+    }
+
+    for source_file in ICON_SOURCE_FILES {
+        let source_path = project_path.join(source_file);
+        let Ok(source) = std::fs::read_to_string(source_path) else {
+            continue;
+        };
+        let Some(href) = extract_icon_href(&source) else {
+            continue;
+        };
+        for candidate in icon_href_candidates(project_path, &href) {
+            if candidate.is_file() && path_within_project(project_path, &candidate) {
+                return Some(candidate.display().to_string());
+            }
+        }
+    }
+
+    None
+}
+
+fn attach_default_avatar(project: &mut Project) {
+    if project.is_folder || project.avatar_path.is_some() {
+        project.default_avatar_path = None;
+        return;
+    }
+    project.default_avatar_path = detect_project_default_avatar_path(&project.path);
+}
 
 /// Generate a unique name by appending 4 random alphanumeric chars,
 /// checking against both storage and git branches.
@@ -281,8 +410,11 @@ pub async fn browse_directory(path: Option<String>) -> Result<BrowseDirectoryRes
 #[tauri::command]
 pub async fn list_projects(app: AppHandle) -> Result<Vec<Project>, String> {
     log::trace!("Listing all projects");
-    let data = load_projects_data(&app)?;
-    Ok(data.projects)
+    let mut projects = load_projects_data(&app)?.projects;
+    for project in &mut projects {
+        attach_default_avatar(project);
+    }
+    Ok(projects)
 }
 
 /// Add a new project from a git repository path
@@ -326,6 +458,7 @@ pub async fn add_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
+        default_avatar_path: None,
         enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
@@ -341,6 +474,8 @@ pub async fn add_project(
     save_projects_data(&app, &data)?;
     allow_project_in_asset_scope(&app, &project.path);
 
+    let mut project = project;
+    attach_default_avatar(&mut project);
     log::trace!("Successfully added project: {}", project.name);
     Ok(project)
 }
@@ -486,6 +621,7 @@ pub async fn init_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
+        default_avatar_path: None,
         enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
@@ -540,6 +676,7 @@ pub async fn clone_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
+        default_avatar_path: None,
         enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
@@ -8766,6 +8903,7 @@ pub async fn create_folder(
         parent_id,
         is_folder: true,
         avatar_path: None,
+        default_avatar_path: None,
         enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
@@ -9707,6 +9845,7 @@ pub async fn set_project_avatar(app: AppHandle, project_id: String) -> Result<Pr
         .ok_or_else(|| format!("Project not found: {project_id}"))?;
 
     project.avatar_path = Some(relative_path);
+    project.default_avatar_path = None;
     let updated_project = project.clone();
 
     save_projects_data(&app, &data)?;
@@ -9744,9 +9883,11 @@ pub async fn remove_project_avatar(app: AppHandle, project_id: String) -> Result
     }
 
     project.avatar_path = None;
-    let updated_project = project.clone();
+    project.default_avatar_path = None;
+    let mut updated_project = project.clone();
 
     save_projects_data(&app, &data)?;
+    attach_default_avatar(&mut updated_project);
 
     log::trace!(
         "Successfully removed avatar for project: {}",

@@ -62,7 +62,9 @@ export function CommandPalette() {
         avatarUrl:
           project.avatar_path && appDataDir
             ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
-            : null,
+            : project.default_avatar_path
+              ? convertFileSrc(project.default_avatar_path)
+              : null,
         avatarFallback: project.name[0]?.toUpperCase() ?? '?',
         group: 'projects',
         keywords: ['project', 'switch', 'open', project.name.toLowerCase()],
