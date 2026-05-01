@@ -153,6 +153,7 @@ export function useCliVersionCheck() {
     if (isLoading) return
 
     const updates: CliUpdateInfo[] = []
+    const currentlyOutdated = new Set<CliType>()
 
     // Resolve effective CLI info (falls back to path detection when Jean binary is missing)
     const claude = resolveCliInfo(
@@ -188,6 +189,7 @@ export function useCliVersionCheck() {
       const latestStable = versions.find(v => !v.prerelease)
       if (!latestStable || !isNewerVersion(latestStable.version, info.version))
         continue
+      currentlyOutdated.add(type)
       const key = `${type}:${info.version}→${latestStable.version}`
       if (notifiedRef.current.has(key)) continue
       notifiedRef.current.add(key)
@@ -203,15 +205,6 @@ export function useCliVersionCheck() {
 
     // Sync store: remove CLIs no longer outdated (e.g. user updated manually),
     // merge in newly detected updates.
-    const currentlyOutdated = new Set(
-      checks
-        .filter(c => {
-          if (!c.info.version || !c.versions?.length) return false
-          const latestStable = c.versions.find(v => !v.prerelease)
-          return latestStable && isNewerVersion(latestStable.version, c.info.version)
-        })
-        .map(c => c.type)
-    )
 
     const { setAvailableCliUpdates, availableCliUpdates } = useUIStore.getState()
     const nextUpdates = availableCliUpdates.filter(u => currentlyOutdated.has(u.type))

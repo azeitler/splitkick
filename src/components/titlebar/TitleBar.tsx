@@ -1,5 +1,5 @@
 import type React from 'react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
 import { isLinux, isMacOS, openExternal } from '@/lib/platform'
 import { Button } from '@/components/ui/button'
@@ -219,34 +219,34 @@ export function TitleBar({
   )
 }
 
-function triggerCliUpdate(update: PendingCliUpdate) {
-  const { openCliUpdateModal, openCliLoginModal, dismissCliUpdateNotice } =
-    useUIStore.getState()
-
-  if (update.cliSource === 'path') {
-    const action = resolveCliPathUpdateAction(
-      update.type,
-      update.cliPath,
-      update.packageManager,
-      update.latestVersion
-    )
-    if (action) {
-      openCliLoginModal(update.type, action[0], action[1], 'update')
-    } else {
-      toast.error(
-        `Can't auto-update ${CLI_DISPLAY_NAMES[update.type]}. Update it manually via your package manager.`
-      )
-      return
-    }
-  } else {
-    openCliUpdateModal(update.type)
-  }
-  dismissCliUpdateNotice(update.type)
-}
-
 function CliUpdatesIndicator() {
   const updates = useUIStore(state => state.availableCliUpdates)
+  const dismissCliUpdateNotice = useUIStore(state => state.dismissCliUpdateNotice)
+  const openCliUpdateModal = useUIStore(state => state.openCliUpdateModal)
+  const openCliLoginModal = useUIStore(state => state.openCliLoginModal)
   const [open, setOpen] = useState(false)
+
+  const triggerUpdate = useCallback((update: PendingCliUpdate) => {
+    if (update.cliSource === 'path') {
+      const action = resolveCliPathUpdateAction(
+        update.type,
+        update.cliPath,
+        update.packageManager,
+        update.latestVersion
+      )
+      if (action) {
+        openCliLoginModal(update.type, action[0], action[1], 'update')
+      } else {
+        toast.error(
+          `Can't auto-update ${CLI_DISPLAY_NAMES[update.type]}. Update it manually via your package manager.`
+        )
+        return
+      }
+    } else {
+      openCliUpdateModal(update.type)
+    }
+    dismissCliUpdateNotice(update.type)
+  }, [dismissCliUpdateNotice, openCliUpdateModal, openCliLoginModal])
 
   // Auto-close popover when all updates have been acted on / dismissed
   useEffect(() => {
@@ -287,15 +287,13 @@ function CliUpdatesIndicator() {
               </div>
               <div className="flex items-center gap-1 ml-2 shrink-0">
                 <button
-                  onClick={() => triggerCliUpdate(update)}
+                  onClick={() => triggerUpdate(update)}
                   className="rounded px-2 py-0.5 text-[0.625rem] font-medium bg-primary text-primary-foreground hover:bg-primary/90 transition-colors cursor-pointer"
                 >
                   Update
                 </button>
                 <button
-                  onClick={() =>
-                    useUIStore.getState().dismissCliUpdateNotice(update.type)
-                  }
+                  onClick={() => dismissCliUpdateNotice(update.type)}
                   className="rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors cursor-pointer"
                 >
                   <X className="size-3" />
