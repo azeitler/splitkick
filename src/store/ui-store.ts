@@ -18,6 +18,15 @@ export type OnboardingStartStep = 'claude' | 'gh' | null
 
 export type CliUpdateModalType = 'claude' | 'gh' | 'codex' | 'opencode' | null
 
+export interface PendingCliUpdate {
+  type: 'claude' | 'gh' | 'codex' | 'opencode'
+  currentVersion: string
+  latestVersion: string
+  cliSource?: 'jean' | 'path'
+  cliPath?: string | null
+  packageManager?: string | null
+}
+
 export type CliLoginModalType =
   | 'claude'
   | 'gh'
@@ -98,6 +107,8 @@ interface UIState {
   pendingUpdateVersion: string | null
   /** When non-null, shows the update available modal */
   updateModalVersion: string | null
+  /** CLI updates detected — shown as badge+popover in title bar */
+  availableCliUpdates: PendingCliUpdate[]
   toggleLeftSidebar: () => void
   setLeftSidebarVisible: (visible: boolean) => void
   setLeftSidebarSize: (size: number) => void
@@ -173,6 +184,8 @@ interface UIState {
   setUIStateInitialized: (initialized: boolean) => void
   setPendingUpdateVersion: (version: string | null) => void
   setUpdateModalVersion: (version: string | null) => void
+  setAvailableCliUpdates: (updates: PendingCliUpdate[]) => void
+  dismissCliUpdateNotice: (type: PendingCliUpdate['type']) => void
   chatSearchOpen: boolean
   setChatSearchOpen: (open: boolean) => void
   githubDashboardOpen: boolean
@@ -241,6 +254,7 @@ export const useUIStore = create<UIState>()(
       uiStateInitialized: false,
       pendingUpdateVersion: null,
       updateModalVersion: null,
+      availableCliUpdates: [],
       chatSearchOpen: false,
       githubDashboardOpen: false,
       toggleLeftSidebar: () =>
@@ -724,6 +738,20 @@ export const useUIStore = create<UIState>()(
           { updateModalVersion: version },
           undefined,
           'setUpdateModalVersion'
+        ),
+
+      setAvailableCliUpdates: (updates: PendingCliUpdate[]) =>
+        set({ availableCliUpdates: updates }, undefined, 'setAvailableCliUpdates'),
+
+      dismissCliUpdateNotice: (type: PendingCliUpdate['type']) =>
+        set(
+          state => ({
+            availableCliUpdates: state.availableCliUpdates.filter(
+              u => u.type !== type
+            ),
+          }),
+          undefined,
+          'dismissCliUpdateNotice'
         ),
 
       setChatSearchOpen: (open: boolean) =>

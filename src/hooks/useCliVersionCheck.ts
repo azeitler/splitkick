@@ -6,7 +6,6 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { toast } from 'sonner'
 import {
   useClaudeCliStatus,
   useAvailableCliVersions,
@@ -32,11 +31,7 @@ import { isNewerVersion } from '@/lib/version-utils'
 import { logger } from '@/lib/logger'
 import { isNativeApp } from '@/lib/environment'
 import { usePreferences } from '@/services/preferences'
-import {
-  CLI_DISPLAY_NAMES,
-  resolveCliPathUpdateAction,
-  type CliType,
-} from '@/lib/cli-update'
+import type { CliType } from '@/lib/cli-update'
 
 interface CliUpdateInfo {
   type: CliType
@@ -206,17 +201,29 @@ export function useCliVersionCheck() {
       })
     }
 
-    if (updates.length > 0) {
-      logger.info('CLI updates available', { updates })
+    // Sync store: remove CLIs no longer outdated (e.g. user updated manually),
+    // merge in newly detected updates.
+    const currentlyOutdated = new Set(
+      checks
+        .filter(c => {
+          if (!c.info.version || !c.versions?.length) return false
+          const latestStable = c.versions.find(v => !v.prerelease)
+          return latestStable && isNewerVersion(latestStable.version, c.info.version)
+        })
+        .map(c => c.type)
+    )
 
-      if (isInitialCheckRef.current) {
-        // Delay initial notification to let the app settle
-        setTimeout(() => {
-          showUpdateToasts(updates)
-        }, 5000)
-      } else {
-        showUpdateToasts(updates)
-      }
+    const { setAvailableCliUpdates, availableCliUpdates } = useUIStore.getState()
+    const nextUpdates = availableCliUpdates.filter(u => currentlyOutdated.has(u.type))
+    for (const u of updates) {
+      const idx = nextUpdates.findIndex(m => m.type === u.type)
+      if (idx >= 0) nextUpdates[idx] = u
+      else nextUpdates.push(u)
+    }
+
+    if (nextUpdates.length !== availableCliUpdates.length || updates.length > 0) {
+      if (updates.length > 0) logger.info('CLI updates available', { updates })
+      setAvailableCliUpdates(nextUpdates)
     }
 
     isInitialCheckRef.current = false
@@ -249,59 +256,3 @@ export function useCliVersionCheck() {
   ])
 }
 
-/**
- * Show toast notifications for each CLI update.
- * Each CLI gets its own toast with Update and Cancel buttons.
- * Toast stays visible until user dismisses it.
- */
-function showUpdateToasts(updates: CliUpdateInfo[]) {
-  const { openCliUpdateModal, openCliLoginModal } = useUIStore.getState()
-
-  for (const update of updates) {
-    const cliName = CLI_DISPLAY_NAMES[update.type]
-    const toastId = `cli-update-${update.type}`
-
-    const isPathMode = update.cliSource === 'path'
-
-    toast.info(`${cliName} update available`, {
-      id: toastId,
-      description: `v${update.currentVersion} → v${update.latestVersion}`,
-      duration: Infinity, // Don't auto-dismiss
-      action: {
-        label: 'Update',
-        onClick: () => {
-          if (isPathMode) {
-            const action = resolveCliPathUpdateAction(
-              update.type,
-              update.cliPath,
-              update.packageManager,
-              update.latestVersion
-            )
-            if (action) {
-              logger.debug(
-                `[CliVersionCheck] PATH-mode update: type=${update.type} cmd=${action[0]} args=${action[1].join(' ')}`
-              )
-              openCliLoginModal(update.type, action[0], action[1], 'update')
-            } else {
-              logger.warn(
-                `[CliVersionCheck] PATH-mode update with unknown package manager: type=${update.type} pm=${update.packageManager}`
-              )
-              toast.error(
-                `Can't auto-update ${cliName}. Update it manually via your package manager.`
-              )
-            }
-          } else {
-            openCliUpdateModal(update.type)
-          }
-          toast.dismiss(toastId)
-        },
-      },
-      cancel: {
-        label: 'Cancel',
-        onClick: () => {
-          toast.dismiss(toastId)
-        },
-      },
-    })
-  }
-}
