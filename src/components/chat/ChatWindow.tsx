@@ -103,6 +103,7 @@ import { ImagePreview } from './ImagePreview'
 import { TextFilePreview } from './TextFilePreview'
 import { SkillBadge } from './SkillBadge'
 import { FileContentModal } from './FileContentModal'
+import { FileEditsDiffModal, type FileEdit } from './FileEditsDiffModal'
 import { FilePreview } from './FilePreview'
 import { ChatInput } from './ChatInput'
 import { SessionDebugPanel } from './SessionDebugPanel'
@@ -111,14 +112,15 @@ import { ReviewResultsPanel } from './ReviewResultsPanel'
 import { QueuedMessagesList } from './QueuedMessageItem'
 import { FloatingButtons } from './FloatingButtons'
 import { PlanDialog } from './PlanDialog'
-import { RecapDialog } from './RecapDialog'
 import { StreamingMessage } from './StreamingMessage'
+import { CompactStreamingTicker } from './CompactStreamingTicker'
+import { CompactMessageList } from './CompactMessageList'
+import { CodexGoalBanner } from './CodexGoalBanner'
 import { StreamingStatusBar } from './StreamingStatusBar'
 import { ChatErrorFallback } from './ChatErrorFallback'
 import { logger } from '@/lib/logger'
 import { saveCrashState } from '@/lib/recovery'
 import { ErrorBanner } from './ErrorBanner'
-import { SessionDigestReminder } from './SessionDigestReminder'
 import {
   VirtualizedMessageList,
   type VirtualizedMessageListHandle,
@@ -141,12 +143,7 @@ import { copyToClipboard, copyHtmlToClipboard } from '@/lib/clipboard'
 import { useClaudeCliStatus } from '@/services/claude-cli'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
-import type {
-  QueuedMessage,
-  Session,
-  SessionDigest,
-  WorktreeSessions,
-} from '@/types/chat'
+import type { QueuedMessage, Session, WorktreeSessions } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
 import { FileDiffModal } from './FileDiffModal'
 
@@ -379,6 +376,7 @@ export function ChatWindow({
     const store = useChatStore.getState()
     const currentActive = store.activeSessionIds[activeWorktreeId]
     const sessions = sessionsData.sessions
+    if (!sessions) return
     const firstSession = sessions[0]
 
     // If no active session in store, or it doesn't exist in loaded sessions
@@ -392,7 +390,7 @@ export function ChatWindow({
   }, [sessionsData, activeWorktreeId, isSessionsFetching, uiStateInitialized])
 
   // Use backend's active session if store doesn't have one yet
-  if (!activeSessionId && sessionsData?.sessions.length) {
+  if (!activeSessionId && sessionsData?.sessions?.length) {
     activeSessionId =
       sessionsData.active_session_id ?? sessionsData.sessions[0]?.id
   }
@@ -426,6 +424,15 @@ export function ChatWindow({
       hydrateRunningSnapshot(deferredSessionId, lastMsg)
     }
   }, [deferredSessionId, session])
+
+  // Hydrate the chat-store mirror of Session.codex_goal whenever the session
+  // (re)loads. Live updates flow through the chat:codex_goal listener.
+  useEffect(() => {
+    if (!deferredSessionId) return
+    useChatStore
+      .getState()
+      .setCodexGoal(deferredSessionId, session?.codex_goal ?? null)
+  }, [deferredSessionId, session?.codex_goal])
 
   const loadOlderMessages = useLoadOlderMessages()
   const loadedRunStartIndex = session?.loaded_run_start_index ?? 0
@@ -961,6 +968,18 @@ export function ChatWindow({
   // State for file content modal (opened by clicking filenames in tool calls)
   const [viewingFilePath, setViewingFilePath] = useState<string | null>(null)
 
+  // State for edited-file diff modal (opened by clicking edited file pills)
+  const [viewingFileEdits, setViewingFileEdits] = useState<{
+    filePath: string
+    edits: FileEdit[]
+  } | null>(null)
+  const handleEditedFileClick = useCallback(
+    (filePath: string, edits: FileEdit[]) => {
+      setViewingFileEdits({ filePath, edits })
+    },
+    []
+  )
+
   // State for git diff modal (opened by clicking diff stats)
   const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
 
@@ -1011,12 +1030,6 @@ export function ChatWindow({
   const [planDialogContent, setPlanDialogContent] = useState<string | null>(
     null
   )
-
-  // State for recap dialog
-  const [isRecapDialogOpen, setIsRecapDialogOpen] = useState(false)
-  const [recapDialogDigest, setRecapDialogDigest] =
-    useState<SessionDigest | null>(null)
-  const [isGeneratingRecap, setIsGeneratingRecap] = useState(false)
 
   // Plan dialog approval handlers (DRYs 4x-duplicated onApprove/onApproveYolo callbacks)
   const { handlePlanDialogApprove, handlePlanDialogApproveYolo } =
@@ -2067,7 +2080,7 @@ export function ChatWindow({
     }
   }, [])
 
-  // Window event listeners (focus, plan, recap, git-diff, cancel, create-session, plan approval, etc.)
+  // Window event listeners (focus, plan, git-diff, cancel, create-session, plan approval, etc.)
   useChatWindowEvents({
     inputRef,
     activeSessionId,
@@ -2079,11 +2092,6 @@ export function ChatWindow({
     setPlanDialogContent,
     setIsPlanDialogOpen,
     session,
-    isRecapDialogOpen,
-    recapDialogDigest,
-    setRecapDialogDigest,
-    setIsRecapDialogOpen,
-    setIsGeneratingRecap,
     gitStatus,
     setDiffRequest,
     isAtBottom,
@@ -2248,6 +2256,7 @@ export function ChatWindow({
 
   return (
     <ErrorBoundary
+      resetKeys={[activeWorktreeId]}
       onError={(error, errorInfo) => {
         logger.error('ChatWindow crashed', {
           error: error.message,
@@ -2306,10 +2315,6 @@ export function ChatWindow({
                       <ChatSearchBar scrollContainerRef={scrollViewportRef} />
                       {/* Bottom fade gradient so messages don't hard-cut at the input area */}
                       <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-8 bg-gradient-to-b from-transparent to-background" />
-                      {/* Session digest reminder (shows when opening a session that had activity while out of focus) */}
-                      {activeSessionId && (
-                        <SessionDigestReminder sessionId={activeSessionId} />
-                      )}
                       <ScrollArea
                         className="h-full w-full"
                         viewportRef={scrollViewportRef}
@@ -2317,7 +2322,7 @@ export function ChatWindow({
                         onScroll={handleScroll}
                       >
                         <div className="mx-auto max-w-7xl px-4 pt-4 pb-6 md:px-6 min-w-0 w-full">
-                          <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-auto">
+                          <div className="select-text space-y-4 font-mono text-sm min-w-0 break-words overflow-x-hidden">
                             {/* Debug info (enabled via Settings → Experimental → Debug mode) */}
                             {preferences?.debug_mode_enabled &&
                               activeWorktreeId &&
@@ -2358,6 +2363,12 @@ export function ChatWindow({
                                 }
                               />
                             )}
+                            <CodexGoalBanner
+                              sessionId={activeSessionId ?? null}
+                              worktreeId={activeWorktreeId ?? null}
+                              worktreePath={activeWorktreePath ?? null}
+                              isCodexBackend={isCodexBackend}
+                            />
                             {isLoading ||
                             isSessionsLoading ||
                             isSessionSwitching ? (
@@ -2375,71 +2386,139 @@ export function ChatWindow({
                                       projectId={worktree?.project_id}
                                     />
                                   )}
-                                <VirtualizedMessageList
-                                  ref={virtualizedListRef}
-                                  messages={messages}
-                                  scrollContainerRef={scrollViewportRef}
-                                  totalMessages={messages.length}
-                                  lastPlanMessageIndex={lastPlanMessageIndex}
-                                  sessionId={deferredSessionId ?? ''}
-                                  worktreePath={activeWorktreePath ?? ''}
-                                  approveShortcut={approveShortcut}
-                                  approveShortcutYolo={approveShortcutYolo}
-                                  approveShortcutClearContext={
-                                    approveShortcutClearContext
-                                  }
-                                  approveShortcutClearContextBuild={
-                                    approveShortcutClearContextBuild
-                                  }
-                                  approveButtonRef={approveButtonRef}
-                                  isSending={isSending}
-                                  onPlanApproval={
-                                    isCursorBackend
-                                      ? handleClearContextApprovalBuild
-                                      : handlePlanApproval
-                                  }
-                                  onPlanApprovalYolo={
-                                    isCursorBackend
-                                      ? handleClearContextApproval
-                                      : handlePlanApprovalYolo
-                                  }
-                                  onClearContextApproval={
-                                    handleClearContextApproval
-                                  }
-                                  onClearContextApprovalBuild={
-                                    handleClearContextApprovalBuild
-                                  }
-                                  onWorktreeBuildApproval={
-                                    worktree?.project_id
-                                      ? handleWorktreeBuildApproval
-                                      : undefined
-                                  }
-                                  onWorktreeYoloApproval={
-                                    worktree?.project_id
-                                      ? handleWorktreeYoloApproval
-                                      : undefined
-                                  }
-                                  onQuestionAnswer={handleQuestionAnswer}
-                                  onQuestionSkip={handleSkipQuestion}
-                                  onFileClick={setViewingFilePath}
-                                  onEditedFileClick={setViewingFilePath}
-                                  onFixFinding={handleFixFinding}
-                                  onFixAllFindings={handleFixAllFindings}
-                                  isQuestionAnswered={isQuestionAnswered}
-                                  getSubmittedAnswers={getSubmittedAnswers}
-                                  areQuestionsSkipped={areQuestionsSkipped}
-                                  isFindingFixed={isFindingFixed}
-                                  onCopyToInput={handleCopyToInput}
-                                  shouldScrollToBottom={isAtBottom}
-                                  onScrollToBottomHandled={
-                                    handleScrollToBottomHandled
-                                  }
-                                  completedDurationMs={completedDurationMs}
-                                  hasOlderOnDisk={hasOlderOnDisk}
-                                  isLoadingOlder={loadOlderMessages.isPending}
-                                  onLoadOlderRuns={handleLoadOlderRuns}
-                                  loadedRunStartIndex={loadedRunStartIndex}
-                                />
+                                {preferences?.compact_chat_view_enabled ? (
+                                  <CompactMessageList
+                                    ref={virtualizedListRef}
+                                    messages={messages}
+                                    scrollContainerRef={scrollViewportRef}
+                                    totalMessages={messages.length}
+                                    lastPlanMessageIndex={lastPlanMessageIndex}
+                                    sessionId={deferredSessionId ?? ''}
+                                    worktreePath={activeWorktreePath ?? ''}
+                                    approveShortcut={approveShortcut}
+                                    approveShortcutYolo={approveShortcutYolo}
+                                    approveShortcutClearContext={
+                                      approveShortcutClearContext
+                                    }
+                                    approveShortcutClearContextBuild={
+                                      approveShortcutClearContextBuild
+                                    }
+                                    approveButtonRef={approveButtonRef}
+                                    isSending={isSending}
+                                    onPlanApproval={
+                                      isCursorBackend
+                                        ? handleClearContextApprovalBuild
+                                        : handlePlanApproval
+                                    }
+                                    onPlanApprovalYolo={
+                                      isCursorBackend
+                                        ? handleClearContextApproval
+                                        : handlePlanApprovalYolo
+                                    }
+                                    onClearContextApproval={
+                                      handleClearContextApproval
+                                    }
+                                    onClearContextApprovalBuild={
+                                      handleClearContextApprovalBuild
+                                    }
+                                    onWorktreeBuildApproval={
+                                      worktree?.project_id
+                                        ? handleWorktreeBuildApproval
+                                        : undefined
+                                    }
+                                    onWorktreeYoloApproval={
+                                      worktree?.project_id
+                                        ? handleWorktreeYoloApproval
+                                        : undefined
+                                    }
+                                    onQuestionAnswer={handleQuestionAnswer}
+                                    onQuestionSkip={handleSkipQuestion}
+                                    onFileClick={setViewingFilePath}
+                                    onEditedFileClick={handleEditedFileClick}
+                                    onFixFinding={handleFixFinding}
+                                    onFixAllFindings={handleFixAllFindings}
+                                    isQuestionAnswered={isQuestionAnswered}
+                                    getSubmittedAnswers={getSubmittedAnswers}
+                                    areQuestionsSkipped={areQuestionsSkipped}
+                                    isFindingFixed={isFindingFixed}
+                                    onCopyToInput={handleCopyToInput}
+                                    shouldScrollToBottom={isAtBottom}
+                                    onScrollToBottomHandled={
+                                      handleScrollToBottomHandled
+                                    }
+                                    completedDurationMs={completedDurationMs}
+                                    hasOlderOnDisk={hasOlderOnDisk}
+                                    isLoadingOlder={loadOlderMessages.isPending}
+                                    onLoadOlderRuns={handleLoadOlderRuns}
+                                    loadedRunStartIndex={loadedRunStartIndex}
+                                  />
+                                ) : (
+                                  <VirtualizedMessageList
+                                    ref={virtualizedListRef}
+                                    messages={messages}
+                                    scrollContainerRef={scrollViewportRef}
+                                    totalMessages={messages.length}
+                                    lastPlanMessageIndex={lastPlanMessageIndex}
+                                    sessionId={deferredSessionId ?? ''}
+                                    worktreePath={activeWorktreePath ?? ''}
+                                    approveShortcut={approveShortcut}
+                                    approveShortcutYolo={approveShortcutYolo}
+                                    approveShortcutClearContext={
+                                      approveShortcutClearContext
+                                    }
+                                    approveShortcutClearContextBuild={
+                                      approveShortcutClearContextBuild
+                                    }
+                                    approveButtonRef={approveButtonRef}
+                                    isSending={isSending}
+                                    onPlanApproval={
+                                      isCursorBackend
+                                        ? handleClearContextApprovalBuild
+                                        : handlePlanApproval
+                                    }
+                                    onPlanApprovalYolo={
+                                      isCursorBackend
+                                        ? handleClearContextApproval
+                                        : handlePlanApprovalYolo
+                                    }
+                                    onClearContextApproval={
+                                      handleClearContextApproval
+                                    }
+                                    onClearContextApprovalBuild={
+                                      handleClearContextApprovalBuild
+                                    }
+                                    onWorktreeBuildApproval={
+                                      worktree?.project_id
+                                        ? handleWorktreeBuildApproval
+                                        : undefined
+                                    }
+                                    onWorktreeYoloApproval={
+                                      worktree?.project_id
+                                        ? handleWorktreeYoloApproval
+                                        : undefined
+                                    }
+                                    onQuestionAnswer={handleQuestionAnswer}
+                                    onQuestionSkip={handleSkipQuestion}
+                                    onFileClick={setViewingFilePath}
+                                    onEditedFileClick={handleEditedFileClick}
+                                    onFixFinding={handleFixFinding}
+                                    onFixAllFindings={handleFixAllFindings}
+                                    isQuestionAnswered={isQuestionAnswered}
+                                    getSubmittedAnswers={getSubmittedAnswers}
+                                    areQuestionsSkipped={areQuestionsSkipped}
+                                    isFindingFixed={isFindingFixed}
+                                    onCopyToInput={handleCopyToInput}
+                                    shouldScrollToBottom={isAtBottom}
+                                    onScrollToBottomHandled={
+                                      handleScrollToBottomHandled
+                                    }
+                                    completedDurationMs={completedDurationMs}
+                                    hasOlderOnDisk={hasOlderOnDisk}
+                                    isLoadingOlder={loadOlderMessages.isPending}
+                                    onLoadOlderRuns={handleLoadOlderRuns}
+                                    loadedRunStartIndex={loadedRunStartIndex}
+                                  />
+                                )}
                               </>
                             )}
                             {/* Streaming response + elapsed timer in one wrapper to avoid space-y-4 gap */}
@@ -2447,23 +2526,40 @@ export function ChatWindow({
                               <div>
                                 {(currentStreamingContentBlocks.length > 0 ||
                                   currentToolCalls.length > 0 ||
-                                  streamingContent.trim().length > 0) && (
-                                  <StreamingMessage
-                                    sessionId={activeSessionId}
-                                    contentBlocks={
-                                      currentStreamingContentBlocks
-                                    }
-                                    toolCalls={currentToolCalls}
-                                    streamingContent={streamingContent}
-                                    onQuestionAnswer={handleQuestionAnswer}
-                                    onQuestionSkip={handleSkipQuestion}
-                                    onFileClick={setViewingFilePath}
-                                    onEditedFileClick={setViewingFilePath}
-                                    isQuestionAnswered={isQuestionAnswered}
-                                    getSubmittedAnswers={getSubmittedAnswers}
-                                    areQuestionsSkipped={areQuestionsSkipped}
-                                  />
-                                )}
+                                  streamingContent.trim().length > 0) &&
+                                  (preferences?.compact_chat_view_enabled ? (
+                                    <CompactStreamingTicker
+                                      sessionId={activeSessionId}
+                                      contentBlocks={
+                                        currentStreamingContentBlocks
+                                      }
+                                      toolCalls={currentToolCalls}
+                                      streamingContent={streamingContent}
+                                      onQuestionAnswer={handleQuestionAnswer}
+                                      onQuestionSkip={handleSkipQuestion}
+                                      onFileClick={setViewingFilePath}
+                                      onEditedFileClick={handleEditedFileClick}
+                                      isQuestionAnswered={isQuestionAnswered}
+                                      getSubmittedAnswers={getSubmittedAnswers}
+                                      areQuestionsSkipped={areQuestionsSkipped}
+                                    />
+                                  ) : (
+                                    <StreamingMessage
+                                      sessionId={activeSessionId}
+                                      contentBlocks={
+                                        currentStreamingContentBlocks
+                                      }
+                                      toolCalls={currentToolCalls}
+                                      streamingContent={streamingContent}
+                                      onQuestionAnswer={handleQuestionAnswer}
+                                      onQuestionSkip={handleSkipQuestion}
+                                      onFileClick={setViewingFilePath}
+                                      onEditedFileClick={handleEditedFileClick}
+                                      isQuestionAnswered={isQuestionAnswered}
+                                      getSubmittedAnswers={getSubmittedAnswers}
+                                      areQuestionsSkipped={areQuestionsSkipped}
+                                    />
+                                  ))}
                                 <StreamingStatusBar
                                   isSending={isSending}
                                   sendStartedAt={sendStartedAt}
@@ -2783,6 +2879,7 @@ export function ChatWindow({
                                 formRef={formRef}
                                 inputRef={inputRef}
                                 installedBackends={installedBackends}
+                                selectedBackend={selectedBackend}
                               />
                             </div>
 
@@ -2984,6 +3081,13 @@ export function ChatWindow({
           onClose={() => setViewingFilePath(null)}
         />
 
+        {/* Edited-file diff modal for viewing diffs of edited files */}
+        <FileEditsDiffModal
+          filePath={viewingFileEdits?.filePath ?? null}
+          edits={viewingFileEdits?.edits ?? []}
+          onClose={() => setViewingFileEdits(null)}
+        />
+
         {/* Git diff modal for viewing diffs */}
         <Suspense fallback={null}>
           <GitDiffModal
@@ -3118,20 +3222,6 @@ export function ChatWindow({
               }
             />
           ) : null)}
-
-        {/* Recap dialog */}
-        <RecapDialog
-          digest={recapDialogDigest}
-          isOpen={isRecapDialogOpen}
-          onClose={() => {
-            setIsRecapDialogOpen(false)
-            setRecapDialogDigest(null)
-          }}
-          isGenerating={isGeneratingRecap}
-          onRegenerate={() =>
-            window.dispatchEvent(new CustomEvent('open-recap'))
-          }
-        />
 
         {/* Merge options dialog */}
         <AlertDialog open={showMergeDialog} onOpenChange={setShowMergeDialog}>

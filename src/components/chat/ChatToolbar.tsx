@@ -18,6 +18,7 @@ import {
 } from '@/types/chat'
 import type { ChatToolbarProps } from '@/components/chat/toolbar/types'
 import { MobileToolbarMenu } from '@/components/chat/toolbar/MobileToolbarMenu'
+import { MobileSettingsMenu } from '@/components/chat/toolbar/MobileSettingsMenu'
 import { MobileBackendModelPickerSheet } from '@/components/chat/toolbar/MobileBackendModelPickerSheet'
 import { DesktopToolbarControls } from '@/components/chat/toolbar/DesktopToolbarControls'
 import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
@@ -68,10 +69,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   sessionHasMessages,
   providerLocked,
   baseBranch,
-  uncommittedAdded,
-  uncommittedRemoved,
-  branchDiffAdded,
-  branchDiffRemoved,
   prUrl,
   prNumber,
   displayStatus,
@@ -99,7 +96,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   onResolvePrConflicts,
   onResolveConflicts,
   hasOpenPr,
-  onSetDiffRequest,
   installedBackends,
   onModelChange,
   onBackendModelChange,
@@ -293,22 +289,6 @@ export const ChatToolbar = memo(function ChatToolbar({
     })
   }, [activeWorktreePath, worktreeId, projectId, prNumber, pickRemoteOrRun])
 
-  const handleUncommittedDiffClick = useCallback(() => {
-    onSetDiffRequest({
-      type: 'uncommitted',
-      worktreePath: activeWorktreePath ?? '',
-      baseBranch,
-    })
-  }, [activeWorktreePath, baseBranch, onSetDiffRequest])
-
-  const handleBranchDiffClick = useCallback(() => {
-    onSetDiffRequest({
-      type: 'branch',
-      worktreePath: activeWorktreePath ?? '',
-      baseBranch,
-    })
-  }, [activeWorktreePath, baseBranch, onSetDiffRequest])
-
   const canSend = hasInputValue || hasPendingAttachments
 
   return (
@@ -316,13 +296,26 @@ export const ChatToolbar = memo(function ChatToolbar({
       <div className="inline-flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap bg-transparent scrollbar-hide">
         <DockBurgerButton
           activeMcpCount={activeMcpCount}
-          onAttach={onAttach}
           className="flex @xl:hidden"
         />
 
         <MobileToolbarMenu
           isDisabled={isSending || hasPendingQuestions}
           hasOpenPr={hasOpenPr}
+          onSaveContext={onSaveContext}
+          onLoadContext={onLoadContext}
+          onCommit={onCommit}
+          onCommitAndPush={onCommitAndPush}
+          onOpenPr={onOpenPr}
+          onReview={onReview}
+          onMerge={onMerge}
+          onMergePr={onMergePr}
+          handlePullClick={handlePullClick}
+          handlePushClick={handlePushClick}
+        />
+
+        <MobileSettingsMenu
+          isDisabled={isSending || hasPendingQuestions}
           providerLocked={providerLocked}
           selectedBackend={selectedBackend}
           selectedProvider={selectedProvider}
@@ -334,29 +327,7 @@ export const ChatToolbar = memo(function ChatToolbar({
           useAdaptiveThinking={useAdaptiveThinking}
           isCodex={isCodex}
           customCliProfiles={customCliProfiles}
-          uncommittedAdded={uncommittedAdded}
-          uncommittedRemoved={uncommittedRemoved}
-          branchDiffAdded={branchDiffAdded}
-          branchDiffRemoved={branchDiffRemoved}
-          prUrl={prUrl}
-          prNumber={prNumber}
-          displayStatus={displayStatus}
-          checkStatus={checkStatus}
-          activeWorktreePath={activeWorktreePath}
-          onSaveContext={onSaveContext}
-          onLoadContext={onLoadContext}
-          onCommit={onCommit}
-          onCommitAndPush={onCommitAndPush}
-          onOpenPr={onOpenPr}
-          onReview={onReview}
-          onMerge={onMerge}
-          onMergePr={onMergePr}
-          onResolveConflicts={onResolveConflicts}
           onOpenBackendModelPicker={() => setMobileBackendModelPickerOpen(true)}
-          handlePullClick={handlePullClick}
-          handlePushClick={handlePushClick}
-          handleUncommittedDiffClick={handleUncommittedDiffClick}
-          handleBranchDiffClick={handleBranchDiffClick}
           handleProviderChange={handleProviderChange}
           handleEffortLevelChange={handleEffortLevelChange}
           handleThinkingLevelChange={handleThinkingLevelChange}
@@ -376,6 +347,11 @@ export const ChatToolbar = memo(function ChatToolbar({
           enabledMcpServers={enabledMcpServers}
           activeMcpCount={activeMcpCount}
           onToggleMcpServer={onToggleMcpServer}
+          prUrl={prUrl}
+          prNumber={prNumber}
+          prDisplayStatus={displayStatus}
+          worktreeId={worktreeId}
+          onAttach={onAttach}
         />
 
         {isMobile && (

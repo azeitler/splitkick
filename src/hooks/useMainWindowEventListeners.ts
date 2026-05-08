@@ -753,11 +753,7 @@ export function useMainWindowEventListeners() {
 
         listen('menu-toggle-browser', () => {
           logger.debug('Toggle browser menu event received from native menu')
-          executeKeybindingAction(
-            'toggle_browser',
-            commandContext,
-            queryClient
-          )
+          executeKeybindingAction('toggle_browser', commandContext, queryClient)
         }),
 
         // Branch naming events (automatic branch renaming based on first message)
@@ -858,9 +854,32 @@ export function useMainWindowEventListeners() {
             for (const key of pendingKeys) {
               switch (key) {
                 case 'sessions':
-                  queryClient.invalidateQueries({
-                    queryKey: chatQueryKeys.all,
-                  })
+                  // Skip individual session queries for sessions currently
+                  // being cancelled — the cancel handler holds an optimistic
+                  // assistant message in cache that disk hasn't reconciled yet
+                  // (especially in web access mode where save_cancelled_message
+                  // RTT can exceed this 250ms debounce). The cancel handler
+                  // explicitly refetches the single session once disk is in sync.
+                  {
+                    const cancelling =
+                      useChatStore.getState().cancellingSessionIds
+                    queryClient.invalidateQueries({
+                      queryKey: chatQueryKeys.all,
+                      predicate: query => {
+                        const k = query.queryKey
+                        if (
+                          Array.isArray(k) &&
+                          k[0] === 'chat' &&
+                          k[1] === 'session' &&
+                          typeof k[2] === 'string' &&
+                          cancelling[k[2]]
+                        ) {
+                          return false
+                        }
+                        return true
+                      },
+                    })
+                  }
                   break
                 case 'projects':
                   queryClient.invalidateQueries({
