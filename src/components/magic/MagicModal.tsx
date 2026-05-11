@@ -111,6 +111,12 @@ type MagicOption =
   | 'review-comments'
   | 'revert-last-commit'
 
+interface TriggerCodeRabbitPrReviewResponse {
+  pr_number: number
+  pr_url: string
+  comment_body: string
+}
+
 /** Options that work on canvas without an open session (git-only operations) */
 const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
   'create-recap',
@@ -792,7 +798,7 @@ export function MagicModal() {
     async (
       option: MagicOption,
       override?: { backend: CliBackend; model: string },
-      reviewSource: 'ai' | 'coderabbit' = 'ai'
+      reviewSource: 'ai' | 'coderabbit-cli' | 'coderabbit-pr' = 'ai'
     ) => {
       if (!selectedWorktreeId || !worktree?.path) return
 
@@ -1203,37 +1209,98 @@ ${resolveInstructions}`
           const projectName = project?.name ?? 'project'
           const worktreeName = worktree.name ?? worktree.branch ?? ''
           const reviewTarget = `${projectName}/${worktreeName}`
+          if (reviewSource === 'coderabbit-pr') {
+            const toastId = toast.loading(
+              `Triggering CodeRabbit review for ${reviewTarget}...`
+            )
+
+            try {
+              if (!worktree.pr_number) {
+                throw new Error('Open or link a PR in Jean first')
+              }
+
+              const result = await invoke<TriggerCodeRabbitPrReviewResponse>(
+                'trigger_coderabbit_pr_review',
+                {
+                  worktreeId: selectedWorktreeId,
+                  worktreePath: worktree.path,
+                  prNumber: worktree.pr_number,
+                }
+              )
+
+              if (worktree.project_id) {
+                queryClient.invalidateQueries({
+                  queryKey: projectsQueryKeys.worktrees(worktree.project_id),
+                })
+                queryClient.invalidateQueries({
+                  queryKey: [
+                    ...projectsQueryKeys.all,
+                    'worktree',
+                    selectedWorktreeId,
+                  ],
+                })
+              }
+
+              toast.success(
+                `CodeRabbit review triggered on PR #${result.pr_number}`,
+                {
+                  id: toastId,
+                  action: result.pr_url
+                    ? {
+                        label: 'Open',
+                        onClick: () => openExternal(result.pr_url),
+                      }
+                    : undefined,
+                }
+              )
+            } catch (error) {
+              toast.error(`Failed to trigger CodeRabbit review: ${error}`, {
+                id: toastId,
+              })
+            } finally {
+              clearWorktreeLoading(selectedWorktreeId)
+            }
+            break
+          }
+
           const reviewRunId = generateId()
           let cancelRequested = false
-          const toastId = toast.loading(`Reviewing ${reviewTarget}...`, {
-            cancel: {
-              label: 'Cancel',
-              onClick: () => {
-                cancelRequested = true
-                toast.loading(`Cancelling review for ${reviewTarget}...`, {
-                  id: toastId,
-                })
-                invoke<boolean>('cancel_review_with_ai', { reviewRunId })
-                  .then(cancelled => {
-                    if (cancelled) {
-                      toast.info(`Review cancelled for ${reviewTarget}`, {
+          const reviewLabel =
+            reviewSource === 'coderabbit-cli'
+              ? 'CodeRabbit CLI review'
+              : 'Review'
+          const toastId = toast.loading(
+            `${reviewLabel} for ${reviewTarget}...`,
+            {
+              cancel: {
+                label: 'Cancel',
+                onClick: () => {
+                  cancelRequested = true
+                  toast.loading(`Cancelling review for ${reviewTarget}...`, {
+                    id: toastId,
+                  })
+                  invoke<boolean>('cancel_review_with_ai', { reviewRunId })
+                    .then(cancelled => {
+                      if (cancelled) {
+                        toast.info(`Review cancelled for ${reviewTarget}`, {
+                          id: toastId,
+                        })
+                      } else {
+                        toast.info(
+                          `No active review to cancel for ${reviewTarget}`,
+                          { id: toastId }
+                        )
+                      }
+                    })
+                    .catch(error => {
+                      toast.error(`Failed to cancel review: ${error}`, {
                         id: toastId,
                       })
-                    } else {
-                      toast.info(
-                        `No active review to cancel for ${reviewTarget}`,
-                        { id: toastId }
-                      )
-                    }
-                  })
-                  .catch(error => {
-                    toast.error(`Failed to cancel review: ${error}`, {
-                      id: toastId,
                     })
-                  })
+                },
               },
-            },
-          })
+            }
+          )
 
           // Fire-and-forget: detect and link PR if not already linked
           if (!worktree.pr_number) {
@@ -1262,10 +1329,10 @@ ${resolveInstructions}`
 
           try {
             const result = await invoke<ReviewResponse>(
-              reviewSource === 'coderabbit'
+              reviewSource === 'coderabbit-cli'
                 ? 'run_coderabbit_review'
                 : 'run_review_with_ai',
-              reviewSource === 'coderabbit'
+              reviewSource === 'coderabbit-cli'
                 ? {
                     worktreePath: worktree.path,
                     reviewRunId,
@@ -1330,7 +1397,7 @@ ${resolveInstructions}`
 
             const findingCount = result.findings.length
             toast.success(
-              `${reviewSource === 'coderabbit' ? 'CodeRabbit review' : 'Review'} done on ${reviewTarget} (${findingCount} findings)`,
+              `${reviewSource === 'coderabbit-cli' ? 'CodeRabbit CLI review' : 'Review'} done on ${reviewTarget} (${findingCount} findings)`,
               {
                 id: toastId,
                 action: {
@@ -1667,9 +1734,13 @@ ${resolveInstructions}`
         open={reviewMethodDialogOpen}
         onOpenChange={setReviewMethodDialogOpen}
         onAiReview={() => executeGitDirectly('review', undefined, 'ai')}
-        onCodeRabbitReview={() =>
-          executeGitDirectly('review', undefined, 'coderabbit')
+        onCodeRabbitCliReview={() =>
+          executeGitDirectly('review', undefined, 'coderabbit-cli')
         }
+        onCodeRabbitPrReview={() =>
+          executeGitDirectly('review', undefined, 'coderabbit-pr')
+        }
+        codeRabbitPrAvailable={Boolean(worktree?.pr_number)}
       />
       <Dialog open={magicModalOpen} onOpenChange={handleOpenChange}>
         <DialogContent
