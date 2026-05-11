@@ -12,6 +12,7 @@ import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import {
+  type LucideIcon,
   Search,
   X,
   MoreHorizontal,
@@ -168,6 +169,65 @@ type ActiveStatus =
   | 'yoloing'
   | 'review'
   | null
+
+type CanvasFilterTab = 'all' | 'manual' | 'issues' | 'prs' | 'security'
+
+const CANVAS_FILTER_TABS: {
+  value: CanvasFilterTab
+  label: string
+  icon: LucideIcon
+}[] = [
+  { value: 'all', label: 'All', icon: Home },
+  { value: 'manual', label: 'Manual', icon: GitBranch },
+  { value: 'issues', label: 'Issues', icon: CircleDot },
+  { value: 'prs', label: 'PRs', icon: GitPullRequestArrow },
+  { value: 'security', label: 'Security', icon: ShieldAlert },
+]
+
+function isIssueWorktree(worktree: Worktree): boolean {
+  return (
+    worktree.issue_number != null ||
+    !!worktree.linear_issue_identifier?.trim()
+  )
+}
+
+function isPrWorktree(worktree: Worktree): boolean {
+  return worktree.pr_number != null
+}
+
+function isSecurityWorktree(worktree: Worktree): boolean {
+  return (
+    worktree.security_alert_number != null ||
+    !!worktree.advisory_ghsa_id?.trim()
+  )
+}
+
+function isManualWorktree(worktree: Worktree): boolean {
+  return (
+    !isBaseSession(worktree) &&
+    !isIssueWorktree(worktree) &&
+    !isPrWorktree(worktree) &&
+    !isSecurityWorktree(worktree)
+  )
+}
+
+function matchesCanvasFilterTab(
+  worktree: Worktree,
+  activeFilterTab: CanvasFilterTab
+): boolean {
+  switch (activeFilterTab) {
+    case 'all':
+      return true
+    case 'manual':
+      return isManualWorktree(worktree)
+    case 'issues':
+      return isIssueWorktree(worktree)
+    case 'prs':
+      return isPrWorktree(worktree)
+    case 'security':
+      return isSecurityWorktree(worktree)
+  }
+}
 
 function getActiveStatus(cards: SessionCardData[]): ActiveStatus {
   if (cards.some(c => c.status === 'waiting' || c.status === 'permission'))
@@ -603,6 +663,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const openInEditor = useOpenWorktreeInEditor()
 
   const [searchQuery, setSearchQuery] = useState('')
+  const [activeFilterTab, setActiveFilterTab] =
+    useState<CanvasFilterTab>('all')
   const isMobile = useIsMobile()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
 
@@ -670,6 +732,16 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
   const pendingWorktrees = useMemo(() => {
     return visibleWorktrees.filter(wt => wt.status === 'pending')
+  }, [visibleWorktrees])
+
+  const filterTabCounts = useMemo<Record<CanvasFilterTab, number>>(() => {
+    return {
+      all: visibleWorktrees.length,
+      manual: visibleWorktrees.filter(isManualWorktree).length,
+      issues: visibleWorktrees.filter(isIssueWorktree).length,
+      prs: visibleWorktrees.filter(isPrWorktree).length,
+      security: visibleWorktrees.filter(isSecurityWorktree).length,
+    }
   }, [visibleWorktrees])
 
   // All worktree labels (unfiltered by search) for the label modal
@@ -823,6 +895,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       (a, b) => b.created_at - a.created_at
     )
     for (const worktree of sortedPending) {
+      if (!matchesCanvasFilterTab(worktree, activeFilterTab)) continue
       latestActivityByWorktreeId.set(worktree.id, worktree.created_at)
       // Include pending worktrees even without sessions - show setup card
       result.push({ worktree, cards: [], isPending: true })
@@ -830,6 +903,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
     const readySections: WorktreeSection[] = []
     for (const worktree of readyWorktrees) {
+      if (!matchesCanvasFilterTab(worktree, activeFilterTab)) continue
       const sessionData = sessionsByWorktreeId.get(worktree.id)
       const sessions = sessionData?.sessions ?? []
 
@@ -908,6 +982,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     storeState,
     searchQuery,
     worktreeSortMode,
+    activeFilterTab,
   ])
 
   useEffect(() => {
@@ -1006,6 +1081,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     worktreeId: string
     sessionId: string
   } | null>(null)
+  const suppressNextRestoreAutoOpenRef = useRef(false)
 
   // Worktree close confirmation (CMD+W on canvas)
   const [closeWorktreeTarget, setCloseWorktreeTarget] = useState<{
@@ -1203,12 +1279,23 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     )
     if (cardIndex !== -1 && cardIndex !== selectedIndex) {
       setSelectedIndex(cardIndex)
+      return
     }
-  }, [selectedWorktreeModal, flatCards, selectedIndex])
+    if (cardIndex === -1 && activeFilterTab !== 'all' && flatCards.length > 0) {
+      setSelectedIndex(0)
+      const fallbackItem = flatCards[0]
+      highlightedCardRef.current = fallbackItem?.card
+        ? {
+            worktreeId: fallbackItem.worktreeId,
+            sessionId: fallbackItem.card.session.id,
+          }
+        : null
+    }
+  }, [selectedWorktreeModal, flatCards, selectedIndex, activeFilterTab])
 
   // Keep a valid selection when the selected item disappears (archive/delete/close).
   // In list layout this prefers the previous row, matching expected canvas behavior.
-  // Skip while search is active — transient empty filter results should not erase selection memory.
+  // Skip while search is active — transient empty search results should not erase selection memory.
   useEffect(() => {
     if (selectedIndex === null) return
     if (searchQuery) return
@@ -1236,7 +1323,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     } else {
       highlightedCardRef.current = null
     }
-  }, [flatCards, selectedIndex, searchQuery])
+  }, [flatCards, selectedIndex, searchQuery, activeFilterTab])
 
   // Auto-open session modal for newly created worktrees / unread-session clicks
   useEffect(() => {
@@ -1422,6 +1509,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     }
 
     const targetCard = flatCards[targetIndex]
+    const suppressRestoreAutoOpen = suppressNextRestoreAutoOpenRef.current
+    if (suppressRestoreAutoOpen) {
+      suppressNextRestoreAutoOpenRef.current = false
+    }
     setSelectedIndex(targetIndex)
     if (targetCard?.card) {
       // Sync projects store so commands (CMD+O, open terminal, etc.) work immediately
@@ -1431,7 +1522,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         .registerWorktreePath(targetCard.worktreeId, targetCard.worktreePath)
 
       // Auto-open SessionChatModal if restore_last_session is enabled
-      if (shouldAutoOpenModal) {
+      if (shouldAutoOpenModal && !suppressRestoreAutoOpen) {
         const sessionIdToOpen =
           lastOpened && targetCard.worktreeId === lastOpened.worktreeId
             ? (resolvedLastOpenedSessionId ?? targetCard.card.session.id)
@@ -1508,6 +1599,15 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       }
     },
     [flatCards]
+  )
+
+  const handleFilterTabChange = useCallback(
+    (value: CanvasFilterTab) => {
+      if (value === activeFilterTab) return
+      suppressNextRestoreAutoOpenRef.current = true
+      setActiveFilterTab(value)
+    },
+    [activeFilterTab]
   )
 
   // Keep selectedWorktreeId in sync whenever selectedIndex changes (click, keyboard, or external)
@@ -2032,6 +2132,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     )
   }
 
+  const activeFilterLabel =
+    CANVAS_FILTER_TABS.find(tab => tab.value === activeFilterTab)?.label ??
+    'All'
+  const hasAnyVisibleWorktrees = filterTabCounts.all > 0
+
   // Track global card index for refs
   let cardIndex = 0
 
@@ -2377,6 +2482,48 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           )}
         </div>
 
+        <div className="border-b border-border/30 bg-background/80 px-4 py-2">
+          <div
+            role="tablist"
+            aria-label="Worktree filters"
+            className="flex gap-1 overflow-x-auto"
+          >
+            {CANVAS_FILTER_TABS.map(tab => {
+              const Icon = tab.icon
+              const isActive = activeFilterTab === tab.value
+              const count = filterTabCounts[tab.value]
+              return (
+                <button
+                  key={tab.value}
+                  type="button"
+                  role="tab"
+                  aria-selected={isActive}
+                  className={cn(
+                    'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                    isActive
+                      ? 'border-primary/30 bg-primary/10 text-primary'
+                      : 'border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                  )}
+                  onClick={() => handleFilterTabChange(tab.value)}
+                >
+                  <Icon className="h-3.5 w-3.5" />
+                  <span>{tab.label}</span>
+                  <span
+                    className={cn(
+                      'rounded-full px-1.5 py-0.5 text-[10px] leading-none',
+                      isActive
+                        ? 'bg-primary/15 text-primary'
+                        : 'bg-muted text-muted-foreground'
+                    )}
+                  >
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
         {/* Canvas View */}
         <div
           className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery ? '' : 'pt-5 px-4'}`}
@@ -2384,13 +2531,18 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           {worktreeSections.length === 0 ? (
             searchQuery ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">
-                No worktrees or sessions match your search
+                No {activeFilterLabel.toLowerCase()} worktrees or sessions match
+                your search
               </div>
-            ) : (
+            ) : activeFilterTab === 'all' && !hasAnyVisibleWorktrees ? (
               <EmptyDashboardTabs
                 projectId={projectId}
                 projectPath={project?.path ?? null}
               />
+            ) : (
+              <div className="flex h-full items-center justify-center text-muted-foreground">
+                No {activeFilterLabel.toLowerCase()} worktrees
+              </div>
             )
           ) : (
             <div className="flex flex-col gap-1">
