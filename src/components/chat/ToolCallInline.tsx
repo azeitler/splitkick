@@ -601,11 +601,7 @@ function FileChangeDiffView({ input }: { input: unknown }) {
               )}
             </div>
             {change.diff ? (
-              <InlineFileDiff
-                patch={change.diff}
-                filePath={change.path}
-                neutral
-              />
+              <InlineFileDiff patch={change.diff} filePath={change.path} />
             ) : (
               <div className="text-muted-foreground/50 italic">
                 No diff available
@@ -631,14 +627,17 @@ function formatWakeupDelay(seconds: number): string {
 
 /** Live-ticking remaining seconds for a pending ScheduleWakeup. */
 function useWakeupRemaining(fireAtUnix: number | undefined): number | null {
-  const [, setTick] = useState(0)
+  const [nowUnix, setNowUnix] = useState<number | null>(null)
   useEffect(() => {
     if (!fireAtUnix) return
-    const id = setInterval(() => setTick(t => t + 1), 1000)
+    const updateNow = () => setNowUnix(Math.floor(Date.now() / 1000))
+    updateNow()
+    const id = setInterval(updateNow, 1000)
     return () => clearInterval(id)
   }, [fireAtUnix])
   if (!fireAtUnix) return null
-  return Math.max(0, fireAtUnix - Math.floor(Date.now() / 1000))
+  if (nowUnix === null) return null
+  return Math.max(0, fireAtUnix - nowUnix)
 }
 
 interface ScheduleWakeupIndicatorProps {

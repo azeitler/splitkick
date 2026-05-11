@@ -1019,8 +1019,22 @@ pub fn resume_codex_after_crash(
         "Codex crash recovery: session={session_id}, thread={thread_id}, had_active_turn={had_active_turn}"
     );
 
-    // 1. Ensure the app-server is running
+    // 1. Ensure the app-server is running.
     codex_server::ensure_running(app)?;
+
+    // Register a SessionContext BEFORE calling thread/resume. The server may
+    // start emitting notifications for the resumed thread immediately after
+    // accepting `thread/resume` — if no session is registered yet, those
+    // events get dropped by route_notification. The channel acts as a buffer:
+    // process_turn_events will drain it when we enter the event loop. If the
+    // disposition turns out to be non-Active, we unregister below.
+    let (event_tx, event_rx) = std::sync::mpsc::channel();
+    let ctx = codex_server::SessionContext {
+        session_id: session_id.to_string(),
+        worktree_id: worktree_id.to_string(),
+        event_tx,
+    };
+    codex_server::register_session(thread_id, ctx);
 
     // 2. Call thread/resume to reconnect to the persisted thread
     let resume_params = serde_json::json!({
@@ -1034,7 +1048,7 @@ pub fn resume_codex_after_crash(
         Err(e) => {
             // Thread gone/expired — cannot recover
             log::warn!("Codex crash recovery: thread/resume failed for {thread_id}: {e}");
-            codex_server::decrement_usage_count();
+            codex_server::unregister_session(thread_id);
             Ok(false)
         }
         Ok(response) => {
@@ -1044,17 +1058,11 @@ pub fn resume_codex_after_crash(
 
             if disposition == CodexResumeDisposition::Active {
                 // Turn was in-flight when Jean crashed and thread is still active.
-                // Register for events and enter the event loop to stream remaining output.
+                // Session is already registered above; just register the turn for
+                // cancellation tracking and enter the event loop.
                 let session_dir = get_session_dir(app, session_id)?;
                 let output_file = session_dir.join(format!("{run_id}.jsonl"));
 
-                let (event_tx, event_rx) = std::sync::mpsc::channel();
-                let ctx = codex_server::SessionContext {
-                    session_id: session_id.to_string(),
-                    worktree_id: worktree_id.to_string(),
-                    event_tx,
-                };
-                codex_server::register_session(thread_id, ctx);
                 super::registry::register_codex_turn(
                     session_id.to_string(),
                     thread_id.to_string(),
@@ -1134,7 +1142,8 @@ pub fn resume_codex_after_crash(
             // Thread is idle — turn completed while Jean was down, or no turn was active.
             // The JSONL file may already have the result from before the crash.
             // Mark the run as completed (the JSONL output is the source of truth).
-            codex_server::decrement_usage_count();
+            // Unregister the placeholder session we set up before thread/resume.
+            codex_server::unregister_session(thread_id);
             let session_dir = get_session_dir(app, session_id)?;
             let output_file = session_dir.join(format!("{run_id}.jsonl"));
 
@@ -1211,6 +1220,40 @@ pub fn resume_codex_after_crash(
             }
 
             // No result in JSONL — thread/turn data from app-server was written above.
+            // If the snapshot produced no assistant items AND a turn was in-flight
+            // when Jean died, completing would lie to the user (status=done with an
+            // empty response). Mark the run as crashed instead so the UI can prompt
+            // a resend.
+            let snapshot_has_assistant_content =
+                select_codex_recovery_turn(&response, codex_turn_id)
+                    .and_then(|turn| turn.get("items").and_then(|v| v.as_array()))
+                    .map(|items| {
+                        items.iter().any(|item| {
+                            let normalized = normalize_item_types(item);
+                            let item_type = normalized
+                                .get("type")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("");
+                            item_type != "user_message" && item_type != "hook_prompt"
+                        })
+                    })
+                    .unwrap_or(false);
+
+            if had_active_turn && !snapshot_has_assistant_content {
+                log::warn!(
+                    "Codex crash recovery: thread idle with no assistant items for run {run_id}; marking crashed"
+                );
+                if let Ok(mut writer) = RunLogWriter::resume(app, session_id, run_id) {
+                    if let Err(e) = writer.crash() {
+                        log::error!(
+                            "Failed to mark Codex run crashed during recovery (empty snapshot): {e}"
+                        );
+                    }
+                }
+                emit_codex_done(app, session_id, worktree_id);
+                return Ok(true);
+            }
+
             log::trace!("Codex crash recovery: thread idle, marking run {run_id} as completed");
             if let Ok(mut writer) = RunLogWriter::resume(app, session_id, run_id) {
                 let assistant_message_id = uuid::Uuid::new_v4().to_string();
