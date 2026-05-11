@@ -5,7 +5,7 @@ import { usePreferences } from '@/services/preferences'
 import { useProjects, useAppDataDir } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { convertFileSrc } from '@/lib/transport'
+import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { getAllCommands, executeCommand } from '@/lib/commands'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import {
@@ -63,7 +63,7 @@ export function CommandPalette() {
           project.avatar_path && appDataDir
             ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
             : project.default_avatar_path
-              ? convertFileSrc(project.default_avatar_path)
+              ? convertProjectFileSrc(project.default_avatar_path)
               : null,
         avatarFallback: project.name[0]?.toUpperCase() ?? '?',
         group: 'projects',

@@ -6,7 +6,7 @@ import {
   MoreHorizontal,
   Plus,
 } from 'lucide-react'
-import { convertFileSrc } from '@/lib/transport'
+import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import type { Project } from '@/types/projects'
@@ -68,7 +68,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
     project.avatar_path && appDataDir && !imgError
       ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
       : project.default_avatar_path && !imgError
-        ? convertFileSrc(project.default_avatar_path)
+        ? convertProjectFileSrc(project.default_avatar_path)
         : null
 
   // Fetch git status for all worktrees when project is expanded

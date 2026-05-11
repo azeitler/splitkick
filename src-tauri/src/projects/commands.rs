@@ -68,6 +68,8 @@ static OBJ_REL_RE: Lazy<Regex> =
 static OBJ_HREF_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r#"\bhref\s*:\s*["']([^"'?]+)"#).expect("valid object href regex"));
 
+const MAX_ICON_SOURCE_BYTES: u64 = 1024 * 1024;
+
 const FAVICON_CANDIDATES: &[&str] = &[
     "favicon.svg",
     "favicon.ico",
@@ -122,15 +124,37 @@ fn icon_href_candidates(project_path: &Path, href: &str) -> Vec<PathBuf> {
     ]
 }
 
-fn extract_icon_href(source: &str) -> Option<String> {
+fn is_local_icon_href(href: &str) -> bool {
+    let href = href.trim();
+    !href.is_empty()
+        && !href.starts_with('#')
+        && !href.starts_with("//")
+        && !href.to_lowercase().starts_with("data:")
+        && !href.to_lowercase().starts_with("http://")
+        && !href.to_lowercase().starts_with("https://")
+}
+
+fn is_icon_rel(rel: &str) -> bool {
+    let rel = rel.to_lowercase();
+    rel.split_whitespace().any(|token| {
+        matches!(
+            token,
+            "icon" | "apple-touch-icon" | "apple-touch-startup-image"
+        )
+    })
+}
+
+fn extract_icon_hrefs(source: &str) -> Vec<String> {
+    let mut hrefs = Vec::new();
+
     for tag in LINK_TAG_RE.find_iter(source) {
         let tag = tag.as_str();
         let rel = HTML_REL_RE.captures(tag).and_then(|c| c.get(1));
         let href = HTML_HREF_RE.captures(tag).and_then(|c| c.get(1));
         if let (Some(rel), Some(href)) = (rel, href) {
-            let rel = rel.as_str().to_lowercase();
-            if matches!(rel.as_str(), "icon" | "shortcut icon" | "apple-touch-icon") {
-                return Some(href.as_str().to_string());
+            let href = href.as_str();
+            if is_icon_rel(rel.as_str()) && is_local_icon_href(href) {
+                hrefs.push(href.to_string());
             }
         }
     }
@@ -140,14 +164,14 @@ fn extract_icon_href(source: &str) -> Option<String> {
         let rel = OBJ_REL_RE.captures(object).and_then(|c| c.get(1));
         let href = OBJ_HREF_RE.captures(object).and_then(|c| c.get(1));
         if let (Some(rel), Some(href)) = (rel, href) {
-            let rel = rel.as_str().to_lowercase();
-            if matches!(rel.as_str(), "icon" | "shortcut icon" | "apple-touch-icon") {
-                return Some(href.as_str().to_string());
+            let href = href.as_str();
+            if is_icon_rel(rel.as_str()) && is_local_icon_href(href) {
+                hrefs.push(href.to_string());
             }
         }
     }
 
-    None
+    hrefs
 }
 
 fn detect_project_default_avatar_path(project_path: &str) -> Option<String> {
@@ -162,15 +186,20 @@ fn detect_project_default_avatar_path(project_path: &str) -> Option<String> {
 
     for source_file in ICON_SOURCE_FILES {
         let source_path = project_path.join(source_file);
+        let Ok(metadata) = std::fs::metadata(&source_path) else {
+            continue;
+        };
+        if !metadata.is_file() || metadata.len() > MAX_ICON_SOURCE_BYTES {
+            continue;
+        }
         let Ok(source) = std::fs::read_to_string(source_path) else {
             continue;
         };
-        let Some(href) = extract_icon_href(&source) else {
-            continue;
-        };
-        for candidate in icon_href_candidates(project_path, &href) {
-            if candidate.is_file() && path_within_project(project_path, &candidate) {
-                return Some(candidate.display().to_string());
+        for href in extract_icon_hrefs(&source) {
+            for candidate in icon_href_candidates(project_path, &href) {
+                if candidate.is_file() && path_within_project(project_path, &candidate) {
+                    return Some(candidate.display().to_string());
+                }
             }
         }
     }
@@ -10440,6 +10469,129 @@ mod tests {
         assert_eq!(sanitize_folder_name("café"), "café");
         assert_eq!(sanitize_folder_name("a b\tc"), "a_b_c");
         assert_eq!(sanitize_folder_name("back\\slash"), "back_slash");
+    }
+
+    #[test]
+    fn test_extract_icon_hrefs_collects_multiple_local_icons() {
+        let source = r#"
+            <link rel="stylesheet" href="/app.css">
+            <link rel="shortcut icon" href="/missing.ico">
+            <link rel="apple-touch-icon preload" href="/apple-touch-icon.png">
+            <link rel="icon" href="https://example.com/icon.png">
+            <link rel="icon" href="data:image/svg+xml;base64,abc">
+        "#;
+
+        assert_eq!(
+            extract_icon_hrefs(source),
+            vec!["/missing.ico", "/apple-touch-icon.png"]
+        );
+    }
+
+    #[test]
+    fn test_detect_project_default_avatar_path_direct_candidate() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let icon = dir.path().join("public/favicon.svg");
+        std::fs::create_dir_all(icon.parent().expect("icon parent")).expect("create public");
+        std::fs::write(&icon, "<svg />").expect("write icon");
+
+        assert_eq!(
+            detect_project_default_avatar_path(&dir.path().display().to_string()),
+            Some(icon.display().to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_project_default_avatar_path_uses_later_valid_html_icon() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let icon = dir.path().join("public/apple-touch-icon.png");
+        std::fs::create_dir_all(icon.parent().expect("icon parent")).expect("create public");
+        std::fs::write(&icon, "png").expect("write icon");
+        std::fs::write(
+            dir.path().join("index.html"),
+            r#"
+                <link rel="icon" href="/missing.ico">
+                <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+            "#,
+        )
+        .expect("write html");
+
+        assert_eq!(
+            detect_project_default_avatar_path(&dir.path().display().to_string()),
+            Some(icon.display().to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_project_default_avatar_path_rejects_traversal_href() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("outside temp dir");
+        let outside_icon = outside.path().join("icon.png");
+        std::fs::write(&outside_icon, "png").expect("write outside icon");
+        std::fs::write(
+            dir.path().join("index.html"),
+            format!(
+                r#"<link rel="icon" href="../{}/icon.png">"#,
+                outside
+                    .path()
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .expect("outside dir name")
+            ),
+        )
+        .expect("write html");
+
+        assert_eq!(
+            detect_project_default_avatar_path(&dir.path().display().to_string()),
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_detect_project_default_avatar_path_rejects_symlink_outside_project() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("outside temp dir");
+        let outside_icon = outside.path().join("icon.png");
+        std::fs::write(&outside_icon, "png").expect("write outside icon");
+        symlink(&outside_icon, dir.path().join("favicon.png")).expect("create symlink");
+
+        assert_eq!(
+            detect_project_default_avatar_path(&dir.path().display().to_string()),
+            None
+        );
+    }
+
+    #[test]
+    fn test_attach_default_avatar_skips_custom_avatar() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        std::fs::write(dir.path().join("favicon.png"), "png").expect("write icon");
+        let mut project = Project {
+            id: "project".to_string(),
+            name: "Project".to_string(),
+            path: dir.path().display().to_string(),
+            default_branch: "main".to_string(),
+            added_at: 0,
+            order: 0,
+            parent_id: None,
+            is_folder: false,
+            avatar_path: Some("avatars/project.png".to_string()),
+            default_avatar_path: Some("stale".to_string()),
+            enabled_mcp_servers: None,
+            known_mcp_servers: Vec::new(),
+            custom_system_prompt: None,
+            default_provider: None,
+            default_backend: None,
+            worktrees_dir: None,
+            linear_api_key: None,
+            linear_team_id: None,
+            linked_project_ids: Vec::new(),
+        };
+
+        attach_default_avatar(&mut project);
+
+        assert_eq!(project.default_avatar_path, None);
     }
 
     #[test]

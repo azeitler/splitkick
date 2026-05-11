@@ -10,7 +10,7 @@ import {
   RotateCcw,
   X,
 } from 'lucide-react'
-import { convertFileSrc } from '@/lib/transport'
+import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -138,7 +138,7 @@ export function GeneralPane({
     project?.avatar_path && appDataDir && !imgError
       ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
       : project?.default_avatar_path && !imgError
-        ? convertFileSrc(project.default_avatar_path)
+        ? convertProjectFileSrc(project.default_avatar_path)
         : null
 
   const displayedName = localName ?? project?.name ?? ''

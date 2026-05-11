@@ -199,6 +199,7 @@ pub async fn start_server(
         .route("/api/init", get(init_handler))
         .route("/api/version", get(version_handler))
         .route("/api/files/{*filepath}", get(file_handler))
+        .route("/api/project-files/{*filepath}", get(project_file_handler))
         .fallback(get(static_handler))
         .layer(CompressionLayer::new().br(true).gzip(true))
         .layer(cors)
@@ -810,6 +811,89 @@ async fn file_handler(
     }
 }
 
+fn validate_token(params: &WsAuth, state: &AppState) -> Result<(), Response> {
+    if state.token_required {
+        let provided = params.token.clone().unwrap_or_default();
+        if !auth::validate_token(&provided, &state.token) {
+            return Err((StatusCode::UNAUTHORIZED, "Invalid token").into_response());
+        }
+    }
+    Ok(())
+}
+
+fn canonicalize_known_project_roots(app: &AppHandle) -> Result<Vec<std::path::PathBuf>, Response> {
+    let data = crate::projects::storage::load_projects_data(app).map_err(|e| {
+        log::warn!("Failed to load projects for project file request: {e}");
+        (StatusCode::INTERNAL_SERVER_ERROR, "Cannot load projects").into_response()
+    })?;
+
+    let mut roots = Vec::new();
+    for project in data.projects {
+        if project.is_folder || project.path.is_empty() {
+            continue;
+        }
+        if let Ok(path) = std::path::Path::new(&project.path).canonicalize() {
+            roots.push(path);
+        }
+    }
+    for worktree in data.worktrees {
+        if let Ok(path) = std::path::Path::new(&worktree.path).canonicalize() {
+            roots.push(path);
+        }
+    }
+
+    Ok(roots)
+}
+
+fn path_is_in_known_roots(path: &std::path::Path, roots: &[std::path::PathBuf]) -> bool {
+    roots.iter().any(|root| path.starts_with(root))
+}
+
+/// Serve files from known project/worktree directories (authenticated).
+/// Used by browser-mode clients for auto-detected project avatars, matching
+/// the native asset protocol's project directory allowlist.
+async fn project_file_handler(
+    AxumPath(filepath): AxumPath<String>,
+    Query(params): Query<WsAuth>,
+    State(state): State<AppState>,
+) -> Response {
+    if let Err(response) = validate_token(&params, &state) {
+        return response;
+    }
+
+    let requested = std::path::PathBuf::from(&filepath);
+    if !requested.is_absolute() {
+        return (StatusCode::BAD_REQUEST, "Expected absolute file path").into_response();
+    }
+
+    let canonical = match requested.canonicalize() {
+        Ok(path) => path,
+        Err(_) => return (StatusCode::NOT_FOUND, "File not found").into_response(),
+    };
+    if !canonical.is_file() {
+        return (StatusCode::NOT_FOUND, "Not a file").into_response();
+    }
+
+    let roots = match canonicalize_known_project_roots(&state.app) {
+        Ok(roots) => roots,
+        Err(response) => return response,
+    };
+    if !path_is_in_known_roots(&canonical, &roots) {
+        return (StatusCode::FORBIDDEN, "Access denied").into_response();
+    }
+
+    let mime = mime_from_extension(&canonical);
+    match tokio::fs::read(&canonical).await {
+        Ok(bytes) => Response::builder()
+            .header("Content-Type", mime)
+            .header("Cache-Control", "private, max-age=3600")
+            .body(Body::from(bytes))
+            .unwrap()
+            .into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "Cannot read file").into_response(),
+    }
+}
+
 fn static_mime_from_extension(path: &std::path::Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()) {
         Some("html") => "text/html; charset=utf-8",
@@ -1084,7 +1168,7 @@ mod tests {
     use super::{
         bind_host_option_label, bind_host_option_rank, display_host_for_bind_ip,
         display_ip_for_bind_ip_with_candidates, format_http_url, is_tailscale_ipv4, parse_bind_ip,
-        validate_bind_host,
+        path_is_in_known_roots, validate_bind_host,
     };
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
@@ -1247,5 +1331,36 @@ mod tests {
         let options = super::list_bind_host_options();
         assert!(options.iter().any(|option| option.host == "127.0.0.1"));
         assert!(options.iter().any(|option| option.host == "0.0.0.0"));
+    }
+    #[test]
+    fn test_path_is_in_known_roots_allows_nested_project_file() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path().join("project");
+        let nested = root.join("public").join("favicon.png");
+        std::fs::create_dir_all(nested.parent().expect("nested parent")).expect("create dirs");
+        std::fs::write(&nested, "png").expect("write file");
+
+        let canonical_root = root.canonicalize().expect("canonical root");
+        let canonical_nested = nested.canonicalize().expect("canonical nested");
+
+        assert!(path_is_in_known_roots(&canonical_nested, &[canonical_root]));
+    }
+
+    #[test]
+    fn test_path_is_in_known_roots_rejects_sibling_prefix() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path().join("project");
+        let sibling = dir.path().join("project-other").join("favicon.png");
+        std::fs::create_dir_all(&root).expect("create root");
+        std::fs::create_dir_all(sibling.parent().expect("sibling parent")).expect("create sibling");
+        std::fs::write(&sibling, "png").expect("write file");
+
+        let canonical_root = root.canonicalize().expect("canonical root");
+        let canonical_sibling = sibling.canonicalize().expect("canonical sibling");
+
+        assert!(!path_is_in_known_roots(
+            &canonical_sibling,
+            &[canonical_root]
+        ));
     }
 }
