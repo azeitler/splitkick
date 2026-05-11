@@ -87,6 +87,7 @@ import {
   OPENCODE_MODEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
 import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
+import { ReviewMethodModal } from '@/components/chat/ReviewMethodModal'
 
 type MagicOption =
   | 'save-context'
@@ -366,6 +367,7 @@ export function MagicModal() {
   const [customInvestigateModel, setCustomInvestigateModel] =
     useState<string>('sonnet')
   const [resolveDialogOpen, setResolveDialogOpen] = useState(false)
+  const [reviewMethodDialogOpen, setReviewMethodDialogOpen] = useState(false)
   const [resolveSelectionMode, setResolveSelectionMode] =
     useState<ResolveSelectionMode>('settings-default')
   const [customResolveBackend, setCustomResolveBackend] =
@@ -789,7 +791,8 @@ export function MagicModal() {
   const executeGitDirectly = useCallback(
     async (
       option: MagicOption,
-      override?: { backend: CliBackend; model: string }
+      override?: { backend: CliBackend; model: string },
+      reviewSource: 'ai' | 'coderabbit' = 'ai'
     ) => {
       if (!selectedWorktreeId || !worktree?.path) return
 
@@ -1258,19 +1261,31 @@ ${resolveInstructions}`
           }
 
           try {
-            const result = await invoke<ReviewResponse>('run_review_with_ai', {
-              worktreePath: worktree.path,
-              customPrompt: preferences?.magic_prompts?.code_review,
-              model: preferences?.magic_prompt_models?.code_review_model,
-              customProfileName: resolveMagicPromptProvider(
-                preferences?.magic_prompt_providers,
-                'code_review_provider',
-                preferences?.default_provider
-              ),
-              reasoningEffort:
-                preferences?.magic_prompt_efforts?.code_review_effort ?? null,
-              reviewRunId,
-            })
+            const result = await invoke<ReviewResponse>(
+              reviewSource === 'coderabbit'
+                ? 'run_coderabbit_review'
+                : 'run_review_with_ai',
+              reviewSource === 'coderabbit'
+                ? {
+                    worktreePath: worktree.path,
+                    reviewRunId,
+                    reviewType: 'all',
+                  }
+                : {
+                    worktreePath: worktree.path,
+                    customPrompt: preferences?.magic_prompts?.code_review,
+                    model: preferences?.magic_prompt_models?.code_review_model,
+                    customProfileName: resolveMagicPromptProvider(
+                      preferences?.magic_prompt_providers,
+                      'code_review_provider',
+                      preferences?.default_provider
+                    ),
+                    reasoningEffort:
+                      preferences?.magic_prompt_efforts?.code_review_effort ??
+                      null,
+                    reviewRunId,
+                  }
+            )
 
             const newSession = await invoke<Session>('create_session', {
               worktreeId: selectedWorktreeId,
@@ -1315,7 +1330,7 @@ ${resolveInstructions}`
 
             const findingCount = result.findings.length
             toast.success(
-              `Review done on ${reviewTarget} (${findingCount} findings)`,
+              `${reviewSource === 'coderabbit' ? 'CodeRabbit review' : 'Review'} done on ${reviewTarget} (${findingCount} findings)`,
               {
                 id: toastId,
                 action: {
@@ -1409,6 +1424,17 @@ ${resolveInstructions}`
     async (option: MagicOption) => {
       // Block disabled options on canvas
       if (isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option)) {
+        return
+      }
+
+      if (option === 'review') {
+        if (!selectedWorktreeId || !worktree?.path) {
+          notify('No worktree selected', undefined, { type: 'error' })
+          setMagicModalOpen(false)
+          return
+        }
+        setMagicModalOpen(false)
+        setReviewMethodDialogOpen(true)
         return
       }
 
@@ -1637,6 +1663,14 @@ ${resolveInstructions}`
 
   return (
     <>
+      <ReviewMethodModal
+        open={reviewMethodDialogOpen}
+        onOpenChange={setReviewMethodDialogOpen}
+        onAiReview={() => executeGitDirectly('review', undefined, 'ai')}
+        onCodeRabbitReview={() =>
+          executeGitDirectly('review', undefined, 'coderabbit')
+        }
+      />
       <Dialog open={magicModalOpen} onOpenChange={handleOpenChange}>
         <DialogContent
           ref={contentRef}

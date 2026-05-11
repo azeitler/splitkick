@@ -46,6 +46,7 @@ use super::types::{
     WorktreeUnarchivedEvent,
 };
 use crate::claude_cli::resolve_cli_binary;
+use crate::coderabbit_cli::resolve_coderabbit_binary;
 use crate::codex_cli::resolve_cli_binary as resolve_codex_cli_binary;
 use crate::gh_cli::config::resolve_gh_binary;
 use crate::http_server::EmitExt;
@@ -7471,6 +7472,247 @@ pub async fn run_review_with_ai(
     );
 
     Ok(response)
+}
+
+fn map_coderabbit_severity(severity: &str) -> String {
+    match severity {
+        "critical" => "critical".to_string(),
+        "major" | "minor" => "warning".to_string(),
+        "trivial" | "info" => "suggestion".to_string(),
+        _ => "suggestion".to_string(),
+    }
+}
+
+fn coderabbit_title(instructions: &str) -> String {
+    let first = instructions
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("CodeRabbit finding")
+        .trim();
+    let sentence = first.split('.').next().unwrap_or(first).trim();
+    let mut title: String = sentence.chars().take(80).collect();
+    if title.is_empty() {
+        title = "CodeRabbit finding".to_string();
+    }
+    title
+}
+
+fn parse_coderabbit_review_output(output: &str) -> Result<ReviewResponse, String> {
+    let mut findings = Vec::new();
+    let mut status_messages = Vec::new();
+    let mut errors = Vec::new();
+
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = match serde_json::from_str(line) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let event_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        match event_type {
+            "finding" => {
+                let severity = value
+                    .get("severity")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("info");
+                let file = value
+                    .get("fileName")
+                    .or_else(|| value.get("file"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let instructions = value
+                    .get("codegenInstructions")
+                    .or_else(|| value.get("description"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("CodeRabbit reported a finding.")
+                    .to_string();
+                let suggestion = value
+                    .get("suggestions")
+                    .and_then(|v| v.as_array())
+                    .and_then(|arr| {
+                        let joined = arr
+                            .iter()
+                            .filter_map(|item| {
+                                item.as_str().map(str::to_string).or_else(|| {
+                                    if item.is_null() {
+                                        None
+                                    } else {
+                                        Some(item.to_string())
+                                    }
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n\n");
+                        if joined.trim().is_empty() {
+                            None
+                        } else {
+                            Some(joined)
+                        }
+                    });
+                findings.push(ReviewFinding {
+                    severity: map_coderabbit_severity(severity),
+                    file,
+                    line: None,
+                    title: coderabbit_title(&instructions),
+                    description: instructions.clone(),
+                    suggestion: suggestion.or(Some(instructions)),
+                });
+            }
+            "status" => {
+                if let Some(status) = value.get("status").and_then(|v| v.as_str()) {
+                    status_messages.push(status.to_string());
+                }
+            }
+            "error" => {
+                let message = value
+                    .get("message")
+                    .or_else(|| value.get("error"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown CodeRabbit error")
+                    .to_string();
+                errors.push(message);
+            }
+            _ => {}
+        }
+    }
+
+    if findings.is_empty() && !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+
+    let critical_or_warning = findings
+        .iter()
+        .any(|f| f.severity == "critical" || f.severity == "warning");
+    let approval_status = if critical_or_warning {
+        "changes_requested"
+    } else if findings.is_empty() {
+        "approved"
+    } else {
+        "needs_discussion"
+    }
+    .to_string();
+
+    let summary = if findings.is_empty() {
+        "CodeRabbit review completed with no findings.".to_string()
+    } else {
+        let critical = findings.iter().filter(|f| f.severity == "critical").count();
+        let warning = findings.iter().filter(|f| f.severity == "warning").count();
+        let suggestion = findings
+            .iter()
+            .filter(|f| f.severity == "suggestion")
+            .count();
+        format!(
+            "CodeRabbit review completed with {} finding(s): {} critical, {} warning, {} suggestion.",
+            findings.len(), critical, warning, suggestion
+        )
+    };
+
+    Ok(ReviewResponse {
+        summary,
+        findings,
+        approval_status,
+    })
+}
+
+/// Run CodeRabbit CLI review on the current worktree.
+#[tauri::command]
+pub async fn run_coderabbit_review(
+    app: AppHandle,
+    worktree_path: String,
+    review_run_id: Option<String>,
+    review_type: Option<String>,
+) -> Result<ReviewResponse, String> {
+    log::trace!("Running CodeRabbit review for: {worktree_path}");
+
+    let binary_path = resolve_coderabbit_binary(&app);
+    if !binary_path.exists() {
+        return Err("CodeRabbit CLI not installed".to_string());
+    }
+
+    let mut cmd = silent_command(&binary_path);
+    cmd.args(["review", "--agent", "--dir", &worktree_path]);
+    if let Some(review_type) = review_type
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        cmd.args(["--type", review_type]);
+    }
+    cmd.current_dir(&worktree_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn CodeRabbit CLI: {e}"))?;
+    let pid = child.id();
+    if let Some(run_id) = review_run_id.as_deref() {
+        register_review_process(run_id, pid);
+    }
+
+    let output_result = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .map_err(|e| format!("Failed to join CodeRabbit review task: {e}"))?;
+    let cancelled = review_run_id
+        .as_deref()
+        .map(|run_id| take_review_process_pid(run_id).is_none())
+        .unwrap_or(false);
+
+    let output = match output_result {
+        Ok(output) => output,
+        Err(e) => {
+            if cancelled {
+                return Err("Review cancelled".to_string());
+            }
+            return Err(format!("Failed to wait for CodeRabbit CLI: {e}"));
+        }
+    };
+
+    if let Some(run_id) = review_run_id.as_deref() {
+        let _ = take_review_process_pid(run_id);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() {
+        if cancelled {
+            return Err("Review cancelled".to_string());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!(
+            "CodeRabbit CLI failed (exit {}): {}{}",
+            output.status,
+            stderr,
+            if stdout.trim().is_empty() {
+                String::new()
+            } else {
+                format!("\n{}", stdout.trim())
+            }
+        ));
+    }
+
+    parse_coderabbit_review_output(&stdout)
+}
+
+#[cfg(test)]
+mod coderabbit_review_tests {
+    use super::*;
+
+    #[test]
+    fn parses_agent_findings() {
+        let output = r#"{"type":"review_context","reviewType":"all"}
+{"type":"status","phase":"analyzing","status":"reviewing"}
+{"type":"finding","severity":"major","fileName":"src/App.tsx","codegenInstructions":"Fix the null check before accessing value.","suggestions":["if (!value) return null;"]}
+{"type":"finding","severity":"trivial","fileName":"README.md","codegenInstructions":"Improve wording.","suggestions":[]}
+{"type":"complete"}"#;
+        let parsed = parse_coderabbit_review_output(output).unwrap();
+        assert_eq!(parsed.findings.len(), 2);
+        assert_eq!(parsed.findings[0].severity, "warning");
+        assert_eq!(parsed.findings[1].severity, "suggestion");
+        assert_eq!(parsed.approval_status, "changes_requested");
+    }
 }
 
 /// Cancel a running AI review request by review_run_id.

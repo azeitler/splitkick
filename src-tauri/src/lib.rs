@@ -13,6 +13,7 @@ mod browser;
 mod chat;
 mod claude_cli;
 mod cli_update;
+mod coderabbit_cli;
 mod codex_cli;
 mod cursor_cli;
 mod gh_cli;
@@ -242,6 +243,8 @@ pub struct AppPreferences {
     pub opencode_cli_source: String, // OpenCode CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default = "default_cli_source")]
     pub gh_cli_source: String, // GitHub CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default = "default_cli_source")]
+    pub coderabbit_cli_source: String, // CodeRabbit CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default)]
     pub expand_tool_calls_by_default: bool, // Expand all tool call collapsibles by default (default: false)
     #[serde(default = "default_auto_update_ai_backends")]
@@ -1499,6 +1502,7 @@ impl Default for AppPreferences {
             codex_cli_source: default_cli_source(),
             opencode_cli_source: default_cli_source(),
             gh_cli_source: default_cli_source(),
+            coderabbit_cli_source: default_cli_source(),
             expand_tool_calls_by_default: false,
             auto_update_ai_backends: default_auto_update_ai_backends(),
         }
@@ -3164,6 +3168,7 @@ pub fn run() {
             projects::create_commit_with_ai,
             projects::revert_last_local_commit,
             projects::run_review_with_ai,
+            projects::run_coderabbit_review,
             projects::cancel_review_with_ai,
             projects::list_github_releases,
             projects::generate_release_notes,
@@ -3395,6 +3400,13 @@ pub fn run() {
             codex_cli::get_available_codex_versions,
             codex_cli::install_codex_cli,
             codex_cli::uninstall_codex_cli,
+            // CodeRabbit CLI management commands
+            coderabbit_cli::check_coderabbit_cli_installed,
+            coderabbit_cli::detect_coderabbit_in_path,
+            coderabbit_cli::check_coderabbit_cli_auth,
+            coderabbit_cli::install_coderabbit_cli,
+            coderabbit_cli::uninstall_coderabbit_cli,
+            coderabbit_cli::update_coderabbit_cli,
             // Cursor CLI management commands
             cursor_cli::check_cursor_cli_installed,
             cursor_cli::detect_cursor_in_path,

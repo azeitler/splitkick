@@ -30,6 +30,10 @@ vi.mock('./panes/GitHubPane', () => ({
   GitHubPane: () => <div>GitHub CLI pane</div>,
 }))
 
+vi.mock('./panes/CodeRabbitPane', () => ({
+  CodeRabbitPane: () => <div>CodeRabbit CLI pane</div>,
+}))
+
 vi.mock('./panes/AppearancePane', () => ({
   AppearancePane: () => <div>Appearance pane</div>,
 }))
@@ -140,6 +144,7 @@ describe('PreferencesDialog', () => {
       'OpenCode',
       'Cursor',
       'GitHub CLI',
+      'CodeRabbit CLI',
       'Magic Prompts',
       'Opinionated',
       'Providers',

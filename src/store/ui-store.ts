@@ -8,6 +8,7 @@ export type PreferencePane =
   | 'opencode'
   | 'cursor'
   | 'github'
+  | 'coderabbit'
   | 'appearance'
   | 'keybindings'
   | 'magic-prompts'
@@ -21,7 +22,13 @@ export type PreferencePane =
 
 export type OnboardingStartStep = 'claude' | 'gh' | null
 
-export type CliUpdateModalType = 'claude' | 'gh' | 'codex' | 'opencode' | null
+export type CliUpdateModalType =
+  | 'claude'
+  | 'gh'
+  | 'codex'
+  | 'opencode'
+  | 'coderabbit'
+  | null
 
 export type CliLoginModalType =
   | 'claude'
@@ -29,6 +36,7 @@ export type CliLoginModalType =
   | 'codex'
   | 'opencode'
   | 'cursor'
+  | 'coderabbit'
   | null
 
 interface UIState {
@@ -140,10 +148,12 @@ interface UIState {
     projectPath?: string | null,
     branch?: string | null
   ) => void
-  openCliUpdateModal: (type: 'claude' | 'gh' | 'codex' | 'opencode') => void
+  openCliUpdateModal: (
+    type: 'claude' | 'gh' | 'codex' | 'opencode' | 'coderabbit'
+  ) => void
   closeCliUpdateModal: () => void
   openCliLoginModal: (
-    type: 'claude' | 'gh' | 'codex' | 'opencode' | 'cursor',
+    type: 'claude' | 'gh' | 'codex' | 'opencode' | 'cursor' | 'coderabbit',
     command: string,
     commandArgs?: string[],
     action?: 'login' | 'update' | 'install'

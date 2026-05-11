@@ -78,6 +78,15 @@ const paneEntries: PreferenceSearchEntry[] = [
     anchorId: 'pref-pane-github',
   },
   {
+    id: 'pane-coderabbit',
+    pane: 'coderabbit',
+    paneTitle: 'CodeRabbit CLI',
+    type: 'pane',
+    title: 'CodeRabbit CLI Settings',
+    keywords: ['coderabbit', 'coderabbit cli', 'coderabbit login'],
+    anchorId: 'pref-pane-coderabbit',
+  },
+  {
     id: 'pane-providers',
     pane: 'providers',
     paneTitle: 'Providers',
@@ -208,6 +217,22 @@ const sectionEntries: PreferenceSearchEntry[] = [
     ],
     anchorId: 'pref-claude-section-settings',
     fallbackAnchorId: 'pref-pane-claude',
+  },
+  {
+    id: 'coderabbit-cli',
+    pane: 'coderabbit',
+    paneTitle: 'CodeRabbit CLI',
+    type: 'section',
+    title: 'CodeRabbit CLI',
+    sectionTitle: 'CodeRabbit CLI',
+    keywords: [
+      'coderabbit',
+      'install coderabbit',
+      'coderabbit login',
+      'code review',
+    ],
+    anchorId: 'pref-coderabbit-section-cli',
+    fallbackAnchorId: 'pref-pane-coderabbit',
   },
   {
     id: 'codex-cli',
@@ -547,6 +572,7 @@ const sectionEntries: PreferenceSearchEntry[] = [
 
 const nativeOnlySectionIds = new Set([
   'claude-cli',
+  'coderabbit-cli',
   'codex-cli',
   'opencode-cli',
   'cursor-cli',

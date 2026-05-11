@@ -11,6 +11,7 @@ import {
   FlaskConical,
   Globe,
   Github,
+  Rabbit,
   Sparkles,
   type LucideIcon,
 } from 'lucide-react'
@@ -60,6 +61,7 @@ import { CodexPane } from './panes/CodexPane'
 import { OpenCodePane } from './panes/OpenCodePane'
 import { CursorPane } from './panes/CursorPane'
 import { GitHubPane } from './panes/GitHubPane'
+import { CodeRabbitPane } from './panes/CodeRabbitPane'
 import { AppearancePane } from './panes/AppearancePane'
 import { KeybindingsPane } from './panes/KeybindingsPane'
 import { MagicPromptsPane } from './panes/MagicPromptsPane'
@@ -140,6 +142,12 @@ const navigationEntries: (NavigationItem | NavigationSeparator)[] = [
     name: 'GitHub CLI',
     icon: Github,
   },
+  {
+    type: 'item',
+    id: 'coderabbit',
+    name: 'CodeRabbit CLI',
+    icon: Rabbit,
+  },
   { type: 'separator', id: 'backend-separator' },
   {
     type: 'item',
@@ -206,6 +214,7 @@ const paneIconMap: Record<PreferencePane, LucideIcon> = {
   opencode: OpenCodeIcon,
   cursor: CursorIcon,
   github: Github,
+  coderabbit: Rabbit,
   opinionated: Sparkles,
   providers: Blocks,
   usage: BarChart3,
@@ -232,6 +241,8 @@ const getPaneTitle = (pane: PreferencePane): string => {
       return 'Cursor'
     case 'github':
       return 'GitHub CLI'
+    case 'coderabbit':
+      return 'CodeRabbit CLI'
     case 'appearance':
       return 'Appearance'
     case 'keybindings':
@@ -776,6 +787,11 @@ export function PreferencesDialog() {
               {activePane === 'github' && (
                 <div id="pref-pane-github">
                   <GitHubPane />
+                </div>
+              )}
+              {activePane === 'coderabbit' && (
+                <div id="pref-pane-coderabbit">
+                  <CodeRabbitPane />
                 </div>
               )}
               {activePane === 'appearance' && (
