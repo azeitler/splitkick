@@ -1,5 +1,4 @@
 import { Bot, Loader2, Rabbit } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -8,7 +7,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { useCodeRabbitCliStatus } from '@/services/coderabbit-cli'
-import { useUIStore } from '@/store/ui-store'
 import { cn } from '@/lib/utils'
 
 interface ReviewMethodModalProps {
@@ -27,7 +25,6 @@ export function ReviewMethodModal({
   const { data: coderabbitStatus, isLoading } = useCodeRabbitCliStatus({
     enabled: open,
   })
-  const openPreferencesPane = useUIStore(state => state.openPreferencesPane)
   const codeRabbitReady = Boolean(coderabbitStatus?.installed)
 
   const choose = (handler: () => void) => {
@@ -74,20 +71,6 @@ export function ReviewMethodModal({
             onClick={() => choose(onCodeRabbitReview)}
           />
         </div>
-
-        {!codeRabbitReady && !isLoading && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 justify-start px-2 text-xs text-muted-foreground"
-            onClick={() => {
-              onOpenChange(false)
-              openPreferencesPane('general')
-            }}
-          >
-            Open CodeRabbit settings
-          </Button>
-        )}
       </DialogContent>
     </Dialog>
   )
