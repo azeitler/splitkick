@@ -186,8 +186,7 @@ const CANVAS_FILTER_TABS: {
 
 function isIssueWorktree(worktree: Worktree): boolean {
   return (
-    worktree.issue_number != null ||
-    !!worktree.linear_issue_identifier?.trim()
+    worktree.issue_number != null || !!worktree.linear_issue_identifier?.trim()
   )
 }
 
@@ -663,8 +662,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const openInEditor = useOpenWorktreeInEditor()
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeFilterTab, setActiveFilterTab] =
-    useState<CanvasFilterTab>('all')
+  const [activeFilterTab, setActiveFilterTab] = useState<CanvasFilterTab>('all')
   const isMobile = useIsMobile()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
 
@@ -1619,8 +1617,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       const nextIndex =
         (safeCurrentIndex + delta + CANVAS_FILTER_TABS.length) %
         CANVAS_FILTER_TABS.length
+      const nextTab = CANVAS_FILTER_TABS[nextIndex]
 
-      handleFilterTabChange(CANVAS_FILTER_TABS[nextIndex].value)
+      if (nextTab) {
+        handleFilterTabChange(nextTab.value)
+      }
     },
     [activeFilterTab, handleFilterTabChange]
   )
