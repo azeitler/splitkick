@@ -1795,6 +1795,7 @@ export function ChatWindow({
     handleOpenPr,
     handleReview,
     handleCodeRabbitReview,
+    handleCodeRabbitPrReview,
     handleMerge,
     handleMergePr,
     handleResolveConflicts,
@@ -2331,7 +2332,9 @@ export function ChatWindow({
           open={reviewMethodModalOpen}
           onOpenChange={setReviewMethodModalOpen}
           onAiReview={handleReview}
-          onCodeRabbitReview={handleCodeRabbitReview}
+          onCodeRabbitCliReview={handleCodeRabbitReview}
+          onCodeRabbitPrReview={handleCodeRabbitPrReview}
+          codeRabbitPrAvailable={Boolean(worktree?.pr_number)}
         />
         {showReviewFullWidth && activeSessionId ? (
           <div className="flex-1 min-h-0">

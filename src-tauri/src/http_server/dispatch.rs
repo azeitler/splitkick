@@ -356,6 +356,20 @@ pub async fn dispatch_command(
             .await?;
             to_value(result)
         }
+        "trigger_coderabbit_pr_review" => {
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let pr_number: Option<u32> = field_opt(&args, "prNumber", "pr_number")?;
+            let result = crate::projects::trigger_coderabbit_pr_review(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                pr_number,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["projects"]);
+            to_value(result)
+        }
         "revert_last_local_commit" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let result = crate::projects::revert_last_local_commit(worktree_path).await?;

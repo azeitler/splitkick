@@ -595,6 +595,7 @@ class WsTransport {
     'install_gh_cli',
     'install_coderabbit_cli',
     'run_coderabbit_review',
+    'trigger_coderabbit_pr_review',
   ])
   private static readonly LONG_TIMEOUT = 30 * 60_000
   private static readonly DEFAULT_TIMEOUT = 60_000
