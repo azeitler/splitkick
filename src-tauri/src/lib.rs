@@ -3207,6 +3207,7 @@ pub fn run() {
             projects::revert_last_local_commit,
             projects::run_review_with_ai,
             projects::run_coderabbit_review,
+            projects::trigger_coderabbit_pr_review,
             projects::cancel_review_with_ai,
             projects::list_github_releases,
             projects::generate_release_notes,

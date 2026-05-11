@@ -5153,6 +5153,86 @@ pub async fn detect_and_link_pr(
     Ok(None)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct TriggerCodeRabbitPrReviewResponse {
+    pub pr_number: u32,
+    pub pr_url: String,
+    pub comment_body: String,
+}
+
+/// Trigger CodeRabbit by posting "@coderabbitai review" as a PR comment.
+#[tauri::command]
+pub async fn trigger_coderabbit_pr_review(
+    app: AppHandle,
+    worktree_id: Option<String>,
+    worktree_path: String,
+    pr_number: Option<u32>,
+) -> Result<TriggerCodeRabbitPrReviewResponse, String> {
+    log::trace!("Triggering CodeRabbit PR review for: {worktree_path}");
+
+    let gh = resolve_gh_binary(&app);
+    let target_pr_number =
+        pr_number.ok_or_else(|| "Open or link a PR in Jean first".to_string())?;
+    let output = silent_command(&gh)
+        .args([
+            "pr",
+            "view",
+            &target_pr_number.to_string(),
+            "--json",
+            "number,url",
+        ])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr view: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to load PR #{target_pr_number}: {stderr}"));
+    }
+
+    let view_json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse PR #{target_pr_number}: {e}"))?;
+    let pr_url = view_json["url"].as_str().unwrap_or("").to_string();
+
+    let comment_body = "@coderabbitai review".to_string();
+    let output = silent_command(&gh)
+        .args([
+            "pr",
+            "comment",
+            &target_pr_number.to_string(),
+            "--body",
+            &comment_body,
+        ])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr comment: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to add CodeRabbit trigger comment to PR #{target_pr_number}: {stderr}"
+        ));
+    }
+
+    if let Some(worktree_id) = worktree_id.as_deref() {
+        if let Ok(mut data) = load_projects_data(&app) {
+            if let Some(wt) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) {
+                wt.pr_number = Some(target_pr_number);
+                if !pr_url.is_empty() {
+                    wt.pr_url = Some(pr_url.clone());
+                }
+                let _ = save_projects_data(&app, &data);
+            }
+        }
+    }
+
+    Ok(TriggerCodeRabbitPrReviewResponse {
+        pr_number: target_pr_number,
+        pr_url,
+        comment_body,
+    })
+}
+
 /// Clear PR information from a worktree
 ///
 /// Called when a PR is closed or merged and the user wants to create a new one.

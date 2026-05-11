@@ -52,6 +52,12 @@ interface SessionSettingArgs {
   worktreePath: string
 }
 
+interface TriggerCodeRabbitPrReviewResponse {
+  pr_number: number
+  pr_url: string
+  comment_body: string
+}
+
 interface UseGitOperationsParams {
   activeWorktreeId: string | null | undefined
   activeSessionId: string | null | undefined
@@ -83,6 +89,8 @@ interface UseGitOperationsReturn {
   handleReview: () => Promise<void>
   /** Runs CodeRabbit CLI code review. */
   handleCodeRabbitReview: () => Promise<void>
+  /** Triggers CodeRabbit by commenting on the open PR. */
+  handleCodeRabbitPrReview: () => Promise<void>
   /** Validates and shows merge options dialog */
   handleMerge: () => Promise<void>
   /** Merges open PR on GitHub then archives/deletes worktree */
@@ -523,7 +531,7 @@ export function useGitOperations({
   // If existingSessionId is provided, stores results on that session (in-place review from ChatWindow)
   // Creates a new session and stores review results in it
   const runReview = useCallback(
-    async (source: 'ai' | 'coderabbit') => {
+    async (source: 'ai' | 'coderabbit-cli' | 'coderabbit-pr') => {
       if (!activeWorktreeId || !activeWorktreePath) return
 
       const { setWorktreeLoading, clearWorktreeLoading } =
@@ -533,10 +541,64 @@ export function useGitOperations({
       const projectName = project?.name ?? 'project'
       const worktreeName = worktree?.name ?? branch
       const reviewTarget = `${projectName}/${worktreeName}`
+      if (source === 'coderabbit-pr') {
+        const toastId = toast.loading(
+          `Triggering CodeRabbit review for ${reviewTarget}...`
+        )
+
+        try {
+          if (!worktree?.pr_number) {
+            throw new Error('Open or link a PR in Jean first')
+          }
+
+          const result = await invoke<TriggerCodeRabbitPrReviewResponse>(
+            'trigger_coderabbit_pr_review',
+            {
+              worktreeId: activeWorktreeId,
+              worktreePath: activeWorktreePath,
+              prNumber: worktree.pr_number,
+            }
+          )
+
+          if (worktree?.project_id) {
+            queryClient.invalidateQueries({
+              queryKey: projectsQueryKeys.worktrees(worktree.project_id),
+            })
+            queryClient.invalidateQueries({
+              queryKey: [
+                ...projectsQueryKeys.all,
+                'worktree',
+                activeWorktreeId,
+              ],
+            })
+          }
+
+          toast.success(
+            `CodeRabbit review triggered on PR #${result.pr_number}`,
+            {
+              id: toastId,
+              action: result.pr_url
+                ? {
+                    label: 'Open',
+                    onClick: () => openExternal(result.pr_url),
+                  }
+                : undefined,
+            }
+          )
+        } catch (error) {
+          toast.error(`Failed to trigger CodeRabbit review: ${error}`, {
+            id: toastId,
+          })
+        } finally {
+          clearWorktreeLoading(activeWorktreeId)
+        }
+        return
+      }
+
       const reviewRunId = generateId()
       let cancelRequested = false
       const reviewLabel =
-        source === 'coderabbit' ? 'CodeRabbit review' : 'Review'
+        source === 'coderabbit-cli' ? 'CodeRabbit CLI review' : 'Review'
       const toastId = toast.loading(`${reviewLabel} for ${reviewTarget}...`, {
         cancel: {
           label: 'Cancel',
@@ -593,10 +655,10 @@ export function useGitOperations({
 
       try {
         const result = await invoke<ReviewResponse>(
-          source === 'coderabbit'
+          source === 'coderabbit-cli'
             ? 'run_coderabbit_review'
             : 'run_review_with_ai',
-          source === 'coderabbit'
+          source === 'coderabbit-cli'
             ? {
                 worktreePath: activeWorktreePath,
                 reviewRunId,
@@ -665,7 +727,7 @@ export function useGitOperations({
 
         const findingCount = result.findings.length
         toast.success(
-          `${source === 'coderabbit' ? 'CodeRabbit review' : 'Review'} done on ${projectName}/${worktreeName} (${findingCount} findings)`,
+          `${source === 'coderabbit-cli' ? 'CodeRabbit CLI review' : 'Review'} done on ${projectName}/${worktreeName} (${findingCount} findings)`,
           {
             id: toastId,
             action: {
@@ -719,7 +781,12 @@ export function useGitOperations({
   const handleReview = useCallback(() => runReview('ai'), [runReview])
 
   const handleCodeRabbitReview = useCallback(
-    () => runReview('coderabbit'),
+    () => runReview('coderabbit-cli'),
+    [runReview]
+  )
+
+  const handleCodeRabbitPrReview = useCallback(
+    () => runReview('coderabbit-pr'),
     [runReview]
   )
 
@@ -1176,6 +1243,7 @@ ${resolveInstructions}`
     handleOpenPr,
     handleReview,
     handleCodeRabbitReview,
+    handleCodeRabbitPrReview,
     handleMerge,
     handleMergePr,
     handleResolveConflicts,
