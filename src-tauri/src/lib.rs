@@ -396,7 +396,7 @@ fn default_file_edit_mode() -> String {
 }
 
 fn default_parallel_execution_prompt_enabled() -> bool {
-    false // Disabled by default (experimental)
+    true // Enabled by default
 }
 
 fn default_compact_chat_view_enabled() -> bool {

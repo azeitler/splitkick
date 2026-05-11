@@ -1610,6 +1610,27 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     [activeFilterTab]
   )
 
+  const handleFilterTabKeyboardNav = useCallback(
+    (delta: -1 | 1) => {
+      const currentIndex = CANVAS_FILTER_TABS.findIndex(
+        tab => tab.value === activeFilterTab
+      )
+      const safeCurrentIndex = currentIndex === -1 ? 0 : currentIndex
+      const nextIndex =
+        (safeCurrentIndex + delta + CANVAS_FILTER_TABS.length) %
+        CANVAS_FILTER_TABS.length
+
+      handleFilterTabChange(CANVAS_FILTER_TABS[nextIndex].value)
+    },
+    [activeFilterTab, handleFilterTabChange]
+  )
+  const handleNavigateFilterTabLeft = useCallback(() => {
+    handleFilterTabKeyboardNav(-1)
+  }, [handleFilterTabKeyboardNav])
+  const handleNavigateFilterTabRight = useCallback(() => {
+    handleFilterTabKeyboardNav(1)
+  }, [handleFilterTabKeyboardNav])
+
   // Keep selectedWorktreeId in sync whenever selectedIndex changes (click, keyboard, or external)
   // This fixes the bug where closing a session calls selectProject() which clears selectedWorktreeId,
   // but the dashboard still has a card selected via selectedIndex
@@ -1861,6 +1882,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     selectedIndex,
     onSelectedIndexChange: handleSelectedIndexChange,
     onSelect: handleSelect,
+    onNavigateLeft: handleNavigateFilterTabLeft,
+    onNavigateRight: handleNavigateFilterTabRight,
     enabled: !isModalOpen,
     onSelectionChange: syncSelectionToStore,
   })

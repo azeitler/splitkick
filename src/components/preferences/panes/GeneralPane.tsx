@@ -2379,6 +2379,34 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
             </InlineField>
 
             <InlineField
+              label="Compact chat view"
+              description="Compact answers into one section for a cleaner chat, showing only the last prompt and answer by default."
+            >
+              <Switch
+                checked={preferences?.compact_chat_view_enabled ?? false}
+                onCheckedChange={checked => {
+                  patchPreferences.mutate({ compact_chat_view_enabled: checked })
+                }}
+              />
+            </InlineField>
+
+            <InlineField
+              label="Parallel execution prompting"
+              description="Add system prompt encouraging sub-agent parallelization for faster task execution"
+            >
+              <Switch
+                checked={
+                  preferences?.parallel_execution_prompt_enabled ?? false
+                }
+                onCheckedChange={checked => {
+                  patchPreferences.mutate({
+                    parallel_execution_prompt_enabled: checked,
+                  })
+                }}
+              />
+            </InlineField>
+
+            <InlineField
               label="Build execution"
               description="Backend, model, thinking, and effort override when approving plans"
             >
