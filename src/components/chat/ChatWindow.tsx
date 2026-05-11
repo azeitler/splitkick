@@ -108,6 +108,7 @@ import { ChatInput } from './ChatInput'
 import { SessionDebugPanel } from './SessionDebugPanel'
 import { ChatToolbar } from './ChatToolbar'
 import { ReviewResultsPanel } from './ReviewResultsPanel'
+import { ReviewMethodModal } from './ReviewMethodModal'
 import { QueuedMessagesList } from './QueuedMessageItem'
 import { FloatingButtons } from './FloatingButtons'
 import { PlanDialog } from './PlanDialog'
@@ -1793,6 +1794,7 @@ export function ChatWindow({
     handlePush,
     handleOpenPr,
     handleReview,
+    handleCodeRabbitReview,
     handleMerge,
     handleMergePr,
     handleResolveConflicts,
@@ -1941,6 +1943,8 @@ export function ChatWindow({
     cliVersion: cliStatus?.version ?? null,
     worktreeProjectId: worktree?.project_id,
   })
+
+  const [reviewMethodModalOpen, setReviewMethodModalOpen] = useState(false)
 
   // Linked projects modal state
   const linkedProjectsModalOpen = useUIStore(
@@ -2323,6 +2327,12 @@ export function ChatWindow({
       )}
     >
       <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
+        <ReviewMethodModal
+          open={reviewMethodModalOpen}
+          onOpenChange={setReviewMethodModalOpen}
+          onAiReview={handleReview}
+          onCodeRabbitReview={handleCodeRabbitReview}
+        />
         {showReviewFullWidth && activeSessionId ? (
           <div className="flex-1 min-h-0">
             <ReviewResultsPanel
@@ -2989,7 +2999,7 @@ export function ChatWindow({
                                 onCommit={handleCommit}
                                 onCommitAndPush={handleCommitAndPushWithPicker}
                                 onOpenPr={handleOpenPr}
-                                onReview={() => handleReview()}
+                                onReview={() => setReviewMethodModalOpen(true)}
                                 onMerge={handleMerge}
                                 onMergePr={handleMergePr}
                                 onResolvePrConflicts={handleResolvePrConflicts}

@@ -10,6 +10,7 @@ const nativeOnlyEntryIds = [
   'opencode-cli',
   'cursor-cli',
   'github-cli',
+  'coderabbit-cli',
   'general-troubleshooting',
   'web-access-server',
   'web-access-authentication',
@@ -73,6 +74,9 @@ describe('preferences search index', () => {
     expect(searchPreferenceEntries('opencode login')[0]?.pane).toBe('opencode')
     expect(searchPreferenceEntries('cursor model')[0]?.pane).toBe('cursor')
     expect(searchPreferenceEntries('github login')[0]?.pane).toBe('github')
+    expect(searchPreferenceEntries('coderabbit login')[0]?.pane).toBe(
+      'coderabbit'
+    )
   })
 
   it('returns relevant appearance hits for font queries', () => {
