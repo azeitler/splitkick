@@ -2523,7 +2523,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   role="tab"
                   aria-selected={isActive}
                   className={cn(
-                    'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors',
+                    'inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
                     isActive
                       ? 'border-primary/30 bg-primary/10 text-primary'
                       : 'border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground'
@@ -2534,7 +2534,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                   <span>{tab.label}</span>
                   <span
                     className={cn(
-                      'rounded-full px-1.5 py-0.5 text-[10px] leading-none',
+                      'rounded-md px-1.5 py-0.5 text-[10px] leading-none',
                       isActive
                         ? 'bg-primary/15 text-primary'
                         : 'bg-muted text-muted-foreground'
