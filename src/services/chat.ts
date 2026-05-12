@@ -4,6 +4,7 @@ import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { generateId } from '@/lib/uuid'
+import { disposeTerminal } from '@/lib/terminal-instances'
 import {
   beginSessionStateHydration,
   endSessionStateHydration,
@@ -30,6 +31,7 @@ import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
+import { useTerminalStore } from '@/store/terminal-store'
 import type { ReviewResponse, Worktree } from '@/types/projects'
 
 /** Default number of recent runs loaded on initial session fetch. */
@@ -41,6 +43,24 @@ export const OLDER_RUN_BATCH = 10
 function isWsDisconnectError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error)
   return msg.includes('WebSocket disconnected')
+}
+
+export function cleanupSessionTerminalForRemovedSession(
+  worktreeId: string,
+  sessionId: string
+): string | undefined {
+  const terminalId = useUIStore
+    .getState()
+    .clearSessionTerminalSurface(sessionId)
+  if (!terminalId) return undefined
+
+  invoke('stop_terminal', { terminalId }).catch(() => {
+    // Terminal may already be stopped.
+  })
+  disposeTerminal(terminalId)
+  useTerminalStore.getState().removeTerminal(worktreeId, terminalId)
+
+  return terminalId
 }
 
 // Query keys for chat
@@ -500,10 +520,12 @@ export function useCreateSession() {
       worktreeId,
       worktreePath,
       name,
+      backend,
     }: {
       worktreeId: string
       worktreePath: string
       name?: string
+      backend?: NonNullable<Session['backend']>
     }): Promise<Session> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -514,6 +536,7 @@ export function useCreateSession() {
         worktreeId,
         worktreePath,
         name,
+        backend,
       })
       logger.info('Session created', { sessionId: session.id })
       return session
@@ -779,6 +802,7 @@ export function useCloseSession() {
 
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
+      cleanupSessionTerminalForRemovedSession(worktreeId, sessionId)
 
       // Switch to the new active session — but only if the caller hasn't already
       // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
@@ -844,6 +868,7 @@ export function useArchiveSession() {
 
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
+      cleanupSessionTerminalForRemovedSession(worktreeId, sessionId)
 
       // Switch to the new active session — but only if the caller hasn't already
       // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)

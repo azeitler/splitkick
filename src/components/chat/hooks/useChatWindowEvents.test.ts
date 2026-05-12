@@ -40,6 +40,9 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
     useUIStore.setState({
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
+      newSessionModeTarget: null,
+      sessionPrimarySurface: {},
+      sessionTerminalIds: {},
     })
   })
 
@@ -69,9 +72,6 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
       currentStreamingContentBlocks: [],
       isSending: false,
       currentQueuedMessages: [],
-      createSession: {
-        mutate: vi.fn(),
-      },
       preferences: undefined,
       patchPreferences: {
         mutate: vi.fn(),
@@ -115,6 +115,18 @@ describe('useChatWindowEvents worktree approval shortcuts', () => {
     vi.advanceTimersByTime(250)
 
     expect(document.activeElement).toBe(params.inputRef.current)
+  })
+
+  it('opens the new session mode picker for CMD+T events', () => {
+    renderUseChatWindowEvents()
+
+    window.dispatchEvent(new CustomEvent('create-new-session'))
+
+    expect(useUIStore.getState().newSessionModeTarget).toEqual({
+      worktreeId: 'worktree-1',
+      worktreePath: '/tmp/worktree-1',
+      origin: 'chat',
+    })
   })
 
   it('handles worktree build approval for a pending plan', () => {

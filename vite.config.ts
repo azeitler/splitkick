@@ -72,7 +72,9 @@ export default defineConfig(async () => ({
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined
 
-          if (id.includes('@xterm')) return 'terminal'
+          if (id.includes('@xterm') || id.includes('ghostty-web')) {
+            return 'terminal'
+          }
           if (
             id.includes('react-markdown') ||
             id.includes('rehype-raw') ||

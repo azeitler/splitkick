@@ -87,7 +87,13 @@ Each major system has focused documentation:
 
 Additional systems (no dedicated docs yet):
 
-- **Terminal** - Built-in PTY terminal emulator (`src-tauri/src/terminal/`)
+- **Terminal** - Built-in PTY terminal emulator (`src-tauri/src/terminal/`).
+  Sessions can use chat or terminal as their primary surface via
+  `useUIStore.sessionPrimarySurface`. Full-screen terminal sessions own exactly
+  one terminal instance via `sessionTerminalIds` and must render through
+  `SingleTerminalView`/`terminal-instances.ts` so the selected experimental
+  terminal renderer is respected; terminal tab bars remain only for side/drawer
+  terminals.
 - **Background Tasks** - Git/PR polling with focus-aware intervals (`src-tauri/src/background_tasks/`)
 - **HTTP Server** - Embedded Axum server + WebSocket for headless/web mode (`src-tauri/src/http_server/`)
 - **Diagnostics** - CPU/memory monitoring panel (`src-tauri/src/diagnostics/`)
@@ -114,6 +120,7 @@ MainWindow (Top-level orchestrator)
 ├── MainWindowContent (Primary content area)
 │   ├── ChatWindow (when worktree selected — always shows chat view)
 │   │   ├── Chat view (VirtualizedMessageList + ChatInput + ChatToolbar)
+│   │   ├── Full-screen terminal surface (optional primary worktree surface)
 │   │   ├── TerminalPanel (integrated PTY terminal)
 │   │   └── ReviewResultsPanel (AI code review findings)
 │   ├── ProjectCanvasView (when project selected, no active worktree)

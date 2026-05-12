@@ -48,7 +48,11 @@ export function isSanitizableTextControl(
     return false
   }
 
-  if (element.disabled || element.readOnly || element.closest('.xterm')) {
+  if (
+    element.disabled ||
+    element.readOnly ||
+    element.closest('.xterm, [data-terminal-emulator]')
+  ) {
     return false
   }
 

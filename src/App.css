@@ -615,7 +615,9 @@ kbd {
 .xterm,
 .xterm .xterm-viewport,
 .xterm .xterm-screen,
-.xterm .xterm-screen canvas {
+.xterm .xterm-screen canvas,
+[data-terminal-emulator],
+[data-terminal-emulator] canvas {
   background-color: var(--background) !important;
 }
 

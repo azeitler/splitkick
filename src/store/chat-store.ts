@@ -2078,8 +2078,18 @@ export const useChatStore = create<ChatUIState>()(
         set(
           state => {
             const existing = state.pendingFiles[sessionId] ?? []
-            // Deduplicate by relativePath - don't add if already present
-            if (existing.some(f => f.relativePath === file.relativePath)) {
+            // Deduplicate by source scope + relativePath - linked projects can share paths
+            const fileSource = file.sourceRootPath ?? file.sourceProjectId ?? ''
+            if (
+              existing.some(f => {
+                const existingSource =
+                  f.sourceRootPath ?? f.sourceProjectId ?? ''
+                return (
+                  existingSource === fileSource &&
+                  f.relativePath === file.relativePath
+                )
+              })
+            ) {
               return state
             }
             return {

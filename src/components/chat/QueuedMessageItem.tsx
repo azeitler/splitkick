@@ -115,6 +115,8 @@ export const QueuedMessageItem = memo(function QueuedMessageItem({
                 key={`${message.id}-file-${idx}`}
                 path={f.relativePath}
                 worktreePath={worktreePath ?? ''}
+                sourceRootPath={f.sourceRootPath}
+                sourceProjectName={f.sourceProjectName}
                 isDirectory={f.isDirectory}
               />
             ))}

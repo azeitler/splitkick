@@ -207,6 +207,11 @@ export function FloatingDock() {
   const activeSessionId = useChatStore(state =>
     currentWorktreeId ? state.activeSessionIds[currentWorktreeId] : undefined
   )
+  const isTerminalSession = useUIStore(state =>
+    activeSessionId
+      ? state.sessionPrimarySurface[activeSessionId] === 'terminal'
+      : false
+  )
   const selectedBackend = useChatStore(state =>
     activeSessionId ? state.selectedBackends[activeSessionId] : undefined
   )
@@ -408,7 +413,9 @@ export function FloatingDock() {
   // When the chat toolbar is mounted, the DockBurgerButton there exposes the
   // same menu — hide this corner dock to avoid duplicate UI and overlap with
   // the chat textarea.
-  if (chatToolbarMounted) return null
+  // Terminal sessions are full-screen inside the chat bounds and have no
+  // bottom input/toolbar, so the corner dock would cover terminal output.
+  if (chatToolbarMounted || isTerminalSession) return null
 
   return (
     <div
