@@ -2007,6 +2007,10 @@ pub async fn dispatch_command(
             let result = crate::regenerate_http_token(app.clone()).await?;
             to_value(result)
         }
+        "get_jean_mcp_config_snippet" => {
+            let result = crate::get_jean_mcp_config_snippet(app.clone()).await?;
+            to_value(result)
+        }
         "start_opencode_server" => {
             let result = crate::opencode_server::start_opencode_server(app.clone()).await?;
             to_value(result)

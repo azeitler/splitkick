@@ -4,6 +4,7 @@ pub(crate) mod codex_server;
 mod commands;
 pub(crate) mod cursor;
 pub mod detached;
+pub mod jean_mcp;
 mod naming;
 pub(crate) mod opencode;
 pub mod registry;

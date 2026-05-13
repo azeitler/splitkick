@@ -255,6 +255,20 @@ pub struct AppPreferences {
     pub expand_tool_calls_by_default: bool, // Expand all tool call collapsibles by default (default: false)
     #[serde(default = "default_auto_update_ai_backends")]
     pub auto_update_ai_backends: bool, // Automatically update AI backend CLIs when a new version is available
+    #[serde(default)]
+    pub jean_mcp_enabled: bool, // Expose Jean MCP server to spawned CLIs (Claude/Cursor auto-injected; Codex/OpenCode via manual install)
+    #[serde(default = "default_jean_mcp_max_depth")]
+    pub jean_mcp_max_depth: u32, // Max recursive spawn depth via Jean MCP (default 3)
+    #[serde(default = "default_jean_mcp_rate_limit")]
+    pub jean_mcp_rate_limit_per_minute: u32, // Per-source rate limit for session-spawning tools (default 20)
+}
+
+fn default_jean_mcp_max_depth() -> u32 {
+    3
+}
+
+fn default_jean_mcp_rate_limit() -> u32 {
+    20
 }
 
 fn default_true() -> Option<bool> {
@@ -1544,6 +1558,9 @@ impl Default for AppPreferences {
             coderabbit_cli_source: default_cli_source(),
             expand_tool_calls_by_default: false,
             auto_update_ai_backends: default_auto_update_ai_backends(),
+            jean_mcp_enabled: false,
+            jean_mcp_max_depth: default_jean_mcp_max_depth(),
+            jean_mcp_rate_limit_per_minute: default_jean_mcp_rate_limit(),
         }
     }
 }
@@ -2480,6 +2497,83 @@ async fn regenerate_http_token(app: AppHandle) -> Result<String, String> {
     prefs.http_server_token = Some(new_token.clone());
     save_preferences(app.clone(), prefs).await?;
     Ok(new_token)
+}
+
+/// Snippet payloads users can paste into Cursor / Codex / OpenCode configs
+/// to expose Jean's MCP server to those backends manually. Claude is
+/// auto-injected via `--mcp-config` and does not need this.
+#[derive(serde::Serialize)]
+pub struct JeanMcpSnippet {
+    pub enabled: bool,
+    pub server_running: bool,
+    pub url: Option<String>,
+    pub token: Option<String>,
+    pub claude: Option<String>,
+    pub cursor: Option<String>,
+    pub codex_toml: Option<String>,
+    pub opencode_json: Option<String>,
+}
+
+#[tauri::command]
+async fn get_jean_mcp_config_snippet(app: AppHandle) -> Result<JeanMcpSnippet, String> {
+    use serde_json::json;
+
+    let prefs = load_preferences(app.clone()).await?;
+    let status = http_server::server::get_server_status(app.clone()).await;
+    let port = status.port;
+    let token = status.token.clone();
+    let url = port.map(|p| format!("http://127.0.0.1:{p}/mcp"));
+
+    let auth_header = match &token {
+        Some(t) if !t.is_empty() => Some(format!("Bearer {t}")),
+        _ => None,
+    };
+
+    let claude = url.as_ref().map(|u| {
+        let headers = match &auth_header {
+            Some(h) => json!({ "Authorization": h }),
+            None => json!({}),
+        };
+        let v = json!({
+            "mcpServers": {
+                "jean": { "type": "http", "url": u, "headers": headers }
+            }
+        });
+        serde_json::to_string_pretty(&v).unwrap_or_default()
+    });
+
+    // Cursor reads the same JSON shape as Claude from <worktree>/.cursor/mcp.json
+    let cursor = claude.clone();
+
+    let codex_toml = url.as_ref().map(|u| match &token {
+        Some(t) if !t.is_empty() => {
+            format!("[mcp_servers.jean]\nurl = \"{u}\"\nenabled = true\nbearer_token = \"{t}\"\n")
+        }
+        _ => format!("[mcp_servers.jean]\nurl = \"{u}\"\nenabled = true\n"),
+    });
+
+    let opencode_json = url.as_ref().map(|u| {
+        let mut entry = serde_json::Map::new();
+        entry.insert("type".to_string(), json!("remote"));
+        entry.insert("url".to_string(), json!(u));
+        entry.insert("enabled".to_string(), json!(true));
+        if let Some(h) = &auth_header {
+            entry.insert("headers".to_string(), json!({ "Authorization": h }));
+        }
+        let v = json!({ "mcp": { "jean": entry } });
+        serde_json::to_string_pretty(&v).unwrap_or_default()
+    });
+
+    Ok(JeanMcpSnippet {
+        enabled: prefs.jean_mcp_enabled,
+        server_running: status.running,
+        url,
+        token,
+        claude,
+        cursor,
+        codex_toml,
+        opencode_json,
+    })
 }
 
 /// Convert a frontend shortcut string (e.g. "mod+shift+m") to Tauri accelerator format (e.g. "CmdOrCtrl+Shift+M")
@@ -3508,6 +3602,7 @@ pub fn run() {
             list_http_bind_host_options,
             validate_http_bind_host,
             regenerate_http_token,
+            get_jean_mcp_config_snippet,
             // Opinionated plugin commands
             opinionated::check_opinionated_plugin_status,
             opinionated::install_opinionated_plugin,

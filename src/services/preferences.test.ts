@@ -217,6 +217,9 @@ describe('preferences service', () => {
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -348,6 +351,9 @@ describe('preferences service', () => {
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -452,6 +458,9 @@ describe('preferences service', () => {
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithDeprecatedFastModel)
 
@@ -556,6 +565,9 @@ describe('preferences service', () => {
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -662,6 +674,9 @@ describe('preferences service', () => {
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -768,6 +783,9 @@ describe('preferences service', () => {
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -872,6 +890,9 @@ describe('preferences service', () => {
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

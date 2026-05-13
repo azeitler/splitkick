@@ -3,7 +3,7 @@ use axum::{
     extract::{ws::WebSocketUpgrade, Path as AxumPath, Query, State},
     http::{header, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::get,
+    routing::{get, post},
     Json, Router,
 };
 use if_addrs::get_if_addrs;
@@ -24,10 +24,11 @@ use super::WsBroadcaster;
 
 /// Shared state for the Axum server.
 #[derive(Clone)]
-struct AppState {
-    app: AppHandle,
-    token: String,
-    token_required: bool,
+pub(super) struct AppState {
+    pub(super) app: AppHandle,
+    pub(super) token: String,
+    pub(super) token_required: bool,
+    pub(super) localhost_only: bool,
     dist_path: std::path::PathBuf,
 }
 
@@ -185,6 +186,7 @@ pub async fn start_server(
         app: app.clone(),
         token: token.clone(),
         token_required,
+        localhost_only,
         dist_path: dist_path.clone(),
     };
 
@@ -200,6 +202,7 @@ pub async fn start_server(
         .route("/api/version", get(version_handler))
         .route("/api/files/{*filepath}", get(file_handler))
         .route("/api/project-files/{*filepath}", get(project_file_handler))
+        .route("/mcp", post(super::mcp::mcp_handler))
         .fallback(get(static_handler))
         .layer(CompressionLayer::new().br(true).gzip(true))
         .layer(cors)

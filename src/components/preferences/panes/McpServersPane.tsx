@@ -1,8 +1,11 @@
-import React, { useEffect } from 'react'
-import { CheckCircle, Loader2, ShieldAlert, XCircle } from 'lucide-react'
+import React, { useCallback, useEffect, useState } from 'react'
+import { CheckCircle, Copy, Loader2, ShieldAlert, XCircle } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Switch } from '@/components/ui/switch'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import {
   Tooltip,
   TooltipTrigger,
@@ -10,6 +13,9 @@ import {
 } from '@/components/ui/tooltip'
 import { BackendLabel } from '@/components/ui/backend-label'
 import { cn } from '@/lib/utils'
+import { invoke } from '@/lib/transport'
+import { copyToClipboard } from '@/lib/clipboard'
+import { toast } from 'sonner'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import {
   useAllBackendsMcpServers,
@@ -25,6 +31,170 @@ import { useChatStore } from '@/store/chat-store'
 import type { McpHealthStatus } from '@/types/chat'
 import type { CliBackend } from '@/types/preferences'
 import { SettingsSection } from '../SettingsSection'
+
+interface JeanMcpSnippet {
+  enabled: boolean
+  server_running: boolean
+  url: string | null
+  token: string | null
+  claude: string | null
+  cursor: string | null
+  codex_toml: string | null
+  opencode_json: string | null
+}
+
+const JeanMcpSection: React.FC = () => {
+  const { data: preferences } = usePreferences()
+  const patchPreferences = usePatchPreferences()
+  const [snippet, setSnippet] = useState<JeanMcpSnippet | null>(null)
+
+  const refreshSnippet = useCallback(async () => {
+    try {
+      const result = await invoke<JeanMcpSnippet>('get_jean_mcp_config_snippet')
+      setSnippet(result)
+    } catch (e) {
+      console.error('Failed to load Jean MCP snippet', e)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshSnippet()
+  }, [refreshSnippet, preferences?.jean_mcp_enabled, preferences?.http_server_enabled])
+
+  const enabled = preferences?.jean_mcp_enabled ?? false
+  const serverRunning = snippet?.server_running ?? false
+
+  const handleCopy = (label: string, content: string | null) => {
+    if (!content) {
+      toast.error(`No ${label} snippet available — start the HTTP server first`)
+      return
+    }
+    copyToClipboard(content)
+    toast.success(`${label} snippet copied`)
+  }
+
+  return (
+    <SettingsSection title="Jean MCP Server" anchorId="pref-mcp-section-jean">
+      <p className="text-sm text-muted-foreground">
+        Expose Jean&apos;s own commands as an MCP server so spawned CLIs can
+        call back into Jean (create worktrees, list GitHub issues, send chat
+        messages). Requires the HTTP server to be running. Claude is
+        auto-injected; Cursor / Codex / OpenCode need manual setup using the
+        snippets below.
+      </p>
+
+      <div className="flex items-center gap-3 rounded-md border px-4 py-3">
+        <Switch
+          id="jean-mcp-enabled"
+          checked={enabled}
+          onCheckedChange={checked =>
+            patchPreferences.mutate({ jean_mcp_enabled: checked })
+          }
+        />
+        <Label htmlFor="jean-mcp-enabled" className="flex-1 cursor-pointer">
+          Enable Jean MCP server
+        </Label>
+        {!serverRunning && enabled && (
+          <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+            <ShieldAlert className="size-3.5" />
+            HTTP server not running
+          </span>
+        )}
+      </div>
+
+      {enabled && (
+        <>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="jean-mcp-max-depth" className="text-xs">
+                Max recursion depth
+              </Label>
+              <Input
+                id="jean-mcp-max-depth"
+                type="number"
+                min={0}
+                max={10}
+                value={preferences?.jean_mcp_max_depth ?? 3}
+                onChange={e =>
+                  patchPreferences.mutate({
+                    jean_mcp_max_depth: Math.max(
+                      0,
+                      Math.min(10, Number(e.target.value) || 0)
+                    ),
+                  })
+                }
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="jean-mcp-rate-limit" className="text-xs">
+                Spawn rate limit (per minute)
+              </Label>
+              <Input
+                id="jean-mcp-rate-limit"
+                type="number"
+                min={0}
+                max={1000}
+                value={preferences?.jean_mcp_rate_limit_per_minute ?? 20}
+                onChange={e =>
+                  patchPreferences.mutate({
+                    jean_mcp_rate_limit_per_minute: Math.max(
+                      0,
+                      Math.min(1000, Number(e.target.value) || 0)
+                    ),
+                  })
+                }
+              />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+              Manual setup snippets
+            </Label>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleCopy('Claude', snippet?.claude ?? null)}
+              >
+                <Copy className="mr-2 size-3.5" />
+                Claude (.mcp.json)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => handleCopy('Cursor', snippet?.cursor ?? null)}
+              >
+                <Copy className="mr-2 size-3.5" />
+                Cursor (.cursor/mcp.json)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  handleCopy('Codex', snippet?.codex_toml ?? null)
+                }
+              >
+                <Copy className="mr-2 size-3.5" />
+                Codex (~/.codex/config.toml)
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  handleCopy('OpenCode', snippet?.opencode_json ?? null)
+                }
+              >
+                <Copy className="mr-2 size-3.5" />
+                OpenCode (opencode.json)
+              </Button>
+            </div>
+          </div>
+        </>
+      )}
+    </SettingsSection>
+  )
+}
 
 function mcpAuthHint(backend: CliBackend): string {
   switch (backend) {
@@ -186,6 +356,7 @@ export const McpServersPane: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <JeanMcpSection />
       <SettingsSection
         title="Default MCP Servers"
         anchorId="pref-mcp-section-default-servers"

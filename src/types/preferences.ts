@@ -997,6 +997,9 @@ export interface AppPreferences {
   coderabbit_cli_source?: 'jean' | 'path' // CodeRabbit CLI source: 'jean' (managed) or 'path' (system PATH)
   expand_tool_calls_by_default: boolean // Expand all tool call collapsibles by default
   auto_update_ai_backends: boolean // Auto-install CLI updates in background when a new version is detected
+  jean_mcp_enabled: boolean // Expose Jean MCP server to spawned CLIs (auto-inject for Claude/Cursor)
+  jean_mcp_max_depth: number // Max recursive spawn depth via Jean MCP (default 3)
+  jean_mcp_rate_limit_per_minute: number // Per-source rate limit for session-spawning tools (default 20)
 }
 
 export interface CustomCliProfile {
@@ -1742,4 +1745,7 @@ export const defaultPreferences: AppPreferences = {
   coderabbit_cli_source: 'jean', // Default: Jean-managed
   expand_tool_calls_by_default: false, // Default: collapsed
   auto_update_ai_backends: true, // Default: auto-update AI backends in the background
+  jean_mcp_enabled: false, // Default: opt-in
+  jean_mcp_max_depth: 3,
+  jean_mcp_rate_limit_per_minute: 20,
 }
