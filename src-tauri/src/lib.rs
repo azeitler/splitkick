@@ -3233,6 +3233,7 @@ pub fn run() {
             projects::delete_all_archives,
             projects::rename_worktree,
             projects::update_worktree_label,
+            projects::update_worktree_labels,
             projects::set_worktree_last_opened,
             projects::open_worktree_in_finder,
             projects::open_log_directory,
@@ -3357,6 +3358,7 @@ pub fn run() {
             projects::get_app_data_dir,
             // Terminal commands
             terminal::start_terminal,
+            terminal::prepare_backend_terminal_context,
             terminal::terminal_write,
             terminal::terminal_resize,
             terminal::stop_terminal,
@@ -3386,6 +3388,7 @@ pub fn run() {
             chat::list_all_sessions,
             chat::get_session,
             chat::load_older_session_messages,
+            chat::list_native_cli_sessions,
             chat::create_session,
             chat::rename_session,
             chat::regenerate_session_name,

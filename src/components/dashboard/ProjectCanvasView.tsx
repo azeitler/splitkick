@@ -90,6 +90,10 @@ import { SessionChatModal } from '@/components/chat/SessionChatModal'
 import { LabelModal } from '@/components/chat/LabelModal'
 import { getLabelTextColor } from '@/lib/label-colors'
 import {
+  getWorktreeLabels,
+  updateWorktreeLabelsByName,
+} from '@/lib/worktree-labels'
+import {
   type SessionCardData,
   computeSessionCardData,
   groupCardsByStatus,
@@ -414,6 +418,7 @@ function WorktreeSectionHeader({
 
   const lastActivity = formatRelativeTime(sessionMetrics?.latestActivityAt)
   const displayBranch = gitStatus?.current_branch ?? worktree.branch
+  const worktreeLabels = getWorktreeLabels(worktree)
 
   return (
     <>
@@ -571,15 +576,25 @@ function WorktreeSectionHeader({
                 </span>
               )}
             </span>
-            {worktree.label && (
-              <span
-                className="ml-auto self-start shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                style={{
-                  backgroundColor: worktree.label.color,
-                  color: getLabelTextColor(worktree.label.color),
-                }}
-              >
-                {worktree.label.name}
+            {worktreeLabels.length > 0 && (
+              <span className="ml-auto flex max-w-[45%] flex-wrap justify-end gap-1 self-start shrink-0">
+                {worktreeLabels.slice(0, 3).map(label => (
+                  <span
+                    key={label.name}
+                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
+                    style={{
+                      backgroundColor: label.color,
+                      color: getLabelTextColor(label.color),
+                    }}
+                  >
+                    {label.name}
+                  </span>
+                ))}
+                {worktreeLabels.length > 3 && (
+                  <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                    +{worktreeLabels.length - 3}
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -742,10 +757,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const allWorktreeLabels = useMemo(() => {
     const labels: LabelData[] = []
     for (const wt of readyWorktrees) {
-      if (wt.label) labels.push(wt.label)
+      labels.push(...getWorktreeLabels(wt))
     }
     for (const wt of pendingWorktrees) {
-      if (wt.label) labels.push(wt.label)
+      labels.push(...getWorktreeLabels(wt))
     }
     return labels
   }, [readyWorktrees, pendingWorktrees])
@@ -913,7 +928,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
               (storeState.sessionLabels[session.id]?.name ?? '')
                 .toLowerCase()
                 .includes(q) ||
-              (worktree.label?.name ?? '').toLowerCase().includes(q) ||
+              getWorktreeLabels(worktree).some(label =>
+                label.name.toLowerCase().includes(q)
+              ) ||
               (worktree.pr_number != null &&
                 worktree.pr_number.toString().includes(q)) ||
               (worktree.issue_number != null &&
@@ -1728,7 +1745,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const [worktreeLabelModalOpen, setWorktreeLabelModalOpen] = useState(false)
   const [worktreeLabelTarget, setWorktreeLabelTarget] = useState<{
     worktreeId: string
-    currentLabel: LabelData | null
+    currentLabels: LabelData[]
   } | null>(null)
 
   // Listen for toggle-session-label event — open label modal for worktree
@@ -1746,7 +1763,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
       setWorktreeLabelTarget({
         worktreeId: section.worktree.id,
-        currentLabel: section.worktree.label ?? null,
+        currentLabels: getWorktreeLabels(section.worktree),
       })
       setWorktreeLabelModalOpen(true)
     }
@@ -1818,19 +1835,22 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   ])
 
   const handleWorktreeLabelApply = useCallback(
-    async (label: LabelData | null) => {
+    async (labels: LabelData[]) => {
       if (!worktreeLabelTarget) return
 
       try {
-        await invoke('update_worktree_label', {
+        await invoke('update_worktree_labels', {
           worktreeId: worktreeLabelTarget.worktreeId,
-          label,
+          labels,
         })
+        setWorktreeLabelTarget(target =>
+          target ? { ...target, currentLabels: labels } : target
+        )
         queryClient.invalidateQueries({
           queryKey: projectsQueryKeys.worktrees(projectId),
         })
       } catch (error) {
-        toast.error(`Failed to update label: ${error}`)
+        toast.error(`Failed to update labels: ${error}`)
       }
     },
     [worktreeLabelTarget, queryClient, projectId]
@@ -1839,16 +1859,22 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const handleLabelColorChange = useCallback(
     async (labelName: string, newColor: string) => {
       const worktreesToUpdate = worktreeSections
-        .filter(s => s.worktree.label?.name === labelName)
         .map(s => s.worktree)
+        .filter(wt =>
+          getWorktreeLabels(wt).some(label => label.name === labelName)
+        )
 
       if (worktreesToUpdate.length === 0) return
 
       const results = await Promise.allSettled(
         worktreesToUpdate.map(wt =>
-          invoke('update_worktree_label', {
+          invoke('update_worktree_labels', {
             worktreeId: wt.id,
-            label: { name: labelName, color: newColor },
+            labels: updateWorktreeLabelsByName(
+              getWorktreeLabels(wt),
+              labelName,
+              newColor
+            ),
           })
         )
       )
@@ -2663,8 +2689,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           setWorktreeLabelTarget(null)
         }}
         sessionId={null}
-        currentLabel={worktreeLabelTarget?.currentLabel ?? null}
-        onApply={handleWorktreeLabelApply}
+        currentLabel={null}
+        currentLabels={worktreeLabelTarget?.currentLabels ?? []}
+        mode="multi"
+        onApplyLabels={handleWorktreeLabelApply}
         onColorChange={handleLabelColorChange}
         extraLabels={allWorktreeLabels}
       />

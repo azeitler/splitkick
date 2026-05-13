@@ -270,6 +270,12 @@ pub async fn dispatch_command(
             crate::projects::update_worktree_label(app.clone(), worktree_id, label).await?;
             Ok(Value::Null)
         }
+        "update_worktree_labels" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let labels: Vec<crate::chat::types::LabelData> = from_field(&args, "labels")?;
+            crate::projects::update_worktree_labels(app.clone(), worktree_id, labels).await?;
+            Ok(Value::Null)
+        }
         "has_uncommitted_changes" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let result = crate::projects::has_uncommitted_changes(app.clone(), worktree_id).await?;
@@ -848,6 +854,20 @@ pub async fn dispatch_command(
             let result = crate::chat::list_all_sessions(app.clone()).await?;
             to_value(result)
         }
+        "list_native_cli_sessions" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let backend: String = from_field(&args, "backend")?;
+            let search_query: Option<String> = field_opt(&args, "searchQuery", "search_query")?;
+            let result_limit: Option<usize> = field_opt(&args, "resultLimit", "result_limit")?;
+            let result = crate::chat::list_native_cli_sessions(
+                worktree_path,
+                backend,
+                search_query,
+                result_limit,
+            )
+            .await?;
+            to_value(result)
+        }
         "get_session" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
@@ -880,9 +900,27 @@ pub async fn dispatch_command(
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let name: Option<String> = from_field_opt(&args, "name")?;
-            let result =
-                crate::chat::create_session(app.clone(), worktree_id, worktree_path, name, None)
-                    .await?;
+            let backend: Option<String> = from_field_opt(&args, "backend")?;
+            let primary_surface: Option<String> =
+                field_opt(&args, "primarySurface", "primary_surface")?;
+            let terminal_command: Option<String> =
+                field_opt(&args, "terminalCommand", "terminal_command")?;
+            let terminal_command_args: Option<Vec<String>> =
+                field_opt(&args, "terminalCommandArgs", "terminal_command_args")?;
+            let terminal_label: Option<String> =
+                field_opt(&args, "terminalLabel", "terminal_label")?;
+            let result = crate::chat::create_session(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                name,
+                backend,
+                primary_surface,
+                terminal_command,
+                terminal_command_args,
+                terminal_label,
+            )
+            .await?;
             to_value(result)
         }
         "rename_session" => {
@@ -1602,6 +1640,19 @@ pub async fn dispatch_command(
             )
             .await?;
             Ok(Value::Null)
+        }
+        "prepare_backend_terminal_context" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let backend: String = from_field(&args, "backend")?;
+            let result = crate::terminal::prepare_backend_terminal_context(
+                app.clone(),
+                session_id,
+                worktree_id,
+                backend,
+            )
+            .await?;
+            to_value(result)
         }
         "terminal_write" => {
             let parsed = parse_terminal_write_args(&args)?;
