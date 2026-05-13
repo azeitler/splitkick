@@ -142,6 +142,11 @@ const GitHubDashboardModal = lazy(() =>
     default: mod.GitHubDashboardModal,
   }))
 )
+const NewSessionModeModal = lazy(() =>
+  import('@/components/chat/NewSessionModeModal').then(mod => ({
+    default: mod.NewSessionModeModal,
+  }))
+)
 const CloseWorktreeDialog = lazy(() =>
   import('@/components/chat/CloseWorktreeDialog').then(mod => ({
     default: mod.CloseWorktreeDialog,
@@ -226,6 +231,7 @@ export function MainWindow() {
   const cliLoginModalOpen = useUIStore(state => state.cliLoginModalOpen)
   const updateModalVersion = useUIStore(state => state.updateModalVersion)
   const githubDashboardOpen = useUIStore(state => state.githubDashboardOpen)
+  const newSessionModeTarget = useUIStore(state => state.newSessionModeTarget)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
   const addProjectDialogOpen = useProjectsStore(
     state => state.addProjectDialogOpen
@@ -427,6 +433,9 @@ export function MainWindow() {
   const shouldRenderArchivedModal = useRetainedMount(archivedModalOpen)
   const shouldRenderCloseWorktreeDialog = useRetainedMount(closeConfirmOpen)
   const shouldRenderGitHubDashboardModal = useRetainedMount(githubDashboardOpen)
+  const shouldRenderNewSessionModeModal = useRetainedMount(
+    newSessionModeTarget !== null
+  )
 
   // On Windows, use smaller border radius and remove it when maximized
   // On other platforms, use rounded-xl only in native app mode
@@ -607,6 +616,11 @@ export function MainWindow() {
       {shouldRenderNewWorktreeModal && (
         <Suspense fallback={null}>
           <NewWorktreeModal />
+        </Suspense>
+      )}
+      {shouldRenderNewSessionModeModal && (
+        <Suspense fallback={null}>
+          <NewSessionModeModal />
         </Suspense>
       )}
       {shouldRenderAddProjectDialog && (

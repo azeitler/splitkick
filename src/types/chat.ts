@@ -1016,6 +1016,12 @@ export interface PendingFile {
   id: string
   /** Relative path from worktree root */
   relativePath: string
+  /** Absolute root path that relativePath is scoped to (linked project path or active worktree path) */
+  sourceRootPath?: string
+  /** Project ID when the file came from a linked/current project scope */
+  sourceProjectId?: string
+  /** Project display name when the file came from a linked/current project scope */
+  sourceProjectName?: string
   /** File extension */
   extension: string
   /** Whether this is a directory mention */

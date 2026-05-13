@@ -82,4 +82,26 @@ describe('buildMessageWithRefs', () => {
       '[File: src/App.tsx - Use the Read tool to view this file]\n\n[Image attached: /tmp/screenshot.png - Use the Read tool to view this image]'
     )
   })
+
+  it('uses absolute paths for linked-project file references', () => {
+    const message = buildMessageWithRefs(
+      queuedMessage({
+        pendingFiles: [
+          {
+            id: 'file-1',
+            relativePath: 'docs/intro.md',
+            sourceRootPath: '/tmp/docs',
+            sourceProjectId: 'docs',
+            sourceProjectName: 'Docs',
+            extension: 'md',
+            isDirectory: false,
+          },
+        ],
+      })
+    )
+
+    expect(message).toBe(
+      '[File: /tmp/docs/docs/intro.md - Use the Read tool to view this file]'
+    )
+  })
 })

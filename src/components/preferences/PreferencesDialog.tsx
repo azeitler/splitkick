@@ -13,6 +13,7 @@ import {
   Github,
   Rabbit,
   Sparkles,
+  Terminal,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -64,6 +65,7 @@ import { GitHubPane } from './panes/GitHubPane'
 import { CodeRabbitPane } from './panes/CodeRabbitPane'
 import { AppearancePane } from './panes/AppearancePane'
 import { KeybindingsPane } from './panes/KeybindingsPane'
+import { TerminalPane } from './panes/TerminalPane'
 import { MagicPromptsPane } from './panes/MagicPromptsPane'
 import { McpServersPane } from './panes/McpServersPane'
 import { ProvidersPane } from './panes/ProvidersPane'
@@ -151,6 +153,12 @@ const navigationEntries: (NavigationItem | NavigationSeparator)[] = [
   { type: 'separator', id: 'backend-separator' },
   {
     type: 'item',
+    id: 'terminal',
+    name: 'Terminal',
+    icon: Terminal,
+  },
+  {
+    type: 'item',
     id: 'magic-prompts',
     name: 'Magic Prompts',
     icon: Wand2,
@@ -220,6 +228,7 @@ const paneIconMap: Record<PreferencePane, LucideIcon> = {
   usage: BarChart3,
   appearance: Palette,
   keybindings: Keyboard,
+  terminal: Terminal,
   'magic-prompts': Wand2,
   'mcp-servers': Plug,
   integrations: Puzzle,
@@ -247,6 +256,8 @@ const getPaneTitle = (pane: PreferencePane): string => {
       return 'Appearance'
     case 'keybindings':
       return 'Keybindings'
+    case 'terminal':
+      return 'Terminal'
     case 'magic-prompts':
       return 'Magic Prompts'
     case 'mcp-servers':
@@ -802,6 +813,11 @@ export function PreferencesDialog() {
               {activePane === 'keybindings' && (
                 <div id="pref-pane-keybindings">
                   <KeybindingsPane searchTargetAction={searchTargetAction} />
+                </div>
+              )}
+              {activePane === 'terminal' && (
+                <div id="pref-pane-terminal">
+                  <TerminalPane />
                 </div>
               )}
               {activePane === 'magic-prompts' && (

@@ -189,10 +189,10 @@ function App() {
   // Used on both initial preload and WebSocket reconnect.
   const seedCache = useCallback(
     (data: InitialData) => {
-      const runningSnapshotMessages: Array<{
+      const runningSnapshotMessages: {
         sessionId: string
         message: Session['messages'][number]
-      }> = []
+      }[] = []
 
       // Seed projects into TanStack Query cache
       if (data.projects) {

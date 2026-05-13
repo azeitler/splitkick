@@ -11,6 +11,7 @@ export type PreferencePane =
   | 'coderabbit'
   | 'appearance'
   | 'keybindings'
+  | 'terminal'
   | 'magic-prompts'
   | 'mcp-servers'
   | 'providers'
@@ -21,6 +22,16 @@ export type PreferencePane =
   | 'opinionated'
 
 export type OnboardingStartStep = 'claude' | 'gh' | null
+
+export type WorktreePrimarySurface = 'chat' | 'terminal'
+
+export type NewSessionModeOrigin = 'chat' | 'modal' | 'canvas'
+
+export interface NewSessionModeTarget {
+  worktreeId: string
+  worktreePath: string
+  origin: NewSessionModeOrigin
+}
 
 export type CliUpdateModalType =
   | 'claude'
@@ -96,6 +107,12 @@ interface UIState {
   chatToolbarMounted: boolean
   /** Which worktree the session chat modal is for (for magic command worktree resolution) */
   sessionChatModalWorktreeId: string | null
+  /** Per-session primary surface shown inside the chat bounds */
+  sessionPrimarySurface: Record<string, WorktreePrimarySurface>
+  /** Terminal instance ID owned by a terminal session */
+  sessionTerminalIds: Record<string, string>
+  /** New session mode picker target; null means closed */
+  newSessionModeTarget: NewSessionModeTarget | null
   /** Whether a git diff modal is open (blocks execute_run keybinding) */
   gitDiffModalOpen: boolean
   /** File paths selected for commit in GitDiffModal (uncommitted tab only) */
@@ -180,6 +197,14 @@ interface UIState {
     sessionId?: string
   }
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
+  setSessionPrimarySurface: (
+    sessionId: string,
+    surface: WorktreePrimarySurface
+  ) => void
+  setSessionTerminalId: (sessionId: string, terminalId: string) => void
+  clearSessionTerminalSurface: (sessionId: string) => string | undefined
+  openNewSessionModeModal: (target: NewSessionModeTarget) => void
+  closeNewSessionModeModal: () => void
   setChatToolbarMounted: (mounted: boolean) => void
   setGitDiffModalOpen: (open: boolean) => void
   toggleGitDiffSelectedFile: (filePath: string) => void
@@ -250,6 +275,9 @@ export const useUIStore = create<UIState>()(
       pendingAutoOpenSessionIds: {},
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
+      sessionPrimarySurface: {},
+      sessionTerminalIds: {},
+      newSessionModeTarget: null,
       chatToolbarMounted: false,
       gitDiffModalOpen: false,
       gitDiffSelectedFiles: new Set<string>(),
@@ -703,6 +731,88 @@ export const useUIStore = create<UIState>()(
           },
           undefined,
           'setSessionChatModalOpen'
+        ),
+
+      setSessionPrimarySurface: (
+        sessionId: string,
+        surface: WorktreePrimarySurface
+      ) =>
+        set(
+          state => {
+            if (state.sessionPrimarySurface[sessionId] === surface) {
+              return state
+            }
+            return {
+              sessionPrimarySurface: {
+                ...state.sessionPrimarySurface,
+                [sessionId]: surface,
+              },
+            }
+          },
+          undefined,
+          'setSessionPrimarySurface'
+        ),
+
+      setSessionTerminalId: (sessionId: string, terminalId: string) =>
+        set(
+          state => {
+            if (state.sessionTerminalIds[sessionId] === terminalId) {
+              return state
+            }
+            return {
+              sessionTerminalIds: {
+                ...state.sessionTerminalIds,
+                [sessionId]: terminalId,
+              },
+            }
+          },
+          undefined,
+          'setSessionTerminalId'
+        ),
+
+      clearSessionTerminalSurface: (sessionId: string) => {
+        const current = get()
+        const terminalId = current.sessionTerminalIds[sessionId]
+        const hasSurface = sessionId in current.sessionPrimarySurface
+        if (!hasSurface && terminalId === undefined) {
+          return undefined
+        }
+
+        set(
+          state => {
+            const { [sessionId]: _removedSurface, ...sessionPrimarySurface } =
+              state.sessionPrimarySurface
+            const { [sessionId]: _removedTerminal, ...sessionTerminalIds } =
+              state.sessionTerminalIds
+            return { sessionPrimarySurface, sessionTerminalIds }
+          },
+          undefined,
+          'clearSessionTerminalSurface'
+        )
+
+        return terminalId
+      },
+
+      openNewSessionModeModal: (target: NewSessionModeTarget) =>
+        set(
+          state =>
+            state.newSessionModeTarget?.worktreeId === target.worktreeId &&
+            state.newSessionModeTarget?.worktreePath === target.worktreePath &&
+            state.newSessionModeTarget?.origin === target.origin
+              ? state
+              : { newSessionModeTarget: target },
+          undefined,
+          'openNewSessionModeModal'
+        ),
+
+      closeNewSessionModeModal: () =>
+        set(
+          state =>
+            state.newSessionModeTarget === null
+              ? state
+              : { newSessionModeTarget: null },
+          undefined,
+          'closeNewSessionModeModal'
         ),
 
       setChatToolbarMounted: (mounted: boolean) =>

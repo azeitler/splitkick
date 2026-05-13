@@ -172,6 +172,7 @@ import {
   type ImperativePanelHandle,
 } from '@/components/ui/resizable'
 import { TerminalPanel } from './TerminalPanel'
+import { FullScreenTerminalSurface } from './FullScreenTerminalSurface'
 import { useTerminalStore } from '@/store/terminal-store'
 
 // Extracted hooks (useStreamingEvents is now in App.tsx for global persistence)
@@ -303,6 +304,14 @@ export function ChatWindow({
     activeWorktreeId
       ? (state.terminalPanelOpen[activeWorktreeId] ?? false)
       : false
+  )
+  const primarySurface = useUIStore(state =>
+    activeSessionId
+      ? (state.sessionPrimarySurface[activeSessionId] ?? 'chat')
+      : 'chat'
+  )
+  const sessionTerminalId = useUIStore(state =>
+    activeSessionId ? state.sessionTerminalIds[activeSessionId] : undefined
   )
   const { setTerminalVisible } = useTerminalStore.getState()
 
@@ -2120,7 +2129,6 @@ export function ChatWindow({
     currentStreamingContentBlocks,
     isSending,
     currentQueuedMessages,
-    createSession,
     preferences,
     patchPreferences,
     handleSaveContext,
@@ -2297,6 +2305,44 @@ export function ChatWindow({
       <div className="flex h-full items-center justify-center text-muted-foreground">
         Select a worktree to start chatting
       </div>
+    )
+  }
+
+  if (primarySurface === 'terminal' && activeSessionId && sessionTerminalId) {
+    return (
+      <ErrorBoundary
+        resetKeys={[activeWorktreeId, activeSessionId, primarySurface]}
+        onError={(error, errorInfo) => {
+          logger.error('ChatWindow terminal surface crashed', {
+            error: error.message,
+            stack: error.stack,
+          })
+          saveCrashState(
+            { activeWorktreeId, activeSessionId },
+            {
+              error: error.message,
+              stack: error.stack ?? '',
+              componentStack: errorInfo.componentStack ?? undefined,
+            }
+          ).catch(() => {
+            /* noop */
+          })
+        }}
+        fallbackRender={({ error, resetErrorBoundary }) => (
+          <ChatErrorFallback
+            error={error}
+            resetErrorBoundary={resetErrorBoundary}
+            activeWorktreeId={activeWorktreeId}
+          />
+        )}
+      >
+        <FullScreenTerminalSurface
+          worktreeId={activeWorktreeId}
+          worktreePath={activeWorktreePath}
+          sessionId={activeSessionId}
+          terminalId={sessionTerminalId}
+        />
+      </ErrorBoundary>
     )
   }
 
@@ -2844,7 +2890,6 @@ export function ChatWindow({
                             <TextFilePreview
                               textFiles={currentPendingTextFiles}
                               onRemove={handleRemovePendingTextFile}
-                              disabled={isSending}
                               sessionId={activeSessionId}
                             />
 
@@ -2921,6 +2966,7 @@ export function ChatWindow({
                               <ChatInput
                                 activeSessionId={activeSessionId}
                                 activeWorktreePath={activeWorktreePath}
+                                activeProjectId={worktree?.project_id ?? null}
                                 isSending={isSending}
                                 executionMode={executionMode}
                                 canSwitchBackendWithTab={

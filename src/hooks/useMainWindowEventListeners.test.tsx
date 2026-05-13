@@ -119,6 +119,9 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
       planDialogOpen: false,
       gitDiffModalOpen: false,
       githubDashboardOpen: false,
+      sessionPrimarySurface: {},
+      sessionTerminalIds: {},
+      newSessionModeTarget: null,
     })
   })
 
@@ -190,6 +193,19 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
     expect(
       useTerminalStore.getState().terminals['modal-worktree']
     ).toHaveLength(2)
+  })
+
+  it('does not treat full-screen terminal sessions as terminal-tab containers', () => {
+    focusTerminal()
+
+    useChatStore.setState({ activeWorktreeId: 'worktree-1' })
+    useUIStore.setState({
+      sessionPrimarySurface: { 'session-1': 'terminal' },
+      sessionTerminalIds: { 'session-1': 'term-1' },
+    })
+
+    expect(getTerminalShortcutWorktreeId()).toBeNull()
+    expect(addTerminalTabForShortcut()).toBe(false)
   })
 
   it('uses the terminal shortcut path to close the active terminal tab for the modal worktree', () => {

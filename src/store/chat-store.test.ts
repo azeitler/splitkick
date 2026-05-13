@@ -1206,4 +1206,37 @@ describe('ChatStore', () => {
       expect(isSessionReviewing('session-1')).toBe(false)
     })
   })
+
+  describe('pending files', () => {
+    it('deduplicates pending files by source scope and relative path', () => {
+      const { addPendingFile } = useChatStore.getState()
+
+      addPendingFile('session-1', {
+        id: 'file-current',
+        relativePath: 'src/App.tsx',
+        extension: 'tsx',
+        isDirectory: false,
+      })
+      addPendingFile('session-1', {
+        id: 'file-current-dupe',
+        relativePath: 'src/App.tsx',
+        extension: 'tsx',
+        isDirectory: false,
+      })
+      addPendingFile('session-1', {
+        id: 'file-linked',
+        relativePath: 'src/App.tsx',
+        sourceRootPath: '/tmp/linked',
+        sourceProjectId: 'linked',
+        sourceProjectName: 'Linked',
+        extension: 'tsx',
+        isDirectory: false,
+      })
+
+      expect(useChatStore.getState().pendingFiles['session-1']).toHaveLength(2)
+      expect(
+        useChatStore.getState().pendingFiles['session-1']?.map(file => file.id)
+      ).toEqual(['file-current', 'file-linked'])
+    })
+  })
 })

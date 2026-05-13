@@ -44,6 +44,7 @@ const TEXT_PASTE_THRESHOLD = 2000
 interface ChatInputProps {
   activeSessionId: string | undefined
   activeWorktreePath: string | undefined
+  activeProjectId?: string | null
   isSending: boolean
   executionMode: ExecutionMode
   canSwitchBackendWithTab?: boolean
@@ -64,6 +65,7 @@ interface ChatInputProps {
 export const ChatInput = memo(function ChatInput({
   activeSessionId,
   activeWorktreePath,
+  activeProjectId,
   isSending,
   executionMode,
   canSwitchBackendWithTab = false,
@@ -978,6 +980,7 @@ export const ChatInput = memo(function ChatInput({
       {/* File mention popover (@ mentions) */}
       <FileMentionPopover
         worktreePath={activeWorktreePath ?? null}
+        currentProjectId={activeProjectId ?? null}
         open={fileMentionOpen}
         onOpenChange={setFileMentionOpen}
         onSelectFile={handleFileSelect}

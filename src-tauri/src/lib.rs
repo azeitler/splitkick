@@ -89,6 +89,12 @@ pub struct AppPreferences {
     pub default_effort_level: String, // Effort level for Opus adaptive thinking: low, medium, high, xhigh, max
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
+    #[serde(default = "default_terminal_renderer")]
+    pub terminal_renderer: String, // Embedded terminal renderer: "xterm" or "ghostty-web" (experimental)
+    #[serde(default = "default_terminal_font")]
+    pub terminal_font: String, // Embedded terminal font: jetbrains-mono, fira-code, source-code-pro, sf-mono, system
+    #[serde(default = "default_terminal_font_size")]
+    pub terminal_font_size: u32, // Embedded terminal font size in pixels (10-24)
     #[serde(default = "default_editor")]
     pub editor: String, // Editor app: zed, vscode, cursor, xcode, intellij
     #[serde(default = "default_open_in")]
@@ -351,6 +357,18 @@ fn default_terminal() -> String {
     {
         "terminal".to_string()
     }
+}
+
+fn default_terminal_renderer() -> String {
+    "xterm".to_string()
+}
+
+fn default_terminal_font() -> String {
+    "jetbrains-mono".to_string()
+}
+
+fn default_terminal_font_size() -> u32 {
+    13
 }
 
 fn default_editor() -> String {
@@ -1444,6 +1462,9 @@ impl Default for AppPreferences {
             selected_model: default_model(),
             thinking_level: default_thinking_level(),
             terminal: default_terminal(),
+            terminal_renderer: default_terminal_renderer(),
+            terminal_font: default_terminal_font(),
+            terminal_font_size: default_terminal_font_size(),
             editor: default_editor(),
             open_in: default_open_in(),
             auto_branch_naming: default_auto_branch_naming(),

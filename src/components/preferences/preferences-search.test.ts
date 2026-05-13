@@ -79,6 +79,15 @@ describe('preferences search index', () => {
     )
   })
 
+  it('routes terminal searches to the dedicated terminal pane', () => {
+    setTauriInternals(true)
+
+    expect(searchPreferenceEntries('terminal renderer')[0]?.pane).toBe(
+      'terminal'
+    )
+    expect(searchPreferenceEntries('ghostty web')[0]?.pane).toBe('terminal')
+  })
+
   it('returns relevant appearance hits for font queries', () => {
     setTauriInternals(false)
     const results = searchPreferenceEntries('appearance font')

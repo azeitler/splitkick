@@ -64,11 +64,7 @@ import {
   useRemoveProject,
   projectsQueryKeys,
 } from '@/services/projects'
-import {
-  chatQueryKeys,
-  useCreateSession,
-  cancelChatMessage,
-} from '@/services/chat'
+import { chatQueryKeys, cancelChatMessage } from '@/services/chat'
 import {
   useDependabotAlerts,
   useGitHubIssues,
@@ -1545,9 +1541,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     openWorktreeModal,
   ])
 
-  // Mutations
-  const createSession = useCreateSession()
-
   // Handle clicking on a worktree row - open modal
   const handleWorktreeClick = useCallback(
     (worktreeId: string, worktreePath: string) => {
@@ -2027,26 +2020,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
       e.stopImmediatePropagation()
 
-      createSession.mutate(
-        { worktreeId: item.worktreeId, worktreePath: item.worktreePath },
-        {
-          onSuccess: session => {
-            // Update highlighted ref so canvas stays on new session after modal close
-            highlightedCardRef.current = {
-              worktreeId: item.worktreeId,
-              sessionId: session.id,
-            }
-            useChatStore
-              .getState()
-              .setActiveSession(item.worktreeId, session.id)
-            openWorktreeModal(
-              item.worktreeId,
-              item.worktreePath,
-              'create-new-session'
-            )
-          },
-        }
-      )
+      useUIStore.getState().openNewSessionModeModal({
+        worktreeId: item.worktreeId,
+        worktreePath: item.worktreePath,
+        origin: 'canvas',
+      })
     }
 
     window.addEventListener('create-new-session', handleCreateNewSession, {
@@ -2056,13 +2034,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       window.removeEventListener('create-new-session', handleCreateNewSession, {
         capture: true,
       })
-  }, [
-    selectedWorktreeModal,
-    selectedIndex,
-    flatCards,
-    createSession,
-    openWorktreeModal,
-  ])
+  }, [selectedWorktreeModal, selectedIndex, flatCards])
 
   // Listen for open-session-modal event (fired by ChatWindow when creating new session inside modal,
   // or by UnreadBell to open a session on the project canvas)
@@ -2080,6 +2052,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       // (e.g. from UnreadBell navigating to a session on the project canvas)
       if (worktreeId && worktreePath) {
         if (sessionId) {
+          highlightedCardRef.current = { worktreeId, sessionId }
           useChatStore.getState().setActiveSession(worktreeId, sessionId)
         }
         openWorktreeModal(worktreeId, worktreePath, 'open-session-modal-event')

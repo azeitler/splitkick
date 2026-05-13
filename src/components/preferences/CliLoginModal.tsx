@@ -6,7 +6,7 @@
  * interactive terminal access.
  */
 
-import { useCallback, useEffect, useRef, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { invoke, listen } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
@@ -30,6 +30,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useTerminal } from '@/hooks/useTerminal'
 import { disposeTerminal, setOnStopped } from '@/lib/terminal-instances'
 import { BackendLabel } from '@/components/ui/backend-label'
+import { generateId } from '@/lib/uuid'
 
 export function CliLoginModal() {
   const [retryKey, setRetryKey] = useState(0)
@@ -116,11 +117,7 @@ function CliLoginModalContent({
     )
 
   // Generate unique terminal ID for this login session
-  const terminalId = useMemo(() => {
-    // eslint-disable-next-line react-hooks/purity
-    const id = `cli-login-${Date.now()}`
-    return id
-  }, [])
+  const [terminalId] = useState(() => `cli-login-${generateId()}`)
 
   // Buffer last N lines of terminal output for debug logging on error
   const outputBufferRef = useRef<string[]>([])
