@@ -142,6 +142,11 @@ const GitHubDashboardModal = lazy(() =>
     default: mod.GitHubDashboardModal,
   }))
 )
+const NewSessionModeModal = lazy(() =>
+  import('@/components/chat/NewSessionModeModal').then(mod => ({
+    default: mod.NewSessionModeModal,
+  }))
+)
 const CloseWorktreeDialog = lazy(() =>
   import('@/components/chat/CloseWorktreeDialog').then(mod => ({
     default: mod.CloseWorktreeDialog,
@@ -157,6 +162,7 @@ import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
+import { useGlobalInputSanitizer } from '@/hooks/useGlobalInputSanitizer'
 import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
 import { useUIStatePersistence } from '@/hooks/useUIStatePersistence'
 import { useSessionStatePersistence } from '@/hooks/useSessionStatePersistence'
@@ -225,6 +231,7 @@ export function MainWindow() {
   const cliLoginModalOpen = useUIStore(state => state.cliLoginModalOpen)
   const updateModalVersion = useUIStore(state => state.updateModalVersion)
   const githubDashboardOpen = useUIStore(state => state.githubDashboardOpen)
+  const newSessionModeTarget = useUIStore(state => state.newSessionModeTarget)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
   const addProjectDialogOpen = useProjectsStore(
     state => state.addProjectDialogOpen
@@ -295,6 +302,7 @@ export function MainWindow() {
 
   // Set up global event listeners (keyboard shortcuts, etc.)
   useMainWindowEventListeners()
+  useGlobalInputSanitizer()
 
   // Subscribe to Rust → React browser events (loading/loaded/title/nav/closed)
   useBrowserEvents()
@@ -425,6 +433,9 @@ export function MainWindow() {
   const shouldRenderArchivedModal = useRetainedMount(archivedModalOpen)
   const shouldRenderCloseWorktreeDialog = useRetainedMount(closeConfirmOpen)
   const shouldRenderGitHubDashboardModal = useRetainedMount(githubDashboardOpen)
+  const shouldRenderNewSessionModeModal = useRetainedMount(
+    newSessionModeTarget !== null
+  )
 
   // On Windows, use smaller border radius and remove it when maximized
   // On other platforms, use rounded-xl only in native app mode
@@ -607,6 +618,11 @@ export function MainWindow() {
           <NewWorktreeModal />
         </Suspense>
       )}
+      {shouldRenderNewSessionModeModal && (
+        <Suspense fallback={null}>
+          <NewSessionModeModal />
+        </Suspense>
+      )}
       {shouldRenderAddProjectDialog && (
         <Suspense fallback={null}>
           <AddProjectDialog />
@@ -654,11 +670,12 @@ export function MainWindow() {
         offset={toasterOffset}
         mobileOffset={toasterOffset}
         expand={true}
+        swipeDirections={['left', 'right', 'top', 'bottom']}
         style={{ '--width': '400px' } as CSSProperties}
         toastOptions={{
           classNames: {
             toast:
-              'group toast group-[.toaster]:bg-sidebar group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
+              'group toast group-[.toaster]:bg-[var(--toast-background)] group-[.toaster]:text-foreground group-[.toaster]:border-border group-[.toaster]:shadow-lg',
             description: 'group-[.toast]:text-muted-foreground',
             actionButton:
               'group-[.toast]:bg-primary group-[.toast]:text-primary-foreground',

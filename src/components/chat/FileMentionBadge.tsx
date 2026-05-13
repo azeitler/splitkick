@@ -28,8 +28,21 @@ interface FileMentionBadgeProps {
   path: string
   /** Worktree path to resolve absolute path */
   worktreePath: string
+  /** Optional root path to resolve linked-project relative paths */
+  sourceRootPath?: string
+  /** Optional linked/current project label for tooltip */
+  sourceProjectName?: string
   /** Whether this is a directory mention */
   isDirectory?: boolean
+}
+
+function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
+}
+
+function joinPath(root: string, relativePath: string): string {
+  if (!root) return relativePath
+  return `${root.replace(/[\\/]+$/, '')}/${relativePath.replace(/^[\\/]+/, '')}`
 }
 
 /**
@@ -39,6 +52,8 @@ interface FileMentionBadgeProps {
 export function FileMentionBadge({
   path,
   worktreePath,
+  sourceRootPath,
+  sourceProjectName,
   isDirectory = false,
 }: FileMentionBadgeProps) {
   const [isOpen, setIsOpen] = useState(false)
@@ -60,8 +75,10 @@ export function FileMentionBadge({
       setIsLoading(true)
       setError(null)
       try {
-        // Resolve absolute path from worktree + relative path
-        const absolutePath = `${worktreePath}/${path}`
+        // Resolve absolute path from explicit source root, worktree, or already-absolute marker path
+        const absolutePath = isAbsolutePath(path)
+          ? path
+          : joinPath(sourceRootPath ?? worktreePath, path)
         const fileContent = await invoke<string>('read_file_content', {
           path: absolutePath,
         })
@@ -72,7 +89,7 @@ export function FileMentionBadge({
         setIsLoading(false)
       }
     }
-  }, [content, isLoading, isDirectory, path, worktreePath])
+  }, [content, isLoading, isDirectory, path, sourceRootPath, worktreePath])
 
   return (
     <>
@@ -103,7 +120,9 @@ export function FileMentionBadge({
             </span>
           </button>
         </TooltipTrigger>
-        <TooltipContent>{path}</TooltipContent>
+        <TooltipContent>
+          {sourceProjectName ? `${sourceProjectName}: ${path}` : path}
+        </TooltipContent>
       </Tooltip>
 
       <Dialog open={isOpen} onOpenChange={setIsOpen}>

@@ -10,6 +10,30 @@ vi.mock('./panes/GeneralPane', () => ({
   GeneralPane: () => <div>General pane</div>,
 }))
 
+vi.mock('./panes/ClaudePane', () => ({
+  ClaudePane: () => <div>Claude pane</div>,
+}))
+
+vi.mock('./panes/CodexPane', () => ({
+  CodexPane: () => <div>Codex pane</div>,
+}))
+
+vi.mock('./panes/OpenCodePane', () => ({
+  OpenCodePane: () => <div>OpenCode pane</div>,
+}))
+
+vi.mock('./panes/CursorPane', () => ({
+  CursorPane: () => <div>Cursor pane</div>,
+}))
+
+vi.mock('./panes/GitHubPane', () => ({
+  GitHubPane: () => <div>GitHub CLI pane</div>,
+}))
+
+vi.mock('./panes/CodeRabbitPane', () => ({
+  CodeRabbitPane: () => <div>CodeRabbit CLI pane</div>,
+}))
+
 vi.mock('./panes/AppearancePane', () => ({
   AppearancePane: () => <div>Appearance pane</div>,
 }))
@@ -21,6 +45,10 @@ vi.mock('./panes/KeybindingsPane', async importOriginal => {
     KeybindingsPane: () => <div>Keybindings pane</div>,
   }
 })
+
+vi.mock('./panes/TerminalPane', () => ({
+  TerminalPane: () => <div>Terminal pane</div>,
+}))
 
 vi.mock('./panes/MagicPromptsPane', async importOriginal => {
   const actual = await importOriginal<typeof MagicPromptsPaneModule>()
@@ -115,6 +143,13 @@ describe('PreferencesDialog', () => {
       'General',
       'Appearance',
       'Keybindings',
+      'Claude',
+      'Codex',
+      'OpenCode',
+      'Cursor',
+      'GitHub CLI',
+      'CodeRabbit CLI',
+      'Terminal',
       'Magic Prompts',
       'Opinionated',
       'Providers',
@@ -126,7 +161,7 @@ describe('PreferencesDialog', () => {
     ])
     expect(
       navigationMenu.querySelectorAll('[data-sidebar="separator"]')
-    ).toHaveLength(4)
+    ).toHaveLength(5)
   })
 
   it('keeps the dialog open when Escape clears the desktop search', async () => {

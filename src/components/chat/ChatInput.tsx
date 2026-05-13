@@ -24,45 +24,40 @@ import {
 } from './FileMentionPopover'
 import { queryClient } from '@/lib/query-client'
 import { fileQueryKeys } from '@/services/files'
+import {
+  githubQueryKeys,
+  loadAdvisoryContext,
+  loadIssueContext,
+  loadPRContext,
+  loadSecurityContext,
+} from '@/services/github'
+import { linearQueryKeys, loadLinearIssueContext } from '@/services/linear'
 import type { WorktreeFile } from '@/types/chat'
 import { SlashPopover, type SlashPopoverHandle } from './SlashPopover'
+import {
+  ContextMentionPopover,
+  type ContextMentionPopoverHandle,
+} from './ContextMentionPopover'
+import type { ContextMentionItem } from './hooks/useContextMentionData'
 import { processAttachmentFile } from './attachment-processing'
 import { IMAGE_ATTACHMENT_ACCEPT, MAX_TEXT_SIZE } from './image-constants'
+import {
+  listControlChars,
+  sanitizeTextInputValue,
+} from '@/lib/input-sanitization'
+import {
+  decodePromptAttachmentMetadata,
+  parsePlainTextPromptMetadata,
+  type PromptAttachmentMetadata,
+} from './message-content-utils'
 
 /** Threshold for saving pasted text as file (2000 chars) */
 const TEXT_PASTE_THRESHOLD = 2000
 
-// Strip ASCII C0 controls (except tab/newline/CR), DEL, and C1 controls.
-// Defends against external keyboard remappers / IMEs / accessibility tools that
-// inject control codepoints (e.g., U+001D Group Separator on ArrowRight).
-// eslint-disable-next-line no-control-regex
-const CONTROL_CHARS_RE = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g
-
-function sanitizeInput(value: string): string {
-  CONTROL_CHARS_RE.lastIndex = 0
-  return value.replace(CONTROL_CHARS_RE, '')
-}
-
-function listControlChars(value: string): string[] {
-  const out: string[] = []
-  for (const c of value) {
-    const code = c.charCodeAt(0)
-    if (
-      (code >= 0x00 && code <= 0x08) ||
-      code === 0x0b ||
-      code === 0x0c ||
-      (code >= 0x0e && code <= 0x1f) ||
-      (code >= 0x7f && code <= 0x9f)
-    ) {
-      out.push(`U+${code.toString(16).padStart(4, '0').toUpperCase()}`)
-    }
-  }
-  return out
-}
-
 interface ChatInputProps {
   activeSessionId: string | undefined
   activeWorktreePath: string | undefined
+  activeProjectId?: string | null
   isSending: boolean
   executionMode: ExecutionMode
   canSwitchBackendWithTab?: boolean
@@ -83,6 +78,7 @@ interface ChatInputProps {
 export const ChatInput = memo(function ChatInput({
   activeSessionId,
   activeWorktreePath,
+  activeProjectId,
   isSending,
   executionMode,
   canSwitchBackendWithTab = false,
@@ -132,9 +128,22 @@ export const ChatInput = memo(function ChatInput({
     null
   )
 
+  // Context mention popover state (for # issues/PRs/security/Linear)
+  const [contextMentionOpen, setContextMentionOpen] = useState(false)
+  const [contextMentionQuery, setContextMentionQuery] = useState('')
+  const [contextMentionAnchor, setContextMentionAnchor] = useState<{
+    top: number
+    left: number
+    containerWidth: number
+  } | null>(null)
+  const [hashTriggerIndex, setHashTriggerIndex] = useState<number | null>(null)
+
   // Refs to expose navigation methods from popovers
   const fileMentionHandleRef = useRef<FileMentionPopoverHandle | null>(null)
   const slashPopoverHandleRef = useRef<SlashPopoverHandle | null>(null)
+  const contextMentionHandleRef = useRef<ContextMentionPopoverHandle | null>(
+    null
+  )
 
   // Stable ref for parent callback to avoid re-subscribing effects
   const onHasValueChangeRef = useRef(onHasValueChange)
@@ -246,7 +255,7 @@ export const ChatInput = memo(function ChatInput({
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       const raw = e.target.value
-      const value = sanitizeInput(raw)
+      const value = sanitizeTextInputValue(raw)
 
       // If sanitization stripped chars, write back to DOM and clamp cursor
       if (value !== raw) {
@@ -369,8 +378,68 @@ export const ChatInput = memo(function ChatInput({
         }
       }
 
-      // Detect / trigger for slash commands and skills (only if @ popover not open)
+      // Detect # trigger for issue/PR/security/Linear context mentions
       if (!fileMentionOpen) {
+        if (prevChar === '#') {
+          const charBeforeHash = value[cursorPos - 2]
+          if (
+            cursorPos === 1 ||
+            charBeforeHash === ' ' ||
+            charBeforeHash === '\n'
+          ) {
+            setHashTriggerIndex(cursorPos - 1)
+            setContextMentionQuery('')
+            setContextMentionOpen(true)
+            setSlashPopoverOpen(false)
+            setContextMentionAnchor({
+              top: 0,
+              left: 0,
+              containerWidth: formRef.current?.offsetWidth ?? 0,
+            })
+          }
+        } else if (hashTriggerIndex !== null && contextMentionOpen) {
+          const query = value.slice(hashTriggerIndex + 1, cursorPos)
+
+          if (
+            query.includes(' ') ||
+            query.includes('\n') ||
+            cursorPos <= hashTriggerIndex
+          ) {
+            setContextMentionOpen(false)
+            setHashTriggerIndex(null)
+            setContextMentionQuery('')
+          } else {
+            setContextMentionQuery(query)
+          }
+        } else if (!contextMentionOpen && !slashPopoverOpen) {
+          let scanPos = cursorPos - 1
+          while (
+            scanPos >= 0 &&
+            value[scanPos] !== ' ' &&
+            value[scanPos] !== '\n'
+          ) {
+            if (value[scanPos] === '#') {
+              const charBefore = value[scanPos - 1]
+              if (scanPos === 0 || charBefore === ' ' || charBefore === '\n') {
+                const query = value.slice(scanPos + 1, cursorPos)
+                setHashTriggerIndex(scanPos)
+                setContextMentionQuery(query)
+                setContextMentionOpen(true)
+                setContextMentionAnchor({
+                  top: 0,
+                  left: 0,
+                  containerWidth: formRef.current?.offsetWidth ?? 0,
+                })
+              }
+              break
+            }
+            scanPos--
+          }
+        }
+      }
+
+      // Detect / trigger for slash commands and skills (only if @/# popovers not open)
+      if (!fileMentionOpen && !contextMentionOpen) {
         if (prevChar === '/') {
           // Check that it's at start or preceded by whitespace
           const charBeforeSlash = value[cursorPos - 2]
@@ -411,6 +480,9 @@ export const ChatInput = memo(function ChatInput({
       fileMentionOpen,
       slashTriggerIndex,
       slashPopoverOpen,
+      contextMentionOpen,
+      hashTriggerIndex,
+      formRef,
     ]
   )
 
@@ -437,6 +509,30 @@ export const ChatInput = memo(function ChatInput({
             e.preventDefault()
             setFileMentionOpen(false)
             setFileMentionQuery('')
+            return
+        }
+      }
+
+      // When context mention popover is open, handle navigation
+      if (contextMentionOpen) {
+        switch (e.key) {
+          case 'ArrowDown':
+            e.preventDefault()
+            contextMentionHandleRef.current?.moveDown()
+            return
+          case 'ArrowUp':
+            e.preventDefault()
+            contextMentionHandleRef.current?.moveUp()
+            return
+          case 'Enter':
+          case 'Tab':
+            e.preventDefault()
+            contextMentionHandleRef.current?.selectCurrent()
+            return
+          case 'Escape':
+            e.preventDefault()
+            setContextMentionOpen(false)
+            setContextMentionQuery('')
             return
         }
       }
@@ -521,6 +617,7 @@ export const ChatInput = memo(function ChatInput({
     [
       activeSessionId,
       fileMentionOpen,
+      contextMentionOpen,
       slashPopoverOpen,
       isSending,
       onCancel,
@@ -539,99 +636,94 @@ export const ChatInput = memo(function ChatInput({
 
       // Check for jean-prompt clipboard format (copied from a sent message)
       const html = e.clipboardData?.getData('text/html')
+      const plainText = e.clipboardData?.getData('text/plain') ?? ''
+      let copiedPromptMetadata: PromptAttachmentMetadata | null = null
+      let copiedPromptText = plainText
       if (html) {
         const match = html.match(/data-jean-prompt="([^"]+)"/)
         if (match?.[1]) {
-          // Read text synchronously before preventDefault - clipboardData
-          // is only available during the event handler, not after await
-          const text = e.clipboardData?.getData('text/plain') ?? ''
-          e.preventDefault()
-          try {
-            const metadata = JSON.parse(decodeURIComponent(match[1])) as {
-              images?: string[]
-              textFiles?: string[]
-              files?: string[]
-              skills?: { name: string; path: string }[]
-            }
-
-            // Insert the plain text into the textarea first
-            const cleanText = sanitizeInput(text)
-            if (cleanText && inputRef.current) {
-              const textarea = inputRef.current
-              const start = textarea.selectionStart
-              const end = textarea.selectionEnd
-              const current = textarea.value
-              textarea.value =
-                current.slice(0, start) + cleanText + current.slice(end)
-              valueRef.current = textarea.value
-              textarea.selectionStart = textarea.selectionEnd =
-                start + cleanText.length
-              // Save draft
-              useChatStore
-                .getState()
-                .setInputDraft(activeSessionId, textarea.value)
-              onHasValueChangeRef.current?.(Boolean(textarea.value.trim()))
-              resizeTextarea()
-            }
-
-            const {
-              addPendingImage,
-              addPendingFile,
-              addPendingSkill,
-              addPendingTextFile,
-            } = useChatStore.getState()
-
-            // Restore images (they already exist on disk)
-            for (const path of metadata.images ?? []) {
-              addPendingImage(activeSessionId, {
-                id: generateId(),
-                path,
-                filename: getFilename(path),
-              })
-            }
-
-            // Restore text files (read content from disk)
-            for (const path of metadata.textFiles ?? []) {
-              try {
-                const response = await invoke<ReadTextResponse>(
-                  'read_pasted_text',
-                  { path }
-                )
-                addPendingTextFile(activeSessionId, {
-                  id: generateId(),
-                  path,
-                  filename: getFilename(path),
-                  size: response.size,
-                  content: response.content,
-                })
-              } catch {
-                // File may no longer exist, skip
-              }
-            }
-
-            // Restore file mentions
-            for (const path of metadata.files ?? []) {
-              addPendingFile(activeSessionId, {
-                id: generateId(),
-                relativePath: path,
-                extension: getExtension(path),
-                isDirectory: false,
-              })
-            }
-
-            // Restore skills
-            for (const skill of metadata.skills ?? []) {
-              addPendingSkill(activeSessionId, {
-                id: generateId(),
-                name: skill.name,
-                path: skill.path,
-              })
-            }
-          } catch {
-            // Invalid JSON, fall through to normal paste
-          }
-          return
+          copiedPromptMetadata = decodePromptAttachmentMetadata(match[1])
         }
+      }
+      if (!copiedPromptMetadata && plainText) {
+        const parsed = parsePlainTextPromptMetadata(plainText)
+        copiedPromptMetadata = parsed.metadata
+        copiedPromptText = parsed.text
+      }
+      if (copiedPromptMetadata) {
+        e.preventDefault()
+
+        // Insert the plain text into the textarea first.
+        const cleanText = sanitizeTextInputValue(copiedPromptText)
+        if (cleanText && inputRef.current) {
+          const textarea = inputRef.current
+          const start = textarea.selectionStart
+          const end = textarea.selectionEnd
+          const current = textarea.value
+          textarea.value =
+            current.slice(0, start) + cleanText + current.slice(end)
+          valueRef.current = textarea.value
+          textarea.selectionStart = textarea.selectionEnd =
+            start + cleanText.length
+          useChatStore.getState().setInputDraft(activeSessionId, textarea.value)
+          onHasValueChangeRef.current?.(Boolean(textarea.value.trim()))
+          resizeTextarea()
+        }
+
+        const {
+          addPendingImage,
+          addPendingFile,
+          addPendingSkill,
+          addPendingTextFile,
+        } = useChatStore.getState()
+
+        // Restore images (they already exist on disk)
+        for (const path of copiedPromptMetadata.images) {
+          addPendingImage(activeSessionId, {
+            id: generateId(),
+            path,
+            filename: getFilename(path),
+          })
+        }
+
+        // Restore text files (read content from disk)
+        for (const path of copiedPromptMetadata.textFiles) {
+          try {
+            const response = await invoke<ReadTextResponse>(
+              'read_pasted_text',
+              { path }
+            )
+            addPendingTextFile(activeSessionId, {
+              id: generateId(),
+              path,
+              filename: getFilename(path),
+              size: response.size,
+              content: response.content,
+            })
+          } catch {
+            // File may no longer exist, skip
+          }
+        }
+
+        // Restore file and directory mentions
+        for (const file of copiedPromptMetadata.files) {
+          addPendingFile(activeSessionId, {
+            id: generateId(),
+            relativePath: file.path,
+            extension: getExtension(file.path),
+            isDirectory: file.isDirectory,
+          })
+        }
+
+        // Restore skills
+        for (const skill of copiedPromptMetadata.skills) {
+          addPendingSkill(activeSessionId, {
+            id: generateId(),
+            name: skill.name,
+            path: skill.path,
+          })
+        }
+        return
       }
 
       const items = e.clipboardData?.items
@@ -655,7 +747,7 @@ export const ChatInput = memo(function ChatInput({
       if (hasImage) return
 
       // Native clipboard fallback (Linux/WebKitGTK doesn't expose image items via Web API)
-      const clipboardText = e.clipboardData?.getData('text/plain')
+      const clipboardText = plainText
       const clipboardHtml = e.clipboardData?.getData('text/html')
       if (!clipboardText && !clipboardHtml) {
         e.preventDefault()
@@ -852,6 +944,123 @@ export const ChatInput = memo(function ChatInput({
     [activeSessionId, atTriggerIndex, inputRef, resizeTextarea]
   )
 
+  const contextMentionToken = useCallback((item: ContextMentionItem) => {
+    switch (item.type) {
+      case 'issue':
+        return item.issue ? `#${item.issue.number}` : item.label
+      case 'pr':
+        return item.pr ? `PR#${item.pr.number}` : item.label.replace(/\s+/g, '')
+      case 'security':
+        return item.securityAlert
+          ? `Security#${item.securityAlert.number}`
+          : item.label.replace(/\s+/g, '')
+      case 'advisory':
+        return item.advisory?.ghsaId ?? item.label
+      case 'linear':
+        return item.linearIssue?.identifier ?? item.label
+    }
+  }, [])
+
+  const handleContextSelect = useCallback(
+    async (item: ContextMentionItem) => {
+      if (!activeSessionId) return
+
+      const toastId = toast.loading(`Loading ${item.label} context...`)
+
+      try {
+        if (item.type === 'issue' && item.issue && activeWorktreePath) {
+          await loadIssueContext(
+            activeSessionId,
+            item.issue.number,
+            activeWorktreePath
+          )
+        } else if (item.type === 'pr' && item.pr && activeWorktreePath) {
+          await loadPRContext(
+            activeSessionId,
+            item.pr.number,
+            activeWorktreePath
+          )
+        } else if (
+          item.type === 'security' &&
+          item.securityAlert &&
+          activeWorktreePath
+        ) {
+          await loadSecurityContext(
+            activeSessionId,
+            item.securityAlert.number,
+            activeWorktreePath
+          )
+        } else if (
+          item.type === 'advisory' &&
+          item.advisory &&
+          activeWorktreePath
+        ) {
+          await loadAdvisoryContext(
+            activeSessionId,
+            item.advisory.ghsaId,
+            activeWorktreePath
+          )
+        } else if (
+          item.type === 'linear' &&
+          item.linearIssue &&
+          activeProjectId
+        ) {
+          await loadLinearIssueContext(
+            activeSessionId,
+            activeProjectId,
+            item.linearIssue.id
+          )
+        } else {
+          throw new Error('Missing context information')
+        }
+
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: githubQueryKeys.all }),
+          queryClient.invalidateQueries({ queryKey: linearQueryKeys.all }),
+        ])
+
+        const triggerIndex = hashTriggerIndex
+        if (triggerIndex !== null && inputRef.current) {
+          const currentValue = valueRef.current
+          const cursorPos =
+            inputRef.current.selectionStart ?? currentValue.length
+          const beforeHash = currentValue.slice(0, triggerIndex)
+          const afterQuery = currentValue.slice(cursorPos)
+          const token = contextMentionToken(item)
+          const newValue = `${beforeHash}${token} ${afterQuery}`
+
+          inputRef.current.value = newValue
+          valueRef.current = newValue
+          useChatStore.getState().setInputDraft(activeSessionId, newValue)
+          resizeTextarea()
+
+          requestAnimationFrame(() => {
+            const newCursorPos = triggerIndex + token.length + 1
+            inputRef.current?.setSelectionRange(newCursorPos, newCursorPos)
+          })
+        }
+
+        toast.success(`Loaded ${item.label} context`, { id: toastId })
+      } catch (error) {
+        toast.error(`Failed to load context: ${error}`, { id: toastId })
+      } finally {
+        setContextMentionOpen(false)
+        setHashTriggerIndex(null)
+        setContextMentionQuery('')
+        inputRef.current?.focus()
+      }
+    },
+    [
+      activeProjectId,
+      activeSessionId,
+      activeWorktreePath,
+      contextMentionToken,
+      hashTriggerIndex,
+      inputRef,
+      resizeTextarea,
+    ]
+  )
+
   // Handle skill selection from / mention popover
   const handleSkillSelect = useCallback(
     (skill: PendingSkill) => {
@@ -976,10 +1185,10 @@ export const ChatInput = memo(function ChatInput({
                 ? 'Plan: Type to queue next message...'
                 : 'Build: Type to queue next message...'
             : executionMode === 'plan'
-              ? 'Planning: Plan a task, @mention files...'
+              ? 'Planning: Plan a task, @ files or # issues...'
               : executionMode === 'yolo'
                 ? 'Yolo: No limits, only your imagination and tokens...'
-                : 'Build: Ask to make changes, @mention files...'
+                : 'Build: Ask, @ files or # issues...'
         }
         // PERFORMANCE: Uncontrolled input - no value prop
         // Value is managed via valueRef and direct DOM manipulation
@@ -1002,6 +1211,7 @@ export const ChatInput = memo(function ChatInput({
       {/* File mention popover (@ mentions) */}
       <FileMentionPopover
         worktreePath={activeWorktreePath ?? null}
+        currentProjectId={activeProjectId ?? null}
         open={fileMentionOpen}
         onOpenChange={setFileMentionOpen}
         onSelectFile={handleFileSelect}
@@ -1009,6 +1219,19 @@ export const ChatInput = memo(function ChatInput({
         anchorPosition={fileMentionAnchor}
         containerWidth={fileMentionAnchor?.containerWidth}
         handleRef={fileMentionHandleRef}
+      />
+
+      {/* Context mention popover (# issues, PRs, security, Linear) */}
+      <ContextMentionPopover
+        projectPath={activeWorktreePath ?? null}
+        projectId={activeProjectId ?? null}
+        open={contextMentionOpen}
+        onOpenChange={setContextMentionOpen}
+        onSelectContext={handleContextSelect}
+        searchQuery={contextMentionQuery}
+        anchorPosition={contextMentionAnchor}
+        containerWidth={contextMentionAnchor?.containerWidth}
+        handleRef={contextMentionHandleRef}
       />
 
       {/* Slash popover (/ commands and skills) */}

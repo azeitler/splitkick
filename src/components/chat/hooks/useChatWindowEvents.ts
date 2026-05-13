@@ -50,13 +50,6 @@ interface UseChatWindowEventsParams {
   currentStreamingContentBlocks: ContentBlock[]
   isSending: boolean
   currentQueuedMessages: QueuedMessage[]
-  // Create session
-  createSession: {
-    mutate: (
-      args: { worktreeId: string; worktreePath: string },
-      opts?: { onSuccess?: (session: { id: string }) => void }
-    ) => void
-  }
   // Debug/preferences
   preferences: { debug_mode_enabled?: boolean } | undefined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -106,7 +99,6 @@ export function useChatWindowEvents({
   currentStreamingContentBlocks,
   isSending,
   currentQueuedMessages,
-  createSession,
   preferences,
   patchPreferences,
   handleSaveContext,
@@ -148,7 +140,7 @@ export function useChatWindowEvents({
         !activeElement ||
         activeElement === document.body ||
         activeElement.tagName === 'BODY' ||
-        !!activeElement.closest('.xterm')
+        !!activeElement.closest('.xterm, [data-terminal-emulator]')
       )
     }
 
@@ -216,29 +208,19 @@ export function useChatWindowEvents({
     setIsPlanDialogOpen,
   ])
 
-  // CMD+T: Create new session
+  // CMD+T: Open new session picker
   useEffect(() => {
     const handler = () => {
       if (!activeWorktreeId || !activeWorktreePath) return
-      createSession.mutate(
-        { worktreeId: activeWorktreeId, worktreePath: activeWorktreePath },
-        {
-          onSuccess: session => {
-            useChatStore
-              .getState()
-              .setActiveSession(activeWorktreeId, session.id)
-            window.dispatchEvent(
-              new CustomEvent('open-session-modal', {
-                detail: { sessionId: session.id },
-              })
-            )
-          },
-        }
-      )
+      useUIStore.getState().openNewSessionModeModal({
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        origin: isModal ? 'modal' : 'chat',
+      })
     }
     window.addEventListener('create-new-session', handler)
     return () => window.removeEventListener('create-new-session', handler)
-  }, [activeWorktreeId, activeWorktreePath, createSession])
+  }, [activeWorktreeId, activeWorktreePath, isModal])
 
   // SHIFT+TAB: Cycle execution mode
   useEffect(() => {

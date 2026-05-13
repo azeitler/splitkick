@@ -9,7 +9,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
-import { invoke } from '@tauri-apps/api/core'
+import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   useClaudeCliStatus,
@@ -35,10 +35,16 @@ import {
   useOpencodePathDetection,
   opencodeCliQueryKeys,
 } from '@/services/opencode-cli'
+import {
+  useCodeRabbitCliStatus,
+  useAvailableCodeRabbitVersions,
+  useCodeRabbitPathDetection,
+  coderabbitCliQueryKeys,
+} from '@/services/coderabbit-cli'
 import { useUIStore } from '@/store/ui-store'
 import { isNewerVersion } from '@/lib/version-utils'
 import { logger } from '@/lib/logger'
-import { isNativeApp } from '@/lib/environment'
+import { hasBackend } from '@/lib/environment'
 import { usePreferences } from '@/services/preferences'
 import {
   CLI_DISPLAY_NAMES,
@@ -61,6 +67,7 @@ const JEAN_INSTALL_COMMANDS: Record<CliType, string> = {
   codex: 'install_codex_cli',
   opencode: 'install_opencode_cli',
   gh: 'install_gh_cli',
+  coderabbit: 'install_coderabbit_cli',
 }
 
 const CLI_QUERY_KEY_GETTERS: Record<CliType, () => readonly unknown[]> = {
@@ -68,6 +75,7 @@ const CLI_QUERY_KEY_GETTERS: Record<CliType, () => readonly unknown[]> = {
   codex: () => codexCliQueryKeys.all,
   opencode: () => opencodeCliQueryKeys.all,
   gh: () => ghCliQueryKeys.all,
+  coderabbit: () => coderabbitCliQueryKeys.all,
 }
 
 /**
@@ -119,7 +127,7 @@ function resolveCliInfo(
  * Should be called once in App.tsx.
  */
 export function useCliVersionCheck() {
-  const shouldCheck = isNativeApp()
+  const shouldCheck = hasBackend()
   const queryClient = useQueryClient()
   const { data: preferences, isLoading: preferencesLoading } = usePreferences()
   const { data: claudePathInfo } = useClaudePathDetection({
@@ -130,6 +138,9 @@ export function useCliVersionCheck() {
     enabled: shouldCheck,
   })
   const { data: opencodePathInfo } = useOpencodePathDetection({
+    enabled: shouldCheck,
+  })
+  const { data: coderabbitPathInfo } = useCodeRabbitPathDetection({
     enabled: shouldCheck,
   })
 
@@ -153,6 +164,8 @@ export function useCliVersionCheck() {
   })
   const { data: opencodeStatus, isLoading: opencodeLoading } =
     useOpencodeCliStatus({ enabled: shouldCheck && versionCheckReady })
+  const { data: coderabbitStatus, isLoading: coderabbitLoading } =
+    useCodeRabbitCliStatus({ enabled: shouldCheck && versionCheckReady })
   const { data: claudeVersions, isLoading: claudeVersionsLoading } =
     useAvailableCliVersions({ enabled: shouldCheck && versionCheckReady })
   const { data: ghVersions, isLoading: ghVersionsLoading } =
@@ -161,6 +174,10 @@ export function useCliVersionCheck() {
     useAvailableCodexVersions({ enabled: shouldCheck && versionCheckReady })
   const { data: opencodeVersions, isLoading: opencodeVersionsLoading } =
     useAvailableOpencodeVersions({ enabled: shouldCheck && versionCheckReady })
+  const { data: coderabbitVersions, isLoading: coderabbitVersionsLoading } =
+    useAvailableCodeRabbitVersions({
+      enabled: shouldCheck && versionCheckReady,
+    })
 
   // Track which update pairs we've already shown notifications/run installs for
   // Format: "type:currentVersion→latestVersion"
@@ -174,10 +191,12 @@ export function useCliVersionCheck() {
       ghLoading ||
       codexLoading ||
       opencodeLoading ||
+      coderabbitLoading ||
       claudeVersionsLoading ||
       ghVersionsLoading ||
       codexVersionsLoading ||
       opencodeVersionsLoading ||
+      coderabbitVersionsLoading ||
       preferencesLoading
     if (isLoading) return
 
@@ -200,6 +219,11 @@ export function useCliVersionCheck() {
       opencodePathInfo,
       preferences?.opencode_cli_source
     )
+    const coderabbit = resolveCliInfo(
+      coderabbitStatus,
+      coderabbitPathInfo,
+      preferences?.coderabbit_cli_source
+    )
 
     const checks: {
       type: CliUpdateInfo['type']
@@ -210,6 +234,7 @@ export function useCliVersionCheck() {
       { type: 'gh', info: gh, versions: ghVersions },
       { type: 'codex', info: codex, versions: codexVersions },
       { type: 'opencode', info: opencode, versions: opencodeVersions },
+      { type: 'coderabbit', info: coderabbit, versions: coderabbitVersions },
     ]
 
     for (const { type, info, versions } of checks) {
@@ -262,28 +287,34 @@ export function useCliVersionCheck() {
     ghStatus,
     codexStatus,
     opencodeStatus,
+    coderabbitStatus,
     claudePathInfo,
     ghPathInfo,
     codexPathInfo,
     opencodePathInfo,
+    coderabbitPathInfo,
     claudeVersions,
     ghVersions,
     codexVersions,
     opencodeVersions,
+    coderabbitVersions,
     claudeLoading,
     ghLoading,
     codexLoading,
     opencodeLoading,
+    coderabbitLoading,
     claudeVersionsLoading,
     ghVersionsLoading,
     codexVersionsLoading,
     opencodeVersionsLoading,
+    coderabbitVersionsLoading,
     preferencesLoading,
     preferences?.auto_update_ai_backends,
     preferences?.claude_cli_source,
     preferences?.codex_cli_source,
     preferences?.opencode_cli_source,
     preferences?.gh_cli_source,
+    preferences?.coderabbit_cli_source,
     queryClient,
   ])
 
@@ -297,6 +328,9 @@ export function useCliVersionCheck() {
         queryClient.invalidateQueries({ queryKey: ghCliQueryKeys.all })
         queryClient.invalidateQueries({ queryKey: codexCliQueryKeys.all })
         queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.all })
+        queryClient.invalidateQueries({
+          queryKey: coderabbitCliQueryKeys.all,
+        })
       },
       60 * 60 * 1000
     )

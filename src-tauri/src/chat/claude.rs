@@ -6,7 +6,8 @@ use super::types::{
 };
 use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
-    get_github_contexts_dir, get_session_issue_refs, get_session_pr_refs,
+    get_github_contexts_dir, get_session_advisory_refs, get_session_issue_refs,
+    get_session_pr_refs, get_session_security_refs,
 };
 use crate::projects::linear_issues::get_session_linear_refs;
 use crate::projects::storage::load_projects_data;
@@ -23,8 +24,11 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 - Use plan mode for verification steps, not just building\n\
 - Write detailed specs upfront to reduce ambiguity\n\
 - Make the plan extremely concise. Sacrifice grammar for the sake of concision.\n\
-- At the end of each plan, give me a list of unresolved questions to answer, if any.\n\
-- In planning mode, present plans using the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex update_plan/CodexPlan, Cursor/OpenCode equivalent), not plain text only.\n\
+- In planning mode, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex update_plan/CodexPlan, Cursor/OpenCode equivalent), not plain text only.\n\
+- For unresolved questions in plan mode, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question.\n\
+- For Codex specifically: after the user answers native `request_user_input`/open questions in plan mode, immediately call `update_plan`/emit `CodexPlan` again with the revised plan before any implementation.\n\
+- Every Codex plan-mode response that contains or revises a plan must use `update_plan`/`CodexPlan`; do not provide plain-text-only plans.\n\
+- Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.\n\
 \n\
 ### 2. Documentation First\n\
 - Before designing or coding against any external library/framework/SDK/API/CLI, run WebSearch for current docs.\n\
@@ -650,6 +654,55 @@ fn build_claude_args(
         }
     }
 
+    // Check for security alert context files (shared storage)
+    let mut security_keys = get_session_security_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_security_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !security_keys.contains(&key) {
+                security_keys.push(key);
+            }
+        }
+    }
+    if !security_keys.is_empty() {
+        if let Ok(contexts_dir) = get_github_contexts_dir(app) {
+            for key in security_keys {
+                let parts: Vec<&str> = key.rsplitn(2, '-').collect();
+                if parts.len() == 2 {
+                    let number = parts[0];
+                    let repo_key = parts[1];
+                    let file_path = contexts_dir.join(format!("{repo_key}-security-{number}.md"));
+                    if file_path.exists() {
+                        log::trace!("Adding security context file: {:?}", file_path);
+                        all_context_paths.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check repository advisory context files (shared storage)
+    let mut advisory_keys = get_session_advisory_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_advisory_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !advisory_keys.contains(&key) {
+                advisory_keys.push(key);
+            }
+        }
+    }
+    if !advisory_keys.is_empty() {
+        if let Ok(contexts_dir) = get_github_contexts_dir(app) {
+            for key in advisory_keys {
+                if let Some((repo_key, ghsa_id)) = key.split_once("::") {
+                    let file_path = contexts_dir.join(format!("{repo_key}-advisory-{ghsa_id}.md"));
+                    if file_path.exists() {
+                        log::trace!("Adding advisory context file: {:?}", file_path);
+                        all_context_paths.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
     // Check for Linear issue context files (shared storage)
     let mut linear_keys = get_session_linear_refs(app, session_id).unwrap_or_default();
     if let Ok(wt_keys) = get_session_linear_refs(app, worktree_id) {
@@ -733,6 +786,20 @@ fn build_claude_args(
                     s.contains("git-context") && s.contains("-pr-")
                 })
                 .count();
+            let security_count = all_context_paths
+                .iter()
+                .filter(|p| {
+                    let s = p.to_string_lossy();
+                    s.contains("git-context") && s.contains("-security-")
+                })
+                .count();
+            let advisory_count = all_context_paths
+                .iter()
+                .filter(|p| {
+                    let s = p.to_string_lossy();
+                    s.contains("git-context") && s.contains("-advisory-")
+                })
+                .count();
             let linear_count = all_context_paths
                 .iter()
                 .filter(|p| {
@@ -768,7 +835,13 @@ fn build_claude_args(
                 combined_content
                     .push_str("You should be aware of this when working on this task.\n\n");
 
-                if issue_count > 0 || pr_count > 0 || linear_count > 0 || saved_context_count > 0 {
+                if issue_count > 0
+                    || pr_count > 0
+                    || security_count > 0
+                    || advisory_count > 0
+                    || linear_count > 0
+                    || saved_context_count > 0
+                {
                     combined_content.push_str("**Summary:**\n");
                     if issue_count > 0 {
                         combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
@@ -776,6 +849,14 @@ fn build_claude_args(
                     if pr_count > 0 {
                         combined_content
                             .push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
+                    }
+                    if security_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} Security Alert(s)\n", security_count));
+                    }
+                    if advisory_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} Security Advisory(s)\n", advisory_count));
                     }
                     if linear_count > 0 {
                         combined_content.push_str(&format!("- {} Linear Issue(s)\n", linear_count));
@@ -2055,5 +2136,16 @@ mod tests {
         );
         assert_eq!(split_fast_model("sonnet"), ("sonnet", false));
         assert_eq!(split_fast_model("haiku"), ("haiku", false));
+    }
+
+    #[test]
+    fn default_global_system_prompt_prefers_interactive_plan_questions() {
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("backend-native interactive question UI"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Claude AskUserQuestion"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Codex request_user_input"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("after the user answers native `request_user_input`"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Every Codex plan-mode response"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("OpenCode question"));
     }
 }

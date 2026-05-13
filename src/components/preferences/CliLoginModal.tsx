@@ -6,7 +6,7 @@
  * interactive terminal access.
  */
 
-import { useCallback, useEffect, useRef, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { invoke, listen } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
@@ -16,6 +16,7 @@ import { ghCliQueryKeys } from '@/services/gh-cli'
 import { codexCliQueryKeys } from '@/services/codex-cli'
 import { opencodeCliQueryKeys } from '@/services/opencode-cli'
 import { cursorCliQueryKeys } from '@/services/cursor-cli'
+import { coderabbitCliQueryKeys } from '@/services/coderabbit-cli'
 import { githubQueryKeys } from '@/services/github'
 import {
   Dialog,
@@ -29,6 +30,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useTerminal } from '@/hooks/useTerminal'
 import { disposeTerminal, setOnStopped } from '@/lib/terminal-instances'
 import { BackendLabel } from '@/components/ui/backend-label'
+import { generateId } from '@/lib/uuid'
 
 export function CliLoginModal() {
   const [retryKey, setRetryKey] = useState(0)
@@ -61,7 +63,14 @@ export function CliLoginModal() {
 }
 
 interface CliLoginModalContentProps {
-  cliType: 'claude' | 'gh' | 'codex' | 'opencode' | 'cursor' | null
+  cliType:
+    | 'claude'
+    | 'gh'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'coderabbit'
+    | null
   command: string
   commandArgs: string[] | null
   action: 'login' | 'update' | 'install'
@@ -90,11 +99,13 @@ function CliLoginModalContent({
       ? 'Claude CLI'
       : cliType === 'codex'
         ? 'Codex CLI'
-        : cliType === 'opencode'
-          ? 'OpenCode CLI'
-          : cliType === 'cursor'
-            ? 'Cursor CLI'
-            : 'GitHub CLI'
+        : cliType === 'coderabbit'
+          ? 'CodeRabbit CLI'
+          : cliType === 'opencode'
+            ? 'OpenCode CLI'
+            : cliType === 'cursor'
+              ? 'Cursor CLI'
+              : 'GitHub CLI'
   const cliTitle =
     cliType === 'cursor' ? (
       <span className="inline-flex items-center gap-2">
@@ -106,11 +117,7 @@ function CliLoginModalContent({
     )
 
   // Generate unique terminal ID for this login session
-  const terminalId = useMemo(() => {
-    // eslint-disable-next-line react-hooks/purity
-    const id = `cli-login-${Date.now()}`
-    return id
-  }, [])
+  const [terminalId] = useState(() => `cli-login-${generateId()}`)
 
   // Buffer last N lines of terminal output for debug logging on error
   const outputBufferRef = useRef<string[]>([])
@@ -224,6 +231,10 @@ function CliLoginModalContent({
           queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.all })
         } else if (cliType === 'cursor') {
           queryClient.invalidateQueries({ queryKey: cursorCliQueryKeys.all })
+        } else if (cliType === 'coderabbit') {
+          queryClient.invalidateQueries({
+            queryKey: coderabbitCliQueryKeys.all,
+          })
         }
 
         // Dismiss any lingering update toast for this CLI type

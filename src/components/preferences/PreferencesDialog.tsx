@@ -10,7 +10,10 @@ import {
   Puzzle,
   FlaskConical,
   Globe,
+  Github,
+  Rabbit,
   Sparkles,
+  Terminal,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -48,10 +51,21 @@ import {
 } from '@/components/ui/sidebar'
 import { useUIStore, type PreferencePane } from '@/store/ui-store'
 import type { KeybindingAction } from '@/types/keybindings'
+import { ClaudeIcon } from '@/components/icons/ClaudeIcon'
+import { CodexIcon } from '@/components/icons/CodexIcon'
+import { OpenCodeIcon } from '@/components/icons/OpenCodeIcon'
+import { CursorIcon } from '@/components/icons/CursorIcon'
 import type { MagicPrompts } from '@/types/preferences'
 import { GeneralPane } from './panes/GeneralPane'
+import { ClaudePane } from './panes/ClaudePane'
+import { CodexPane } from './panes/CodexPane'
+import { OpenCodePane } from './panes/OpenCodePane'
+import { CursorPane } from './panes/CursorPane'
+import { GitHubPane } from './panes/GitHubPane'
+import { CodeRabbitPane } from './panes/CodeRabbitPane'
 import { AppearancePane } from './panes/AppearancePane'
 import { KeybindingsPane } from './panes/KeybindingsPane'
+import { TerminalPane } from './panes/TerminalPane'
 import { MagicPromptsPane } from './panes/MagicPromptsPane'
 import { McpServersPane } from './panes/McpServersPane'
 import { ProvidersPane } from './panes/ProvidersPane'
@@ -66,7 +80,7 @@ import {
 } from './preferences-search'
 import { PreferencesSearchBar } from './PreferencesSearchBar'
 
-type NavigationItem = {
+interface NavigationItem {
   type: 'item'
   id: PreferencePane
   name: string
@@ -74,7 +88,7 @@ type NavigationItem = {
   desktopOnly?: boolean
 }
 
-type NavigationSeparator = {
+interface NavigationSeparator {
   type: 'separator'
   id: string
 }
@@ -99,7 +113,50 @@ const navigationEntries: (NavigationItem | NavigationSeparator)[] = [
     icon: Keyboard,
     desktopOnly: true,
   },
-  { type: 'separator', id: 'behavior-separator' },
+  { type: 'separator', id: 'interface-separator' },
+  {
+    type: 'item',
+    id: 'claude',
+    name: 'Claude',
+    icon: ClaudeIcon,
+  },
+  {
+    type: 'item',
+    id: 'codex',
+    name: 'Codex',
+    icon: CodexIcon,
+  },
+  {
+    type: 'item',
+    id: 'opencode',
+    name: 'OpenCode',
+    icon: OpenCodeIcon,
+  },
+  {
+    type: 'item',
+    id: 'cursor',
+    name: 'Cursor',
+    icon: CursorIcon,
+  },
+  {
+    type: 'item',
+    id: 'github',
+    name: 'GitHub CLI',
+    icon: Github,
+  },
+  {
+    type: 'item',
+    id: 'coderabbit',
+    name: 'CodeRabbit CLI',
+    icon: Rabbit,
+  },
+  { type: 'separator', id: 'backend-separator' },
+  {
+    type: 'item',
+    id: 'terminal',
+    name: 'Terminal',
+    icon: Terminal,
+  },
   {
     type: 'item',
     id: 'magic-prompts',
@@ -160,11 +217,18 @@ const navigationItems = navigationEntries.filter(
 
 const paneIconMap: Record<PreferencePane, LucideIcon> = {
   general: Settings,
+  claude: ClaudeIcon,
+  codex: CodexIcon,
+  opencode: OpenCodeIcon,
+  cursor: CursorIcon,
+  github: Github,
+  coderabbit: Rabbit,
   opinionated: Sparkles,
   providers: Blocks,
   usage: BarChart3,
   appearance: Palette,
   keybindings: Keyboard,
+  terminal: Terminal,
   'magic-prompts': Wand2,
   'mcp-servers': Plug,
   integrations: Puzzle,
@@ -176,10 +240,24 @@ const getPaneTitle = (pane: PreferencePane): string => {
   switch (pane) {
     case 'general':
       return 'General'
+    case 'claude':
+      return 'Claude'
+    case 'codex':
+      return 'Codex'
+    case 'opencode':
+      return 'OpenCode'
+    case 'cursor':
+      return 'Cursor'
+    case 'github':
+      return 'GitHub CLI'
+    case 'coderabbit':
+      return 'CodeRabbit CLI'
     case 'appearance':
       return 'Appearance'
     case 'keybindings':
       return 'Keybindings'
+    case 'terminal':
+      return 'Terminal'
     case 'magic-prompts':
       return 'Magic Prompts'
     case 'mcp-servers':
@@ -580,11 +658,7 @@ export function PreferencesDialog() {
                   <SidebarMenu>
                     {navigationEntries.map(entry =>
                       entry.type === 'separator' ? (
-                        <li
-                          key={entry.id}
-                          aria-hidden="true"
-                          className="py-1"
-                        >
+                        <li key={entry.id} aria-hidden="true" className="py-1">
                           <SidebarSeparator className="mx-0" />
                         </li>
                       ) : (
@@ -701,6 +775,36 @@ export function PreferencesDialog() {
                   <GeneralPane />
                 </div>
               )}
+              {activePane === 'claude' && (
+                <div id="pref-pane-claude">
+                  <ClaudePane />
+                </div>
+              )}
+              {activePane === 'codex' && (
+                <div id="pref-pane-codex">
+                  <CodexPane />
+                </div>
+              )}
+              {activePane === 'opencode' && (
+                <div id="pref-pane-opencode">
+                  <OpenCodePane />
+                </div>
+              )}
+              {activePane === 'cursor' && (
+                <div id="pref-pane-cursor">
+                  <CursorPane />
+                </div>
+              )}
+              {activePane === 'github' && (
+                <div id="pref-pane-github">
+                  <GitHubPane />
+                </div>
+              )}
+              {activePane === 'coderabbit' && (
+                <div id="pref-pane-coderabbit">
+                  <CodeRabbitPane />
+                </div>
+              )}
               {activePane === 'appearance' && (
                 <div id="pref-pane-appearance">
                   <AppearancePane />
@@ -709,6 +813,11 @@ export function PreferencesDialog() {
               {activePane === 'keybindings' && (
                 <div id="pref-pane-keybindings">
                   <KeybindingsPane searchTargetAction={searchTargetAction} />
+                </div>
+              )}
+              {activePane === 'terminal' && (
+                <div id="pref-pane-terminal">
+                  <TerminalPane />
                 </div>
               )}
               {activePane === 'magic-prompts' && (

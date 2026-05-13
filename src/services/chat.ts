@@ -4,6 +4,7 @@ import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { generateId } from '@/lib/uuid'
+import { disposeTerminal } from '@/lib/terminal-instances'
 import {
   beginSessionStateHydration,
   endSessionStateHydration,
@@ -30,6 +31,7 @@ import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
+import { useTerminalStore } from '@/store/terminal-store'
 import type { ReviewResponse, Worktree } from '@/types/projects'
 
 /** Default number of recent runs loaded on initial session fetch. */
@@ -43,6 +45,24 @@ function isWsDisconnectError(error: unknown): boolean {
   return msg.includes('WebSocket disconnected')
 }
 
+export function cleanupSessionTerminalForRemovedSession(
+  worktreeId: string,
+  sessionId: string
+): string | undefined {
+  const terminalId = useUIStore
+    .getState()
+    .clearSessionTerminalSurface(sessionId)
+  if (!terminalId) return undefined
+
+  invoke('stop_terminal', { terminalId }).catch(() => {
+    // Terminal may already be stopped.
+  })
+  disposeTerminal(terminalId)
+  useTerminalStore.getState().removeTerminal(worktreeId, terminalId)
+
+  return terminalId
+}
+
 // Query keys for chat
 export const chatQueryKeys = {
   all: ['chat'] as const,
@@ -54,6 +74,30 @@ export const chatQueryKeys = {
     [...chatQueryKeys.all, 'sessions', worktreeId] as const,
   session: (sessionId: string) =>
     [...chatQueryKeys.all, 'session', sessionId] as const,
+  nativeCliSessions: (
+    worktreePath: string,
+    backend: string,
+    searchQuery: string,
+    resultLimit: number
+  ) =>
+    [
+      ...chatQueryKeys.all,
+      'native-cli-sessions',
+      backend,
+      worktreePath,
+      searchQuery,
+      resultLimit,
+    ] as const,
+}
+
+export interface NativeCliHistorySession {
+  backend: NonNullable<Session['backend']>
+  id: string
+  title: string
+  cwd: string
+  updatedAt: number
+  resumeArgs: string[]
+  sourcePath: string
 }
 
 // ============================================================================
@@ -147,6 +191,49 @@ export function useSessions(
   })
 }
 
+export function useNativeCliSessions(
+  worktreePath: string | null,
+  backend: NonNullable<Session['backend']> | null,
+  options?: { enabled?: boolean; searchQuery?: string; resultLimit?: number }
+) {
+  const searchQuery = options?.searchQuery?.trim() ?? ''
+  const resultLimit = options?.resultLimit ?? (searchQuery ? 100 : 5)
+
+  return useQuery({
+    queryKey: chatQueryKeys.nativeCliSessions(
+      worktreePath ?? '',
+      backend ?? '',
+      searchQuery,
+      resultLimit
+    ),
+    queryFn: async (): Promise<NativeCliHistorySession[]> => {
+      if (!isTauri() || !worktreePath || !backend) return []
+      try {
+        return await invoke<NativeCliHistorySession[]>(
+          'list_native_cli_sessions',
+          {
+            worktreePath,
+            backend,
+            searchQuery,
+            resultLimit,
+          }
+        )
+      } catch (error) {
+        logger.warn('Failed to load native CLI sessions', {
+          backend,
+          worktreePath,
+          searchQuery,
+          error,
+        })
+        return []
+      }
+    },
+    enabled: (options?.enabled ?? true) && !!worktreePath && !!backend,
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 5,
+  })
+}
+
 /**
  * Prefetch sessions for a worktree (for startup loading).
  * This populates the query cache so indicators show immediately.
@@ -171,6 +258,7 @@ export async function prefetchSessions(
     const reviewingUpdates: Record<string, boolean> = {}
     const waitingUpdates: Record<string, boolean> = {}
     const executionModeUpdates: Record<string, ExecutionMode> = {}
+    const primarySurfaceUpdates: Record<string, 'chat' | 'terminal'> = {}
     const labelUpdates: Record<string, LabelData> = {}
     const reviewResultsUpdates: Record<string, ReviewResponse> = {}
     const answeredQuestionsUpdates: Record<string, Set<string>> = {}
@@ -197,6 +285,9 @@ export async function prefetchSessions(
       }
       if (session.selected_execution_mode) {
         executionModeUpdates[session.id] = session.selected_execution_mode
+      }
+      if (session.primary_surface) {
+        primarySurfaceUpdates[session.id] = session.primary_surface
       }
       if (session.label) {
         labelUpdates[session.id] = session.label
@@ -259,6 +350,14 @@ export async function prefetchSessions(
         ...currentState.executionModes,
         ...executionModeUpdates,
       }
+    }
+    if (Object.keys(primarySurfaceUpdates).length > 0) {
+      useUIStore.setState(state => ({
+        sessionPrimarySurface: {
+          ...state.sessionPrimarySurface,
+          ...primarySurfaceUpdates,
+        },
+      }))
     }
     if (Object.keys(labelUpdates).length > 0) {
       storeUpdates.sessionLabels = {
@@ -500,10 +599,20 @@ export function useCreateSession() {
       worktreeId,
       worktreePath,
       name,
+      backend,
+      primarySurface,
+      terminalCommand,
+      terminalCommandArgs,
+      terminalLabel,
     }: {
       worktreeId: string
       worktreePath: string
       name?: string
+      backend?: NonNullable<Session['backend']>
+      primarySurface?: Session['primary_surface']
+      terminalCommand?: string | null
+      terminalCommandArgs?: string[]
+      terminalLabel?: string
     }): Promise<Session> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -514,6 +623,11 @@ export function useCreateSession() {
         worktreeId,
         worktreePath,
         name,
+        backend,
+        primarySurface,
+        terminalCommand,
+        terminalCommandArgs,
+        terminalLabel,
       })
       logger.info('Session created', { sessionId: session.id })
       return session
@@ -779,6 +893,7 @@ export function useCloseSession() {
 
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
+      cleanupSessionTerminalForRemovedSession(worktreeId, sessionId)
 
       // Switch to the new active session — but only if the caller hasn't already
       // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
@@ -844,6 +959,7 @@ export function useArchiveSession() {
 
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
+      cleanupSessionTerminalForRemovedSession(worktreeId, sessionId)
 
       // Switch to the new active session — but only if the caller hasn't already
       // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)

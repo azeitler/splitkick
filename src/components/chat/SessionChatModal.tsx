@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import { cn } from '@/lib/utils'
+import { dismissibleToast } from '@/lib/dismissible-toast'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -40,14 +41,10 @@ import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { useChatStore } from '@/store/chat-store'
-import { useTerminalStore } from '@/store/terminal-store'
+import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { useUIStore } from '@/store/ui-store'
-import {
-  useSessions,
-  useCreateSession,
-  useRenameSession,
-} from '@/services/chat'
+import { useSessions, useRenameSession } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
 import { useWorktree, useProjects, useRunScripts } from '@/services/projects'
 import { useGitHubPRs } from '@/services/github'
@@ -199,11 +196,15 @@ export function SessionChatModal({
   const hasBottomDock = hasBottomTerminal || hasBottomBrowser
   const hasRunningTerminal = useTerminalStore(state => {
     const terminals = state.terminals[worktreeId] ?? []
-    return terminals.some(t => state.runningTerminals.has(t.id))
+    return terminals.some(
+      t => isPanelTerminal(t) && state.runningTerminals.has(t.id)
+    )
   })
   const hasFailedTerminal = useTerminalStore(state => {
     const terminals = state.terminals[worktreeId] ?? []
-    return terminals.some(t => !!t.command && state.failedTerminals.has(t.id))
+    return terminals.some(
+      t => isPanelTerminal(t) && !!t.command && state.failedTerminals.has(t.id)
+    )
   })
   const terminalShortcut = formatShortcutDisplay(
     preferences?.keybindings?.toggle_terminal ??
@@ -212,8 +213,6 @@ export function SessionChatModal({
   const runShortcut = formatShortcutDisplay(
     preferences?.keybindings?.execute_run ?? DEFAULT_KEYBINDINGS.execute_run
   )
-  const createSession = useCreateSession()
-
   // Horizontal scroll on session tabs
   const modalTabScrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -237,7 +236,6 @@ export function SessionChatModal({
   )
   const currentSessionId = activeSessionId ?? sessions[0]?.id ?? null
   const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
-
   // Canonical store state shared with canvas for consistent status derivation.
   const storeState = useCanvasStoreState()
   const planFilePaths = useChatStore(state => state.planFilePaths)
@@ -500,27 +498,39 @@ export function SessionChatModal({
   )
 
   const handleCreateSession = useCallback(() => {
-    createSession.mutate(
-      { worktreeId, worktreePath },
-      {
-        onSuccess: newSession => {
-          const { setActiveSession } = useChatStore.getState()
-          setActiveSession(worktreeId, newSession.id)
-        },
-      }
-    )
-  }, [worktreeId, worktreePath, createSession])
+    useUIStore.getState().openNewSessionModeModal({
+      worktreeId,
+      worktreePath,
+      origin: 'modal',
+    })
+  }, [worktreeId, worktreePath])
 
-  // Sorted tab order: waiting/permission first (need user attention),
-  // idle/review/completed next, running sessions (plan/build/yolo) last.
+  useEffect(() => {
+    if (!isOpen) return
+    const handler = (e: Event) => {
+      e.stopImmediatePropagation()
+      handleCreateSession()
+    }
+    window.addEventListener('create-new-session', handler, { capture: true })
+    return () =>
+      window.removeEventListener('create-new-session', handler, {
+        capture: true,
+      })
+  }, [handleCreateSession, isOpen])
+
+  // Sorted tab order: attention and active sessions first, review next,
+  // idle/new empty sessions last.
   // Within each tier, oldest first so click never reorders.
   const sortedCards = useMemo(() => {
     const priority: Record<string, number> = {
       waiting: 0,
       permission: 0,
-      planning: 2,
+      planning: 1,
       vibing: 2,
-      yoloing: 2,
+      yoloing: 3,
+      review: 4,
+      completed: 4,
+      idle: 5,
     }
     return [...cards].sort((a, b) => {
       const pa = priority[a.status] ?? 1
@@ -627,21 +637,20 @@ export function SessionChatModal({
   const handlePush = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
-      const toastId = toast.loading('Pushing changes...')
+      const opToast = dismissibleToast.loading('Pushing changes...')
       try {
         const result = await gitPush(worktreePath, worktree?.pr_number)
         triggerImmediateGitPoll()
         if (project) fetchWorktreesStatus(project.id)
         if (result.fellBack) {
-          toast.warning(
-            'Could not push to PR branch, pushed to new branch instead',
-            { id: toastId }
+          opToast.warning(
+            'Could not push to PR branch, pushed to new branch instead'
           )
         } else {
-          toast.success('Changes pushed', { id: toastId })
+          opToast.success('Changes pushed')
         }
       } catch (error) {
-        toast.error(`Push failed: ${error}`, { id: toastId })
+        opToast.error(`Push failed: ${error}`)
       }
     },
     [worktree, worktreePath, project]
@@ -1219,15 +1228,17 @@ export function SessionChatModal({
             </div>
           )}
 
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {currentSessionId && (
-              <ChatWindow
-                key={currentSessionId}
-                isModal
-                worktreeId={worktreeId}
-                worktreePath={worktreePath}
-              />
-            )}
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            {currentSessionId ? (
+              <div className="absolute inset-0 z-20 min-h-0 min-w-0">
+                <ChatWindow
+                  key={currentSessionId}
+                  isModal
+                  worktreeId={worktreeId}
+                  worktreePath={worktreePath}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
 
