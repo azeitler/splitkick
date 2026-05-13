@@ -549,7 +549,7 @@ pub fn build_turn_start_params(
         params["sandboxPolicy"] = serde_json::json!({
             "type": "dangerFullAccess",
         });
-    } else if !add_dirs.is_empty() || !git_writable_roots.is_empty() {
+    } else {
         let is_writable = mode == "build";
         let writable_roots: Vec<serde_json::Value> = if is_writable {
             let mut roots = vec![serde_json::json!(working_dir.to_string_lossy())];
@@ -4208,6 +4208,21 @@ mod tests {
             None,
             &[],
             &["/repo/.git/worktrees/worktree".to_string()],
+        );
+
+        assert_eq!(params["sandboxPolicy"]["type"], "dangerFullAccess");
+    }
+
+    #[test]
+    fn yolo_turn_uses_danger_full_access_without_writable_roots() {
+        let params = build_turn_start_params(
+            "thread-1",
+            "prompt",
+            std::path::Path::new("/repo/worktree"),
+            Some("yolo"),
+            None,
+            &[],
+            &[],
         );
 
         assert_eq!(params["sandboxPolicy"]["type"], "dangerFullAccess");
