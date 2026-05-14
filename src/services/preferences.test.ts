@@ -247,7 +247,7 @@ describe('preferences service', () => {
 
       expect(result.current.data?.theme).toBe('system')
       expect(result.current.data?.selected_model).toBe('claude-opus-4-7[1m]')
-      expect(result.current.data?.jean_mcp_enabled).toBe(false)
+      expect(result.current.data?.jean_mcp_enabled).toBe(true)
     })
 
     it('returns defaults on backend error', async () => {
@@ -261,7 +261,7 @@ describe('preferences service', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
       expect(result.current.data?.theme).toBe('system')
-      expect(result.current.data?.jean_mcp_enabled).toBe(false)
+      expect(result.current.data?.jean_mcp_enabled).toBe(true)
     })
 
     it('migrates old keybindings to new defaults', async () => {

@@ -101,7 +101,7 @@ export const JeanMcpSection: React.FC = () => {
   const [installMessage, setInstallMessage] = useState('')
   const [showInstallChoice, setShowInstallChoice] = useState(false)
 
-  const enabled = preferences?.jean_mcp_enabled ?? false
+  const enabled = preferences?.jean_mcp_enabled ?? true
   const {
     data: snippet,
     refetch: refreshSnippet,

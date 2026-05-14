@@ -270,7 +270,7 @@ pub struct AppPreferences {
 }
 
 fn default_jean_mcp_enabled() -> bool {
-    false
+    true
 }
 
 fn default_jean_mcp_max_depth() -> u32 {
@@ -612,8 +612,8 @@ mod tests {
     }
 
     #[test]
-    fn app_preferences_default_jean_mcp_disabled_for_new_and_existing_prefs() {
-        assert!(!AppPreferences::default().jean_mcp_enabled);
+    fn app_preferences_default_jean_mcp_enabled_for_new_and_missing_prefs() {
+        assert!(AppPreferences::default().jean_mcp_enabled);
 
         let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
         prefs_json
@@ -622,7 +622,7 @@ mod tests {
             .remove("jean_mcp_enabled");
 
         let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
-        assert!(!prefs.jean_mcp_enabled);
+        assert!(prefs.jean_mcp_enabled);
     }
 
     #[test]
