@@ -1769,7 +1769,13 @@ pub async fn send_chat_message(
     let thread_allowed_tools = allowed_tools_for_cli.clone();
     let thread_parallel_prompt = parallel_execution_prompt.clone();
     let thread_ai_language = ai_language.clone();
-    let thread_mcp_config = mcp_config.clone();
+    let thread_mcp_config = if effective_backend == Backend::Claude {
+        super::jean_mcp::merge_into_mcp_config(&app, &session_id, mcp_config.as_deref())
+            .await
+            .or_else(|| mcp_config.clone())
+    } else {
+        mcp_config.clone()
+    };
     let thread_custom_profile = custom_profile_name.clone();
     let thread_message = message.clone();
     let thread_backend = effective_backend.clone();

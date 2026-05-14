@@ -33,8 +33,10 @@ pub async fn build_jean_mcp_entry(app: &AppHandle, session_id: &str) -> Option<V
     let socket_path = socket_path?;
     let token = token?;
 
+    let server_name = crate::jean_mcp_config::current_mode().server_name();
+
     Some(json!({
-        "jean": {
+        server_name.to_string(): {
             "type": "stdio",
             "command": command,
             "args": [JEAN_MCP_STDIO_ARG],
