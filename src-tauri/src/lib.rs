@@ -89,6 +89,12 @@ pub struct AppPreferences {
     pub default_effort_level: String, // Effort level for Opus adaptive thinking: low, medium, high, xhigh, max
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
+    #[serde(default = "default_terminal_renderer")]
+    pub terminal_renderer: String, // Embedded terminal renderer: "xterm" or "ghostty-web" (experimental)
+    #[serde(default = "default_terminal_font")]
+    pub terminal_font: String, // Embedded terminal font: jetbrains-mono, fira-code, source-code-pro, sf-mono, system
+    #[serde(default = "default_terminal_font_size")]
+    pub terminal_font_size: u32, // Embedded terminal font size in pixels (10-24)
     #[serde(default = "default_editor")]
     pub editor: String, // Editor app: zed, vscode, cursor, xcode, intellij
     #[serde(default = "default_open_in")]
@@ -147,6 +153,8 @@ pub struct AppPreferences {
     pub waiting_sound: String, // Sound when session is waiting for input: none, workwork
     #[serde(default = "default_review_sound")]
     pub review_sound: String, // Sound when session finishes reviewing: none, workwork
+    #[serde(default = "default_web_access_sounds_enabled")]
+    pub web_access_sounds_enabled: bool, // Play notification sounds in browser/web access views
     #[serde(default)]
     pub http_server_enabled: bool, // Whether HTTP server is enabled
     #[serde(default)]
@@ -351,6 +359,18 @@ fn default_terminal() -> String {
     }
 }
 
+fn default_terminal_renderer() -> String {
+    "xterm".to_string()
+}
+
+fn default_terminal_font() -> String {
+    "jetbrains-mono".to_string()
+}
+
+fn default_terminal_font_size() -> u32 {
+    13
+}
+
 fn default_editor() -> String {
     "zed".to_string()
 }
@@ -396,7 +416,7 @@ fn default_file_edit_mode() -> String {
 }
 
 fn default_parallel_execution_prompt_enabled() -> bool {
-    false // Disabled by default (experimental)
+    true // Enabled by default
 }
 
 fn default_compact_chat_view_enabled() -> bool {
@@ -489,6 +509,10 @@ fn default_review_sound() -> String {
     "none".to_string()
 }
 
+fn default_web_access_sounds_enabled() -> bool {
+    true
+}
+
 fn default_http_server_port() -> u16 {
     3456
 }
@@ -550,6 +574,19 @@ mod tests {
 
         prefs.http_server_localhost_only = false;
         assert_eq!(resolve_http_server_bind_host(&prefs), "0.0.0.0");
+    }
+
+    #[test]
+    fn app_preferences_default_web_access_sounds_enabled_for_existing_prefs() {
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        prefs_json
+            .as_object_mut()
+            .unwrap()
+            .remove("web_access_sounds_enabled");
+
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+
+        assert!(prefs.web_access_sounds_enabled);
     }
 
     #[test]
@@ -1442,6 +1479,9 @@ impl Default for AppPreferences {
             selected_model: default_model(),
             thinking_level: default_thinking_level(),
             terminal: default_terminal(),
+            terminal_renderer: default_terminal_renderer(),
+            terminal_font: default_terminal_font(),
+            terminal_font_size: default_terminal_font_size(),
             editor: default_editor(),
             open_in: default_open_in(),
             auto_branch_naming: default_auto_branch_naming(),
@@ -1471,6 +1511,7 @@ impl Default for AppPreferences {
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),
             waiting_sound: default_waiting_sound(),
             review_sound: default_review_sound(),
+            web_access_sounds_enabled: default_web_access_sounds_enabled(),
             http_server_enabled: false,
             http_server_auto_start: false,
             http_server_port: default_http_server_port(),
@@ -3192,6 +3233,7 @@ pub fn run() {
             projects::delete_all_archives,
             projects::rename_worktree,
             projects::update_worktree_label,
+            projects::update_worktree_labels,
             projects::set_worktree_last_opened,
             projects::open_worktree_in_finder,
             projects::open_log_directory,
@@ -3316,6 +3358,7 @@ pub fn run() {
             projects::get_app_data_dir,
             // Terminal commands
             terminal::start_terminal,
+            terminal::prepare_backend_terminal_context,
             terminal::terminal_write,
             terminal::terminal_resize,
             terminal::stop_terminal,
@@ -3345,6 +3388,7 @@ pub fn run() {
             chat::list_all_sessions,
             chat::get_session,
             chat::load_older_session_messages,
+            chat::list_native_cli_sessions,
             chat::create_session,
             chat::rename_session,
             chat::regenerate_session_name,
@@ -3443,6 +3487,7 @@ pub fn run() {
             coderabbit_cli::check_coderabbit_cli_installed,
             coderabbit_cli::detect_coderabbit_in_path,
             coderabbit_cli::check_coderabbit_cli_auth,
+            coderabbit_cli::get_available_coderabbit_versions,
             coderabbit_cli::install_coderabbit_cli,
             coderabbit_cli::uninstall_coderabbit_cli,
             coderabbit_cli::update_coderabbit_cli,

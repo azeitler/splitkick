@@ -3,6 +3,11 @@ import type { QueuedMessage } from '@/types/chat'
 const IMAGE_ONLY_DEFAULT_PROMPT =
   'Please check this image and tell me what is wrong.'
 
+function fileReferencePath(file: QueuedMessage['pendingFiles'][number]) {
+  if (!file.sourceRootPath) return file.relativePath
+  return `${file.sourceRootPath.replace(/\/+$/, '')}/${file.relativePath.replace(/^\/+/, '')}`
+}
+
 /**
  * Build full message text with attachment references for the backend.
  *
@@ -14,11 +19,12 @@ export function buildMessageWithRefs(queuedMsg: QueuedMessage): string {
 
   if (queuedMsg.pendingFiles.length > 0) {
     const fileRefs = queuedMsg.pendingFiles
-      .map(f =>
-        f.isDirectory
-          ? `[Directory: ${f.relativePath} - Use Glob and Read tools to explore this directory]`
-          : `[File: ${f.relativePath} - Use the Read tool to view this file]`
-      )
+      .map(f => {
+        const path = fileReferencePath(f)
+        return f.isDirectory
+          ? `[Directory: ${path} - Use Glob and Read tools to explore this directory]`
+          : `[File: ${path} - Use the Read tool to view this file]`
+      })
       .join('\n')
     message = message ? `${message}\n\n${fileRefs}` : fileRefs
   }

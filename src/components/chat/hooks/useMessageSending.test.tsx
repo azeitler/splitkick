@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatStore } from '@/store/chat-store'
 import { useMessageSending } from './useMessageSending'
 import type { ExecutionMode } from '@/types/chat'
+import type * as ChatService from '@/services/chat'
 
 const { mockInvoke } = vi.hoisted(() => ({
   mockInvoke: vi.fn().mockResolvedValue(undefined),
@@ -21,7 +22,7 @@ vi.mock('sonner', () => ({
 }))
 
 vi.mock('@/services/chat', async importOriginal => {
-  const actual = await importOriginal<typeof import('@/services/chat')>()
+  const actual = await importOriginal<typeof ChatService>()
   return {
     ...actual,
     cancelChatMessage: vi.fn(),

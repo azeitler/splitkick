@@ -9,6 +9,13 @@ export type CodexGoalExecutionMode = Extract<ExecutionMode, 'build' | 'yolo'>
 // =============================================================================
 
 export type NotificationSound = 'none' | 'workwork' | 'jobsdone'
+export type TerminalRenderer = 'xterm' | 'ghostty-web'
+export type TerminalFont =
+  | 'jetbrains-mono'
+  | 'fira-code'
+  | 'source-code-pro'
+  | 'sf-mono'
+  | 'system'
 
 export const notificationSoundOptions: {
   value: NotificationSound
@@ -907,6 +914,9 @@ export interface AppPreferences {
   thinking_level: ThinkingLevel // Thinking level: 'off' | 'think' | 'megathink' | 'ultrathink'
   default_effort_level: EffortLevel // Effort level for Opus adaptive thinking: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty' | 'iterm2' | 'powershell' | 'windows-terminal'
+  terminal_renderer?: TerminalRenderer // Embedded terminal renderer: 'xterm' or 'ghostty-web' (experimental)
+  terminal_font?: TerminalFont // Embedded terminal font
+  terminal_font_size?: number // Embedded terminal font size in pixels
   editor: EditorApp // Editor app: 'zed' | 'vscode' | 'cursor' | 'xcode'
   open_in: OpenInDefault // Default Open In action: 'editor' | 'terminal' | 'finder' | 'github'
   auto_branch_naming: boolean // Automatically generate branch names from first message
@@ -935,6 +945,7 @@ export interface AppPreferences {
   allow_web_tools_in_plan_mode: boolean // Allow WebFetch/WebSearch in plan mode without prompts
   waiting_sound: NotificationSound // Sound when session is waiting for input
   review_sound: NotificationSound // Sound when session finishes reviewing
+  web_access_sounds_enabled: boolean // Play notification sounds in browser/web access views
   http_server_enabled: boolean // Whether HTTP server is enabled
   http_server_port: number // HTTP server port (default 3456)
   http_server_token: string | null // Auth token for HTTP/WS access
@@ -1524,6 +1535,14 @@ export const chatFontOptions: { value: ChatFont; label: string }[] = [
   { value: 'lato', label: 'Lato' },
 ]
 
+export const terminalFontOptions: { value: TerminalFont; label: string }[] = [
+  { value: 'jetbrains-mono', label: 'JetBrains Mono' },
+  { value: 'fira-code', label: 'Fira Code' },
+  { value: 'source-code-pro', label: 'Source Code Pro' },
+  { value: 'sf-mono', label: 'SF Mono / Menlo' },
+  { value: 'system', label: 'System Monospace' },
+]
+
 // Git poll interval options (seconds) - for local git commands
 export const gitPollIntervalOptions: { value: number; label: string }[] = [
   { value: 10, label: '10 seconds' },
@@ -1642,6 +1661,9 @@ export const defaultPreferences: AppPreferences = {
   thinking_level: 'ultrathink',
   default_effort_level: 'high',
   terminal: isWindows ? 'powershell' : 'terminal',
+  terminal_renderer: 'xterm',
+  terminal_font: 'jetbrains-mono',
+  terminal_font_size: 13,
   editor: 'zed',
   open_in: 'editor',
   auto_branch_naming: true,
@@ -1658,7 +1680,7 @@ export const defaultPreferences: AppPreferences = {
   archive_retention_days: 7,
   syntax_theme_dark: 'vitesse-black',
   syntax_theme_light: 'github-light',
-  parallel_execution_prompt_enabled: false, // Default: disabled (experimental)
+  parallel_execution_prompt_enabled: true, // Default: enabled
   compact_chat_view_enabled: false, // Default: disabled (experimental)
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
   magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,
@@ -1670,6 +1692,7 @@ export const defaultPreferences: AppPreferences = {
   allow_web_tools_in_plan_mode: true, // Default: enabled
   waiting_sound: 'none',
   review_sound: 'none',
+  web_access_sounds_enabled: true,
   http_server_enabled: false,
   http_server_port: 3456,
   http_server_token: null,

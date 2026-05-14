@@ -432,7 +432,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
         key: 'parallel_execution',
         label: 'Parallel Execution',
         description:
-          'System prompt appended to every chat session when enabled in Experimental settings. Encourages sub-agent parallelization.',
+          'System prompt appended to every chat session when enabled in General defaults. Encourages sub-agent parallelization.',
         variables: [],
         defaultValue: DEFAULT_PARALLEL_EXECUTION_PROMPT,
       },

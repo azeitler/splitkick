@@ -104,6 +104,7 @@ import { SkillBadge } from './SkillBadge'
 import { FileContentModal } from './FileContentModal'
 import { FileEditsDiffModal, type FileEdit } from './FileEditsDiffModal'
 import { FilePreview } from './FilePreview'
+import { ContextPreview } from './ContextPreview'
 import { ChatInput } from './ChatInput'
 import { SessionDebugPanel } from './SessionDebugPanel'
 import { ChatToolbar } from './ChatToolbar'
@@ -172,6 +173,7 @@ import {
   type ImperativePanelHandle,
 } from '@/components/ui/resizable'
 import { TerminalPanel } from './TerminalPanel'
+import { FullScreenTerminalSurface } from './FullScreenTerminalSurface'
 import { useTerminalStore } from '@/store/terminal-store'
 
 // Extracted hooks (useStreamingEvents is now in App.tsx for global persistence)
@@ -303,6 +305,14 @@ export function ChatWindow({
     activeWorktreeId
       ? (state.terminalPanelOpen[activeWorktreeId] ?? false)
       : false
+  )
+  const primarySurface = useUIStore(state =>
+    activeSessionId
+      ? (state.sessionPrimarySurface[activeSessionId] ?? 'chat')
+      : 'chat'
+  )
+  const sessionTerminalId = useUIStore(state =>
+    activeSessionId ? state.sessionTerminalIds[activeSessionId] : undefined
   )
   const { setTerminalVisible } = useTerminalStore.getState()
 
@@ -2120,7 +2130,6 @@ export function ChatWindow({
     currentStreamingContentBlocks,
     isSending,
     currentQueuedMessages,
-    createSession,
     preferences,
     patchPreferences,
     handleSaveContext,
@@ -2300,6 +2309,9 @@ export function ChatWindow({
     )
   }
 
+  const isTerminalPrimarySurface =
+    primarySurface === 'terminal' && !!activeSessionId && !!sessionTerminalId
+
   return (
     <ErrorBoundary
       resetKeys={[activeWorktreeId]}
@@ -2336,7 +2348,14 @@ export function ChatWindow({
           onCodeRabbitPrReview={handleCodeRabbitPrReview}
           codeRabbitPrAvailable={Boolean(worktree?.pr_number)}
         />
-        {showReviewFullWidth && activeSessionId ? (
+        {isTerminalPrimarySurface ? (
+          <FullScreenTerminalSurface
+            worktreeId={activeWorktreeId}
+            worktreePath={activeWorktreePath}
+            sessionId={activeSessionId}
+            terminalId={sessionTerminalId}
+          />
+        ) : showReviewFullWidth && activeSessionId ? (
           <div className="flex-1 min-h-0">
             <ReviewResultsPanel
               sessionId={activeSessionId}
@@ -2828,6 +2847,35 @@ export function ChatWindow({
                                 : undefined
                             }
                           >
+                            {/* Loaded context preview (# mentions) */}
+                            <ContextPreview
+                              sessionId={activeSessionId}
+                              worktreeId={null}
+                              worktreePath={activeWorktreePath}
+                              projectId={worktree?.project_id ?? null}
+                              disabled={isSending}
+                              excludeIssueNumber={
+                                worktree?.issue_number ?? null
+                              }
+                              excludePrNumber={
+                                worktree?.issue_number ||
+                                worktree?.security_alert_number ||
+                                worktree?.advisory_ghsa_id ||
+                                worktree?.linear_issue_identifier
+                                  ? null
+                                  : (worktree?.pr_number ?? null)
+                              }
+                              excludeSecurityAlertNumber={
+                                worktree?.security_alert_number ?? null
+                              }
+                              excludeAdvisoryGhsaId={
+                                worktree?.advisory_ghsa_id ?? null
+                              }
+                              excludeLinearIssueIdentifier={
+                                worktree?.linear_issue_identifier ?? null
+                              }
+                            />
+
                             {/* Pending file preview (@ mentions) */}
                             <FilePreview
                               files={currentPendingFiles}
@@ -2844,7 +2892,6 @@ export function ChatWindow({
                             <TextFilePreview
                               textFiles={currentPendingTextFiles}
                               onRemove={handleRemovePendingTextFile}
-                              disabled={isSending}
                               sessionId={activeSessionId}
                             />
 
@@ -2921,6 +2968,7 @@ export function ChatWindow({
                               <ChatInput
                                 activeSessionId={activeSessionId}
                                 activeWorktreePath={activeWorktreePath}
+                                activeProjectId={worktree?.project_id ?? null}
                                 isSending={isSending}
                                 executionMode={executionMode}
                                 canSwitchBackendWithTab={

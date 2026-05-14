@@ -4,8 +4,10 @@ import { useTerminalStore } from '@/store/terminal-store'
 import { useUIStore } from '@/store/ui-store'
 import {
   addTerminalTabForShortcut,
+  blurFocusedTerminalForShortcut,
   closeActiveTerminalTabForShortcut,
   getTerminalShortcutWorktreeId,
+  isPlainSessionTerminalFocused,
   shouldLetPlanDialogHandleAction,
   switchActiveTerminalTabByIndexForShortcut,
 } from './useMainWindowEventListeners'
@@ -37,6 +39,24 @@ function focusTerminal() {
   const input = document.createElement('textarea')
   terminal.appendChild(input)
   document.body.appendChild(terminal)
+
+  input.focus()
+  return input
+}
+
+function focusPlainSessionTerminal() {
+  document.body.innerHTML = ''
+
+  const root = document.createElement('div')
+  root.setAttribute('data-terminal-surface', 'session')
+
+  const terminal = document.createElement('div')
+  terminal.className = 'xterm'
+
+  const input = document.createElement('textarea')
+  terminal.appendChild(input)
+  root.appendChild(terminal)
+  document.body.appendChild(root)
 
   input.focus()
   return input
@@ -119,6 +139,9 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
       planDialogOpen: false,
       gitDiffModalOpen: false,
       githubDashboardOpen: false,
+      sessionPrimarySurface: {},
+      sessionTerminalIds: {},
+      newSessionModeTarget: null,
     })
   })
 
@@ -190,6 +213,38 @@ describe('useMainWindowEventListeners terminal shortcuts', () => {
     expect(
       useTerminalStore.getState().terminals['modal-worktree']
     ).toHaveLength(2)
+  })
+
+  it('lets focused full-screen plain terminal sessions own keybindings', () => {
+    focusPlainSessionTerminal()
+
+    useChatStore.setState({ activeWorktreeId: 'worktree-1' })
+    useUIStore.setState({
+      sessionPrimarySurface: { 'session-1': 'terminal' },
+      sessionTerminalIds: { 'session-1': 'term-1' },
+    })
+
+    expect(isPlainSessionTerminalFocused()).toBe(true)
+    expect(getTerminalShortcutWorktreeId()).toBeNull()
+    expect(addTerminalTabForShortcut()).toBe(false)
+  })
+
+  it('unfocuses focused full-screen plain terminal sessions for the escape hatch shortcut', () => {
+    const input = focusPlainSessionTerminal()
+
+    expect(document.activeElement).toBe(input)
+    expect(blurFocusedTerminalForShortcut()).toBe(true)
+    expect(document.activeElement).not.toBe(input)
+    expect(isPlainSessionTerminalFocused()).toBe(false)
+  })
+
+  it('unfocuses focused side terminals for the escape hatch shortcut', () => {
+    const input = focusTerminal()
+
+    expect(document.activeElement).toBe(input)
+    expect(blurFocusedTerminalForShortcut()).toBe(true)
+    expect(document.activeElement).not.toBe(input)
+    expect(getTerminalShortcutWorktreeId()).toBeNull()
   })
 
   it('uses the terminal shortcut path to close the active terminal tab for the modal worktree', () => {

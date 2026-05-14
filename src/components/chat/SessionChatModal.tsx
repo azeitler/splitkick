@@ -41,14 +41,10 @@ import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { useChatStore } from '@/store/chat-store'
-import { useTerminalStore } from '@/store/terminal-store'
+import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { useUIStore } from '@/store/ui-store'
-import {
-  useSessions,
-  useCreateSession,
-  useRenameSession,
-} from '@/services/chat'
+import { useSessions, useRenameSession } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
 import { useWorktree, useProjects, useRunScripts } from '@/services/projects'
 import { useGitHubPRs } from '@/services/github'
@@ -200,11 +196,15 @@ export function SessionChatModal({
   const hasBottomDock = hasBottomTerminal || hasBottomBrowser
   const hasRunningTerminal = useTerminalStore(state => {
     const terminals = state.terminals[worktreeId] ?? []
-    return terminals.some(t => state.runningTerminals.has(t.id))
+    return terminals.some(
+      t => isPanelTerminal(t) && state.runningTerminals.has(t.id)
+    )
   })
   const hasFailedTerminal = useTerminalStore(state => {
     const terminals = state.terminals[worktreeId] ?? []
-    return terminals.some(t => !!t.command && state.failedTerminals.has(t.id))
+    return terminals.some(
+      t => isPanelTerminal(t) && !!t.command && state.failedTerminals.has(t.id)
+    )
   })
   const terminalShortcut = formatShortcutDisplay(
     preferences?.keybindings?.toggle_terminal ??
@@ -213,8 +213,6 @@ export function SessionChatModal({
   const runShortcut = formatShortcutDisplay(
     preferences?.keybindings?.execute_run ?? DEFAULT_KEYBINDINGS.execute_run
   )
-  const createSession = useCreateSession()
-
   // Horizontal scroll on session tabs
   const modalTabScrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -238,7 +236,6 @@ export function SessionChatModal({
   )
   const currentSessionId = activeSessionId ?? sessions[0]?.id ?? null
   const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
-
   // Canonical store state shared with canvas for consistent status derivation.
   const storeState = useCanvasStoreState()
   const planFilePaths = useChatStore(state => state.planFilePaths)
@@ -501,16 +498,25 @@ export function SessionChatModal({
   )
 
   const handleCreateSession = useCallback(() => {
-    createSession.mutate(
-      { worktreeId, worktreePath },
-      {
-        onSuccess: newSession => {
-          const { setActiveSession } = useChatStore.getState()
-          setActiveSession(worktreeId, newSession.id)
-        },
-      }
-    )
-  }, [worktreeId, worktreePath, createSession])
+    useUIStore.getState().openNewSessionModeModal({
+      worktreeId,
+      worktreePath,
+      origin: 'modal',
+    })
+  }, [worktreeId, worktreePath])
+
+  useEffect(() => {
+    if (!isOpen) return
+    const handler = (e: Event) => {
+      e.stopImmediatePropagation()
+      handleCreateSession()
+    }
+    window.addEventListener('create-new-session', handler, { capture: true })
+    return () =>
+      window.removeEventListener('create-new-session', handler, {
+        capture: true,
+      })
+  }, [handleCreateSession, isOpen])
 
   // Sorted tab order: attention and active sessions first, review next,
   // idle/new empty sessions last.
@@ -1222,15 +1228,17 @@ export function SessionChatModal({
             </div>
           )}
 
-          <div className="min-h-0 flex-1 overflow-hidden">
-            {currentSessionId && (
-              <ChatWindow
-                key={currentSessionId}
-                isModal
-                worktreeId={worktreeId}
-                worktreePath={worktreePath}
-              />
-            )}
+          <div className="relative min-h-0 flex-1 overflow-hidden">
+            {currentSessionId ? (
+              <div className="absolute inset-0 z-20 min-h-0 min-w-0">
+                <ChatWindow
+                  key={currentSessionId}
+                  isModal
+                  worktreeId={worktreeId}
+                  worktreePath={worktreePath}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
 

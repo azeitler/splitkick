@@ -46,6 +46,10 @@ vi.mock('./panes/KeybindingsPane', async importOriginal => {
   }
 })
 
+vi.mock('./panes/TerminalPane', () => ({
+  TerminalPane: () => <div>Terminal pane</div>,
+}))
+
 vi.mock('./panes/MagicPromptsPane', async importOriginal => {
   const actual = await importOriginal<typeof MagicPromptsPaneModule>()
   return {
@@ -145,6 +149,7 @@ describe('PreferencesDialog', () => {
       'Cursor',
       'GitHub CLI',
       'CodeRabbit CLI',
+      'Terminal',
       'Magic Prompts',
       'Opinionated',
       'Providers',

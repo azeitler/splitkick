@@ -6,7 +6,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
-import { useTerminalStore } from '@/store/terminal-store'
+import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
@@ -39,12 +39,34 @@ export function shouldLetPlanDialogHandleAction(
   return planDialogOpen && PLAN_DIALOG_APPROVAL_ACTIONS.has(action)
 }
 
-export function getTerminalShortcutWorktreeId(): string | null {
+function getFocusedTerminalElement(): HTMLElement | null {
   const activeElement = document.activeElement
-  const terminalFocused =
-    activeElement instanceof HTMLElement && !!activeElement.closest('.xterm')
+  if (!(activeElement instanceof HTMLElement)) return null
 
-  if (!terminalFocused) return null
+  return activeElement.closest('.xterm, [data-terminal-emulator]')
+}
+
+export function isPlainSessionTerminalFocused(): boolean {
+  return !!getFocusedTerminalElement()?.closest(
+    '[data-terminal-surface="session"]'
+  )
+}
+
+export function blurFocusedTerminalForShortcut(): boolean {
+  const terminalElement = getFocusedTerminalElement()
+  if (!terminalElement) return false
+
+  const activeElement = document.activeElement
+  if (activeElement instanceof HTMLElement) {
+    activeElement.blur()
+  }
+
+  document.body.focus({ preventScroll: true })
+  return true
+}
+
+export function getTerminalShortcutWorktreeId(): string | null {
+  if (!getFocusedTerminalElement()) return null
 
   const uiState = useUIStore.getState()
   const chatState = useChatStore.getState()
@@ -86,7 +108,9 @@ export function closeActiveTerminalTabForShortcut(): boolean {
   disposeTerminal(activeTerminalId)
   terminalStore.removeTerminal(worktreeId, activeTerminalId)
 
-  const remaining = useTerminalStore.getState().terminals[worktreeId] ?? []
+  const remaining = (
+    useTerminalStore.getState().terminals[worktreeId] ?? []
+  ).filter(isPanelTerminal)
   if (remaining.length === 0) {
     terminalStore.setTerminalPanelOpen(worktreeId, false)
     terminalStore.setTerminalVisible(false)
@@ -103,7 +127,9 @@ export function switchActiveTerminalTabByIndexForShortcut(
   if (!worktreeId) return false
 
   const terminalStore = useTerminalStore.getState()
-  const terminals = terminalStore.terminals[worktreeId] ?? []
+  const terminals = (terminalStore.terminals[worktreeId] ?? []).filter(
+    isPanelTerminal
+  )
   const targetTerminal = terminals[index]
 
   if (targetTerminal) {
@@ -527,6 +553,19 @@ export function useMainWindowEventListeners() {
           return
         }
       }
+
+      if (
+        shortcut === 'mod+shift+escape' &&
+        blurFocusedTerminalForShortcut()
+      ) {
+        e.preventDefault()
+        e.stopPropagation()
+        return
+      }
+
+      // A focused full-screen/plain terminal session should own all keybindings.
+      // Side/modal terminals still use the terminal-specific remapping below.
+      if (isPlainSessionTerminalFocused()) return
 
       // Cancel prompt should work even when modals are open
       if (shortcut === keybindingsRef.current.cancel_prompt) {

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { cn } from '@/lib/utils'
 import { KeyRecorder } from '../KeyRecorder'
+import { SettingsSection } from '../SettingsSection'
 import {
   KEYBINDING_DEFINITIONS,
   DEFAULT_KEYBINDINGS,
@@ -16,19 +16,6 @@ const KEYBINDING_HIGHLIGHT_DURATION_MS = 1800
 export function getKeybindingRowId(action: KeybindingAction): string {
   return `settings-keybinding-${action}`
 }
-
-const SettingsSection: React.FC<{
-  title: string
-  children: React.ReactNode
-}> = ({ title, children }) => (
-  <div className="space-y-2">
-    <div>
-      <h3 className="text-sm font-medium text-foreground">{title}</h3>
-      <Separator className="mt-1" />
-    </div>
-    {children}
-  </div>
-)
 
 const KeybindingRow: React.FC<{
   definition: KeybindingDefinition
@@ -172,7 +159,10 @@ export const KeybindingsPane: React.FC<KeybindingsPaneProps> = ({
 
   return (
     <div className="space-y-4">
-      <SettingsSection title="Keybindings">
+      <SettingsSection
+        title="Keybindings"
+        anchorId="pref-keybindings-section-keybindings"
+      >
         <div className="grid gap-2 xl:grid-cols-2">
           {sortedBindings.map(def => (
             <KeybindingRow
