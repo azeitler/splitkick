@@ -11,6 +11,7 @@ use serde_json::{json, Value};
 use tauri::AppHandle;
 
 use crate::http_server::dispatch::dispatch_command;
+use crate::platform::silent_command;
 
 pub const MCP_PROTOCOL_VERSION: &str = "2024-11-05";
 pub const JEAN_MCP_STDIO_ARG: &str = "--jean-mcp-stdio";
@@ -20,7 +21,14 @@ pub const JEAN_MCP_SESSION_ENV: &str = "JEAN_MCP_SESSION";
 pub const JEAN_MCP_DEPTH_ENV: &str = "JEAN_MCP_DEPTH";
 
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
-const RATE_LIMITED_TOOLS: &[&str] = &["create_session", "send_chat_message", "create_worktree"];
+const RATE_LIMITED_TOOLS: &[&str] = &[
+    "cancel_session_run",
+    "create_session",
+    "send_chat_message",
+    "create_worktree",
+];
+const DEFAULT_MCP_DIFF_MAX_BYTES: usize = 60_000;
+const MAX_MCP_DIFF_BYTES: usize = 200_000;
 
 static RATE_BUCKETS: Lazy<std::sync::Mutex<HashMap<String, VecDeque<Instant>>>> =
     Lazy::new(|| std::sync::Mutex::new(HashMap::new()));
@@ -69,17 +77,72 @@ pub fn tools_list_result() -> Value {
     json!({ "tools": tool_registry() })
 }
 
+#[derive(Debug)]
+pub struct ToolCallRequest {
+    pub name: String,
+    pub arguments: Value,
+}
+
+pub fn extract_tool_call(params: Value) -> Result<ToolCallRequest, ToolError> {
+    let name = params
+        .get("name")
+        .and_then(|v| v.as_str())
+        .map(ToOwned::to_owned)
+        .ok_or_else(|| ToolError::invalid_params("missing 'name'"))?;
+    let arguments = params
+        .get("arguments")
+        .cloned()
+        .unwrap_or_else(|| json!({}));
+    Ok(ToolCallRequest { name, arguments })
+}
+
+pub fn handle_protocol_message(
+    body: Value,
+    mut call_tool: impl FnMut(ToolCallRequest) -> Result<Value, String>,
+) -> Option<Value> {
+    let id = body.get("id").cloned();
+    let method = body.get("method").and_then(|v| v.as_str()).unwrap_or("");
+    let params = body.get("params").cloned().unwrap_or(Value::Null);
+
+    match method {
+        "initialize" => Some(jsonrpc_ok(id, initialize_result())),
+        "notifications/initialized" => None,
+        "tools/list" => Some(jsonrpc_ok(id, tools_list_result())),
+        "tools/call" => Some(
+            match extract_tool_call(params)
+                .map_err(|e| e.message)
+                .and_then(|tool_call| call_tool(tool_call))
+            {
+                Ok(result) => jsonrpc_ok(id, result),
+                Err(e) => jsonrpc_error(id, -32000, &e),
+            },
+        ),
+        "ping" => Some(jsonrpc_ok(id, json!({}))),
+        _ => Some(jsonrpc_error(
+            id,
+            -32601,
+            &format!("Method not found: {method}"),
+        )),
+    }
+}
+
 pub fn tool_registry() -> Value {
     json!([
         {"name":"list_projects","description":"List all Jean projects (id, name, path, default_branch).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
         {"name":"list_worktrees","description":"List all worktrees for a project.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"get_worktree","description":"Get a single worktree by id (path, branch, status, etc.).","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"get_project_context","description":"Get project-level context needed by orchestration agents: project settings, linked projects, default branch/backend, and worktree counts. Does not read arbitrary repo files.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"list_github_issues","description":"List GitHub issues for a project. Pass projectId; the server resolves the repo path.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"state":{"type":"string","enum":["open","closed","all"],"default":"open"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"list_github_prs","description":"List GitHub pull requests for a project. Pass projectId; the server resolves the repo path.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"state":{"type":"string","enum":["open","closed","merged","all"],"default":"open"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"create_worktree","description":"Create a new worktree for a project. If issueNumber or prNumber is provided, Jean fetches that context and attaches it to the worktree. Pass action=\"start_autoinvestigating\" to create a session and start investigating the issue/PR with the Magic Prompts settings default backend/model. This never switches/opens Jean's UI unless the user opens the worktree separately.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"baseBranch":{"type":"string"},"customName":{"type":"string"},"issueNumber":{"type":"integer","minimum":1},"prNumber":{"type":"integer","minimum":1},"action":{"type":"string","enum":["start_autoinvestigating"]}},"required":["projectId"],"additionalProperties":false}},
+        {"name":"list_sessions","description":"List chat sessions in a worktree without loading full message history. Use before creating a session to avoid duplicates.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"includeArchived":{"type":"boolean","default":false}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"create_session","description":"Create a new chat session in an existing worktree. Returns the session id needed for send_chat_message.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"name":{"type":"string"},"backend":{"type":"string","enum":["claude","codex","cursor","opencode"]}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"send_chat_message","description":"Send a message to an existing session. Fire-and-forget: returns immediately as the session begins processing. Use this to kick off investigations.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"message":{"type":"string"},"model":{"type":"string"},"executionMode":{"type":"string","enum":["plan","build","yolo"]}},"required":["sessionId","message"],"additionalProperties":false}},
+        {"name":"get_session_status","description":"Get whether a Jean session is idle/running/resumable/cancelled/error plus latest run metadata. Use after send_chat_message to poll fire-and-forget work.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
+        {"name":"cancel_session_run","description":"Cancel the currently running request for a session. Returns whether Jean found an active process/turn/flag to cancel.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"read_session_messages","description":"Read recent messages from a session (most recent first). Use limit to cap returned messages.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":50}},"required":["sessionId"],"additionalProperties":false}},
+        {"name":"get_worktree_changes","description":"Get a bounded summary of a worktree's git changes: porcelain status, ahead/behind counts, diff stats, and changed files. Does not return full diffs.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"maxFiles":{"type":"integer","minimum":1,"maximum":500,"default":100}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"get_worktree_diff","description":"Get a bounded unified git diff for a worktree. diffType is uncommitted (HEAD vs working tree) or branch (origin/base...HEAD). Optional path limits to one pathspec; maxBytes is capped.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"diffType":{"type":"string","enum":["uncommitted","branch"],"default":"uncommitted"},"path":{"type":"string"},"maxBytes":{"type":"integer","minimum":1,"maximum":200000,"default":60000}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName. Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}
     ])
 }
@@ -146,6 +209,10 @@ async fn run_tool(
             dispatch_command(app, "get_worktree", json!({ "worktreeId": worktree_id }))
                 .await
                 .map_err(ToolError::internal)
+        }
+        "get_project_context" => {
+            let project_id = require_str(&args, "projectId")?;
+            get_project_context(app, &project_id)
         }
         "list_github_issues" => {
             let project_id = require_str(&args, "projectId")?;
@@ -289,6 +356,14 @@ async fn run_tool(
                 Ok(worktree)
             }
         }
+        "list_sessions" => {
+            let worktree_id = require_str(&args, "worktreeId")?;
+            let include_archived = args
+                .get("includeArchived")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            list_sessions(app, &worktree_id, include_archived)
+        }
         "create_session" => {
             let worktree_id = require_str(&args, "worktreeId")?;
             let worktree_path = resolve_worktree_path(app, &worktree_id)?;
@@ -332,6 +407,26 @@ async fn run_tool(
             });
             Ok(json!({ "sessionId": session_id, "status": "started" }))
         }
+        "get_session_status" => {
+            let session_id = require_str(&args, "sessionId")?;
+            get_session_status(app, &session_id)
+        }
+        "cancel_session_run" => {
+            let session_id = require_str(&args, "sessionId")?;
+            let (worktree_id, _) = resolve_session_worktree(app, &session_id)?;
+            let cancelled = crate::chat::cancel_chat_message(
+                app.clone(),
+                session_id.clone(),
+                worktree_id.clone(),
+            )
+            .await
+            .map_err(ToolError::internal)?;
+            Ok(json!({
+                "sessionId": session_id,
+                "worktreeId": worktree_id,
+                "cancelled": cancelled,
+            }))
+        }
         "read_session_messages" => {
             let session_id = require_str(&args, "sessionId")?;
             let limit = args
@@ -341,6 +436,29 @@ async fn run_tool(
                 .min(200) as usize;
             let (worktree_id, worktree_path) = resolve_session_worktree(app, &session_id)?;
             dispatch_command(app, "get_session", json!({ "sessionId": session_id, "worktreeId": worktree_id, "worktreePath": worktree_path, "limit": limit })).await.map_err(ToolError::internal)
+        }
+        "get_worktree_changes" => {
+            let worktree_id = require_str(&args, "worktreeId")?;
+            let max_files = args
+                .get("maxFiles")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(100)
+                .clamp(1, 500) as usize;
+            get_worktree_changes(app, &worktree_id, max_files)
+        }
+        "get_worktree_diff" => {
+            let worktree_id = require_str(&args, "worktreeId")?;
+            let diff_type = args
+                .get("diffType")
+                .and_then(|v| v.as_str())
+                .unwrap_or("uncommitted");
+            let path = args.get("path").and_then(|v| v.as_str());
+            let max_bytes = args
+                .get("maxBytes")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(DEFAULT_MCP_DIFF_MAX_BYTES as u64)
+                .clamp(1, MAX_MCP_DIFF_BYTES as u64) as usize;
+            get_worktree_diff(app, &worktree_id, diff_type, path, max_bytes)
         }
         "get_current_context" => {
             if source == "anon" {
@@ -355,6 +473,291 @@ async fn run_tool(
         }
         other => Err(ToolError::invalid_params(format!("Unknown tool: {other}"))),
     }
+}
+
+fn get_project_context(app: &AppHandle, project_id: &str) -> Result<Value, ToolError> {
+    let data = crate::projects::storage::load_projects_data(app)
+        .map_err(|e| ToolError::internal(format!("load_projects_data: {e}")))?;
+    let project = data
+        .find_project(project_id)
+        .ok_or_else(|| ToolError::invalid_params(format!("Unknown projectId: {project_id}")))?;
+    let worktrees = data.worktrees_for_project(project_id);
+    let linked_projects: Vec<Value> = project
+        .linked_project_ids
+        .iter()
+        .filter_map(|id| data.find_project(id))
+        .map(|p| {
+            json!({
+                "id": p.id,
+                "name": p.name,
+                "path": p.path,
+                "defaultBranch": p.default_branch,
+                "defaultBackend": p.default_backend,
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "id": project.id,
+        "name": project.name,
+        "path": project.path,
+        "defaultBranch": project.default_branch,
+        "defaultBackend": project.default_backend,
+        "defaultProvider": project.default_provider,
+        "enabledMcpServers": project.enabled_mcp_servers,
+        "customSystemPromptPresent": project.custom_system_prompt.as_ref().is_some_and(|p| !p.trim().is_empty()),
+        "worktreesDir": project.worktrees_dir,
+        "linkedProjects": linked_projects,
+        "counts": {
+            "worktrees": worktrees.len(),
+            "activeWorktrees": worktrees.iter().filter(|w| w.archived_at.is_none()).count(),
+            "archivedWorktrees": worktrees.iter().filter(|w| w.archived_at.is_some()).count(),
+        },
+    }))
+}
+
+fn list_sessions(
+    app: &AppHandle,
+    worktree_id: &str,
+    include_archived: bool,
+) -> Result<Value, ToolError> {
+    let worktree_path = resolve_worktree_path(app, worktree_id)?;
+    let sessions = crate::chat::storage::load_sessions(app, &worktree_path, worktree_id)
+        .map_err(ToolError::internal)?;
+    let session_summaries: Vec<Value> = sessions
+        .sessions
+        .into_iter()
+        .filter(|session| include_archived || session.archived_at.is_none())
+        .map(|session| {
+            json!({
+                "id": session.id,
+                "name": session.name,
+                "order": session.order,
+                "backend": session.backend,
+                "selectedModel": session.selected_model,
+                "selectedProvider": session.selected_provider,
+                "selectedExecutionMode": session.selected_execution_mode,
+                "createdAt": session.created_at,
+                "updatedAt": session.updated_at,
+                "lastMessageAt": session.last_message_at,
+                "messageCount": session.message_count,
+                "archivedAt": session.archived_at,
+                "lastRunStatus": session.last_run_status,
+                "lastRunStartedAt": session.last_run_started_at,
+                "waitingForInput": session.waiting_for_input,
+                "waitingForInputType": session.waiting_for_input_type,
+            })
+        })
+        .collect();
+
+    Ok(json!({
+        "worktreeId": worktree_id,
+        "activeSessionId": sessions.active_session_id,
+        "sessions": session_summaries,
+    }))
+}
+
+fn get_session_status(app: &AppHandle, session_id: &str) -> Result<Value, ToolError> {
+    let (worktree_id, _) = resolve_session_worktree(app, session_id)?;
+    let metadata = crate::chat::storage::load_metadata(app, session_id)
+        .map_err(|e| ToolError::internal(format!("load_metadata: {e}")))?
+        .ok_or_else(|| ToolError::invalid_params(format!("Unknown sessionId: {session_id}")))?;
+    let latest_run = metadata.runs.last();
+    let actively_managed = crate::chat::registry::is_session_actively_managed(session_id);
+    let status = if actively_managed {
+        "running"
+    } else {
+        match latest_run.map(|run| &run.status) {
+            Some(crate::chat::types::RunStatus::Running)
+            | Some(crate::chat::types::RunStatus::Resumable) => "resumable",
+            Some(crate::chat::types::RunStatus::Cancelled) => "cancelled",
+            Some(crate::chat::types::RunStatus::Crashed) => "error",
+            Some(crate::chat::types::RunStatus::Completed) | None => "idle",
+        }
+    };
+
+    Ok(json!({
+        "sessionId": session_id,
+        "worktreeId": worktree_id,
+        "status": status,
+        "activelyManaged": actively_managed,
+        "backend": metadata.backend,
+        "selectedModel": metadata.selected_model,
+        "selectedProvider": metadata.selected_provider,
+        "selectedExecutionMode": metadata.selected_execution_mode,
+        "waitingForInput": metadata.waiting_for_input,
+        "waitingForInputType": metadata.waiting_for_input_type,
+        "latestRun": latest_run.map(|run| json!({
+            "runId": run.run_id,
+            "status": run.status,
+            "startedAt": run.started_at,
+            "endedAt": run.ended_at,
+            "model": run.model,
+            "executionMode": run.execution_mode,
+            "cancelled": run.cancelled,
+            "recovered": run.recovered,
+        })),
+    }))
+}
+
+fn get_worktree_changes(
+    app: &AppHandle,
+    worktree_id: &str,
+    max_files: usize,
+) -> Result<Value, ToolError> {
+    let (worktree, project_default_branch) =
+        resolve_worktree_and_project_default(app, worktree_id)?;
+    let base_branch = worktree
+        .base_branch
+        .clone()
+        .unwrap_or_else(|| project_default_branch.clone());
+    let status = crate::projects::git_status::get_branch_status(
+        &crate::projects::git_status::ActiveWorktreeInfo {
+            worktree_id: worktree.id.clone(),
+            worktree_path: worktree.path.clone(),
+            base_branch: base_branch.clone(),
+            pr_number: worktree.pr_number,
+            pr_url: worktree.pr_url.clone(),
+            pr_push_remote: worktree.pr_push_remote.clone(),
+            pr_push_branch: worktree.pr_push_branch.clone(),
+        },
+    )
+    .ok();
+    let porcelain = git_output(&worktree.path, &["status", "--porcelain=v1"])?;
+    let all_files = parse_porcelain_files(&porcelain);
+    let truncated = all_files.len() > max_files;
+    let files: Vec<Value> = all_files
+        .into_iter()
+        .take(max_files)
+        .map(|(status, path)| json!({ "status": status, "path": path }))
+        .collect();
+
+    Ok(json!({
+        "worktreeId": worktree.id,
+        "worktreePath": worktree.path,
+        "branch": worktree.branch,
+        "baseBranch": base_branch,
+        "status": status,
+        "files": files,
+        "filesTruncated": truncated,
+        "porcelain": porcelain,
+    }))
+}
+
+fn get_worktree_diff(
+    app: &AppHandle,
+    worktree_id: &str,
+    diff_type: &str,
+    path: Option<&str>,
+    max_bytes: usize,
+) -> Result<Value, ToolError> {
+    let (worktree, project_default_branch) =
+        resolve_worktree_and_project_default(app, worktree_id)?;
+    let base_branch = worktree.base_branch.unwrap_or(project_default_branch);
+    let mut args = match diff_type {
+        "uncommitted" => vec![
+            "diff".to_string(),
+            "HEAD".to_string(),
+            "--unified=3".to_string(),
+        ],
+        "branch" => vec![
+            "diff".to_string(),
+            "--unified=3".to_string(),
+            format!("origin/{base_branch}...HEAD"),
+        ],
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "Invalid diffType: {other}; expected uncommitted or branch"
+            )))
+        }
+    };
+    if let Some(path) = path.filter(|p| !p.trim().is_empty()) {
+        args.push("--".to_string());
+        args.push(path.to_string());
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let raw_patch = git_output(&worktree.path, &arg_refs)?;
+    let (patch, truncated) = truncate_utf8(&raw_patch, max_bytes);
+
+    Ok(json!({
+        "worktreeId": worktree.id,
+        "diffType": diff_type,
+        "baseBranch": base_branch,
+        "path": path,
+        "maxBytes": max_bytes,
+        "truncated": truncated,
+        "rawBytes": raw_patch.len(),
+        "patch": patch,
+    }))
+}
+
+fn resolve_worktree_and_project_default(
+    app: &AppHandle,
+    worktree_id: &str,
+) -> Result<(crate::projects::types::Worktree, String), ToolError> {
+    let data = crate::projects::storage::load_projects_data(app)
+        .map_err(|e| ToolError::internal(format!("load_projects_data: {e}")))?;
+    let worktree = data
+        .find_worktree(worktree_id)
+        .cloned()
+        .ok_or_else(|| ToolError::invalid_params(format!("Unknown worktreeId: {worktree_id}")))?;
+    let project = data.find_project(&worktree.project_id).ok_or_else(|| {
+        ToolError::internal(format!("Worktree {worktree_id} has no parent project"))
+    })?;
+    Ok((worktree, project.default_branch.clone()))
+}
+
+fn git_output(repo_path: &str, args: &[&str]) -> Result<String, ToolError> {
+    let output = silent_command("git")
+        .args(args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| ToolError::internal(format!("Failed to run git {}: {e}", args.join(" "))))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(ToolError::internal(format!(
+            "git {} failed: {stderr}",
+            args.join(" ")
+        )));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn parse_porcelain_files(porcelain: &str) -> Vec<(String, String)> {
+    porcelain
+        .lines()
+        .filter_map(|line| {
+            if line.len() < 4 {
+                return None;
+            }
+            let status = line[..2].trim().to_string();
+            let path = line[3..]
+                .rsplit_once(" -> ")
+                .map(|(_, path)| path)
+                .unwrap_or(&line[3..])
+                .trim_matches('"')
+                .to_string();
+            Some((status, path))
+        })
+        .collect()
+}
+
+fn truncate_utf8(input: &str, max_bytes: usize) -> (String, bool) {
+    if input.len() <= max_bytes {
+        return (input.to_string(), false);
+    }
+    let mut end = max_bytes;
+    while !input.is_char_boundary(end) {
+        end -= 1;
+    }
+    (
+        format!(
+            "{}\n\n[diff truncated: showing {end} of {} bytes]",
+            &input[..end],
+            input.len()
+        ),
+        true,
+    )
 }
 
 fn require_str(args: &Value, key: &str) -> Result<String, ToolError> {
@@ -894,5 +1297,72 @@ mod tests {
         });
 
         assert!(has_pr_list);
+    }
+
+    #[test]
+    fn tool_registry_includes_first_release_observability_tools() {
+        let tools = tool_registry();
+        let names: std::collections::HashSet<&str> = tools
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .filter_map(|item| item.get("name").and_then(|name| name.as_str()))
+            .collect();
+
+        for expected in [
+            "get_project_context",
+            "list_sessions",
+            "get_session_status",
+            "cancel_session_run",
+            "get_worktree_changes",
+            "get_worktree_diff",
+        ] {
+            assert!(names.contains(expected), "missing MCP tool {expected}");
+        }
+    }
+
+    #[test]
+    fn worktree_diff_schema_is_bounded() {
+        let tools = tool_registry();
+        let get_worktree_diff = tools
+            .as_array()
+            .and_then(|items| {
+                items.iter().find(|item| {
+                    item.get("name").and_then(|name| name.as_str()) == Some("get_worktree_diff")
+                })
+            })
+            .expect("get_worktree_diff tool exists");
+
+        assert_eq!(
+            get_worktree_diff["inputSchema"]["properties"]["maxBytes"]["maximum"],
+            MAX_MCP_DIFF_BYTES
+        );
+        assert_eq!(
+            get_worktree_diff["inputSchema"]["properties"]["diffType"]["enum"][0],
+            "uncommitted"
+        );
+    }
+
+    #[test]
+    fn parse_porcelain_files_handles_renames() {
+        let parsed = parse_porcelain_files(" M src/lib.rs\nR  old.rs -> new.rs\n?? scratch.txt\n");
+
+        assert_eq!(
+            parsed,
+            vec![
+                ("M".to_string(), "src/lib.rs".to_string()),
+                ("R".to_string(), "new.rs".to_string()),
+                ("??".to_string(), "scratch.txt".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn truncate_utf8_preserves_char_boundaries() {
+        let (truncated, was_truncated) = truncate_utf8("åååå", 3);
+
+        assert!(was_truncated);
+        assert!(truncated.starts_with('å'));
+        assert!(truncated.contains("diff truncated"));
     }
 }

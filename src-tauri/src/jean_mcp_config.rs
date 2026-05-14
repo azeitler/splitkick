@@ -296,18 +296,49 @@ pub async fn install_jean_mcp_config_impl(
 
 fn install_claude(entry: &JeanMcpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
     let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
-    let path = home.join(".claude.json");
+    install_jsonc_server(
+        home.join(".claude.json"),
+        "mcpServers",
+        entry,
+        JeanMcpEntry::claude_server_json,
+    )
+}
+
+fn install_opencode(entry: &JeanMcpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
+    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
+    let path = find_opencode_config_path(&home)
+        .unwrap_or_else(|| home.join(".config").join("opencode").join("opencode.json"));
+    install_jsonc_server(path, "mcp", entry, JeanMcpEntry::opencode_server_json)
+}
+
+fn install_cursor(entry: &JeanMcpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
+    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
+    install_jsonc_server(
+        home.join(".cursor").join("mcp.json"),
+        "mcpServers",
+        entry,
+        JeanMcpEntry::cursor_server_json,
+    )
+}
+
+fn install_jsonc_server(
+    path: PathBuf,
+    container_key: &str,
+    entry: &JeanMcpEntry,
+    server_json: fn(&JeanMcpEntry) -> serde_json::Value,
+) -> Result<(PathBuf, Option<PathBuf>), String> {
     with_config_lock(&path, || {
         let content = read_optional(&path)?;
+        let value = server_json(entry);
         let updated = if content.trim().is_empty() {
-            entry.claude_snippet()
+            serde_json::to_string_pretty(&json!({
+                container_key: {
+                    entry.server_name.clone(): value
+                }
+            }))
+            .unwrap_or_default()
         } else {
-            patch_jsonc_object_property(
-                &content,
-                "mcpServers",
-                &entry.server_name,
-                &entry.claude_server_json(),
-            )?
+            patch_jsonc_object_property(&content, container_key, &entry.server_name, &value)?
         };
         validate_jsonc(&updated, &path)?;
         let backup = write_atomic_with_backup(&path, &updated)?;
@@ -337,59 +368,6 @@ fn install_codex(entry: &JeanMcpEntry) -> Result<(PathBuf, Option<PathBuf>), Str
         updated
             .parse::<toml_edit::DocumentMut>()
             .map_err(|e| format!("Generated invalid Codex TOML: {e}"))?;
-        let backup = write_atomic_with_backup(&path, &updated)?;
-        Ok((path.clone(), backup))
-    })
-}
-
-fn install_opencode(entry: &JeanMcpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
-    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
-    let path = find_opencode_config_path(&home)
-        .unwrap_or_else(|| home.join(".config").join("opencode").join("opencode.json"));
-    with_config_lock(&path, || {
-        let content = read_optional(&path)?;
-        let updated = if content.trim().is_empty() {
-            serde_json::to_string_pretty(&json!({
-                "mcp": {
-                    entry.server_name.clone(): entry.opencode_server_json()
-                }
-            }))
-            .unwrap_or_default()
-        } else {
-            patch_jsonc_object_property(
-                &content,
-                "mcp",
-                &entry.server_name,
-                &entry.opencode_server_json(),
-            )?
-        };
-        validate_jsonc(&updated, &path)?;
-        let backup = write_atomic_with_backup(&path, &updated)?;
-        Ok((path.clone(), backup))
-    })
-}
-
-fn install_cursor(entry: &JeanMcpEntry) -> Result<(PathBuf, Option<PathBuf>), String> {
-    let home = dirs::home_dir().ok_or_else(|| "Home directory unavailable".to_string())?;
-    let path = home.join(".cursor").join("mcp.json");
-    with_config_lock(&path, || {
-        let content = read_optional(&path)?;
-        let updated = if content.trim().is_empty() {
-            serde_json::to_string_pretty(&json!({
-                "mcpServers": {
-                    entry.server_name.clone(): entry.cursor_server_json()
-                }
-            }))
-            .unwrap_or_default()
-        } else {
-            patch_jsonc_object_property(
-                &content,
-                "mcpServers",
-                &entry.server_name,
-                &entry.cursor_server_json(),
-            )?
-        };
-        validate_jsonc(&updated, &path)?;
         let backup = write_atomic_with_backup(&path, &updated)?;
         Ok((path.clone(), backup))
     })

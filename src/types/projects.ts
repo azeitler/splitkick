@@ -246,7 +246,6 @@ export interface WorktreeArchivedEvent {
 /** Event payload when worktree is unarchived (restored) */
 export interface WorktreeUnarchivedEvent {
   worktree: Worktree
-  auto_open_in_jean?: boolean
 }
 
 /** Event payload when worktree is permanently deleted */

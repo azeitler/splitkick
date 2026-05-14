@@ -1246,10 +1246,10 @@ export function useWorktreeEvents() {
     // Listen for successful unarchive
     unlistenPromises.push(
       listen<WorktreeUnarchivedEvent>('worktree:unarchived', event => {
-        const { worktree, auto_open_in_jean } = event.payload
+        const { worktree } = event.payload
         logger.info('Worktree unarchived', { id: worktree.id })
 
-        handleWorktreeReady(worktree, queryClient, auto_open_in_jean ?? true)
+        handleWorktreeReady(worktree, queryClient)
         queryClient.invalidateQueries({ queryKey: ['archived-worktrees'] })
       })
     )

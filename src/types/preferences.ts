@@ -1747,7 +1747,7 @@ export const defaultPreferences: AppPreferences = {
   coderabbit_cli_source: 'jean', // Default: Jean-managed
   expand_tool_calls_by_default: false, // Default: collapsed
   auto_update_ai_backends: true, // Default: auto-update AI backends in the background
-  jean_mcp_enabled: true, // Default: enabled
+  jean_mcp_enabled: false, // Default: disabled
   jean_mcp_max_depth: 3,
   jean_mcp_rate_limit_per_minute: 20,
 }

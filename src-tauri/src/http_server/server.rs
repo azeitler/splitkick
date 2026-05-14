@@ -3,7 +3,7 @@ use axum::{
     extract::{ws::WebSocketUpgrade, Path as AxumPath, Query, State},
     http::{header, StatusCode, Uri},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::get,
     Json, Router,
 };
 use if_addrs::get_if_addrs;
@@ -24,11 +24,11 @@ use super::WsBroadcaster;
 
 /// Shared state for the Axum server.
 #[derive(Clone)]
-pub(super) struct AppState {
-    pub(super) app: AppHandle,
-    pub(super) token: String,
-    pub(super) token_required: bool,
-    pub(super) localhost_only: bool,
+struct AppState {
+    app: AppHandle,
+    token: String,
+    token_required: bool,
+    localhost_only: bool,
     dist_path: std::path::PathBuf,
 }
 
@@ -41,14 +41,6 @@ pub struct HttpServerHandle {
     pub bind_host: String,
     pub localhost_only: bool,
     pub token_required: bool,
-}
-
-/// Dedicated localhost-only Jean MCP server handle.
-pub struct JeanMcpServerHandle {
-    pub shutdown_tx: tokio::sync::oneshot::Sender<()>,
-    pub port: u16,
-    pub token: String,
-    pub url: String,
 }
 
 /// Status response for the HTTP server.
@@ -252,92 +244,6 @@ pub async fn start_server(
         localhost_only,
         token_required,
     })
-}
-
-/// Start the dedicated localhost-only Jean MCP server.
-pub async fn start_jean_mcp_server(
-    app: AppHandle,
-    preferred_port: u16,
-    token: String,
-) -> Result<JeanMcpServerHandle, String> {
-    let bind_ip = IpAddr::V4(Ipv4Addr::LOCALHOST);
-    let state = AppState {
-        app: app.clone(),
-        token: token.clone(),
-        token_required: true,
-        localhost_only: true,
-        dist_path: std::path::PathBuf::new(),
-    };
-
-    let router = Router::new()
-        .route("/mcp", post(super::mcp::mcp_handler))
-        .with_state(state);
-
-    let listener = tokio::net::TcpListener::bind(SocketAddr::new(bind_ip, preferred_port))
-        .await
-        .map_err(|e| {
-            format!("Failed to bind Jean MCP server to 127.0.0.1:{preferred_port}: {e}")
-        })?;
-
-    let local_addr = listener
-        .local_addr()
-        .map_err(|e| format!("Failed to get Jean MCP server local address: {e}"))?;
-    let url = format_http_url("127.0.0.1", local_addr.port());
-    let mcp_url = format!("{url}/mcp");
-
-    let (shutdown_tx, shutdown_rx) = tokio::sync::oneshot::channel();
-    tokio::spawn(async move {
-        log::info!("Jean MCP server listening on {local_addr}");
-        axum::serve(listener, router)
-            .with_graceful_shutdown(async {
-                let _ = shutdown_rx.await;
-                log::info!("Jean MCP server shutting down");
-            })
-            .await
-            .unwrap_or_else(|e| log::error!("Jean MCP server error: {e}"));
-    });
-
-    Ok(JeanMcpServerHandle {
-        shutdown_tx,
-        port: local_addr.port(),
-        token,
-        url: mcp_url,
-    })
-}
-
-/// Get current dedicated Jean MCP server status.
-pub async fn get_jean_mcp_server_status(app: AppHandle) -> ServerStatus {
-    match app.try_state::<Arc<Mutex<Option<JeanMcpServerHandle>>>>() {
-        Some(handle_state) => {
-            let handle = handle_state.lock().await;
-            match handle.as_ref() {
-                Some(h) => ServerStatus {
-                    running: true,
-                    url: Some(h.url.clone()),
-                    token: Some(h.token.clone()),
-                    port: Some(h.port),
-                    bind_host: Some("127.0.0.1".to_string()),
-                    localhost_only: Some(true),
-                },
-                None => ServerStatus {
-                    running: false,
-                    url: None,
-                    token: None,
-                    port: None,
-                    bind_host: None,
-                    localhost_only: None,
-                },
-            }
-        }
-        None => ServerStatus {
-            running: false,
-            url: None,
-            token: None,
-            port: None,
-            bind_host: None,
-            localhost_only: None,
-        },
-    }
 }
 
 /// WebSocket upgrade handler with token auth.

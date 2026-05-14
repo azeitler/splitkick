@@ -1,6 +1,5 @@
 pub mod auth;
 pub mod dispatch;
-pub mod mcp;
 pub mod server;
 pub mod websocket;
 

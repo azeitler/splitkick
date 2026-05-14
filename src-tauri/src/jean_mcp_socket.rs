@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 
-use crate::jean_mcp_core::{call_tool, jsonrpc_error, jsonrpc_ok};
+use crate::jean_mcp_core::{call_tool, extract_tool_call, jsonrpc_error, jsonrpc_ok};
 
 #[derive(Debug)]
 pub struct JeanMcpSocketHandle {
@@ -143,15 +143,17 @@ async fn handle_socket_request(app: &AppHandle, expected_token: &str, line: &str
         return json!({"error":"unauthorized"});
     }
 
-    let name = body.get("name").and_then(|v| v.as_str()).unwrap_or("");
-    let arguments = body.get("arguments").cloned().unwrap_or_else(|| json!({}));
+    let tool_call = match extract_tool_call(body.clone()) {
+        Ok(tool_call) => tool_call,
+        Err(e) => return jsonrpc_error(None, e.code, &e.message),
+    };
     let source = body
         .get("source")
         .and_then(|v| v.as_str())
         .unwrap_or("anon");
     let depth = body.get("depth").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
 
-    match call_tool(app, name, arguments, source, depth).await {
+    match call_tool(app, &tool_call.name, tool_call.arguments, source, depth).await {
         Ok(result) => jsonrpc_ok(None, result),
         Err(e) => jsonrpc_error(None, e.code, &e.message),
     }

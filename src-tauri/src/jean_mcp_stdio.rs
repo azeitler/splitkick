@@ -10,7 +10,7 @@ use std::io::{BufRead, BufReader, Write};
 use serde_json::{json, Value};
 
 use crate::jean_mcp_core::{
-    initialize_result, jsonrpc_error, jsonrpc_ok, tools_list_result, JEAN_MCP_DEPTH_ENV,
+    handle_protocol_message, jsonrpc_error, ToolCallRequest, JEAN_MCP_DEPTH_ENV,
     JEAN_MCP_SESSION_ENV, JEAN_MCP_SOCKET_ENV, JEAN_MCP_TOKEN_ENV,
 };
 
@@ -42,28 +42,11 @@ fn handle_message(line: &str) -> Option<Value> {
         Ok(v) => v,
         Err(e) => return Some(jsonrpc_error(None, -32700, &format!("Parse error: {e}"))),
     };
-    let id = body.get("id").cloned();
-    let method = body.get("method").and_then(|v| v.as_str()).unwrap_or("");
-    let params = body.get("params").cloned().unwrap_or(Value::Null);
 
-    match method {
-        "initialize" => Some(jsonrpc_ok(id, initialize_result())),
-        "notifications/initialized" => None,
-        "tools/list" => Some(jsonrpc_ok(id, tools_list_result())),
-        "tools/call" => Some(match proxy_tool_call(params) {
-            Ok(result) => jsonrpc_ok(id, result),
-            Err(e) => jsonrpc_error(id, -32000, &e),
-        }),
-        "ping" => Some(jsonrpc_ok(id, json!({}))),
-        _ => Some(jsonrpc_error(
-            id,
-            -32601,
-            &format!("Method not found: {method}"),
-        )),
-    }
+    handle_protocol_message(body, proxy_tool_call)
 }
 
-fn proxy_tool_call(params: Value) -> Result<Value, String> {
+fn proxy_tool_call(tool_call: ToolCallRequest) -> Result<Value, String> {
     let socket =
         std::env::var(JEAN_MCP_SOCKET_ENV).map_err(|_| format!("Missing {JEAN_MCP_SOCKET_ENV}"))?;
     let token =
@@ -74,27 +57,17 @@ fn proxy_tool_call(params: Value) -> Result<Value, String> {
         .and_then(|s| s.parse::<u32>().ok())
         .unwrap_or(0);
 
-    let name = params
-        .get("name")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| "missing 'name'".to_string())?;
-    let arguments = params
-        .get("arguments")
-        .cloned()
-        .unwrap_or_else(|| json!({}));
-
     proxy_to_parent(
         &socket,
         json!({
             "token": token,
             "source": source,
             "depth": depth,
-            "name": name,
-            "arguments": arguments,
+            "name": tool_call.name,
+            "arguments": tool_call.arguments,
         }),
     )
 }
-
 #[cfg(unix)]
 fn proxy_to_parent(socket: &str, request: Value) -> Result<Value, String> {
     use std::os::unix::net::UnixStream;

@@ -103,33 +103,23 @@ export function useBackgroundInvestigation(): void {
       return true
     }
 
-    for (const worktreeId of autoInvestigateWorktreeIds) {
-      if (checkCandidate(worktreeId))
-        candidates.push({ worktreeId, type: 'issue' })
-    }
+    const sources: { ids: Set<string>; type: InvestigationType }[] = [
+      { ids: autoInvestigateWorktreeIds, type: 'issue' },
+      { ids: autoInvestigatePRWorktreeIds, type: 'pr' },
+      { ids: autoInvestigateSecurityAlertWorktreeIds, type: 'security-alert' },
+      { ids: autoInvestigateAdvisoryWorktreeIds, type: 'advisory' },
+      { ids: autoInvestigateLinearIssueWorktreeIds, type: 'linear-issue' },
+    ]
 
-    for (const worktreeId of autoInvestigatePRWorktreeIds) {
-      if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      if (checkCandidate(worktreeId))
-        candidates.push({ worktreeId, type: 'pr' })
-    }
-
-    for (const worktreeId of autoInvestigateSecurityAlertWorktreeIds) {
-      if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      if (checkCandidate(worktreeId))
-        candidates.push({ worktreeId, type: 'security-alert' })
-    }
-
-    for (const worktreeId of autoInvestigateAdvisoryWorktreeIds) {
-      if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      if (checkCandidate(worktreeId))
-        candidates.push({ worktreeId, type: 'advisory' })
-    }
-
-    for (const worktreeId of autoInvestigateLinearIssueWorktreeIds) {
-      if (candidates.some(c => c.worktreeId === worktreeId)) continue
-      if (checkCandidate(worktreeId))
-        candidates.push({ worktreeId, type: 'linear-issue' })
+    const queuedWorktreeIds = new Set<string>()
+    for (const { ids, type } of sources) {
+      for (const worktreeId of ids) {
+        if (queuedWorktreeIds.has(worktreeId) || !checkCandidate(worktreeId)) {
+          continue
+        }
+        queuedWorktreeIds.add(worktreeId)
+        candidates.push({ worktreeId, type })
+      }
     }
 
     // Clear any pending retry timer
@@ -154,17 +144,14 @@ export function useBackgroundInvestigation(): void {
 
       // Consume the flag immediately so we don't re-process
       const uiStore = useUIStore.getState()
-      if (type === 'issue') {
-        uiStore.consumeAutoInvestigate(worktreeId)
-      } else if (type === 'pr') {
-        uiStore.consumeAutoInvestigatePR(worktreeId)
-      } else if (type === 'security-alert') {
-        uiStore.consumeAutoInvestigateSecurityAlert(worktreeId)
-      } else if (type === 'linear-issue') {
-        uiStore.consumeAutoInvestigateLinearIssue(worktreeId)
-      } else {
-        uiStore.consumeAutoInvestigateAdvisory(worktreeId)
-      }
+      const consumeByType = {
+        issue: uiStore.consumeAutoInvestigate,
+        pr: uiStore.consumeAutoInvestigatePR,
+        'security-alert': uiStore.consumeAutoInvestigateSecurityAlert,
+        advisory: uiStore.consumeAutoInvestigateAdvisory,
+        'linear-issue': uiStore.consumeAutoInvestigateLinearIssue,
+      } satisfies Record<InvestigationType, (worktreeId: string) => void>
+      consumeByType[type](worktreeId)
 
       processBackgroundInvestigation(
         worktreeId,
@@ -297,53 +284,46 @@ async function buildPrompt(
     .replace(/\{advisoryRefs\}/g, refs)
 }
 
-/**
- * Resolve model/provider keys for the given investigation type.
- */
-function resolveModelProviderKeys(type: InvestigationType) {
-  switch (type) {
-    case 'issue':
-      return {
-        modelKey: 'investigate_issue_model' as const,
-        providerKey: 'investigate_issue_provider' as const,
-      }
-    case 'pr':
-      return {
-        modelKey: 'investigate_pr_model' as const,
-        providerKey: 'investigate_pr_provider' as const,
-      }
-    case 'security-alert':
-      return {
-        modelKey: 'investigate_security_alert_model' as const,
-        providerKey: 'investigate_security_alert_provider' as const,
-      }
-    case 'advisory':
-      return {
-        modelKey: 'investigate_advisory_model' as const,
-        providerKey: 'investigate_advisory_provider' as const,
-      }
-    case 'linear-issue':
-      return {
-        modelKey: 'investigate_linear_issue_model' as const,
-        providerKey: 'investigate_linear_issue_provider' as const,
-      }
+const investigationConfig = {
+  issue: {
+    modelKey: 'investigate_issue_model',
+    providerKey: 'investigate_issue_provider',
+    effortKey: 'investigate_issue_effort',
+  },
+  pr: {
+    modelKey: 'investigate_pr_model',
+    providerKey: 'investigate_pr_provider',
+    effortKey: 'investigate_pr_effort',
+  },
+  'security-alert': {
+    modelKey: 'investigate_security_alert_model',
+    providerKey: 'investigate_security_alert_provider',
+    effortKey: 'investigate_security_alert_effort',
+  },
+  advisory: {
+    modelKey: 'investigate_advisory_model',
+    providerKey: 'investigate_advisory_provider',
+    effortKey: 'investigate_advisory_effort',
+  },
+  'linear-issue': {
+    modelKey: 'investigate_linear_issue_model',
+    providerKey: 'investigate_linear_issue_provider',
+    effortKey: 'investigate_linear_issue_effort',
+  },
+} as const satisfies Record<
+  InvestigationType,
+  {
+    modelKey: keyof NonNullable<
+      ReturnType<typeof usePreferences>['data']
+    >['magic_prompt_models']
+    providerKey: keyof NonNullable<
+      ReturnType<typeof usePreferences>['data']
+    >['magic_prompt_providers']
+    effortKey: keyof NonNullable<
+      ReturnType<typeof usePreferences>['data']
+    >['magic_prompt_efforts']
   }
-}
-
-function resolveEffortKey(type: InvestigationType) {
-  switch (type) {
-    case 'issue':
-      return 'investigate_issue_effort' as const
-    case 'pr':
-      return 'investigate_pr_effort' as const
-    case 'security-alert':
-      return 'investigate_security_alert_effort' as const
-    case 'advisory':
-      return 'investigate_advisory_effort' as const
-    case 'linear-issue':
-      return 'investigate_linear_issue_effort' as const
-  }
-}
+>
 
 /**
  * Process a single background investigation: build prompt, then ask the backend
@@ -373,7 +353,7 @@ async function processBackgroundInvestigation(
   const prompt = await buildPrompt(worktreeId, type, preferences, projectId)
 
   // Resolve model, provider, backend
-  const { modelKey, providerKey } = resolveModelProviderKeys(type)
+  const { modelKey, providerKey, effortKey } = investigationConfig[type]
 
   const selectedModel =
     preferences?.magic_prompt_models?.[modelKey] ??
@@ -399,7 +379,6 @@ async function processBackgroundInvestigation(
   const isCustomProvider = Boolean(provider && provider !== '__anthropic__')
   const useAdaptive =
     !isCustomProvider && supportsAdaptiveThinking(selectedModel, cliVersion)
-  const effortKey = resolveEffortKey(type)
   const effortLevel =
     preferences?.magic_prompt_efforts?.[effortKey] ??
     (useAdaptive ? 'high' : undefined)
