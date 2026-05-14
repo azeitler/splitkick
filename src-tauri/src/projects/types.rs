@@ -444,6 +444,7 @@ impl ProjectsData {
 
 /// Event emitted when worktree creation starts (background operation)
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorktreeCreatingEvent {
     /// The worktree ID (generated upfront)
     pub id: String,
@@ -469,6 +470,7 @@ pub struct WorktreeCreatingEvent {
 
 /// Event emitted when worktree creation completes successfully
 #[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct WorktreeCreatedEvent {
     /// The fully created worktree
     pub worktree: Worktree,

@@ -1412,6 +1412,7 @@ pub async fn dispatch_command(
             let security_context = field_opt(&args, "securityContext", "security_context")?;
             let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
             let linear_context = field_opt(&args, "linearContext", "linear_context")?;
+            let auto_open_in_jean = field_opt(&args, "autoOpenInJean", "auto_open_in_jean")?;
             let result = crate::projects::create_worktree_from_existing_branch(
                 app.clone(),
                 project_id,
@@ -1421,6 +1422,7 @@ pub async fn dispatch_command(
                 security_context,
                 advisory_context,
                 linear_context,
+                auto_open_in_jean,
             )
             .await?;
             to_value(result)
@@ -2170,6 +2172,7 @@ pub async fn dispatch_command(
             let backends: Option<Vec<String>> = from_field_opt(&args, "backends")?;
             let mode: Option<String> = from_field_opt(&args, "mode")?;
             let result = crate::install_jean_mcp_config(app.clone(), backends, mode).await?;
+            emit_cache_invalidation(app, &["mcp", "jean-mcp-snippet"]);
             to_value(result)
         }
         "start_opencode_server" => {

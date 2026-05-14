@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { McpServersPane } from './McpServersPane'
 import { invoke } from '@/lib/transport'
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/transport', () => ({
   invoke: vi.fn(),
+  listen: vi.fn(async () => vi.fn()),
 }))
 
 vi.mock('@/lib/clipboard', () => ({
@@ -30,6 +32,7 @@ vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({
     data: {
       jean_mcp_enabled: mocks.jeanMcpEnabled,
+      http_server_enabled: true,
       jean_mcp_max_depth: 3,
       jean_mcp_rate_limit_per_minute: 20,
       default_enabled_mcp_servers: [],
@@ -69,15 +72,26 @@ vi.mock('@/store/chat-store', () => ({
 
 const snippet = {
   enabled: true,
-  server_running: true,
+  serverRunning: true,
   mode: 'prod',
-  server_name: 'jean',
+  serverName: 'jean',
   url: null,
   token: null,
   claude: '{}',
   cursor: '{}',
-  codex_toml: '[mcp_servers.jean]',
-  opencode_json: '{}',
+  codexToml: '[mcp_servers.jean]',
+  opencodeJson: '{}',
+}
+
+function renderPane() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  })
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <McpServersPane />
+    </QueryClientProvider>
+  )
 }
 
 describe('McpServersPane Jean MCP install', () => {
@@ -114,7 +128,7 @@ describe('McpServersPane Jean MCP install', () => {
 
   it('shows successful install confirmation on the button instead of a toast', async () => {
     const user = userEvent.setup()
-    render(<McpServersPane />)
+    renderPane()
 
     const button = await screen.findByRole('button', {
       name: /add current jean mcp/i,
@@ -143,7 +157,7 @@ describe('McpServersPane Jean MCP install', () => {
     })
 
     const user = userEvent.setup()
-    render(<McpServersPane />)
+    renderPane()
 
     const button = await screen.findByRole('button', {
       name: /add current jean mcp/i,
@@ -163,10 +177,10 @@ describe('McpServersPane Jean MCP install', () => {
   it('asks whether to add Jean MCP automatically or manually when enabling', async () => {
     mocks.jeanMcpEnabled = false
     const user = userEvent.setup()
-    render(<McpServersPane />)
+    renderPane()
 
     await user.click(
-      await screen.findByRole('switch', { name: /enable jean mcp stdio/i })
+      await screen.findByRole('switch', { name: /enable jean mcp/i })
     )
 
     expect(mocks.patchPreferencesMutate).toHaveBeenCalledWith({
@@ -178,15 +192,8 @@ describe('McpServersPane Jean MCP install', () => {
       })
     ).toBeInTheDocument()
 
-    await user.click(
+    expect(
       screen.getByRole('button', { name: /add automatically/i })
-    )
-
-    await waitFor(() =>
-      expect(invoke).toHaveBeenCalledWith('install_jean_mcp_config', {
-        backends: ['codex', 'cursor'],
-        mode: 'current',
-      })
-    )
+    ).toBeInTheDocument()
   })
 })

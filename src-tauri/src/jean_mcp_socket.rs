@@ -1,4 +1,4 @@
-//! Parent-side local socket for Jean MCP stdio helpers.
+//! Parent-side local socket for Jean MCP helpers.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -61,19 +61,25 @@ pub async fn start_socket_server(
 
     let listener = UnixListener::bind(&path)
         .map_err(|e| format!("Failed to bind Jean MCP socket {}: {e}", path.display()))?;
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        std::fs::set_permissions(&path, perms)
+            .map_err(|e| format!("Failed to lock down Jean MCP socket perms: {e}"))?;
+    }
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
     let path_for_task = path.clone();
     let token_for_task = token.clone();
 
     tokio::spawn(async move {
         log::info!(
-            "Jean MCP stdio proxy socket listening at {}",
+            "Jean MCP proxy socket listening at {}",
             path_for_task.display()
         );
         loop {
             tokio::select! {
                 _ = &mut shutdown_rx => {
-                    log::info!("Jean MCP stdio proxy socket shutting down");
+                    log::info!("Jean MCP proxy socket shutting down");
                     break;
                 }
                 accepted = listener.accept() => {
@@ -85,10 +91,16 @@ pub async fn start_socket_server(
                                 let (read_half, mut write_half) = stream.into_split();
                                 let mut reader = BufReader::new(read_half);
                                 let mut line = String::new();
-                                let response = match reader.read_line(&mut line).await {
-                                    Ok(0) => json!({"error":"empty request"}),
-                                    Ok(_) => handle_socket_request(&app, &expected_token, &line).await,
-                                    Err(e) => json!({"error": format!("read failed: {e}")}),
+                                let response = match tokio::time::timeout(
+                                    std::time::Duration::from_secs(30),
+                                    reader.read_line(&mut line),
+                                )
+                                .await
+                                {
+                                    Ok(Ok(0)) => json!({"error":"empty request"}),
+                                    Ok(Ok(_)) => handle_socket_request(&app, &expected_token, &line).await,
+                                    Ok(Err(e)) => json!({"error": format!("read failed: {e}")}),
+                                    Err(_) => json!({"error":"read timeout"}),
                                 };
                                 if let Ok(encoded) = serde_json::to_string(&response) {
                                     let _ = write_half.write_all(encoded.as_bytes()).await;
@@ -118,7 +130,7 @@ pub async fn start_socket_server(
     _path: PathBuf,
     _token: String,
 ) -> Result<JeanMcpSocketHandle, String> {
-    Err("Jean MCP stdio currently requires Unix domain sockets".to_string())
+    Err("Jean MCP currently requires Unix domain sockets".to_string())
 }
 
 async fn handle_socket_request(app: &AppHandle, expected_token: &str, line: &str) -> Value {

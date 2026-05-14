@@ -24,12 +24,15 @@ pub(super) async fn mcp_handler(
 ) -> Response {
     let needs_token = state.token_required || !state.localhost_only;
     if needs_token && !is_valid_mcp_auth(&headers, &query, &state.token) {
-        return Json(crate::jean_mcp_core::jsonrpc_error(
-            body.get("id").cloned(),
-            -32001,
-            "Unauthorized",
-        ))
-        .into_response();
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(crate::jean_mcp_core::jsonrpc_error(
+                body.get("id").cloned(),
+                -32001,
+                "Unauthorized",
+            )),
+        )
+            .into_response();
     }
 
     let id = body.get("id").cloned();

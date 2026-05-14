@@ -1,6 +1,6 @@
 //! Stdio MCP transport for Jean.
 //!
-//! This process is launched by a local CLI as an MCP stdio server. It proxies
+//! This process is launched by a local CLI as an MCP server. It proxies
 //! tools/call requests over a Jean-owned local Unix socket to the already
 //! running desktop app, avoiding HTTP ports while preserving in-process app
 //! command dispatch in the parent.
@@ -98,9 +98,16 @@ fn proxy_tool_call(params: Value) -> Result<Value, String> {
 #[cfg(unix)]
 fn proxy_to_parent(socket: &str, request: Value) -> Result<Value, String> {
     use std::os::unix::net::UnixStream;
+    use std::time::Duration;
 
     let mut stream = UnixStream::connect(socket)
         .map_err(|e| format!("Failed to connect Jean MCP socket {socket}: {e}"))?;
+    stream
+        .set_read_timeout(Some(Duration::from_secs(120)))
+        .map_err(|e| format!("Failed to set Jean MCP socket read timeout: {e}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(30)))
+        .map_err(|e| format!("Failed to set Jean MCP socket write timeout: {e}"))?;
     let encoded = serde_json::to_string(&request)
         .map_err(|e| format!("Failed to encode Jean MCP socket request: {e}"))?;
     writeln!(stream, "{encoded}").map_err(|e| format!("Failed to write Jean MCP socket: {e}"))?;
@@ -123,5 +130,5 @@ fn proxy_to_parent(socket: &str, request: Value) -> Result<Value, String> {
 
 #[cfg(not(unix))]
 fn proxy_to_parent(_socket: &str, _request: Value) -> Result<Value, String> {
-    Err("Jean MCP stdio currently requires a Unix domain socket".to_string())
+    Err("Jean MCP currently requires a Unix domain socket".to_string())
 }

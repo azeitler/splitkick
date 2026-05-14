@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle,
   Copy,
@@ -30,7 +31,7 @@ import {
 } from '@/components/ui/tooltip'
 import { BackendLabel } from '@/components/ui/backend-label'
 import { cn } from '@/lib/utils'
-import { invoke } from '@/lib/transport'
+import { invoke, listen } from '@/lib/transport'
 import { copyToClipboard } from '@/lib/clipboard'
 import { toast } from 'sonner'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
@@ -51,15 +52,15 @@ import { SettingsSection } from '../SettingsSection'
 
 interface JeanMcpSnippet {
   enabled: boolean
-  server_running: boolean
+  serverRunning: boolean
   mode: 'dev' | 'prod'
-  server_name: string
+  serverName: string
   url: string | null
   token: string | null
   claude: string | null
   cursor: string | null
-  codex_toml: string | null
-  opencode_json: string | null
+  codexToml: string | null
+  opencodeJson: string | null
 }
 
 interface JeanMcpInstallResult {
@@ -81,26 +82,27 @@ const JeanMcpSection: React.FC = () => {
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
   const { installedBackends } = useInstalledBackends()
-  const [snippet, setSnippet] = useState<JeanMcpSnippet | null>(null)
+  const queryClient = useQueryClient()
+  const jeanMcpSnippetQueryKey = [
+    'jeanMcpSnippet',
+    preferences?.jean_mcp_enabled,
+  ] as const
+  const {
+    data: snippet,
+    refetch: refreshSnippet,
+    isLoading: isSnippetLoading,
+    isFetching: isSnippetFetching,
+  } = useQuery<JeanMcpSnippet>({
+    queryKey: jeanMcpSnippetQueryKey,
+    queryFn: () => invoke<JeanMcpSnippet>('get_jean_mcp_config_snippet'),
+    enabled: Boolean(preferences?.jean_mcp_enabled),
+  })
   const [isInstalling, setIsInstalling] = useState(false)
   const [installFeedback, setInstallFeedback] =
     useState<InstallFeedback | null>(null)
   const [showInstallChoice, setShowInstallChoice] = useState(false)
   const [pendingAutoInstall, setPendingAutoInstall] = useState(false)
   const installFeedbackTimeoutRef = useRef<number | null>(null)
-
-  const refreshSnippet = useCallback(async () => {
-    try {
-      const result = await invoke<JeanMcpSnippet>('get_jean_mcp_config_snippet')
-      setSnippet(result)
-    } catch (e) {
-      console.error('Failed to load Jean MCP snippet', e)
-    }
-  }, [])
-
-  useEffect(() => {
-    refreshSnippet()
-  }, [refreshSnippet, preferences?.jean_mcp_enabled])
 
   useEffect(() => {
     return () => {
@@ -122,7 +124,9 @@ const JeanMcpSection: React.FC = () => {
   }, [])
 
   const enabled = preferences?.jean_mcp_enabled ?? false
-  const serverRunning = snippet?.server_running ?? false
+  const serverRunning = snippet?.serverRunning ?? false
+  const checkingServer =
+    enabled && !snippet && (isSnippetLoading || isSnippetFetching)
   const mode = snippet?.mode ?? 'prod'
   const modeLabel = mode === 'dev' ? 'Dev' : 'Prod'
   const installableBackends = installedBackends.filter(
@@ -134,10 +138,22 @@ const JeanMcpSection: React.FC = () => {
   )
 
   useEffect(() => {
-    if (!enabled || serverRunning) return
-    const interval = window.setInterval(refreshSnippet, 1000)
-    return () => window.clearInterval(interval)
-  }, [enabled, refreshSnippet, serverRunning])
+    let unlisten: (() => void) | undefined
+    let disposed = false
+    listen('jean-mcp-socket-status', () => {
+      queryClient.invalidateQueries({ queryKey: ['jeanMcpSnippet'] })
+    }).then(fn => {
+      if (disposed) {
+        fn()
+        return
+      }
+      unlisten = fn
+    })
+    return () => {
+      disposed = true
+      unlisten?.()
+    }
+  }, [queryClient])
 
   useEffect(() => {
     if (!pendingAutoInstall || !enabled || !serverRunning || isInstalling) {
@@ -150,7 +166,7 @@ const JeanMcpSection: React.FC = () => {
 
   const handleCopy = (label: string, content: string | null) => {
     if (!content) {
-      toast.error(`No ${label} snippet available — enable Jean MCP stdio first`)
+      toast.error(`No ${label} snippet available — enable Jean MCP first`)
       return
     }
     copyToClipboard(content)
@@ -240,177 +256,192 @@ const JeanMcpSection: React.FC = () => {
   return (
     <>
       <SettingsSection title="Jean MCP Server" anchorId="pref-mcp-section-jean">
-      <p className="text-sm text-muted-foreground">
-        Expose Jean&apos;s own commands over MCP so spawned local CLIs can call
-        back into Jean (create worktrees, list GitHub issues, send chat
-        messages, etc).
-      </p>
-      <div className="flex items-center gap-3 rounded-md border px-4 py-3">
-        <Switch
-          id="jean-mcp-enabled"
-          checked={enabled}
-          onCheckedChange={handleEnabledChange}
-        />
-        <Label htmlFor="jean-mcp-enabled" className="flex-1 cursor-pointer">
-          Enable Jean MCP stdio
-        </Label>
-        {!serverRunning && enabled && (
-          <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
-            <PlugZap className="size-3.5" />
-            MCP stdio socket not running
-          </span>
-        )}
-      </div>
+        <p className="text-sm text-muted-foreground">
+          Expose Jean&apos;s own commands over MCP so spawned local CLIs can
+          call back into Jean (create worktrees, list GitHub issues, send chat
+          messages, etc).
+        </p>
+        <div className="flex items-center gap-3 rounded-md border px-4 py-3">
+          <Switch
+            id="jean-mcp-enabled"
+            checked={enabled}
+            onCheckedChange={handleEnabledChange}
+          />
+          <Label htmlFor="jean-mcp-enabled" className="flex-1 cursor-pointer">
+            Enable Jean MCP
+          </Label>
+          {checkingServer && (
+            <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin" />
+              Checking MCP socket…
+            </span>
+          )}
+          {!checkingServer && !serverRunning && enabled && (
+            <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
+              <PlugZap className="size-3.5" />
+              MCP socket not running
+            </span>
+          )}
+        </div>
 
-      {enabled && (
-        <>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="jean-mcp-max-depth" className="text-xs">
-                Max recursion depth
-              </Label>
-              <Input
-                id="jean-mcp-max-depth"
-                type="number"
-                min={0}
-                max={10}
-                value={preferences?.jean_mcp_max_depth ?? 3}
-                onChange={e =>
-                  patchPreferences.mutate({
-                    jean_mcp_max_depth: Math.max(
-                      0,
-                      Math.min(10, Number(e.target.value) || 0)
-                    ),
-                  })
-                }
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="jean-mcp-rate-limit" className="text-xs">
-                Spawn rate limit (per minute)
-              </Label>
-              <Input
-                id="jean-mcp-rate-limit"
-                type="number"
-                min={0}
-                max={1000}
-                value={preferences?.jean_mcp_rate_limit_per_minute ?? 20}
-                onChange={e =>
-                  patchPreferences.mutate({
-                    jean_mcp_rate_limit_per_minute: Math.max(
-                      0,
-                      Math.min(1000, Number(e.target.value) || 0)
-                    ),
-                  })
-                }
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2 rounded-md border px-4 py-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="space-y-1">
-                <Label className="text-sm font-medium">
-                  One-click config install
+        {enabled && (
+          <>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="jean-mcp-max-depth" className="text-xs">
+                  Max recursion depth
                 </Label>
-                <p className="text-xs text-muted-foreground">
-                  Safely merges Jean MCP config into
-                  the CLI user configs.
-                </p>
+                <Input
+                  id="jean-mcp-max-depth"
+                  type="number"
+                  min={0}
+                  max={10}
+                  value={preferences?.jean_mcp_max_depth ?? 3}
+                  onChange={e =>
+                    patchPreferences.mutate({
+                      jean_mcp_max_depth: Math.max(
+                        0,
+                        Math.min(10, Number(e.target.value) || 0)
+                      ),
+                    })
+                  }
+                />
               </div>
-              <Button
-                size="sm"
-                onClick={() => handleInstall()}
-                disabled={
-                  isInstalling ||
-                  installFeedback?.type === 'success' ||
-                  !serverRunning ||
-                  installableBackends.length === 0
-                }
-                className={cn(
-                  'min-w-[11rem] max-w-[18rem]',
-                  installFeedback?.type === 'success' &&
-                    'border-green-600 bg-green-600 text-white hover:bg-green-700'
-                )}
-                aria-live="polite"
-                title={installFeedback?.message}
-              >
-                {isInstalling ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span>Adding...</span>
-                  </>
-                ) : installFeedback?.type === 'success' ? (
-                  <>
-                    <CheckCircle className="size-3.5" />
-                    <span className="truncate">{installFeedback.message}</span>
-                  </>
-                ) : installFeedback?.type === 'pending' ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    <span className="truncate">{installFeedback.message}</span>
-                  </>
-                ) : installFeedback?.type === 'error' ? (
-                  <>
-                    <XCircle className="size-3.5" />
-                    <span className="truncate">{installFeedback.message}</span>
-                  </>
-                ) : (
-                  <span>Add current Jean MCP ({modeLabel})</span>
-                )}
-              </Button>
+              <div className="space-y-1.5">
+                <Label htmlFor="jean-mcp-rate-limit" className="text-xs">
+                  Spawn rate limit (per minute)
+                </Label>
+                <Input
+                  id="jean-mcp-rate-limit"
+                  type="number"
+                  min={0}
+                  max={1000}
+                  value={preferences?.jean_mcp_rate_limit_per_minute ?? 20}
+                  onChange={e =>
+                    patchPreferences.mutate({
+                      jean_mcp_rate_limit_per_minute: Math.max(
+                        0,
+                        Math.min(1000, Number(e.target.value) || 0)
+                      ),
+                    })
+                  }
+                />
+              </div>
             </div>
-          </div>
 
-          <div className="space-y-2">
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-              Manual setup snippets
-            </Label>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleCopy('Claude', snippet?.claude ?? null)}
-              >
-                <Copy className="mr-2 size-3.5" />
-                Claude (~/.claude.json)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleCopy('Cursor', snippet?.cursor ?? null)}
-              >
-                <Copy className="mr-2 size-3.5" />
-                Cursor (~/.cursor/mcp.json)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleCopy('Codex', snippet?.codex_toml ?? null)}
-              >
-                <Copy className="mr-2 size-3.5" />
-                Codex (~/.codex/config.toml)
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  handleCopy('OpenCode', snippet?.opencode_json ?? null)
-                }
-              >
-                <Copy className="mr-2 size-3.5" />
-                OpenCode (~/.config/opencode/opencode.json)
-              </Button>
+            <div className="space-y-2 rounded-md border px-4 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="space-y-1">
+                  <Label className="text-sm font-medium">
+                    One-click config install
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    Safely merges Jean MCP config into the CLI user configs.
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => handleInstall()}
+                  disabled={
+                    isInstalling ||
+                    installFeedback?.type === 'success' ||
+                    !serverRunning ||
+                    installableBackends.length === 0
+                  }
+                  className={cn(
+                    'min-w-[11rem] max-w-[18rem]',
+                    installFeedback?.type === 'success' &&
+                      'border-green-600 bg-green-600 text-white hover:bg-green-700'
+                  )}
+                  aria-live="polite"
+                  title={installFeedback?.message}
+                >
+                  {isInstalling ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      <span>Adding...</span>
+                    </>
+                  ) : installFeedback?.type === 'success' ? (
+                    <>
+                      <CheckCircle className="size-3.5" />
+                      <span className="truncate">
+                        {installFeedback.message}
+                      </span>
+                    </>
+                  ) : installFeedback?.type === 'pending' ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      <span className="truncate">
+                        {installFeedback.message}
+                      </span>
+                    </>
+                  ) : installFeedback?.type === 'error' ? (
+                    <>
+                      <XCircle className="size-3.5" />
+                      <span className="truncate">
+                        {installFeedback.message}
+                      </span>
+                    </>
+                  ) : (
+                    <span>Add current Jean MCP ({modeLabel})</span>
+                  )}
+                </Button>
+              </div>
             </div>
-          </div>
-        </>
-      )}
+
+            <div className="space-y-2">
+              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Manual setup snippets
+              </Label>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopy('Claude', snippet?.claude ?? null)}
+                >
+                  <Copy className="mr-2 size-3.5" />
+                  Claude (~/.claude.json)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopy('Cursor', snippet?.cursor ?? null)}
+                >
+                  <Copy className="mr-2 size-3.5" />
+                  Cursor (~/.cursor/mcp.json)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    handleCopy('Codex', snippet?.codexToml ?? null)
+                  }
+                >
+                  <Copy className="mr-2 size-3.5" />
+                  Codex (~/.codex/config.toml)
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    handleCopy('OpenCode', snippet?.opencodeJson ?? null)
+                  }
+                >
+                  <Copy className="mr-2 size-3.5" />
+                  OpenCode (~/.config/opencode/opencode.json)
+                </Button>
+              </div>
+            </div>
+          </>
+        )}
       </SettingsSection>
 
       <AlertDialog open={showInstallChoice} onOpenChange={setShowInstallChoice}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Add Jean MCP to your CLI configs?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Add Jean MCP to your CLI configs?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Jean MCP is enabled. Jean can add it automatically to your
               installed CLI config files, or you can copy the manual snippets

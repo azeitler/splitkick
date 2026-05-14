@@ -28,7 +28,7 @@ pub async fn build_jean_mcp_entry(app: &AppHandle, session_id: &str) -> Option<V
         return None;
     }
 
-    let command = std::env::current_exe().ok()?.to_string_lossy().to_string();
+    let command = crate::jean_mcp_config::get_stable_launcher_command();
     let depth = next_depth().to_string();
     let socket_path = socket_path?;
     let token = token?;
@@ -60,9 +60,18 @@ pub async fn merge_into_mcp_config(
     let entry_obj = entry.as_object()?.clone();
 
     let mut config: Value = match existing {
-        Some(s) if !s.trim().is_empty() => {
-            serde_json::from_str(s).unwrap_or_else(|_| json!({ "mcpServers": {} }))
-        }
+        Some(s) if !s.trim().is_empty() => match serde_json::from_str(s) {
+            Ok(value) => value,
+            Err(e) => {
+                let preview: String = s.chars().take(200).collect();
+                log::warn!(
+                    "Jean MCP: failed to parse existing --mcp-config JSON ({e}); \
+                     replacing with a fresh config that only contains the Jean entry. \
+                     Preview: {preview:?}"
+                );
+                json!({ "mcpServers": {} })
+            }
+        },
         _ => json!({ "mcpServers": {} }),
     };
 

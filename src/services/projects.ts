@@ -642,11 +642,13 @@ export function useCreateWorktreeFromExistingBranch() {
       securityContext,
       advisoryContext,
       background: _background,
+      autoOpenInJean,
     }: {
       projectId: string
       branchName: string
       /** When true, skip auto-navigation (CMD+Click from new session modal) */
       background?: boolean
+      autoOpenInJean?: boolean
       issueContext?: {
         number: number
         title: string
@@ -707,6 +709,7 @@ export function useCreateWorktreeFromExistingBranch() {
           prContext,
           securityContext,
           advisoryContext,
+          autoOpenInJean: autoOpenInJean ?? !_background,
         }
       )
       return { ...worktree, status: 'pending' as const }
@@ -928,33 +931,33 @@ export function useWorktreeEvents() {
       listen<WorktreeCreatingEvent>('worktree:creating', event => {
         const {
           id,
-          project_id,
+          projectId,
           name,
           path,
           branch,
-          pr_number,
-          issue_number,
-          security_alert_number,
-          advisory_ghsa_id,
+          prNumber,
+          issueNumber,
+          securityAlertNumber,
+          advisoryGhsaId,
         } = event.payload
         logger.info('Worktree creating (background started)', { id, name })
 
         // Add pending worktree to cache so it appears instantly on all clients
         queryClient.setQueryData<Worktree[]>(
-          projectsQueryKeys.worktrees(project_id),
+          projectsQueryKeys.worktrees(projectId),
           old => {
             // Skip if this worktree already exists (e.g. on the originating client)
             if (old?.some(w => w.id === id)) return old
             const pending: Worktree = {
               id,
-              project_id,
+              project_id: projectId,
               name,
               path,
               branch,
-              pr_number,
-              issue_number,
-              security_alert_number,
-              advisory_ghsa_id,
+              pr_number: prNumber,
+              issue_number: issueNumber,
+              security_alert_number: securityAlertNumber,
+              advisory_ghsa_id: advisoryGhsaId,
               created_at: Math.floor(Date.now() / 1000),
               status: 'pending' as const,
               session_type: 'worktree' as Worktree['session_type'],
@@ -966,17 +969,17 @@ export function useWorktreeEvents() {
 
         // Auto-expand the project so the new worktree is visible in sidebar
         const { expandProject } = useProjectsStore.getState()
-        expandProject(project_id)
+        expandProject(projectId)
 
         // Start timeout recovery in case worktree:created/error events are never received
-        startPendingTimeout(id, project_id)
+        startPendingTimeout(id, projectId)
       })
     )
 
     // Listen for successful creation (fires before setup script runs)
     unlistenPromises.push(
       listen<WorktreeCreatedEvent>('worktree:created', event => {
-        const { worktree, auto_open_in_jean } = event.payload
+        const { worktree, autoOpenInJean } = event.payload
         logger.info('Worktree created (background complete)', {
           id: worktree.id,
           name: worktree.name,
@@ -985,7 +988,7 @@ export function useWorktreeEvents() {
         // Update cache FIRST, then clear timeout — ensures the safety timeout
         // survives if the cache update is a no-op (e.g. cache was invalidated
         // between worktree:creating and worktree:created events).
-        handleWorktreeReady(worktree, queryClient, auto_open_in_jean ?? true)
+        handleWorktreeReady(worktree, queryClient, autoOpenInJean)
         clearPendingTimeout(worktree.id)
 
         toast.dismiss(`worktree-creating-${worktree.id}`)

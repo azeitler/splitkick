@@ -330,6 +330,21 @@ function resolveModelProviderKeys(type: InvestigationType) {
   }
 }
 
+function resolveEffortKey(type: InvestigationType) {
+  switch (type) {
+    case 'issue':
+      return 'investigate_issue_effort' as const
+    case 'pr':
+      return 'investigate_pr_effort' as const
+    case 'security-alert':
+      return 'investigate_security_alert_effort' as const
+    case 'advisory':
+      return 'investigate_advisory_effort' as const
+    case 'linear-issue':
+      return 'investigate_linear_issue_effort' as const
+  }
+}
+
 /**
  * Process a single background investigation: build prompt, then ask the backend
  * to reuse the same active/first session selection and send flow as Jean MCP.
@@ -384,6 +399,10 @@ async function processBackgroundInvestigation(
   const isCustomProvider = Boolean(provider && provider !== '__anthropic__')
   const useAdaptive =
     !isCustomProvider && supportsAdaptiveThinking(selectedModel, cliVersion)
+  const effortKey = resolveEffortKey(type)
+  const effortLevel =
+    preferences?.magic_prompt_efforts?.[effortKey] ??
+    (useAdaptive ? 'high' : undefined)
 
   const result = await invoke<{
     sessionId: string
@@ -396,7 +415,7 @@ async function processBackgroundInvestigation(
     model: selectedModel,
     backend,
     provider,
-    effortLevel: useAdaptive ? 'high' : undefined,
+    effortLevel,
     customProfileName,
     parallelExecutionPrompt: preferences?.parallel_execution_prompt_enabled
       ? (preferences.magic_prompts?.parallel_execution ??

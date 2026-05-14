@@ -107,9 +107,9 @@ pub async fn call_tool(
                 prefs.jean_mcp_max_depth
             )));
         }
-        if !rate_check(source, prefs.jean_mcp_rate_limit_per_minute) {
+        if !rate_check(source, name, prefs.jean_mcp_rate_limit_per_minute) {
             return Err(ToolError::internal(format!(
-                "Jean MCP rate limit exceeded ({} calls/min for source {source})",
+                "Jean MCP rate limit exceeded ({} calls/min for source {source}, tool {name})",
                 prefs.jean_mcp_rate_limit_per_minute
             )));
         }
@@ -218,7 +218,9 @@ async fn run_tool(
                 None
             };
             if let Some(issue_number) = issue_number {
-                let project_path = resolve_project_path(app, &project_id)?;
+                let project_path = project_path
+                    .clone()
+                    .ok_or_else(|| ToolError::internal("missing project_path for issue fetch"))?;
                 let detail = dispatch_command(
                     app,
                     "get_github_issue",
@@ -249,7 +251,9 @@ async fn run_tool(
                 );
             }
             if let Some(pr_number) = pr_number {
-                let project_path = project_path.clone().unwrap_or_default();
+                let project_path = project_path
+                    .clone()
+                    .ok_or_else(|| ToolError::internal("missing project_path for PR fetch"))?;
                 let detail = dispatch_command(
                     app,
                     "get_github_pr",
@@ -319,7 +323,7 @@ async fn run_tool(
             let app_clone = app.clone();
             let payload_clone = Value::Object(payload);
             let source_clone = source.to_string();
-            tokio::spawn(async move {
+            tauri::async_runtime::spawn(async move {
                 if let Err(e) =
                     dispatch_command(&app_clone, "send_chat_message", payload_clone).await
                 {
@@ -809,7 +813,7 @@ fn resolve_session_worktree(
     Ok((metadata.worktree_id, worktree_path))
 }
 
-fn rate_check(source: &str, limit_per_minute: u32) -> bool {
+fn rate_check(source: &str, tool: &str, limit_per_minute: u32) -> bool {
     if limit_per_minute == 0 {
         return true;
     }
@@ -818,7 +822,7 @@ fn rate_check(source: &str, limit_per_minute: u32) -> bool {
         Ok(b) => b,
         Err(p) => p.into_inner(),
     };
-    let bucket = buckets.entry(source.to_string()).or_default();
+    let bucket = buckets.entry(format!("{source}::{tool}")).or_default();
     while let Some(t) = bucket.front() {
         if now.duration_since(*t) > RATE_LIMIT_WINDOW {
             bucket.pop_front();

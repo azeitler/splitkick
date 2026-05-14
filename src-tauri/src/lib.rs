@@ -2013,7 +2013,7 @@ async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result
 
     log::trace!("Successfully saved preferences to {prefs_path:?}");
 
-    schedule_jean_mcp_socket_sync(app.clone(), prefs_for_disk.clone());
+    schedule_jean_mcp_socket_sync(app.clone());
 
     // Sync native menu accelerators (macOS only)
     #[cfg(target_os = "macos")]
@@ -2580,8 +2580,9 @@ async fn sync_jean_mcp_socket_from_preferences(
         let mut guard = state.lock().await;
         if let Some(handle) = guard.take() {
             let _ = handle.shutdown_tx.send(());
-            log::info!("Jean MCP stdio proxy socket stopped");
+            log::info!("Jean MCP proxy socket stopped");
         }
+        emit_jean_mcp_socket_status(&app, false);
         return Ok(());
     }
 
@@ -2601,25 +2602,45 @@ async fn sync_jean_mcp_socket_from_preferences(
         }
         if let Some(handle) = guard.take() {
             let _ = handle.shutdown_tx.send(());
-            log::info!("Jean MCP stdio proxy socket restarting due to preference changes");
+            log::info!("Jean MCP proxy socket restarting due to preference changes");
         }
     }
 
     let handle = jean_mcp_socket::start_socket_server(app.clone(), path, token).await?;
-    log::info!(
-        "Jean MCP stdio proxy socket started: {}",
-        handle.path.display()
-    );
+    log::info!("Jean MCP proxy socket started: {}", handle.path.display());
 
     let mut guard = state.lock().await;
     *guard = Some(handle);
+    emit_jean_mcp_socket_status(&app, true);
     Ok(())
 }
 
-fn schedule_jean_mcp_socket_sync(app: AppHandle, prefs: AppPreferences) {
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JeanMcpSocketStatusEvent {
+    running: bool,
+}
+
+fn emit_jean_mcp_socket_status(app: &AppHandle, running: bool) {
+    if let Err(e) = app.emit(
+        "jean-mcp-socket-status",
+        JeanMcpSocketStatusEvent { running },
+    ) {
+        log::warn!("Failed to emit Jean MCP socket status: {e}");
+    }
+}
+
+fn schedule_jean_mcp_socket_sync(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
+        let prefs = match load_preferences(app.clone()).await {
+            Ok(prefs) => prefs,
+            Err(e) => {
+                log::error!("Failed to load preferences for Jean MCP socket sync: {e}");
+                return;
+            }
+        };
         if let Err(e) = sync_jean_mcp_socket_from_preferences(app, &prefs).await {
-            log::error!("Failed to sync Jean MCP stdio proxy socket: {e}");
+            log::error!("Failed to sync Jean MCP proxy socket: {e}");
         }
     });
 }
@@ -2627,6 +2648,7 @@ fn schedule_jean_mcp_socket_sync(app: AppHandle, prefs: AppPreferences) {
 /// Snippet payloads users can paste into CLI config files to expose Jean's MCP
 /// server explicitly. One-click install writes the same entries.
 #[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct JeanMcpSnippet {
     pub enabled: bool,
     pub server_running: bool,
@@ -2646,9 +2668,7 @@ async fn get_jean_mcp_config_snippet(app: AppHandle) -> Result<JeanMcpSnippet, S
     let (running, socket_path, token) = jean_mcp_socket::get_socket_status(app.clone()).await;
     let mode = jean_mcp_config::current_mode();
     let server_name = mode.server_name().to_string();
-    let command = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "jean".to_string());
+    let command = jean_mcp_config::get_stable_launcher_command();
 
     let entry = match (&socket_path, &token) {
         (Some(socket), Some(token)) if running => Some(jean_mcp_config::JeanMcpEntry {
@@ -2978,7 +2998,7 @@ fn parse_cli_args() -> CliArgs {
 pub fn run() {
     if std::env::args().any(|arg| arg == jean_mcp_core::JEAN_MCP_STDIO_ARG) {
         if let Err(e) = jean_mcp_stdio::run_stdio_server() {
-            eprintln!("Jean MCP stdio server failed: {e}");
+            eprintln!("Jean MCP server failed: {e}");
             std::process::exit(1);
         }
         return;

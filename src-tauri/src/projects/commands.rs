@@ -1715,8 +1715,10 @@ pub async fn create_worktree_from_existing_branch(
     security_context: Option<SecurityAlertContext>,
     advisory_context: Option<AdvisoryContext>,
     linear_context: Option<LinearIssueContext>,
+    auto_open_in_jean: Option<bool>,
 ) -> Result<Worktree, String> {
     log::trace!("Creating worktree from existing branch {branch_name} for project: {project_id}");
+    let auto_open_in_jean = auto_open_in_jean.unwrap_or(true);
 
     let data = load_projects_data(&app)?;
 
@@ -1754,7 +1756,7 @@ pub async fn create_worktree_from_existing_branch(
         issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
         security_alert_number: security_context.as_ref().map(|ctx| ctx.number as u64),
         advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
-        auto_open_in_jean: true,
+        auto_open_in_jean,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -2216,7 +2218,7 @@ pub async fn create_worktree_from_existing_branch(
                 );
                 let created_event = WorktreeCreatedEvent {
                     worktree,
-                    auto_open_in_jean: true,
+                    auto_open_in_jean,
                 };
                 if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
                     log::error!("Failed to emit worktree:created event: {e}");

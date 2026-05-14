@@ -269,14 +269,8 @@ pub async fn start_jean_mcp_server(
         dist_path: std::path::PathBuf::new(),
     };
 
-    let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
-
     let router = Router::new()
         .route("/mcp", post(super::mcp::mcp_handler))
-        .layer(cors)
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(SocketAddr::new(bind_ip, preferred_port))

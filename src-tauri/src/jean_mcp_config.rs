@@ -193,19 +193,47 @@ pub fn current_mode() -> JeanMcpInstallMode {
     JeanMcpInstallMode::current()
 }
 
+pub fn get_stable_launcher_command() -> String {
+    let Ok(exe) = std::env::current_exe() else {
+        return "jean".to_string();
+    };
+    if launcher_path_is_unstable(&exe) {
+        return "jean".to_string();
+    }
+    exe.to_string_lossy().to_string()
+}
+
+fn launcher_path_is_unstable(path: &Path) -> bool {
+    launcher_path_is_unstable_with_container_env(path, has_container_launcher_env())
+}
+
+fn launcher_path_is_unstable_with_container_env(path: &Path, has_container_env: bool) -> bool {
+    if has_container_env {
+        return true;
+    }
+
+    let path_str = path.to_string_lossy();
+    path_str.contains("/.mount_")
+}
+
+fn has_container_launcher_env() -> bool {
+    std::env::var_os("APPIMAGE").is_some()
+        || std::env::var_os("SNAP").is_some()
+        || std::env::var_os("FLATPAK_ID").is_some()
+        || std::env::var_os("FLATPAK_SANDBOX_DIR").is_some()
+}
+
 pub async fn build_current_entry(
     app: AppHandle,
     mode: JeanMcpInstallMode,
 ) -> Result<JeanMcpEntry, String> {
     let (running, socket_path, token) = crate::jean_mcp_socket::get_socket_status(app).await;
     if !running {
-        return Err("Jean MCP stdio socket is not running".to_string());
+        return Err("Jean MCP socket is not running".to_string());
     }
     let socket = socket_path.ok_or_else(|| "Jean MCP socket path is unavailable".to_string())?;
     let token = token.ok_or_else(|| "Jean MCP token is unavailable".to_string())?;
-    let command = std::env::current_exe()
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|_| "jean".to_string());
+    let command = get_stable_launcher_command();
 
     Ok(JeanMcpEntry {
         mode,
@@ -447,9 +475,10 @@ fn write_atomic_with_backup(path: &Path, content: &str) -> Result<Option<PathBuf
 
 fn validate_jsonc(content: &str, path: &Path) -> Result<(), String> {
     let cleaned = strip_jsonc_comments(content);
+    let cleaned = strip_trailing_commas(&cleaned);
     serde_json::from_str::<serde_json::Value>(&cleaned)
         .map(|_| ())
-        .map_err(|e| format!("Generated invalid JSONC for {}: {e}", path.display()))
+        .map_err(|e| format!("Invalid JSONC for {}: {e}", path.display()))
 }
 
 fn patch_jsonc_object_property(
@@ -458,7 +487,7 @@ fn patch_jsonc_object_property(
     server_key: &str,
     value: &serde_json::Value,
 ) -> Result<String, String> {
-    validate_jsonc(input, Path::new("config"))?;
+    validate_jsonc(input, Path::new("input config"))?;
     let root =
         find_root_object(input).ok_or_else(|| "Config root must be an object".to_string())?;
     let value_pretty = serde_json::to_string_pretty(value).unwrap_or_else(|_| "{}".to_string());
@@ -488,7 +517,8 @@ fn patch_property_inside_object(
     key: &str,
     value_pretty: &str,
 ) -> Result<String, String> {
-    let property_value = indent_multiline(value_pretty, object_indent(input, object.open) + 2);
+    let child_indent = object_child_indent(input, object);
+    let property_value = indent_multiline(value_pretty, &child_indent);
     let replacement = format!("\"{key}\": {property_value}");
     if let Some(existing) = find_property(input, object.open + 1, object.close, key) {
         let mut out = String::with_capacity(input.len() + replacement.len());
@@ -506,9 +536,9 @@ fn insert_property_inside_object(
     object: ObjectSpan,
     property: &str,
 ) -> Result<String, String> {
-    let indent = object_indent(input, object.open) + 2;
-    let base_indent = object_indent(input, object.open);
-    let property = indent_multiline(property, indent);
+    let child_indent = object_child_indent(input, object);
+    let base_indent = object_base_indent(input, object.open);
+    let property = indent_multiline(property, &child_indent);
     let prefix = if object_has_significant_content(input, object) {
         if object_last_significant_byte(input, object) == Some(b',') {
             "\n".to_string()
@@ -518,19 +548,18 @@ fn insert_property_inside_object(
     } else {
         "\n".to_string()
     };
-    let suffix = format!("\n{}", " ".repeat(base_indent));
+    let suffix = format!("\n{base_indent}");
     let mut out = String::with_capacity(input.len() + property.len() + 8);
     out.push_str(&input[..object.close]);
     out.push_str(&prefix);
-    out.push_str(&" ".repeat(indent));
+    out.push_str(&child_indent);
     out.push_str(&property);
     out.push_str(&suffix);
     out.push_str(&input[object.close..]);
     Ok(out)
 }
 
-fn indent_multiline(value: &str, indent: usize) -> String {
-    let pad = " ".repeat(indent);
+fn indent_multiline(value: &str, indent: &str) -> String {
     value
         .lines()
         .enumerate()
@@ -538,7 +567,7 @@ fn indent_multiline(value: &str, indent: usize) -> String {
             if idx == 0 {
                 line.to_string()
             } else {
-                format!("{pad}{line}")
+                format!("{indent}{line}")
             }
         })
         .collect::<Vec<_>>()
@@ -741,11 +770,41 @@ fn skip_ws_comments(input: &str, mut i: usize) -> usize {
     i
 }
 
-fn object_indent(input: &str, open: usize) -> usize {
+fn object_base_indent(input: &str, open: usize) -> String {
     input[..open]
         .rsplit_once('\n')
-        .map(|(_, line)| line.chars().take_while(|c| *c == ' ').count())
-        .unwrap_or(0)
+        .map(|(_, line)| {
+            line.chars()
+                .take_while(|c| matches!(*c, ' ' | '\t'))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn object_child_indent(input: &str, object: ObjectSpan) -> String {
+    let mut i = object.open + 1;
+    while i < object.close {
+        match byte_at(input, i) {
+            Some(b'\n') => {
+                let line_start = i + 1;
+                let mut j = line_start;
+                while j < object.close && matches!(byte_at(input, j), Some(b' ' | b'\t')) {
+                    j += 1;
+                }
+                if j < object.close && !matches!(byte_at(input, j), Some(b'\n' | b'\r' | b'}')) {
+                    return input[line_start..j].to_string();
+                }
+                i = j;
+            }
+            Some(b'"') => {
+                let base = object_base_indent(input, object.open);
+                return format!("{base}  ");
+            }
+            Some(_) => i += 1,
+            None => break,
+        }
+    }
+    format!("{}  ", object_base_indent(input, object.open))
 }
 
 fn object_has_significant_content(input: &str, object: ObjectSpan) -> bool {
@@ -843,6 +902,46 @@ fn strip_jsonc_comments(input: &str) -> String {
     out
 }
 
+fn strip_trailing_commas(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+    let mut in_string = false;
+
+    while let Some(ch) = chars.next() {
+        if in_string {
+            out.push(ch);
+            if ch == '\\' {
+                if let Some(next) = chars.next() {
+                    out.push(next);
+                }
+            } else if ch == '"' {
+                in_string = false;
+            }
+            continue;
+        }
+
+        if ch == '"' {
+            in_string = true;
+            out.push(ch);
+            continue;
+        }
+
+        if ch == ',' {
+            let mut lookahead = chars.clone();
+            while matches!(lookahead.peek(), Some(c) if c.is_whitespace()) {
+                lookahead.next();
+            }
+            if matches!(lookahead.peek(), Some('}' | ']')) {
+                continue;
+            }
+        }
+
+        out.push(ch);
+    }
+
+    out
+}
+
 fn escape_toml_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
@@ -859,6 +958,35 @@ mod tests {
             socket: "/tmp/jean.sock".to_string(),
             token: "tok".to_string(),
         }
+    }
+
+    #[test]
+    fn launcher_path_treats_dev_binary_as_stable() {
+        let path =
+            Path::new("/Users/heyandras/jean/jean/solid-dolphin/src-tauri/target/debug/jean");
+
+        assert!(!launcher_path_is_unstable_with_container_env(path, false));
+    }
+
+    #[test]
+    fn launcher_path_treats_macos_app_binary_as_stable() {
+        let path = Path::new("/Applications/Jean.app/Contents/MacOS/jean");
+
+        assert!(!launcher_path_is_unstable_with_container_env(path, false));
+    }
+
+    #[test]
+    fn launcher_path_treats_appimage_mount_as_unstable() {
+        let path = Path::new("/tmp/.mount_JeanAbc/usr/bin/jean");
+
+        assert!(launcher_path_is_unstable_with_container_env(path, false));
+    }
+
+    #[test]
+    fn launcher_path_treats_container_launcher_env_as_unstable() {
+        let path = Path::new("/usr/bin/jean");
+
+        assert!(launcher_path_is_unstable_with_container_env(path, true));
     }
 
     #[test]
