@@ -28,6 +28,7 @@ struct AppState {
     app: AppHandle,
     token: String,
     token_required: bool,
+    localhost_only: bool,
     dist_path: std::path::PathBuf,
 }
 
@@ -185,6 +186,7 @@ pub async fn start_server(
         app: app.clone(),
         token: token.clone(),
         token_required,
+        localhost_only,
         dist_path: dist_path.clone(),
     };
 
