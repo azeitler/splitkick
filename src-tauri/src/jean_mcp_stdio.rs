@@ -95,8 +95,8 @@ fn proxy_to_parent(socket: &str, request: Value) -> Result<Value, String> {
         .map_err(|e| format!("Failed to read Jean MCP socket response: {e}"))?;
     let response: Value = serde_json::from_str(&line)
         .map_err(|e| format!("Failed to parse Jean MCP socket response: {e}"))?;
-    if let Some(error) = response.get("error").and_then(|v| v.as_str()) {
-        return Err(error.to_string());
+    if let Some(error) = parent_error_message(&response) {
+        return Err(error);
     }
     Ok(response.get("result").cloned().unwrap_or(Value::Null))
 }
@@ -104,4 +104,44 @@ fn proxy_to_parent(socket: &str, request: Value) -> Result<Value, String> {
 #[cfg(not(unix))]
 fn proxy_to_parent(_socket: &str, _request: Value) -> Result<Value, String> {
     Err("Jean MCP currently requires a Unix domain socket".to_string())
+}
+
+fn parent_error_message(response: &Value) -> Option<String> {
+    match response.get("error") {
+        Some(Value::String(message)) => Some(message.clone()),
+        Some(Value::Object(error)) => error
+            .get("message")
+            .and_then(Value::as_str)
+            .map(ToOwned::to_owned)
+            .or_else(|| Some(Value::Object(error.clone()).to_string())),
+        Some(other) => Some(other.to_string()),
+        None => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::parent_error_message;
+
+    #[test]
+    fn parent_error_message_handles_plain_error_string() {
+        assert_eq!(
+            parent_error_message(&json!({"error": "unauthorized"})),
+            Some("unauthorized".to_string())
+        );
+    }
+
+    #[test]
+    fn parent_error_message_handles_jsonrpc_error_object() {
+        assert_eq!(
+            parent_error_message(&json!({
+                "jsonrpc": "2.0",
+                "id": null,
+                "error": { "code": -32000, "message": "No Jean session context present" }
+            })),
+            Some("No Jean session context present".to_string())
+        );
+    }
 }

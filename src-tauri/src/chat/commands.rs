@@ -230,6 +230,94 @@ pub async fn get_sessions(
     Ok(sessions)
 }
 
+/// List lightweight session summaries for a worktree without loading message history.
+#[tauri::command]
+pub async fn list_sessions_summary(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    include_archived: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let sessions = load_sessions(&app, &worktree_path, &worktree_id)?;
+    let include_archived = include_archived.unwrap_or(false);
+    let session_summaries: Vec<serde_json::Value> = sessions
+        .sessions
+        .into_iter()
+        .filter(|session| include_archived || session.archived_at.is_none())
+        .map(|session| {
+            serde_json::json!({
+                "id": session.id,
+                "name": session.name,
+                "order": session.order,
+                "backend": session.backend,
+                "selectedModel": session.selected_model,
+                "selectedProvider": session.selected_provider,
+                "selectedExecutionMode": session.selected_execution_mode,
+                "createdAt": session.created_at,
+                "updatedAt": session.updated_at,
+                "lastMessageAt": session.last_message_at,
+                "messageCount": session.message_count,
+                "archivedAt": session.archived_at,
+                "lastRunStatus": session.last_run_status,
+                "lastRunStartedAt": session.last_run_started_at,
+                "waitingForInput": session.waiting_for_input,
+                "waitingForInputType": session.waiting_for_input_type,
+            })
+        })
+        .collect();
+
+    Ok(serde_json::json!({
+        "worktreeId": worktree_id,
+        "activeSessionId": sessions.active_session_id,
+        "sessions": session_summaries,
+    }))
+}
+
+/// Get the latest run/session status for polling background work.
+#[tauri::command]
+pub async fn get_session_status(
+    app: AppHandle,
+    session_id: String,
+) -> Result<serde_json::Value, String> {
+    let metadata = load_metadata(&app, &session_id)?
+        .ok_or_else(|| format!("Unknown sessionId: {session_id}"))?;
+    let latest_run = metadata.runs.last();
+    let actively_managed = crate::chat::registry::is_session_actively_managed(&session_id);
+    let status = if actively_managed {
+        "running"
+    } else {
+        match latest_run.map(|run| &run.status) {
+            Some(RunStatus::Running) | Some(RunStatus::Resumable) => "resumable",
+            Some(RunStatus::Cancelled) => "cancelled",
+            Some(RunStatus::Crashed) => "error",
+            Some(RunStatus::Completed) | None => "idle",
+        }
+    };
+
+    Ok(serde_json::json!({
+        "sessionId": session_id,
+        "worktreeId": metadata.worktree_id,
+        "status": status,
+        "activelyManaged": actively_managed,
+        "backend": metadata.backend,
+        "selectedModel": metadata.selected_model,
+        "selectedProvider": metadata.selected_provider,
+        "selectedExecutionMode": metadata.selected_execution_mode,
+        "waitingForInput": metadata.waiting_for_input,
+        "waitingForInputType": metadata.waiting_for_input_type,
+        "latestRun": latest_run.map(|run| serde_json::json!({
+            "runId": run.run_id,
+            "status": run.status,
+            "startedAt": run.started_at,
+            "endedAt": run.ended_at,
+            "model": run.model,
+            "executionMode": run.execution_mode,
+            "cancelled": run.cancelled,
+            "recovered": run.recovered,
+        })),
+    }))
+}
+
 /// List all sessions across all worktrees and projects
 ///
 /// Returns sessions grouped by project/worktree for the Load Context modal.

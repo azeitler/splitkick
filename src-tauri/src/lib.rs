@@ -3470,6 +3470,8 @@ pub fn run() {
             projects::remove_project,
             projects::list_worktrees,
             projects::get_worktree,
+            projects::get_worktree_changes,
+            projects::get_worktree_diff,
             projects::create_worktree,
             projects::create_worktree_from_existing_branch,
             projects::checkout_pr,
@@ -3640,6 +3642,8 @@ pub fn run() {
             browser::has_active_browser_tab,
             // Chat commands - Session management
             chat::get_sessions,
+            chat::list_sessions_summary,
+            chat::get_session_status,
             chat::list_all_sessions,
             chat::get_session,
             chat::load_older_session_messages,

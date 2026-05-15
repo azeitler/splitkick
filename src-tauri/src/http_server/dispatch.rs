@@ -150,6 +150,28 @@ pub async fn dispatch_command(
             let result = crate::projects::get_worktree(app.clone(), worktree_id).await?;
             to_value(result)
         }
+        "get_worktree_changes" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let max_files: Option<usize> = field_opt(&args, "maxFiles", "max_files")?;
+            let result =
+                crate::projects::get_worktree_changes(app.clone(), worktree_id, max_files).await?;
+            to_value(result)
+        }
+        "get_worktree_diff" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let diff_type: Option<String> = field_opt(&args, "diffType", "diff_type")?;
+            let path: Option<String> = from_field_opt(&args, "path")?;
+            let max_bytes: Option<usize> = field_opt(&args, "maxBytes", "max_bytes")?;
+            let result = crate::projects::get_worktree_diff(
+                app.clone(),
+                worktree_id,
+                diff_type,
+                path,
+                max_bytes,
+            )
+            .await?;
+            to_value(result)
+        }
         "create_worktree" => {
             let project_id: String = field(&args, "projectId", "project_id")?;
             let base_branch: Option<String> = field_opt(&args, "baseBranch", "base_branch")?;
@@ -850,6 +872,25 @@ pub async fn dispatch_command(
                 include_message_counts,
             )
             .await?;
+            to_value(result)
+        }
+        "list_sessions_summary" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let include_archived: Option<bool> =
+                field_opt(&args, "includeArchived", "include_archived")?;
+            let result = crate::chat::list_sessions_summary(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                include_archived,
+            )
+            .await?;
+            to_value(result)
+        }
+        "get_session_status" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let result = crate::chat::get_session_status(app.clone(), session_id).await?;
             to_value(result)
         }
         "list_all_sessions" => {
