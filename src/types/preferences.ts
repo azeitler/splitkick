@@ -962,6 +962,7 @@ export interface AppPreferences {
   known_mcp_servers: string[] // All MCP server names ever seen (prevents re-enabling user-disabled servers)
   has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
   has_seen_jean_config_wizard: boolean // Whether user has seen the jean.json setup wizard
+  has_seen_jean_mcp_intro: boolean // Whether user has seen the Jean MCP server announcement
   chrome_enabled: boolean // Enable browser automation via Chrome extension
   zoom_level: number // Zoom level percentage (50-200, default 100)
   custom_cli_profiles: CustomCliProfile[] // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
@@ -998,6 +999,9 @@ export interface AppPreferences {
   coderabbit_cli_source?: 'jean' | 'path' // CodeRabbit CLI source: 'jean' (managed) or 'path' (system PATH)
   expand_tool_calls_by_default: boolean // Expand all tool call collapsibles by default
   auto_update_ai_backends: boolean // Auto-install CLI updates in background when a new version is detected
+  jean_mcp_enabled: boolean // Expose Jean MCP server to spawned CLIs through explicit CLI config entries
+  jean_mcp_max_depth: number // Max recursive spawn depth via Jean MCP (default 3)
+  jean_mcp_rate_limit_per_minute: number // Per-source rate limit for session-spawning tools (default 20)
 }
 
 export interface CustomCliProfile {
@@ -1709,6 +1713,7 @@ export const defaultPreferences: AppPreferences = {
   known_mcp_servers: [], // Default: no known servers
   has_seen_feature_tour: false, // Default: not seen
   has_seen_jean_config_wizard: false, // Default: not seen
+  has_seen_jean_mcp_intro: false, // Default: not seen
   chrome_enabled: true, // Default: enabled
   zoom_level: ZOOM_LEVEL_DEFAULT,
   custom_cli_profiles: [],
@@ -1744,4 +1749,7 @@ export const defaultPreferences: AppPreferences = {
   coderabbit_cli_source: 'jean', // Default: Jean-managed
   expand_tool_calls_by_default: false, // Default: collapsed
   auto_update_ai_backends: true, // Default: auto-update AI backends in the background
+  jean_mcp_enabled: true, // Default: enabled
+  jean_mcp_max_depth: 3,
+  jean_mcp_rate_limit_per_minute: 20,
 }

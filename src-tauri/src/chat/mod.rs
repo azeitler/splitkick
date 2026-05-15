@@ -5,6 +5,7 @@ mod commands;
 pub(crate) mod context_instructions;
 pub(crate) mod cursor;
 pub mod detached;
+pub mod jean_mcp;
 mod naming;
 mod native_history;
 pub(crate) mod opencode;
