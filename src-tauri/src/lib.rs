@@ -3870,6 +3870,7 @@ pub fn run() {
                 }
                 chat::codex_server::shutdown_server();
             }
+            #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {
                 if let Some(window) = app_handle.get_webview_window("main") {
                     let _ = window.show();
