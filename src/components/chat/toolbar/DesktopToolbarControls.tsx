@@ -5,8 +5,10 @@ import {
   FolderOpen,
   GitMerge,
   GitPullRequest,
+  Paperclip,
   Shield,
   ShieldAlert,
+  Wand2,
 } from 'lucide-react'
 import { useCallback } from 'react'
 import { Kbd } from '@/components/ui/kbd'
@@ -167,11 +169,11 @@ export function DesktopToolbarControls({
   setProviderDropdownOpen,
   setThinkingDropdownOpen,
   onMcpDropdownOpenChange: _onMcpDropdownOpenChange,
-  onOpenMagicModal: _onOpenMagicModal,
+  onOpenMagicModal,
   onOpenProjectSettings: _onOpenProjectSettings,
   onResolvePrConflicts,
   onLoadContext,
-  onAttach: _onAttach,
+  onAttach,
   installedBackends,
   onSetExecutionMode,
   availableExecutionModes,
@@ -218,6 +220,36 @@ export function DesktopToolbarControls({
         activeMcpCount={activeMcpCount}
         className="hidden @xl:flex"
       />
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Magic"
+            disabled={hasPendingQuestions}
+            className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            onClick={onOpenMagicModal}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Magic (⌘M)</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Attachments"
+            disabled={hasPendingQuestions}
+            className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            onClick={onAttach}
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Attachments</TooltipContent>
+      </Tooltip>
 
       <div className="hidden @xl:block h-4 w-px bg-border/50" />
 

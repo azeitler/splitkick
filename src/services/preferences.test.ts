@@ -181,6 +181,7 @@ describe('preferences service', () => {
         known_mcp_servers: [],
         has_seen_feature_tour: false,
         has_seen_jean_config_wizard: false,
+        has_seen_jean_mcp_intro: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
@@ -193,6 +194,7 @@ describe('preferences service', () => {
         confirm_session_close: true,
         default_execution_mode: 'plan',
         default_backend: 'claude',
+        default_new_session_kind: 'chat',
         selected_codex_model: 'gpt-5.5',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
         selected_cursor_model: 'cursor/auto',
@@ -219,6 +221,9 @@ describe('preferences service', () => {
         expand_tool_calls_by_default: false,
         window_vibrancy: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -230,6 +235,7 @@ describe('preferences service', () => {
 
       expect(invoke).toHaveBeenCalledWith('load_preferences')
       expect(result.current.data?.theme).toBe('dark')
+      expect(result.current.data?.jean_mcp_enabled).toBe(false)
     })
 
     it('returns defaults when not in Tauri context', async () => {
@@ -244,6 +250,7 @@ describe('preferences service', () => {
 
       expect(result.current.data?.theme).toBe('system')
       expect(result.current.data?.selected_model).toBe('claude-opus-4-7[1m]')
+      expect(result.current.data?.jean_mcp_enabled).toBe(true)
     })
 
     it('returns defaults on backend error', async () => {
@@ -257,6 +264,7 @@ describe('preferences service', () => {
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
       expect(result.current.data?.theme).toBe('system')
+      expect(result.current.data?.jean_mcp_enabled).toBe(true)
     })
 
     it('migrates old keybindings to new defaults', async () => {
@@ -314,6 +322,7 @@ describe('preferences service', () => {
         known_mcp_servers: [],
         has_seen_feature_tour: false,
         has_seen_jean_config_wizard: false,
+        has_seen_jean_mcp_intro: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
@@ -326,6 +335,7 @@ describe('preferences service', () => {
         confirm_session_close: true,
         default_execution_mode: 'plan',
         default_backend: 'claude',
+        default_new_session_kind: 'chat',
         selected_codex_model: 'gpt-5.5',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
         selected_cursor_model: 'cursor/auto',
@@ -352,6 +362,9 @@ describe('preferences service', () => {
         expand_tool_calls_by_default: false,
         window_vibrancy: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -419,6 +432,7 @@ describe('preferences service', () => {
         known_mcp_servers: [],
         has_seen_feature_tour: false,
         has_seen_jean_config_wizard: false,
+        has_seen_jean_mcp_intro: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
@@ -431,6 +445,7 @@ describe('preferences service', () => {
         confirm_session_close: true,
         default_execution_mode: 'plan',
         default_backend: 'claude',
+        default_new_session_kind: 'chat',
         selected_codex_model:
           'gpt-5.3-fast' as AppPreferences['selected_codex_model'],
         selected_opencode_model: 'opencode/gpt-5.3-codex',
@@ -458,6 +473,9 @@ describe('preferences service', () => {
         expand_tool_calls_by_default: false,
         window_vibrancy: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithDeprecatedFastModel)
 
@@ -526,6 +544,7 @@ describe('preferences service', () => {
         known_mcp_servers: [],
         has_seen_feature_tour: false,
         has_seen_jean_config_wizard: false,
+        has_seen_jean_mcp_intro: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
@@ -538,6 +557,7 @@ describe('preferences service', () => {
         confirm_session_close: true,
         default_execution_mode: 'plan',
         default_backend: 'claude',
+        default_new_session_kind: 'chat',
         selected_codex_model: 'gpt-5.5',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
         selected_cursor_model: 'cursor/auto',
@@ -564,6 +584,9 @@ describe('preferences service', () => {
         expand_tool_calls_by_default: false,
         window_vibrancy: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -634,6 +657,7 @@ describe('preferences service', () => {
         known_mcp_servers: [],
         has_seen_feature_tour: false,
         has_seen_jean_config_wizard: false,
+        has_seen_jean_mcp_intro: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
@@ -646,6 +670,7 @@ describe('preferences service', () => {
         confirm_session_close: true,
         default_execution_mode: 'plan',
         default_backend: 'claude',
+        default_new_session_kind: 'chat',
         selected_codex_model: 'gpt-5.5',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
         selected_cursor_model: 'cursor/auto',
@@ -672,6 +697,9 @@ describe('preferences service', () => {
         expand_tool_calls_by_default: false,
         window_vibrancy: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -742,6 +770,7 @@ describe('preferences service', () => {
         known_mcp_servers: [],
         has_seen_feature_tour: false,
         has_seen_jean_config_wizard: false,
+        has_seen_jean_mcp_intro: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
@@ -754,6 +783,7 @@ describe('preferences service', () => {
         confirm_session_close: true,
         default_execution_mode: 'plan',
         default_backend: 'claude',
+        default_new_session_kind: 'chat',
         selected_codex_model: 'gpt-5.5',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
         selected_cursor_model: 'cursor/auto',
@@ -780,6 +810,9 @@ describe('preferences service', () => {
         expand_tool_calls_by_default: false,
         window_vibrancy: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -848,6 +881,7 @@ describe('preferences service', () => {
         known_mcp_servers: [],
         has_seen_feature_tour: false,
         has_seen_jean_config_wizard: false,
+        has_seen_jean_mcp_intro: false,
         chrome_enabled: true,
         zoom_level: 100,
         custom_cli_profiles: [],
@@ -860,6 +894,7 @@ describe('preferences service', () => {
         confirm_session_close: true,
         default_execution_mode: 'plan',
         default_backend: 'claude',
+        default_new_session_kind: 'chat',
         selected_codex_model: 'gpt-5.5',
         selected_opencode_model: 'opencode/gpt-5.3-codex',
         selected_cursor_model: 'cursor/auto',
@@ -886,6 +921,9 @@ describe('preferences service', () => {
         expand_tool_calls_by_default: false,
         window_vibrancy: false,
         auto_update_ai_backends: true,
+        jean_mcp_enabled: false,
+        jean_mcp_max_depth: 3,
+        jean_mcp_rate_limit_per_minute: 20,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

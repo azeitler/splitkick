@@ -455,19 +455,31 @@ Investigate the loaded Linear {linearWord} ({linearRefs})
 /** Default prompt for generating release notes */
 export const DEFAULT_RELEASE_NOTES_PROMPT = `Generate release notes for changes since the \`{tag}\` release ({previous_release_name}).
 
+## Merged pull requests and detected issue references
+
+{pull_requests}
+
+## Required PR/issue reference formats
+
+{related_pull_requests}
+
 ## Commits since {tag}
 
 {commits}
 
 ## Instructions
 
-- Write a concise release title
-- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
-- Use bullet points with brief descriptions
-- Reference PR numbers if visible in commit messages
-- Skip merge commits and trivial changes (typos, formatting)
-- Write in past tense ("Added", "Fixed", "Improved")
-- Keep it concise and user-facing (skip internal implementation details)`
+- Write a concise release title.
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries).
+- Explicitly use the merged pull request metadata above as the primary source, then use commits as fallback context.
+- Inspect PR titles, PR bodies, and PR commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Always normalize closing keywords to lowercase final forms: closes, fixes, resolves.
+- Reference the PR number for each bullet when known: \`(#123)\`.
+- If a PR closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: \`(#123, fixes #456, #789)\`.
+- Do not invent PR numbers or issue references; only use the detected metadata above.
+- Skip merge commits and trivial changes (typos, formatting).
+- Write in past tense ("Added", "Fixed", "Improved").
+- Keep it concise and user-facing (skip internal implementation details).`
 
 /** Default prompt for generating session names */
 export const DEFAULT_SESSION_NAMING_PROMPT = `<task>Generate a short, human-friendly name for this chat session based on the user's request.</task>
@@ -962,6 +974,7 @@ export interface AppPreferences {
   known_mcp_servers: string[] // All MCP server names ever seen (prevents re-enabling user-disabled servers)
   has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
   has_seen_jean_config_wizard: boolean // Whether user has seen the jean.json setup wizard
+  has_seen_jean_mcp_intro: boolean // Whether user has seen the Jean MCP server announcement
   chrome_enabled: boolean // Enable browser automation via Chrome extension
   zoom_level: number // Zoom level percentage (50-200, default 100)
   custom_cli_profiles: CustomCliProfile[] // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
@@ -972,6 +985,7 @@ export interface AppPreferences {
   confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
   default_execution_mode: ExecutionMode // Default execution mode for new sessions: 'plan', 'build', or 'yolo'
   default_backend: CliBackend // Default CLI backend for new sessions: 'claude', 'codex', 'opencode', or 'cursor'
+  default_new_session_kind: NewSessionKind // Default action for CMD+T: 'chat', 'terminal', or a CLI backend
   selected_codex_model: CodexModel // Default Codex model
   selected_opencode_model: string // Default OpenCode model (provider/model)
   selected_cursor_model: CursorModel // Default Cursor model
@@ -999,6 +1013,9 @@ export interface AppPreferences {
   expand_tool_calls_by_default: boolean // Expand all tool call collapsibles by default
   window_vibrancy: boolean // macOS window vibrancy effect (high GPU cost, default false)
   auto_update_ai_backends: boolean // Auto-install CLI updates in background when a new version is detected
+  jean_mcp_enabled: boolean // Expose Jean MCP server to spawned CLIs through explicit CLI config entries
+  jean_mcp_max_depth: number // Max recursive spawn depth via Jean MCP (default 3)
+  jean_mcp_rate_limit_per_minute: number // Per-source rate limit for session-spawning tools (default 20)
 }
 
 export interface CustomCliProfile {
@@ -1449,6 +1466,27 @@ export const openInDefaultOptions: { value: OpenInDefault; label: string }[] = [
   { value: 'github', label: 'GitHub' },
 ]
 
+export type NewSessionKind = 'chat' | 'terminal' | CliBackend
+
+export const newSessionKindOptions: {
+  value: NewSessionKind
+  label: string
+}[] = [
+  { value: 'chat', label: 'Jean Chat' },
+  { value: 'terminal', label: 'Terminal' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'claude', label: 'Claude' },
+  { value: 'opencode', label: 'OpenCode' },
+  { value: 'cursor', label: 'Cursor' },
+]
+
+export function getNewSessionKindLabel(
+  kind: NewSessionKind | undefined
+): string {
+  const option = newSessionKindOptions.find(opt => opt.value === kind)
+  return option?.label ?? 'Jean Chat'
+}
+
 export function getOpenInDefaultLabel(
   openIn: OpenInDefault | undefined,
   editor: EditorApp | undefined,
@@ -1710,6 +1748,7 @@ export const defaultPreferences: AppPreferences = {
   known_mcp_servers: [], // Default: no known servers
   has_seen_feature_tour: false, // Default: not seen
   has_seen_jean_config_wizard: false, // Default: not seen
+  has_seen_jean_mcp_intro: false, // Default: not seen
   chrome_enabled: true, // Default: enabled
   zoom_level: ZOOM_LEVEL_DEFAULT,
   custom_cli_profiles: [],
@@ -1719,6 +1758,7 @@ export const defaultPreferences: AppPreferences = {
   confirm_session_close: true, // Default: enabled (show confirmation)
   default_execution_mode: 'plan', // Default: plan mode
   default_backend: 'claude', // Default: Claude
+  default_new_session_kind: 'chat', // Default: Jean Chat for CMD+T
   selected_codex_model: 'gpt-5.5', // Default: latest Codex model
   selected_opencode_model: 'opencode/gpt-5.3-codex', // Default OpenCode model
   selected_cursor_model: 'cursor/auto', // Default Cursor model
@@ -1746,4 +1786,7 @@ export const defaultPreferences: AppPreferences = {
   expand_tool_calls_by_default: false, // Default: collapsed
   window_vibrancy: false, // Default: disabled (high GPU cost)
   auto_update_ai_backends: true, // Default: auto-update AI backends in the background
+  jean_mcp_enabled: true, // Default: enabled
+  jean_mcp_max_depth: 3,
+  jean_mcp_rate_limit_per_minute: 20,
 }

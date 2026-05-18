@@ -1132,6 +1132,12 @@ pub fn execute_cursor(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
+    // Jean session/depth context for Jean MCP server (when called back).
+    cmd.env("JEAN_SESSION_ID", session_id);
+    cmd.env("JEAN_WORKTREE_ID", worktree_id);
+    let (depth_key, depth_val) = super::jean_mcp::child_depth_env();
+    cmd.env(depth_key, depth_val);
+
     let mut child = cmd
         .spawn()
         .map_err(|e| format!("Failed to spawn Cursor CLI: {e}"))?;

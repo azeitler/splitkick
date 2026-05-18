@@ -155,6 +155,28 @@ pub async fn dispatch_command(
             let result = crate::projects::get_worktree(app.clone(), worktree_id).await?;
             to_value(result)
         }
+        "get_worktree_changes" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let max_files: Option<usize> = field_opt(&args, "maxFiles", "max_files")?;
+            let result =
+                crate::projects::get_worktree_changes(app.clone(), worktree_id, max_files).await?;
+            to_value(result)
+        }
+        "get_worktree_diff" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let diff_type: Option<String> = field_opt(&args, "diffType", "diff_type")?;
+            let path: Option<String> = from_field_opt(&args, "path")?;
+            let max_bytes: Option<usize> = field_opt(&args, "maxBytes", "max_bytes")?;
+            let result = crate::projects::get_worktree_diff(
+                app.clone(),
+                worktree_id,
+                diff_type,
+                path,
+                max_bytes,
+            )
+            .await?;
+            to_value(result)
+        }
         "create_worktree" => {
             let project_id: String = field(&args, "projectId", "project_id")?;
             let base_branch: Option<String> = field_opt(&args, "baseBranch", "base_branch")?;
@@ -164,6 +186,7 @@ pub async fn dispatch_command(
             let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
             let linear_context = field_opt(&args, "linearContext", "linear_context")?;
             let custom_name = field_opt(&args, "customName", "custom_name")?;
+            let auto_open_in_jean = field_opt(&args, "autoOpenInJean", "auto_open_in_jean")?;
             let result = crate::projects::create_worktree(
                 app.clone(),
                 project_id,
@@ -174,6 +197,7 @@ pub async fn dispatch_command(
                 advisory_context,
                 linear_context,
                 custom_name,
+                auto_open_in_jean,
             )
             .await?;
             // No cache invalidation here — worktree creation uses event-based sync
@@ -855,8 +879,61 @@ pub async fn dispatch_command(
             .await?;
             to_value(result)
         }
+        "list_sessions_summary" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let include_archived: Option<bool> =
+                field_opt(&args, "includeArchived", "include_archived")?;
+            let result = crate::chat::list_sessions_summary(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                include_archived,
+            )
+            .await?;
+            to_value(result)
+        }
+        "get_session_status" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let result = crate::chat::get_session_status(app.clone(), session_id).await?;
+            to_value(result)
+        }
         "list_all_sessions" => {
             let result = crate::chat::list_all_sessions(app.clone()).await?;
+            to_value(result)
+        }
+        "start_background_investigation" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let message: String = from_field(&args, "message")?;
+            let model: String = from_field(&args, "model")?;
+            let backend: String = from_field(&args, "backend")?;
+            let provider: Option<String> = from_field_opt(&args, "provider")?;
+            let effort_level: Option<String> = field_opt(&args, "effortLevel", "effort_level")?;
+            let custom_profile_name: Option<String> =
+                field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let chrome_enabled: Option<bool> = field_opt(&args, "chromeEnabled", "chrome_enabled")?;
+            let ai_language: Option<String> = field_opt(&args, "aiLanguage", "ai_language")?;
+            let parallel_execution_prompt: Option<String> = field_opt(
+                &args,
+                "parallelExecutionPrompt",
+                "parallel_execution_prompt",
+            )?;
+            let result = crate::jean_mcp_core::start_background_investigation(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                message,
+                model,
+                backend,
+                provider,
+                effort_level,
+                custom_profile_name,
+                chrome_enabled,
+                ai_language,
+                parallel_execution_prompt,
+            )
+            .await?;
             to_value(result)
         }
         "list_native_cli_sessions" => {
@@ -1381,6 +1458,7 @@ pub async fn dispatch_command(
             let security_context = field_opt(&args, "securityContext", "security_context")?;
             let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
             let linear_context = field_opt(&args, "linearContext", "linear_context")?;
+            let auto_open_in_jean = field_opt(&args, "autoOpenInJean", "auto_open_in_jean")?;
             let result = crate::projects::create_worktree_from_existing_branch(
                 app.clone(),
                 project_id,
@@ -1390,6 +1468,7 @@ pub async fn dispatch_command(
                 security_context,
                 advisory_context,
                 linear_context,
+                auto_open_in_jean,
             )
             .await?;
             to_value(result)
@@ -2129,6 +2208,17 @@ pub async fn dispatch_command(
         }
         "regenerate_http_token" => {
             let result = crate::regenerate_http_token(app.clone()).await?;
+            to_value(result)
+        }
+        "get_jean_mcp_config_snippet" => {
+            let result = crate::get_jean_mcp_config_snippet(app.clone()).await?;
+            to_value(result)
+        }
+        "install_jean_mcp_config" => {
+            let backends: Option<Vec<String>> = from_field_opt(&args, "backends")?;
+            let mode: Option<String> = from_field_opt(&args, "mode")?;
+            let result = crate::install_jean_mcp_config(app.clone(), backends, mode).await?;
+            emit_cache_invalidation(app, &["mcp", "jean-mcp-snippet"]);
             to_value(result)
         }
         "start_opencode_server" => {

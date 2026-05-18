@@ -2489,7 +2489,7 @@ dependencies = [
 
 [[package]]
 name = "jean"
-version = "0.1.49"
+version = "0.1.50"
 dependencies = [
  "arboard",
  "axum",
@@ -2528,6 +2528,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "toml 0.8.2",
+ "toml_edit 0.23.10+spec-1.0.0",
  "tower-http",
  "uuid",
  "which",
@@ -5806,6 +5807,7 @@ dependencies = [
  "indexmap 2.13.0",
  "toml_datetime 0.7.5+spec-1.1.0",
  "toml_parser",
+ "toml_writer",
  "winnow 0.7.14",
 ]
 

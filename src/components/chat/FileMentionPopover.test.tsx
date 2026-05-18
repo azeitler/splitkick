@@ -1,11 +1,13 @@
 import { createRef } from 'react'
-import { beforeAll, describe, expect, it, vi } from 'vitest'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, fireEvent, render, screen } from '@/test/test-utils'
 import {
   FileMentionPopover,
   type FileMentionPopoverHandle,
 } from './FileMentionPopover'
 import type { WorktreeFile } from '@/types/chat'
+import type * as FilesService from '@/services/files'
+import type * as ProjectsService from '@/services/projects'
 
 const filesByRoot: Record<string, WorktreeFile[]> = {
   '/tmp/current-worktree': [
@@ -40,8 +42,7 @@ const filesByRoot: Record<string, WorktreeFile[]> = {
 }
 
 vi.mock('@/services/files', async () => {
-  const actual =
-    await vi.importActual<typeof import('@/services/files')>('@/services/files')
+  const actual = await vi.importActual<typeof FilesService>('@/services/files')
   return {
     ...actual,
     useWorktreeFiles: (rootPath: string | null) => ({
@@ -51,7 +52,7 @@ vi.mock('@/services/files', async () => {
 })
 
 vi.mock('@/services/projects', async () => {
-  const actual = await vi.importActual<typeof import('@/services/projects')>(
+  const actual = await vi.importActual<typeof ProjectsService>(
     '@/services/projects'
   )
   return {
@@ -109,6 +110,10 @@ describe('FileMentionPopover linked project scopes', () => {
 
     vi.stubGlobal('ResizeObserver', ResizeObserverMock)
     Element.prototype.scrollIntoView = vi.fn()
+  })
+
+  beforeEach(() => {
+    vi.mocked(Element.prototype.scrollIntoView).mockClear()
   })
 
   it('shows linked projects in a scope selector and only switches file search after a project click', () => {
@@ -192,6 +197,10 @@ describe('FileMentionPopover linked project scopes', () => {
       screen.getByRole('button', { name: 'Search files in Docs' })
     ).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('docs/intro.md')).toBeInTheDocument()
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+      block: 'nearest',
+      inline: 'nearest',
+    })
 
     act(() => handleRef.current?.selectPreviousScope())
 
@@ -199,6 +208,37 @@ describe('FileMentionPopover linked project scopes', () => {
       screen.getByRole('button', { name: 'Search files in Jean current' })
     ).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByText('src/App.tsx')).toBeInTheDocument()
+  })
+
+  it('scrolls the active scope chip into view when keyboard cycling reaches hidden projects', () => {
+    const handleRef = createRef<FileMentionPopoverHandle | null>()
+
+    render(
+      <FileMentionPopover
+        worktreePath="/tmp/current-worktree"
+        currentProjectId="current"
+        open
+        onOpenChange={vi.fn()}
+        onSelectFile={vi.fn()}
+        searchQuery=""
+        anchorPosition={{ top: 0, left: 0 }}
+        handleRef={handleRef}
+      />
+    )
+
+    vi.mocked(Element.prototype.scrollIntoView).mockClear()
+
+    act(() => handleRef.current?.selectNextScope())
+    act(() => handleRef.current?.selectNextScope())
+    act(() => handleRef.current?.selectNextScope())
+
+    expect(
+      screen.getByRole('button', { name: 'Search files in API' })
+    ).toHaveAttribute('aria-pressed', 'true')
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({
+      block: 'nearest',
+      inline: 'nearest',
+    })
   })
 
   it('keeps the file viewer prominent when several linked projects are shown', () => {

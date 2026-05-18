@@ -462,25 +462,7 @@ fn build_claude_args(
     args.push("--allowedTools".to_string());
     args.push("Bash(*claude-cli/claude*)".to_string());
 
-    // MCP server configuration
-    if let Some(config) = mcp_config {
-        if !config.is_empty() {
-            args.push("--mcp-config".to_string());
-            args.push(config.to_string());
-            args.push("--strict-mcp-config".to_string());
-
-            // Auto-allow all tools from configured MCP servers
-            // Pattern "mcp__<name>" matches all tools from that server
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
-                if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
-                    for server_name in servers.keys() {
-                        args.push("--allowedTools".to_string());
-                        args.push(format!("mcp__{server_name}"));
-                    }
-                }
-            }
-        }
-    }
+    append_mcp_config_args(&mut args, mcp_config);
 
     // Chrome browser integration (beta)
     if chrome_enabled {
@@ -909,6 +891,10 @@ fn build_claude_args(
     // Debug env vars
     env_vars.push(("JEAN_SESSION_ID".to_string(), session_id.to_string()));
     env_vars.push(("JEAN_WORKTREE_ID".to_string(), worktree_id.to_string()));
+    // Jean MCP recursion-depth chain. Always set so a Claude spawned by another
+    // Jean-spawned Claude can be capped at the configured depth.
+    let (depth_key, depth_val) = super::jean_mcp::child_depth_env();
+    env_vars.push((depth_key, depth_val));
     env_vars.push((
         "JEAN_MODEL".to_string(),
         model.unwrap_or("default").to_string(),
@@ -922,6 +908,34 @@ fn build_claude_args(
     }
 
     (args, env_vars)
+}
+
+fn append_mcp_config_args(args: &mut Vec<String>, mcp_config: Option<&str>) {
+    let Some(config) = mcp_config else {
+        return;
+    };
+    if config.is_empty() {
+        return;
+    }
+
+    args.push("--mcp-config".to_string());
+    args.push(config.to_string());
+    args.push("--strict-mcp-config".to_string());
+
+    // Auto-allow all tools from configured MCP servers. Claude CLI has accepted
+    // both the server-level form and the wildcard form across releases; include
+    // both so non-interactive `--print` runs can actually execute MCP calls
+    // instead of stopping after emitting a tool_use that Jean cannot approve.
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
+        if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
+            for server_name in servers.keys() {
+                args.push("--allowedTools".to_string());
+                args.push(format!("mcp__{server_name}"));
+                args.push("--allowedTools".to_string());
+                args.push(format!("mcp__{server_name}__*"));
+            }
+        }
+    }
 }
 
 /// Execute Claude CLI in detached mode.
@@ -2147,5 +2161,25 @@ mod tests {
             .contains("after the user answers native `request_user_input`"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Every Codex plan-mode response"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("OpenCode question"));
+    }
+
+    #[test]
+    fn mcp_config_auto_allows_server_and_wildcard_tools() {
+        let config = r#"{
+            "mcpServers": {
+                "jean-dev": { "type": "stdio", "command": "jean" },
+                "github": { "type": "stdio", "command": "github-mcp" }
+            }
+        }"#;
+        let mut args = Vec::new();
+
+        append_mcp_config_args(&mut args, Some(config));
+
+        assert!(args.contains(&"--mcp-config".to_string()));
+        assert!(args.contains(&"--strict-mcp-config".to_string()));
+        assert!(args.contains(&"mcp__jean-dev".to_string()));
+        assert!(args.contains(&"mcp__jean-dev__*".to_string()));
+        assert!(args.contains(&"mcp__github".to_string()));
+        assert!(args.contains(&"mcp__github__*".to_string()));
     }
 }

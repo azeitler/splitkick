@@ -35,7 +35,7 @@ use super::linear_issues::{
 use super::names::generate_unique_workspace_name;
 use super::release_notes::{
     build_pr_issue_refs_from_commit_range, build_pr_issue_refs_from_commit_subjects,
-    format_issue_groups, PrIssueRefsMap,
+    build_release_notes_prompt_context, format_issue_groups, PrIssueRefsMap,
 };
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
 use super::types::{
@@ -218,7 +218,7 @@ fn attach_default_avatar(project: &mut Project) {
 
 /// Generate a unique name by appending 4 random alphanumeric chars,
 /// checking against both storage and git branches.
-fn generate_unique_suffix_name(
+pub fn generate_unique_suffix_name(
     name: &str,
     project_path: &str,
     project_id: &str,
@@ -249,7 +249,7 @@ fn now() -> u64 {
         .as_secs()
 }
 
-fn sanitize_folder_name(name: &str) -> String {
+pub fn sanitize_folder_name(name: &str) -> String {
     name.chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '-' {
@@ -830,6 +830,175 @@ pub async fn get_worktree(app: AppHandle, worktree_id: String) -> Result<Worktre
         .ok_or_else(|| format!("Worktree not found: {worktree_id}"))
 }
 
+/// Get a bounded summary of a worktree's git changes.
+#[tauri::command]
+pub async fn get_worktree_changes(
+    app: AppHandle,
+    worktree_id: String,
+    max_files: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let max_files = max_files.unwrap_or(100).clamp(1, 500);
+    let (worktree, project_default_branch) =
+        resolve_worktree_and_project_default(&app, &worktree_id)?;
+    let base_branch = worktree
+        .base_branch
+        .clone()
+        .unwrap_or_else(|| project_default_branch.clone());
+    let status = crate::projects::git_status::get_branch_status(
+        &crate::projects::git_status::ActiveWorktreeInfo {
+            worktree_id: worktree.id.clone(),
+            worktree_path: worktree.path.clone(),
+            base_branch: base_branch.clone(),
+            pr_number: worktree.pr_number,
+            pr_url: worktree.pr_url.clone(),
+            pr_push_remote: worktree.pr_push_remote.clone(),
+            pr_push_branch: worktree.pr_push_branch.clone(),
+        },
+    )
+    .ok();
+    let porcelain = git_output(&worktree.path, &["status", "--porcelain=v1"])?;
+    let all_files = parse_porcelain_files(&porcelain);
+    let truncated = all_files.len() > max_files;
+    let files: Vec<serde_json::Value> = all_files
+        .into_iter()
+        .take(max_files)
+        .map(|(status, path)| serde_json::json!({ "status": status, "path": path }))
+        .collect();
+
+    Ok(serde_json::json!({
+        "worktreeId": worktree.id,
+        "worktreePath": worktree.path,
+        "branch": worktree.branch,
+        "baseBranch": base_branch,
+        "status": status,
+        "files": files,
+        "filesTruncated": truncated,
+        "porcelain": porcelain,
+    }))
+}
+
+/// Get a bounded unified git diff for a worktree.
+#[tauri::command]
+pub async fn get_worktree_diff(
+    app: AppHandle,
+    worktree_id: String,
+    diff_type: Option<String>,
+    path: Option<String>,
+    max_bytes: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    const DEFAULT_DIFF_MAX_BYTES: usize = 60_000;
+    const MAX_DIFF_BYTES: usize = 200_000;
+
+    let diff_type = diff_type.unwrap_or_else(|| "uncommitted".to_string());
+    let max_bytes = max_bytes
+        .unwrap_or(DEFAULT_DIFF_MAX_BYTES)
+        .clamp(1, MAX_DIFF_BYTES);
+    let (worktree, project_default_branch) =
+        resolve_worktree_and_project_default(&app, &worktree_id)?;
+    let base_branch = worktree.base_branch.unwrap_or(project_default_branch);
+    let mut args = match diff_type.as_str() {
+        "uncommitted" => vec![
+            "diff".to_string(),
+            "HEAD".to_string(),
+            "--unified=3".to_string(),
+        ],
+        "branch" => vec![
+            "diff".to_string(),
+            "--unified=3".to_string(),
+            format!("origin/{base_branch}...HEAD"),
+        ],
+        other => {
+            return Err(format!(
+                "Invalid diffType: {other}; expected uncommitted or branch"
+            ))
+        }
+    };
+    let path = path.filter(|p| !p.trim().is_empty());
+    if let Some(path) = path.as_deref() {
+        args.push("--".to_string());
+        args.push(path.to_string());
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let raw_patch = git_output(&worktree.path, &arg_refs)?;
+    let (patch, truncated) = truncate_utf8(&raw_patch, max_bytes);
+
+    Ok(serde_json::json!({
+        "worktreeId": worktree.id,
+        "diffType": diff_type,
+        "baseBranch": base_branch,
+        "path": path,
+        "maxBytes": max_bytes,
+        "truncated": truncated,
+        "rawBytes": raw_patch.len(),
+        "patch": patch,
+    }))
+}
+
+fn resolve_worktree_and_project_default(
+    app: &AppHandle,
+    worktree_id: &str,
+) -> Result<(Worktree, String), String> {
+    let data = load_projects_data(app)?;
+    let worktree = data
+        .find_worktree(worktree_id)
+        .cloned()
+        .ok_or_else(|| format!("Unknown worktreeId: {worktree_id}"))?;
+    let project = data
+        .find_project(&worktree.project_id)
+        .ok_or_else(|| format!("Worktree {worktree_id} has no parent project"))?;
+    Ok((worktree, project.default_branch.clone()))
+}
+
+fn git_output(repo_path: &str, args: &[&str]) -> Result<String, String> {
+    let output = silent_command("git")
+        .args(args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git {}: {e}", args.join(" ")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git {} failed: {stderr}", args.join(" ")));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn parse_porcelain_files(porcelain: &str) -> Vec<(String, String)> {
+    porcelain
+        .lines()
+        .filter_map(|line| {
+            if line.len() < 4 {
+                return None;
+            }
+            let status = line[..2].trim().to_string();
+            let path = line[3..]
+                .rsplit_once(" -> ")
+                .map(|(_, path)| path)
+                .unwrap_or(&line[3..])
+                .trim_matches('"')
+                .to_string();
+            Some((status, path))
+        })
+        .collect()
+}
+
+fn truncate_utf8(input: &str, max_bytes: usize) -> (String, bool) {
+    if input.len() <= max_bytes {
+        return (input.to_string(), false);
+    }
+    let mut end = max_bytes;
+    while !input.is_char_boundary(end) {
+        end -= 1;
+    }
+    (
+        format!(
+            "{}\n\n[diff truncated: showing {end} of {} bytes]",
+            &input[..end],
+            input.len()
+        ),
+        true,
+    )
+}
+
 /// Create a new worktree for a project (runs in background)
 ///
 /// This command returns immediately with a "pending" worktree.
@@ -849,8 +1018,11 @@ pub async fn create_worktree(
     advisory_context: Option<AdvisoryContext>,
     linear_context: Option<LinearIssueContext>,
     custom_name: Option<String>,
+    auto_open_in_jean: Option<bool>,
 ) -> Result<Worktree, String> {
     log::trace!("Creating worktree for project: {project_id}");
+
+    let auto_open_in_jean = auto_open_in_jean.unwrap_or(true);
 
     let data = load_projects_data(&app)?;
 
@@ -987,6 +1159,7 @@ pub async fn create_worktree(
         issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
         security_alert_number: security_context.as_ref().map(|ctx| ctx.number as u64),
         advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
+        auto_open_in_jean,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -1614,7 +1787,10 @@ pub async fn create_worktree(
                     "Background: Worktree created successfully: {}",
                     worktree.name
                 );
-                let created_event = WorktreeCreatedEvent { worktree };
+                let created_event = WorktreeCreatedEvent {
+                    worktree,
+                    auto_open_in_jean,
+                };
                 if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
                     log::error!("Failed to emit worktree:created event: {e}");
                 }
@@ -1708,8 +1884,10 @@ pub async fn create_worktree_from_existing_branch(
     security_context: Option<SecurityAlertContext>,
     advisory_context: Option<AdvisoryContext>,
     linear_context: Option<LinearIssueContext>,
+    auto_open_in_jean: Option<bool>,
 ) -> Result<Worktree, String> {
     log::trace!("Creating worktree from existing branch {branch_name} for project: {project_id}");
+    let auto_open_in_jean = auto_open_in_jean.unwrap_or(true);
 
     let data = load_projects_data(&app)?;
 
@@ -1747,6 +1925,7 @@ pub async fn create_worktree_from_existing_branch(
         issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
         security_alert_number: security_context.as_ref().map(|ctx| ctx.number as u64),
         advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
+        auto_open_in_jean,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -2206,7 +2385,10 @@ pub async fn create_worktree_from_existing_branch(
                     "Background: Worktree created successfully from existing branch: {}",
                     worktree.name
                 );
-                let created_event = WorktreeCreatedEvent { worktree };
+                let created_event = WorktreeCreatedEvent {
+                    worktree,
+                    auto_open_in_jean,
+                };
                 if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
                     log::error!("Failed to emit worktree:created event: {e}");
                 }
@@ -2369,6 +2551,7 @@ pub async fn checkout_pr(
         issue_number: None,
         security_alert_number: None,
         advisory_ghsa_id: None,
+        auto_open_in_jean: true,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -2762,7 +2945,10 @@ pub async fn checkout_pr(
                     pr_number,
                     worktree.name
                 );
-                let created_event = WorktreeCreatedEvent { worktree };
+                let created_event = WorktreeCreatedEvent {
+                    worktree,
+                    auto_open_in_jean: true,
+                };
                 if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
                     log::error!("Failed to emit worktree:created event: {e}");
                 }
@@ -3497,6 +3683,7 @@ pub async fn import_worktree(
     // Emit created event
     let event = WorktreeCreatedEvent {
         worktree: worktree.clone(),
+        auto_open_in_jean: true,
     };
     if let Err(e) = app.emit_all("worktree:created", &event) {
         log::error!("Failed to emit worktree:created event: {e}");
@@ -8302,19 +8489,31 @@ const RELEASE_NOTES_SCHEMA: &str = r#"{
 
 const RELEASE_NOTES_PROMPT: &str = r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).
 
+## Merged pull requests and detected issue references
+
+{pull_requests}
+
+## Required PR/issue reference formats
+
+{related_pull_requests}
+
 ## Commits since {tag}
 
 {commits}
 
 ## Instructions
 
-- Write a concise release title
-- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
-- Use bullet points with brief descriptions
-- Reference PR numbers if visible in commit messages
-- Skip merge commits and trivial changes (typos, formatting)
-- Write in past tense ("Added", "Fixed", "Improved")
-- Keep it concise and user-facing (skip internal implementation details)"#;
+- Write a concise release title.
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries).
+- Explicitly use the merged pull request metadata above as the primary source, then use commits as fallback context.
+- Inspect PR titles, PR bodies, and PR commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Always normalize closing keywords to lowercase final forms: closes, fixes, resolves.
+- Reference the PR number for each bullet when known: `(#123)`.
+- If a PR closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: `(#123, fixes #456, #789)`.
+- Do not invent PR numbers or issue references; only use the detected metadata above.
+- Skip merge commits and trivial changes (typos, formatting).
+- Write in past tense ("Added", "Fixed", "Improved").
+- Keep it concise and user-facing (skip internal implementation details)."#;
 
 /// Generate release notes content using Claude CLI
 fn generate_release_notes_content(
@@ -8379,6 +8578,9 @@ fn generate_release_notes_content(
         commits
     };
 
+    let release_notes_context = build_release_notes_prompt_context(app, project_path, tag)?;
+    let related_pull_requests = format_related_pull_requests(&release_notes_context.pr_issue_refs);
+
     // Build prompt
     let prompt_template = custom_prompt
         .filter(|p| !p.trim().is_empty())
@@ -8387,7 +8589,9 @@ fn generate_release_notes_content(
     let prompt = prompt_template
         .replace("{tag}", tag)
         .replace("{previous_release_name}", release_name)
-        .replace("{commits}", &commits);
+        .replace("{commits}", &commits)
+        .replace("{pull_requests}", &release_notes_context.pull_requests)
+        .replace("{related_pull_requests}", &related_pull_requests);
 
     let model_str = model.unwrap_or("sonnet");
 
@@ -8404,10 +8608,13 @@ fn generate_release_notes_content(
             Some(std::path::Path::new(project_path)),
             reasoning_effort,
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+        return Ok(response);
     }
 
     if backend == crate::chat::types::Backend::Codex {
@@ -8420,10 +8627,13 @@ fn generate_release_notes_content(
             Some(std::path::Path::new(project_path)),
             reasoning_effort,
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+        return Ok(response);
     }
 
     if backend == crate::chat::types::Backend::Cursor {
@@ -8434,10 +8644,13 @@ fn generate_release_notes_content(
             model_str,
             Some(std::path::Path::new(project_path)),
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Cursor release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+        return Ok(response);
     }
 
     let cli_path = resolve_cli_binary(app);
@@ -8496,8 +8709,11 @@ fn generate_release_notes_content(
     let json_content = extract_structured_output(&stdout)?;
     log::trace!("Extracted release notes JSON: {json_content}");
 
-    serde_json::from_str::<ReleaseNotesResponse>(&json_content)
-        .map_err(|e| format!("Failed to parse release notes response: {e}"))
+    let mut response = serde_json::from_str::<ReleaseNotesResponse>(&json_content)
+        .map_err(|e| format!("Failed to parse release notes response: {e}"))?;
+    response.body =
+        augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+    Ok(response)
 }
 
 fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> String {
@@ -8530,7 +8746,7 @@ fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> 
 
 fn format_related_pull_requests(pr_issue_refs: &PrIssueRefsMap) -> String {
     if pr_issue_refs.is_empty() {
-        return "No merged pull requests were detected from commit subjects in this branch."
+        return "No merged pull requests with closing issue references were detected in this release window."
             .to_string();
     }
 
@@ -10761,5 +10977,28 @@ Body
         assert!(args
             .windows(2)
             .any(|w| w == ["--json-schema", REVIEW_SCHEMA]));
+    }
+
+    #[test]
+    fn parse_porcelain_files_handles_renames() {
+        let parsed = parse_porcelain_files(" M src/lib.rs\nR  old.rs -> new.rs\n?? scratch.txt\n");
+
+        assert_eq!(
+            parsed,
+            vec![
+                ("M".to_string(), "src/lib.rs".to_string()),
+                ("R".to_string(), "new.rs".to_string()),
+                ("??".to_string(), "scratch.txt".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn truncate_utf8_preserves_char_boundaries() {
+        let (truncated, was_truncated) = truncate_utf8("åååå", 3);
+
+        assert!(was_truncated);
+        assert!(truncated.starts_with('å'));
+        assert!(truncated.contains("diff truncated"));
     }
 }

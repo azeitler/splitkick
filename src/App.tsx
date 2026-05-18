@@ -45,6 +45,7 @@ import { useQueueProcessor } from './hooks/useQueueProcessor'
 import { useBackgroundInvestigation } from './hooks/useBackgroundInvestigation'
 import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
 import { useMagicPromptAutoDefaults } from './hooks/useMagicPromptAutoDefaults'
+import { usePreferences } from './services/preferences'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
 import { hydrateRunningSnapshot } from './lib/hydrate-running-snapshot'
 import { preloadAllSounds } from './lib/sounds'
@@ -112,6 +113,10 @@ function App() {
   // Track preloading state for web view
   const [isPreloading, setIsPreloading] = useState(!isNativeApp())
   const queryClient = useQueryClient()
+  const { data: preferences } = usePreferences()
+  const onboardingOpen = useUIStore(state => state.onboardingOpen)
+  const featureTourOpen = useUIStore(state => state.featureTourOpen)
+  const jeanMcpIntroOpen = useUIStore(state => state.jeanMcpIntroOpen)
   const hasStartedTransportRef = useRef(false)
 
   // Holds the update object so the title bar indicator can trigger install later
@@ -758,6 +763,66 @@ function App() {
     isGhAuthLoading,
     cliCheckReady,
     queryClient,
+  ])
+
+  // Show the one-time Jean MCP announcement only after setup is complete.
+  // This must never compete with first-run onboarding or the feature tour.
+  useEffect(() => {
+    if (!isNativeApp()) return
+    if (!cliCheckReady || !preferences) return
+    if (preferences.has_seen_jean_mcp_intro) return
+    if (onboardingOpen || featureTourOpen || jeanMcpIntroOpen) return
+
+    if (!claudeStatus || !codexStatus || !opencodeStatus || !ghStatus) return
+
+    const isLoading =
+      isClaudeStatusLoading ||
+      isCodexStatusLoading ||
+      isOpencodeStatusLoading ||
+      isGhStatusLoading ||
+      (claudeStatus?.installed && isClaudeAuthLoading) ||
+      (codexStatus?.installed && isCodexAuthLoading) ||
+      (opencodeStatus?.installed && isOpencodeAuthLoading) ||
+      (ghStatus?.installed && isGhAuthLoading)
+    if (isLoading) return
+
+    const ghReady = !!ghStatus?.installed && !!ghAuth?.authenticated
+    const claudeReady = !!claudeStatus?.installed && !!claudeAuth?.authenticated
+    const codexReady = !!codexStatus?.installed && !!codexAuth?.authenticated
+    const opencodeReady =
+      !!opencodeStatus?.installed && !!opencodeAuth?.authenticated
+    const hasAiBackendReady = claudeReady || codexReady || opencodeReady
+
+    // If setup is incomplete, onboarding owns the startup surface.
+    if (!ghReady || !hasAiBackendReady) return
+
+    // Existing first-run tour has priority; show MCP intro on a later tick/reload
+    // after that preference has been marked seen.
+    if (!preferences.has_seen_feature_tour) return
+
+    useUIStore.getState().setJeanMcpIntroOpen(true)
+  }, [
+    preferences,
+    onboardingOpen,
+    featureTourOpen,
+    jeanMcpIntroOpen,
+    claudeStatus,
+    codexStatus,
+    opencodeStatus,
+    ghStatus,
+    claudeAuth,
+    codexAuth,
+    opencodeAuth,
+    ghAuth,
+    isClaudeStatusLoading,
+    isCodexStatusLoading,
+    isOpencodeStatusLoading,
+    isGhStatusLoading,
+    isClaudeAuthLoading,
+    isCodexAuthLoading,
+    isOpencodeAuthLoading,
+    isGhAuthLoading,
+    cliCheckReady,
   ])
 
   // Show feature tour after CLI onboarding completes (first launch or manual trigger)

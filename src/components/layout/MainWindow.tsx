@@ -57,6 +57,11 @@ const JeanConfigWizard = lazy(() =>
     default: mod.JeanConfigWizard,
   }))
 )
+const JeanMcpIntroDialog = lazy(() =>
+  import('@/components/onboarding/JeanMcpIntroDialog').then(mod => ({
+    default: mod.JeanMcpIntroDialog,
+  }))
+)
 const CliUpdateModal = lazy(() =>
   import('@/components/layout/CliUpdateModal').then(mod => ({
     default: mod.CliUpdateModal,
@@ -211,6 +216,7 @@ export function MainWindow() {
   const commitModalOpen = useUIStore(state => state.commitModalOpen)
   const onboardingOpen = useUIStore(state => state.onboardingOpen)
   const featureTourOpen = useUIStore(state => state.featureTourOpen)
+  const jeanMcpIntroOpen = useUIStore(state => state.jeanMcpIntroOpen)
   const openInModalOpen = useUIStore(state => state.openInModalOpen)
   const remotePickerOpen = useUIStore(state => state.remotePickerOpen)
   const magicModalOpen = useUIStore(state => state.magicModalOpen)
@@ -327,7 +333,7 @@ export function MainWindow() {
     handleConfirmRequired
   )
 
-  // Handle CMD+SHIFT+T to restore last archived item
+  // Handle restore-last-archived keybinding
   useRestoreLastArchived()
 
   // Archive modal state (triggered by command palette or sidebar button)
@@ -409,6 +415,7 @@ export function MainWindow() {
   const shouldRenderOnboardingDialog = useRetainedMount(onboardingOpen)
   const shouldRenderFeatureTourDialog = useRetainedMount(featureTourOpen)
   const shouldRenderJeanConfigWizard = useRetainedMount(jeanConfigWizardOpen)
+  const shouldRenderJeanMcpIntroDialog = useRetainedMount(jeanMcpIntroOpen)
   const shouldRenderCliUpdateModal = useRetainedMount(cliUpdateModalOpen)
   const shouldRenderUpdateAvailableModal = useRetainedMount(
     updateModalVersion !== null
@@ -546,6 +553,11 @@ export function MainWindow() {
       {shouldRenderJeanConfigWizard && (
         <Suspense fallback={null}>
           <JeanConfigWizard />
+        </Suspense>
+      )}
+      {shouldRenderJeanMcpIntroDialog && (
+        <Suspense fallback={null}>
+          <JeanMcpIntroDialog />
         </Suspense>
       )}
       {shouldRenderCliUpdateModal && (
