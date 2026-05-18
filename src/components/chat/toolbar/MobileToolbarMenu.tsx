@@ -275,7 +275,7 @@ export function MobileToolbarMenu({
           }}
         >
           <FileText className="h-4 w-4" />
-          Generate Notes
+          Generate Release Notes
           <span
             className={cn(
               'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',

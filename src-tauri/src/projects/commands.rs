@@ -35,7 +35,7 @@ use super::linear_issues::{
 use super::names::generate_unique_workspace_name;
 use super::release_notes::{
     build_pr_issue_refs_from_commit_range, build_pr_issue_refs_from_commit_subjects,
-    format_issue_groups, PrIssueRefsMap,
+    build_release_notes_prompt_context, format_issue_groups, PrIssueRefsMap,
 };
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
 use super::types::{
@@ -8489,19 +8489,31 @@ const RELEASE_NOTES_SCHEMA: &str = r#"{
 
 const RELEASE_NOTES_PROMPT: &str = r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).
 
+## Merged pull requests and detected issue references
+
+{pull_requests}
+
+## Required PR/issue reference formats
+
+{related_pull_requests}
+
 ## Commits since {tag}
 
 {commits}
 
 ## Instructions
 
-- Write a concise release title
-- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
-- Use bullet points with brief descriptions
-- Reference PR numbers if visible in commit messages
-- Skip merge commits and trivial changes (typos, formatting)
-- Write in past tense ("Added", "Fixed", "Improved")
-- Keep it concise and user-facing (skip internal implementation details)"#;
+- Write a concise release title.
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries).
+- Explicitly use the merged pull request metadata above as the primary source, then use commits as fallback context.
+- Inspect PR titles, PR bodies, and PR commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Always normalize closing keywords to lowercase final forms: closes, fixes, resolves.
+- Reference the PR number for each bullet when known: `(#123)`.
+- If a PR closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: `(#123, fixes #456, #789)`.
+- Do not invent PR numbers or issue references; only use the detected metadata above.
+- Skip merge commits and trivial changes (typos, formatting).
+- Write in past tense ("Added", "Fixed", "Improved").
+- Keep it concise and user-facing (skip internal implementation details)."#;
 
 /// Generate release notes content using Claude CLI
 fn generate_release_notes_content(
@@ -8566,6 +8578,9 @@ fn generate_release_notes_content(
         commits
     };
 
+    let release_notes_context = build_release_notes_prompt_context(app, project_path, tag)?;
+    let related_pull_requests = format_related_pull_requests(&release_notes_context.pr_issue_refs);
+
     // Build prompt
     let prompt_template = custom_prompt
         .filter(|p| !p.trim().is_empty())
@@ -8574,7 +8589,9 @@ fn generate_release_notes_content(
     let prompt = prompt_template
         .replace("{tag}", tag)
         .replace("{previous_release_name}", release_name)
-        .replace("{commits}", &commits);
+        .replace("{commits}", &commits)
+        .replace("{pull_requests}", &release_notes_context.pull_requests)
+        .replace("{related_pull_requests}", &related_pull_requests);
 
     let model_str = model.unwrap_or("sonnet");
 
@@ -8591,10 +8608,13 @@ fn generate_release_notes_content(
             Some(std::path::Path::new(project_path)),
             reasoning_effort,
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+        return Ok(response);
     }
 
     if backend == crate::chat::types::Backend::Codex {
@@ -8607,10 +8627,13 @@ fn generate_release_notes_content(
             Some(std::path::Path::new(project_path)),
             reasoning_effort,
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+        return Ok(response);
     }
 
     if backend == crate::chat::types::Backend::Cursor {
@@ -8621,10 +8644,13 @@ fn generate_release_notes_content(
             model_str,
             Some(std::path::Path::new(project_path)),
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Cursor release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+        return Ok(response);
     }
 
     let cli_path = resolve_cli_binary(app);
@@ -8683,8 +8709,11 @@ fn generate_release_notes_content(
     let json_content = extract_structured_output(&stdout)?;
     log::trace!("Extracted release notes JSON: {json_content}");
 
-    serde_json::from_str::<ReleaseNotesResponse>(&json_content)
-        .map_err(|e| format!("Failed to parse release notes response: {e}"))
+    let mut response = serde_json::from_str::<ReleaseNotesResponse>(&json_content)
+        .map_err(|e| format!("Failed to parse release notes response: {e}"))?;
+    response.body =
+        augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+    Ok(response)
 }
 
 fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> String {
@@ -8717,7 +8746,7 @@ fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> 
 
 fn format_related_pull_requests(pr_issue_refs: &PrIssueRefsMap) -> String {
     if pr_issue_refs.is_empty() {
-        return "No merged pull requests were detected from commit subjects in this branch."
+        return "No merged pull requests with closing issue references were detected in this release window."
             .to_string();
     }
 

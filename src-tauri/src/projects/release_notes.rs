@@ -375,6 +375,7 @@ fn collect_issue_refs(
 ) -> Vec<IssueRef> {
     let mut issue_keywords = BTreeMap::new();
 
+    merge_issue_keywords(&mut issue_keywords, parse_issue_keywords(&pr.title));
     merge_issue_keywords(&mut issue_keywords, parse_issue_keywords(&pr.body));
 
     for commit in pr_commits {
@@ -678,6 +679,51 @@ mod tests {
         }];
         let subject_pr_numbers = collect_pr_numbers_from_subjects(&commits);
         assert!(subject_pr_numbers.contains(&42));
+    }
+
+    #[test]
+    fn collects_issue_refs_from_pr_title_body_and_commits() {
+        let refs = collect_issue_refs(
+            &GitHubPullRequestCandidate {
+                number: 42,
+                title: "Add thing, fixes #11".to_string(),
+                body: "Closes #12".to_string(),
+                closing_issues_references: vec![],
+                merge_commit: None,
+            },
+            &[GitHubPullRequestCommit {
+                oid: "abc123".to_string(),
+                message_headline: "implementation".to_string(),
+                message_body: "Resolved #13".to_string(),
+            }],
+            &[GitCommitRecord {
+                oid: "abc123".to_string(),
+                subject: "squash subject".to_string(),
+                body: "FIXED #14".to_string(),
+            }],
+        );
+
+        assert_eq!(
+            refs,
+            vec![
+                IssueRef {
+                    number: 11,
+                    keyword: "fixes".to_string(),
+                },
+                IssueRef {
+                    number: 12,
+                    keyword: "closes".to_string(),
+                },
+                IssueRef {
+                    number: 13,
+                    keyword: "resolves".to_string(),
+                },
+                IssueRef {
+                    number: 14,
+                    keyword: "fixes".to_string(),
+                },
+            ]
+        );
     }
 
     #[test]

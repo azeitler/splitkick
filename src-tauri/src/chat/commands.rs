@@ -34,6 +34,21 @@ use crate::projects::types::SessionType;
 const QUEUE_DEFAULT_ALLOWED_TOOLS: [&str; 4] = ["Bash(git:*)", "Read", "Glob", "Grep"];
 const IMAGE_ONLY_DEFAULT_PROMPT: &str = "Please check this image and tell me what is wrong.";
 const TEXT_ONLY_DEFAULT_PROMPT: &str = "Please check the attached text as reference.";
+const CODEX_DEFAULT_PLAN_MODE_PROMPT: &str = "\
+## Plan Mode
+
+- Make the plan extremely concise. Sacrifice grammar for the sake of concision.
+- In planning mode, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex update_plan/CodexPlan, Cursor/OpenCode equivalent), not plain text only.
+- For unresolved questions in plan mode, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question.
+- For Codex specifically: after the user answers native `request_user_input`/open questions in plan mode, immediately call `update_plan`/emit `CodexPlan` again with the revised plan before any implementation.
+- Every Codex plan-mode response that contains or revises a plan must use `update_plan`/`CodexPlan`; do not provide plain-text-only plans.
+- Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.";
+const CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT: &str = "\
+## Not Plan Mode
+
+- After each finished task, please write a few bullet points on how to test the changes.
+- When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task subagents simultaneously rather than sequentially.
+- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.";
 const DEFAULT_PARALLEL_EXECUTION_PROMPT: &str = r#"In plan mode, structure plans so subagents can work simultaneously. In build/execute mode, use subagents in parallel for faster implementation.
 
 When launching multiple Task subagents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
@@ -48,6 +63,33 @@ When specifying subagent_type for Task tool calls, always use the fully qualifie
 /// prevents this process from spawning two backend drain loops for one session.
 static BACKEND_QUEUE_DRAINING: Lazy<Mutex<HashSet<String>>> =
     Lazy::new(|| Mutex::new(HashSet::new()));
+
+fn codex_execution_mode_instruction(execution_mode: Option<&str>) -> Option<&'static str> {
+    match execution_mode.unwrap_or("plan") {
+        "build" => Some(
+            "You are in BUILD MODE. Start implementing immediately. \
+             Do NOT call update_plan/emit CodexPlan unless the user explicitly asks \
+             for a new plan. If a required decision is missing, use request_user_input \
+             instead of switching back to plan mode.",
+        ),
+        "yolo" => Some(
+            "You are in YOLO EXECUTION MODE. Start implementing immediately. \
+             Do NOT call update_plan/emit CodexPlan unless the user explicitly asks \
+             for a new plan. Do not ask for confirmation before routine implementation steps. \
+             If a required decision is missing, use request_user_input instead of \
+             switching back to plan mode.",
+        ),
+        _ => None,
+    }
+}
+
+fn codex_default_global_system_prompt(execution_mode: Option<&str>) -> String {
+    if execution_mode.unwrap_or("plan") == "plan" {
+        format!("{CODEX_DEFAULT_PLAN_MODE_PROMPT}\n\n{CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT}")
+    } else {
+        CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT.to_string()
+    }
+}
 
 /// Resolve the default backend from preferences + project settings (sync).
 /// Falls back to Claude if preferences can't be loaded.
@@ -2482,22 +2524,6 @@ pub async fn send_chat_message(
                     use crate::projects::linear_issues::get_session_linear_refs;
                     use crate::projects::storage::load_projects_data;
 
-                    const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
-## Plan Mode\n\
-\n\
-- Make the plan extremely concise. Sacrifice grammar for the sake of concision.\n\
-- In planning mode, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex update_plan/CodexPlan, Cursor/OpenCode equivalent), not plain text only.\n\
-- For unresolved questions in plan mode, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question.\n\
-- For Codex specifically: after the user answers native `request_user_input`/open questions in plan mode, immediately call `update_plan`/emit `CodexPlan` again with the revised plan before any implementation.\n\
-- Every Codex plan-mode response that contains or revises a plan must use `update_plan`/`CodexPlan`; do not provide plain-text-only plans.\n\
-- Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.\n\
-\n\
-## Not Plan Mode\n\
-\n\
-- After each finished task, please write a few bullet points on how to test the changes.\n\
-- When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task subagents simultaneously rather than sequentially.\n\
-- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.";
-
                     let mut system_prompt_parts: Vec<String> = Vec::new();
 
                     // Codex plan mode: inject planning-only instructions
@@ -2514,6 +2540,12 @@ pub async fn send_chat_message(
                         );
                     }
 
+                    if let Some(mode_instruction) =
+                        codex_execution_mode_instruction(thread_execution_mode.as_deref())
+                    {
+                        system_prompt_parts.push(mode_instruction.to_string());
+                    }
+
                     // AI language preference
                     if let Some(lang) = &thread_ai_language {
                         let lang = lang.trim();
@@ -2523,22 +2555,23 @@ pub async fn send_chat_message(
                     }
 
                     // Global system prompt from preferences (with default fallback)
-                    if let Ok(prefs_path) = crate::get_preferences_path(&thread_app) {
-                        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
-                            if let Ok(prefs) =
-                                serde_json::from_str::<crate::AppPreferences>(&contents)
-                            {
-                                let prompt = prefs
-                                    .magic_prompts
-                                    .global_system_prompt
-                                    .as_deref()
-                                    .map(|s| s.trim())
-                                    .filter(|s| !s.is_empty())
-                                    .unwrap_or(DEFAULT_GLOBAL_SYSTEM_PROMPT);
-                                system_prompt_parts.push(prompt.to_string());
-                            }
-                        }
-                    }
+                    let global_prompt = crate::get_preferences_path(&thread_app)
+                        .ok()
+                        .and_then(|prefs_path| std::fs::read_to_string(&prefs_path).ok())
+                        .and_then(|contents| {
+                            serde_json::from_str::<crate::AppPreferences>(&contents).ok()
+                        })
+                        .and_then(|prefs| {
+                            prefs
+                                .magic_prompts
+                                .global_system_prompt
+                                .map(|s| s.trim().to_string())
+                                .filter(|s| !s.is_empty())
+                        })
+                        .unwrap_or_else(|| {
+                            codex_default_global_system_prompt(thread_execution_mode.as_deref())
+                        });
+                    system_prompt_parts.push(global_prompt);
 
                     // Parallel execution prompt
                     if let Some(prompt) = &thread_parallel_prompt {
@@ -6834,6 +6867,43 @@ mod tests {
         assert!(QUEUE_DEFAULT_ALLOWED_TOOLS.contains(&"Read"));
         assert!(QUEUE_DEFAULT_ALLOWED_TOOLS.contains(&"Glob"));
         assert!(QUEUE_DEFAULT_ALLOWED_TOOLS.contains(&"Grep"));
+    }
+
+    #[test]
+    fn test_codex_default_prompt_includes_plan_rules_only_in_plan_mode() {
+        let plan_prompt = codex_default_global_system_prompt(Some("plan"));
+        assert!(plan_prompt.contains("## Plan Mode"));
+        assert!(plan_prompt.contains("update_plan"));
+        assert!(plan_prompt.contains("CodexPlan"));
+        assert!(plan_prompt.contains("## Not Plan Mode"));
+
+        let build_prompt = codex_default_global_system_prompt(Some("build"));
+        assert!(!build_prompt.contains("## Plan Mode"));
+        assert!(!build_prompt.contains("update_plan"));
+        assert!(!build_prompt.contains("CodexPlan"));
+        assert!(build_prompt.contains("## Not Plan Mode"));
+
+        let yolo_prompt = codex_default_global_system_prompt(Some("yolo"));
+        assert!(!yolo_prompt.contains("## Plan Mode"));
+        assert!(!yolo_prompt.contains("update_plan"));
+        assert!(!yolo_prompt.contains("CodexPlan"));
+        assert!(yolo_prompt.contains("## Not Plan Mode"));
+    }
+
+    #[test]
+    fn test_codex_execution_mode_instruction_overrides_build_and_yolo() {
+        assert!(codex_execution_mode_instruction(Some("plan")).is_none());
+
+        let build = codex_execution_mode_instruction(Some("build")).unwrap();
+        assert!(build.contains("BUILD MODE"));
+        assert!(build.contains("Start implementing immediately"));
+        assert!(build.contains("Do NOT call update_plan/emit CodexPlan"));
+
+        let yolo = codex_execution_mode_instruction(Some("yolo")).unwrap();
+        assert!(yolo.contains("YOLO EXECUTION MODE"));
+        assert!(yolo.contains("Start implementing immediately"));
+        assert!(yolo.contains("Do NOT call update_plan/emit CodexPlan"));
+        assert!(yolo.contains("Do not ask for confirmation"));
     }
 
     #[test]

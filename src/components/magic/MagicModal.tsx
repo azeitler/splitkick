@@ -273,7 +273,7 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
       options: [
         {
           id: 'release-notes',
-          label: 'Generate Notes',
+          label: 'Generate Release Notes',
           icon: FileText,
           key: 'G',
         },

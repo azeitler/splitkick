@@ -455,19 +455,31 @@ Investigate the loaded Linear {linearWord} ({linearRefs})
 /** Default prompt for generating release notes */
 export const DEFAULT_RELEASE_NOTES_PROMPT = `Generate release notes for changes since the \`{tag}\` release ({previous_release_name}).
 
+## Merged pull requests and detected issue references
+
+{pull_requests}
+
+## Required PR/issue reference formats
+
+{related_pull_requests}
+
 ## Commits since {tag}
 
 {commits}
 
 ## Instructions
 
-- Write a concise release title
-- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
-- Use bullet points with brief descriptions
-- Reference PR numbers if visible in commit messages
-- Skip merge commits and trivial changes (typos, formatting)
-- Write in past tense ("Added", "Fixed", "Improved")
-- Keep it concise and user-facing (skip internal implementation details)`
+- Write a concise release title.
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries).
+- Explicitly use the merged pull request metadata above as the primary source, then use commits as fallback context.
+- Inspect PR titles, PR bodies, and PR commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Always normalize closing keywords to lowercase final forms: closes, fixes, resolves.
+- Reference the PR number for each bullet when known: \`(#123)\`.
+- If a PR closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: \`(#123, fixes #456, #789)\`.
+- Do not invent PR numbers or issue references; only use the detected metadata above.
+- Skip merge commits and trivial changes (typos, formatting).
+- Write in past tense ("Added", "Fixed", "Improved").
+- Keep it concise and user-facing (skip internal implementation details).`
 
 /** Default prompt for generating session names */
 export const DEFAULT_SESSION_NAMING_PROMPT = `<task>Generate a short, human-friendly name for this chat session based on the user's request.</task>

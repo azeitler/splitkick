@@ -375,6 +375,16 @@ const PROMPT_SECTIONS: PromptSection[] = [
             name: '{commits}',
             description: 'Commit messages since the selected release',
           },
+          {
+            name: '{pull_requests}',
+            description:
+              'Matched merged pull requests and detected issue references',
+          },
+          {
+            name: '{related_pull_requests}',
+            description:
+              'Exact PR/issue reference formats detected from closing keywords',
+          },
         ],
         defaultValue: DEFAULT_RELEASE_NOTES_PROMPT,
         defaultModel: 'sonnet',
