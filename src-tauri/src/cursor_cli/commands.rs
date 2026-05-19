@@ -152,14 +152,20 @@ fn cursor_model_version_numbers(id: &str) -> Vec<u32> {
         .collect()
 }
 
+fn cursor_model_is_fast(id: &str) -> bool {
+    id.ends_with("-fast")
+}
+
 fn sort_cursor_models(models: &mut [CursorModelInfo]) {
     models.sort_by(|a, b| {
         let a_rank = cursor_model_family_rank(&a.id);
         let b_rank = cursor_model_family_rank(&b.id);
 
         a_rank.cmp(&b_rank).then_with(|| {
-            if matches!(a_rank, 1 | 2) && a_rank == b_rank {
-                cursor_model_version_numbers(&b.id).cmp(&cursor_model_version_numbers(&a.id))
+            if matches!(a_rank, 0 | 1 | 2) && a_rank == b_rank {
+                cursor_model_version_numbers(&b.id)
+                    .cmp(&cursor_model_version_numbers(&a.id))
+                    .then_with(|| cursor_model_is_fast(&b.id).cmp(&cursor_model_is_fast(&a.id)))
             } else {
                 std::cmp::Ordering::Equal
             }
@@ -483,6 +489,8 @@ Available models
 auto - Auto
 composer-2-fast - Composer 2 Fast (default)
 composer-2 - Composer 2 (current)
+composer-2.5 - Composer 2.5
+composer-2.5-fast - Composer 2.5 Fast
 gpt-5.4-high - GPT-5.4 1M High
 gpt-5.5-high-fast - GPT-5.5 High Fast
 claude-4.6-sonnet-medium - Sonnet 4.6 1M
@@ -495,19 +503,25 @@ Tip: use --model <id> (or /model <id> in interactive mode) to switch.
 
         let models = parse_cursor_models_output(output);
 
-        assert_eq!(models.len(), 9);
-        assert_eq!(models[0].id, "composer-2-fast");
-        assert_eq!(models[0].label, "Composer 2 Fast");
-        assert!(models[0].is_default);
+        assert_eq!(models.len(), 11);
+        assert_eq!(models[0].id, "composer-2.5-fast");
+        assert_eq!(models[0].label, "Composer 2.5 Fast");
+        assert!(!models[0].is_default);
         assert!(!models[0].is_current);
-        assert_eq!(models[1].id, "composer-2");
-        assert_eq!(models[1].label, "Composer 2");
-        assert!(models[1].is_current);
-        assert_eq!(models[2].id, "gpt-5.5-high-fast");
-        assert_eq!(models[3].id, "gpt-5.4-high");
-        assert_eq!(models[4].id, "claude-opus-4-7-thinking-high");
-        assert_eq!(models[5].id, "claude-4.6-sonnet-medium");
-        assert_eq!(models[6].id, "auto");
+        assert_eq!(models[1].id, "composer-2.5");
+        assert_eq!(models[1].label, "Composer 2.5");
+        assert_eq!(models[2].id, "composer-2-fast");
+        assert_eq!(models[2].label, "Composer 2 Fast");
+        assert!(models[2].is_default);
+        assert!(!models[2].is_current);
+        assert_eq!(models[3].id, "composer-2");
+        assert_eq!(models[3].label, "Composer 2");
+        assert!(models[3].is_current);
+        assert_eq!(models[4].id, "gpt-5.5-high-fast");
+        assert_eq!(models[5].id, "gpt-5.4-high");
+        assert_eq!(models[6].id, "claude-opus-4-7-thinking-high");
+        assert_eq!(models[7].id, "claude-4.6-sonnet-medium");
+        assert_eq!(models[8].id, "auto");
     }
 
     #[test]

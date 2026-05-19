@@ -32,6 +32,8 @@ describe('MobileToolbarMenu', () => {
       <MobileToolbarMenu
         isDisabled={false}
         hasOpenPr={false}
+        hasIssueContexts={false}
+        hasPrContexts={false}
         onSaveContext={vi.fn()}
         onLoadContext={vi.fn()}
         onCommit={vi.fn()}
@@ -59,5 +61,86 @@ describe('MobileToolbarMenu', () => {
     expect(screen.queryByText('Provider')).not.toBeInTheDocument()
     expect(screen.queryByText('Uncommitted')).not.toBeInTheDocument()
     expect(screen.queryByText('Branch diff')).not.toBeInTheDocument()
+  })
+
+  it('disables investigate issue and PR when no contexts are loaded', async () => {
+    const user = userEvent.setup()
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+
+    render(
+      <MobileToolbarMenu
+        isDisabled={false}
+        hasOpenPr={false}
+        hasIssueContexts={false}
+        hasPrContexts={false}
+        onSaveContext={vi.fn()}
+        onLoadContext={vi.fn()}
+        onCommit={vi.fn()}
+        onCommitAndPush={vi.fn()}
+        onOpenPr={vi.fn()}
+        onReview={vi.fn()}
+        onMerge={vi.fn()}
+        onMergePr={vi.fn()}
+        handlePullClick={vi.fn()}
+        handlePushClick={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: /more actions/i }))
+
+    const issueItem = screen.getByText('Issue').closest('[role="menuitem"]')
+    const prItem = screen.getByText('PR').closest('[role="menuitem"]')
+
+    expect(issueItem).toHaveAttribute('aria-disabled', 'true')
+    expect(prItem).toHaveAttribute('aria-disabled', 'true')
+
+    if (issueItem) await user.click(issueItem)
+    if (prItem) await user.click(prItem)
+
+    expect(dispatchSpy).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'magic-command' })
+    )
+
+    dispatchSpy.mockRestore()
+  })
+
+  it('enables investigate issue and PR when contexts are loaded', async () => {
+    const user = userEvent.setup()
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+
+    render(
+      <MobileToolbarMenu
+        isDisabled={false}
+        hasOpenPr={false}
+        hasIssueContexts={true}
+        hasPrContexts={true}
+        onSaveContext={vi.fn()}
+        onLoadContext={vi.fn()}
+        onCommit={vi.fn()}
+        onCommitAndPush={vi.fn()}
+        onOpenPr={vi.fn()}
+        onReview={vi.fn()}
+        onMerge={vi.fn()}
+        onMergePr={vi.fn()}
+        handlePullClick={vi.fn()}
+        handlePushClick={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: /more actions/i }))
+
+    const issueItem = screen.getByText('Issue').closest('[role="menuitem"]')
+    expect(issueItem).not.toHaveAttribute('aria-disabled', 'true')
+
+    if (issueItem) await user.click(issueItem)
+
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'magic-command',
+        detail: { command: 'investigate', type: 'issue' },
+      })
+    )
+
+    dispatchSpy.mockRestore()
   })
 })
