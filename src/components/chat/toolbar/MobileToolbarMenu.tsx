@@ -31,6 +31,8 @@ import { cn } from '@/lib/utils'
 interface MobileToolbarMenuProps {
   isDisabled: boolean
   hasOpenPr: boolean
+  hasIssueContexts: boolean
+  hasPrContexts: boolean
 
   onSaveContext: () => void
   onLoadContext: () => void
@@ -48,6 +50,8 @@ interface MobileToolbarMenuProps {
 export function MobileToolbarMenu({
   isDisabled,
   hasOpenPr,
+  hasIssueContexts,
+  hasPrContexts,
   onSaveContext,
   onLoadContext,
   onCommit,
@@ -275,7 +279,7 @@ export function MobileToolbarMenu({
           }}
         >
           <FileText className="h-4 w-4" />
-          Generate Release Notes
+          Release Notes
           <span
             className={cn(
               'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
@@ -309,7 +313,9 @@ export function MobileToolbarMenu({
           Investigate
         </div>
         <DropdownMenuItem
+          disabled={!hasIssueContexts}
           onClick={() => {
+            if (!hasIssueContexts) return
             setMenuOpen(false)
             window.dispatchEvent(
               new CustomEvent('magic-command', {
@@ -330,7 +336,9 @@ export function MobileToolbarMenu({
           </span>
         </DropdownMenuItem>
         <DropdownMenuItem
+          disabled={!hasPrContexts}
           onClick={() => {
+            if (!hasPrContexts) return
             setMenuOpen(false)
             window.dispatchEvent(
               new CustomEvent('magic-command', {

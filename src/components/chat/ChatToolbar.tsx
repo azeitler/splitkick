@@ -314,6 +314,8 @@ export const ChatToolbar = memo(function ChatToolbar({
         <MobileToolbarMenu
           isDisabled={isSending || hasPendingQuestions}
           hasOpenPr={hasOpenPr}
+          hasIssueContexts={loadedIssueContexts.length > 0}
+          hasPrContexts={loadedPRContexts.length > 0}
           onSaveContext={onSaveContext}
           onLoadContext={onLoadContext}
           onCommit={onCommit}
