@@ -138,41 +138,6 @@ fn build_cursor_message(
     format!("{prefix}{mode_marker}{message}")
 }
 
-fn create_cursor_chat(app: &AppHandle, working_dir: &Path) -> Result<String, String> {
-    let cli_path = crate::cursor_cli::resolve_cli_binary(app);
-    if !cli_path.exists() {
-        return Err("Cursor CLI not installed".to_string());
-    }
-
-    let output = silent_command(&cli_path)
-        .args(["--workspace"])
-        .arg(working_dir)
-        .arg("create-chat")
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output()
-        .map_err(|e| format!("Failed to create Cursor chat: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = strip_ansi(&String::from_utf8_lossy(&output.stderr));
-        return Err(format!("Cursor create-chat failed: {}", stderr.trim()));
-    }
-
-    let stdout = strip_ansi(&String::from_utf8_lossy(&output.stdout));
-    let chat_id = stdout
-        .lines()
-        .rev()
-        .find(|line| !line.trim().is_empty())
-        .map(str::trim)
-        .unwrap_or("");
-
-    if chat_id.is_empty() {
-        return Err("Cursor create-chat returned no chat ID".to_string());
-    }
-
-    Ok(chat_id.to_string())
-}
-
 fn value_at_path<'a>(value: &'a Value, path: &[&str]) -> Option<&'a Value> {
     let mut current = value;
     for key in path {
@@ -1088,11 +1053,12 @@ pub fn execute_cursor(
         return Err("Cursor CLI not installed".to_string());
     }
 
-    let (chat_id, is_new_chat) = if let Some(id) = existing_chat_id.filter(|id| !id.is_empty()) {
-        (id.to_string(), false)
-    } else {
-        (create_cursor_chat(app, working_dir)?, true)
-    };
+    // Resume an existing chat when we have an id; otherwise let `--print`
+    // create the chat implicitly. Skipping a separate `create-chat` spawn
+    // removes a full process cold start from every new session's first message.
+    let existing = existing_chat_id.filter(|id| !id.is_empty());
+    let is_new_chat = existing.is_none();
+    let chat_id: Option<String> = existing.map(str::to_string);
 
     let enabled_mcp_names = parse_enabled_mcp_names(mcp_config);
     crate::cursor_cli::mcp::sync_cursor_mcp_approvals(app, working_dir, &enabled_mcp_names)?;
@@ -1102,8 +1068,10 @@ pub fn execute_cursor(
         .args(["--output-format", "stream-json"])
         .arg("--trust")
         .args(["--workspace"])
-        .arg(working_dir)
-        .args(["--resume", &chat_id]);
+        .arg(working_dir);
+    if let Some(id) = &chat_id {
+        cmd.args(["--resume", id]);
+    }
 
     if let Some(model) = raw_cursor_model(model) {
         cmd.args(["--model", model]);
@@ -1150,7 +1118,7 @@ pub fn execute_cursor(
     if !super::registry::register_process(session_id.to_string(), pid) {
         return Ok(CursorResponse {
             content: String::new(),
-            chat_id,
+            chat_id: chat_id.clone().unwrap_or_default(),
             tool_calls: vec![],
             content_blocks: vec![],
             cancelled: true,
@@ -1174,7 +1142,7 @@ pub fn execute_cursor(
         session_id,
         worktree_id,
         BufReader::new(stdout),
-        Some(&chat_id),
+        chat_id.as_deref(),
         effective_mode == "plan",
     );
 
@@ -1209,7 +1177,13 @@ pub fn execute_cursor(
     }
 
     if response.chat_id.is_empty() {
-        response.chat_id = chat_id;
+        if let Some(id) = chat_id {
+            response.chat_id = id;
+        } else if is_new_chat {
+            log::warn!(
+                "Cursor new chat produced no chat_id; next message will start a fresh chat"
+            );
+        }
     }
 
     if !response.cancelled {
