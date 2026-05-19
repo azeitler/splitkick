@@ -5,8 +5,10 @@ import {
   FolderOpen,
   GitMerge,
   GitPullRequest,
+  Paperclip,
   Shield,
   ShieldAlert,
+  Wand2,
 } from 'lucide-react'
 import { useCallback } from 'react'
 import { Kbd } from '@/components/ui/kbd'
@@ -50,6 +52,7 @@ import type {
 import { openExternal } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import {
+  CODEX_EFFORT_LEVEL_OPTIONS,
   EFFORT_LEVEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
@@ -166,7 +169,7 @@ export function DesktopToolbarControls({
   setProviderDropdownOpen,
   setThinkingDropdownOpen,
   onMcpDropdownOpenChange: _onMcpDropdownOpenChange,
-  onOpenMagicModal: _onOpenMagicModal,
+  onOpenMagicModal,
   onOpenProjectSettings: _onOpenProjectSettings,
   onResolvePrConflicts,
   onLoadContext,
@@ -187,6 +190,15 @@ export function DesktopToolbarControls({
   handleViewLinear,
   handleViewSavedContext,
 }: DesktopToolbarControlsProps) {
+  const effortLevelOptions = isCodex
+    ? CODEX_EFFORT_LEVEL_OPTIONS
+    : EFFORT_LEVEL_OPTIONS
+  const displayedEffortLevel =
+    isCodex && selectedEffortLevel === 'max' ? 'high' : selectedEffortLevel
+  const displayedEffortLabel =
+    effortLevelOptions.find(o => o.value === displayedEffortLevel)?.label ??
+    displayedEffortLevel
+
   // Prevent Radix from restoring focus to the trigger button;
   // redirect focus to the chat input instead.
   const focusChatInput = useCallback((e: Event) => {
@@ -206,9 +218,38 @@ export function DesktopToolbarControls({
     <>
       <DockBurgerButton
         activeMcpCount={activeMcpCount}
-        onAttach={onAttach}
         className="hidden @xl:flex"
       />
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Magic"
+            disabled={hasPendingQuestions}
+            className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            onClick={onOpenMagicModal}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Magic (⌘M)</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Attachments"
+            disabled={hasPendingQuestions}
+            className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            onClick={onAttach}
+          >
+            <Paperclip className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Attachments</TooltipContent>
+      </Tooltip>
 
       <div className="hidden @xl:block h-4 w-px bg-border/50" />
 
@@ -589,18 +630,12 @@ export function DesktopToolbarControls({
                   className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
                   <Brain className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
-                  <span>
-                    {
-                      EFFORT_LEVEL_OPTIONS.find(
-                        o => o.value === selectedEffortLevel
-                      )?.label
-                    }
-                  </span>
+                  <span>{displayedEffortLabel}</span>
                 </button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
             <TooltipContent>
-              {`Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label} (⌘⇧E)`}
+              {`Effort: ${displayedEffortLabel} (⌘⇧E)`}
             </TooltipContent>
           </Tooltip>
           <DropdownMenuContent
@@ -609,10 +644,10 @@ export function DesktopToolbarControls({
             onCloseAutoFocus={focusChatInput}
           >
             <DropdownMenuRadioGroup
-              value={selectedEffortLevel}
+              value={displayedEffortLevel}
               onValueChange={handleEffortLevelChange}
             >
-              {EFFORT_LEVEL_OPTIONS.map((option, i) => (
+              {effortLevelOptions.map((option, i) => (
                 <DropdownMenuRadioItem key={option.value} value={option.value}>
                   <Brain className="mr-2 h-4 w-4" />
                   {option.label}

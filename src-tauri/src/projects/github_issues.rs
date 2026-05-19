@@ -80,6 +80,33 @@ pub struct IssueContext {
     pub comments: Vec<GitHubComment>,
 }
 
+/// Detect gh errors caused by a directory that cannot be resolved to a GitHub
+/// repository. Some of these messages include "gh auth login" as a suggestion,
+/// but they are not authentication failures.
+fn is_unsupported_github_repo_error(stderr: &str) -> bool {
+    let lower = stderr.to_lowercase();
+    lower.contains("none of the git remotes configured")
+        || lower.contains("no git remotes found")
+        || lower.contains("known github host")
+        || lower.contains("not a github repository")
+        || lower.contains("remote url is not a github repository")
+        || lower.contains("could not resolve repository")
+        || lower.contains("not a git repository")
+}
+
+fn is_gh_cli_auth_error(stderr: &str) -> bool {
+    if is_unsupported_github_repo_error(stderr) {
+        return false;
+    }
+
+    let lower = stderr.to_lowercase();
+    lower.contains("gh auth login")
+        || lower.contains("not authenticated")
+        || lower.contains("requires authentication")
+        || lower.contains("authentication required")
+        || lower.contains("bad credentials")
+}
+
 /// List GitHub issues for a repository
 ///
 /// Uses `gh issue list` to fetch issues from the repository.
@@ -116,7 +143,7 @@ pub async fn list_github_issues(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Handle specific errors
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("not a git repository") {
@@ -206,7 +233,7 @@ pub async fn search_github_issues(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("not a git repository") {
@@ -253,7 +280,7 @@ pub async fn get_github_issue_by_number(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("Could not resolve") || stderr.contains("not found") {
@@ -298,7 +325,7 @@ pub async fn get_github_issue(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         // Handle specific errors
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("Could not resolve") || stderr.contains("not found") {
@@ -1288,25 +1315,6 @@ pub struct GitHubReview {
     pub submitted_at: Option<String>,
 }
 
-/// Raw GitHub REST API review comment (snake_case from API)
-#[derive(Debug, Clone, Deserialize)]
-struct RawReviewComment {
-    user: Option<RawReviewCommentUser>,
-    body: Option<String>,
-    created_at: Option<String>,
-    diff_hunk: Option<String>,
-    path: Option<String>,
-    #[serde(default)]
-    start_line: Option<u32>,
-    #[serde(default)]
-    line: Option<u32>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct RawReviewCommentUser {
-    login: Option<String>,
-}
-
 /// GitHub inline review comment (on specific diff lines), normalized to camelCase for frontend
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1322,23 +1330,96 @@ pub struct GitHubReviewComment {
     pub line: Option<u32>,
 }
 
-impl From<RawReviewComment> for GitHubReviewComment {
-    fn from(raw: RawReviewComment) -> Self {
+/// Raw GraphQL response for PR review threads.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewThreadsResponse {
+    data: ReviewThreadsData,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewThreadsData {
+    repository: ReviewThreadsRepository,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewThreadsRepository {
+    pull_request: ReviewThreadsPullRequest,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewThreadsPullRequest {
+    review_threads: ReviewThreadConnection,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewThreadConnection {
+    nodes: Vec<ReviewThread>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewThread {
+    is_outdated: bool,
+    comments: ReviewThreadCommentConnection,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ReviewThreadCommentConnection {
+    nodes: Vec<RawGraphqlReviewComment>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawGraphqlReviewComment {
+    author: Option<RawGraphqlAuthor>,
+    body: String,
+    created_at: String,
+    diff_hunk: String,
+    path: String,
+    #[serde(default)]
+    start_line: Option<u32>,
+    #[serde(default)]
+    line: Option<u32>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RawGraphqlAuthor {
+    login: String,
+}
+
+impl From<RawGraphqlReviewComment> for GitHubReviewComment {
+    fn from(raw: RawGraphqlReviewComment) -> Self {
         Self {
             author: GitHubAuthor {
                 login: raw
-                    .user
-                    .and_then(|u| u.login)
+                    .author
+                    .map(|author| author.login)
                     .unwrap_or_else(|| "unknown".to_string()),
             },
-            body: raw.body.unwrap_or_default(),
-            created_at: raw.created_at.unwrap_or_default(),
-            diff_hunk: raw.diff_hunk.unwrap_or_default(),
-            path: raw.path.unwrap_or_default(),
+            body: raw.body,
+            created_at: raw.created_at,
+            diff_hunk: raw.diff_hunk,
+            path: raw.path,
             start_line: raw.start_line,
             line: raw.line,
         }
     }
+}
+
+fn current_review_comments_from_threads(threads: Vec<ReviewThread>) -> Vec<GitHubReviewComment> {
+    threads
+        .into_iter()
+        .filter(|thread| !thread.is_outdated)
+        .flat_map(|thread| thread.comments.nodes)
+        .map(GitHubReviewComment::from)
+        .collect()
 }
 
 /// GitHub PR detail with comments and reviews
@@ -1424,7 +1505,7 @@ pub async fn list_github_prs(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("not a git repository") {
@@ -1476,7 +1557,7 @@ pub async fn search_github_prs(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("not a git repository") {
@@ -1523,7 +1604,7 @@ pub async fn get_github_pr_by_number(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("Could not resolve") || stderr.contains("not found") {
@@ -1567,7 +1648,7 @@ pub async fn get_github_pr(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("Could not resolve") || stderr.contains("not found") {
@@ -1586,8 +1667,9 @@ pub async fn get_github_pr(
 
 /// Fetch inline review comments for a PR.
 ///
-/// Uses `gh api /repos/{owner}/{repo}/pulls/{number}/comments` to get code-level
-/// review comments (inline comments on specific diff lines).
+/// Uses GitHub GraphQL review threads instead of REST review comments so GitHub
+/// calculates `isOutdated` for us. REST exposes line/position fields, but those
+/// are not a reliable way to infer whether GitHub considers a thread outdated.
 #[tauri::command]
 pub async fn get_pr_review_comments(
     app: AppHandle,
@@ -1598,38 +1680,80 @@ pub async fn get_pr_review_comments(
 
     let gh = resolve_gh_binary(&app);
     let repo_id = get_repo_identifier(&project_path)?;
-    let endpoint = format!(
-        "/repos/{}/{}/pulls/{pr_number}/comments?per_page=100",
-        repo_id.owner, repo_id.repo
-    );
+    let query = r#"
+query($owner: String!, $repo: String!, $prNumber: Int!) {
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $prNumber) {
+      reviewThreads(first: 100) {
+        nodes {
+          isOutdated
+          comments(first: 100) {
+            nodes {
+              author {
+                login
+              }
+              body
+              createdAt
+              diffHunk
+              path
+              startLine
+              line
+            }
+          }
+        }
+      }
+    }
+  }
+}
+"#;
+    let args = vec![
+        "api".to_string(),
+        "graphql".to_string(),
+        "-f".to_string(),
+        format!("owner={}", repo_id.owner),
+        "-f".to_string(),
+        format!("repo={}", repo_id.repo),
+        "-F".to_string(),
+        format!("prNumber={pr_number}"),
+        "-f".to_string(),
+        format!("query={query}"),
+    ];
 
     let output = silent_command(&gh)
-        .args(["api", &endpoint])
+        .args(&args)
         .current_dir(&project_path)
         .output()
-        .map_err(|e| format!("Failed to run gh api: {e}"))?;
+        .map_err(|e| format!("Failed to run gh api graphql: {e}"))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("404") || stderr.contains("Not Found") {
             return Err(format!("PR #{pr_number} not found"));
         }
-        return Err(format!("gh api failed: {stderr}"));
+        return Err(format!("gh api graphql failed: {stderr}"));
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let raw_comments: Vec<RawReviewComment> =
+    let response: ReviewThreadsResponse =
         serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
 
-    let comments: Vec<GitHubReviewComment> = raw_comments
-        .into_iter()
-        .map(GitHubReviewComment::from)
-        .collect();
+    let threads = response.data.repository.pull_request.review_threads.nodes;
+    let total_threads = threads.len();
+    let total_comments: usize = threads
+        .iter()
+        .map(|thread| thread.comments.nodes.len())
+        .sum();
+    let comments = current_review_comments_from_threads(threads);
 
-    log::trace!("Got {} review comments for PR #{pr_number}", comments.len());
+    log::trace!(
+        "Got {} current review comments for PR #{pr_number} ({} total comments across {} threads, outdated threads hidden)",
+        comments.len(),
+        total_comments,
+        total_threads
+    );
     Ok(comments)
 }
 
@@ -2382,7 +2506,7 @@ pub async fn list_dependabot_alerts(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("not a git repository") {
@@ -2431,7 +2555,7 @@ pub async fn get_dependabot_alert(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("404") {
@@ -2705,7 +2829,7 @@ pub async fn list_repository_advisories(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("not a git repository") {
@@ -2754,7 +2878,7 @@ pub async fn get_repository_advisory(
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+        if is_gh_cli_auth_error(&stderr) {
             return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
         }
         if stderr.contains("404") {
@@ -2975,6 +3099,54 @@ pub async fn get_advisory_context_content(
 mod tests {
     use super::*;
 
+    fn graphql_review_comment(body: &str) -> RawGraphqlReviewComment {
+        RawGraphqlReviewComment {
+            author: Some(RawGraphqlAuthor {
+                login: "reviewer".to_string(),
+            }),
+            body: body.to_string(),
+            created_at: "2026-05-11T12:00:00Z".to_string(),
+            diff_hunk: "@@ -1 +1 @@".to_string(),
+            path: "src/main.rs".to_string(),
+            start_line: Some(10),
+            line: Some(12),
+        }
+    }
+
+    #[test]
+    fn test_outdated_review_threads_are_filtered() {
+        let comments = current_review_comments_from_threads(vec![
+            ReviewThread {
+                is_outdated: false,
+                comments: ReviewThreadCommentConnection {
+                    nodes: vec![graphql_review_comment("current")],
+                },
+            },
+            ReviewThread {
+                is_outdated: true,
+                comments: ReviewThreadCommentConnection {
+                    nodes: vec![graphql_review_comment("outdated")],
+                },
+            },
+        ]);
+
+        assert_eq!(comments.len(), 1);
+        assert_eq!(comments[0].body, "current");
+    }
+
+    #[test]
+    fn test_review_comment_conversion_preserves_fields() {
+        let comment = GitHubReviewComment::from(graphql_review_comment("Please update this."));
+
+        assert_eq!(comment.author.login, "reviewer");
+        assert_eq!(comment.body, "Please update this.");
+        assert_eq!(comment.created_at, "2026-05-11T12:00:00Z");
+        assert_eq!(comment.diff_hunk, "@@ -1 +1 @@");
+        assert_eq!(comment.path, "src/main.rs");
+        assert_eq!(comment.start_line, Some(10));
+        assert_eq!(comment.line, Some(12));
+    }
+
     #[test]
     fn test_slugify_issue_title() {
         assert_eq!(
@@ -3057,6 +3229,30 @@ mod tests {
         );
         assert!(result.starts_with("advisory-jg7v-5cqg-jvmf-"));
         assert!(result.contains("prototype"));
+    }
+
+    #[test]
+    fn test_gh_auth_error_excludes_unknown_github_host() {
+        let stderr = "none of the git remotes configured for this repository point to a known GitHub host.\nTo tell gh about a new GitHub host, please use `gh auth login`";
+
+        assert!(is_unsupported_github_repo_error(stderr));
+        assert!(!is_gh_cli_auth_error(stderr));
+    }
+
+    #[test]
+    fn test_gh_auth_error_excludes_missing_remotes() {
+        let stderr = "no git remotes found";
+
+        assert!(is_unsupported_github_repo_error(stderr));
+        assert!(!is_gh_cli_auth_error(stderr));
+    }
+
+    #[test]
+    fn test_gh_auth_error_detects_real_auth_prompt() {
+        let stderr = "To get started with GitHub CLI, please run: gh auth login";
+
+        assert!(!is_unsupported_github_repo_error(stderr));
+        assert!(is_gh_cli_auth_error(stderr));
     }
 
     #[test]

@@ -93,3 +93,49 @@ describe('resolveTerminalTheme', () => {
     expect(theme.foreground).toBe('#fafafa')
   })
 })
+
+describe('resolveTerminalTheme ANSI palette', () => {
+  it('applies a light ANSI palette for mode=light', () => {
+    const theme = resolveTerminalTheme(
+      { terminal_background: 'light', terminal_background_custom: null },
+      fallback
+    )
+    // "white" slots are dark grays so they stay legible on a light background
+    expect(theme.white).toBe('#595959')
+    expect(theme.brightWhite).toBe('#2a2a2a')
+  })
+
+  it('applies a dark ANSI palette for mode=dark', () => {
+    const theme = resolveTerminalTheme(
+      { terminal_background: 'dark', terminal_background_custom: null },
+      fallback
+    )
+    expect(theme.white).toBe('#d4d4d4')
+    expect(theme.brightWhite).toBe('#fafafa')
+  })
+
+  it('does not override ANSI colors in auto mode', () => {
+    const theme = resolveTerminalTheme(
+      { terminal_background: 'auto', terminal_background_custom: null },
+      fallback
+    )
+    expect(theme.white).toBeUndefined()
+    expect(theme.brightWhite).toBeUndefined()
+  })
+
+  it('picks the light ANSI palette for a light custom hex', () => {
+    const theme = resolveTerminalTheme(
+      { terminal_background: 'custom', terminal_background_custom: '#ffffff' },
+      fallback
+    )
+    expect(theme.brightWhite).toBe('#2a2a2a')
+  })
+
+  it('picks the dark ANSI palette for a dark custom hex', () => {
+    const theme = resolveTerminalTheme(
+      { terminal_background: 'custom', terminal_background_custom: '#000000' },
+      fallback
+    )
+    expect(theme.brightWhite).toBe('#fafafa')
+  })
+})

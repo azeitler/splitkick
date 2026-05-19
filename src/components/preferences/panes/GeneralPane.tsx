@@ -9,9 +9,10 @@ import React, {
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Loader2, ChevronDown, Check, ChevronsUpDown, Play } from 'lucide-react'
+import { Loader2, Check, ChevronsUpDown, Play } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import { Button } from '@/components/ui/button'
 import { BackendLabel } from '@/components/ui/backend-label'
 import { Input } from '@/components/ui/input'
@@ -50,6 +51,15 @@ import {
   useCodexPathDetection,
 } from '@/services/codex-cli'
 import {
+  useCodeRabbitCliStatus,
+  useCodeRabbitCliAuth,
+  useCodeRabbitPathDetection,
+  useAvailableCodeRabbitVersions,
+  useInstallCodeRabbitCli,
+  useUpdateCodeRabbitCli,
+  coderabbitCliQueryKeys,
+} from '@/services/coderabbit-cli'
+import {
   useOpenCodeCliStatus,
   useOpenCodeCliAuth,
   useAvailableOpencodeModels,
@@ -69,6 +79,7 @@ import {
 import type { ClaudeAuthStatus } from '@/types/claude-cli'
 import type { GhAuthStatus } from '@/types/gh-cli'
 import type { CodexAuthStatus } from '@/types/codex-cli'
+import type { CodeRabbitAuthStatus } from '@/types/coderabbit-cli'
 import type { OpenCodeAuthStatus } from '@/types/opencode-cli'
 import type { CursorAuthStatus } from '@/types/cursor-cli'
 import {
@@ -99,7 +110,7 @@ import {
   modelOptions,
   thinkingLevelOptions,
   effortLevelOptions,
-  codexModelOptions,
+  codexDefaultModelOptions,
   codexReasoningOptions,
   backendOptions,
   terminalOptions,
@@ -112,6 +123,7 @@ import {
   type RemovalBehavior,
   type ClaudeModel,
   type CodexModel,
+  type CodexGoalExecutionMode,
   type CodexReasoningEffort,
   type CursorModel,
   type CliBackend,
@@ -120,6 +132,8 @@ import {
   type NotificationSound,
   openInDefaultOptions,
   type OpenInDefault,
+  newSessionKindOptions,
+  type NewSessionKind,
 } from '@/types/preferences'
 import {
   CURSOR_MODEL_OPTIONS,
@@ -131,7 +145,7 @@ import {
 } from '@/components/chat/toolbar/toolbar-utils'
 import { playNotificationSound } from '@/lib/sounds'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
-import { isNativeApp } from '@/lib/environment'
+import { hasBackend, isNativeApp } from '@/lib/environment'
 import { isNewerVersion } from '@/lib/version-utils'
 import { cn } from '@/lib/utils'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -165,18 +179,38 @@ const InlineField: React.FC<{
   </div>
 )
 
-export const GeneralPane: React.FC = () => {
+type PreferencesPaneScope =
+  | 'general'
+  | 'claude'
+  | 'codex'
+  | 'opencode'
+  | 'cursor'
+  | 'github'
+  | 'coderabbit'
+
+export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
+  scope = 'general',
+}) => {
+  const isGeneralScope = scope === 'general'
   const queryClient = useQueryClient()
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
+  const isWebAccessView = !isNativeApp()
+  const webAccessSoundsEnabled = preferences?.web_access_sounds_enabled ?? true
+  const soundsEnabledInCurrentView = !isWebAccessView || webAccessSoundsEnabled
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [deleteCliTarget, setDeleteCliTarget] = useState<
+    'claude' | 'codex' | 'opencode' | 'gh' | 'coderabbit' | null
+  >(null)
+  const [isDeletingCli, setIsDeletingCli] = useState(false)
 
   // PATH detection
   const { data: pathDetection } = useClaudePathDetection()
   const { data: codexPathDetection } = useCodexPathDetection()
   const { data: opencodePathDetection } = useOpenCodePathDetection()
   const { data: ghPathDetection } = useGhPathDetection()
+  const { data: coderabbitPathDetection } = useCodeRabbitPathDetection()
   const { data: cursorPathDetection } = useCursorPathDetection()
 
   // CLI status hooks
@@ -211,6 +245,20 @@ export const GeneralPane: React.FC = () => {
     !!codexStatus?.version &&
     !!codexLatestStable &&
     isNewerVersion(codexLatestStable.version, codexStatus.version)
+  const { data: coderabbitStatus, isLoading: isCodeRabbitLoading } =
+    useCodeRabbitCliStatus()
+  const isCodeRabbitPathSource = preferences?.coderabbit_cli_source === 'path'
+  const { data: coderabbitVersions, isLoading: isCodeRabbitVersionsLoading } =
+    useAvailableCodeRabbitVersions({
+      enabled: !!coderabbitStatus?.installed,
+    })
+  const coderabbitLatestStable = coderabbitVersions?.find(v => !v.prerelease)
+  const coderabbitHasUpdate =
+    !!coderabbitStatus?.version &&
+    !!coderabbitLatestStable &&
+    isNewerVersion(coderabbitLatestStable.version, coderabbitStatus.version)
+  const installCodeRabbitCli = useInstallCodeRabbitCli()
+  const updateCodeRabbitCli = useUpdateCodeRabbitCli()
   const { data: opencodeStatus, isLoading: isOpenCodeLoading } =
     useOpenCodeCliStatus()
   const isOpencodePathSource = preferences?.opencode_cli_source === 'path'
@@ -236,6 +284,10 @@ export const GeneralPane: React.FC = () => {
   const { data: codexAuth, isLoading: isCodexAuthLoading } = useCodexCliAuth({
     enabled: !!codexStatus?.installed,
   })
+  const { data: coderabbitAuth, isLoading: isCodeRabbitAuthLoading } =
+    useCodeRabbitCliAuth({
+      enabled: !!coderabbitStatus?.installed,
+    })
   const { data: opencodeAuth, isLoading: isOpenCodeAuthLoading } =
     useOpenCodeCliAuth({
       enabled: !!opencodeStatus?.installed,
@@ -259,6 +311,7 @@ export const GeneralPane: React.FC = () => {
     gh: preferences?.gh_cli_source,
     codex: preferences?.codex_cli_source,
     opencode: preferences?.opencode_cli_source,
+    coderabbit: preferences?.coderabbit_cli_source,
   })
   useEffect(() => {
     const cur = {
@@ -266,6 +319,7 @@ export const GeneralPane: React.FC = () => {
       gh: preferences?.gh_cli_source,
       codex: preferences?.codex_cli_source,
       opencode: preferences?.opencode_cli_source,
+      coderabbit: preferences?.coderabbit_cli_source,
     }
     if (cur.claude !== prevSources.current.claude) {
       queryClient.invalidateQueries({ queryKey: claudeCliQueryKeys.status() })
@@ -279,12 +333,18 @@ export const GeneralPane: React.FC = () => {
     if (cur.opencode !== prevSources.current.opencode) {
       queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.status() })
     }
+    if (cur.coderabbit !== prevSources.current.coderabbit) {
+      queryClient.invalidateQueries({
+        queryKey: coderabbitCliQueryKeys.status(),
+      })
+    }
     prevSources.current = cur
   }, [
     preferences?.claude_cli_source,
     preferences?.gh_cli_source,
     preferences?.codex_cli_source,
     preferences?.opencode_cli_source,
+    preferences?.coderabbit_cli_source,
     queryClient,
   ])
 
@@ -304,6 +364,7 @@ export const GeneralPane: React.FC = () => {
   const [checkingClaudeAuth, setCheckingClaudeAuth] = useState(false)
   const [checkingGhAuth, setCheckingGhAuth] = useState(false)
   const [checkingCodexAuth, setCheckingCodexAuth] = useState(false)
+  const [checkingCodeRabbitAuth, setCheckingCodeRabbitAuth] = useState(false)
   const [checkingOpenCodeAuth, setCheckingOpenCodeAuth] = useState(false)
   const [checkingCursorAuth, setCheckingCursorAuth] = useState(false)
   const [openCodeModelPopoverOpen, setOpenCodeModelPopoverOpen] =
@@ -468,6 +529,21 @@ export const GeneralPane: React.FC = () => {
     }
   }
 
+  const handleCodeRabbitSourceChange = (value: 'jean' | 'path') => {
+    if (preferences) {
+      patchPreferences.mutate(
+        { coderabbit_cli_source: value },
+        {
+          onSuccess: () => {
+            queryClient.invalidateQueries({
+              queryKey: coderabbitCliQueryKeys.all,
+            })
+          },
+        }
+      )
+    }
+  }
+
   const handleOpencodeSourceChange = (value: 'jean' | 'path') => {
     if (preferences) {
       patchPreferences.mutate(
@@ -480,6 +556,85 @@ export const GeneralPane: React.FC = () => {
           },
         }
       )
+    }
+  }
+
+  const handleConfirmDeleteCli = async () => {
+    if (!deleteCliTarget) return
+    const target = deleteCliTarget
+    const labelMap = {
+      claude: { name: 'Claude CLI', cmd: 'uninstall_claude_cli' as const },
+      codex: { name: 'Codex CLI', cmd: 'uninstall_codex_cli' as const },
+      opencode: {
+        name: 'OpenCode CLI',
+        cmd: 'uninstall_opencode_cli' as const,
+      },
+      gh: { name: 'GitHub CLI', cmd: 'uninstall_gh_cli' as const },
+      coderabbit: {
+        name: 'CodeRabbit CLI',
+        cmd: 'uninstall_coderabbit_cli' as const,
+      },
+    }
+    const { name, cmd } = labelMap[target]
+    setIsDeletingCli(true)
+    const toastId = toast.loading(`Removing Jean-managed ${name}...`)
+    try {
+      await invoke(cmd)
+      const sourceKey =
+        target === 'claude'
+          ? 'claude_cli_source'
+          : target === 'codex'
+            ? 'codex_cli_source'
+            : target === 'opencode'
+              ? 'opencode_cli_source'
+              : target === 'gh'
+                ? 'gh_cli_source'
+                : 'coderabbit_cli_source'
+      await new Promise<void>((resolve, reject) => {
+        patchPreferences.mutate(
+          { [sourceKey]: 'path' } as Partial<AppPreferences>,
+          {
+            onSuccess: () => resolve(),
+            onError: err => reject(err),
+          }
+        )
+      })
+      const queryKeys =
+        target === 'claude'
+          ? claudeCliQueryKeys.all
+          : target === 'codex'
+            ? codexCliQueryKeys.all
+            : target === 'opencode'
+              ? opencodeCliQueryKeys.all
+              : target === 'gh'
+                ? ghCliQueryKeys.all
+                : coderabbitCliQueryKeys.all
+      queryClient.invalidateQueries({ queryKey: queryKeys })
+      const pathFound =
+        target === 'claude'
+          ? pathDetection?.found
+          : target === 'codex'
+            ? codexPathDetection?.found
+            : target === 'opencode'
+              ? opencodePathDetection?.found
+              : target === 'gh'
+                ? ghPathDetection?.found
+                : coderabbitPathDetection?.found
+      if (pathFound) {
+        toast.success(`Jean-managed ${name} removed. Using system PATH.`, {
+          id: toastId,
+        })
+      } else {
+        toast.warning(
+          `Jean-managed ${name} removed. No system PATH version found — ${name} unavailable until reinstalled.`,
+          { id: toastId }
+        )
+      }
+    } catch (err) {
+      toast.error(`Failed to remove ${name}: ${err}`, { id: toastId })
+    } finally {
+      setIsDeletingCli(false)
+      setDeleteCliTarget(null)
     }
   }
 
@@ -508,6 +663,25 @@ export const GeneralPane: React.FC = () => {
   const codexInstalled = codexStatus?.installed
   const opencodeInstalled = opencodeStatus?.installed
   const cursorInstalled = cursorStatus?.installed
+  const installedBackendOptions = useMemo(
+    () =>
+      backendOptions.filter(option =>
+        option.value === 'claude'
+          ? cliStatus?.installed
+          : option.value === 'codex'
+            ? codexStatus?.installed
+            : option.value === 'opencode'
+              ? opencodeStatus?.installed
+              : cursorStatus?.installed
+      ),
+    [
+      cliStatus?.installed,
+      codexStatus?.installed,
+      opencodeStatus?.installed,
+      cursorStatus?.installed,
+    ]
+  )
+
   const effectiveBackend = useMemo(() => {
     const installed: Record<string, boolean | undefined> = {
       claude: claudeInstalled,
@@ -516,7 +690,7 @@ export const GeneralPane: React.FC = () => {
       cursor: cursorInstalled,
     }
     if (installed[stored]) return stored
-    const first = backendOptions.find(o => installed[o.value])
+    const first = installedBackendOptions[0]
     return first?.value ?? stored
   }, [
     stored,
@@ -524,6 +698,7 @@ export const GeneralPane: React.FC = () => {
     codexInstalled,
     opencodeInstalled,
     cursorInstalled,
+    installedBackendOptions,
   ])
 
   const handleCodexModelChange = (value: CodexModel) => {
@@ -536,6 +711,16 @@ export const GeneralPane: React.FC = () => {
     if (preferences) {
       patchPreferences.mutate({
         default_codex_reasoning_effort: value,
+      })
+    }
+  }
+
+  const handleCodexGoalExecutionModeChange = (
+    value: CodexGoalExecutionMode
+  ) => {
+    if (preferences) {
+      patchPreferences.mutate({
+        codex_goal_execution_mode: value,
       })
     }
   }
@@ -588,6 +773,10 @@ export const GeneralPane: React.FC = () => {
     cursorModelOptions.find(option => option.value === selectedCursorModel)
       ?.label ?? formatCursorModelLabel(selectedCursorModel)
   const buildBackendOptions = backendOptions
+  const effectiveBuildBackend = (preferences?.build_backend ??
+    effectiveBackend) as CliBackend
+  const effectiveYoloBackend = (preferences?.yolo_backend ??
+    effectiveBackend) as CliBackend
   const cursorAuthMessage = cursorAuth?.timed_out
     ? 'Auth check timed out. Try again or run login manually.'
     : cursorAuth?.error
@@ -624,6 +813,12 @@ export const GeneralPane: React.FC = () => {
   const handleOpenInChange = (value: OpenInDefault) => {
     if (preferences) {
       patchPreferences.mutate({ open_in: value })
+    }
+  }
+
+  const handleNewSessionKindChange = (value: NewSessionKind) => {
+    if (preferences) {
+      patchPreferences.mutate({ default_new_session_kind: value })
     }
   }
 
@@ -668,7 +863,9 @@ export const GeneralPane: React.FC = () => {
     if (preferences) {
       patchPreferences.mutate({ waiting_sound: value })
       // Play preview of the selected sound
-      playNotificationSound(value)
+      playNotificationSound(value, {
+        webAccessSoundsEnabled,
+      })
     }
   }
 
@@ -676,7 +873,17 @@ export const GeneralPane: React.FC = () => {
     if (preferences) {
       patchPreferences.mutate({ review_sound: value })
       // Play preview of the selected sound
-      playNotificationSound(value)
+      playNotificationSound(value, {
+        webAccessSoundsEnabled,
+      })
+    }
+  }
+
+  const handleWebAccessSoundsEnabledChange = (checked: boolean | string) => {
+    if (preferences) {
+      patchPreferences.mutate({
+        web_access_sounds_enabled: checked === true,
+      })
     }
   }
 
@@ -760,6 +967,29 @@ export const GeneralPane: React.FC = () => {
     openCliLoginModal('codex', codexStatus.path, ['login'])
   }, [codexStatus?.path, openCliLoginModal, queryClient])
 
+  const handleCodeRabbitLogin = useCallback(async () => {
+    if (!coderabbitStatus?.path) return
+
+    setCheckingCodeRabbitAuth(true)
+    try {
+      await queryClient.invalidateQueries({
+        queryKey: coderabbitCliQueryKeys.auth(),
+      })
+      const result = await queryClient.fetchQuery<CodeRabbitAuthStatus>({
+        queryKey: coderabbitCliQueryKeys.auth(),
+      })
+
+      if (result?.authenticated) {
+        toast.success('CodeRabbit CLI is already authenticated')
+        return
+      }
+    } finally {
+      setCheckingCodeRabbitAuth(false)
+    }
+
+    openCliLoginModal('coderabbit', coderabbitStatus.path, ['auth', 'login'])
+  }, [coderabbitStatus?.path, openCliLoginModal, queryClient])
+
   const handleOpenCodeLogin = useCallback(async () => {
     if (!opencodeStatus?.path) return
 
@@ -803,6 +1033,11 @@ export const GeneralPane: React.FC = () => {
     if (!opencodeStatus?.path) return
     openCliLoginModal('opencode', opencodeStatus.path, ['auth', 'login'])
   }, [opencodeStatus?.path, openCliLoginModal])
+
+  const handleCodeRabbitRelogin = useCallback(() => {
+    if (!coderabbitStatus?.path) return
+    openCliLoginModal('coderabbit', coderabbitStatus.path, ['auth', 'login'])
+  }, [coderabbitStatus?.path, openCliLoginModal])
 
   const handleCursorLogin = useCallback(async () => {
     if (!cursorStatus?.path) return
@@ -861,10 +1096,10 @@ export const GeneralPane: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {isNativeApp() && (
+      {hasBackend() && scope === 'claude' && (
         <SettingsSection
           title="Claude CLI"
-          anchorId="pref-general-section-claude-cli"
+          anchorId="pref-claude-section-cli"
           actions={
             cliStatus?.installed ? (
               checkingClaudeAuth || isClaudeAuthLoading ? (
@@ -951,7 +1186,6 @@ export const GeneralPane: React.FC = () => {
                     onClick={() => openCliUpdateModal('claude')}
                   >
                     {cliStatus.version ?? 'Installed'}
-                    <ChevronDown className="size-3" />
                   </Button>
                 )
               ) : (
@@ -988,31 +1222,47 @@ export const GeneralPane: React.FC = () => {
                   </Tooltip>
                 }
               >
-                <Select
-                  value={preferences?.claude_cli_source ?? 'jean'}
-                  onValueChange={handleClaudeSourceChange}
-                >
-                  <SelectTrigger className="w-96">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="jean">Jean (managed)</SelectItem>
-                    <SelectItem value="path" disabled={!pathDetection?.found}>
-                      System PATH
-                      {!pathDetection?.found && ' (not found)'}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={preferences?.claude_cli_source ?? 'jean'}
+                    onValueChange={handleClaudeSourceChange}
+                  >
+                    <SelectTrigger
+                      className="w-96"
+                      hideIcon={!pathDetection?.found}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="jean">Jean (managed)</SelectItem>
+                      <SelectItem value="path" disabled={!pathDetection?.found}>
+                        System PATH
+                        {!pathDetection?.found && ' (not found)'}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {preferences?.claude_cli_source === 'jean' &&
+                    cliStatus?.installed && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteCliTarget('claude')}
+                      >
+                        Delete managed install
+                      </Button>
+                    )}
+                </div>
               </InlineField>
             )}
           </div>
         </SettingsSection>
       )}
 
-      {isNativeApp() && (
+      {hasBackend() && scope === 'github' && (
         <SettingsSection
           title="GitHub CLI"
-          anchorId="pref-general-section-github-cli"
+          anchorId="pref-github-section-cli"
           actions={
             ghStatus?.installed ? (
               checkingGhAuth || isGhAuthLoading ? (
@@ -1095,7 +1345,6 @@ export const GeneralPane: React.FC = () => {
                     onClick={() => openCliUpdateModal('gh')}
                   >
                     {ghStatus.version ?? 'Installed'}
-                    <ChevronDown className="size-3" />
                   </Button>
                 )
               ) : (
@@ -1132,38 +1381,218 @@ export const GeneralPane: React.FC = () => {
                   </Tooltip>
                 }
               >
-                <Select
-                  value={preferences?.gh_cli_source ?? 'jean'}
-                  onValueChange={handleGhSourceChange}
-                >
-                  <SelectTrigger className="w-96">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="jean">Jean (managed)</SelectItem>
-                    <SelectItem value="path" disabled={!ghPathDetection?.found}>
-                      System PATH
-                      {!ghPathDetection?.found && ' (not found)'}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={preferences?.gh_cli_source ?? 'jean'}
+                    onValueChange={handleGhSourceChange}
+                  >
+                    <SelectTrigger
+                      className="w-96"
+                      hideIcon={!ghPathDetection?.found}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="jean">Jean (managed)</SelectItem>
+                      <SelectItem
+                        value="path"
+                        disabled={!ghPathDetection?.found}
+                      >
+                        System PATH
+                        {!ghPathDetection?.found && ' (not found)'}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {preferences?.gh_cli_source === 'jean' &&
+                    ghStatus?.installed && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteCliTarget('gh')}
+                      >
+                        Delete managed install
+                      </Button>
+                    )}
+                </div>
               </InlineField>
             )}
           </div>
         </SettingsSection>
       )}
 
-      {isNativeApp() && (
+      {hasBackend() && scope === 'coderabbit' && (
         <SettingsSection
-          title={
-            <>
-              Codex CLI{' '}
-              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                BETA
+          title="CodeRabbit CLI"
+          anchorId="pref-coderabbit-section-cli"
+          actions={
+            coderabbitStatus?.installed ? (
+              checkingCodeRabbitAuth || isCodeRabbitAuthLoading ? (
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="size-3 animate-spin" />
+                  Checking...
+                </span>
+              ) : coderabbitAuth?.authenticated ? (
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  Logged in
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleCodeRabbitRelogin}
+                  >
+                    Relogin
+                  </Button>
+                </span>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleCodeRabbitLogin}
+                >
+                  Login
+                </Button>
+              )
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Not installed
               </span>
-            </>
+            )
           }
-          anchorId="pref-general-section-codex-cli"
+        >
+          <div className="space-y-4">
+            <InlineField
+              label={coderabbitStatus?.installed ? 'Version' : 'Status'}
+              description={
+                coderabbitStatus?.installed
+                  ? 'Enables secondary CodeRabbit code reviews'
+                  : 'Optional — enables secondary CodeRabbit code reviews'
+              }
+            >
+              {isCodeRabbitLoading || installCodeRabbitCli.isPending ? (
+                <Loader2 className="size-4 animate-spin text-muted-foreground" />
+              ) : coderabbitStatus?.installed ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm">
+                    {coderabbitStatus.version ?? 'Installed'}
+                  </span>
+                  {isCodeRabbitVersionsLoading ? (
+                    <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={
+                        updateCodeRabbitCli.isPending || !coderabbitHasUpdate
+                      }
+                      onClick={() => {
+                        if (!coderabbitHasUpdate) return
+                        if (isCodeRabbitPathSource) {
+                          const action = getPathUpdateAction(
+                            coderabbitStatus.path,
+                            coderabbitPathDetection?.package_manager,
+                            'coderabbit',
+                            ['update'],
+                            undefined,
+                            coderabbitLatestStable?.version
+                          )
+                          if (action) {
+                            openCliLoginModal(
+                              'coderabbit',
+                              action[0],
+                              action[1],
+                              'update'
+                            )
+                            return
+                          }
+                        }
+                        updateCodeRabbitCli.mutate()
+                      }}
+                    >
+                      {updateCodeRabbitCli.isPending
+                        ? 'Updating...'
+                        : coderabbitHasUpdate
+                          ? `Update to ${coderabbitLatestStable?.version}`
+                          : 'Up to date'}
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <Button
+                  className="w-full sm:w-40"
+                  disabled={installCodeRabbitCli.isPending}
+                  onClick={() => installCodeRabbitCli.mutate(undefined)}
+                >
+                  {installCodeRabbitCli.isPending ? 'Installing...' : 'Install'}
+                </Button>
+              )}
+            </InlineField>
+            {(coderabbitStatus?.installed ||
+              coderabbitPathDetection?.found) && (
+              <InlineField
+                label="Source"
+                description={
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() =>
+                          handleCopyPath(
+                            preferences?.coderabbit_cli_source === 'path'
+                              ? coderabbitPathDetection?.path
+                              : coderabbitStatus?.path
+                          )
+                        }
+                        className="text-left hover:underline cursor-pointer"
+                      >
+                        {preferences?.coderabbit_cli_source === 'path'
+                          ? (coderabbitPathDetection?.path ?? 'System PATH')
+                          : (coderabbitStatus?.path ?? 'Not installed')}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Click to copy path</TooltipContent>
+                  </Tooltip>
+                }
+              >
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={preferences?.coderabbit_cli_source ?? 'jean'}
+                    onValueChange={handleCodeRabbitSourceChange}
+                  >
+                    <SelectTrigger className="w-96">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="jean">Jean (managed)</SelectItem>
+                      <SelectItem
+                        value="path"
+                        disabled={!coderabbitPathDetection?.found}
+                      >
+                        System PATH
+                        {!coderabbitPathDetection?.found && ' (not found)'}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {preferences?.coderabbit_cli_source === 'jean' &&
+                    coderabbitStatus?.installed && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteCliTarget('coderabbit')}
+                      >
+                        Delete managed install
+                      </Button>
+                    )}
+                </div>
+              </InlineField>
+            )}
+          </div>
+        </SettingsSection>
+      )}
+
+      {hasBackend() && scope === 'codex' && (
+        <SettingsSection
+          title="Codex CLI"
+          anchorId="pref-codex-section-cli"
           actions={
             codexStatus?.installed ? (
               checkingCodexAuth || isCodexAuthLoading ? (
@@ -1252,7 +1681,6 @@ export const GeneralPane: React.FC = () => {
                     onClick={() => openCliUpdateModal('codex')}
                   >
                     {codexStatus.version ?? 'Installed'}
-                    <ChevronDown className="size-3" />
                   </Button>
                 )
               ) : (
@@ -1289,41 +1717,50 @@ export const GeneralPane: React.FC = () => {
                   </Tooltip>
                 }
               >
-                <Select
-                  value={preferences?.codex_cli_source ?? 'jean'}
-                  onValueChange={handleCodexSourceChange}
-                >
-                  <SelectTrigger className="w-96">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="jean">Jean (managed)</SelectItem>
-                    <SelectItem
-                      value="path"
-                      disabled={!codexPathDetection?.found}
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={preferences?.codex_cli_source ?? 'jean'}
+                    onValueChange={handleCodexSourceChange}
+                  >
+                    <SelectTrigger
+                      className="w-96"
+                      hideIcon={!codexPathDetection?.found}
                     >
-                      System PATH
-                      {!codexPathDetection?.found && ' (not found)'}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="jean">Jean (managed)</SelectItem>
+                      <SelectItem
+                        value="path"
+                        disabled={!codexPathDetection?.found}
+                      >
+                        System PATH
+                        {!codexPathDetection?.found && ' (not found)'}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {preferences?.codex_cli_source === 'jean' &&
+                    codexStatus?.installed && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteCliTarget('codex')}
+                      >
+                        Delete managed install
+                      </Button>
+                    )}
+                </div>
               </InlineField>
             )}
           </div>
         </SettingsSection>
       )}
 
-      {isNativeApp() && (
+      {hasBackend() && scope === 'opencode' && (
         <SettingsSection
-          title={
-            <>
-              OpenCode CLI{' '}
-              <span className="ml-1 rounded bg-primary/15 px-1 py-px text-[9px] font-semibold uppercase text-primary">
-                BETA
-              </span>
-            </>
-          }
-          anchorId="pref-general-section-opencode-cli"
+          title="OpenCode CLI"
+          anchorId="pref-opencode-section-cli"
           actions={
             opencodeStatus?.installed ? (
               checkingOpenCodeAuth || isOpenCodeAuthLoading ? (
@@ -1414,7 +1851,6 @@ export const GeneralPane: React.FC = () => {
                     onClick={() => openCliUpdateModal('opencode')}
                   >
                     {opencodeStatus.version ?? 'Installed'}
-                    <ChevronDown className="size-3" />
                   </Button>
                 )
               ) : (
@@ -1451,31 +1887,47 @@ export const GeneralPane: React.FC = () => {
                   </Tooltip>
                 }
               >
-                <Select
-                  value={preferences?.opencode_cli_source ?? 'jean'}
-                  onValueChange={handleOpencodeSourceChange}
-                >
-                  <SelectTrigger className="w-96">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="jean">Jean (managed)</SelectItem>
-                    <SelectItem
-                      value="path"
-                      disabled={!opencodePathDetection?.found}
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={preferences?.opencode_cli_source ?? 'jean'}
+                    onValueChange={handleOpencodeSourceChange}
+                  >
+                    <SelectTrigger
+                      className="w-96"
+                      hideIcon={!opencodePathDetection?.found}
                     >
-                      System PATH
-                      {!opencodePathDetection?.found && ' (not found)'}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="jean">Jean (managed)</SelectItem>
+                      <SelectItem
+                        value="path"
+                        disabled={!opencodePathDetection?.found}
+                      >
+                        System PATH
+                        {!opencodePathDetection?.found && ' (not found)'}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {preferences?.opencode_cli_source === 'jean' &&
+                    opencodeStatus?.installed && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive hover:text-destructive"
+                        onClick={() => setDeleteCliTarget('opencode')}
+                      >
+                        Delete managed install
+                      </Button>
+                    )}
+                </div>
               </InlineField>
             )}
           </div>
         </SettingsSection>
       )}
 
-      {isNativeApp() && (
+      {hasBackend() && scope === 'cursor' && (
         <SettingsSection
           title={
             <span className="inline-flex items-center gap-2">
@@ -1483,7 +1935,7 @@ export const GeneralPane: React.FC = () => {
               <span>CLI</span>
             </span>
           }
-          anchorId="pref-general-section-cursor-cli"
+          anchorId="pref-cursor-section-cli"
           actions={
             cursorStatus?.installed ? (
               checkingCursorAuth || isCursorAuthLoading ? (
@@ -1592,1274 +2044,1428 @@ export const GeneralPane: React.FC = () => {
         </SettingsSection>
       )}
 
-      <SettingsSection
-        title="Defaults"
-        anchorId="pref-general-section-defaults"
-      >
-        <div className="space-y-4">
-          <InlineField
-            label="Default backend"
-            description="CLI to use for new sessions"
-          >
-            <Select
-              value={effectiveBackend}
-              onValueChange={handleBackendChange}
+      {scope === 'claude' && (
+        <SettingsSection
+          title="Claude Settings"
+          anchorId="pref-claude-section-settings"
+        >
+          <div className="space-y-4">
+            <InlineField
+              label="Model"
+              description="Claude model for AI assistance"
             >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {backendOptions
-                  .filter(option =>
-                    option.value === 'claude'
-                      ? cliStatus?.installed
-                      : option.value === 'codex'
-                        ? codexStatus?.installed
-                        : option.value === 'opencode'
-                          ? opencodeStatus?.installed
-                          : cursorStatus?.installed
-                  )
-                  .map(option => (
+              <Select
+                value={preferences?.selected_model ?? 'claude-opus-4-7[1m]'}
+                onValueChange={handleModelChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {modelOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+
+            <InlineField
+              label="Thinking"
+              description="Claude Sonnet/traditional thinking level"
+            >
+              <Select
+                value={preferences?.thinking_level ?? 'off'}
+                onValueChange={handleThinkingLevelChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {thinkingLevelOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+
+            <InlineField
+              label="Effort"
+              description="Claude Opus adaptive effort (requires CLI 2.1.32+)"
+            >
+              <Select
+                value={preferences?.default_effort_level ?? 'high'}
+                onValueChange={handleEffortLevelChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {effortLevelOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+
+            <InlineField
+              label="Chrome browser integration"
+              description="Enable browser automation via Chrome extension"
+            >
+              <Switch
+                checked={preferences?.chrome_enabled ?? true}
+                onCheckedChange={checked => {
+                  if (preferences) {
+                    patchPreferences.mutate({
+                      chrome_enabled: checked,
+                    })
+                  }
+                }}
+              />
+            </InlineField>
+          </div>
+        </SettingsSection>
+      )}
+
+      {scope === 'codex' && (
+        <SettingsSection
+          title="Codex Settings"
+          anchorId="pref-codex-section-settings"
+        >
+          <div className="space-y-4">
+            <InlineField
+              label="Model"
+              description="Codex model for AI assistance"
+            >
+              <Select
+                value={preferences?.selected_codex_model ?? 'gpt-5.5'}
+                onValueChange={handleCodexModelChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {codexDefaultModelOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+
+            <InlineField
+              label="Reasoning effort"
+              description="Codex reasoning effort"
+            >
+              <Select
+                value={preferences?.default_codex_reasoning_effort ?? 'high'}
+                onValueChange={handleCodexReasoningChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {codexReasoningOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+
+            <InlineField
+              label="Goal execution mode"
+              description="Mode used when starting a Codex /goal"
+            >
+              <Select
+                value={preferences?.codex_goal_execution_mode ?? 'build'}
+                onValueChange={handleCodexGoalExecutionModeChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="build">Build</SelectItem>
+                  <SelectItem value="yolo">Yolo</SelectItem>
+                </SelectContent>
+              </Select>
+            </InlineField>
+
+            <InlineField
+              label="Multi-Agent"
+              description="Allow Codex to spawn parallel subagents (experimental)"
+            >
+              <Switch
+                checked={preferences?.codex_multi_agent_enabled ?? false}
+                onCheckedChange={handleCodexMultiAgentToggle}
+              />
+            </InlineField>
+
+            {preferences?.codex_multi_agent_enabled && (
+              <InlineField
+                label="Max agent threads"
+                description="Maximum concurrent subagents (1–8)"
+              >
+                <Input
+                  type="number"
+                  min={1}
+                  max={8}
+                  className="w-20"
+                  value={preferences?.codex_max_agent_threads ?? 3}
+                  onChange={e => handleCodexMaxThreadsChange(e.target.value)}
+                />
+              </InlineField>
+            )}
+          </div>
+        </SettingsSection>
+      )}
+
+      {scope === 'opencode' && (
+        <SettingsSection
+          title="OpenCode Settings"
+          anchorId="pref-opencode-section-settings"
+        >
+          <div className="space-y-4">
+            <InlineField
+              label="Model"
+              description="OpenCode model for AI assistance"
+            >
+              <Popover
+                open={openCodeModelPopoverOpen}
+                onOpenChange={setOpenCodeModelPopoverOpen}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={openCodeModelPopoverOpen}
+                    aria-label="Select OpenCode model"
+                    className="w-80 max-w-full justify-between"
+                  >
+                    <span className="max-w-[16rem] truncate text-left">
+                      {selectedOpenCodeModelLabel}
+                    </span>
+                    {openCodeModelOptions.length > 1 && (
+                      <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  className="w-[var(--radix-popover-trigger-width)] p-0"
+                >
+                  <Command>
+                    <CommandInput placeholder="Search models..." />
+                    <CommandList onWheel={e => e.stopPropagation()}>
+                      <CommandEmpty>No models found.</CommandEmpty>
+                      <CommandGroup>
+                        {openCodeModelOptions.map(option => (
+                          <CommandItem
+                            key={option.value}
+                            value={`${option.label} ${option.value}`}
+                            onSelect={() => {
+                              handleOpenCodeModelChange(option.value)
+                              setOpenCodeModelPopoverOpen(false)
+                            }}
+                          >
+                            <span className="max-w-[18rem] truncate">
+                              {option.label}
+                            </span>
+                            <Check
+                              className={cn(
+                                'ml-auto h-4 w-4',
+                                selectedOpenCodeModel === option.value
+                                  ? 'opacity-100'
+                                  : 'opacity-0'
+                              )}
+                            />
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </InlineField>
+          </div>
+        </SettingsSection>
+      )}
+
+      {scope === 'cursor' && (
+        <SettingsSection
+          title={
+            <span className="inline-flex items-center gap-2">
+              <BackendLabel backend="cursor" />
+              <span>Settings</span>
+            </span>
+          }
+          anchorId="pref-cursor-section-settings"
+        >
+          <div className="space-y-4">
+            <InlineField
+              label="Model"
+              description="Cursor model for AI assistance"
+            >
+              <Popover
+                open={cursorModelPopoverOpen}
+                onOpenChange={setCursorModelPopoverOpen}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={cursorModelPopoverOpen}
+                    aria-label="Select Cursor model"
+                    className="w-80 max-w-full justify-between"
+                  >
+                    <span className="max-w-[16rem] truncate text-left">
+                      {selectedCursorModelLabel}
+                    </span>
+                    {cursorModelOptions.length > 1 && (
+                      <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                    )}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  className="w-[var(--radix-popover-trigger-width)] p-0"
+                >
+                  <Command>
+                    <CommandInput placeholder="Search models..." />
+                    <CommandList onWheel={e => e.stopPropagation()}>
+                      <CommandEmpty>No models found.</CommandEmpty>
+                      <CommandGroup>
+                        {cursorModelOptions.map(option => (
+                          <CommandItem
+                            key={option.value}
+                            value={`${option.label} ${option.value}`}
+                            onSelect={() => {
+                              handleCursorModelChange(option.value)
+                              setCursorModelPopoverOpen(false)
+                            }}
+                          >
+                            <span className="max-w-[18rem] truncate">
+                              {option.label}
+                            </span>
+                            <Check
+                              className={cn(
+                                'ml-auto h-4 w-4',
+                                selectedCursorModel === option.value
+                                  ? 'opacity-100'
+                                  : 'opacity-0'
+                              )}
+                            />
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            </InlineField>
+          </div>
+        </SettingsSection>
+      )}
+
+      {isGeneralScope && (
+        <SettingsSection
+          title="Defaults"
+          anchorId="pref-general-section-defaults"
+        >
+          <div className="space-y-4">
+            <InlineField
+              label="Default backend"
+              description="CLI to use for new sessions"
+            >
+              <Select
+                value={effectiveBackend}
+                onValueChange={handleBackendChange}
+              >
+                <SelectTrigger
+                  className="w-full sm:min-w-96"
+                  hideIcon={installedBackendOptions.length <= 1}
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {installedBackendOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>
                       <BackendLabel backend={option.value} />
                     </SelectItem>
                   ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Default mode"
-            description="Permission mode for new sessions"
-          >
-            <Select
-              value={preferences?.default_execution_mode ?? 'plan'}
-              onValueChange={(value: 'plan' | 'build' | 'yolo') => {
-                patchPreferences.mutate({ default_execution_mode: value })
-              }}
-            >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="plan">Plan</SelectItem>
-                <SelectItem value="build">Build</SelectItem>
-                <SelectItem value="yolo">Yolo</SelectItem>
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Build execution"
-            description="Backend, model, thinking, and effort override when approving plans"
-          >
-            <div className="grid grid-cols-4 gap-2">
-              <div>
-                <Select
-                  value={preferences?.build_backend ?? 'default'}
-                  onValueChange={handleBuildBackendChange}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default</SelectItem>
-                    {buildBackendOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <BackendLabel backend={option.value} />
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                {preferences?.build_backend === 'opencode' ? (
-                  <Popover
-                    open={buildModelPopoverOpen}
-                    onOpenChange={setBuildModelPopoverOpen}
-                  >
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={buildModelPopoverOpen}
-                        className="w-full justify-between"
-                      >
-                        <span className="truncate text-left">
-                          {preferences?.build_model
-                            ? (openCodeModelOptions.find(
-                                o => o.value === preferences.build_model
-                              )?.label ??
-                              formatOpenCodeModelLabelForSettings(
-                                preferences.build_model
-                              ))
-                            : 'Default model'}
-                        </span>
-                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-80 p-0">
-                      <Command>
-                        <CommandInput placeholder="Search models..." />
-                        <CommandList onWheel={e => e.stopPropagation()}>
-                          <CommandEmpty>No models found.</CommandEmpty>
-                          <CommandGroup>
-                            <CommandItem
-                              value="default"
-                              onSelect={() => {
-                                handleBuildModelChange('default')
-                                setBuildModelPopoverOpen(false)
-                              }}
-                            >
-                              Default model
-                              <Check
-                                className={cn(
-                                  'ml-auto h-4 w-4',
-                                  !preferences?.build_model ||
-                                    preferences.build_model === 'default'
-                                    ? 'opacity-100'
-                                    : 'opacity-0'
-                                )}
-                              />
-                            </CommandItem>
-                            {openCodeModelOptions.map(option => (
-                              <CommandItem
-                                key={option.value}
-                                value={`${option.label} ${option.value}`}
-                                onSelect={() => {
-                                  handleBuildModelChange(option.value)
-                                  setBuildModelPopoverOpen(false)
-                                }}
-                              >
-                                <span className="truncate">{option.label}</span>
-                                <Check
-                                  className={cn(
-                                    'ml-auto h-4 w-4',
-                                    preferences?.build_model === option.value
-                                      ? 'opacity-100'
-                                      : 'opacity-0'
-                                  )}
-                                />
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                ) : preferences?.build_backend === 'cursor' ? (
-                  <Popover
-                    open={buildModelPopoverOpen}
-                    onOpenChange={setBuildModelPopoverOpen}
-                  >
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={buildModelPopoverOpen}
-                        className="w-full justify-between"
-                      >
-                        <span className="truncate text-left">
-                          {preferences?.build_model
-                            ? (cursorModelOptions.find(
-                                o => o.value === preferences.build_model
-                              )?.label ??
-                              formatCursorModelLabel(preferences.build_model))
-                            : 'Default model'}
-                        </span>
-                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-80 p-0">
-                      <Command>
-                        <CommandInput placeholder="Search models..." />
-                        <CommandList onWheel={e => e.stopPropagation()}>
-                          <CommandEmpty>No models found.</CommandEmpty>
-                          <CommandGroup>
-                            <CommandItem
-                              value="default"
-                              onSelect={() => {
-                                handleBuildModelChange('default')
-                                setBuildModelPopoverOpen(false)
-                              }}
-                            >
-                              Default model
-                              <Check
-                                className={cn(
-                                  'ml-auto h-4 w-4',
-                                  !preferences?.build_model ||
-                                    preferences.build_model === 'default'
-                                    ? 'opacity-100'
-                                    : 'opacity-0'
-                                )}
-                              />
-                            </CommandItem>
-                            {cursorModelOptions.map(option => (
-                              <CommandItem
-                                key={option.value}
-                                value={`${option.label} ${option.value}`}
-                                onSelect={() => {
-                                  handleBuildModelChange(option.value)
-                                  setBuildModelPopoverOpen(false)
-                                }}
-                              >
-                                <span className="truncate">{option.label}</span>
-                                <Check
-                                  className={cn(
-                                    'ml-auto h-4 w-4',
-                                    preferences?.build_model === option.value
-                                      ? 'opacity-100'
-                                      : 'opacity-0'
-                                  )}
-                                />
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                ) : (
-                  <Select
-                    value={preferences?.build_model ?? 'default'}
-                    onValueChange={handleBuildModelChange}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="default">Default model</SelectItem>
-                      {(preferences?.build_backend === 'codex'
-                        ? codexModelOptions
-                        : modelOptions
-                      ).map(option => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-              <div>
-                <Select
-                  value={preferences?.build_thinking_level ?? 'default'}
-                  onValueChange={handleBuildThinkingLevelChange}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default thinking</SelectItem>
-                    {thinkingLevelOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Select
-                  value={preferences?.build_effort_level ?? 'default'}
-                  onValueChange={handleBuildEffortLevelChange}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default effort</SelectItem>
-                    {effortLevelOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </InlineField>
-
-          <InlineField
-            label="Yolo execution"
-            description="Backend, model, thinking, and effort override when yolo-approving plans"
-          >
-            <div className="grid grid-cols-4 gap-2">
-              <div>
-                <Select
-                  value={preferences?.yolo_backend ?? 'default'}
-                  onValueChange={handleYoloBackendChange}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default</SelectItem>
-                    {backendOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        <BackendLabel backend={option.value} />
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                {preferences?.yolo_backend === 'opencode' ? (
-                  <Popover
-                    open={yoloModelPopoverOpen}
-                    onOpenChange={setYoloModelPopoverOpen}
-                  >
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={yoloModelPopoverOpen}
-                        className="w-full justify-between"
-                      >
-                        <span className="truncate text-left">
-                          {preferences?.yolo_model
-                            ? (openCodeModelOptions.find(
-                                o => o.value === preferences.yolo_model
-                              )?.label ??
-                              formatOpenCodeModelLabelForSettings(
-                                preferences.yolo_model
-                              ))
-                            : 'Default model'}
-                        </span>
-                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-80 p-0">
-                      <Command>
-                        <CommandInput placeholder="Search models..." />
-                        <CommandList onWheel={e => e.stopPropagation()}>
-                          <CommandEmpty>No models found.</CommandEmpty>
-                          <CommandGroup>
-                            <CommandItem
-                              value="default"
-                              onSelect={() => {
-                                handleYoloModelChange('default')
-                                setYoloModelPopoverOpen(false)
-                              }}
-                            >
-                              Default model
-                              <Check
-                                className={cn(
-                                  'ml-auto h-4 w-4',
-                                  !preferences?.yolo_model ||
-                                    preferences.yolo_model === 'default'
-                                    ? 'opacity-100'
-                                    : 'opacity-0'
-                                )}
-                              />
-                            </CommandItem>
-                            {openCodeModelOptions.map(option => (
-                              <CommandItem
-                                key={option.value}
-                                value={`${option.label} ${option.value}`}
-                                onSelect={() => {
-                                  handleYoloModelChange(option.value)
-                                  setYoloModelPopoverOpen(false)
-                                }}
-                              >
-                                <span className="truncate">{option.label}</span>
-                                <Check
-                                  className={cn(
-                                    'ml-auto h-4 w-4',
-                                    preferences?.yolo_model === option.value
-                                      ? 'opacity-100'
-                                      : 'opacity-0'
-                                  )}
-                                />
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                ) : preferences?.yolo_backend === 'cursor' ? (
-                  <Popover
-                    open={yoloModelPopoverOpen}
-                    onOpenChange={setYoloModelPopoverOpen}
-                  >
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        aria-expanded={yoloModelPopoverOpen}
-                        className="w-full justify-between"
-                      >
-                        <span className="truncate text-left">
-                          {preferences?.yolo_model
-                            ? (cursorModelOptions.find(
-                                o => o.value === preferences.yolo_model
-                              )?.label ??
-                              formatCursorModelLabel(preferences.yolo_model))
-                            : 'Default model'}
-                        </span>
-                        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-80 p-0">
-                      <Command>
-                        <CommandInput placeholder="Search models..." />
-                        <CommandList onWheel={e => e.stopPropagation()}>
-                          <CommandEmpty>No models found.</CommandEmpty>
-                          <CommandGroup>
-                            <CommandItem
-                              value="default"
-                              onSelect={() => {
-                                handleYoloModelChange('default')
-                                setYoloModelPopoverOpen(false)
-                              }}
-                            >
-                              Default model
-                              <Check
-                                className={cn(
-                                  'ml-auto h-4 w-4',
-                                  !preferences?.yolo_model ||
-                                    preferences.yolo_model === 'default'
-                                    ? 'opacity-100'
-                                    : 'opacity-0'
-                                )}
-                              />
-                            </CommandItem>
-                            {cursorModelOptions.map(option => (
-                              <CommandItem
-                                key={option.value}
-                                value={`${option.label} ${option.value}`}
-                                onSelect={() => {
-                                  handleYoloModelChange(option.value)
-                                  setYoloModelPopoverOpen(false)
-                                }}
-                              >
-                                <span className="truncate">{option.label}</span>
-                                <Check
-                                  className={cn(
-                                    'ml-auto h-4 w-4',
-                                    preferences?.yolo_model === option.value
-                                      ? 'opacity-100'
-                                      : 'opacity-0'
-                                  )}
-                                />
-                              </CommandItem>
-                            ))}
-                          </CommandGroup>
-                        </CommandList>
-                      </Command>
-                    </PopoverContent>
-                  </Popover>
-                ) : (
-                  <Select
-                    value={preferences?.yolo_model ?? 'default'}
-                    onValueChange={handleYoloModelChange}
-                  >
-                    <SelectTrigger className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="default">Default model</SelectItem>
-                      {(preferences?.yolo_backend === 'codex'
-                        ? codexModelOptions
-                        : modelOptions
-                      ).map(option => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-              <div>
-                <Select
-                  value={preferences?.yolo_thinking_level ?? 'default'}
-                  onValueChange={handleYoloThinkingLevelChange}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default thinking</SelectItem>
-                    {thinkingLevelOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Select
-                  value={preferences?.yolo_effort_level ?? 'default'}
-                  onValueChange={handleYoloEffortLevelChange}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default effort</SelectItem>
-                    {effortLevelOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          </InlineField>
-
-          {/* Claude subsection */}
-          <div className="pt-2">
-            <div className="text-sm font-semibold text-foreground/80 mb-3">
-              Claude
-            </div>
-          </div>
-
-          <InlineField
-            label="Model"
-            description="Claude model for AI assistance"
-          >
-            <Select
-              value={preferences?.selected_model ?? 'claude-opus-4-7'}
-              onValueChange={handleModelChange}
-            >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {modelOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Thinking"
-            description="Extended thinking for complex tasks"
-          >
-            <Select
-              value={preferences?.thinking_level ?? 'off'}
-              onValueChange={handleThinkingLevelChange}
-            >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {thinkingLevelOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Effort level"
-            description="Effort for Opus (requires CLI 2.1.32+)"
-          >
-            <Select
-              value={preferences?.default_effort_level ?? 'high'}
-              onValueChange={handleEffortLevelChange}
-            >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {effortLevelOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Chrome browser integration"
-            description="Enable browser automation via Chrome extension"
-          >
-            <Switch
-              checked={preferences?.chrome_enabled ?? true}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  patchPreferences.mutate({
-                    chrome_enabled: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-
-          {/* Codex subsection */}
-          <div className="pt-2">
-            <div className="text-sm font-semibold text-foreground/80 mb-3">
-              Codex
-            </div>
-          </div>
-
-          <InlineField
-            label="Model"
-            description="Codex model for AI assistance"
-          >
-            <Select
-              value={preferences?.selected_codex_model ?? 'gpt-5.4'}
-              onValueChange={handleCodexModelChange}
-            >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {codexModelOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Reasoning effort"
-            description="Codex reasoning depth"
-          >
-            <Select
-              value={preferences?.default_codex_reasoning_effort ?? 'high'}
-              onValueChange={handleCodexReasoningChange}
-            >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {codexReasoningOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Multi-Agent"
-            description="Allow Codex to spawn parallel subagents (experimental)"
-          >
-            <Switch
-              checked={preferences?.codex_multi_agent_enabled ?? false}
-              onCheckedChange={handleCodexMultiAgentToggle}
-            />
-          </InlineField>
-
-          {preferences?.codex_multi_agent_enabled && (
-            <InlineField
-              label="Max agent threads"
-              description="Maximum concurrent subagents (1–8)"
-            >
-              <Input
-                type="number"
-                min={1}
-                max={8}
-                className="w-20"
-                value={preferences?.codex_max_agent_threads ?? 3}
-                onChange={e => handleCodexMaxThreadsChange(e.target.value)}
-              />
-            </InlineField>
-          )}
-
-          {/* OpenCode subsection */}
-          <div className="pt-2">
-            <div className="text-sm font-semibold text-foreground/80 mb-3">
-              OpenCode
-            </div>
-          </div>
-
-          <InlineField
-            label="Model"
-            description="OpenCode model for AI assistance"
-          >
-            <Popover
-              open={openCodeModelPopoverOpen}
-              onOpenChange={setOpenCodeModelPopoverOpen}
-            >
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={openCodeModelPopoverOpen}
-                  aria-label="Select OpenCode model"
-                  className="w-80 max-w-full justify-between"
-                >
-                  <span className="max-w-[16rem] truncate text-left">
-                    {selectedOpenCodeModelLabel}
-                  </span>
-                  <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                className="w-[var(--radix-popover-trigger-width)] p-0"
-              >
-                <Command>
-                  <CommandInput placeholder="Search models..." />
-                  <CommandList onWheel={e => e.stopPropagation()}>
-                    <CommandEmpty>No models found.</CommandEmpty>
-                    <CommandGroup>
-                      {openCodeModelOptions.map(option => (
-                        <CommandItem
-                          key={option.value}
-                          value={`${option.label} ${option.value}`}
-                          onSelect={() => {
-                            handleOpenCodeModelChange(option.value)
-                            setOpenCodeModelPopoverOpen(false)
-                          }}
-                        >
-                          <span className="max-w-[18rem] truncate">
-                            {option.label}
-                          </span>
-                          <Check
-                            className={cn(
-                              'ml-auto h-4 w-4',
-                              selectedOpenCodeModel === option.value
-                                ? 'opacity-100'
-                                : 'opacity-0'
-                            )}
-                          />
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </InlineField>
-
-          {/* Cursor subsection */}
-          <div className="pt-2">
-            <div className="mb-3 text-sm font-semibold text-foreground/80">
-              <BackendLabel backend="cursor" />
-            </div>
-          </div>
-
-          <InlineField
-            label="Model"
-            description="Cursor model for AI assistance"
-          >
-            <Popover
-              open={cursorModelPopoverOpen}
-              onOpenChange={setCursorModelPopoverOpen}
-            >
-              <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  role="combobox"
-                  aria-expanded={cursorModelPopoverOpen}
-                  aria-label="Select Cursor model"
-                  className="w-80 max-w-full justify-between"
-                >
-                  <span className="max-w-[16rem] truncate text-left">
-                    {selectedCursorModelLabel}
-                  </span>
-                  <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent
-                align="start"
-                className="w-[var(--radix-popover-trigger-width)] p-0"
-              >
-                <Command>
-                  <CommandInput placeholder="Search models..." />
-                  <CommandList onWheel={e => e.stopPropagation()}>
-                    <CommandEmpty>No models found.</CommandEmpty>
-                    <CommandGroup>
-                      {cursorModelOptions.map(option => (
-                        <CommandItem
-                          key={option.value}
-                          value={`${option.label} ${option.value}`}
-                          onSelect={() => {
-                            handleCursorModelChange(option.value)
-                            setCursorModelPopoverOpen(false)
-                          }}
-                        >
-                          <span className="max-w-[18rem] truncate">
-                            {option.label}
-                          </span>
-                          <Check
-                            className={cn(
-                              'ml-auto h-4 w-4',
-                              selectedCursorModel === option.value
-                                ? 'opacity-100'
-                                : 'opacity-0'
-                            )}
-                          />
-                        </CommandItem>
-                      ))}
-                    </CommandGroup>
-                  </CommandList>
-                </Command>
-              </PopoverContent>
-            </Popover>
-          </InlineField>
-
-          {/* Shared settings */}
-          <div className="pt-2">
-            <div className="text-sm font-semibold text-foreground/80 mb-3">
-              General
-            </div>
-          </div>
-
-          <AiLanguageField
-            preferences={preferences}
-            patchPreferences={patchPreferences}
-          />
-
-          <InlineField
-            label="Allow web tools in plan mode"
-            description="WebFetch/WebSearch for Claude, --search for Codex"
-          >
-            <Switch
-              checked={preferences?.allow_web_tools_in_plan_mode ?? true}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  patchPreferences.mutate({
-                    allow_web_tools_in_plan_mode: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-
-          {isNativeApp() && (
-            <InlineField label="Editor" description="App to open worktrees in">
-              <Select
-                value={preferences?.editor ?? 'zed'}
-                onValueChange={handleEditorChange}
-              >
-                <SelectTrigger className="w-full sm:min-w-96">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {editorOptions.map(option => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
                 </SelectContent>
               </Select>
             </InlineField>
-          )}
 
-          {isNativeApp() && (
             <InlineField
-              label="Terminal"
-              description="App to open terminals in"
+              label="Default mode"
+              description="Permission mode for new sessions"
             >
               <Select
-                value={preferences?.terminal ?? 'terminal'}
-                onValueChange={handleTerminalChange}
-              >
-                <SelectTrigger className="w-full sm:min-w-96">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {terminalOptions.map(option => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </InlineField>
-          )}
-
-          {isNativeApp() && (
-            <InlineField
-              label="Open In"
-              description="Default app for Open button"
-            >
-              <Select
-                value={preferences?.open_in ?? 'editor'}
-                onValueChange={handleOpenInChange}
-              >
-                <SelectTrigger className="w-full sm:min-w-96">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {openInDefaultOptions.map(option => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </InlineField>
-          )}
-
-          <InlineField
-            label="Git poll interval"
-            description="Check for branch updates when focused"
-          >
-            <Select
-              value={String(preferences?.git_poll_interval ?? 60)}
-              onValueChange={handleGitPollIntervalChange}
-            >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {gitPollIntervalOptions.map(option => (
-                  <SelectItem key={option.value} value={String(option.value)}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Remote poll interval"
-            description="Check for PR status updates"
-          >
-            <Select
-              value={String(preferences?.remote_poll_interval ?? 60)}
-              onValueChange={handleRemotePollIntervalChange}
-            >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {remotePollIntervalOptions.map(option => (
-                  <SelectItem key={option.value} value={String(option.value)}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
-        title="Notifications"
-        anchorId="pref-general-section-notifications"
-      >
-        <div className="space-y-4">
-          <InlineField
-            label="Waiting sound"
-            description="Play when session needs your input"
-          >
-            <div className="flex items-center gap-2">
-              <Select
-                value={preferences?.waiting_sound ?? 'none'}
-                onValueChange={handleWaitingSoundChange}
-              >
-                <SelectTrigger className="w-full sm:min-w-96">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {notificationSoundOptions.map(option => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="icon"
-                disabled={
-                  !preferences?.waiting_sound ||
-                  preferences.waiting_sound === 'none'
-                }
-                onClick={() =>
-                  playNotificationSound(preferences?.waiting_sound ?? 'none')
-                }
-              >
-                <Play className="h-4 w-4" />
-              </Button>
-            </div>
-          </InlineField>
-
-          <InlineField
-            label="Review sound"
-            description="Play when session finishes"
-          >
-            <div className="flex items-center gap-2">
-              <Select
-                value={preferences?.review_sound ?? 'none'}
-                onValueChange={handleReviewSoundChange}
-              >
-                <SelectTrigger className="w-full sm:min-w-96">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {notificationSoundOptions.map(option => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Button
-                variant="outline"
-                size="icon"
-                disabled={
-                  !preferences?.review_sound ||
-                  preferences.review_sound === 'none'
-                }
-                onClick={() =>
-                  playNotificationSound(preferences?.review_sound ?? 'none')
-                }
-              >
-                <Play className="h-4 w-4" />
-              </Button>
-            </div>
-          </InlineField>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
-        title="Auto-generate"
-        anchorId="pref-general-section-auto-generate"
-      >
-        <div className="space-y-4">
-          <InlineField
-            label="Branch names"
-            description="Generate branch names from your first message"
-          >
-            <Switch
-              checked={preferences?.auto_branch_naming ?? true}
-              onCheckedChange={handleAutoBranchNamingChange}
-            />
-          </InlineField>
-          <InlineField
-            label="Session names"
-            description="Generate session names from your first message"
-          >
-            <Switch
-              checked={preferences?.auto_session_naming ?? true}
-              onCheckedChange={handleAutoSessionNamingChange}
-            />
-          </InlineField>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection
-        title="Worktrees"
-        anchorId="pref-general-section-worktrees"
-      >
-        <div className="space-y-4">
-          <InlineField
-            label="Auto-pull base branch"
-            description="Pull the latest changes before creating a new worktree"
-          >
-            <Switch
-              checked={preferences?.auto_pull_base_branch ?? true}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  patchPreferences.mutate({
-                    auto_pull_base_branch: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-
-          <InlineField
-            label="Auto-save context"
-            description="Automatically save session context after each AI response"
-          >
-            <Switch
-              checked={preferences?.auto_save_context ?? false}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  patchPreferences.mutate({
-                    auto_save_context: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-
-          <InlineField
-            label="Restore last session on project switch"
-            description="Automatically reopen the last worktree and session when switching projects"
-          >
-            <Switch
-              checked={preferences?.restore_last_session ?? true}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  patchPreferences.mutate({
-                    restore_last_session: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-
-          <InlineField
-            label="Expand tool calls by default"
-            description="Automatically expand tool call details in chat instead of showing a collapsed summary"
-          >
-            <Switch
-              checked={preferences?.expand_tool_calls_by_default ?? false}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  patchPreferences.mutate({
-                    expand_tool_calls_by_default: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-        </div>
-      </SettingsSection>
-
-      <SettingsSection title="Archive" anchorId="pref-general-section-archive">
-        <div className="space-y-4">
-          <InlineField
-            label="Confirm before closing"
-            description="Show confirmation dialog when closing sessions or worktrees"
-          >
-            <Switch
-              checked={preferences?.confirm_session_close ?? true}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  patchPreferences.mutate({
-                    confirm_session_close: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-
-          <InlineField
-            label="Close original session on clear context"
-            description="Automatically close the original session when using Clear Context and yolo"
-          >
-            <Switch
-              checked={preferences?.close_original_on_clear_context ?? true}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  patchPreferences.mutate({
-                    close_original_on_clear_context: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-
-          <InlineField
-            label="Removal behavior"
-            description="What happens when closing sessions or worktrees"
-          >
-            <Select
-              value={preferences?.removal_behavior ?? 'delete'}
-              onValueChange={(value: RemovalBehavior) => {
-                if (preferences) {
-                  patchPreferences.mutate({
-                    removal_behavior: value,
-                  })
-                }
-              }}
-            >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {removalBehaviorOptions.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Auto-archive on PR merge"
-            description="Archive worktrees when their PR is merged"
-          >
-            <Switch
-              checked={preferences?.auto_archive_on_pr_merged ?? true}
-              onCheckedChange={checked => {
-                if (preferences) {
-                  patchPreferences.mutate({
-                    auto_archive_on_pr_merged: checked,
-                  })
-                }
-              }}
-            />
-          </InlineField>
-
-          <InlineField
-            label="Auto-delete archives"
-            description="Delete archived items older than this"
-          >
-            <Select
-              value={String(preferences?.archive_retention_days ?? 30)}
-              onValueChange={handleArchiveRetentionChange}
-            >
-              <SelectTrigger className="w-full sm:min-w-96">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {archiveRetentionOptions.map(option => (
-                  <SelectItem key={option.value} value={String(option.value)}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </InlineField>
-
-          <InlineField
-            label="Delete all archives"
-            description="Permanently delete all archived worktrees and sessions"
-          >
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={() => setShowDeleteAllDialog(true)}
-              disabled={isDeleting}
-            >
-              Delete All
-            </Button>
-          </InlineField>
-        </div>
-      </SettingsSection>
-
-      {isNativeApp() && (
-        <SettingsSection
-          title="Troubleshooting"
-          anchorId="pref-general-section-troubleshooting"
-        >
-          <div className="space-y-4">
-            <InlineField
-              label="Application logs"
-              description="Open the log directory for troubleshooting"
-            >
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  try {
-                    await invoke('open_log_directory')
-                  } catch (error) {
-                    toast.error(`Failed to open logs: ${error}`)
-                  }
+                value={preferences?.default_execution_mode ?? 'plan'}
+                onValueChange={(value: 'plan' | 'build' | 'yolo') => {
+                  patchPreferences.mutate({ default_execution_mode: value })
                 }}
               >
-                Show Logs
-              </Button>
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="plan">Plan</SelectItem>
+                  <SelectItem value="build">Build</SelectItem>
+                  <SelectItem value="yolo">Yolo</SelectItem>
+                </SelectContent>
+              </Select>
+            </InlineField>
+
+            <InlineField
+              label="Compact chat view"
+              description="Compact answers into one section for a cleaner chat, showing only the last prompt and answer by default."
+            >
+              <Switch
+                checked={preferences?.compact_chat_view_enabled ?? false}
+                onCheckedChange={checked => {
+                  patchPreferences.mutate({
+                    compact_chat_view_enabled: checked,
+                  })
+                }}
+              />
+            </InlineField>
+
+            <InlineField
+              label="Parallel execution prompting"
+              description="Add system prompt encouraging sub-agent parallelization for faster task execution"
+            >
+              <Switch
+                checked={
+                  preferences?.parallel_execution_prompt_enabled ?? false
+                }
+                onCheckedChange={checked => {
+                  patchPreferences.mutate({
+                    parallel_execution_prompt_enabled: checked,
+                  })
+                }}
+              />
+            </InlineField>
+
+            <InlineField
+              label="Build execution"
+              description="Backend, model, thinking, and effort override when approving plans"
+            >
+              <div className="grid grid-cols-4 gap-2">
+                <div>
+                  <Select
+                    value={preferences?.build_backend ?? 'default'}
+                    onValueChange={handleBuildBackendChange}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default</SelectItem>
+                      {buildBackendOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <BackendLabel backend={option.value} />
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  {effectiveBuildBackend === 'opencode' ? (
+                    <Popover
+                      open={buildModelPopoverOpen}
+                      onOpenChange={setBuildModelPopoverOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={buildModelPopoverOpen}
+                          className="w-full justify-between"
+                        >
+                          <span className="truncate text-left">
+                            {preferences?.build_model
+                              ? (openCodeModelOptions.find(
+                                  o => o.value === preferences.build_model
+                                )?.label ??
+                                formatOpenCodeModelLabelForSettings(
+                                  preferences.build_model
+                                ))
+                              : 'Default model'}
+                          </span>
+                          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-80 p-0">
+                        <Command>
+                          <CommandInput placeholder="Search models..." />
+                          <CommandList onWheel={e => e.stopPropagation()}>
+                            <CommandEmpty>No models found.</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value="default"
+                                onSelect={() => {
+                                  handleBuildModelChange('default')
+                                  setBuildModelPopoverOpen(false)
+                                }}
+                              >
+                                Default model
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-4 w-4',
+                                    !preferences?.build_model ||
+                                      preferences.build_model === 'default'
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                              {openCodeModelOptions.map(option => (
+                                <CommandItem
+                                  key={option.value}
+                                  value={`${option.label} ${option.value}`}
+                                  onSelect={() => {
+                                    handleBuildModelChange(option.value)
+                                    setBuildModelPopoverOpen(false)
+                                  }}
+                                >
+                                  <span className="truncate">
+                                    {option.label}
+                                  </span>
+                                  <Check
+                                    className={cn(
+                                      'ml-auto h-4 w-4',
+                                      preferences?.build_model === option.value
+                                        ? 'opacity-100'
+                                        : 'opacity-0'
+                                    )}
+                                  />
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  ) : effectiveBuildBackend === 'cursor' ? (
+                    <Popover
+                      open={buildModelPopoverOpen}
+                      onOpenChange={setBuildModelPopoverOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={buildModelPopoverOpen}
+                          className="w-full justify-between"
+                        >
+                          <span className="truncate text-left">
+                            {preferences?.build_model
+                              ? (cursorModelOptions.find(
+                                  o => o.value === preferences.build_model
+                                )?.label ??
+                                formatCursorModelLabel(preferences.build_model))
+                              : 'Default model'}
+                          </span>
+                          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-80 p-0">
+                        <Command>
+                          <CommandInput placeholder="Search models..." />
+                          <CommandList onWheel={e => e.stopPropagation()}>
+                            <CommandEmpty>No models found.</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value="default"
+                                onSelect={() => {
+                                  handleBuildModelChange('default')
+                                  setBuildModelPopoverOpen(false)
+                                }}
+                              >
+                                Default model
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-4 w-4',
+                                    !preferences?.build_model ||
+                                      preferences.build_model === 'default'
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                              {cursorModelOptions.map(option => (
+                                <CommandItem
+                                  key={option.value}
+                                  value={`${option.label} ${option.value}`}
+                                  onSelect={() => {
+                                    handleBuildModelChange(option.value)
+                                    setBuildModelPopoverOpen(false)
+                                  }}
+                                >
+                                  <span className="truncate">
+                                    {option.label}
+                                  </span>
+                                  <Check
+                                    className={cn(
+                                      'ml-auto h-4 w-4',
+                                      preferences?.build_model === option.value
+                                        ? 'opacity-100'
+                                        : 'opacity-0'
+                                    )}
+                                  />
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    <Select
+                      value={preferences?.build_model ?? 'default'}
+                      onValueChange={handleBuildModelChange}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">Default model</SelectItem>
+                        {(effectiveBuildBackend === 'codex'
+                          ? codexDefaultModelOptions
+                          : modelOptions
+                        ).map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div>
+                  <Select
+                    value={preferences?.build_thinking_level ?? 'default'}
+                    onValueChange={handleBuildThinkingLevelChange}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default thinking</SelectItem>
+                      {thinkingLevelOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Select
+                    value={preferences?.build_effort_level ?? 'default'}
+                    onValueChange={handleBuildEffortLevelChange}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">
+                        {effectiveBuildBackend === 'codex'
+                          ? 'Default reasoning'
+                          : 'Default effort'}
+                      </SelectItem>
+                      {(effectiveBuildBackend === 'codex'
+                        ? codexReasoningOptions
+                        : effortLevelOptions
+                      ).map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </InlineField>
+
+            <InlineField
+              label="Yolo execution"
+              description="Backend, model, thinking, and effort override when yolo-approving plans"
+            >
+              <div className="grid grid-cols-4 gap-2">
+                <div>
+                  <Select
+                    value={preferences?.yolo_backend ?? 'default'}
+                    onValueChange={handleYoloBackendChange}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default</SelectItem>
+                      {backendOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          <BackendLabel backend={option.value} />
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  {effectiveYoloBackend === 'opencode' ? (
+                    <Popover
+                      open={yoloModelPopoverOpen}
+                      onOpenChange={setYoloModelPopoverOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={yoloModelPopoverOpen}
+                          className="w-full justify-between"
+                        >
+                          <span className="truncate text-left">
+                            {preferences?.yolo_model
+                              ? (openCodeModelOptions.find(
+                                  o => o.value === preferences.yolo_model
+                                )?.label ??
+                                formatOpenCodeModelLabelForSettings(
+                                  preferences.yolo_model
+                                ))
+                              : 'Default model'}
+                          </span>
+                          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-80 p-0">
+                        <Command>
+                          <CommandInput placeholder="Search models..." />
+                          <CommandList onWheel={e => e.stopPropagation()}>
+                            <CommandEmpty>No models found.</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value="default"
+                                onSelect={() => {
+                                  handleYoloModelChange('default')
+                                  setYoloModelPopoverOpen(false)
+                                }}
+                              >
+                                Default model
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-4 w-4',
+                                    !preferences?.yolo_model ||
+                                      preferences.yolo_model === 'default'
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                              {openCodeModelOptions.map(option => (
+                                <CommandItem
+                                  key={option.value}
+                                  value={`${option.label} ${option.value}`}
+                                  onSelect={() => {
+                                    handleYoloModelChange(option.value)
+                                    setYoloModelPopoverOpen(false)
+                                  }}
+                                >
+                                  <span className="truncate">
+                                    {option.label}
+                                  </span>
+                                  <Check
+                                    className={cn(
+                                      'ml-auto h-4 w-4',
+                                      preferences?.yolo_model === option.value
+                                        ? 'opacity-100'
+                                        : 'opacity-0'
+                                    )}
+                                  />
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  ) : effectiveYoloBackend === 'cursor' ? (
+                    <Popover
+                      open={yoloModelPopoverOpen}
+                      onOpenChange={setYoloModelPopoverOpen}
+                    >
+                      <PopoverTrigger asChild>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={yoloModelPopoverOpen}
+                          className="w-full justify-between"
+                        >
+                          <span className="truncate text-left">
+                            {preferences?.yolo_model
+                              ? (cursorModelOptions.find(
+                                  o => o.value === preferences.yolo_model
+                                )?.label ??
+                                formatCursorModelLabel(preferences.yolo_model))
+                              : 'Default model'}
+                          </span>
+                          <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-80 p-0">
+                        <Command>
+                          <CommandInput placeholder="Search models..." />
+                          <CommandList onWheel={e => e.stopPropagation()}>
+                            <CommandEmpty>No models found.</CommandEmpty>
+                            <CommandGroup>
+                              <CommandItem
+                                value="default"
+                                onSelect={() => {
+                                  handleYoloModelChange('default')
+                                  setYoloModelPopoverOpen(false)
+                                }}
+                              >
+                                Default model
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-4 w-4',
+                                    !preferences?.yolo_model ||
+                                      preferences.yolo_model === 'default'
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                              {cursorModelOptions.map(option => (
+                                <CommandItem
+                                  key={option.value}
+                                  value={`${option.label} ${option.value}`}
+                                  onSelect={() => {
+                                    handleYoloModelChange(option.value)
+                                    setYoloModelPopoverOpen(false)
+                                  }}
+                                >
+                                  <span className="truncate">
+                                    {option.label}
+                                  </span>
+                                  <Check
+                                    className={cn(
+                                      'ml-auto h-4 w-4',
+                                      preferences?.yolo_model === option.value
+                                        ? 'opacity-100'
+                                        : 'opacity-0'
+                                    )}
+                                  />
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          </CommandList>
+                        </Command>
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    <Select
+                      value={preferences?.yolo_model ?? 'default'}
+                      onValueChange={handleYoloModelChange}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="default">Default model</SelectItem>
+                        {(effectiveYoloBackend === 'codex'
+                          ? codexDefaultModelOptions
+                          : modelOptions
+                        ).map(option => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                </div>
+                <div>
+                  <Select
+                    value={preferences?.yolo_thinking_level ?? 'default'}
+                    onValueChange={handleYoloThinkingLevelChange}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">Default thinking</SelectItem>
+                      {thinkingLevelOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Select
+                    value={preferences?.yolo_effort_level ?? 'default'}
+                    onValueChange={handleYoloEffortLevelChange}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="default">
+                        {effectiveYoloBackend === 'codex'
+                          ? 'Default reasoning'
+                          : 'Default effort'}
+                      </SelectItem>
+                      {(effectiveYoloBackend === 'codex'
+                        ? codexReasoningOptions
+                        : effortLevelOptions
+                      ).map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </InlineField>
+
+            <AiLanguageField
+              preferences={preferences}
+              patchPreferences={patchPreferences}
+            />
+
+            <InlineField
+              label="Allow web tools in plan mode"
+              description="WebFetch/WebSearch for Claude, --search for Codex"
+            >
+              <Switch
+                checked={preferences?.allow_web_tools_in_plan_mode ?? true}
+                onCheckedChange={checked => {
+                  if (preferences) {
+                    patchPreferences.mutate({
+                      allow_web_tools_in_plan_mode: checked,
+                    })
+                  }
+                }}
+              />
+            </InlineField>
+
+            {isNativeApp() && (
+              <InlineField
+                label="Editor"
+                description="App to open worktrees in"
+              >
+                <Select
+                  value={preferences?.editor ?? 'zed'}
+                  onValueChange={handleEditorChange}
+                >
+                  <SelectTrigger className="w-full sm:min-w-96">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {editorOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </InlineField>
+            )}
+
+            {isNativeApp() && (
+              <InlineField
+                label="Terminal"
+                description="App to open terminals in"
+              >
+                <Select
+                  value={preferences?.terminal ?? 'terminal'}
+                  onValueChange={handleTerminalChange}
+                >
+                  <SelectTrigger className="w-full sm:min-w-96">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {terminalOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </InlineField>
+            )}
+
+            {isNativeApp() && (
+              <InlineField
+                label="Open In"
+                description="Default app for Open button"
+              >
+                <Select
+                  value={preferences?.open_in ?? 'editor'}
+                  onValueChange={handleOpenInChange}
+                >
+                  <SelectTrigger className="w-full sm:min-w-96">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {openInDefaultOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </InlineField>
+            )}
+
+            <InlineField
+              label="New Session"
+              description="Default action for CMD+T"
+            >
+              <Select
+                value={preferences?.default_new_session_kind ?? 'chat'}
+                onValueChange={handleNewSessionKindChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {newSessionKindOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+
+            <InlineField
+              label="Git poll interval"
+              description="Check for branch updates when focused"
+            >
+              <Select
+                value={String(preferences?.git_poll_interval ?? 60)}
+                onValueChange={handleGitPollIntervalChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {gitPollIntervalOptions.map(option => (
+                    <SelectItem key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+
+            <InlineField
+              label="Remote poll interval"
+              description="Check for PR status updates"
+            >
+              <Select
+                value={String(preferences?.remote_poll_interval ?? 60)}
+                onValueChange={handleRemotePollIntervalChange}
+              >
+                <SelectTrigger className="w-full sm:min-w-96">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {remotePollIntervalOptions.map(option => (
+                    <SelectItem key={option.value} value={String(option.value)}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+
+            <InlineField
+              label="Auto-update AI backends"
+              description="Install Claude, Codex, OpenCode, and GitHub CLI updates in the background as soon as a new version is detected."
+            >
+              <Switch
+                checked={preferences?.auto_update_ai_backends ?? true}
+                onCheckedChange={checked => {
+                  if (preferences) {
+                    patchPreferences.mutate({
+                      auto_update_ai_backends: checked,
+                    })
+                  }
+                }}
+              />
             </InlineField>
           </div>
         </SettingsSection>
+      )}
+
+      {isGeneralScope && (
+        <>
+          <SettingsSection
+            title="Notifications"
+            anchorId="pref-general-section-notifications"
+          >
+            <div className="space-y-4">
+              <InlineField
+                label="Web access sounds"
+                description="Applies only when using Jean in browser or mobile web access. Turn off to keep phone music uninterrupted."
+              >
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="web-access-sounds-enabled"
+                    checked={webAccessSoundsEnabled}
+                    onCheckedChange={handleWebAccessSoundsEnabledChange}
+                  />
+                  <Label
+                    htmlFor="web-access-sounds-enabled"
+                    className="cursor-pointer text-sm"
+                  >
+                    Play Jean sounds in web access
+                  </Label>
+                </div>
+              </InlineField>
+
+              <InlineField
+                label="Waiting sound"
+                description="Play when session needs your input"
+              >
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={preferences?.waiting_sound ?? 'none'}
+                    onValueChange={handleWaitingSoundChange}
+                  >
+                    <SelectTrigger className="w-full sm:min-w-96">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {notificationSoundOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    disabled={
+                      !preferences?.waiting_sound ||
+                      preferences.waiting_sound === 'none' ||
+                      !soundsEnabledInCurrentView
+                    }
+                    onClick={() =>
+                      playNotificationSound(
+                        preferences?.waiting_sound ?? 'none',
+                        { webAccessSoundsEnabled }
+                      )
+                    }
+                  >
+                    <Play className="h-4 w-4" />
+                  </Button>
+                </div>
+              </InlineField>
+
+              <InlineField
+                label="Review sound"
+                description="Play when session finishes"
+              >
+                <div className="flex items-center gap-2">
+                  <Select
+                    value={preferences?.review_sound ?? 'none'}
+                    onValueChange={handleReviewSoundChange}
+                  >
+                    <SelectTrigger className="w-full sm:min-w-96">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {notificationSoundOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    disabled={
+                      !preferences?.review_sound ||
+                      preferences.review_sound === 'none' ||
+                      !soundsEnabledInCurrentView
+                    }
+                    onClick={() =>
+                      playNotificationSound(
+                        preferences?.review_sound ?? 'none',
+                        {
+                          webAccessSoundsEnabled,
+                        }
+                      )
+                    }
+                  >
+                    <Play className="h-4 w-4" />
+                  </Button>
+                </div>
+              </InlineField>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="Auto-generate"
+            anchorId="pref-general-section-auto-generate"
+          >
+            <div className="space-y-4">
+              <InlineField
+                label="Branch names"
+                description="Generate branch names from your first message"
+              >
+                <Switch
+                  checked={preferences?.auto_branch_naming ?? true}
+                  onCheckedChange={handleAutoBranchNamingChange}
+                />
+              </InlineField>
+              <InlineField
+                label="Session names"
+                description="Generate session names from your first message"
+              >
+                <Switch
+                  checked={preferences?.auto_session_naming ?? true}
+                  onCheckedChange={handleAutoSessionNamingChange}
+                />
+              </InlineField>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="Worktrees"
+            anchorId="pref-general-section-worktrees"
+          >
+            <div className="space-y-4">
+              <InlineField
+                label="Auto-pull base branch"
+                description="Pull the latest changes before creating a new worktree"
+              >
+                <Switch
+                  checked={preferences?.auto_pull_base_branch ?? true}
+                  onCheckedChange={checked => {
+                    if (preferences) {
+                      patchPreferences.mutate({
+                        auto_pull_base_branch: checked,
+                      })
+                    }
+                  }}
+                />
+              </InlineField>
+
+              <InlineField
+                label="Auto-save context"
+                description="Automatically save session context after each AI response"
+              >
+                <Switch
+                  checked={preferences?.auto_save_context ?? false}
+                  onCheckedChange={checked => {
+                    if (preferences) {
+                      patchPreferences.mutate({
+                        auto_save_context: checked,
+                      })
+                    }
+                  }}
+                />
+              </InlineField>
+
+              <InlineField
+                label="Restore last session on project switch"
+                description="Automatically reopen the last worktree and session when switching projects"
+              >
+                <Switch
+                  checked={preferences?.restore_last_session ?? true}
+                  onCheckedChange={checked => {
+                    if (preferences) {
+                      patchPreferences.mutate({
+                        restore_last_session: checked,
+                      })
+                    }
+                  }}
+                />
+              </InlineField>
+
+              <InlineField
+                label="Expand tool calls by default"
+                description="Automatically expand tool call details in chat instead of showing a collapsed summary"
+              >
+                <Switch
+                  checked={preferences?.expand_tool_calls_by_default ?? false}
+                  onCheckedChange={checked => {
+                    if (preferences) {
+                      patchPreferences.mutate({
+                        expand_tool_calls_by_default: checked,
+                      })
+                    }
+                  }}
+                />
+              </InlineField>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="Archive"
+            anchorId="pref-general-section-archive"
+          >
+            <div className="space-y-4">
+              <InlineField
+                label="Confirm before closing"
+                description="Show confirmation dialog when closing sessions or worktrees"
+              >
+                <Switch
+                  checked={preferences?.confirm_session_close ?? true}
+                  onCheckedChange={checked => {
+                    if (preferences) {
+                      patchPreferences.mutate({
+                        confirm_session_close: checked,
+                      })
+                    }
+                  }}
+                />
+              </InlineField>
+
+              <InlineField
+                label="Close original session on clear context"
+                description="Automatically close the original session when using Clear Context and yolo"
+              >
+                <Switch
+                  checked={preferences?.close_original_on_clear_context ?? true}
+                  onCheckedChange={checked => {
+                    if (preferences) {
+                      patchPreferences.mutate({
+                        close_original_on_clear_context: checked,
+                      })
+                    }
+                  }}
+                />
+              </InlineField>
+
+              <InlineField
+                label="Removal behavior"
+                description="What happens when closing sessions or worktrees"
+              >
+                <Select
+                  value={preferences?.removal_behavior ?? 'delete'}
+                  onValueChange={(value: RemovalBehavior) => {
+                    if (preferences) {
+                      patchPreferences.mutate({
+                        removal_behavior: value,
+                      })
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:min-w-96">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {removalBehaviorOptions.map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </InlineField>
+
+              <InlineField
+                label="Auto-archive on PR merge"
+                description="Archive worktrees when their PR is merged"
+              >
+                <Switch
+                  checked={preferences?.auto_archive_on_pr_merged ?? true}
+                  onCheckedChange={checked => {
+                    if (preferences) {
+                      patchPreferences.mutate({
+                        auto_archive_on_pr_merged: checked,
+                      })
+                    }
+                  }}
+                />
+              </InlineField>
+
+              <InlineField
+                label="Auto-delete archives"
+                description="Delete archived items older than this"
+              >
+                <Select
+                  value={String(preferences?.archive_retention_days ?? 30)}
+                  onValueChange={handleArchiveRetentionChange}
+                >
+                  <SelectTrigger className="w-full sm:min-w-96">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {archiveRetentionOptions.map(option => (
+                      <SelectItem
+                        key={option.value}
+                        value={String(option.value)}
+                      >
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </InlineField>
+
+              <InlineField
+                label="Delete all archives"
+                description="Permanently delete all archived worktrees and sessions"
+              >
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setShowDeleteAllDialog(true)}
+                  disabled={isDeleting}
+                >
+                  Delete All
+                </Button>
+              </InlineField>
+            </div>
+          </SettingsSection>
+
+          {isNativeApp() && (
+            <SettingsSection
+              title="Troubleshooting"
+              anchorId="pref-general-section-troubleshooting"
+            >
+              <div className="space-y-4">
+                <InlineField
+                  label="Application logs"
+                  description="Open the log directory for troubleshooting"
+                >
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      try {
+                        await invoke('open_log_directory')
+                      } catch (error) {
+                        toast.error(`Failed to open logs: ${error}`)
+                      }
+                    }}
+                  >
+                    Show Logs
+                  </Button>
+                </InlineField>
+              </div>
+            </SettingsSection>
+          )}
+        </>
       )}
 
       <AlertDialog
@@ -2883,6 +3489,62 @@ export const GeneralPane: React.FC = () => {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? 'Deleting...' : 'Delete All'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={deleteCliTarget !== null}
+        onOpenChange={open => {
+          if (!open) setDeleteCliTarget(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete Jean-managed{' '}
+              {deleteCliTarget === 'claude'
+                ? 'Claude CLI'
+                : deleteCliTarget === 'codex'
+                  ? 'Codex CLI'
+                  : deleteCliTarget === 'opencode'
+                    ? 'OpenCode CLI'
+                    : deleteCliTarget === 'coderabbit'
+                      ? 'CodeRabbit CLI'
+                      : 'GitHub CLI'}
+              ?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const pathFound =
+                  deleteCliTarget === 'claude'
+                    ? pathDetection?.found
+                    : deleteCliTarget === 'codex'
+                      ? codexPathDetection?.found
+                      : deleteCliTarget === 'opencode'
+                        ? opencodePathDetection?.found
+                        : deleteCliTarget === 'gh'
+                          ? ghPathDetection?.found
+                          : deleteCliTarget === 'coderabbit'
+                            ? coderabbitPathDetection?.found
+                            : false
+                return pathFound
+                  ? 'The Jean-managed binary will be removed and the source will switch to System PATH. You can reinstall it later from this page.'
+                  : 'The Jean-managed binary will be removed. No System PATH version was detected, so this backend will be unavailable until you reinstall it.'
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingCli}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmDeleteCli}
+              disabled={isDeletingCli}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingCli ? 'Deleting...' : 'Delete'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -4,6 +4,77 @@ use tauri::Manager;
 
 use super::EmitExt;
 
+#[derive(Debug, PartialEq)]
+struct StartTerminalArgs {
+    terminal_id: String,
+    worktree_path: String,
+    cols: u16,
+    rows: u16,
+    command: Option<String>,
+    command_args: Option<Vec<String>>,
+}
+
+fn parse_start_terminal_args(args: &Value) -> Result<StartTerminalArgs, String> {
+    Ok(StartTerminalArgs {
+        terminal_id: field(args, "terminalId", "terminal_id")?,
+        worktree_path: field(args, "worktreePath", "worktree_path")?,
+        cols: from_field(args, "cols")?,
+        rows: from_field(args, "rows")?,
+        command: from_field_opt(args, "command")?,
+        command_args: field_opt(args, "commandArgs", "command_args")?,
+    })
+}
+
+#[derive(Debug, PartialEq)]
+struct TerminalIdArgs {
+    terminal_id: String,
+}
+
+fn parse_terminal_id_args(args: &Value) -> Result<TerminalIdArgs, String> {
+    Ok(TerminalIdArgs {
+        terminal_id: field(args, "terminalId", "terminal_id")?,
+    })
+}
+
+#[derive(Debug, PartialEq)]
+struct TerminalResizeArgs {
+    terminal_id: String,
+    cols: u16,
+    rows: u16,
+}
+
+fn parse_terminal_resize_args(args: &Value) -> Result<TerminalResizeArgs, String> {
+    Ok(TerminalResizeArgs {
+        terminal_id: field(args, "terminalId", "terminal_id")?,
+        cols: from_field(args, "cols")?,
+        rows: from_field(args, "rows")?,
+    })
+}
+
+#[derive(Debug, PartialEq)]
+struct TerminalWriteArgs {
+    terminal_id: String,
+    data: String,
+}
+
+fn parse_terminal_write_args(args: &Value) -> Result<TerminalWriteArgs, String> {
+    Ok(TerminalWriteArgs {
+        terminal_id: field(args, "terminalId", "terminal_id")?,
+        data: from_field(args, "data")?,
+    })
+}
+
+#[derive(Debug, PartialEq)]
+struct WorktreePathArgs {
+    worktree_path: String,
+}
+
+fn parse_worktree_path_args(args: &Value) -> Result<WorktreePathArgs, String> {
+    Ok(WorktreePathArgs {
+        worktree_path: field(args, "worktreePath", "worktree_path")?,
+    })
+}
+
 /// Dispatch a command by name to the corresponding Rust handler.
 /// This mirrors Tauri's invoke system but routes through WebSocket.
 ///
@@ -79,6 +150,28 @@ pub async fn dispatch_command(
             let result = crate::projects::get_worktree(app.clone(), worktree_id).await?;
             to_value(result)
         }
+        "get_worktree_changes" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let max_files: Option<usize> = field_opt(&args, "maxFiles", "max_files")?;
+            let result =
+                crate::projects::get_worktree_changes(app.clone(), worktree_id, max_files).await?;
+            to_value(result)
+        }
+        "get_worktree_diff" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let diff_type: Option<String> = field_opt(&args, "diffType", "diff_type")?;
+            let path: Option<String> = from_field_opt(&args, "path")?;
+            let max_bytes: Option<usize> = field_opt(&args, "maxBytes", "max_bytes")?;
+            let result = crate::projects::get_worktree_diff(
+                app.clone(),
+                worktree_id,
+                diff_type,
+                path,
+                max_bytes,
+            )
+            .await?;
+            to_value(result)
+        }
         "create_worktree" => {
             let project_id: String = field(&args, "projectId", "project_id")?;
             let base_branch: Option<String> = field_opt(&args, "baseBranch", "base_branch")?;
@@ -88,6 +181,7 @@ pub async fn dispatch_command(
             let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
             let linear_context = field_opt(&args, "linearContext", "linear_context")?;
             let custom_name = field_opt(&args, "customName", "custom_name")?;
+            let auto_open_in_jean = field_opt(&args, "autoOpenInJean", "auto_open_in_jean")?;
             let result = crate::projects::create_worktree(
                 app.clone(),
                 project_id,
@@ -98,6 +192,7 @@ pub async fn dispatch_command(
                 advisory_context,
                 linear_context,
                 custom_name,
+                auto_open_in_jean,
             )
             .await?;
             // No cache invalidation here — worktree creation uses event-based sync
@@ -122,22 +217,40 @@ pub async fn dispatch_command(
             let name: Option<String> = from_field_opt(&args, "name")?;
             let default_branch: Option<String> =
                 field_opt(&args, "defaultBranch", "default_branch")?;
+            let enabled_mcp_servers: Option<Vec<String>> =
+                field_opt(&args, "enabledMcpServers", "enabled_mcp_servers")?;
+            let known_mcp_servers: Option<Vec<String>> =
+                field_opt(&args, "knownMcpServers", "known_mcp_servers")?;
+            let custom_system_prompt: Option<String> =
+                field_opt(&args, "customSystemPrompt", "custom_system_prompt")?;
+            let default_provider: Option<Option<String>> =
+                field_opt(&args, "defaultProvider", "default_provider")?;
+            let default_backend: Option<Option<String>> =
+                field_opt(&args, "defaultBackend", "default_backend")?;
+            let worktrees_dir: Option<String> = field_opt(&args, "worktreesDir", "worktrees_dir")?;
+            let linear_api_key: Option<String> =
+                field_opt(&args, "linearApiKey", "linear_api_key")?;
+            let linear_team_id: Option<String> =
+                field_opt(&args, "linearTeamId", "linear_team_id")?;
+            let linked_project_ids: Option<Vec<String>> =
+                field_opt(&args, "linkedProjectIds", "linked_project_ids")?;
             let result = crate::projects::update_project_settings(
                 app.clone(),
                 project_id,
                 name,
                 default_branch,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
-                None,
+                enabled_mcp_servers,
+                known_mcp_servers,
+                custom_system_prompt,
+                default_provider,
+                default_backend,
+                worktrees_dir,
+                linear_api_key,
+                linear_team_id,
+                linked_project_ids,
             )
             .await?;
+            emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
         "reorder_projects" => {
@@ -179,6 +292,12 @@ pub async fn dispatch_command(
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let label: Option<crate::chat::types::LabelData> = field_opt(&args, "label", "label")?;
             crate::projects::update_worktree_label(app.clone(), worktree_id, label).await?;
+            Ok(Value::Null)
+        }
+        "update_worktree_labels" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let labels: Vec<crate::chat::types::LabelData> = from_field(&args, "labels")?;
+            crate::projects::update_worktree_labels(app.clone(), worktree_id, labels).await?;
             Ok(Value::Null)
         }
         "has_uncommitted_changes" => {
@@ -322,6 +441,34 @@ pub async fn dispatch_command(
                 specific_files,
             )
             .await?;
+            to_value(result)
+        }
+
+        "run_coderabbit_review" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let review_run_id: Option<String> = field_opt(&args, "reviewRunId", "review_run_id")?;
+            let review_type: Option<String> = field_opt(&args, "reviewType", "review_type")?;
+            let result = crate::projects::run_coderabbit_review(
+                app.clone(),
+                worktree_path,
+                review_run_id,
+                review_type,
+            )
+            .await?;
+            to_value(result)
+        }
+        "trigger_coderabbit_pr_review" => {
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let pr_number: Option<u32> = field_opt(&args, "prNumber", "pr_number")?;
+            let result = crate::projects::trigger_coderabbit_pr_review(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                pr_number,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
         "revert_last_local_commit" => {
@@ -727,8 +874,75 @@ pub async fn dispatch_command(
             .await?;
             to_value(result)
         }
+        "list_sessions_summary" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let include_archived: Option<bool> =
+                field_opt(&args, "includeArchived", "include_archived")?;
+            let result = crate::chat::list_sessions_summary(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                include_archived,
+            )
+            .await?;
+            to_value(result)
+        }
+        "get_session_status" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let result = crate::chat::get_session_status(app.clone(), session_id).await?;
+            to_value(result)
+        }
         "list_all_sessions" => {
             let result = crate::chat::list_all_sessions(app.clone()).await?;
+            to_value(result)
+        }
+        "start_background_investigation" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let message: String = from_field(&args, "message")?;
+            let model: String = from_field(&args, "model")?;
+            let backend: String = from_field(&args, "backend")?;
+            let provider: Option<String> = from_field_opt(&args, "provider")?;
+            let effort_level: Option<String> = field_opt(&args, "effortLevel", "effort_level")?;
+            let custom_profile_name: Option<String> =
+                field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let chrome_enabled: Option<bool> = field_opt(&args, "chromeEnabled", "chrome_enabled")?;
+            let ai_language: Option<String> = field_opt(&args, "aiLanguage", "ai_language")?;
+            let parallel_execution_prompt: Option<String> = field_opt(
+                &args,
+                "parallelExecutionPrompt",
+                "parallel_execution_prompt",
+            )?;
+            let result = crate::jean_mcp_core::start_background_investigation(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                message,
+                model,
+                backend,
+                provider,
+                effort_level,
+                custom_profile_name,
+                chrome_enabled,
+                ai_language,
+                parallel_execution_prompt,
+            )
+            .await?;
+            to_value(result)
+        }
+        "list_native_cli_sessions" => {
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let backend: String = from_field(&args, "backend")?;
+            let search_query: Option<String> = field_opt(&args, "searchQuery", "search_query")?;
+            let result_limit: Option<usize> = field_opt(&args, "resultLimit", "result_limit")?;
+            let result = crate::chat::list_native_cli_sessions(
+                worktree_path,
+                backend,
+                search_query,
+                result_limit,
+            )
+            .await?;
             to_value(result)
         }
         "get_session" => {
@@ -763,9 +977,27 @@ pub async fn dispatch_command(
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let name: Option<String> = from_field_opt(&args, "name")?;
-            let result =
-                crate::chat::create_session(app.clone(), worktree_id, worktree_path, name, None)
-                    .await?;
+            let backend: Option<String> = from_field_opt(&args, "backend")?;
+            let primary_surface: Option<String> =
+                field_opt(&args, "primarySurface", "primary_surface")?;
+            let terminal_command: Option<String> =
+                field_opt(&args, "terminalCommand", "terminal_command")?;
+            let terminal_command_args: Option<Vec<String>> =
+                field_opt(&args, "terminalCommandArgs", "terminal_command_args")?;
+            let terminal_label: Option<String> =
+                field_opt(&args, "terminalLabel", "terminal_label")?;
+            let result = crate::chat::create_session(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                name,
+                backend,
+                primary_surface,
+                terminal_command,
+                terminal_command_args,
+                terminal_label,
+            )
+            .await?;
             to_value(result)
         }
         "rename_session" => {
@@ -1221,6 +1453,7 @@ pub async fn dispatch_command(
             let security_context = field_opt(&args, "securityContext", "security_context")?;
             let advisory_context = field_opt(&args, "advisoryContext", "advisory_context")?;
             let linear_context = field_opt(&args, "linearContext", "linear_context")?;
+            let auto_open_in_jean = field_opt(&args, "autoOpenInJean", "auto_open_in_jean")?;
             let result = crate::projects::create_worktree_from_existing_branch(
                 app.clone(),
                 project_id,
@@ -1230,6 +1463,7 @@ pub async fn dispatch_command(
                 security_context,
                 advisory_context,
                 linear_context,
+                auto_open_in_jean,
             )
             .await?;
             to_value(result)
@@ -1473,41 +1707,45 @@ pub async fn dispatch_command(
         // Terminal
         // =====================================================================
         "start_terminal" => {
-            let terminal_id: String = field(&args, "terminalId", "terminal_id")?;
-            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let cols: u16 = from_field(&args, "cols")?;
-            let rows: u16 = from_field(&args, "rows")?;
-            let command: Option<String> = from_field_opt(&args, "command")?;
-            let command_args: Option<Vec<String>> =
-                field_opt(&args, "commandArgs", "command_args")?;
+            let parsed = parse_start_terminal_args(&args)?;
             crate::terminal::start_terminal(
                 app.clone(),
-                terminal_id,
-                worktree_path,
-                cols,
-                rows,
-                command,
-                command_args,
+                parsed.terminal_id,
+                parsed.worktree_path,
+                parsed.cols,
+                parsed.rows,
+                parsed.command,
+                parsed.command_args,
             )
             .await?;
             Ok(Value::Null)
         }
+        "prepare_backend_terminal_context" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let backend: String = from_field(&args, "backend")?;
+            let result = crate::terminal::prepare_backend_terminal_context(
+                app.clone(),
+                session_id,
+                worktree_id,
+                backend,
+            )
+            .await?;
+            to_value(result)
+        }
         "terminal_write" => {
-            let terminal_id: String = field(&args, "terminalId", "terminal_id")?;
-            let data: String = from_field(&args, "data")?;
-            crate::terminal::terminal_write(terminal_id, data).await?;
+            let parsed = parse_terminal_write_args(&args)?;
+            crate::terminal::terminal_write(parsed.terminal_id, parsed.data).await?;
             Ok(Value::Null)
         }
         "terminal_resize" => {
-            let terminal_id: String = field(&args, "terminalId", "terminal_id")?;
-            let cols: u16 = from_field(&args, "cols")?;
-            let rows: u16 = from_field(&args, "rows")?;
-            crate::terminal::terminal_resize(terminal_id, cols, rows).await?;
+            let parsed = parse_terminal_resize_args(&args)?;
+            crate::terminal::terminal_resize(parsed.terminal_id, parsed.cols, parsed.rows).await?;
             Ok(Value::Null)
         }
         "stop_terminal" => {
-            let terminal_id: String = field(&args, "terminalId", "terminal_id")?;
-            let result = crate::terminal::stop_terminal(app.clone(), terminal_id).await?;
+            let parsed = parse_terminal_id_args(&args)?;
+            let result = crate::terminal::stop_terminal(app.clone(), parsed.terminal_id).await?;
             to_value(result)
         }
         "get_active_terminals" => {
@@ -1515,18 +1753,18 @@ pub async fn dispatch_command(
             to_value(result)
         }
         "has_active_terminal" => {
-            let terminal_id: String = field(&args, "terminalId", "terminal_id")?;
-            let result = crate::terminal::has_active_terminal(terminal_id).await;
+            let parsed = parse_terminal_id_args(&args)?;
+            let result = crate::terminal::has_active_terminal(parsed.terminal_id).await;
             to_value(result)
         }
         "get_run_scripts" => {
-            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let result = crate::terminal::get_run_scripts(worktree_path).await;
+            let parsed = parse_worktree_path_args(&args)?;
+            let result = crate::terminal::get_run_scripts(parsed.worktree_path).await;
             to_value(result)
         }
         "get_ports" => {
-            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let result = crate::terminal::get_ports(worktree_path).await;
+            let parsed = parse_worktree_path_args(&args)?;
+            let result = crate::terminal::get_ports(parsed.worktree_path).await;
             to_value(result)
         }
         "get_terminal_listening_ports" => {
@@ -1778,17 +2016,6 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["contexts"]);
             Ok(Value::Null)
         }
-        "generate_session_digest" => {
-            let session_id: String = field(&args, "sessionId", "session_id")?;
-            let result = crate::chat::generate_session_digest(app.clone(), session_id).await?;
-            to_value(result)
-        }
-        "update_session_digest" => {
-            let session_id: String = field(&args, "sessionId", "session_id")?;
-            let digest: crate::chat::types::SessionDigest = from_field(&args, "digest")?;
-            crate::chat::update_session_digest(app.clone(), session_id, digest).await?;
-            Ok(Value::Null)
-        }
         "get_session_debug_info" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
@@ -1844,6 +2071,10 @@ pub async fn dispatch_command(
             crate::claude_cli::install_claude_cli(app.clone(), version).await?;
             Ok(Value::Null)
         }
+        "uninstall_claude_cli" => {
+            crate::claude_cli::uninstall_claude_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
         "check_cursor_cli_installed" => {
             let result = crate::cursor_cli::check_cursor_cli_installed(app.clone()).await?;
             to_value(result)
@@ -1885,6 +2116,10 @@ pub async fn dispatch_command(
             crate::opencode_cli::install_opencode_cli(app.clone(), version).await?;
             Ok(Value::Null)
         }
+        "uninstall_opencode_cli" => {
+            crate::opencode_cli::uninstall_opencode_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
         "list_opencode_models" => {
             let result = crate::opencode_cli::list_opencode_models(app.clone()).await?;
             to_value(result)
@@ -1910,6 +2145,49 @@ pub async fn dispatch_command(
             crate::gh_cli::install_gh_cli(app.clone(), version).await?;
             Ok(Value::Null)
         }
+        "uninstall_gh_cli" => {
+            crate::gh_cli::uninstall_gh_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
+
+        "check_coderabbit_cli_installed" => {
+            let result = crate::coderabbit_cli::check_coderabbit_cli_installed(app.clone()).await?;
+            to_value(result)
+        }
+        "detect_coderabbit_in_path" => {
+            let result = crate::coderabbit_cli::detect_coderabbit_in_path(app.clone()).await?;
+            to_value(result)
+        }
+        "check_coderabbit_cli_auth" => {
+            let result = crate::coderabbit_cli::check_coderabbit_cli_auth(app.clone()).await?;
+            to_value(result)
+        }
+        "get_available_coderabbit_versions" => {
+            let result =
+                crate::coderabbit_cli::get_available_coderabbit_versions(app.clone()).await?;
+            to_value(result)
+        }
+        "install_coderabbit_cli" => {
+            let version: Option<String> = from_field_opt(&args, "version")?;
+            crate::coderabbit_cli::install_coderabbit_cli(app.clone(), version).await?;
+            Ok(Value::Null)
+        }
+        "uninstall_coderabbit_cli" => {
+            crate::coderabbit_cli::uninstall_coderabbit_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
+        "update_coderabbit_cli" => {
+            crate::coderabbit_cli::update_coderabbit_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
+        "run_cli_path_update" => {
+            let command: String = from_field(&args, "command")?;
+            let cli_args: Vec<String> = from_field(&args, "args")?;
+            let cli_type: String = field(&args, "cliType", "cli_type")?;
+            let result =
+                crate::cli_update::run_cli_path_update(command, cli_args, cli_type).await?;
+            to_value(result)
+        }
 
         // =====================================================================
         // HTTP Server control (additional)
@@ -1925,6 +2203,17 @@ pub async fn dispatch_command(
         }
         "regenerate_http_token" => {
             let result = crate::regenerate_http_token(app.clone()).await?;
+            to_value(result)
+        }
+        "get_jean_mcp_config_snippet" => {
+            let result = crate::get_jean_mcp_config_snippet(app.clone()).await?;
+            to_value(result)
+        }
+        "install_jean_mcp_config" => {
+            let backends: Option<Vec<String>> = from_field_opt(&args, "backends")?;
+            let mode: Option<String> = from_field_opt(&args, "mode")?;
+            let result = crate::install_jean_mcp_config(app.clone(), backends, mode).await?;
+            emit_cache_invalidation(app, &["mcp", "jean-mcp-snippet"]);
             to_value(result)
         }
         "start_opencode_server" => {
@@ -1968,6 +2257,11 @@ pub async fn dispatch_command(
             crate::codex_cli::install_codex_cli(app.clone(), version).await?;
             Ok(Value::Null)
         }
+        "uninstall_codex_cli" => {
+            crate::codex_cli::uninstall_codex_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
+
         "approve_codex_command" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
             let rpc_id: u64 = field(&args, "rpcId", "rpc_id")?;
@@ -2024,6 +2318,49 @@ pub async fn dispatch_command(
                 success,
                 content_items,
             )?;
+            Ok(Value::Null)
+        }
+        "codex_goal_set" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let objective: String = from_field(&args, "objective")?;
+            let app_clone = app.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::chat::codex_goal_set(
+                    app_clone,
+                    worktree_id,
+                    worktree_path,
+                    session_id,
+                    objective,
+                )
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+            Ok(Value::Null)
+        }
+        "codex_goal_get" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let app_clone = app.clone();
+            let goal = tokio::task::spawn_blocking(move || {
+                crate::chat::codex_goal_get(app_clone, worktree_id, worktree_path, session_id)
+            })
+            .await
+            .map_err(|e| e.to_string())??;
+            to_value(goal)
+        }
+        "codex_goal_clear" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let app_clone = app.clone();
+            tokio::task::spawn_blocking(move || {
+                crate::chat::codex_goal_clear(app_clone, worktree_id, worktree_path, session_id)
+            })
+            .await
+            .map_err(|e| e.to_string())??;
             Ok(Value::Null)
         }
 
@@ -2182,9 +2519,8 @@ pub async fn dispatch_command(
         }
         "set_session_last_opened" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
-            let transitioned =
-                crate::chat::set_session_last_opened(app.clone(), session_id).await?;
-            to_value(transitioned)
+            crate::chat::set_session_last_opened(app.clone(), session_id).await?;
+            Ok(Value::Null)
         }
         "set_sessions_last_opened_bulk" => {
             let session_ids: Vec<String> = field(&args, "sessionIds", "session_ids")?;
@@ -2581,4 +2917,109 @@ fn field_opt<T: serde::de::DeserializeOwned>(
         return Ok(camel_result);
     }
     from_field_opt(args, snake)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn parse_start_terminal_args_accepts_camel_case() {
+        let args = json!({
+            "terminalId": "term-1",
+            "worktreePath": "/tmp/worktree",
+            "cols": 120,
+            "rows": 40,
+            "command": "bun",
+            "commandArgs": ["run", "dev"]
+        });
+
+        assert_eq!(
+            parse_start_terminal_args(&args).unwrap(),
+            StartTerminalArgs {
+                terminal_id: "term-1".to_string(),
+                worktree_path: "/tmp/worktree".to_string(),
+                cols: 120,
+                rows: 40,
+                command: Some("bun".to_string()),
+                command_args: Some(vec!["run".to_string(), "dev".to_string()]),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_start_terminal_args_accepts_snake_case() {
+        let args = json!({
+            "terminal_id": "term-2",
+            "worktree_path": "/tmp/other",
+            "cols": 80,
+            "rows": 24,
+            "command_args": ["-lc", "echo ok"]
+        });
+
+        assert_eq!(
+            parse_start_terminal_args(&args).unwrap(),
+            StartTerminalArgs {
+                terminal_id: "term-2".to_string(),
+                worktree_path: "/tmp/other".to_string(),
+                cols: 80,
+                rows: 24,
+                command: None,
+                command_args: Some(vec!["-lc".to_string(), "echo ok".to_string()]),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_terminal_helpers_accept_dual_key_terminal_ids() {
+        assert_eq!(
+            parse_terminal_write_args(&json!({
+                "terminalId": "term-1",
+                "data": "ls\n"
+            }))
+            .unwrap(),
+            TerminalWriteArgs {
+                terminal_id: "term-1".to_string(),
+                data: "ls\n".to_string(),
+            }
+        );
+
+        assert_eq!(
+            parse_terminal_resize_args(&json!({
+                "terminal_id": "term-1",
+                "cols": 100,
+                "rows": 30
+            }))
+            .unwrap(),
+            TerminalResizeArgs {
+                terminal_id: "term-1".to_string(),
+                cols: 100,
+                rows: 30,
+            }
+        );
+
+        assert_eq!(
+            parse_terminal_id_args(&json!({ "terminal_id": "term-1" })).unwrap(),
+            TerminalIdArgs {
+                terminal_id: "term-1".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn parse_worktree_path_args_accepts_camel_and_snake_case() {
+        assert_eq!(
+            parse_worktree_path_args(&json!({ "worktreePath": "/tmp/a" })).unwrap(),
+            WorktreePathArgs {
+                worktree_path: "/tmp/a".to_string(),
+            }
+        );
+        assert_eq!(
+            parse_worktree_path_args(&json!({ "worktree_path": "/tmp/b" })).unwrap(),
+            WorktreePathArgs {
+                worktree_path: "/tmp/b".to_string(),
+            }
+        );
+    }
 }

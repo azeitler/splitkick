@@ -10,7 +10,10 @@ import {
   Puzzle,
   FlaskConical,
   Globe,
+  Github,
+  Rabbit,
   Sparkles,
+  Terminal,
   type LucideIcon,
 } from 'lucide-react'
 import {
@@ -44,13 +47,25 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarProvider,
+  SidebarSeparator,
 } from '@/components/ui/sidebar'
 import { useUIStore, type PreferencePane } from '@/store/ui-store'
 import type { KeybindingAction } from '@/types/keybindings'
+import { ClaudeIcon } from '@/components/icons/ClaudeIcon'
+import { CodexIcon } from '@/components/icons/CodexIcon'
+import { OpenCodeIcon } from '@/components/icons/OpenCodeIcon'
+import { CursorIcon } from '@/components/icons/CursorIcon'
 import type { MagicPrompts } from '@/types/preferences'
 import { GeneralPane } from './panes/GeneralPane'
+import { ClaudePane } from './panes/ClaudePane'
+import { CodexPane } from './panes/CodexPane'
+import { OpenCodePane } from './panes/OpenCodePane'
+import { CursorPane } from './panes/CursorPane'
+import { GitHubPane } from './panes/GitHubPane'
+import { CodeRabbitPane } from './panes/CodeRabbitPane'
 import { AppearancePane } from './panes/AppearancePane'
 import { KeybindingsPane } from './panes/KeybindingsPane'
+import { TerminalPane } from './panes/TerminalPane'
 import { MagicPromptsPane } from './panes/MagicPromptsPane'
 import { McpServersPane } from './panes/McpServersPane'
 import { ProvidersPane } from './panes/ProvidersPane'
@@ -65,73 +80,155 @@ import {
 } from './preferences-search'
 import { PreferencesSearchBar } from './PreferencesSearchBar'
 
-const navigationItems = [
+interface NavigationItem {
+  type: 'item'
+  id: PreferencePane
+  name: string
+  icon: LucideIcon
+  desktopOnly?: boolean
+}
+
+interface NavigationSeparator {
+  type: 'separator'
+  id: string
+}
+
+const navigationEntries: (NavigationItem | NavigationSeparator)[] = [
   {
-    id: 'general' as const,
+    type: 'item',
+    id: 'general',
     name: 'General',
     icon: Settings,
   },
   {
-    id: 'opinionated' as const,
+    type: 'item',
+    id: 'appearance',
+    name: 'Appearance',
+    icon: Palette,
+  },
+  {
+    type: 'item',
+    id: 'keybindings',
+    name: 'Keybindings',
+    icon: Keyboard,
+    desktopOnly: true,
+  },
+  { type: 'separator', id: 'interface-separator' },
+  {
+    type: 'item',
+    id: 'claude',
+    name: 'Claude',
+    icon: ClaudeIcon,
+  },
+  {
+    type: 'item',
+    id: 'codex',
+    name: 'Codex',
+    icon: CodexIcon,
+  },
+  {
+    type: 'item',
+    id: 'opencode',
+    name: 'OpenCode',
+    icon: OpenCodeIcon,
+  },
+  {
+    type: 'item',
+    id: 'cursor',
+    name: 'Cursor',
+    icon: CursorIcon,
+  },
+  {
+    type: 'item',
+    id: 'github',
+    name: 'GitHub CLI',
+    icon: Github,
+  },
+  {
+    type: 'item',
+    id: 'coderabbit',
+    name: 'CodeRabbit CLI',
+    icon: Rabbit,
+  },
+  { type: 'separator', id: 'backend-separator' },
+  {
+    type: 'item',
+    id: 'terminal',
+    name: 'Terminal',
+    icon: Terminal,
+  },
+  {
+    type: 'item',
+    id: 'magic-prompts',
+    name: 'Magic Prompts',
+    icon: Wand2,
+  },
+  {
+    type: 'item',
+    id: 'opinionated',
     name: 'Opinionated',
     icon: Sparkles,
   },
+  { type: 'separator', id: 'connectivity-separator' },
   {
-    id: 'web-access' as const,
+    type: 'item',
+    id: 'providers',
+    name: 'Providers',
+    icon: Blocks,
+  },
+  {
+    type: 'item',
+    id: 'web-access',
     name: 'Web Access',
     icon: Globe,
     desktopOnly: true,
   },
   {
-    id: 'providers' as const,
-    name: 'Providers',
-    icon: Blocks,
-  },
-  {
-    id: 'usage' as const,
-    name: 'Usage',
-    icon: BarChart3,
-  },
-  {
-    id: 'appearance' as const,
-    name: 'Appearance',
-    icon: Palette,
-  },
-  {
-    id: 'keybindings' as const,
-    name: 'Keybindings',
-    icon: Keyboard,
-    desktopOnly: true,
-  },
-  {
-    id: 'magic-prompts' as const,
-    name: 'Magic Prompts',
-    icon: Wand2,
-  },
-  {
-    id: 'mcp-servers' as const,
+    type: 'item',
+    id: 'mcp-servers',
     name: 'MCP Servers',
     icon: Plug,
   },
   {
-    id: 'integrations' as const,
+    type: 'item',
+    id: 'integrations',
     name: 'Integrations',
     icon: Puzzle,
   },
+  { type: 'separator', id: 'account-separator' },
   {
-    id: 'experimental' as const,
+    type: 'item',
+    id: 'usage',
+    name: 'Usage',
+    icon: BarChart3,
+  },
+  { type: 'separator', id: 'advanced-separator' },
+  {
+    type: 'item',
+    id: 'experimental',
     name: 'Experimental',
     icon: FlaskConical,
   },
 ]
 
+const navigationItems = navigationEntries.filter(
+  (entry): entry is NavigationItem => entry.type === 'item'
+)
+
 const paneIconMap: Record<PreferencePane, LucideIcon> = {
   general: Settings,
+  claude: ClaudeIcon,
+  codex: CodexIcon,
+  opencode: OpenCodeIcon,
+  cursor: CursorIcon,
+  github: Github,
+  coderabbit: Rabbit,
   opinionated: Sparkles,
   providers: Blocks,
   usage: BarChart3,
   appearance: Palette,
   keybindings: Keyboard,
+  terminal: Terminal,
   'magic-prompts': Wand2,
   'mcp-servers': Plug,
   integrations: Puzzle,
@@ -143,10 +240,24 @@ const getPaneTitle = (pane: PreferencePane): string => {
   switch (pane) {
     case 'general':
       return 'General'
+    case 'claude':
+      return 'Claude'
+    case 'codex':
+      return 'Codex'
+    case 'opencode':
+      return 'OpenCode'
+    case 'cursor':
+      return 'Cursor'
+    case 'github':
+      return 'GitHub CLI'
+    case 'coderabbit':
+      return 'CodeRabbit CLI'
     case 'appearance':
       return 'Appearance'
     case 'keybindings':
       return 'Keybindings'
+    case 'terminal':
+      return 'Terminal'
     case 'magic-prompts':
       return 'Magic Prompts'
     case 'mcp-servers':
@@ -545,22 +656,28 @@ export function PreferencesDialog() {
               <SidebarGroup>
                 <SidebarGroupContent>
                   <SidebarMenu>
-                    {navigationItems.map(item => (
-                      <SidebarMenuItem key={item.id}>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={activePane === item.id}
-                        >
-                          <button
-                            onClick={() => handlePaneSelect(item.id)}
-                            className="w-full"
+                    {navigationEntries.map(entry =>
+                      entry.type === 'separator' ? (
+                        <li key={entry.id} aria-hidden="true" className="py-1">
+                          <SidebarSeparator className="mx-0" />
+                        </li>
+                      ) : (
+                        <SidebarMenuItem key={entry.id}>
+                          <SidebarMenuButton
+                            asChild
+                            isActive={activePane === entry.id}
                           >
-                            <item.icon />
-                            <span>{item.name}</span>
-                          </button>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    ))}
+                            <button
+                              onClick={() => handlePaneSelect(entry.id)}
+                              className="w-full"
+                            >
+                              <entry.icon />
+                              <span>{entry.name}</span>
+                            </button>
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      )
+                    )}
                   </SidebarMenu>
                 </SidebarGroupContent>
               </SidebarGroup>
@@ -658,6 +775,36 @@ export function PreferencesDialog() {
                   <GeneralPane />
                 </div>
               )}
+              {activePane === 'claude' && (
+                <div id="pref-pane-claude">
+                  <ClaudePane />
+                </div>
+              )}
+              {activePane === 'codex' && (
+                <div id="pref-pane-codex">
+                  <CodexPane />
+                </div>
+              )}
+              {activePane === 'opencode' && (
+                <div id="pref-pane-opencode">
+                  <OpenCodePane />
+                </div>
+              )}
+              {activePane === 'cursor' && (
+                <div id="pref-pane-cursor">
+                  <CursorPane />
+                </div>
+              )}
+              {activePane === 'github' && (
+                <div id="pref-pane-github">
+                  <GitHubPane />
+                </div>
+              )}
+              {activePane === 'coderabbit' && (
+                <div id="pref-pane-coderabbit">
+                  <CodeRabbitPane />
+                </div>
+              )}
               {activePane === 'appearance' && (
                 <div id="pref-pane-appearance">
                   <AppearancePane />
@@ -666,6 +813,11 @@ export function PreferencesDialog() {
               {activePane === 'keybindings' && (
                 <div id="pref-pane-keybindings">
                   <KeybindingsPane searchTargetAction={searchTargetAction} />
+                </div>
+              )}
+              {activePane === 'terminal' && (
+                <div id="pref-pane-terminal">
+                  <TerminalPane />
                 </div>
               )}
               {activePane === 'magic-prompts' && (

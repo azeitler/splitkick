@@ -31,7 +31,6 @@ import type { AppPreferences } from '@/types/preferences'
 import type { AdvisoryContext } from '@/types/github'
 import { hasBackend } from '@/lib/environment'
 import { openExternal, preOpenWindow } from '@/lib/platform'
-import { consumeWorktreeSilentReady } from '@/services/worktree-silent-ready'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -550,6 +549,7 @@ export function useCreateWorktree() {
       return worktree
     },
     onSuccess: (worktree, { projectId, background: isBackground }) => {
+      const shouldAutoOpen = !isBackground
       // Check if this worktree was already resolved by an event handler
       // (e.g. unarchive_worktree emits worktree:unarchived which sets status: 'ready')
       const existing = queryClient.getQueryData<Worktree[]>(
@@ -594,7 +594,7 @@ export function useCreateWorktree() {
       // Auto-expand the project and select the new worktree
       const { expandProject, selectWorktree } = useProjectsStore.getState()
       expandProject(projectId)
-      if (!isBackground) {
+      if (shouldAutoOpen) {
         selectWorktree(pendingWorktree.id)
         toast.loading('Setting up worktree...', {
           id: `worktree-creating-${pendingWorktree.id}`,
@@ -642,11 +642,13 @@ export function useCreateWorktreeFromExistingBranch() {
       securityContext,
       advisoryContext,
       background: _background,
+      autoOpenInJean,
     }: {
       projectId: string
       branchName: string
       /** When true, skip auto-navigation (CMD+Click from new session modal) */
       background?: boolean
+      autoOpenInJean?: boolean
       issueContext?: {
         number: number
         title: string
@@ -707,6 +709,7 @@ export function useCreateWorktreeFromExistingBranch() {
           prContext,
           securityContext,
           advisoryContext,
+          autoOpenInJean: autoOpenInJean ?? !_background,
         }
       )
       return { ...worktree, status: 'pending' as const }
@@ -783,7 +786,8 @@ export function useCreateWorktreeKeybinding() {
 /** Shared post-ready logic for both new and unarchived worktrees */
 function handleWorktreeReady(
   worktree: Worktree,
-  queryClient: ReturnType<typeof useQueryClient>
+  queryClient: ReturnType<typeof useQueryClient>,
+  autoOpenInJean = true
 ) {
   // Update cache
   const readyWorktree = { ...worktree, status: 'ready' as const }
@@ -802,13 +806,19 @@ function handleWorktreeReady(
     readyWorktree
   )
 
-  // Skip auto-navigation for background-created worktrees (CMD+Click)
-  const isBackground = useUIStore.getState().consumePendingBackgroundCreation()
+  // Skip auto-navigation for MCP/background-created worktrees. Only consume the
+  // CMD+Click background counter for interactive worktree creations so unrelated
+  // MCP events cannot steal it.
+  const isBackground = autoOpenInJean
+    ? useUIStore.getState().consumePendingBackgroundCreation()
+    : true
+  const shouldAutoOpen = autoOpenInJean && !isBackground
 
-  // Select in sidebar
+  // Keep the project visible, but only select the new worktree for interactive
+  // creations. MCP create_worktree defaults to autoOpenInJean=false.
   const { expandProject, selectWorktree } = useProjectsStore.getState()
   expandProject(worktree.project_id)
-  if (!isBackground) {
+  if (shouldAutoOpen) {
     selectWorktree(worktree.id)
   }
 
@@ -837,7 +847,7 @@ function handleWorktreeReady(
       })
   }
 
-  if (!isBackground) {
+  if (shouldAutoOpen) {
     const uiStore = useUIStore.getState()
 
     // If a session modal is already open on the project canvas (for example the
@@ -921,33 +931,33 @@ export function useWorktreeEvents() {
       listen<WorktreeCreatingEvent>('worktree:creating', event => {
         const {
           id,
-          project_id,
+          projectId,
           name,
           path,
           branch,
-          pr_number,
-          issue_number,
-          security_alert_number,
-          advisory_ghsa_id,
+          prNumber,
+          issueNumber,
+          securityAlertNumber,
+          advisoryGhsaId,
         } = event.payload
         logger.info('Worktree creating (background started)', { id, name })
 
         // Add pending worktree to cache so it appears instantly on all clients
         queryClient.setQueryData<Worktree[]>(
-          projectsQueryKeys.worktrees(project_id),
+          projectsQueryKeys.worktrees(projectId),
           old => {
             // Skip if this worktree already exists (e.g. on the originating client)
             if (old?.some(w => w.id === id)) return old
             const pending: Worktree = {
               id,
-              project_id,
+              project_id: projectId,
               name,
               path,
               branch,
-              pr_number,
-              issue_number,
-              security_alert_number,
-              advisory_ghsa_id,
+              pr_number: prNumber,
+              issue_number: issueNumber,
+              security_alert_number: securityAlertNumber,
+              advisory_ghsa_id: advisoryGhsaId,
               created_at: Math.floor(Date.now() / 1000),
               status: 'pending' as const,
               session_type: 'worktree' as Worktree['session_type'],
@@ -959,17 +969,17 @@ export function useWorktreeEvents() {
 
         // Auto-expand the project so the new worktree is visible in sidebar
         const { expandProject } = useProjectsStore.getState()
-        expandProject(project_id)
+        expandProject(projectId)
 
         // Start timeout recovery in case worktree:created/error events are never received
-        startPendingTimeout(id, project_id)
+        startPendingTimeout(id, projectId)
       })
     )
 
     // Listen for successful creation (fires before setup script runs)
     unlistenPromises.push(
       listen<WorktreeCreatedEvent>('worktree:created', event => {
-        const { worktree } = event.payload
+        const { worktree, autoOpenInJean } = event.payload
         logger.info('Worktree created (background complete)', {
           id: worktree.id,
           name: worktree.name,
@@ -978,47 +988,10 @@ export function useWorktreeEvents() {
         // Update cache FIRST, then clear timeout — ensures the safety timeout
         // survives if the cache update is a no-op (e.g. cache was invalidated
         // between worktree:creating and worktree:created events).
-        handleWorktreeReady(worktree, queryClient)
+        handleWorktreeReady(worktree, queryClient, autoOpenInJean)
         clearPendingTimeout(worktree.id)
 
-        if (consumeWorktreeSilentReady(worktree.id)) {
-          return
-        }
-
-        const openWorktreeAction = {
-          label: 'Open',
-          onClick: () => {
-            const { selectWorktree, selectProject } =
-              useProjectsStore.getState()
-            selectProject(worktree.project_id)
-            selectWorktree(worktree.id)
-            // Clear active worktree so we land on ProjectCanvasView (not bare
-            // ChatWindow), then open the session modal with the full header.
-            const { clearActiveWorktree } = useChatStore.getState()
-            clearActiveWorktree()
-            // Use both mechanisms: markWorktreeForAutoOpenSession for when the
-            // canvas is mounting (lazy-loaded), and a deferred event dispatch
-            // for when it's already mounted. The auto-open effect consumes the
-            // mark, so only one will take effect.
-            useUIStore.getState().markWorktreeForAutoOpenSession(worktree.id)
-            setTimeout(() => {
-              window.dispatchEvent(
-                new CustomEvent('open-worktree-modal', {
-                  detail: {
-                    worktreeId: worktree.id,
-                    worktreePath: worktree.path,
-                  },
-                })
-              )
-            }, 0)
-          },
-        }
-
-        toast.success(`Worktree ready: ${worktree.name}`, {
-          id: `worktree-creating-${worktree.id}`,
-          duration: 5000,
-          action: openWorktreeAction,
-        })
+        toast.dismiss(`worktree-creating-${worktree.id}`)
       })
     )
 

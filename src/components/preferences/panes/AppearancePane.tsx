@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Label } from '@/components/ui/label'
 import { Slider } from '@/components/ui/slider'
 import {
@@ -124,12 +124,76 @@ export const AppearancePane: React.FC = () => {
     [patchPreferences]
   )
 
-  const handleTerminalBackgroundCustomChange = useCallback(
+  // Custom terminal color: keep an uncommitted draft so the hex field can be
+  // typed into character by character, and debounce persistence so dragging
+  // the native color picker does not flood the backend with disk writes.
+  const terminalMode = preferences?.terminal_background ?? 'auto'
+  const savedCustomColor = preferences?.terminal_background_custom ?? null
+  const [customColorDraft, setCustomColorDraft] = useState<string | null>(null)
+  const customSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const customColorValue = customColorDraft ?? savedCustomColor ?? ''
+
+  // Drop the draft whenever the mode is no longer "custom" so the field
+  // re-syncs to the saved value next time it is shown.
+  useEffect(() => {
+    if (terminalMode !== 'custom') setCustomColorDraft(null)
+  }, [terminalMode])
+
+  useEffect(() => {
+    return () => {
+      if (customSaveTimer.current) clearTimeout(customSaveTimer.current)
+    }
+  }, [])
+
+  const scheduleCustomColorSave = useCallback(
     (value: string | null) => {
-      patchPreferences.mutate({ terminal_background_custom: value })
+      if (customSaveTimer.current) clearTimeout(customSaveTimer.current)
+      customSaveTimer.current = setTimeout(() => {
+        customSaveTimer.current = null
+        patchPreferences.mutate({ terminal_background_custom: value })
+      }, 200)
     },
     [patchPreferences]
   )
+
+  const handleCustomColorPick = useCallback(
+    (value: string) => {
+      setCustomColorDraft(value)
+      scheduleCustomColorSave(value)
+    },
+    [scheduleCustomColorSave]
+  )
+
+  const handleCustomColorText = useCallback(
+    (value: string) => {
+      setCustomColorDraft(value)
+      const trimmed = value.trim()
+      if (trimmed === '') {
+        scheduleCustomColorSave(null)
+      } else if (isValidHex(trimmed)) {
+        scheduleCustomColorSave(trimmed)
+      }
+    },
+    [scheduleCustomColorSave]
+  )
+
+  const handleCustomColorBlur = useCallback(() => {
+    if (customSaveTimer.current) {
+      clearTimeout(customSaveTimer.current)
+      customSaveTimer.current = null
+    }
+    const trimmed = (customColorDraft ?? '').trim()
+    if (customColorDraft !== null) {
+      if (trimmed === '') {
+        patchPreferences.mutate({ terminal_background_custom: null })
+      } else if (isValidHex(trimmed)) {
+        patchPreferences.mutate({ terminal_background_custom: trimmed })
+      }
+    }
+    // Resync the field to the persisted value (discards invalid drafts).
+    setCustomColorDraft(null)
+  }, [customColorDraft, patchPreferences])
 
   const handleFileEditModeChange = useCallback(
     (value: FileEditMode) => {
@@ -221,7 +285,7 @@ export const AppearancePane: React.FC = () => {
             description="Pick a background color for the terminal panel"
           >
             <Select
-              value={preferences?.terminal_background ?? 'auto'}
+              value={terminalMode}
               onValueChange={value =>
                 handleTerminalBackgroundModeChange(
                   value as TerminalBackgroundMode
@@ -242,7 +306,7 @@ export const AppearancePane: React.FC = () => {
             </Select>
           </InlineField>
 
-          {preferences?.terminal_background === 'custom' && (
+          {terminalMode === 'custom' && (
             <InlineField
               label="Custom terminal color"
               description="Choose any color you like for the terminal background"
@@ -251,27 +315,16 @@ export const AppearancePane: React.FC = () => {
                 <input
                   type="color"
                   value={
-                    isValidHex(preferences?.terminal_background_custom)
-                      ? preferences!.terminal_background_custom!
-                      : '#101010'
+                    isValidHex(customColorValue) ? customColorValue : '#101010'
                   }
-                  onChange={e =>
-                    handleTerminalBackgroundCustomChange(e.target.value)
-                  }
-                  disabled={patchPreferences.isPending}
+                  onChange={e => handleCustomColorPick(e.target.value)}
                   className="h-9 w-12 cursor-pointer rounded border"
                   aria-label="Pick terminal background color"
                 />
                 <Input
-                  value={preferences?.terminal_background_custom ?? ''}
-                  onChange={e => {
-                    const v = e.target.value.trim()
-                    if (v === '') {
-                      handleTerminalBackgroundCustomChange(null)
-                    } else if (isValidHex(v)) {
-                      handleTerminalBackgroundCustomChange(v)
-                    }
-                  }}
+                  value={customColorValue}
+                  onChange={e => handleCustomColorText(e.target.value)}
+                  onBlur={handleCustomColorBlur}
                   placeholder="#101010"
                   className="w-40 font-mono"
                   spellCheck={false}

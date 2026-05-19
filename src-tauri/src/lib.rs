@@ -12,10 +12,16 @@ mod background_tasks;
 mod browser;
 mod chat;
 mod claude_cli;
+mod cli_update;
+mod coderabbit_cli;
 mod codex_cli;
 mod cursor_cli;
 mod gh_cli;
 pub mod http_server;
+pub mod jean_mcp_config;
+pub mod jean_mcp_core;
+pub mod jean_mcp_socket;
+pub mod jean_mcp_stdio;
 mod opencode_cli;
 mod opencode_server;
 mod opinionated;
@@ -80,13 +86,19 @@ fn greet(name: &str) -> String {
 pub struct AppPreferences {
     pub theme: String,
     #[serde(default = "default_model")]
-    pub selected_model: String, // Claude model: claude-opus-4-7, claude-opus-4-6, sonnet, haiku
+    pub selected_model: String, // Claude model: claude-opus-4-7[1m], claude-opus-4-6[1m], haiku
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String, // Thinking level: off, think, megathink, ultrathink
     #[serde(default = "default_effort_level")]
     pub default_effort_level: String, // Effort level for Opus adaptive thinking: low, medium, high, xhigh, max
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
+    #[serde(default = "default_terminal_renderer")]
+    pub terminal_renderer: String, // Embedded terminal renderer: "xterm" or "ghostty-web" (experimental)
+    #[serde(default = "default_terminal_font")]
+    pub terminal_font: String, // Embedded terminal font: jetbrains-mono, fira-code, source-code-pro, sf-mono, system
+    #[serde(default = "default_terminal_font_size")]
+    pub terminal_font_size: u32, // Embedded terminal font size in pixels (10-24)
     #[serde(default = "default_editor")]
     pub editor: String, // Editor app: zed, vscode, cursor, xcode, intellij
     #[serde(default = "default_open_in")]
@@ -119,10 +131,10 @@ pub struct AppPreferences {
     pub syntax_theme_dark: String, // Syntax highlighting theme for dark mode
     #[serde(default = "default_syntax_theme_light")]
     pub syntax_theme_light: String, // Syntax highlighting theme for light mode
-    #[serde(default = "default_session_recap_enabled")]
-    pub session_recap_enabled: bool, // Show session recap when returning to unfocused sessions
     #[serde(default = "default_parallel_execution_prompt_enabled")]
     pub parallel_execution_prompt_enabled: bool, // Add system prompt to encourage parallel sub-agent execution
+    #[serde(default = "default_compact_chat_view_enabled")]
+    pub compact_chat_view_enabled: bool, // Collapse intermediate tool calls into single ticker line
     #[serde(default)]
     pub magic_prompts: MagicPrompts, // Customizable prompts for AI-powered features
     #[serde(default)]
@@ -145,6 +157,8 @@ pub struct AppPreferences {
     pub waiting_sound: String, // Sound when session is waiting for input: none, workwork
     #[serde(default = "default_review_sound")]
     pub review_sound: String, // Sound when session finishes reviewing: none, workwork
+    #[serde(default = "default_web_access_sounds_enabled")]
+    pub web_access_sounds_enabled: bool, // Play notification sounds in browser/web access views
     #[serde(default)]
     pub http_server_enabled: bool, // Whether HTTP server is enabled
     #[serde(default)]
@@ -177,6 +191,8 @@ pub struct AppPreferences {
     pub has_seen_feature_tour: bool, // Whether user has seen the feature tour onboarding
     #[serde(default)]
     pub has_seen_jean_config_wizard: bool, // Whether user has seen the jean.json setup wizard
+    #[serde(default)]
+    pub has_seen_jean_mcp_intro: bool, // Whether user has seen the Jean MCP server announcement
     #[serde(default = "default_chrome_enabled")]
     pub chrome_enabled: bool, // Enable browser automation via Chrome extension
     #[serde(default = "default_zoom_level")]
@@ -185,6 +201,10 @@ pub struct AppPreferences {
     pub custom_cli_profiles: Vec<CustomCliProfile>, // Custom CLI settings profiles (e.g., OpenRouter, MiniMax)
     #[serde(default)]
     pub default_provider: Option<String>, // Default provider profile name (None = Anthropic direct)
+    #[serde(default)]
+    pub favorite_models: Vec<String>, // Favourited model keys ("backend:model") shown at top of picker
+    #[serde(default)]
+    pub fast_mode_models: Vec<String>, // Model keys ("backend:baseModel") with fast tier last enabled
     #[serde(default = "default_canvas_layout")]
     pub canvas_layout: String, // Canvas display mode: grid or list
     #[serde(default = "default_confirm_session_close")]
@@ -193,6 +213,8 @@ pub struct AppPreferences {
     pub default_execution_mode: String, // Default execution mode: "plan", "build", or "yolo"
     #[serde(default = "default_backend")]
     pub default_backend: String, // Default CLI backend: "claude", "codex", "opencode", or "cursor"
+    #[serde(default = "default_new_session_kind")]
+    pub default_new_session_kind: String, // Default new session action: "chat", "terminal", or a CLI backend
     #[serde(default = "default_codex_model")]
     pub selected_codex_model: String, // Default Codex model
     #[serde(default = "default_opencode_model")]
@@ -201,6 +223,8 @@ pub struct AppPreferences {
     pub selected_cursor_model: String, // Default Cursor model
     #[serde(default = "default_codex_reasoning_effort")]
     pub default_codex_reasoning_effort: String, // Codex reasoning effort: low, medium, high, xhigh
+    #[serde(default = "default_codex_goal_execution_mode")]
+    pub codex_goal_execution_mode: String, // Codex /goal execution mode: build or yolo
     #[serde(default)]
     pub codex_multi_agent_enabled: bool, // Enable multi-agent collaboration (experimental)
     #[serde(default = "default_codex_max_agent_threads")]
@@ -235,12 +259,34 @@ pub struct AppPreferences {
     pub opencode_cli_source: String, // OpenCode CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default = "default_cli_source")]
     pub gh_cli_source: String, // GitHub CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default = "default_cli_source")]
+    pub coderabbit_cli_source: String, // CodeRabbit CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default)]
     pub expand_tool_calls_by_default: bool, // Expand all tool call collapsibles by default (default: false)
     #[serde(default = "default_terminal_background")]
     pub terminal_background: String, // "auto" | "light" | "dark" | "custom"
     #[serde(default)]
     pub terminal_background_custom: Option<String>, // hex like "#101010"; only used when mode == "custom"
+    #[serde(default = "default_auto_update_ai_backends")]
+    pub auto_update_ai_backends: bool, // Automatically update AI backend CLIs when a new version is available
+    #[serde(default = "default_jean_mcp_enabled")]
+    pub jean_mcp_enabled: bool, // Expose Jean MCP server to spawned CLIs through explicit CLI config entries
+    #[serde(default = "default_jean_mcp_max_depth")]
+    pub jean_mcp_max_depth: u32, // Max recursive spawn depth via Jean MCP (default 3)
+    #[serde(default = "default_jean_mcp_rate_limit")]
+    pub jean_mcp_rate_limit_per_minute: u32, // Per-source rate limit for session-spawning tools (default 20)
+}
+
+fn default_jean_mcp_enabled() -> bool {
+    true
+}
+
+fn default_jean_mcp_max_depth() -> u32 {
+    3
+}
+
+fn default_jean_mcp_rate_limit() -> u32 {
+    20
 }
 
 fn default_true() -> Option<bool> {
@@ -315,7 +361,17 @@ fn default_chat_font() -> String {
 }
 
 fn default_model() -> String {
-    "claude-opus-4-7".to_string()
+    "claude-opus-4-7[1m]".to_string()
+}
+
+fn migrate_default_claude_model(model: &str) -> Option<&'static str> {
+    match model {
+        "claude-opus-4-7" => Some("claude-opus-4-7[1m]"),
+        "claude-opus-4-6" => Some("claude-opus-4-6[1m]"),
+        "claude-opus-4-6-fast" => Some("claude-opus-4-6[1m]-fast"),
+        "sonnet" => Some("claude-sonnet-4-6[1m]"),
+        _ => None,
+    }
 }
 
 fn default_thinking_level() -> String {
@@ -335,6 +391,18 @@ fn default_terminal() -> String {
     {
         "terminal".to_string()
     }
+}
+
+fn default_terminal_renderer() -> String {
+    "xterm".to_string()
+}
+
+fn default_terminal_font() -> String {
+    "jetbrains-mono".to_string()
+}
+
+fn default_terminal_font_size() -> u32 {
+    13
 }
 
 fn default_editor() -> String {
@@ -381,16 +449,20 @@ fn default_file_edit_mode() -> String {
     "external".to_string() // Default to external editor (VS Code, etc.)
 }
 
-fn default_session_recap_enabled() -> bool {
-    false // Disabled by default (experimental)
+fn default_parallel_execution_prompt_enabled() -> bool {
+    true // Enabled by default
 }
 
-fn default_parallel_execution_prompt_enabled() -> bool {
+fn default_compact_chat_view_enabled() -> bool {
     false // Disabled by default (experimental)
 }
 
 fn default_chrome_enabled() -> bool {
     true // Enabled by default
+}
+
+fn default_auto_update_ai_backends() -> bool {
+    true // Enabled by default — auto-install CLI updates in background
 }
 
 fn default_canvas_layout() -> String {
@@ -409,12 +481,34 @@ fn default_backend() -> String {
     "claude".to_string()
 }
 
+fn default_new_session_kind() -> String {
+    "chat".to_string()
+}
+
 fn default_cli_source() -> String {
     "jean".to_string()
 }
 
+fn maybe_auto_select_system_coderabbit(
+    app: &AppHandle,
+    preferences: &mut AppPreferences,
+    raw_preferences: Option<&Value>,
+) -> bool {
+    let coderabbit_source_missing = raw_preferences
+        .and_then(Value::as_object)
+        .map(|object| !object.contains_key("coderabbit_cli_source"))
+        .unwrap_or(true);
+
+    if coderabbit_source_missing && coderabbit_cli::should_auto_use_system_coderabbit(app) {
+        preferences.coderabbit_cli_source = "path".to_string();
+        return true;
+    }
+
+    false
+}
+
 fn default_codex_model() -> String {
-    "gpt-5.4".to_string()
+    "gpt-5.5".to_string()
 }
 
 fn default_opencode_model() -> String {
@@ -427,6 +521,10 @@ fn default_cursor_model() -> String {
 
 fn default_codex_reasoning_effort() -> String {
     "high".to_string()
+}
+
+fn default_codex_goal_execution_mode() -> String {
+    "build".to_string()
 }
 
 fn default_codex_max_agent_threads() -> u32 {
@@ -447,6 +545,10 @@ fn default_waiting_sound() -> String {
 
 fn default_review_sound() -> String {
     "none".to_string()
+}
+
+fn default_web_access_sounds_enabled() -> bool {
+    true
 }
 
 fn default_http_server_port() -> u16 {
@@ -476,8 +578,21 @@ fn resolve_http_server_bind_host(prefs: &AppPreferences) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{resolve_http_server_bind_host, AppPreferences};
+    use super::{default_global_system_prompt, resolve_http_server_bind_host, AppPreferences};
     use serde_json::json;
+
+    #[test]
+    fn default_global_system_prompt_prefers_interactive_plan_questions() {
+        let prompt = default_global_system_prompt();
+
+        assert!(prompt.contains("backend-native interactive question UI"));
+        assert!(prompt.contains("Codex request_user_input"));
+        assert!(prompt.contains("after the user answers native `request_user_input`"));
+        assert!(prompt.contains("Every Codex plan-mode response"));
+        assert!(prompt.contains("Claude AskUserQuestion"));
+        assert!(prompt.contains("OpenCode question"));
+        assert!(prompt.contains("Use a plain-text Unresolved Questions section only"));
+    }
 
     #[test]
     fn resolve_http_server_bind_host_prefers_explicit_host() {
@@ -497,6 +612,71 @@ mod tests {
 
         prefs.http_server_localhost_only = false;
         assert_eq!(resolve_http_server_bind_host(&prefs), "0.0.0.0");
+    }
+
+    #[test]
+    fn app_preferences_default_web_access_sounds_enabled_for_existing_prefs() {
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        prefs_json
+            .as_object_mut()
+            .unwrap()
+            .remove("web_access_sounds_enabled");
+
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+
+        assert!(prefs.web_access_sounds_enabled);
+    }
+
+    #[test]
+    fn app_preferences_default_jean_mcp_intro_unseen_for_existing_prefs() {
+        assert!(!AppPreferences::default().has_seen_jean_mcp_intro);
+
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        prefs_json
+            .as_object_mut()
+            .unwrap()
+            .remove("has_seen_jean_mcp_intro");
+
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+        assert!(!prefs.has_seen_jean_mcp_intro);
+    }
+
+    #[test]
+    fn app_preferences_default_jean_mcp_enabled_for_new_and_missing_prefs() {
+        assert!(AppPreferences::default().jean_mcp_enabled);
+
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        prefs_json
+            .as_object_mut()
+            .unwrap()
+            .remove("jean_mcp_enabled");
+
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+        assert!(prefs.jean_mcp_enabled);
+    }
+
+    #[test]
+    fn app_preferences_preserves_explicit_jean_mcp_enabled() {
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        prefs_json
+            .as_object_mut()
+            .unwrap()
+            .insert("jean_mcp_enabled".to_string(), json!(true));
+
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+        assert!(prefs.jean_mcp_enabled);
+    }
+
+    #[test]
+    fn app_preferences_preserves_explicit_jean_mcp_disabled() {
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        prefs_json
+            .as_object_mut()
+            .unwrap()
+            .insert("jean_mcp_enabled".to_string(), json!(false));
+
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+        assert!(!prefs.jean_mcp_enabled);
     }
 
     #[test]
@@ -603,8 +783,6 @@ pub struct MagicPrompts {
     #[serde(default)]
     pub global_system_prompt: Option<String>,
     #[serde(default)]
-    pub session_recap: Option<String>,
-    #[serde(default)]
     pub investigate_security_alert: Option<String>,
     #[serde(default)]
     pub investigate_advisory: Option<String>,
@@ -614,7 +792,7 @@ pub struct MagicPrompts {
     pub review_comments: Option<String>,
 }
 
-fn default_investigate_issue_prompt() -> String {
+pub(crate) fn default_investigate_issue_prompt() -> String {
     r#"<task>
 
 Investigate the loaded GitHub {issueWord} ({issueRefs})
@@ -645,7 +823,7 @@ Investigate the loaded GitHub {issueWord} ({issueRefs})
         .to_string()
 }
 
-fn default_investigate_pr_prompt() -> String {
+pub(crate) fn default_investigate_pr_prompt() -> String {
     r#"<task>
 
 Investigate the loaded GitHub {prWord} ({prRefs})
@@ -969,19 +1147,31 @@ Investigate the loaded Linear {linearWord} ({linearRefs})
 fn default_release_notes_prompt() -> String {
     r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).
 
+## Merged pull requests and detected issue references
+
+{pull_requests}
+
+## Required PR/issue reference formats
+
+{related_pull_requests}
+
 ## Commits since {tag}
 
 {commits}
 
 ## Instructions
 
-- Write a concise release title
-- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
-- Use bullet points with brief descriptions
-- Reference PR numbers if visible in commit messages
-- Skip merge commits and trivial changes (typos, formatting)
-- Write in past tense ("Added", "Fixed", "Improved")
-- Keep it concise and user-facing (skip internal implementation details)"#
+- Write a concise release title.
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries).
+- Explicitly use the merged pull request metadata above as the primary source, then use commits as fallback context.
+- Inspect PR titles, PR bodies, and PR commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Always normalize closing keywords to lowercase final forms: closes, fixes, resolves.
+- Reference the PR number for each bullet when known: `(#123)`.
+- If a PR closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: `(#123, fixes #456, #789)`.
+- Do not invent PR numbers or issue references; only use the detected metadata above.
+- Skip merge commits and trivial changes (typos, formatting).
+- Write in past tense ("Added", "Fixed", "Improved").
+- Keep it concise and user-facing (skip internal implementation details)."#
         .to_string()
 }
 
@@ -1009,6 +1199,51 @@ Respond with ONLY the raw JSON object, no markdown, no code fences, no explanati
         .to_string()
 }
 
+fn default_review_comments_prompt() -> String {
+    r#"<task>
+
+Address the following review comments from PR #{prNumber}
+
+</task>
+
+
+<review_comments>
+{reviewComments}
+</review_comments>
+
+
+<instructions>
+
+1. Read each review comment carefully, noting the file path, line numbers, and diff context
+2. Understand what the reviewer is asking for in each comment
+3. Make the requested changes to address each comment
+4. If a comment is unclear or you disagree with it, explain your reasoning
+5. After making changes, briefly summarize what you changed for each comment
+
+</instructions>
+
+
+<guidelines>
+
+- Be thorough but focused — address exactly what was requested
+- If a comment requires a larger refactor, explain the scope before proceeding
+- Run tests after making changes to ensure nothing is broken
+
+</guidelines>"#
+        .to_string()
+}
+
+pub(crate) fn default_parallel_execution_prompt() -> String {
+    r#"In plan mode, structure plans so subagents can work simultaneously. In build/execute mode, use subagents in parallel for faster implementation.
+
+When launching multiple Task subagents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
+
+Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.
+
+When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., "code-simplifier:code-simplifier", not just "code-simplifier"). If the agent type contains a colon, include the full namespace:name string."#
+        .to_string()
+}
+
 fn default_global_system_prompt() -> String {
     r#"### 1. Plan Mode Default
 - Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)
@@ -1016,7 +1251,11 @@ fn default_global_system_prompt() -> String {
 - Use plan mode for verification steps, not just building
 - Write detailed specs upfront to reduce ambiguity
 - Make the plan extremely concise. Sacrifice grammar for the sake of concision.
-- At the end of each plan, give me a list of unresolved questions to answer, if any.
+- In planning mode, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex update_plan/CodexPlan, Cursor/OpenCode equivalent), not plain text only.
+- For unresolved questions in plan mode, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question.
+- For Codex specifically: after the user answers native `request_user_input`/open questions in plan mode, immediately call `update_plan`/emit `CodexPlan` again with the revised plan before any implementation.
+- Every Codex plan-mode response that contains or revises a plan must use `update_plan`/`CodexPlan`; do not provide plain-text-only plans.
+- Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.
 
 ### 2. Documentation First
 - Before designing or coding against any external library/framework/SDK/API/CLI, run WebSearch for current docs.
@@ -1073,65 +1312,6 @@ fn default_global_system_prompt() -> String {
         .to_string()
 }
 
-fn default_session_recap_prompt() -> String {
-    r#"You are a summarization assistant. Your ONLY job is to summarize the following conversation transcript. Do NOT continue the conversation or take any actions. Just summarize.
-
-CONVERSATION TRANSCRIPT:
-{conversation}
-
-END OF TRANSCRIPT.
-
-Now provide a brief summary with exactly two fields:
-- chat_summary: One sentence (max 100 chars) describing the overall goal and current status
-- last_action: One sentence (max 200 chars) describing what was just completed in the last exchange"#
-        .to_string()
-}
-
-fn default_review_comments_prompt() -> String {
-    r#"<task>
-
-Address the following review comments from PR #{prNumber}
-
-</task>
-
-
-<review_comments>
-{reviewComments}
-</review_comments>
-
-
-<instructions>
-
-1. Read each review comment carefully, noting the file path, line numbers, and diff context
-2. Understand what the reviewer is asking for in each comment
-3. Make the requested changes to address each comment
-4. If a comment is unclear or you disagree with it, explain your reasoning
-5. After making changes, briefly summarize what you changed for each comment
-
-</instructions>
-
-
-<guidelines>
-
-- Be thorough but focused — address exactly what was requested
-- If a comment requires a larger refactor, explain the scope before proceeding
-- Run tests after making changes to ensure nothing is broken
-
-</guidelines>"#
-        .to_string()
-}
-
-fn default_parallel_execution_prompt() -> String {
-    r#"In plan mode, structure plans so subagents can work simultaneously. In build/execute mode, use subagents in parallel for faster implementation.
-
-When launching multiple Task subagents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
-
-Instruct each sub-agent to briefly outline its approach before implementing, so it can course-correct early without formal plan mode overhead.
-
-When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., "code-simplifier:code-simplifier", not just "code-simplifier"). If the agent type contains a colon, include the full namespace:name string."#
-        .to_string()
-}
-
 /// Per-prompt model overrides for magic prompts
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MagicPromptModels {
@@ -1155,8 +1335,6 @@ pub struct MagicPromptModels {
     pub release_notes_model: String,
     #[serde(default = "default_sonnet_model")]
     pub session_naming_model: String,
-    #[serde(default = "default_sonnet_model")]
-    pub session_recap_model: String,
     #[serde(default = "default_model")]
     pub investigate_security_alert_model: String,
     #[serde(default = "default_model")]
@@ -1184,7 +1362,6 @@ impl Default for MagicPromptModels {
             resolve_conflicts_model: default_model(),
             release_notes_model: default_sonnet_model(),
             session_naming_model: default_sonnet_model(),
-            session_recap_model: default_sonnet_model(),
             investigate_security_alert_model: default_model(),
             investigate_advisory_model: default_model(),
             investigate_linear_issue_model: default_model(),
@@ -1196,7 +1373,7 @@ impl Default for MagicPromptModels {
 impl MagicPromptModels {
     /// Upgrade legacy default model values left on existing installs:
     /// fields that previously defaulted to `"opus"` (Opus 4.6) are bumped to
-    /// the new default (`"claude-opus-4-7"`). Users who explicitly picked
+    /// the new default (`"claude-opus-4-7[1m]"`). Users who explicitly picked
     /// other models are untouched. Returns true if any field changed.
     fn migrate_legacy_defaults(&mut self) -> bool {
         let new_opus = default_model();
@@ -1267,8 +1444,6 @@ pub struct MagicPromptProviders {
     #[serde(default)]
     pub session_naming_provider: Option<String>,
     #[serde(default)]
-    pub session_recap_provider: Option<String>,
-    #[serde(default)]
     pub investigate_security_alert_provider: Option<String>,
     #[serde(default)]
     pub investigate_advisory_provider: Option<String>,
@@ -1301,8 +1476,6 @@ pub struct MagicPromptBackends {
     pub release_notes_backend: Option<String>,
     #[serde(default)]
     pub session_naming_backend: Option<String>,
-    #[serde(default)]
-    pub session_recap_backend: Option<String>,
     #[serde(default)]
     pub investigate_security_alert_backend: Option<String>,
     #[serde(default)]
@@ -1337,8 +1510,6 @@ pub struct MagicPromptReasoningEfforts {
     #[serde(default)]
     pub session_naming_effort: Option<String>,
     #[serde(default)]
-    pub session_recap_effort: Option<String>,
-    #[serde(default)]
     pub investigate_security_alert_effort: Option<String>,
     #[serde(default)]
     pub investigate_advisory_effort: Option<String>,
@@ -1353,7 +1524,7 @@ impl MagicPrompts {
     /// This ensures users who never customized a prompt get auto-updated defaults.
     fn migrate_defaults(&mut self) {
         type DefaultEntry<'a> = (fn() -> String, &'a mut Option<String>);
-        let defaults: [DefaultEntry; 17] = [
+        let defaults: [DefaultEntry; 16] = [
             (
                 default_investigate_issue_prompt,
                 &mut self.investigate_issue,
@@ -1378,7 +1549,6 @@ impl MagicPrompts {
                 &mut self.parallel_execution,
             ),
             (default_global_system_prompt, &mut self.global_system_prompt),
-            (default_session_recap_prompt, &mut self.session_recap),
             (
                 default_investigate_security_alert_prompt,
                 &mut self.investigate_security_alert,
@@ -1411,6 +1581,9 @@ impl Default for AppPreferences {
             selected_model: default_model(),
             thinking_level: default_thinking_level(),
             terminal: default_terminal(),
+            terminal_renderer: default_terminal_renderer(),
+            terminal_font: default_terminal_font(),
+            terminal_font_size: default_terminal_font_size(),
             editor: default_editor(),
             open_in: default_open_in(),
             auto_branch_naming: default_auto_branch_naming(),
@@ -1427,8 +1600,8 @@ impl Default for AppPreferences {
             archive_retention_days: default_archive_retention_days(),
             syntax_theme_dark: default_syntax_theme_dark(),
             syntax_theme_light: default_syntax_theme_light(),
-            session_recap_enabled: default_session_recap_enabled(),
             parallel_execution_prompt_enabled: default_parallel_execution_prompt_enabled(),
+            compact_chat_view_enabled: default_compact_chat_view_enabled(),
             magic_prompts: MagicPrompts::default(),
             magic_prompt_models: MagicPromptModels::default(),
             magic_prompt_providers: MagicPromptProviders::default(),
@@ -1440,6 +1613,7 @@ impl Default for AppPreferences {
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),
             waiting_sound: default_waiting_sound(),
             review_sound: default_review_sound(),
+            web_access_sounds_enabled: default_web_access_sounds_enabled(),
             http_server_enabled: false,
             http_server_auto_start: false,
             http_server_port: default_http_server_port(),
@@ -1457,18 +1631,23 @@ impl Default for AppPreferences {
             known_mcp_servers: Vec::new(),
             has_seen_feature_tour: false,
             has_seen_jean_config_wizard: false,
+            has_seen_jean_mcp_intro: false,
             chrome_enabled: default_chrome_enabled(),
             zoom_level: default_zoom_level(),
             custom_cli_profiles: Vec::new(),
             default_provider: None,
+            favorite_models: Vec::new(),
+            fast_mode_models: Vec::new(),
             canvas_layout: default_canvas_layout(),
             confirm_session_close: default_confirm_session_close(),
             default_execution_mode: default_execution_mode(),
             default_backend: default_backend(),
+            default_new_session_kind: default_new_session_kind(),
             selected_codex_model: default_codex_model(),
             selected_opencode_model: default_opencode_model(),
             selected_cursor_model: default_cursor_model(),
             default_codex_reasoning_effort: default_codex_reasoning_effort(),
+            codex_goal_execution_mode: default_codex_goal_execution_mode(),
             codex_multi_agent_enabled: false,
             codex_max_agent_threads: default_codex_max_agent_threads(),
             restore_last_session: true,
@@ -1486,9 +1665,14 @@ impl Default for AppPreferences {
             codex_cli_source: default_cli_source(),
             opencode_cli_source: default_cli_source(),
             gh_cli_source: default_cli_source(),
+            coderabbit_cli_source: default_cli_source(),
             expand_tool_calls_by_default: false,
             terminal_background: default_terminal_background(),
             terminal_background_custom: None,
+            auto_update_ai_backends: default_auto_update_ai_backends(),
+            jean_mcp_enabled: default_jean_mcp_enabled(),
+            jean_mcp_max_depth: default_jean_mcp_max_depth(),
+            jean_mcp_rate_limit_per_minute: default_jean_mcp_rate_limit(),
         }
     }
 }
@@ -1540,10 +1724,6 @@ pub struct UIState {
     /// Whether the review sidebar is visible
     #[serde(default)]
     pub review_sidebar_visible: Option<bool>,
-
-    /// Session IDs that completed while out of focus, need digest on open
-    #[serde(default)]
-    pub pending_digest_session_ids: Vec<String>,
 
     /// Modal terminal drawer open state per worktree
     #[serde(default)]
@@ -1663,7 +1843,6 @@ impl Default for UIState {
             left_sidebar_visible: None,
             active_session_ids: std::collections::HashMap::new(),
             review_sidebar_visible: None,
-            pending_digest_session_ids: Vec::new(),
             modal_terminal_open: std::collections::HashMap::new(),
             modal_terminal_dock_mode: None,
             modal_terminal_pinned: None,
@@ -1705,12 +1884,17 @@ pub fn get_preferences_path(app: &AppHandle) -> Result<PathBuf, String> {
 pub fn load_preferences_sync(app: &AppHandle) -> Result<AppPreferences, String> {
     let prefs_path = get_preferences_path(app)?;
     if !prefs_path.exists() {
-        return Ok(AppPreferences::default());
+        let mut preferences = AppPreferences::default();
+        maybe_auto_select_system_coderabbit(app, &mut preferences, None);
+        return Ok(preferences);
     }
     let contents = std::fs::read_to_string(&prefs_path)
         .map_err(|e| format!("Failed to read preferences file: {e}"))?;
-    let preferences: AppPreferences =
+    let raw_preferences: Value =
         serde_json::from_str(&contents).map_err(|e| format!("Failed to parse preferences: {e}"))?;
+    let mut preferences: AppPreferences = serde_json::from_value(raw_preferences.clone())
+        .map_err(|e| format!("Failed to parse preferences: {e}"))?;
+    maybe_auto_select_system_coderabbit(app, &mut preferences, Some(&raw_preferences));
     Ok(preferences)
 }
 
@@ -1721,7 +1905,14 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
 
     if !prefs_path.exists() {
         log::trace!("Preferences file not found, using defaults");
-        return Ok(AppPreferences::default());
+        let mut preferences = AppPreferences::default();
+        if maybe_auto_select_system_coderabbit(&app, &mut preferences, None) {
+            if let Ok(json) = serde_json::to_string_pretty(&preferences) {
+                let _ = std::fs::write(&prefs_path, json);
+                log::trace!("Saved preferences after CodeRabbit PATH auto-detection");
+            }
+        }
+        return Ok(preferences);
     }
 
     let contents = std::fs::read_to_string(&prefs_path).map_err(|e| {
@@ -1729,20 +1920,36 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
         format!("Failed to read preferences file: {e}")
     })?;
 
-    let mut preferences: AppPreferences = serde_json::from_str(&contents).map_err(|e| {
+    let raw_preferences: Value = serde_json::from_str(&contents).map_err(|e| {
         log::error!("Failed to parse preferences JSON: {e}");
         format!("Failed to parse preferences: {e}")
     })?;
+    let mut preferences: AppPreferences =
+        serde_json::from_value(raw_preferences.clone()).map_err(|e| {
+            log::error!("Failed to parse preferences JSON: {e}");
+            format!("Failed to parse preferences: {e}")
+        })?;
 
     // Migrate magic prompts: convert prompts matching current defaults to None
     // so they auto-update when new defaults are shipped
     preferences.magic_prompts.migrate_defaults();
 
-    // Migrate legacy magic-prompt model names ("opus" → "claude-opus-4-7")
+    // Migrate legacy default Claude model names to the 1M variants where
+    // available so hidden non-1M defaults do not render blank in settings.
+    let mut needs_resave = false;
+    if let Some(new_model) = migrate_default_claude_model(&preferences.selected_model) {
+        preferences.selected_model = new_model.to_string();
+        needs_resave = true;
+    }
+
+    // Migrate legacy magic-prompt model names ("opus" → "claude-opus-4-7[1m]")
     // and legacy auto-naming models ("haiku" → "sonnet")
-    let mut needs_resave = preferences.magic_prompt_models.migrate_legacy_defaults();
+    needs_resave |= preferences.magic_prompt_models.migrate_legacy_defaults();
     if preferences.branch_naming_model == "haiku" {
         preferences.branch_naming_model = default_branch_naming_model();
+        needs_resave = true;
+    }
+    if maybe_auto_select_system_coderabbit(&app, &mut preferences, Some(&raw_preferences)) {
         needs_resave = true;
     }
     if preferences.session_naming_model == "haiku" {
@@ -1832,6 +2039,15 @@ async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result
         profile.file_path = String::new();
     }
 
+    if prefs_for_disk.jean_mcp_enabled
+        && prefs_for_disk
+            .http_server_token
+            .as_ref()
+            .is_none_or(|token| token.is_empty())
+    {
+        prefs_for_disk.http_server_token = Some(http_server::auth::generate_token());
+    }
+
     let json_content = serde_json::to_string_pretty(&prefs_for_disk).map_err(|e| {
         log::error!("Failed to serialize preferences: {e}");
         format!("Failed to serialize preferences: {e}")
@@ -1854,6 +2070,8 @@ async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result
     })?;
 
     log::trace!("Successfully saved preferences to {prefs_path:?}");
+
+    schedule_jean_mcp_socket_sync(app.clone());
 
     // Sync native menu accelerators (macOS only)
     #[cfg(target_os = "macos")]
@@ -2404,6 +2622,150 @@ async fn regenerate_http_token(app: AppHandle) -> Result<String, String> {
     Ok(new_token)
 }
 
+async fn sync_jean_mcp_socket_from_preferences(
+    app: AppHandle,
+    prefs: &AppPreferences,
+) -> Result<(), String> {
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    let handle_state = app.try_state::<Arc<Mutex<Option<jean_mcp_socket::JeanMcpSocketHandle>>>>();
+    let Some(state) = handle_state else {
+        return Ok(());
+    };
+
+    if !prefs.jean_mcp_enabled {
+        let mut guard = state.lock().await;
+        if let Some(handle) = guard.take() {
+            let _ = handle.shutdown_tx.send(());
+            log::info!("Jean MCP proxy socket stopped");
+        }
+        emit_jean_mcp_socket_status(&app, false);
+        return Ok(());
+    }
+
+    let token = prefs
+        .http_server_token
+        .clone()
+        .filter(|token| !token.is_empty())
+        .unwrap_or_else(http_server::auth::generate_token);
+    let path = jean_mcp_socket::socket_path(&app)?;
+
+    {
+        let mut guard = state.lock().await;
+        if let Some(handle) = guard.as_ref() {
+            if handle.path == path && handle.token == token {
+                return Ok(());
+            }
+        }
+        if let Some(handle) = guard.take() {
+            let _ = handle.shutdown_tx.send(());
+            log::info!("Jean MCP proxy socket restarting due to preference changes");
+        }
+    }
+
+    let handle = jean_mcp_socket::start_socket_server(app.clone(), path, token).await?;
+    log::info!("Jean MCP proxy socket started: {}", handle.path.display());
+
+    let mut guard = state.lock().await;
+    *guard = Some(handle);
+    emit_jean_mcp_socket_status(&app, true);
+    Ok(())
+}
+
+#[derive(Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JeanMcpSocketStatusEvent {
+    running: bool,
+}
+
+fn emit_jean_mcp_socket_status(app: &AppHandle, running: bool) {
+    if let Err(e) = app.emit(
+        "jean-mcp-socket-status",
+        JeanMcpSocketStatusEvent { running },
+    ) {
+        log::warn!("Failed to emit Jean MCP socket status: {e}");
+    }
+}
+
+fn schedule_jean_mcp_socket_sync(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let prefs = match load_preferences(app.clone()).await {
+            Ok(prefs) => prefs,
+            Err(e) => {
+                log::error!("Failed to load preferences for Jean MCP socket sync: {e}");
+                return;
+            }
+        };
+        if let Err(e) = sync_jean_mcp_socket_from_preferences(app, &prefs).await {
+            log::error!("Failed to sync Jean MCP proxy socket: {e}");
+        }
+    });
+}
+
+/// Snippet payloads users can paste into CLI config files to expose Jean's MCP
+/// server explicitly. One-click install writes the same entries.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct JeanMcpSnippet {
+    pub enabled: bool,
+    pub server_running: bool,
+    pub mode: jean_mcp_config::JeanMcpInstallMode,
+    pub server_name: String,
+    pub url: Option<String>,
+    pub token: Option<String>,
+    pub claude: Option<String>,
+    pub cursor: Option<String>,
+    pub codex_toml: Option<String>,
+    pub opencode_json: Option<String>,
+}
+
+#[tauri::command]
+async fn get_jean_mcp_config_snippet(app: AppHandle) -> Result<JeanMcpSnippet, String> {
+    let prefs = load_preferences(app.clone()).await?;
+    let (running, socket_path, token) = jean_mcp_socket::get_socket_status(app.clone()).await;
+    let mode = jean_mcp_config::current_mode();
+    let server_name = mode.server_name().to_string();
+    let command = jean_mcp_config::get_stable_launcher_command();
+
+    let entry = match (&socket_path, &token) {
+        (Some(socket), Some(token)) if running => Some(jean_mcp_config::JeanMcpEntry {
+            mode,
+            server_name: server_name.clone(),
+            command,
+            socket: socket.clone(),
+            token: token.clone(),
+        }),
+        _ => None,
+    };
+    let claude = entry.as_ref().map(|entry| entry.claude_snippet());
+    let cursor = entry.as_ref().map(|entry| entry.cursor_snippet());
+    let codex_toml = entry.as_ref().map(|entry| entry.codex_snippet());
+    let opencode_json = entry.as_ref().map(|entry| entry.opencode_snippet());
+
+    Ok(JeanMcpSnippet {
+        enabled: prefs.jean_mcp_enabled,
+        server_running: running,
+        mode,
+        server_name,
+        url: socket_path,
+        token,
+        claude,
+        cursor,
+        codex_toml,
+        opencode_json,
+    })
+}
+
+#[tauri::command]
+async fn install_jean_mcp_config(
+    app: AppHandle,
+    backends: Option<Vec<String>>,
+    mode: Option<String>,
+) -> Result<Vec<jean_mcp_config::JeanMcpInstallResult>, String> {
+    jean_mcp_config::install_jean_mcp_config_impl(app, backends, mode).await
+}
+
 /// Convert a frontend shortcut string (e.g. "mod+shift+m") to Tauri accelerator format (e.g. "CmdOrCtrl+Shift+M")
 #[cfg(target_os = "macos")]
 fn shortcut_to_accelerator(shortcut: &str) -> String {
@@ -2692,6 +3054,14 @@ fn parse_cli_args() -> CliArgs {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    if std::env::args().any(|arg| arg == jean_mcp_core::JEAN_MCP_STDIO_ARG) {
+        if let Err(e) = jean_mcp_stdio::run_stdio_server() {
+            eprintln!("Jean MCP server failed: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     let cli_args = parse_cli_args();
     let headless = cli_args.headless;
 
@@ -3021,6 +3391,9 @@ pub fn run() {
             app.manage(std::sync::Arc::new(tokio::sync::Mutex::new(
                 None::<http_server::server::HttpServerHandle>,
             )));
+            app.manage(std::sync::Arc::new(tokio::sync::Mutex::new(
+                None::<jean_mcp_socket::JeanMcpSocketHandle>,
+            )));
             log::trace!("HTTP server infrastructure initialized");
 
             // Start HTTP server (always in headless mode, or if auto-start configured)
@@ -3089,6 +3462,32 @@ pub fn run() {
                 }
             });
 
+            // Start Jean MCP's local stdio proxy socket when enabled. Spawned CLIs
+            // connect via stdio to a helper process, which forwards over this socket.
+            let app_handle_mcp = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                match load_preferences(app_handle_mcp.clone()).await {
+                    Ok(mut prefs) if prefs.jean_mcp_enabled => {
+                        if prefs
+                            .http_server_token
+                            .as_ref()
+                            .is_none_or(|token| token.is_empty())
+                        {
+                            prefs.http_server_token = Some(http_server::auth::generate_token());
+                            if let Err(e) = save_preferences(app_handle_mcp.clone(), prefs).await {
+                                log::error!("Failed to save/start Jean MCP socket: {e}");
+                            }
+                        } else if let Err(e) =
+                            sync_jean_mcp_socket_from_preferences(app_handle_mcp, &prefs).await
+                        {
+                            log::error!("Failed to start Jean MCP socket: {e}");
+                        }
+                    }
+                    Ok(_) => {}
+                    Err(e) => log::error!("Failed to load preferences for Jean MCP socket: {e}"),
+                }
+            });
+
             log::info!("Startup: setup() completed in {:?}", setup_start.elapsed());
             Ok(())
         })
@@ -3117,6 +3516,8 @@ pub fn run() {
             projects::remove_project,
             projects::list_worktrees,
             projects::get_worktree,
+            projects::get_worktree_changes,
+            projects::get_worktree_diff,
             projects::create_worktree,
             projects::create_worktree_from_existing_branch,
             projects::checkout_pr,
@@ -3135,6 +3536,7 @@ pub fn run() {
             projects::delete_all_archives,
             projects::rename_worktree,
             projects::update_worktree_label,
+            projects::update_worktree_labels,
             projects::set_worktree_last_opened,
             projects::open_worktree_in_finder,
             projects::open_log_directory,
@@ -3149,6 +3551,8 @@ pub fn run() {
             projects::create_commit_with_ai,
             projects::revert_last_local_commit,
             projects::run_review_with_ai,
+            projects::run_coderabbit_review,
+            projects::trigger_coderabbit_pr_review,
             projects::cancel_review_with_ai,
             projects::list_github_releases,
             projects::generate_release_notes,
@@ -3257,6 +3661,7 @@ pub fn run() {
             projects::get_app_data_dir,
             // Terminal commands
             terminal::start_terminal,
+            terminal::prepare_backend_terminal_context,
             terminal::terminal_write,
             terminal::terminal_resize,
             terminal::stop_terminal,
@@ -3283,9 +3688,12 @@ pub fn run() {
             browser::has_active_browser_tab,
             // Chat commands - Session management
             chat::get_sessions,
+            chat::list_sessions_summary,
+            chat::get_session_status,
             chat::list_all_sessions,
             chat::get_session,
             chat::load_older_session_messages,
+            chat::list_native_cli_sessions,
             chat::create_session,
             chat::rename_session,
             chat::regenerate_session_name,
@@ -3320,7 +3728,11 @@ pub fn run() {
             chat::respond_codex_permissions_request,
             chat::respond_codex_user_input_request,
             chat::respond_codex_mcp_elicitation,
+            jean_mcp_core::start_background_investigation,
             chat::respond_codex_dynamic_tool_call,
+            chat::codex_goal_set,
+            chat::codex_goal_get,
+            chat::codex_goal_clear,
             // Chat commands - Queue management (cross-client sync)
             chat::enqueue_message,
             chat::dequeue_message,
@@ -3354,9 +3766,6 @@ pub fn run() {
             chat::delete_context_file,
             chat::rename_saved_context,
             chat::generate_context_from_session,
-            // Chat commands - Session digest (context recall)
-            chat::generate_session_digest,
-            chat::update_session_digest,
             // Chat commands - Real-time setting sync
             chat::broadcast_session_setting,
             // Chat commands - Debug info
@@ -3371,6 +3780,7 @@ pub fn run() {
             claude_cli::get_claude_usage,
             claude_cli::get_available_cli_versions,
             claude_cli::install_claude_cli,
+            claude_cli::uninstall_claude_cli,
             // Codex CLI management commands
             codex_cli::check_codex_cli_installed,
             codex_cli::detect_codex_in_path,
@@ -3378,6 +3788,15 @@ pub fn run() {
             codex_cli::get_codex_usage,
             codex_cli::get_available_codex_versions,
             codex_cli::install_codex_cli,
+            codex_cli::uninstall_codex_cli,
+            // CodeRabbit CLI management commands
+            coderabbit_cli::check_coderabbit_cli_installed,
+            coderabbit_cli::detect_coderabbit_in_path,
+            coderabbit_cli::check_coderabbit_cli_auth,
+            coderabbit_cli::get_available_coderabbit_versions,
+            coderabbit_cli::install_coderabbit_cli,
+            coderabbit_cli::uninstall_coderabbit_cli,
+            coderabbit_cli::update_coderabbit_cli,
             // Cursor CLI management commands
             cursor_cli::check_cursor_cli_installed,
             cursor_cli::detect_cursor_in_path,
@@ -3390,6 +3809,7 @@ pub fn run() {
             opencode_cli::check_opencode_cli_auth,
             opencode_cli::get_available_opencode_versions,
             opencode_cli::install_opencode_cli,
+            opencode_cli::uninstall_opencode_cli,
             opencode_cli::list_opencode_models,
             // GitHub CLI management commands
             gh_cli::check_gh_cli_installed,
@@ -3397,6 +3817,9 @@ pub fn run() {
             gh_cli::check_gh_cli_auth,
             gh_cli::get_available_gh_versions,
             gh_cli::install_gh_cli,
+            gh_cli::uninstall_gh_cli,
+            // Generic CLI update command (path-installed CLIs)
+            cli_update::run_cli_path_update,
             // Background task commands
             background_tasks::commands::set_app_focus_state,
             background_tasks::commands::set_active_worktree_for_polling,
@@ -3415,6 +3838,8 @@ pub fn run() {
             list_http_bind_host_options,
             validate_http_bind_host,
             regenerate_http_token,
+            get_jean_mcp_config_snippet,
+            install_jean_mcp_config,
             // Opinionated plugin commands
             opinionated::check_opinionated_plugin_status,
             opinionated::install_opinionated_plugin,
@@ -3425,22 +3850,39 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error building tauri application")
-        .run(move |_app_handle, event| match &event {
+        .run(move |app_handle, event| match &event {
             tauri::RunEvent::Exit => {
+                let has_running_sessions = chat::has_running_sessions();
                 eprintln!("[TERMINAL CLEANUP] RunEvent::Exit received");
                 let killed = terminal::cleanup_all_terminals();
                 eprintln!("[TERMINAL CLEANUP] Killed {killed} terminal(s)");
-                match opencode_server::shutdown_managed_server() {
-                    Ok(true) => eprintln!("[OPENCODE CLEANUP] Stopped managed OpenCode server"),
-                    Ok(false) => {}
-                    Err(e) => eprintln!("[OPENCODE CLEANUP] Failed during Exit: {e}"),
+                if has_running_sessions {
+                    log::warn!(
+                        "RunEvent::Exit while sessions are running; skipping managed AI server shutdown"
+                    );
+                } else {
+                    match opencode_server::shutdown_managed_server() {
+                        Ok(true) => eprintln!("[OPENCODE CLEANUP] Stopped managed OpenCode server"),
+                        Ok(false) => {}
+                        Err(e) => eprintln!("[OPENCODE CLEANUP] Failed during Exit: {e}"),
+                    }
+                    chat::codex_server::shutdown_server();
                 }
-                chat::codex_server::shutdown_server();
             }
             tauri::RunEvent::ExitRequested { api, .. } => {
                 // In headless mode, prevent exit when window closes
                 if headless {
                     api.prevent_exit();
+                    return;
+                }
+                if chat::has_running_sessions() {
+                    api.prevent_exit();
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.hide();
+                    }
+                    log::info!(
+                        "Prevented app exit while sessions are running; hid main window instead"
+                    );
                     return;
                 }
                 eprintln!("[TERMINAL CLEANUP] RunEvent::ExitRequested received");
@@ -3457,10 +3899,27 @@ pub fn run() {
                 }
                 chat::codex_server::shutdown_server();
             }
+            #[cfg(target_os = "macos")]
+            tauri::RunEvent::Reopen { .. } => {
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
             tauri::RunEvent::WindowEvent { label, event, .. } => {
-                if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     // In headless mode, we already closed the window, don't cleanup terminals
                     if headless {
+                        return;
+                    }
+                    if chat::has_running_sessions() {
+                        api.prevent_close();
+                        if let Some(window) = app_handle.get_webview_window(label) {
+                            let _ = window.hide();
+                        }
+                        log::info!(
+                            "Prevented window close while sessions are running; hid {label} instead"
+                        );
                         return;
                     }
                     eprintln!("[TERMINAL CLEANUP] Window {label} close requested");

@@ -35,7 +35,7 @@ use super::linear_issues::{
 use super::names::generate_unique_workspace_name;
 use super::release_notes::{
     build_pr_issue_refs_from_commit_range, build_pr_issue_refs_from_commit_subjects,
-    format_issue_groups, PrIssueRefsMap,
+    build_release_notes_prompt_context, format_issue_groups, PrIssueRefsMap,
 };
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
 use super::types::{
@@ -45,7 +45,9 @@ use super::types::{
     WorktreePathExistsEvent, WorktreePermanentlyDeletedEvent, WorktreeSetupCompleteEvent,
     WorktreeUnarchivedEvent,
 };
+use crate::chat::types::LabelData;
 use crate::claude_cli::resolve_cli_binary;
+use crate::coderabbit_cli::resolve_coderabbit_binary;
 use crate::codex_cli::resolve_cli_binary as resolve_codex_cli_binary;
 use crate::gh_cli::config::resolve_gh_binary;
 use crate::http_server::EmitExt;
@@ -55,10 +57,168 @@ static RELEASE_NOTES_PAREN_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\(([^)]*)\)").expect("valid release notes parenthetical regex"));
 static RELEASE_NOTES_LEADING_PR_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"^\s*#(\d+)\b").expect("valid release notes PR regex"));
+static LINK_TAG_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"<link\b[^>]*>"#).expect("valid link tag regex"));
+static HTML_REL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\brel=["']([^"']+)["']"#).expect("valid html rel regex"));
+static HTML_HREF_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\bhref=["']([^"'?]+)"#).expect("valid html href regex"));
+static OBJ_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#"\{[^}]*\}"#).expect("valid object regex"));
+static OBJ_REL_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\brel\s*:\s*["']([^"']+)["']"#).expect("valid object rel regex"));
+static OBJ_HREF_RE: Lazy<Regex> =
+    Lazy::new(|| Regex::new(r#"\bhref\s*:\s*["']([^"'?]+)"#).expect("valid object href regex"));
+
+const MAX_ICON_SOURCE_BYTES: u64 = 1024 * 1024;
+
+const FAVICON_CANDIDATES: &[&str] = &[
+    "favicon.svg",
+    "favicon.ico",
+    "favicon.png",
+    "apple-touch-icon.png",
+    "public/favicon.svg",
+    "public/favicon.ico",
+    "public/favicon.png",
+    "public/apple-touch-icon.png",
+    "app/favicon.ico",
+    "app/favicon.png",
+    "app/icon.svg",
+    "app/icon.png",
+    "app/icon.ico",
+    "src/favicon.ico",
+    "src/favicon.svg",
+    "src/app/favicon.ico",
+    "src/app/icon.svg",
+    "src/app/icon.png",
+    "assets/icon.svg",
+    "assets/icon.png",
+    "assets/logo.svg",
+    "assets/logo.png",
+    ".idea/icon.svg",
+];
+
+const ICON_SOURCE_FILES: &[&str] = &[
+    "index.html",
+    "public/index.html",
+    "app/routes/__root.tsx",
+    "src/routes/__root.tsx",
+    "app/root.tsx",
+    "src/root.tsx",
+    "src/index.html",
+];
+
+fn path_within_project(project_path: &Path, candidate: &Path) -> bool {
+    let project_path = project_path
+        .canonicalize()
+        .unwrap_or_else(|_| project_path.to_path_buf());
+    let candidate = candidate
+        .canonicalize()
+        .unwrap_or_else(|_| candidate.to_path_buf());
+    candidate.starts_with(project_path)
+}
+
+fn icon_href_candidates(project_path: &Path, href: &str) -> Vec<PathBuf> {
+    let clean = href.trim_start_matches('/');
+    vec![
+        project_path.join("public").join(clean),
+        project_path.join(clean),
+    ]
+}
+
+fn is_local_icon_href(href: &str) -> bool {
+    let href = href.trim();
+    !href.is_empty()
+        && !href.starts_with('#')
+        && !href.starts_with("//")
+        && !href.to_lowercase().starts_with("data:")
+        && !href.to_lowercase().starts_with("http://")
+        && !href.to_lowercase().starts_with("https://")
+}
+
+fn is_icon_rel(rel: &str) -> bool {
+    let rel = rel.to_lowercase();
+    rel.split_whitespace().any(|token| {
+        matches!(
+            token,
+            "icon" | "apple-touch-icon" | "apple-touch-startup-image"
+        )
+    })
+}
+
+fn extract_icon_hrefs(source: &str) -> Vec<String> {
+    let mut hrefs = Vec::new();
+
+    for tag in LINK_TAG_RE.find_iter(source) {
+        let tag = tag.as_str();
+        let rel = HTML_REL_RE.captures(tag).and_then(|c| c.get(1));
+        let href = HTML_HREF_RE.captures(tag).and_then(|c| c.get(1));
+        if let (Some(rel), Some(href)) = (rel, href) {
+            let href = href.as_str();
+            if is_icon_rel(rel.as_str()) && is_local_icon_href(href) {
+                hrefs.push(href.to_string());
+            }
+        }
+    }
+
+    for object in OBJ_RE.find_iter(source) {
+        let object = object.as_str();
+        let rel = OBJ_REL_RE.captures(object).and_then(|c| c.get(1));
+        let href = OBJ_HREF_RE.captures(object).and_then(|c| c.get(1));
+        if let (Some(rel), Some(href)) = (rel, href) {
+            let href = href.as_str();
+            if is_icon_rel(rel.as_str()) && is_local_icon_href(href) {
+                hrefs.push(href.to_string());
+            }
+        }
+    }
+
+    hrefs
+}
+
+fn detect_project_default_avatar_path(project_path: &str) -> Option<String> {
+    let project_path = Path::new(project_path);
+
+    for candidate in FAVICON_CANDIDATES {
+        let path = project_path.join(candidate);
+        if path.is_file() && path_within_project(project_path, &path) {
+            return Some(path.display().to_string());
+        }
+    }
+
+    for source_file in ICON_SOURCE_FILES {
+        let source_path = project_path.join(source_file);
+        let Ok(metadata) = std::fs::metadata(&source_path) else {
+            continue;
+        };
+        if !metadata.is_file() || metadata.len() > MAX_ICON_SOURCE_BYTES {
+            continue;
+        }
+        let Ok(source) = std::fs::read_to_string(source_path) else {
+            continue;
+        };
+        for href in extract_icon_hrefs(&source) {
+            for candidate in icon_href_candidates(project_path, &href) {
+                if candidate.is_file() && path_within_project(project_path, &candidate) {
+                    return Some(candidate.display().to_string());
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn attach_default_avatar(project: &mut Project) {
+    if project.is_folder || project.avatar_path.is_some() {
+        project.default_avatar_path = None;
+        return;
+    }
+    project.default_avatar_path = detect_project_default_avatar_path(&project.path);
+}
 
 /// Generate a unique name by appending 4 random alphanumeric chars,
 /// checking against both storage and git branches.
-fn generate_unique_suffix_name(
+pub fn generate_unique_suffix_name(
     name: &str,
     project_path: &str,
     project_id: &str,
@@ -89,7 +249,7 @@ fn now() -> u64 {
         .as_secs()
 }
 
-fn sanitize_folder_name(name: &str) -> String {
+pub fn sanitize_folder_name(name: &str) -> String {
     name.chars()
         .map(|c| {
             if c.is_alphanumeric() || c == '-' {
@@ -281,8 +441,11 @@ pub async fn browse_directory(path: Option<String>) -> Result<BrowseDirectoryRes
 #[tauri::command]
 pub async fn list_projects(app: AppHandle) -> Result<Vec<Project>, String> {
     log::trace!("Listing all projects");
-    let data = load_projects_data(&app)?;
-    Ok(data.projects)
+    let mut projects = load_projects_data(&app)?.projects;
+    for project in &mut projects {
+        attach_default_avatar(project);
+    }
+    Ok(projects)
 }
 
 /// Add a new project from a git repository path
@@ -326,6 +489,7 @@ pub async fn add_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
+        default_avatar_path: None,
         enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
@@ -341,6 +505,8 @@ pub async fn add_project(
     save_projects_data(&app, &data)?;
     allow_project_in_asset_scope(&app, &project.path);
 
+    let mut project = project;
+    attach_default_avatar(&mut project);
     log::trace!("Successfully added project: {}", project.name);
     Ok(project)
 }
@@ -486,6 +652,7 @@ pub async fn init_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
+        default_avatar_path: None,
         enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
@@ -540,6 +707,7 @@ pub async fn clone_project(
         parent_id,
         is_folder: false,
         avatar_path: None,
+        default_avatar_path: None,
         enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
@@ -662,6 +830,175 @@ pub async fn get_worktree(app: AppHandle, worktree_id: String) -> Result<Worktre
         .ok_or_else(|| format!("Worktree not found: {worktree_id}"))
 }
 
+/// Get a bounded summary of a worktree's git changes.
+#[tauri::command]
+pub async fn get_worktree_changes(
+    app: AppHandle,
+    worktree_id: String,
+    max_files: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    let max_files = max_files.unwrap_or(100).clamp(1, 500);
+    let (worktree, project_default_branch) =
+        resolve_worktree_and_project_default(&app, &worktree_id)?;
+    let base_branch = worktree
+        .base_branch
+        .clone()
+        .unwrap_or_else(|| project_default_branch.clone());
+    let status = crate::projects::git_status::get_branch_status(
+        &crate::projects::git_status::ActiveWorktreeInfo {
+            worktree_id: worktree.id.clone(),
+            worktree_path: worktree.path.clone(),
+            base_branch: base_branch.clone(),
+            pr_number: worktree.pr_number,
+            pr_url: worktree.pr_url.clone(),
+            pr_push_remote: worktree.pr_push_remote.clone(),
+            pr_push_branch: worktree.pr_push_branch.clone(),
+        },
+    )
+    .ok();
+    let porcelain = git_output(&worktree.path, &["status", "--porcelain=v1"])?;
+    let all_files = parse_porcelain_files(&porcelain);
+    let truncated = all_files.len() > max_files;
+    let files: Vec<serde_json::Value> = all_files
+        .into_iter()
+        .take(max_files)
+        .map(|(status, path)| serde_json::json!({ "status": status, "path": path }))
+        .collect();
+
+    Ok(serde_json::json!({
+        "worktreeId": worktree.id,
+        "worktreePath": worktree.path,
+        "branch": worktree.branch,
+        "baseBranch": base_branch,
+        "status": status,
+        "files": files,
+        "filesTruncated": truncated,
+        "porcelain": porcelain,
+    }))
+}
+
+/// Get a bounded unified git diff for a worktree.
+#[tauri::command]
+pub async fn get_worktree_diff(
+    app: AppHandle,
+    worktree_id: String,
+    diff_type: Option<String>,
+    path: Option<String>,
+    max_bytes: Option<usize>,
+) -> Result<serde_json::Value, String> {
+    const DEFAULT_DIFF_MAX_BYTES: usize = 60_000;
+    const MAX_DIFF_BYTES: usize = 200_000;
+
+    let diff_type = diff_type.unwrap_or_else(|| "uncommitted".to_string());
+    let max_bytes = max_bytes
+        .unwrap_or(DEFAULT_DIFF_MAX_BYTES)
+        .clamp(1, MAX_DIFF_BYTES);
+    let (worktree, project_default_branch) =
+        resolve_worktree_and_project_default(&app, &worktree_id)?;
+    let base_branch = worktree.base_branch.unwrap_or(project_default_branch);
+    let mut args = match diff_type.as_str() {
+        "uncommitted" => vec![
+            "diff".to_string(),
+            "HEAD".to_string(),
+            "--unified=3".to_string(),
+        ],
+        "branch" => vec![
+            "diff".to_string(),
+            "--unified=3".to_string(),
+            format!("origin/{base_branch}...HEAD"),
+        ],
+        other => {
+            return Err(format!(
+                "Invalid diffType: {other}; expected uncommitted or branch"
+            ))
+        }
+    };
+    let path = path.filter(|p| !p.trim().is_empty());
+    if let Some(path) = path.as_deref() {
+        args.push("--".to_string());
+        args.push(path.to_string());
+    }
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let raw_patch = git_output(&worktree.path, &arg_refs)?;
+    let (patch, truncated) = truncate_utf8(&raw_patch, max_bytes);
+
+    Ok(serde_json::json!({
+        "worktreeId": worktree.id,
+        "diffType": diff_type,
+        "baseBranch": base_branch,
+        "path": path,
+        "maxBytes": max_bytes,
+        "truncated": truncated,
+        "rawBytes": raw_patch.len(),
+        "patch": patch,
+    }))
+}
+
+fn resolve_worktree_and_project_default(
+    app: &AppHandle,
+    worktree_id: &str,
+) -> Result<(Worktree, String), String> {
+    let data = load_projects_data(app)?;
+    let worktree = data
+        .find_worktree(worktree_id)
+        .cloned()
+        .ok_or_else(|| format!("Unknown worktreeId: {worktree_id}"))?;
+    let project = data
+        .find_project(&worktree.project_id)
+        .ok_or_else(|| format!("Worktree {worktree_id} has no parent project"))?;
+    Ok((worktree, project.default_branch.clone()))
+}
+
+fn git_output(repo_path: &str, args: &[&str]) -> Result<String, String> {
+    let output = silent_command("git")
+        .args(args)
+        .current_dir(repo_path)
+        .output()
+        .map_err(|e| format!("Failed to run git {}: {e}", args.join(" ")))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git {} failed: {stderr}", args.join(" ")));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+fn parse_porcelain_files(porcelain: &str) -> Vec<(String, String)> {
+    porcelain
+        .lines()
+        .filter_map(|line| {
+            if line.len() < 4 {
+                return None;
+            }
+            let status = line[..2].trim().to_string();
+            let path = line[3..]
+                .rsplit_once(" -> ")
+                .map(|(_, path)| path)
+                .unwrap_or(&line[3..])
+                .trim_matches('"')
+                .to_string();
+            Some((status, path))
+        })
+        .collect()
+}
+
+fn truncate_utf8(input: &str, max_bytes: usize) -> (String, bool) {
+    if input.len() <= max_bytes {
+        return (input.to_string(), false);
+    }
+    let mut end = max_bytes;
+    while !input.is_char_boundary(end) {
+        end -= 1;
+    }
+    (
+        format!(
+            "{}\n\n[diff truncated: showing {end} of {} bytes]",
+            &input[..end],
+            input.len()
+        ),
+        true,
+    )
+}
+
 /// Create a new worktree for a project (runs in background)
 ///
 /// This command returns immediately with a "pending" worktree.
@@ -681,8 +1018,11 @@ pub async fn create_worktree(
     advisory_context: Option<AdvisoryContext>,
     linear_context: Option<LinearIssueContext>,
     custom_name: Option<String>,
+    auto_open_in_jean: Option<bool>,
 ) -> Result<Worktree, String> {
     log::trace!("Creating worktree for project: {project_id}");
+
+    let auto_open_in_jean = auto_open_in_jean.unwrap_or(true);
 
     let data = load_projects_data(&app)?;
 
@@ -819,6 +1159,7 @@ pub async fn create_worktree(
         issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
         security_alert_number: security_context.as_ref().map(|ctx| ctx.number as u64),
         advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
+        auto_open_in_jean,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -866,6 +1207,7 @@ pub async fn create_worktree(
         pr_push_branch: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
+        labels: Vec::new(),
         label: None,
         last_opened_at: None,
     };
@@ -1421,6 +1763,7 @@ pub async fn create_worktree(
                     pr_push_branch: None,
                     order: max_order + 1,
                     archived_at: None,
+                    labels: Vec::new(),
                     label: None,
                     last_opened_at: None,
                 };
@@ -1444,7 +1787,10 @@ pub async fn create_worktree(
                     "Background: Worktree created successfully: {}",
                     worktree.name
                 );
-                let created_event = WorktreeCreatedEvent { worktree };
+                let created_event = WorktreeCreatedEvent {
+                    worktree,
+                    auto_open_in_jean,
+                };
                 if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
                     log::error!("Failed to emit worktree:created event: {e}");
                 }
@@ -1538,8 +1884,10 @@ pub async fn create_worktree_from_existing_branch(
     security_context: Option<SecurityAlertContext>,
     advisory_context: Option<AdvisoryContext>,
     linear_context: Option<LinearIssueContext>,
+    auto_open_in_jean: Option<bool>,
 ) -> Result<Worktree, String> {
     log::trace!("Creating worktree from existing branch {branch_name} for project: {project_id}");
+    let auto_open_in_jean = auto_open_in_jean.unwrap_or(true);
 
     let data = load_projects_data(&app)?;
 
@@ -1577,6 +1925,7 @@ pub async fn create_worktree_from_existing_branch(
         issue_number: issue_context.as_ref().map(|ctx| ctx.number as u64),
         security_alert_number: security_context.as_ref().map(|ctx| ctx.number as u64),
         advisory_ghsa_id: advisory_context.as_ref().map(|ctx| ctx.ghsa_id.clone()),
+        auto_open_in_jean,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -1624,6 +1973,7 @@ pub async fn create_worktree_from_existing_branch(
         pr_push_branch: None,
         order: 0, // Placeholder, actual order is set in background thread
         archived_at: None,
+        labels: Vec::new(),
         label: None,
         last_opened_at: None,
     };
@@ -2011,6 +2361,7 @@ pub async fn create_worktree_from_existing_branch(
                     pr_push_branch: None,
                     order: max_order + 1,
                     archived_at: None,
+                    labels: Vec::new(),
                     label: None,
                     last_opened_at: None,
                 };
@@ -2034,7 +2385,10 @@ pub async fn create_worktree_from_existing_branch(
                     "Background: Worktree created successfully from existing branch: {}",
                     worktree.name
                 );
-                let created_event = WorktreeCreatedEvent { worktree };
+                let created_event = WorktreeCreatedEvent {
+                    worktree,
+                    auto_open_in_jean,
+                };
                 if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
                     log::error!("Failed to emit worktree:created event: {e}");
                 }
@@ -2197,6 +2551,7 @@ pub async fn checkout_pr(
         issue_number: None,
         security_alert_number: None,
         advisory_ghsa_id: None,
+        auto_open_in_jean: true,
     };
     if let Err(e) = app.emit_all("worktree:creating", &creating_event) {
         log::error!("Failed to emit worktree:creating event: {e}");
@@ -2241,6 +2596,7 @@ pub async fn checkout_pr(
         pr_push_branch: None,
         order: 0, // Will be updated in background thread
         archived_at: None,
+        labels: Vec::new(),
         label: None,
         last_opened_at: None,
     };
@@ -2564,6 +2920,7 @@ pub async fn checkout_pr(
                     pr_push_branch: None,
                     order: max_order + 1,
                     archived_at: None,
+                    labels: Vec::new(),
                     label: None,
                     last_opened_at: None,
                 };
@@ -2588,7 +2945,10 @@ pub async fn checkout_pr(
                     pr_number,
                     worktree.name
                 );
-                let created_event = WorktreeCreatedEvent { worktree };
+                let created_event = WorktreeCreatedEvent {
+                    worktree,
+                    auto_open_in_jean: true,
+                };
                 if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
                     log::error!("Failed to emit worktree:created event: {e}");
                 }
@@ -2898,6 +3258,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         pr_push_branch: None,
         order: 0, // Base sessions are always first
         archived_at: None,
+        labels: Vec::new(),
         label: None,
         last_opened_at: None,
     };
@@ -3311,6 +3672,7 @@ pub async fn import_worktree(
         pr_push_branch: None,
         order: max_order + 1,
         archived_at: None,
+        labels: Vec::new(),
         label: None,
         last_opened_at: None,
     };
@@ -3321,6 +3683,7 @@ pub async fn import_worktree(
     // Emit created event
     let event = WorktreeCreatedEvent {
         worktree: worktree.clone(),
+        auto_open_in_jean: true,
     };
     if let Err(e) = app.emit_all("worktree:created", &event) {
         log::error!("Failed to emit worktree:created event: {e}");
@@ -4069,14 +4432,16 @@ pub async fn rename_worktree(
     Ok(updated_worktree)
 }
 
-/// Update the label on a worktree
+/// Update the labels on a worktree.
 #[tauri::command]
-pub async fn update_worktree_label(
+pub async fn update_worktree_labels(
     app: AppHandle,
     worktree_id: String,
-    label: Option<crate::chat::types::LabelData>,
+    mut labels: Vec<LabelData>,
 ) -> Result<(), String> {
-    log::trace!("Updating worktree label: {worktree_id}");
+    log::trace!("Updating worktree labels: {worktree_id}");
+
+    super::types::dedupe_labels_by_name(&mut labels);
 
     let mut data = load_projects_data(&app)?;
 
@@ -4084,12 +4449,23 @@ pub async fn update_worktree_label(
         .find_worktree_mut(&worktree_id)
         .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
 
-    worktree.label = label;
+    worktree.labels = labels;
+    worktree.label = None;
 
     save_projects_data(&app, &data)?;
 
-    log::trace!("Successfully updated worktree label for: {worktree_id}");
+    log::trace!("Successfully updated worktree labels for: {worktree_id}");
     Ok(())
+}
+
+/// Deprecated compatibility wrapper for old clients that only support one worktree label.
+#[tauri::command]
+pub async fn update_worktree_label(
+    app: AppHandle,
+    worktree_id: String,
+    label: Option<LabelData>,
+) -> Result<(), String> {
+    update_worktree_labels(app, worktree_id, label.into_iter().collect()).await
 }
 
 /// Update the last_opened_at timestamp on a worktree
@@ -5013,6 +5389,105 @@ pub async fn detect_and_link_pr(
     }
 
     Ok(None)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct TriggerCodeRabbitPrReviewResponse {
+    pub pr_number: u32,
+    pub pr_url: String,
+    pub comment_body: String,
+}
+
+const CODERABBIT_REVIEW_LABEL_NAME: &str = "CodeRabbit review";
+const CODERABBIT_REVIEW_LABEL_COLOR: &str = "#ff6a00";
+
+fn append_coderabbit_review_label(labels: &mut Vec<LabelData>) {
+    if labels.iter().any(|label| {
+        label
+            .name
+            .eq_ignore_ascii_case(CODERABBIT_REVIEW_LABEL_NAME)
+    }) {
+        return;
+    }
+    labels.push(LabelData {
+        name: CODERABBIT_REVIEW_LABEL_NAME.to_string(),
+        color: CODERABBIT_REVIEW_LABEL_COLOR.to_string(),
+    });
+}
+
+/// Trigger CodeRabbit by posting "@coderabbitai review" as a PR comment.
+#[tauri::command]
+pub async fn trigger_coderabbit_pr_review(
+    app: AppHandle,
+    worktree_id: Option<String>,
+    worktree_path: String,
+    pr_number: Option<u32>,
+) -> Result<TriggerCodeRabbitPrReviewResponse, String> {
+    log::trace!("Triggering CodeRabbit PR review for: {worktree_path}");
+
+    let gh = resolve_gh_binary(&app);
+    let target_pr_number =
+        pr_number.ok_or_else(|| "Open or link a PR in Jean first".to_string())?;
+    let output = silent_command(&gh)
+        .args([
+            "pr",
+            "view",
+            &target_pr_number.to_string(),
+            "--json",
+            "number,url",
+        ])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr view: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Failed to load PR #{target_pr_number}: {stderr}"));
+    }
+
+    let view_json: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse PR #{target_pr_number}: {e}"))?;
+    let pr_url = view_json["url"].as_str().unwrap_or("").to_string();
+
+    let comment_body = "@coderabbitai review".to_string();
+    let output = silent_command(&gh)
+        .args([
+            "pr",
+            "comment",
+            &target_pr_number.to_string(),
+            "--body",
+            &comment_body,
+        ])
+        .current_dir(&worktree_path)
+        .output()
+        .map_err(|e| format!("Failed to run gh pr comment: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "Failed to add CodeRabbit trigger comment to PR #{target_pr_number}: {stderr}"
+        ));
+    }
+
+    if let Some(worktree_id) = worktree_id.as_deref() {
+        if let Ok(mut data) = load_projects_data(&app) {
+            if let Some(wt) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) {
+                wt.pr_number = Some(target_pr_number);
+                if !pr_url.is_empty() {
+                    wt.pr_url = Some(pr_url.clone());
+                }
+                append_coderabbit_review_label(&mut wt.labels);
+                wt.label = None;
+                let _ = save_projects_data(&app, &data);
+            }
+        }
+    }
+
+    Ok(TriggerCodeRabbitPrReviewResponse {
+        pr_number: target_pr_number,
+        pr_url,
+        comment_body,
+    })
 }
 
 /// Clear PR information from a worktree
@@ -7090,15 +7565,24 @@ fn execute_codex_review(
     std::fs::write(&schema_file, REVIEW_SCHEMA)
         .map_err(|e| format!("Failed to write schema file: {e}"))?;
 
+    let (actual_model, is_fast) = crate::chat::codex::split_fast_model(model);
+    log::info!(
+        "Executing Codex review CLI: model={actual_model}, fast={is_fast}, working_dir={:?}",
+        working_dir
+    );
+
     let mut cmd = crate::platform::silent_command(&cli_path);
     cmd.args([
         "exec",
         "--json",
         "--model",
-        model,
+        actual_model,
         "--full-auto",
         "--output-schema",
     ]);
+    if is_fast {
+        cmd.args(["-c", "service_tier=\"fast\""]);
+    }
     cmd.arg(&schema_file);
     if let Some(dir) = working_dir {
         cmd.arg("--cd");
@@ -7464,6 +7948,364 @@ pub async fn run_review_with_ai(
     Ok(response)
 }
 
+fn map_coderabbit_severity(severity: &str) -> String {
+    match severity {
+        "critical" => "critical".to_string(),
+        "major" | "minor" => "warning".to_string(),
+        "trivial" | "info" => "suggestion".to_string(),
+        _ => "suggestion".to_string(),
+    }
+}
+
+fn coderabbit_title(instructions: &str) -> String {
+    let first = instructions
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap_or("CodeRabbit finding")
+        .trim();
+    let sentence = first.split('.').next().unwrap_or(first).trim();
+    let mut title: String = sentence.chars().take(80).collect();
+    if title.is_empty() {
+        title = "CodeRabbit finding".to_string();
+    }
+    title
+}
+
+fn parse_coderabbit_review_output(output: &str) -> Result<ReviewResponse, String> {
+    let mut findings = Vec::new();
+    let mut status_messages = Vec::new();
+    let mut errors = Vec::new();
+
+    for line in output.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let value: serde_json::Value = match serde_json::from_str(line) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let event_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        match event_type {
+            "finding" => {
+                let severity = value
+                    .get("severity")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("info");
+                let file = value
+                    .get("fileName")
+                    .or_else(|| value.get("file"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let instructions = value
+                    .get("codegenInstructions")
+                    .or_else(|| value.get("description"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("CodeRabbit reported a finding.")
+                    .to_string();
+                let suggestion = value
+                    .get("suggestions")
+                    .and_then(|v| v.as_array())
+                    .and_then(|arr| {
+                        let joined = arr
+                            .iter()
+                            .filter_map(|item| {
+                                item.as_str().map(str::to_string).or_else(|| {
+                                    if item.is_null() {
+                                        None
+                                    } else {
+                                        Some(item.to_string())
+                                    }
+                                })
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n\n");
+                        if joined.trim().is_empty() {
+                            None
+                        } else {
+                            Some(joined)
+                        }
+                    });
+                findings.push(ReviewFinding {
+                    severity: map_coderabbit_severity(severity),
+                    file,
+                    line: None,
+                    title: coderabbit_title(&instructions),
+                    description: instructions.clone(),
+                    suggestion: suggestion.or(Some(instructions)),
+                });
+            }
+            "status" => {
+                if let Some(status) = value.get("status").and_then(|v| v.as_str()) {
+                    status_messages.push(status.to_string());
+                }
+            }
+            "error" => {
+                let message = value
+                    .get("message")
+                    .or_else(|| value.get("error"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Unknown CodeRabbit error")
+                    .to_string();
+                errors.push(message);
+            }
+            _ => {}
+        }
+    }
+
+    if findings.is_empty() && !errors.is_empty() {
+        return Err(errors.join("; "));
+    }
+
+    let critical_or_warning = findings
+        .iter()
+        .any(|f| f.severity == "critical" || f.severity == "warning");
+    let approval_status = if critical_or_warning {
+        "changes_requested"
+    } else if findings.is_empty() {
+        "approved"
+    } else {
+        "needs_discussion"
+    }
+    .to_string();
+
+    let summary = if findings.is_empty() {
+        "CodeRabbit review completed with no findings.".to_string()
+    } else {
+        let critical = findings.iter().filter(|f| f.severity == "critical").count();
+        let warning = findings.iter().filter(|f| f.severity == "warning").count();
+        let suggestion = findings
+            .iter()
+            .filter(|f| f.severity == "suggestion")
+            .count();
+        format!(
+            "CodeRabbit review completed with {} finding(s): {} critical, {} warning, {} suggestion.",
+            findings.len(), critical, warning, suggestion
+        )
+    };
+
+    Ok(ReviewResponse {
+        summary,
+        findings,
+        approval_status,
+    })
+}
+
+fn parse_coderabbit_json_line(line: &str) -> Option<serde_json::Value> {
+    let trimmed = line.trim();
+    let json_start = trimmed.find('{')?;
+    serde_json::from_str(&trimmed[json_start..]).ok()
+}
+
+fn coderabbit_event_message(value: &serde_json::Value) -> Option<String> {
+    let event_type = value.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    if event_type != "error" {
+        return None;
+    }
+
+    value
+        .get("message")
+        .or_else(|| value.get("error"))
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|message| !message.is_empty())
+        .map(str::to_string)
+}
+
+fn normalize_coderabbit_error_message(message: &str) -> String {
+    static TOO_MANY_FILES_RE: Lazy<Regex> = Lazy::new(|| {
+        Regex::new(
+            r"(?is)this\s+PR\s+contains\s+(\d+)\s+files,\s+which\s+is\s+(\d+)\s+over\s+the\s+limit\s+of\s+(\d+)",
+        )
+        .expect("valid CodeRabbit too-many-files regex")
+    });
+
+    let message = message.trim();
+    if let Some(captures) = TOO_MANY_FILES_RE.captures(message) {
+        return format!(
+            "CodeRabbit can review up to {} files; this PR has {} ({} over). Split the PR or reduce changed files.",
+            &captures[3], &captures[1], &captures[2]
+        );
+    }
+
+    message
+        .strip_prefix("Review failed:")
+        .unwrap_or(message)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn non_json_coderabbit_failure_lines(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .filter(|line| parse_coderabbit_json_line(line).is_none())
+        .filter(|line| *line != "[error] stopping cli")
+        .map(str::to_string)
+        .collect()
+}
+
+fn format_coderabbit_review_failure(exit_status: &str, stderr: &str, stdout: &str) -> String {
+    let structured_error = stderr
+        .lines()
+        .chain(stdout.lines())
+        .filter_map(parse_coderabbit_json_line)
+        .filter_map(|value| coderabbit_event_message(&value))
+        .next();
+
+    if let Some(message) = structured_error {
+        return normalize_coderabbit_error_message(&message);
+    }
+
+    let fallback = non_json_coderabbit_failure_lines(stderr)
+        .into_iter()
+        .chain(non_json_coderabbit_failure_lines(stdout))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    if fallback.trim().is_empty() {
+        format!("CodeRabbit CLI failed ({exit_status})")
+    } else {
+        format!("CodeRabbit CLI failed ({exit_status}): {}", fallback.trim())
+    }
+}
+
+/// Run CodeRabbit CLI review on the current worktree.
+#[tauri::command]
+pub async fn run_coderabbit_review(
+    app: AppHandle,
+    worktree_path: String,
+    review_run_id: Option<String>,
+    review_type: Option<String>,
+) -> Result<ReviewResponse, String> {
+    log::trace!("Running CodeRabbit review for: {worktree_path}");
+
+    let binary_path = resolve_coderabbit_binary(&app);
+    if !binary_path.exists() {
+        return Err("CodeRabbit CLI not installed".to_string());
+    }
+
+    let mut cmd = silent_command(&binary_path);
+    cmd.args(["review", "--agent", "--dir", &worktree_path]);
+    if let Some(review_type) = review_type
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        cmd.args(["--type", review_type]);
+    }
+    cmd.current_dir(&worktree_path)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+    let child = cmd
+        .spawn()
+        .map_err(|e| format!("Failed to spawn CodeRabbit CLI: {e}"))?;
+    let pid = child.id();
+    if let Some(run_id) = review_run_id.as_deref() {
+        register_review_process(run_id, pid);
+    }
+
+    let output_result = tokio::task::spawn_blocking(move || child.wait_with_output())
+        .await
+        .map_err(|e| format!("Failed to join CodeRabbit review task: {e}"))?;
+    let cancelled = review_run_id
+        .as_deref()
+        .map(|run_id| take_review_process_pid(run_id).is_none())
+        .unwrap_or(false);
+
+    let output = match output_result {
+        Ok(output) => output,
+        Err(e) => {
+            if cancelled {
+                return Err("Review cancelled".to_string());
+            }
+            return Err(format!("Failed to wait for CodeRabbit CLI: {e}"));
+        }
+    };
+
+    if let Some(run_id) = review_run_id.as_deref() {
+        let _ = take_review_process_pid(run_id);
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    if !output.status.success() {
+        if cancelled {
+            return Err("Review cancelled".to_string());
+        }
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(format_coderabbit_review_failure(
+            &output.status.to_string(),
+            &stderr,
+            &stdout,
+        ));
+    }
+
+    parse_coderabbit_review_output(&stdout)
+}
+
+#[cfg(test)]
+mod coderabbit_review_tests {
+    use super::*;
+
+    #[test]
+    fn parses_agent_findings() {
+        let output = r#"{"type":"review_context","reviewType":"all"}
+{"type":"status","phase":"analyzing","status":"reviewing"}
+{"type":"finding","severity":"major","fileName":"src/App.tsx","codegenInstructions":"Fix the null check before accessing value.","suggestions":["if (!value) return null;"]}
+{"type":"finding","severity":"trivial","fileName":"README.md","codegenInstructions":"Improve wording.","suggestions":[]}
+{"type":"complete"}"#;
+        let parsed = parse_coderabbit_review_output(output).unwrap();
+        assert_eq!(parsed.findings.len(), 2);
+        assert_eq!(parsed.findings[0].severity, "warning");
+        assert_eq!(parsed.findings[1].severity, "suggestion");
+        assert_eq!(parsed.approval_status, "changes_requested");
+    }
+
+    #[test]
+    fn formats_too_many_files_error_without_jsonl_noise() {
+        let stdout = r#"{"type":"review_context","reviewType":"all","currentBranch":"api-sensitive-data-scrubber","baseBranch":"v4.x"}
+{"type":"status","phase":"connecting","status":"connecting_to_review_service"}
+{"type":"status","phase":"setup","status":"setting_up"}
+{"type":"error","errorType":"review","message":"Review failed: Too many files!\n\nThis PR contains 182 files, which is 32 over the limit of 150.","recoverable":false,"details":{}}"#;
+        let formatted =
+            format_coderabbit_review_failure("exit status: 1", "[error] stopping cli", stdout);
+
+        assert_eq!(
+            formatted,
+            "CodeRabbit can review up to 150 files; this PR has 182 (32 over). Split the PR or reduce changed files."
+        );
+        assert!(!formatted.contains("review_context"));
+        assert!(!formatted.contains("connecting_to_review_service"));
+    }
+
+    #[test]
+    fn formats_structured_error_from_stderr_before_stdout_status() {
+        let stderr = r#"{"type":"error","message":"Review failed: Authentication required.","recoverable":true}"#;
+        let stdout =
+            r#"{"type":"status","phase":"connecting","status":"connecting_to_review_service"}"#;
+        let formatted = format_coderabbit_review_failure("exit status: 1", stderr, stdout);
+
+        assert_eq!(formatted, "Authentication required.");
+    }
+
+    #[test]
+    fn formats_raw_failure_when_no_structured_error_exists() {
+        let formatted = format_coderabbit_review_failure(
+            "exit status: 1",
+            "network unavailable",
+            r#"{"type":"status","status":"setting_up"}"#,
+        );
+
+        assert_eq!(
+            formatted,
+            "CodeRabbit CLI failed (exit status: 1): network unavailable"
+        );
+    }
+}
+
 /// Cancel a running AI review request by review_run_id.
 /// Returns true if a process was found and cancelled, false otherwise.
 #[tauri::command]
@@ -7647,19 +8489,31 @@ const RELEASE_NOTES_SCHEMA: &str = r#"{
 
 const RELEASE_NOTES_PROMPT: &str = r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).
 
+## Merged pull requests and detected issue references
+
+{pull_requests}
+
+## Required PR/issue reference formats
+
+{related_pull_requests}
+
 ## Commits since {tag}
 
 {commits}
 
 ## Instructions
 
-- Write a concise release title
-- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries)
-- Use bullet points with brief descriptions
-- Reference PR numbers if visible in commit messages
-- Skip merge commits and trivial changes (typos, formatting)
-- Write in past tense ("Added", "Fixed", "Improved")
-- Keep it concise and user-facing (skip internal implementation details)"#;
+- Write a concise release title.
+- Group changes into categories: Features, Fixes, Improvements, Breaking Changes (only include categories that have entries).
+- Explicitly use the merged pull request metadata above as the primary source, then use commits as fallback context.
+- Inspect PR titles, PR bodies, and PR commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Always normalize closing keywords to lowercase final forms: closes, fixes, resolves.
+- Reference the PR number for each bullet when known: `(#123)`.
+- If a PR closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: `(#123, fixes #456, #789)`.
+- Do not invent PR numbers or issue references; only use the detected metadata above.
+- Skip merge commits and trivial changes (typos, formatting).
+- Write in past tense ("Added", "Fixed", "Improved").
+- Keep it concise and user-facing (skip internal implementation details)."#;
 
 /// Generate release notes content using Claude CLI
 fn generate_release_notes_content(
@@ -7724,6 +8578,9 @@ fn generate_release_notes_content(
         commits
     };
 
+    let release_notes_context = build_release_notes_prompt_context(app, project_path, tag)?;
+    let related_pull_requests = format_related_pull_requests(&release_notes_context.pr_issue_refs);
+
     // Build prompt
     let prompt_template = custom_prompt
         .filter(|p| !p.trim().is_empty())
@@ -7732,7 +8589,9 @@ fn generate_release_notes_content(
     let prompt = prompt_template
         .replace("{tag}", tag)
         .replace("{previous_release_name}", release_name)
-        .replace("{commits}", &commits);
+        .replace("{commits}", &commits)
+        .replace("{pull_requests}", &release_notes_context.pull_requests)
+        .replace("{related_pull_requests}", &related_pull_requests);
 
     let model_str = model.unwrap_or("sonnet");
 
@@ -7749,10 +8608,13 @@ fn generate_release_notes_content(
             Some(std::path::Path::new(project_path)),
             reasoning_effort,
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse OpenCode release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+        return Ok(response);
     }
 
     if backend == crate::chat::types::Backend::Codex {
@@ -7765,10 +8627,13 @@ fn generate_release_notes_content(
             Some(std::path::Path::new(project_path)),
             reasoning_effort,
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Codex release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+        return Ok(response);
     }
 
     if backend == crate::chat::types::Backend::Cursor {
@@ -7779,10 +8644,13 @@ fn generate_release_notes_content(
             model_str,
             Some(std::path::Path::new(project_path)),
         )?;
-        return serde_json::from_str(&json_str).map_err(|e| {
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Cursor release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
-        });
+        })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+        return Ok(response);
     }
 
     let cli_path = resolve_cli_binary(app);
@@ -7841,8 +8709,11 @@ fn generate_release_notes_content(
     let json_content = extract_structured_output(&stdout)?;
     log::trace!("Extracted release notes JSON: {json_content}");
 
-    serde_json::from_str::<ReleaseNotesResponse>(&json_content)
-        .map_err(|e| format!("Failed to parse release notes response: {e}"))
+    let mut response = serde_json::from_str::<ReleaseNotesResponse>(&json_content)
+        .map_err(|e| format!("Failed to parse release notes response: {e}"))?;
+    response.body =
+        augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+    Ok(response)
 }
 
 fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> String {
@@ -7875,7 +8746,7 @@ fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> 
 
 fn format_related_pull_requests(pr_issue_refs: &PrIssueRefsMap) -> String {
     if pr_issue_refs.is_empty() {
-        return "No merged pull requests were detected from commit subjects in this branch."
+        return "No merged pull requests with closing issue references were detected in this release window."
             .to_string();
     }
 
@@ -8766,6 +9637,7 @@ pub async fn create_folder(
         parent_id,
         is_folder: true,
         avatar_path: None,
+        default_avatar_path: None,
         enabled_mcp_servers: None,
         known_mcp_servers: Vec::new(),
         custom_system_prompt: None,
@@ -9707,6 +10579,7 @@ pub async fn set_project_avatar(app: AppHandle, project_id: String) -> Result<Pr
         .ok_or_else(|| format!("Project not found: {project_id}"))?;
 
     project.avatar_path = Some(relative_path);
+    project.default_avatar_path = None;
     let updated_project = project.clone();
 
     save_projects_data(&app, &data)?;
@@ -9744,9 +10617,11 @@ pub async fn remove_project_avatar(app: AppHandle, project_id: String) -> Result
     }
 
     project.avatar_path = None;
-    let updated_project = project.clone();
+    project.default_avatar_path = None;
+    let mut updated_project = project.clone();
 
     save_projects_data(&app, &data)?;
+    attach_default_avatar(&mut updated_project);
 
     log::trace!(
         "Successfully removed avatar for project: {}",
@@ -9851,6 +10726,129 @@ mod tests {
         assert_eq!(sanitize_folder_name("café"), "café");
         assert_eq!(sanitize_folder_name("a b\tc"), "a_b_c");
         assert_eq!(sanitize_folder_name("back\\slash"), "back_slash");
+    }
+
+    #[test]
+    fn test_extract_icon_hrefs_collects_multiple_local_icons() {
+        let source = r#"
+            <link rel="stylesheet" href="/app.css">
+            <link rel="shortcut icon" href="/missing.ico">
+            <link rel="apple-touch-icon preload" href="/apple-touch-icon.png">
+            <link rel="icon" href="https://example.com/icon.png">
+            <link rel="icon" href="data:image/svg+xml;base64,abc">
+        "#;
+
+        assert_eq!(
+            extract_icon_hrefs(source),
+            vec!["/missing.ico", "/apple-touch-icon.png"]
+        );
+    }
+
+    #[test]
+    fn test_detect_project_default_avatar_path_direct_candidate() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let icon = dir.path().join("public/favicon.svg");
+        std::fs::create_dir_all(icon.parent().expect("icon parent")).expect("create public");
+        std::fs::write(&icon, "<svg />").expect("write icon");
+
+        assert_eq!(
+            detect_project_default_avatar_path(&dir.path().display().to_string()),
+            Some(icon.display().to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_project_default_avatar_path_uses_later_valid_html_icon() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let icon = dir.path().join("public/apple-touch-icon.png");
+        std::fs::create_dir_all(icon.parent().expect("icon parent")).expect("create public");
+        std::fs::write(&icon, "png").expect("write icon");
+        std::fs::write(
+            dir.path().join("index.html"),
+            r#"
+                <link rel="icon" href="/missing.ico">
+                <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+            "#,
+        )
+        .expect("write html");
+
+        assert_eq!(
+            detect_project_default_avatar_path(&dir.path().display().to_string()),
+            Some(icon.display().to_string())
+        );
+    }
+
+    #[test]
+    fn test_detect_project_default_avatar_path_rejects_traversal_href() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("outside temp dir");
+        let outside_icon = outside.path().join("icon.png");
+        std::fs::write(&outside_icon, "png").expect("write outside icon");
+        std::fs::write(
+            dir.path().join("index.html"),
+            format!(
+                r#"<link rel="icon" href="../{}/icon.png">"#,
+                outside
+                    .path()
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .expect("outside dir name")
+            ),
+        )
+        .expect("write html");
+
+        assert_eq!(
+            detect_project_default_avatar_path(&dir.path().display().to_string()),
+            None
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_detect_project_default_avatar_path_rejects_symlink_outside_project() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempfile::tempdir().expect("temp dir");
+        let outside = tempfile::tempdir().expect("outside temp dir");
+        let outside_icon = outside.path().join("icon.png");
+        std::fs::write(&outside_icon, "png").expect("write outside icon");
+        symlink(&outside_icon, dir.path().join("favicon.png")).expect("create symlink");
+
+        assert_eq!(
+            detect_project_default_avatar_path(&dir.path().display().to_string()),
+            None
+        );
+    }
+
+    #[test]
+    fn test_attach_default_avatar_skips_custom_avatar() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        std::fs::write(dir.path().join("favicon.png"), "png").expect("write icon");
+        let mut project = Project {
+            id: "project".to_string(),
+            name: "Project".to_string(),
+            path: dir.path().display().to_string(),
+            default_branch: "main".to_string(),
+            added_at: 0,
+            order: 0,
+            parent_id: None,
+            is_folder: false,
+            avatar_path: Some("avatars/project.png".to_string()),
+            default_avatar_path: Some("stale".to_string()),
+            enabled_mcp_servers: None,
+            known_mcp_servers: Vec::new(),
+            custom_system_prompt: None,
+            default_provider: None,
+            default_backend: None,
+            worktrees_dir: None,
+            linear_api_key: None,
+            linear_team_id: None,
+            linked_project_ids: Vec::new(),
+        };
+
+        attach_default_avatar(&mut project);
+
+        assert_eq!(project.default_avatar_path, None);
     }
 
     #[test]
@@ -9979,5 +10977,28 @@ Body
         assert!(args
             .windows(2)
             .any(|w| w == ["--json-schema", REVIEW_SCHEMA]));
+    }
+
+    #[test]
+    fn parse_porcelain_files_handles_renames() {
+        let parsed = parse_porcelain_files(" M src/lib.rs\nR  old.rs -> new.rs\n?? scratch.txt\n");
+
+        assert_eq!(
+            parsed,
+            vec![
+                ("M".to_string(), "src/lib.rs".to_string()),
+                ("R".to_string(), "new.rs".to_string()),
+                ("??".to_string(), "scratch.txt".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn truncate_utf8_preserves_char_boundaries() {
+        let (truncated, was_truncated) = truncate_utf8("åååå", 3);
+
+        assert!(was_truncated);
+        assert!(truncated.starts_with('å'));
+        assert!(truncated.contains("diff truncated"));
     }
 }

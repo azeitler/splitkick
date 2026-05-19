@@ -6,7 +6,8 @@ use super::types::{
 };
 use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
-    get_github_contexts_dir, get_session_issue_refs, get_session_pr_refs,
+    get_github_contexts_dir, get_session_advisory_refs, get_session_issue_refs,
+    get_session_pr_refs, get_session_security_refs,
 };
 use crate::projects::linear_issues::get_session_linear_refs;
 use crate::projects::storage::load_projects_data;
@@ -23,7 +24,11 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 - Use plan mode for verification steps, not just building\n\
 - Write detailed specs upfront to reduce ambiguity\n\
 - Make the plan extremely concise. Sacrifice grammar for the sake of concision.\n\
-- At the end of each plan, give me a list of unresolved questions to answer, if any.\n\
+- In planning mode, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex update_plan/CodexPlan, Cursor/OpenCode equivalent), not plain text only.\n\
+- For unresolved questions in plan mode, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question.\n\
+- For Codex specifically: after the user answers native `request_user_input`/open questions in plan mode, immediately call `update_plan`/emit `CodexPlan` again with the revised plan before any implementation.\n\
+- Every Codex plan-mode response that contains or revises a plan must use `update_plan`/`CodexPlan`; do not provide plain-text-only plans.\n\
+- Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.\n\
 \n\
 ### 2. Documentation First\n\
 - Before designing or coding against any external library/framework/SDK/API/CLI, run WebSearch for current docs.\n\
@@ -457,25 +462,7 @@ fn build_claude_args(
     args.push("--allowedTools".to_string());
     args.push("Bash(*claude-cli/claude*)".to_string());
 
-    // MCP server configuration
-    if let Some(config) = mcp_config {
-        if !config.is_empty() {
-            args.push("--mcp-config".to_string());
-            args.push(config.to_string());
-            args.push("--strict-mcp-config".to_string());
-
-            // Auto-allow all tools from configured MCP servers
-            // Pattern "mcp__<name>" matches all tools from that server
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
-                if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
-                    for server_name in servers.keys() {
-                        args.push("--allowedTools".to_string());
-                        args.push(format!("mcp__{server_name}"));
-                    }
-                }
-            }
-        }
-    }
+    append_mcp_config_args(&mut args, mcp_config);
 
     // Chrome browser integration (beta)
     if chrome_enabled {
@@ -511,8 +498,6 @@ fn build_claude_args(
         }
     }
 
-    // Explicit mode override for Claude so build/yolo do not fall back into plan mode
-    // due to the default global prompt.
     if let Some(mode_instruction) = execution_mode_instruction(execution_mode) {
         system_prompt_parts.push(mode_instruction.to_string());
     }
@@ -585,6 +570,9 @@ fn build_claude_args(
         }
     }
 
+    // End-of-turn recap instruction (compact view surfaces this block)
+    system_prompt_parts.push(super::RECAP_INSTRUCTION.to_string());
+
     // Collect all context files (issues and PRs) and concatenate into a single file
     let mut all_context_paths: Vec<std::path::PathBuf> = Vec::new();
 
@@ -641,6 +629,55 @@ fn build_claude_args(
                     let file_path = contexts_dir.join(format!("{repo_key}-pr-{number}.md"));
                     if file_path.exists() {
                         log::trace!("Adding PR context file: {:?}", file_path);
+                        all_context_paths.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check for security alert context files (shared storage)
+    let mut security_keys = get_session_security_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_security_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !security_keys.contains(&key) {
+                security_keys.push(key);
+            }
+        }
+    }
+    if !security_keys.is_empty() {
+        if let Ok(contexts_dir) = get_github_contexts_dir(app) {
+            for key in security_keys {
+                let parts: Vec<&str> = key.rsplitn(2, '-').collect();
+                if parts.len() == 2 {
+                    let number = parts[0];
+                    let repo_key = parts[1];
+                    let file_path = contexts_dir.join(format!("{repo_key}-security-{number}.md"));
+                    if file_path.exists() {
+                        log::trace!("Adding security context file: {:?}", file_path);
+                        all_context_paths.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check repository advisory context files (shared storage)
+    let mut advisory_keys = get_session_advisory_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_advisory_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !advisory_keys.contains(&key) {
+                advisory_keys.push(key);
+            }
+        }
+    }
+    if !advisory_keys.is_empty() {
+        if let Ok(contexts_dir) = get_github_contexts_dir(app) {
+            for key in advisory_keys {
+                if let Some((repo_key, ghsa_id)) = key.split_once("::") {
+                    let file_path = contexts_dir.join(format!("{repo_key}-advisory-{ghsa_id}.md"));
+                    if file_path.exists() {
+                        log::trace!("Adding advisory context file: {:?}", file_path);
                         all_context_paths.push(file_path);
                     }
                 }
@@ -731,6 +768,20 @@ fn build_claude_args(
                     s.contains("git-context") && s.contains("-pr-")
                 })
                 .count();
+            let security_count = all_context_paths
+                .iter()
+                .filter(|p| {
+                    let s = p.to_string_lossy();
+                    s.contains("git-context") && s.contains("-security-")
+                })
+                .count();
+            let advisory_count = all_context_paths
+                .iter()
+                .filter(|p| {
+                    let s = p.to_string_lossy();
+                    s.contains("git-context") && s.contains("-advisory-")
+                })
+                .count();
             let linear_count = all_context_paths
                 .iter()
                 .filter(|p| {
@@ -766,7 +817,13 @@ fn build_claude_args(
                 combined_content
                     .push_str("You should be aware of this when working on this task.\n\n");
 
-                if issue_count > 0 || pr_count > 0 || linear_count > 0 || saved_context_count > 0 {
+                if issue_count > 0
+                    || pr_count > 0
+                    || security_count > 0
+                    || advisory_count > 0
+                    || linear_count > 0
+                    || saved_context_count > 0
+                {
                     combined_content.push_str("**Summary:**\n");
                     if issue_count > 0 {
                         combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
@@ -774,6 +831,14 @@ fn build_claude_args(
                     if pr_count > 0 {
                         combined_content
                             .push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
+                    }
+                    if security_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} Security Alert(s)\n", security_count));
+                    }
+                    if advisory_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} Security Advisory(s)\n", advisory_count));
                     }
                     if linear_count > 0 {
                         combined_content.push_str(&format!("- {} Linear Issue(s)\n", linear_count));
@@ -826,6 +891,10 @@ fn build_claude_args(
     // Debug env vars
     env_vars.push(("JEAN_SESSION_ID".to_string(), session_id.to_string()));
     env_vars.push(("JEAN_WORKTREE_ID".to_string(), worktree_id.to_string()));
+    // Jean MCP recursion-depth chain. Always set so a Claude spawned by another
+    // Jean-spawned Claude can be capped at the configured depth.
+    let (depth_key, depth_val) = super::jean_mcp::child_depth_env();
+    env_vars.push((depth_key, depth_val));
     env_vars.push((
         "JEAN_MODEL".to_string(),
         model.unwrap_or("default").to_string(),
@@ -839,6 +908,34 @@ fn build_claude_args(
     }
 
     (args, env_vars)
+}
+
+fn append_mcp_config_args(args: &mut Vec<String>, mcp_config: Option<&str>) {
+    let Some(config) = mcp_config else {
+        return;
+    };
+    if config.is_empty() {
+        return;
+    }
+
+    args.push("--mcp-config".to_string());
+    args.push(config.to_string());
+    args.push("--strict-mcp-config".to_string());
+
+    // Auto-allow all tools from configured MCP servers. Claude CLI has accepted
+    // both the server-level form and the wildcard form across releases; include
+    // both so non-interactive `--print` runs can actually execute MCP calls
+    // instead of stopping after emitting a tool_use that Jean cannot approve.
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
+        if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
+            for server_name in servers.keys() {
+                args.push("--allowedTools".to_string());
+                args.push(format!("mcp__{server_name}"));
+                args.push("--allowedTools".to_string());
+                args.push(format!("mcp__{server_name}__*"));
+            }
+        }
+    }
 }
 
 /// Execute Claude CLI in detached mode.
@@ -2053,5 +2150,36 @@ mod tests {
         );
         assert_eq!(split_fast_model("sonnet"), ("sonnet", false));
         assert_eq!(split_fast_model("haiku"), ("haiku", false));
+    }
+
+    #[test]
+    fn default_global_system_prompt_prefers_interactive_plan_questions() {
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("backend-native interactive question UI"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Claude AskUserQuestion"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Codex request_user_input"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("after the user answers native `request_user_input`"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Every Codex plan-mode response"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("OpenCode question"));
+    }
+
+    #[test]
+    fn mcp_config_auto_allows_server_and_wildcard_tools() {
+        let config = r#"{
+            "mcpServers": {
+                "jean-dev": { "type": "stdio", "command": "jean" },
+                "github": { "type": "stdio", "command": "github-mcp" }
+            }
+        }"#;
+        let mut args = Vec::new();
+
+        append_mcp_config_args(&mut args, Some(config));
+
+        assert!(args.contains(&"--mcp-config".to_string()));
+        assert!(args.contains(&"--strict-mcp-config".to_string()));
+        assert!(args.contains(&"mcp__jean-dev".to_string()));
+        assert!(args.contains(&"mcp__jean-dev__*".to_string()));
+        assert!(args.contains(&"mcp__github".to_string()));
+        assert!(args.contains(&"mcp__github__*".to_string()));
     }
 }

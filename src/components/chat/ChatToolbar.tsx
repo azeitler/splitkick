@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { toast } from 'sonner'
+import { Zap } from 'lucide-react'
+import { dismissibleToast } from '@/lib/dismissible-toast'
 import { useUIStore } from '@/store/ui-store'
 import {
   gitPush,
@@ -10,7 +11,7 @@ import {
 import { useChatStore } from '@/store/chat-store'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
 import { useAllBackendsMcpHealth } from '@/services/mcp'
-import type { ClaudeModel } from '@/types/preferences'
+import { getModelFastInfo, type ClaudeModel } from '@/types/preferences'
 import {
   getSupportedExecutionModes,
   type EffortLevel,
@@ -18,6 +19,7 @@ import {
 } from '@/types/chat'
 import type { ChatToolbarProps } from '@/components/chat/toolbar/types'
 import { MobileToolbarMenu } from '@/components/chat/toolbar/MobileToolbarMenu'
+import { MobileSettingsMenu } from '@/components/chat/toolbar/MobileSettingsMenu'
 import { MobileBackendModelPickerSheet } from '@/components/chat/toolbar/MobileBackendModelPickerSheet'
 import { DesktopToolbarControls } from '@/components/chat/toolbar/DesktopToolbarControls'
 import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
@@ -68,10 +70,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   sessionHasMessages,
   providerLocked,
   baseBranch,
-  uncommittedAdded,
-  uncommittedRemoved,
-  branchDiffAdded,
-  branchDiffRemoved,
   prUrl,
   prNumber,
   displayStatus,
@@ -99,7 +97,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   onResolvePrConflicts,
   onResolveConflicts,
   hasOpenPr,
-  onSetDiffRequest,
   installedBackends,
   onModelChange,
   onBackendModelChange,
@@ -162,17 +159,23 @@ export const ChatToolbar = memo(function ChatToolbar({
       label: formatOpencodeModelLabel(model),
     })) ?? OPENCODE_MODEL_OPTIONS
 
-  const { isCodex, activeMcpCount, selectedModelLabel } =
+  const { isCodex, activeMcpCount, backendModelSections, selectedModelLabel } =
     useToolbarDerivedState({
       selectedBackend,
       selectedProvider,
       selectedModel,
       opencodeModelOptions,
       customCliProfiles,
+      installedBackends,
       availableMcpServers,
       enabledMcpServers,
     })
   const availableExecutionModes = getSupportedExecutionModes(selectedBackend)
+  const hasMultipleBackendModelChoices =
+    backendModelSections.reduce(
+      (count, section) => count + section.options.length,
+      0
+    ) > 1
 
   const backendModelLabel = useMemo(
     () => (
@@ -182,9 +185,15 @@ export const ChatToolbar = memo(function ChatToolbar({
           badgeClassName="text-[9px] leading-3"
         />
         <span className="truncate">· {selectedModelLabel}</span>
+        {getModelFastInfo(selectedBackend, selectedModel).isFast && (
+          <Zap
+            className="h-3 w-3 shrink-0 fill-current text-yellow-500"
+            aria-label="Fast mode"
+          />
+        )}
       </>
     ),
-    [selectedBackend, selectedModelLabel]
+    [selectedBackend, selectedModel, selectedModelLabel]
   )
 
   const backendModelLabelText = useMemo(
@@ -272,42 +281,25 @@ export const ChatToolbar = memo(function ChatToolbar({
       const { setWorktreeLoading, clearWorktreeLoading } =
         useChatStore.getState()
       setWorktreeLoading(worktreeId, 'push')
-      const toastId = toast.loading('Pushing changes...')
+      const opToast = dismissibleToast.loading('Pushing changes...')
       try {
         const result = await gitPush(activeWorktreePath, prNumber, remote)
         triggerImmediateGitPoll()
         if (projectId) fetchWorktreesStatus(projectId)
         if (result.fellBack) {
-          toast.warning(
-            'Could not push to PR branch, pushed to new branch instead',
-            { id: toastId }
+          opToast.warning(
+            'Could not push to PR branch, pushed to new branch instead'
           )
         } else {
-          toast.success('Changes pushed', { id: toastId })
+          opToast.success('Changes pushed')
         }
       } catch (error) {
-        toast.error(`Push failed: ${error}`, { id: toastId })
+        opToast.error(`Push failed: ${error}`)
       } finally {
         clearWorktreeLoading(worktreeId)
       }
     })
   }, [activeWorktreePath, worktreeId, projectId, prNumber, pickRemoteOrRun])
-
-  const handleUncommittedDiffClick = useCallback(() => {
-    onSetDiffRequest({
-      type: 'uncommitted',
-      worktreePath: activeWorktreePath ?? '',
-      baseBranch,
-    })
-  }, [activeWorktreePath, baseBranch, onSetDiffRequest])
-
-  const handleBranchDiffClick = useCallback(() => {
-    onSetDiffRequest({
-      type: 'branch',
-      worktreePath: activeWorktreePath ?? '',
-      baseBranch,
-    })
-  }, [activeWorktreePath, baseBranch, onSetDiffRequest])
 
   const canSend = hasInputValue || hasPendingAttachments
 
@@ -316,33 +308,14 @@ export const ChatToolbar = memo(function ChatToolbar({
       <div className="inline-flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap bg-transparent scrollbar-hide">
         <DockBurgerButton
           activeMcpCount={activeMcpCount}
-          onAttach={onAttach}
           className="flex @xl:hidden"
         />
 
         <MobileToolbarMenu
           isDisabled={isSending || hasPendingQuestions}
           hasOpenPr={hasOpenPr}
-          providerLocked={providerLocked}
-          selectedBackend={selectedBackend}
-          selectedProvider={selectedProvider}
-          backendModelLabel={backendModelLabel}
-          backendModelLabelText={backendModelLabelText}
-          selectedEffortLevel={selectedEffortLevel}
-          selectedThinkingLevel={selectedThinkingLevel}
-          hideThinkingLevel={hideThinkingLevel}
-          useAdaptiveThinking={useAdaptiveThinking}
-          isCodex={isCodex}
-          customCliProfiles={customCliProfiles}
-          uncommittedAdded={uncommittedAdded}
-          uncommittedRemoved={uncommittedRemoved}
-          branchDiffAdded={branchDiffAdded}
-          branchDiffRemoved={branchDiffRemoved}
-          prUrl={prUrl}
-          prNumber={prNumber}
-          displayStatus={displayStatus}
-          checkStatus={checkStatus}
-          activeWorktreePath={activeWorktreePath}
+          hasIssueContexts={loadedIssueContexts.length > 0}
+          hasPrContexts={loadedPRContexts.length > 0}
           onSaveContext={onSaveContext}
           onLoadContext={onLoadContext}
           onCommit={onCommit}
@@ -351,12 +324,25 @@ export const ChatToolbar = memo(function ChatToolbar({
           onReview={onReview}
           onMerge={onMerge}
           onMergePr={onMergePr}
-          onResolveConflicts={onResolveConflicts}
-          onOpenBackendModelPicker={() => setMobileBackendModelPickerOpen(true)}
           handlePullClick={handlePullClick}
           handlePushClick={handlePushClick}
-          handleUncommittedDiffClick={handleUncommittedDiffClick}
-          handleBranchDiffClick={handleBranchDiffClick}
+        />
+
+        <MobileSettingsMenu
+          isDisabled={isSending || hasPendingQuestions}
+          providerLocked={providerLocked}
+          selectedBackend={selectedBackend}
+          selectedProvider={selectedProvider}
+          backendModelLabel={backendModelLabel}
+          backendModelLabelText={backendModelLabelText}
+          hasMultipleBackendModelChoices={hasMultipleBackendModelChoices}
+          selectedEffortLevel={selectedEffortLevel}
+          selectedThinkingLevel={selectedThinkingLevel}
+          hideThinkingLevel={hideThinkingLevel}
+          useAdaptiveThinking={useAdaptiveThinking}
+          isCodex={isCodex}
+          customCliProfiles={customCliProfiles}
+          onOpenBackendModelPicker={() => setMobileBackendModelPickerOpen(true)}
           handleProviderChange={handleProviderChange}
           handleEffortLevelChange={handleEffortLevelChange}
           handleThinkingLevelChange={handleThinkingLevelChange}
@@ -376,6 +362,11 @@ export const ChatToolbar = memo(function ChatToolbar({
           enabledMcpServers={enabledMcpServers}
           activeMcpCount={activeMcpCount}
           onToggleMcpServer={onToggleMcpServer}
+          prUrl={prUrl}
+          prNumber={prNumber}
+          prDisplayStatus={displayStatus}
+          worktreeId={worktreeId}
+          onAttach={onAttach}
         />
 
         {isMobile && (

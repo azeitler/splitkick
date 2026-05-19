@@ -6,6 +6,8 @@ import type {
   ReviewFinding,
 } from '@/types/chat'
 import { MessageItem } from './MessageItem'
+import type { FileEdit } from './FileEditsDiffModal'
+import { getAssistantDurationMs } from './time-utils'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -32,7 +34,7 @@ interface MessageListProps {
   ) => void
   onQuestionSkip: (toolCallId: string) => void
   onFileClick: (path: string) => void
-  onEditedFileClick: (path: string) => void
+  onEditedFileClick: (path: string, edits: FileEdit[]) => void
   onFixFinding: (finding: ReviewFinding, suggestion?: string) => Promise<void>
   onFixAllFindings: (
     findings: { finding: ReviewFinding; suggestion?: string }[]
@@ -106,22 +108,11 @@ export const MessageList = memo(function MessageList({
         const hasFollowUpMessage =
           message.role === 'assistant' && (hasFollowUpMap.get(index) ?? false)
 
-        // Show completed duration on the last assistant message (from store),
-        // or fall back to timestamp-based computation for persisted messages (after reload)
-        let durationMs: number | null = null
-        if (
-          message.role === 'assistant' &&
-          index === messages.length - 1 &&
+        const durationMs = getAssistantDurationMs(
+          messages,
+          index,
           completedDurationMs
-        ) {
-          durationMs = completedDurationMs
-        } else if (message.role === 'assistant' && index > 0) {
-          const prevMessage = messages[index - 1]
-          if (prevMessage?.role === 'user') {
-            const deltaSecs = message.timestamp - prevMessage.timestamp
-            if (deltaSecs > 0 && deltaSecs < 3600) durationMs = deltaSecs * 1000
-          }
-        }
+        )
 
         return (
           <div key={message.id}>

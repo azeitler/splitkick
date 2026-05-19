@@ -23,12 +23,7 @@ export function useTerminalThemeSync(): void {
       terminal_background_custom: preferences.terminal_background_custom,
     })
     applyThemeToAllTerminals()
-  }, [
-    preferences,
-    preferences?.terminal_background,
-    preferences?.terminal_background_custom,
-    theme,
-  ])
+  }, [preferences, theme])
 }
 
 const FALLBACK_BG = '#101010'
@@ -66,10 +61,5 @@ export function useTerminalBackgroundColor(): string {
         selectionBackground: '#242424',
       })
     ).background
-  }, [
-    preferences,
-    preferences?.terminal_background,
-    preferences?.terminal_background_custom,
-    theme,
-  ])
+  }, [preferences, theme])
 }
