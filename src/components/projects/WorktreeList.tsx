@@ -10,17 +10,18 @@ import {
   type DragEndEvent,
 } from '@dnd-kit/core'
 import {
+  arrayMove,
   SortableContext,
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { Worktree } from '@/types/projects'
+import { isBaseSession, type Worktree } from '@/types/projects'
 import type { WorktreeSessions } from '@/types/chat'
 import { invoke } from '@/lib/transport'
 import { chatQueryKeys } from '@/services/chat'
-import { isTauri } from '@/services/projects'
+import { isTauri, useReorderWorktrees } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import {
   compareWorktreesForCanvasSort,
@@ -99,6 +100,7 @@ export function WorktreeList({
   worktrees,
   defaultBranch,
 }: WorktreeListProps) {
+  const reorderWorktrees = useReorderWorktrees()
   const worktreeSortMode = useProjectsStore(
     state =>
       state.projectCanvasSettings[projectId]?.worktreeSortMode ?? 'created'
@@ -194,23 +196,92 @@ export function WorktreeList({
     })
   )
 
-  const handleDragEnd = useCallback((_event: DragEndEvent) => {
-    // Sidebar order is derived from the ProjectCanvasView sort setting.
-    // Manual reordering is disabled so the sidebar cannot drift from canvas.
+  const canReorderWorktree = useCallback((worktree: Worktree) => {
+    return (
+      !isBaseSession(worktree) &&
+      (!worktree.status ||
+        worktree.status === 'ready' ||
+        worktree.status === 'error')
+    )
   }, [])
 
-  // Get only the draggable worktree IDs for SortableContext
-  const draggableIds: string[] = []
+  const sortableIds = useMemo(
+    () => sortedWorktrees.map(worktree => worktree.id),
+    [sortedWorktrees]
+  )
+
+  const worktreeById = useMemo(
+    () => new Map(sortedWorktrees.map(worktree => [worktree.id, worktree])),
+    [sortedWorktrees]
+  )
+
+  const draggableIds = useMemo(
+    () =>
+      sortedWorktrees
+        .filter(worktree => canReorderWorktree(worktree))
+        .map(worktree => worktree.id),
+    [canReorderWorktree, sortedWorktrees]
+  )
+
+  const draggableIdSet = useMemo(() => new Set(draggableIds), [draggableIds])
+
+  const handleDragEnd = useCallback(
+    ({ active, over }: DragEndEvent) => {
+      if (!over || active.id === over.id) return
+
+      const activeId = String(active.id)
+      const overId = String(over.id)
+      const oldIndex = draggableIds.indexOf(activeId)
+      const newIndex = draggableIds.indexOf(overId)
+
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+
+      const reorderedDraggableIds = arrayMove(draggableIds, oldIndex, newIndex)
+      const nextDraggableIds = [...reorderedDraggableIds]
+      const fullOrderedIds = sortedWorktrees.map(worktree => {
+        if (!draggableIdSet.has(worktree.id)) return worktree.id
+        return nextDraggableIds.shift() ?? worktree.id
+      })
+
+      useProjectsStore
+        .getState()
+        .setProjectCanvasWorktreeSortMode(projectId, 'manual')
+
+      reorderWorktrees.mutate({
+        projectId,
+        worktreeIds: fullOrderedIds.filter(id => {
+          const worktree = worktreeById.get(id)
+          return (
+            worktree != null &&
+            (isBaseSession(worktree) || canReorderWorktree(worktree))
+          )
+        }),
+      })
+    },
+    [
+      canReorderWorktree,
+      draggableIdSet,
+      draggableIds,
+      projectId,
+      reorderWorktrees,
+      sortedWorktrees,
+      worktreeById,
+    ]
+  )
 
   return (
-    <div className="ml-4 border-l border-border/40 py-0.5">
+    <div
+      className="ml-4 border-l border-border/40 py-0.5"
+      onPointerDown={event => event.stopPropagation()}
+      onKeyDown={event => event.stopPropagation()}
+    >
       <DndContext
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={handleDragEnd}
       >
         <SortableContext
-          items={draggableIds}
+          items={sortableIds}
           strategy={verticalListSortingStrategy}
         >
           {sortedWorktrees.map(worktree => {
@@ -221,7 +292,9 @@ export function WorktreeList({
                 projectId={projectId}
                 projectPath={projectPath}
                 defaultBranch={defaultBranch}
-                disabled
+                disabled={
+                  reorderWorktrees.isPending || !canReorderWorktree(worktree)
+                }
               />
             )
           })}

@@ -2638,17 +2638,24 @@ export function useReorderWorktrees() {
 
       // Optimistically update the cache
       if (previousWorktrees) {
-        const reorderedWorktrees = worktreeIds
-          .map((id, index) => {
-            const worktree = previousWorktrees.find(w => w.id === id)
-            // Base sessions keep order 0, others get index + 1
-            if (worktree) {
-              const newOrder = worktree.session_type === 'base' ? 0 : index + 1
-              return { ...worktree, order: newOrder }
-            }
-            return null
-          })
-          .filter((w): w is Worktree => w !== null)
+        const orderById = new Map<string, number>()
+        let nextOrder = 1
+        for (const worktreeId of worktreeIds) {
+          const worktree = previousWorktrees.find(w => w.id === worktreeId)
+          if (worktree && worktree.session_type !== 'base') {
+            orderById.set(worktreeId, nextOrder)
+            nextOrder += 1
+          }
+        }
+
+        const reorderedWorktrees = previousWorktrees.map(worktree => {
+          if (worktree.session_type === 'base') {
+            return { ...worktree, order: 0 }
+          }
+
+          const order = orderById.get(worktree.id) ?? worktree.order
+          return { ...worktree, order }
+        })
 
         queryClient.setQueryData<Worktree[]>(
           projectsQueryKeys.worktrees(projectId),

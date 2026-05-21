@@ -2405,6 +2405,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                       <DropdownMenuRadioItem value="last_activity">
                         Last activity
                       </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="manual">
+                        Manual
+                      </DropdownMenuRadioItem>
                     </DropdownMenuRadioGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
