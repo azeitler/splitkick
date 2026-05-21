@@ -43,6 +43,11 @@ export const test = base.extend<TauriMockFixtures>({
             active_session_id: string | null
           }
         > = {}
+        const worktreeStore: Array<Record<string, unknown>> = Array.isArray(
+          responseMap.list_worktrees
+        )
+          ? structuredClone(responseMap.list_worktrees)
+          : []
 
         function getWorktreeStore(worktreeId: string) {
           if (!sessionStore[worktreeId]) {
@@ -68,6 +73,35 @@ export const test = base.extend<TauriMockFixtures>({
               active_session_id: store.active_session_id,
               version: 2,
             }
+          },
+          list_worktrees: args => {
+            const projectId = args?.projectId as string | undefined
+            return structuredClone(
+              worktreeStore
+                .filter(
+                  worktree =>
+                    projectId == null || worktree.project_id === projectId
+                )
+                .sort((a, b) => Number(a.order ?? 0) - Number(b.order ?? 0))
+            )
+          },
+          reorder_worktrees: args => {
+            const orderedIds = Array.isArray(args?.worktreeIds)
+              ? (args.worktreeIds as string[])
+              : []
+            const orderById = new Map(
+              orderedIds.map((worktreeId, index) => [worktreeId, index + 1])
+            )
+
+            for (const worktree of worktreeStore) {
+              if (typeof worktree.id !== 'string') continue
+              const nextOrder = orderById.get(worktree.id)
+              if (nextOrder != null) {
+                worktree.order = nextOrder
+              }
+            }
+
+            return null
           },
           create_session: args => {
             const wid = (args?.worktreeId as string) ?? 'unknown'
