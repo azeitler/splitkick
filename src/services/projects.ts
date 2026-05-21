@@ -2606,6 +2606,12 @@ export function useReorderProjects() {
 /**
  * Hook to reorder worktrees within a project
  */
+interface ReorderWorktreesInput {
+  projectId: string
+  worktreeIds: string[]
+  switchToManualSort?: boolean
+}
+
 export function useReorderWorktrees() {
   const queryClient = useQueryClient()
 
@@ -2613,10 +2619,7 @@ export function useReorderWorktrees() {
     mutationFn: async ({
       projectId,
       worktreeIds,
-    }: {
-      projectId: string
-      worktreeIds: string[]
-    }): Promise<void> => {
+    }: ReorderWorktreesInput): Promise<void> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
       }
@@ -2625,7 +2628,7 @@ export function useReorderWorktrees() {
       await invoke('reorder_worktrees', { projectId, worktreeIds })
       logger.info('Worktrees reordered')
     },
-    onMutate: async ({ projectId, worktreeIds }) => {
+    onMutate: async ({ projectId, worktreeIds, switchToManualSort }) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({
         queryKey: projectsQueryKeys.worktrees(projectId),
@@ -2663,7 +2666,16 @@ export function useReorderWorktrees() {
         )
       }
 
-      return { previousWorktrees, projectId }
+      const previousSortMode =
+        useProjectsStore.getState().projectCanvasSettings[projectId]
+          ?.worktreeSortMode
+      if (switchToManualSort && previousSortMode !== 'manual') {
+        useProjectsStore
+          .getState()
+          .setProjectCanvasWorktreeSortMode(projectId, 'manual')
+      }
+
+      return { previousWorktrees, projectId, previousSortMode }
     },
     onError: (error, _, context) => {
       // Rollback on error
@@ -2672,6 +2684,18 @@ export function useReorderWorktrees() {
           projectsQueryKeys.worktrees(context.projectId),
           context.previousWorktrees
         )
+      }
+      if (
+        context?.previousSortMode != null &&
+        useProjectsStore.getState().projectCanvasSettings[context.projectId]
+          ?.worktreeSortMode === 'manual'
+      ) {
+        useProjectsStore
+          .getState()
+          .setProjectCanvasWorktreeSortMode(
+            context.projectId,
+            context.previousSortMode
+          )
       }
       const message =
         error instanceof Error

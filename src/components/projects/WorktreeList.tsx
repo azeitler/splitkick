@@ -243,10 +243,6 @@ export function WorktreeList({
         return nextDraggableIds.shift() ?? worktree.id
       })
 
-      useProjectsStore
-        .getState()
-        .setProjectCanvasWorktreeSortMode(projectId, 'manual')
-
       reorderWorktrees.mutate({
         projectId,
         worktreeIds: fullOrderedIds.filter(id => {
@@ -256,6 +252,7 @@ export function WorktreeList({
             (isBaseSession(worktree) || canReorderWorktree(worktree))
           )
         }),
+        switchToManualSort: worktreeSortMode !== 'manual',
       })
     },
     [
@@ -266,6 +263,7 @@ export function WorktreeList({
       reorderWorktrees,
       sortedWorktrees,
       worktreeById,
+      worktreeSortMode,
     ]
   )
 

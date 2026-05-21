@@ -1,4 +1,21 @@
 import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -35,6 +52,7 @@ import {
   Home,
   Terminal,
   Trash2,
+  GripVertical,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -62,6 +80,7 @@ import {
   useOpenWorktreeInFinder,
   useOpenWorktreeInTerminal,
   useRemoveProject,
+  useReorderWorktrees,
   projectsQueryKeys,
 } from '@/services/projects'
 import { chatQueryKeys, cancelChatMessage } from '@/services/chat'
@@ -152,6 +171,69 @@ interface WorktreeSection {
   worktree: Worktree
   cards: SessionCardData[]
   isPending?: boolean
+}
+
+function canManuallyReorderWorktree(worktree: Worktree): boolean {
+  return (
+    !isBaseSession(worktree) &&
+    (!worktree.status ||
+      worktree.status === 'ready' ||
+      worktree.status === 'error')
+  )
+}
+
+function SortableCanvasWorktreeSection({
+  section,
+  disabled,
+  children,
+}: {
+  section: WorktreeSection
+  disabled: boolean
+  children: React.ReactNode
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: section.worktree.id,
+    disabled,
+  })
+
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    zIndex: isDragging ? 1 : 0,
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'relative',
+        !disabled && 'pl-5',
+        isDragging && 'opacity-70'
+      )}
+    >
+      {!disabled && (
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          className="absolute left-0 top-2 z-10 flex h-7 w-5 cursor-grab items-center justify-center rounded text-muted-foreground/45 opacity-0 transition-opacity hover:bg-muted/70 hover:text-muted-foreground group-hover/canvas-list:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 active:cursor-grabbing"
+          aria-label={`Reorder ${isBaseSession(section.worktree) ? 'Base Session' : section.worktree.name}`}
+          onClick={event => event.stopPropagation()}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      )}
+      {children}
+    </div>
+  )
 }
 
 interface FlatCard {
@@ -666,6 +748,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Project action mutations
   const createBaseSession = useCreateBaseSession()
   const removeProject = useRemoveProject()
+  const reorderWorktrees = useReorderWorktrees()
   const openOnGitHub = useOpenProjectOnGitHub()
   const openInFinder = useOpenWorktreeInFinder()
   const openWorktreesFolder = useOpenProjectWorktreesFolder()
@@ -676,6 +759,16 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const [activeFilterTab, setActiveFilterTab] = useState<CanvasFilterTab>('all')
   const isMobile = useIsMobile()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
+  const canvasDndSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  )
 
   // Get project info
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
@@ -995,6 +1088,74 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     worktreeSortMode,
     activeFilterTab,
   ])
+
+  const canvasReorderEnabled =
+    activeFilterTab === 'all' && searchQuery.trim().length === 0
+
+  const canvasSortableIds = useMemo(
+    () => worktreeSections.map(section => section.worktree.id),
+    [worktreeSections]
+  )
+
+  const canvasDraggableIds = useMemo(
+    () =>
+      worktreeSections
+        .filter(section => canManuallyReorderWorktree(section.worktree))
+        .map(section => section.worktree.id),
+    [worktreeSections]
+  )
+
+  const canvasDraggableIdSet = useMemo(
+    () => new Set(canvasDraggableIds),
+    [canvasDraggableIds]
+  )
+
+  const handleCanvasDragEnd = useCallback(
+    ({ active, over }: DragEndEvent) => {
+      if (!canvasReorderEnabled || !over || active.id === over.id) return
+
+      const activeId = String(active.id)
+      const overId = String(over.id)
+      const oldIndex = canvasDraggableIds.indexOf(activeId)
+      const newIndex = canvasDraggableIds.indexOf(overId)
+
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+
+      const reorderedDraggableIds = arrayMove(
+        canvasDraggableIds,
+        oldIndex,
+        newIndex
+      )
+      const nextDraggableIds = [...reorderedDraggableIds]
+      const fullOrderedIds = worktreeSections.map(section => {
+        const worktreeId = section.worktree.id
+        if (!canvasDraggableIdSet.has(worktreeId)) return worktreeId
+        return nextDraggableIds.shift() ?? worktreeId
+      })
+
+      reorderWorktrees.mutate({
+        projectId,
+        worktreeIds: fullOrderedIds.filter(worktreeId => {
+          const worktree = worktrees.find(wt => wt.id === worktreeId)
+          return (
+            worktree != null &&
+            (isBaseSession(worktree) || canManuallyReorderWorktree(worktree))
+          )
+        }),
+        switchToManualSort: worktreeSortMode !== 'manual',
+      })
+    },
+    [
+      canvasDraggableIdSet,
+      canvasDraggableIds,
+      canvasReorderEnabled,
+      projectId,
+      reorderWorktrees,
+      worktreeSections,
+      worktrees,
+      worktreeSortMode,
+    ]
+  )
 
   useEffect(() => {
     if (worktreeSortMode !== 'last_activity') return
@@ -2581,63 +2742,91 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
               </div>
             )
           ) : (
-            <div className="flex flex-col gap-1">
-              {(() => {
-                let shortcutNum = 0
-                return worktreeSections.map(section => {
-                  const currentIndex = cardIndex++
-                  if (section.isPending) {
-                    return (
-                      <WorktreeSetupCard
-                        key={section.worktree.id}
-                        ref={el => {
-                          cardRefs.current[currentIndex] = el
-                        }}
-                        worktree={section.worktree}
-                        layout="list"
-                        isSelected={selectedIndex === currentIndex}
-                        onSelect={() => handleSelectedIndexChange(currentIndex)}
-                      />
-                    )
-                  }
-                  const thisShortcut =
-                    ++shortcutNum <= 9 ? shortcutNum : undefined
-                  return (
-                    <div
-                      key={section.worktree.id}
-                      ref={el => {
-                        cardRefs.current[currentIndex] = el
-                      }}
-                    >
-                      <WorktreeSectionHeader
-                        worktree={section.worktree}
-                        projectId={projectId}
-                        defaultBranch={project.default_branch}
-                        openPRs={openPRs}
-                        cards={section.cards}
-                        showDetails={true}
-                        isSelected={selectedIndex === currentIndex}
-                        shortcutNumber={thisShortcut}
-                        onRowClick={() => {
-                          handleSelectedIndexChange(currentIndex)
-                          handleWorktreeClick(
-                            section.worktree.id,
-                            section.worktree.path
-                          )
-                        }}
-                        onDiffClick={(worktreePath, baseBranch, type) => {
-                          setCanvasDiffRequest({
-                            type,
-                            worktreePath,
-                            baseBranch,
-                          })
-                        }}
-                      />
-                    </div>
-                  )
-                })
-              })()}
-            </div>
+            <DndContext
+              sensors={canvasDndSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={handleCanvasDragEnd}
+            >
+              <SortableContext
+                items={canvasSortableIds}
+                strategy={verticalListSortingStrategy}
+              >
+                <div className="group/canvas-list flex flex-col gap-1">
+                  {(() => {
+                    let shortcutNum = 0
+                    return worktreeSections.map(section => {
+                      const currentIndex = cardIndex++
+                      const isReorderDisabled =
+                        !canvasReorderEnabled ||
+                        reorderWorktrees.isPending ||
+                        !canManuallyReorderWorktree(section.worktree)
+
+                      if (section.isPending) {
+                        return (
+                          <SortableCanvasWorktreeSection
+                            key={section.worktree.id}
+                            section={section}
+                            disabled={true}
+                          >
+                            <WorktreeSetupCard
+                              ref={el => {
+                                cardRefs.current[currentIndex] = el
+                              }}
+                              worktree={section.worktree}
+                              layout="list"
+                              isSelected={selectedIndex === currentIndex}
+                              onSelect={() =>
+                                handleSelectedIndexChange(currentIndex)
+                              }
+                            />
+                          </SortableCanvasWorktreeSection>
+                        )
+                      }
+                      const thisShortcut =
+                        ++shortcutNum <= 9 ? shortcutNum : undefined
+                      return (
+                        <SortableCanvasWorktreeSection
+                          key={section.worktree.id}
+                          section={section}
+                          disabled={isReorderDisabled}
+                        >
+                          <div
+                            ref={el => {
+                              cardRefs.current[currentIndex] = el
+                            }}
+                          >
+                            <WorktreeSectionHeader
+                              worktree={section.worktree}
+                              projectId={projectId}
+                              defaultBranch={project.default_branch}
+                              openPRs={openPRs}
+                              cards={section.cards}
+                              showDetails={true}
+                              isSelected={selectedIndex === currentIndex}
+                              shortcutNumber={thisShortcut}
+                              onRowClick={() => {
+                                handleSelectedIndexChange(currentIndex)
+                                handleWorktreeClick(
+                                  section.worktree.id,
+                                  section.worktree.path
+                                )
+                              }}
+                              onDiffClick={(worktreePath, baseBranch, type) => {
+                                setCanvasDiffRequest({
+                                  type,
+                                  worktreePath,
+                                  baseBranch,
+                                })
+                              }}
+                            />
+                          </div>
+                        </SortableCanvasWorktreeSection>
+                      )
+                    })
+                  })()}
+                </div>
+              </SortableContext>
+            </DndContext>
           )}
         </div>
       </div>
