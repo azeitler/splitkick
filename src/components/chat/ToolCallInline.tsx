@@ -1,5 +1,4 @@
-import { useState, useSyncExternalStore } from 'react'
-import { tickStore } from '@/contexts/TickStore'
+import { useState, useEffect } from 'react'
 import { usePreferences } from '@/services/preferences'
 import { useChatStore } from '@/store/chat-store'
 import {
@@ -626,10 +625,19 @@ function formatWakeupDelay(seconds: number): string {
   return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`
 }
 
+/** Live-ticking remaining seconds for a pending ScheduleWakeup. */
 function useWakeupRemaining(fireAtUnix: number | undefined): number | null {
-  const now = useSyncExternalStore(tickStore.subscribe, tickStore.getSnapshot)
+  const [nowUnix, setNowUnix] = useState<number | null>(null)
+  useEffect(() => {
+    if (!fireAtUnix) return
+    const updateNow = () => setNowUnix(Math.floor(Date.now() / 1000))
+    updateNow()
+    const id = setInterval(updateNow, 1000)
+    return () => clearInterval(id)
+  }, [fireAtUnix])
   if (!fireAtUnix) return null
-  return Math.max(0, fireAtUnix - Math.floor(now / 1000))
+  if (nowUnix === null) return null
+  return Math.max(0, fireAtUnix - nowUnix)
 }
 
 interface ScheduleWakeupIndicatorProps {
@@ -665,14 +673,9 @@ function ScheduleWakeupCountdown({ toolCallId }: ScheduleWakeupIndicatorProps) {
   const status = entry?.status ?? 'fired'
   if (status === 'cancelled') return <span>cancelled</span>
   if (status === 'pending') {
-    if (remaining == null) return null
-    return (
-      <span>
-        {remaining <= 0
-          ? 'firing…'
-          : `fires in ${formatWakeupDelay(remaining)}`}
-      </span>
-    )
+    if (remaining === null) return null
+    if (remaining <= 0) return <span>firing…</span>
+    return <span>fires in {formatWakeupDelay(remaining)}</span>
   }
   return <span>fired</span>
 }
