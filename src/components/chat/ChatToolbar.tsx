@@ -330,7 +330,7 @@ export const ChatToolbar = memo(function ChatToolbar({
         />
 
         <MobileToolbarMenu
-          isDisabled={isSending || hasPendingQuestions}
+          isDisabled={hasPendingQuestions}
           hasOpenPr={hasOpenPr}
           hasIssueContexts={loadedIssueContexts.length > 0}
           hasPrContexts={loadedPRContexts.length > 0}
@@ -343,12 +343,13 @@ export const ChatToolbar = memo(function ChatToolbar({
           onReview={onReview}
           onMerge={onMerge}
           onMergePr={onMergePr}
+          onOpenMagicModal={onOpenMagicModal}
           handlePullClick={handlePullClick}
           handlePushClick={handlePushClick}
         />
 
         <MobileSettingsMenu
-          isDisabled={isSending || hasPendingQuestions}
+          isDisabled={hasPendingQuestions}
           providerLocked={providerLocked}
           selectedBackend={selectedBackend}
           selectedProvider={selectedProvider}
