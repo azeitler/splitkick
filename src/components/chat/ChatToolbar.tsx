@@ -231,7 +231,9 @@ export const ChatToolbar = memo(function ChatToolbar({
       const provider = value === 'default' ? null : value
       onProviderChange(provider)
       if (provider && provider !== '__anthropic__') {
-        if (selectedModel === 'claude-opus-4-7[1m]') {
+        if (selectedModel === 'claude-opus-4-8[1m]') {
+          onModelChange('claude-opus-4-8' as ClaudeModel)
+        } else if (selectedModel === 'claude-opus-4-7[1m]') {
           onModelChange('claude-opus-4-7' as ClaudeModel)
         } else if (
           selectedModel === 'claude-opus-4-6[1m]' ||

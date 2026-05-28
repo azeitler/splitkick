@@ -22,7 +22,7 @@ export type ThinkingLevel = 'off' | 'think' | 'megathink' | 'ultrathink'
  * - low: Minimal thinking, skips for simple tasks
  * - medium: Moderate thinking, may skip for very simple queries
  * - high: Deep reasoning (default), almost always thinks
- * - xhigh: Extra high effort (Opus 4.7 recommended default for coding/agentic)
+ * - xhigh: Extra high effort (Opus 4.8 recommended default for coding/agentic)
  * - max: No constraints on thinking depth
  */
 export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
