@@ -79,6 +79,11 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.\n\
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.\n\
 \n\
+## Jean Worktree Policy\n\
+- Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.\n\
+- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.\n\
+- If already in a Jean worktree or base/main workspace, continue in the current workspace.\n\
+\n\
 ## Important!\n\
 \n\
 - After each finished task, please write a few bullet points on how to test the changes.";
@@ -2171,6 +2176,9 @@ mod tests {
             .contains("after the user answers native `request_user_input`"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Every Codex plan-mode response"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("OpenCode question"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean Worktree Policy"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Do NOT create git worktrees manually"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean MCP/tools"));
     }
 
     #[test]

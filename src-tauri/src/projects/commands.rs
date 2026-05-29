@@ -34,8 +34,8 @@ use super::linear_issues::{
 };
 use super::names::generate_unique_workspace_name;
 use super::release_notes::{
-    build_pr_issue_refs_from_commit_range, build_pr_issue_refs_from_commit_subjects,
-    build_release_notes_prompt_context, format_issue_groups, PrIssueRefsMap,
+    build_pr_prompt_context_from_pr_commits, build_pr_prompt_context_from_revision_range,
+    build_release_notes_prompt_context, format_issue_groups, PrIssueRefsMap, PrPromptCommitRecord,
 };
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
 use super::types::{
@@ -5891,7 +5891,17 @@ const PR_CONTENT_PROMPT: &str = r#"<task>Generate a pull request title and descr
 
 <diff>
 {diff}
-</diff>"#;
+</diff>
+
+<instructions>
+- Use merged pull request metadata as the primary source when present; use commits and diff as fallback context.
+- Inspect pull request titles, bodies, and commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Normalize closing keywords in the final body to lowercase forms: closes, fixes, resolves.
+- Reference the pull request number for each relevant bullet when known: `(#123)`.
+- If a pull request closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: `(#123, fixes #456, #789)`.
+- Do not invent pull request numbers or issue references; only use detected metadata.
+- Keep the description concise and user-facing; avoid internal implementation details unless needed for review.
+</instructions>"#;
 
 /// Structured response from PR content generation
 #[derive(Debug, Deserialize, Serialize)]
@@ -6095,12 +6105,17 @@ fn generate_pr_content(
 
     let commits = get_branch_commits(repo_path, target_branch, head_ref)?;
     let commit_count = count_branch_commits(repo_path, target_branch, head_ref)?;
-    let related_pr_issue_refs = build_pr_issue_refs_from_commit_range(
+    let pr_prompt_context = build_pr_prompt_context_from_revision_range(
         app,
         repo_path,
         &format!("origin/{target_branch}..{head_ref}"),
     )
-    .unwrap_or_default();
+    .unwrap_or_else(
+        |_| crate::projects::release_notes::ReleaseNotesPromptContext {
+            pull_requests: String::new(),
+            pr_issue_refs: PrIssueRefsMap::new(),
+        },
+    );
     generate_pr_content_from_inputs(
         app,
         repo_path,
@@ -6116,7 +6131,8 @@ fn generate_pr_content(
         &commits,
         commit_count,
         &diff,
-        &related_pr_issue_refs,
+        &pr_prompt_context.pull_requests,
+        &pr_prompt_context.pr_issue_refs,
     )
 }
 
@@ -6578,7 +6594,11 @@ struct PrGenerationTargetInfo {
 #[serde(rename_all = "camelCase")]
 struct PrGenerationCommit {
     #[serde(default)]
+    oid: String,
+    #[serde(default)]
     message_headline: String,
+    #[serde(default)]
+    message_body: String,
 }
 
 fn get_pr_generation_target_info(
@@ -6647,9 +6667,14 @@ fn generate_pr_content_from_inputs(
     commits: &str,
     commit_count: u32,
     diff: &str,
+    detected_pull_requests: &str,
     related_pr_issue_refs: &PrIssueRefsMap,
 ) -> Result<PrContentResponse, String> {
-    let related_pull_requests = format_related_pull_requests(related_pr_issue_refs);
+    let related_pull_requests = if detected_pull_requests.trim().is_empty() {
+        format_related_pull_requests(related_pr_issue_refs)
+    } else {
+        detected_pull_requests.to_string()
+    };
 
     let prompt_template = custom_prompt
         .filter(|p| !p.trim().is_empty())
@@ -6855,20 +6880,39 @@ pub async fn generate_pr_update_content(
         .ok_or_else(|| "Enter a pull request number".to_string())?;
     let gh = resolve_gh_binary(&app);
     let pr_target = get_pr_generation_target_info(&gh, &worktree_path, selected_pr_number)?;
-    let commit_subjects = pr_target
+    let commit_records = pr_target
         .commits
         .iter()
-        .map(|commit| commit.message_headline.clone())
+        .map(|commit| PrPromptCommitRecord {
+            oid: commit.oid.clone(),
+            subject: commit.message_headline.clone(),
+            body: commit.message_body.clone(),
+        })
         .collect::<Vec<_>>();
-    let commits = commit_subjects.join("\n");
+    let commits = commit_records
+        .iter()
+        .map(|commit| {
+            if commit.body.trim().is_empty() {
+                commit.subject.clone()
+            } else {
+                format!("{}\n{}", commit.subject, commit.body)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
     let commit_count = pr_target.commits.len() as u32;
     let diff = get_pr_generation_diff(&worktree_path, selected_pr_number, &gh)?;
     if diff.trim().is_empty() {
         return Err(format!("No changes found for PR #{selected_pr_number}"));
     }
-    let related_pr_issue_refs =
-        build_pr_issue_refs_from_commit_subjects(&app, &worktree_path, &commit_subjects)
-            .unwrap_or_default();
+    let pr_prompt_context =
+        build_pr_prompt_context_from_pr_commits(&app, &worktree_path, &commit_records)
+            .unwrap_or_else(
+                |_| crate::projects::release_notes::ReleaseNotesPromptContext {
+                    pull_requests: String::new(),
+                    pr_issue_refs: PrIssueRefsMap::new(),
+                },
+            );
 
     let pr_magic_backend = crate::get_preferences_path(&app)
         .ok()
@@ -6890,7 +6934,8 @@ pub async fn generate_pr_update_content(
         &commits,
         commit_count,
         &diff,
-        &related_pr_issue_refs,
+        &pr_prompt_context.pull_requests,
+        &pr_prompt_context.pr_issue_refs,
     )?;
 
     // Gather Linear identifiers
@@ -8934,7 +8979,8 @@ fn generate_release_notes_content(
 }
 
 fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> String {
-    RELEASE_NOTES_PAREN_RE
+    let mut referenced_prs = std::collections::BTreeSet::new();
+    let mut augmented = RELEASE_NOTES_PAREN_RE
         .replace_all(body, |captures: &regex::Captures<'_>| {
             let Some(content_match) = captures.get(1) else {
                 return captures[0].to_string();
@@ -8949,6 +8995,7 @@ fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> 
             let Ok(pr_number) = pr_number_match.as_str().parse::<u32>() else {
                 return captures[0].to_string();
             };
+            referenced_prs.insert(pr_number);
             let Some(issue_groups) = pr_issue_refs.get(&pr_number) else {
                 return captures[0].to_string();
             };
@@ -8958,7 +9005,27 @@ fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> 
 
             format!("(#{pr_number}, {})", format_issue_groups(issue_groups))
         })
-        .into_owned()
+        .into_owned();
+
+    let missing_refs = pr_issue_refs
+        .iter()
+        .filter(|(pr_number, issue_groups)| {
+            !referenced_prs.contains(pr_number) && !issue_groups.is_empty()
+        })
+        .map(|(pr_number, issue_groups)| {
+            format!("- (#{pr_number}, {})", format_issue_groups(issue_groups))
+        })
+        .collect::<Vec<_>>();
+
+    if !missing_refs.is_empty() {
+        if !augmented.ends_with('\n') {
+            augmented.push_str("\n\n");
+        }
+        augmented.push_str("Related issue references:\n");
+        augmented.push_str(&missing_refs.join("\n"));
+    }
+
+    augmented
 }
 
 fn format_related_pull_requests(pr_issue_refs: &PrIssueRefsMap) -> String {
@@ -9018,6 +9085,20 @@ mod release_notes_body_tests {
         let result =
             augment_pr_references_in_body(body, &issue_map(&[(9503, &[("fixes", &[9501, 9504])])]));
         assert_eq!(result, "- Added support (#9503, fixes #9501, #9504)");
+    }
+
+    #[test]
+    fn appends_missing_known_pr_references_not_present_in_body() {
+        let body = "- Added support";
+        let result =
+            augment_pr_references_in_body(body, &issue_map(&[(9503, &[("fixes", &[9501])])]));
+        assert_eq!(
+            result,
+            "- Added support
+
+Related issue references:
+- (#9503, fixes #9501)"
+        );
     }
 
     #[test]

@@ -48,7 +48,13 @@ const CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT: &str = "\
 
 - After each finished task, please write a few bullet points on how to test the changes.
 - When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task subagents simultaneously rather than sequentially.
-- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.";
+- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.
+
+## Jean Worktree Policy
+
+- Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.
+- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.
+- If already in a Jean worktree or base/main workspace, continue in the current workspace.";
 const DEFAULT_PARALLEL_EXECUTION_PROMPT: &str = r#"In plan mode, structure plans so subagents can work simultaneously. In build/execute mode, use subagents in parallel for faster implementation.
 
 When launching multiple Task subagents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
@@ -6882,6 +6888,9 @@ mod tests {
         assert!(!build_prompt.contains("update_plan"));
         assert!(!build_prompt.contains("CodexPlan"));
         assert!(build_prompt.contains("## Not Plan Mode"));
+        assert!(build_prompt.contains("Jean Worktree Policy"));
+        assert!(build_prompt.contains("Do NOT create git worktrees manually"));
+        assert!(build_prompt.contains("Jean MCP/tools"));
 
         let yolo_prompt = codex_default_global_system_prompt(Some("yolo"));
         assert!(!yolo_prompt.contains("## Plan Mode"));

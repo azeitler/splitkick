@@ -595,6 +595,9 @@ mod tests {
         assert!(prompt.contains("Claude AskUserQuestion"));
         assert!(prompt.contains("OpenCode question"));
         assert!(prompt.contains("Use a plain-text Unresolved Questions section only"));
+        assert!(prompt.contains("Jean Worktree Policy"));
+        assert!(prompt.contains("Do NOT create git worktrees manually"));
+        assert!(prompt.contains("Jean MCP/tools"));
     }
 
     #[test]
@@ -889,7 +892,17 @@ fn default_pr_content_prompt() -> String {
 
 <diff>
 {diff}
-</diff>"#
+</diff>
+
+<instructions>
+- Use merged pull request metadata as the primary source when present; use commits and diff as fallback context.
+- Inspect pull request titles, bodies, and commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Normalize closing keywords in the final body to lowercase forms: closes, fixes, resolves.
+- Reference the pull request number for each relevant bullet when known: `(#123)`.
+- If a pull request closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: `(#123, fixes #456, #789)`.
+- Do not invent pull request numbers or issue references; only use detected metadata.
+- Keep the description concise and user-facing; avoid internal implementation details unless needed for review.
+</instructions>"#
         .to_string()
 }
 
@@ -1308,6 +1321,11 @@ fn default_global_system_prompt() -> String {
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
+
+## Jean Worktree Policy
+- Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.
+- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.
+- If already in a Jean worktree or base/main workspace, continue in the current workspace.
 
 ## Important!
 

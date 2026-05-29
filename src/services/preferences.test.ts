@@ -104,6 +104,9 @@ describe('model option helpers', () => {
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
       'Every Codex plan-mode response'
     )
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Jean Worktree Policy')
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Do NOT create git worktrees manually')
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Jean MCP/tools')
   })
 })
 

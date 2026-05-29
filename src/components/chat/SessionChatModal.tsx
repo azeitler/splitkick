@@ -17,6 +17,7 @@ import {
   GitBranchPlus,
   GitPullRequestArrow,
   Pencil,
+  RefreshCw,
   Tag,
   Terminal,
   Globe,
@@ -45,7 +46,11 @@ import { useChatStore } from '@/store/chat-store'
 import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { useUIStore } from '@/store/ui-store'
-import { useSessions, useRenameSession } from '@/services/chat'
+import {
+  useSessions,
+  useRenameSession,
+  reconnectNativeCliSession,
+} from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
 import { useWorktree, useProjects, useRunScripts } from '@/services/projects'
 import { useGitHubPRs } from '@/services/github'
@@ -77,6 +82,7 @@ import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import {
   computeSessionCardData,
   getResumeCommand,
+  getResumeArgs,
   statusConfig,
   type SessionCardData,
 } from './session-card-utils'
@@ -1202,6 +1208,20 @@ export function SessionChatModal({
                               Copy Resume Command
                             </ContextMenuItem>
                           )}
+                          {session.primary_surface === 'terminal' &&
+                            getResumeArgs(session) && (
+                              <ContextMenuItem
+                                onSelect={() =>
+                                  void reconnectNativeCliSession(
+                                    session,
+                                    worktreeId
+                                  )
+                                }
+                              >
+                                <RefreshCw className="mr-2 h-4 w-4" />
+                                Reconnect
+                              </ContextMenuItem>
+                            )}
                           <ContextMenuSeparator />
                           <ContextMenuItem
                             disabled={!sessionHasPlan}

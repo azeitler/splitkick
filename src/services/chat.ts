@@ -32,6 +32,7 @@ import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
+import { getResumeArgs } from '@/components/chat/session-card-utils'
 import type { ReviewResponse, Worktree } from '@/types/projects'
 
 /** Default number of recent runs loaded on initial session fetch. */
@@ -61,6 +62,55 @@ export function cleanupSessionTerminalForRemovedSession(
   useTerminalStore.getState().removeTerminal(worktreeId, terminalId)
 
   return terminalId
+}
+
+/**
+ * Relaunch a native CLI session's terminal, resuming the same backend
+ * conversation. Used by the session header "Reconnect" action when the live
+ * terminal connection is lost (e.g. dropped websocket over web access).
+ *
+ * Kills/disposes the old terminal (if any) then spawns a fresh one with the
+ * backend resume args (`claude --resume <id>`, `codex resume <id>`, etc.).
+ */
+export async function reconnectNativeCliSession(
+  session: Session,
+  worktreeId: string
+): Promise<void> {
+  const resume = getResumeArgs(session)
+  if (!resume) {
+    toast.error('No resume command available for this session')
+    return
+  }
+
+  const terminalStore = useTerminalStore.getState()
+  const uiStore = useUIStore.getState()
+
+  const oldTerminalId = uiStore.sessionTerminalIds[session.id]
+  if (oldTerminalId) {
+    await invoke('stop_terminal', { terminalId: oldTerminalId }).catch(() => {
+      // Terminal may already be stopped.
+    })
+    await disposeTerminal(oldTerminalId)
+    terminalStore.removeTerminal(worktreeId, oldTerminalId)
+  }
+
+  const newTerminalId = terminalStore.addTerminal(
+    worktreeId,
+    resume.command,
+    session.terminal_label ?? session.name,
+    {
+      kind: 'session',
+      commandArgs: resume.args,
+      activate: false,
+      openPanel: false,
+    }
+  )
+
+  uiStore.setSessionPrimarySurface(session.id, 'terminal')
+  uiStore.setSessionTerminalId(session.id, newTerminalId)
+  useChatStore.getState().setActiveSession(worktreeId, session.id)
+
+  toast.success('Reconnecting session…')
 }
 
 // Query keys for chat
