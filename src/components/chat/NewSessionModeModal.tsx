@@ -55,8 +55,6 @@ export function NewSessionModeModal() {
     useState<NativeCliSessionKind | null>(null)
   const [nativePickerInitialCommandArgs, setNativePickerInitialCommandArgs] =
     useState<string[]>([])
-  const [nativePickerAutoStartNew, setNativePickerAutoStartNew] =
-    useState(false)
   const autoHandledTargetRef = useRef<string | null>(null)
   const open = target !== null
 
@@ -145,13 +143,11 @@ export function NewSessionModeModal() {
 
   const choosePlainTerminal = useCallback(() => {
     setNativePickerInitialCommandArgs([])
-    setNativePickerAutoStartNew(false)
     setNativePickerKind('terminal')
   }, [])
 
   const chooseBackendTerminal = useCallback((backend: CliBackend) => {
     setNativePickerInitialCommandArgs([])
-    setNativePickerAutoStartNew(false)
     setNativePickerKind(backend)
   }, [])
 
@@ -159,7 +155,6 @@ export function NewSessionModeModal() {
     const yoloArgs = YOLO_ARGS_BY_BACKEND[backend]
     if (!yoloArgs) return
     setNativePickerInitialCommandArgs(yoloArgs)
-    setNativePickerAutoStartNew(true)
     setNativePickerKind(backend)
   }, [])
 
@@ -167,7 +162,6 @@ export function NewSessionModeModal() {
     autoHandledTargetRef.current = null
     setNativePickerKind(null)
     setNativePickerInitialCommandArgs([])
-    setNativePickerAutoStartNew(false)
     close()
   }, [close])
 
@@ -190,13 +184,11 @@ export function NewSessionModeModal() {
 
     if (defaultKind === 'terminal') {
       setNativePickerInitialCommandArgs([])
-      setNativePickerAutoStartNew(false)
       setNativePickerKind('terminal')
       return
     }
 
     setNativePickerInitialCommandArgs([])
-    setNativePickerAutoStartNew(false)
     setNativePickerKind(defaultKind)
   }, [chooseChat, preferences?.default_new_session_kind, target])
 
@@ -337,11 +329,10 @@ export function NewSessionModeModal() {
           onBack={() => {
             setNativePickerKind(null)
             setNativePickerInitialCommandArgs([])
-            setNativePickerAutoStartNew(false)
           }}
           onClose={closeAll}
           onOpenSessionModal={openSessionModal}
-          autoStartNew={target.intent === 'default' || nativePickerAutoStartNew}
+          autoStartNew={target.intent === 'default'}
         />
       )}
     </>

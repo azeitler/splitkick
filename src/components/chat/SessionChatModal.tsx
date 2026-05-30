@@ -50,6 +50,7 @@ import {
   useSessions,
   useRenameSession,
   reconnectNativeCliSession,
+  canReconnectSession,
 } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
 import { useWorktree, useProjects, useRunScripts } from '@/services/projects'
@@ -82,7 +83,6 @@ import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import {
   computeSessionCardData,
   getResumeCommand,
-  getResumeArgs,
   statusConfig,
   type SessionCardData,
 } from './session-card-utils'
@@ -1208,20 +1208,19 @@ export function SessionChatModal({
                               Copy Resume Command
                             </ContextMenuItem>
                           )}
-                          {session.primary_surface === 'terminal' &&
-                            getResumeArgs(session) && (
-                              <ContextMenuItem
-                                onSelect={() =>
-                                  void reconnectNativeCliSession(
-                                    session,
-                                    worktreeId
-                                  )
-                                }
-                              >
-                                <RefreshCw className="mr-2 h-4 w-4" />
-                                Reconnect
-                              </ContextMenuItem>
-                            )}
+                          {canReconnectSession(session) && (
+                            <ContextMenuItem
+                              onSelect={() =>
+                                void reconnectNativeCliSession(
+                                  session,
+                                  worktreeId
+                                )
+                              }
+                            >
+                              <RefreshCw className="mr-2 h-4 w-4" />
+                              Reconnect
+                            </ContextMenuItem>
+                          )}
                           <ContextMenuSeparator />
                           <ContextMenuItem
                             disabled={!sessionHasPlan}

@@ -65,20 +65,41 @@ export function cleanupSessionTerminalForRemovedSession(
 }
 
 /**
- * Relaunch a native CLI session's terminal, resuming the same backend
- * conversation. Used by the session header "Reconnect" action when the live
- * terminal connection is lost (e.g. dropped websocket over web access).
+ * Whether a session can be reconnected — i.e. it's a native CLI terminal
+ * session with a known way to relaunch (a backend resume id, or its persisted
+ * terminal command). Used to gate the "Reconnect" menu item.
+ */
+export function canReconnectSession(session: Session): boolean {
+  return (
+    session.primary_surface === 'terminal' &&
+    (!!getResumeArgs(session) || !!session.terminal_command)
+  )
+}
+
+/**
+ * Relaunch a native CLI session's terminal. Used by the session header
+ * "Reconnect" action when the live terminal connection is lost (e.g. dropped
+ * websocket over web access).
  *
- * Kills/disposes the old terminal (if any) then spawns a fresh one with the
- * backend resume args (`claude --resume <id>`, `codex resume <id>`, etc.).
+ * Prefers the backend resume args (`claude --resume <id>`, `codex resume <id>`,
+ * …) when a resume id was captured; otherwise falls back to the session's
+ * persisted terminal command + args (how it was originally launched, which for
+ * sessions opened from native history already includes the resume flags).
+ *
+ * Kills/disposes the old terminal (if any) then spawns a fresh one and reveals
+ * the terminal surface.
  */
 export async function reconnectNativeCliSession(
   session: Session,
   worktreeId: string
 ): Promise<void> {
   const resume = getResumeArgs(session)
-  if (!resume) {
-    toast.error('No resume command available for this session')
+  const launch = resume ?? {
+    command: session.terminal_command ?? '',
+    args: session.terminal_command_args ?? [],
+  }
+  if (!launch.command) {
+    toast.error('No command available to reconnect this session')
     return
   }
 
@@ -96,11 +117,11 @@ export async function reconnectNativeCliSession(
 
   const newTerminalId = terminalStore.addTerminal(
     worktreeId,
-    resume.command,
+    launch.command,
     session.terminal_label ?? session.name,
     {
       kind: 'session',
-      commandArgs: resume.args,
+      commandArgs: launch.args,
       activate: false,
       openPanel: false,
     }
@@ -108,6 +129,7 @@ export async function reconnectNativeCliSession(
 
   uiStore.setSessionPrimarySurface(session.id, 'terminal')
   uiStore.setSessionTerminalId(session.id, newTerminalId)
+  terminalStore.setModalTerminalOpen(worktreeId, true)
   useChatStore.getState().setActiveSession(worktreeId, session.id)
 
   toast.success('Reconnecting session…')

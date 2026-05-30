@@ -3244,6 +3244,33 @@ pub fn run() {
 
             log::info!("Startup: orphaned server cleanup spawned at {:?}", setup_start.elapsed());
 
+            let opinionated_cleanup_started_at = setup_start.elapsed();
+            tauri::async_runtime::spawn(async move {
+                let result = tokio::task::spawn_blocking(|| {
+                    opinionated::cleanup_disallowed_opinionated_skills_on_startup()
+                })
+                .await;
+
+                match result {
+                    Ok(Ok(count)) if count > 0 => log::info!(
+                        "Startup: removed {count} disallowed opinionated skill path(s)"
+                    ),
+                    Ok(Ok(_)) => log::trace!(
+                        "Startup: no disallowed opinionated skills found during cleanup"
+                    ),
+                    Ok(Err(e)) => log::warn!(
+                        "Startup: disallowed opinionated skill cleanup failed: {e}"
+                    ),
+                    Err(e) => log::warn!(
+                        "Startup: disallowed opinionated skill cleanup task failed: {e}"
+                    ),
+                }
+            });
+            log::info!(
+                "Startup: opinionated skill cleanup spawned at {:?}",
+                opinionated_cleanup_started_at
+            );
+
             // Allow image access from all known project/worktree directories.
             let app_handle = app.handle().clone();
             match crate::projects::storage::load_projects_data(&app_handle) {
@@ -3566,8 +3593,6 @@ pub fn run() {
             projects::open_pull_request,
             projects::create_pr_with_ai_content,
             projects::merge_github_pr,
-            projects::generate_pr_update_content,
-            projects::update_pr_description,
             projects::create_commit_with_ai,
             projects::revert_last_local_commit,
             projects::run_review_with_ai,
@@ -3866,6 +3891,7 @@ pub fn run() {
             // Opinionated plugin commands
             opinionated::check_opinionated_plugin_status,
             opinionated::install_opinionated_plugin,
+            opinionated::uninstall_opinionated_plugin,
             // OpenCode server commands
             opencode_server::start_opencode_server,
             opencode_server::stop_opencode_server,

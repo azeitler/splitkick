@@ -28,13 +28,6 @@ pub struct ReleaseNotesPromptContext {
 }
 
 #[derive(Debug, Clone)]
-pub struct PrPromptCommitRecord {
-    pub oid: String,
-    pub subject: String,
-    pub body: String,
-}
-
-#[derive(Debug, Clone)]
 struct GitCommitRecord {
     oid: String,
     subject: String,
@@ -543,23 +536,6 @@ pub fn build_pr_prompt_context_from_revision_range(
 ) -> Result<ReleaseNotesPromptContext, String> {
     let gh = resolve_gh_binary(app);
     let commits = load_git_commits_for_range(project_path, revision_range)?;
-    build_pr_prompt_context_from_commits_with_github(&gh, project_path, &commits)
-}
-
-pub fn build_pr_prompt_context_from_pr_commits(
-    app: &AppHandle,
-    project_path: &str,
-    commits: &[PrPromptCommitRecord],
-) -> Result<ReleaseNotesPromptContext, String> {
-    let gh = resolve_gh_binary(app);
-    let commits = commits
-        .iter()
-        .map(|commit| GitCommitRecord {
-            oid: commit.oid.clone(),
-            subject: commit.subject.clone(),
-            body: commit.body.clone(),
-        })
-        .collect::<Vec<_>>();
     build_pr_prompt_context_from_commits_with_github(&gh, project_path, &commits)
 }
 

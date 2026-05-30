@@ -248,7 +248,7 @@ describe('NewSessionModeModal', () => {
     )
   })
 
-  it('starts a native Claude session in yolo permission mode', async () => {
+  it('opens the native Claude session picker before starting a yolo session', async () => {
     mutate.mockImplementation(
       (
         _args: unknown,
@@ -278,6 +278,11 @@ describe('NewSessionModeModal', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Start Claude in yolo mode' })
     )
+
+    expect(screen.getByText('Claude sessions')).toBeInTheDocument()
+    expect(mutate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('New Claude session'))
 
     expect(mutate).toHaveBeenCalledWith(
       {
@@ -312,7 +317,7 @@ describe('NewSessionModeModal', () => {
     })
   })
 
-  it('starts a native Codex session with dangerous approval bypass', async () => {
+  it('opens the native Codex session picker before starting with dangerous approval bypass', async () => {
     mutate.mockImplementation(
       (
         _args: unknown,
@@ -342,6 +347,11 @@ describe('NewSessionModeModal', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Start Codex in yolo mode' })
     )
+
+    expect(screen.getByText('Codex sessions')).toBeInTheDocument()
+    expect(mutate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('New Codex session'))
 
     expect(mutate).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -446,6 +456,13 @@ describe('NewSessionModeModal', () => {
   })
 
   it('continues an existing native CLI terminal session without creating a new one', async () => {
+    const expectedUpdatedAt = new Date(1710000000 * 1000).toLocaleString(
+      undefined,
+      {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }
+    )
     sessionsData = {
       sessions: [
         {
@@ -471,6 +488,11 @@ describe('NewSessionModeModal', () => {
     render(<NewSessionModeModal />)
 
     fireEvent.keyDown(window, { key: '2' })
+
+    expect(
+      screen.getByText(`0 messages · updated ${expectedUpdatedAt}`)
+    ).toBeInTheDocument()
+
     fireEvent.click(screen.getByText('Codex old task'))
 
     expect(mutate).not.toHaveBeenCalled()
@@ -491,6 +513,13 @@ describe('NewSessionModeModal', () => {
   })
 
   it('imports native Codex history into a Jean terminal session', async () => {
+    const expectedUpdatedAt = new Date(1778656196 * 1000).toLocaleString(
+      undefined,
+      {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }
+    )
     nativeSessionsData = [
       {
         backend: 'codex',
@@ -522,6 +551,11 @@ describe('NewSessionModeModal', () => {
     render(<NewSessionModeModal />)
 
     fireEvent.keyDown(window, { key: '2' })
+
+    expect(
+      screen.getByText(`updated ${expectedUpdatedAt} · /tmp/worktree-1`)
+    ).toBeInTheDocument()
+
     fireEvent.click(screen.getByText('Native Codex task'))
 
     expect(mutate).toHaveBeenCalledWith(

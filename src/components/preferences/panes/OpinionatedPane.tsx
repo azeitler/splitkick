@@ -11,6 +11,7 @@ import {
   Loader2,
   RefreshCw,
   ChevronRight,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { SettingsSection } from '../SettingsSection'
@@ -128,6 +129,7 @@ function PluginCard({ plugin }: { plugin: PluginDefinition }) {
   const [status, setStatus] = useState<PluginStatus | null>(null)
   const [checking, setChecking] = useState(true)
   const [installing, setInstalling] = useState(false)
+  const [uninstalling, setUninstalling] = useState(false)
   const [expanded, setExpanded] = useState(false)
 
   const checkStatus = useCallback(async () => {
@@ -168,61 +170,95 @@ function PluginCard({ plugin }: { plugin: PluginDefinition }) {
     }
   }, [plugin.id, plugin.name, checkStatus])
 
+  const handleUninstall = useCallback(async () => {
+    setUninstalling(true)
+    const toastId = toast.loading(`Uninstalling ${plugin.name}...`)
+
+    try {
+      const message = await invoke<string>('uninstall_opinionated_plugin', {
+        pluginName: plugin.id,
+      })
+      toast.success(message, { id: toastId })
+      await checkStatus()
+    } catch (error) {
+      toast.error(`Failed to uninstall ${plugin.name}: ${error}`, {
+        id: toastId,
+      })
+    } finally {
+      setUninstalling(false)
+    }
+  }, [plugin.id, plugin.name, checkStatus])
+
   return (
     <div className="rounded-lg border">
-      <button
-        type="button"
-        onClick={() => setExpanded(e => !e)}
-        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-muted/40 rounded-lg cursor-pointer"
-      >
-        <ChevronRight
-          className={`h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform ${
-            expanded ? 'rotate-90' : ''
-          }`}
-        />
-        <Label className="text-sm font-medium text-foreground cursor-pointer">
-          {plugin.name}
-        </Label>
-        {!checking && status?.installed && (
-          <Badge variant="secondary" className="gap-1 text-xs">
-            <CheckCircle className="h-3 w-3 text-green-500" />
-            Installed
-            {status.version &&
-              (plugin.id === 'caveman'
-                ? ` (${status.version})`
-                : ` (v${status.version})`)}
+      <div className="flex items-center gap-2 px-3 py-2 hover:bg-muted/40 rounded-lg">
+        <button
+          type="button"
+          onClick={() => setExpanded(e => !e)}
+          aria-expanded={expanded}
+          className="min-w-0 flex-1 flex items-center gap-2 text-left cursor-pointer"
+        >
+          <ChevronRight
+            className={`h-3.5 w-3.5 text-muted-foreground shrink-0 transition-transform ${
+              expanded ? 'rotate-90' : ''
+            }`}
+          />
+          <Label className="text-sm font-medium text-foreground cursor-pointer">
+            {plugin.name}
+          </Label>
+          {!checking && status?.installed && (
+            <Badge variant="secondary" className="gap-1 text-xs">
+              <CheckCircle className="h-3 w-3 text-green-500" />
+              Installed
+              {status.version &&
+                (plugin.id === 'caveman'
+                  ? ` (${status.version})`
+                  : ` (v${status.version})`)}
+            </Badge>
+          )}
+          <Badge variant="outline" className="text-xs">
+            {plugin.scope === 'system-wide'
+              ? 'System-wide (shell)'
+              : plugin.scope === 'ai-backends'
+                ? 'All AI backends'
+                : 'Claude CLI plugin'}
           </Badge>
-        )}
-        <Badge variant="outline" className="text-xs">
-          {plugin.scope === 'system-wide'
-            ? 'System-wide (shell)'
-            : plugin.scope === 'ai-backends'
-              ? 'All AI backends'
-              : 'Claude CLI plugin'}
-        </Badge>
-        <span className="ml-auto flex items-center gap-2 shrink-0">
+        </button>
+        <span className="flex items-center gap-2 shrink-0">
           {checking ? (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           ) : status?.installed ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={e => {
-                e.stopPropagation()
-                checkStatus()
-              }}
-              disabled={installing}
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={`Refresh ${plugin.name} status`}
+                onClick={checkStatus}
+                disabled={installing || uninstalling}
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              {plugin.scope === 'ai-backends' && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleUninstall}
+                  disabled={installing || uninstalling}
+                >
+                  {uninstalling ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  Uninstall
+                </Button>
+              )}
+            </>
           ) : (
             <Button
               size="sm"
-              onClick={e => {
-                e.stopPropagation()
-                handleInstall()
-              }}
-              disabled={installing}
+              onClick={handleInstall}
+              disabled={installing || uninstalling}
             >
               {installing ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -233,8 +269,7 @@ function PluginCard({ plugin }: { plugin: PluginDefinition }) {
             </Button>
           )}
         </span>
-      </button>
-
+      </div>
       {expanded && (
         <div className="px-3 pb-3 space-y-3 border-t">
           <div className="pt-3 space-y-1">

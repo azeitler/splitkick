@@ -2615,44 +2615,6 @@ pub async fn dispatch_command(
             let result = crate::projects::git_stash_pop(worktree_path).await?;
             to_value(result)
         }
-        "generate_pr_update_content" => {
-            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let pr_number: Option<u32> = field_opt(&args, "prNumber", "pr_number")?;
-            let session_id: Option<String> = field_opt(&args, "sessionId", "session_id")?;
-            let custom_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
-            let model: Option<String> = from_field_opt(&args, "model")?;
-            let custom_profile_name: Option<String> =
-                field_opt(&args, "customProfileName", "custom_profile_name")?;
-            let reasoning_effort: Option<String> =
-                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
-            let result = crate::projects::generate_pr_update_content(
-                app.clone(),
-                worktree_path,
-                pr_number,
-                session_id,
-                custom_prompt,
-                model,
-                custom_profile_name,
-                reasoning_effort,
-            )
-            .await?;
-            to_value(result)
-        }
-        "update_pr_description" => {
-            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
-            let title: String = from_field(&args, "title")?;
-            let body: String = from_field(&args, "body")?;
-            crate::projects::update_pr_description(
-                app.clone(),
-                worktree_path,
-                pr_number,
-                title,
-                body,
-            )
-            .await?;
-            Ok(Value::Null)
-        }
         "get_jean_config" => {
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let result = crate::projects::get_jean_config(project_path).await;
@@ -2872,6 +2834,12 @@ pub async fn dispatch_command(
             let plugin_name: String = from_field(&args, "pluginName")?;
             let result =
                 crate::opinionated::install_opinionated_plugin(app.clone(), plugin_name).await?;
+            to_value(result)
+        }
+        "uninstall_opinionated_plugin" => {
+            let plugin_name: String = from_field(&args, "pluginName")?;
+            let result =
+                crate::opinionated::uninstall_opinionated_plugin(app.clone(), plugin_name).await?;
             to_value(result)
         }
 

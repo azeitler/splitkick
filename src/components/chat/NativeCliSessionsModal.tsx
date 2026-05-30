@@ -80,7 +80,7 @@ function formatSessionDescription(session: Session): string {
   const timestamp =
     session.last_opened_at ?? session.last_message_at ?? session.updated_at
   if (timestamp) {
-    parts.push(`updated ${new Date(timestamp * 1000).toLocaleDateString()}`)
+    parts.push(`updated ${formatUpdatedAt(timestamp)}`)
   }
   if (session.last_run_status) {
     parts.push(session.last_run_status)
@@ -92,6 +92,13 @@ function getSessionUpdatedAt(session: Session): number {
   return (
     session.last_opened_at ?? session.last_message_at ?? session.updated_at ?? 0
   )
+}
+
+function formatUpdatedAt(timestampSeconds: number): string {
+  return new Date(timestampSeconds * 1000).toLocaleString(undefined, {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  })
 }
 
 export function NativeCliSessionsModal({
@@ -394,6 +401,14 @@ export function NativeCliSessionsModal({
 
   const openNativeHistorySession = useCallback(
     (nativeSession: NativeCliHistorySession) => {
+      // Preserve yolo / permission-bypass flags chosen in the picker when
+      // resuming an existing session. The yolo args are global flags, so they
+      // must come before the resume subcommand/flag (e.g.
+      // `claude --permission-mode bypassPermissions --resume <id>`,
+      // `codex --dangerously-bypass-approvals-and-sandbox resume <id>`).
+      const resumeArgs = hasInitialCommandArgs
+        ? [...initialCommandArgs, ...nativeSession.resumeArgs]
+        : nativeSession.resumeArgs
       createSession.mutate(
         {
           worktreeId,
@@ -402,7 +417,7 @@ export function NativeCliSessionsModal({
           backend,
           primarySurface: 'terminal',
           terminalCommand: command,
-          terminalCommandArgs: nativeSession.resumeArgs,
+          terminalCommandArgs: resumeArgs,
           terminalLabel: nativeSession.title,
         },
         {
@@ -411,7 +426,7 @@ export function NativeCliSessionsModal({
               ...session,
               primary_surface: 'terminal',
               terminal_command: command,
-              terminal_command_args: nativeSession.resumeArgs,
+              terminal_command_args: resumeArgs,
               terminal_label: nativeSession.title,
             })
           },
@@ -422,6 +437,8 @@ export function NativeCliSessionsModal({
       backend,
       command,
       createSession,
+      hasInitialCommandArgs,
+      initialCommandArgs,
       openTerminalSession,
       worktreeId,
       worktreePath,
@@ -581,9 +598,8 @@ export function NativeCliSessionsModal({
                       </span>
                     </span>
                     <span className="mt-1 block break-all text-xs leading-5 text-muted-foreground">
-                      updated{' '}
-                      {new Date(session.updatedAt * 1000).toLocaleDateString()}{' '}
-                      · {session.cwd}
+                      updated {formatUpdatedAt(session.updatedAt)} ·{' '}
+                      {session.cwd}
                     </span>
                   </span>
                 </button>
