@@ -56,8 +56,13 @@ export const EFFORT_LEVEL_OPTIONS: {
   { value: 'high', label: 'High', description: 'Deep' },
   { value: 'xhigh', label: 'xHigh', description: 'Extra high' },
   { value: 'max', label: 'Max', description: 'No limits' },
+  {
+    value: 'ultracode',
+    label: 'Ultracode',
+    description: 'xHigh + workflows',
+  },
 ]
 
 export const CODEX_EFFORT_LEVEL_OPTIONS = EFFORT_LEVEL_OPTIONS.filter(
-  option => option.value !== 'max'
+  option => option.value !== 'max' && option.value !== 'ultracode'
 )

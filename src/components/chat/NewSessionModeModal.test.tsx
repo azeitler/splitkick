@@ -248,6 +248,134 @@ describe('NewSessionModeModal', () => {
     )
   })
 
+  it('opens the native Claude session picker before starting a yolo session', async () => {
+    mutate.mockImplementation(
+      (
+        _args: unknown,
+        opts?: {
+          onSuccess?: (session: {
+            id: string
+            name: string
+            backend?: string
+          }) => void
+        }
+      ) => {
+        opts?.onSuccess?.({
+          id: 'session-claude-yolo',
+          name: 'Claude',
+          backend: 'claude',
+        })
+      }
+    )
+    useUIStore.getState().openNewSessionModeModal({
+      worktreeId: 'worktree-1',
+      worktreePath: '/tmp/worktree-1',
+      origin: 'chat',
+    })
+
+    render(<NewSessionModeModal />)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Start Claude in yolo mode' })
+    )
+
+    expect(screen.getByText('Claude sessions')).toBeInTheDocument()
+    expect(mutate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('New Claude session'))
+
+    expect(mutate).toHaveBeenCalledWith(
+      {
+        worktreeId: 'worktree-1',
+        worktreePath: '/tmp/worktree-1',
+        name: 'Claude',
+        backend: 'claude',
+        primarySurface: 'terminal',
+        terminalCommand: '/usr/local/bin/claude',
+        terminalCommandArgs: ['--permission-mode', 'bypassPermissions'],
+        terminalLabel: 'Claude',
+      },
+      expect.any(Object)
+    )
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('prepare_backend_terminal_context', {
+        sessionId: 'session-claude-yolo',
+        worktreeId: 'worktree-1',
+        backend: 'claude',
+      })
+    })
+    expect(
+      useTerminalStore.getState().terminals['worktree-1']?.[0]
+    ).toMatchObject({
+      command: '/usr/local/bin/claude',
+      commandArgs: [
+        '--permission-mode',
+        'bypassPermissions',
+        '--context-arg',
+        'context-value',
+      ],
+    })
+  })
+
+  it('opens the native Codex session picker before starting with dangerous approval bypass', async () => {
+    mutate.mockImplementation(
+      (
+        _args: unknown,
+        opts?: {
+          onSuccess?: (session: {
+            id: string
+            name: string
+            backend?: string
+          }) => void
+        }
+      ) => {
+        opts?.onSuccess?.({
+          id: 'session-codex-yolo',
+          name: 'Codex',
+          backend: 'codex',
+        })
+      }
+    )
+    useUIStore.getState().openNewSessionModeModal({
+      worktreeId: 'worktree-1',
+      worktreePath: '/tmp/worktree-1',
+      origin: 'chat',
+    })
+
+    render(<NewSessionModeModal />)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Start Codex in yolo mode' })
+    )
+
+    expect(screen.getByText('Codex sessions')).toBeInTheDocument()
+    expect(mutate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByText('New Codex session'))
+
+    expect(mutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Codex',
+        backend: 'codex',
+        primarySurface: 'terminal',
+        terminalCommandArgs: ['--dangerously-bypass-approvals-and-sandbox'],
+      }),
+      expect.any(Object)
+    )
+    await waitFor(() => {
+      expect(
+        useTerminalStore.getState().terminals['worktree-1']?.[0]
+      ).toMatchObject({
+        command: '/usr/local/bin/codex',
+        commandArgs: [
+          '--dangerously-bypass-approvals-and-sandbox',
+          '--context-arg',
+          'context-value',
+        ],
+      })
+    })
+  })
+
   it('opens a plain terminal session with shortcut 1', async () => {
     mutate.mockImplementation(
       (
@@ -328,6 +456,13 @@ describe('NewSessionModeModal', () => {
   })
 
   it('continues an existing native CLI terminal session without creating a new one', async () => {
+    const expectedUpdatedAt = new Date(1710000000 * 1000).toLocaleString(
+      undefined,
+      {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }
+    )
     sessionsData = {
       sessions: [
         {
@@ -353,6 +488,11 @@ describe('NewSessionModeModal', () => {
     render(<NewSessionModeModal />)
 
     fireEvent.keyDown(window, { key: '2' })
+
+    expect(
+      screen.getByText(`0 messages · updated ${expectedUpdatedAt}`)
+    ).toBeInTheDocument()
+
     fireEvent.click(screen.getByText('Codex old task'))
 
     expect(mutate).not.toHaveBeenCalled()
@@ -373,6 +513,13 @@ describe('NewSessionModeModal', () => {
   })
 
   it('imports native Codex history into a Jean terminal session', async () => {
+    const expectedUpdatedAt = new Date(1778656196 * 1000).toLocaleString(
+      undefined,
+      {
+        dateStyle: 'short',
+        timeStyle: 'short',
+      }
+    )
     nativeSessionsData = [
       {
         backend: 'codex',
@@ -404,6 +551,11 @@ describe('NewSessionModeModal', () => {
     render(<NewSessionModeModal />)
 
     fireEvent.keyDown(window, { key: '2' })
+
+    expect(
+      screen.getByText(`updated ${expectedUpdatedAt} · /tmp/worktree-1`)
+    ).toBeInTheDocument()
+
     fireEvent.click(screen.getByText('Native Codex task'))
 
     expect(mutate).toHaveBeenCalledWith(

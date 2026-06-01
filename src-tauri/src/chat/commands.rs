@@ -46,9 +46,16 @@ const CODEX_DEFAULT_PLAN_MODE_PROMPT: &str = "\
 const CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT: &str = "\
 ## Not Plan Mode
 
+- **VERY IMPORTANT: Keep Code Simple**: Do not over-engineer. Always implement the simplest maintainable solution. Avoid extra abstractions, frameworks, configuration, or future-proofing unless clearly required.
 - After each finished task, please write a few bullet points on how to test the changes.
 - When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task subagents simultaneously rather than sequentially.
-- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.";
+- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.
+
+## Jean Worktree Policy
+
+- Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.
+- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.
+- If already in a Jean worktree or base/main workspace, continue in the current workspace.";
 const DEFAULT_PARALLEL_EXECUTION_PROMPT: &str = r#"In plan mode, structure plans so subagents can work simultaneously. In build/execute mode, use subagents in parallel for faster implementation.
 
 When launching multiple Task subagents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
@@ -2450,7 +2457,7 @@ pub async fn send_chat_message(
                 log::trace!("About to call execute_codex_via_server...");
 
                 // Map EffortLevel to Codex reasoning effort values
-                // Codex has no "max"; cap at xhigh.
+                // Codex has no "max" or "ultracode"; cap at xhigh.
                 let codex_reasoning_effort: Option<String> =
                     thread_effort_level.as_ref().and_then(|e| match e {
                         super::types::EffortLevel::Low => Some("low".to_string()),
@@ -2458,6 +2465,7 @@ pub async fn send_chat_message(
                         super::types::EffortLevel::High => Some("high".to_string()),
                         super::types::EffortLevel::Xhigh => Some("xhigh".to_string()),
                         super::types::EffortLevel::Max => Some("xhigh".to_string()),
+                        super::types::EffortLevel::Ultracode => Some("xhigh".to_string()),
                         super::types::EffortLevel::Off => None,
                     });
 
@@ -2928,6 +2936,7 @@ pub async fn send_chat_message(
                         super::types::EffortLevel::High => Some("high".to_string()),
                         super::types::EffortLevel::Xhigh => Some("xhigh".to_string()),
                         super::types::EffortLevel::Max => Some("xhigh".to_string()),
+                        super::types::EffortLevel::Ultracode => Some("xhigh".to_string()),
                         super::types::EffortLevel::Off => None,
                     });
 
@@ -6882,12 +6891,18 @@ mod tests {
         assert!(!build_prompt.contains("update_plan"));
         assert!(!build_prompt.contains("CodexPlan"));
         assert!(build_prompt.contains("## Not Plan Mode"));
+        assert!(build_prompt.contains("Jean Worktree Policy"));
+        assert!(build_prompt.contains("Do NOT create git worktrees manually"));
+        assert!(build_prompt.contains("Jean MCP/tools"));
+        assert!(build_prompt.contains("VERY IMPORTANT: Keep Code Simple"));
+        assert!(build_prompt.contains("Always implement the simplest maintainable solution"));
 
         let yolo_prompt = codex_default_global_system_prompt(Some("yolo"));
         assert!(!yolo_prompt.contains("## Plan Mode"));
         assert!(!yolo_prompt.contains("update_plan"));
         assert!(!yolo_prompt.contains("CodexPlan"));
         assert!(yolo_prompt.contains("## Not Plan Mode"));
+        assert!(yolo_prompt.contains("VERY IMPORTANT: Keep Code Simple"));
     }
 
     #[test]

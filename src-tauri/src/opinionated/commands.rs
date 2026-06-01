@@ -9,6 +9,17 @@ pub struct PluginStatus {
     pub version: Option<String>,
 }
 
+const SUPERPOWERS_GIT_WORKTREE_SKILL: &str = "using-git-worktrees";
+
+fn superpowers_claude_plugin_target() -> &'static str {
+    "superpowers@claude-plugins-official"
+}
+
+fn is_blocked_superpowers_skill_dir(name: &str) -> bool {
+    name == SUPERPOWERS_GIT_WORKTREE_SKILL
+        || name == format!("superpowers-{SUPERPOWERS_GIT_WORKTREE_SKILL}")
+}
+
 #[tauri::command]
 pub async fn check_opinionated_plugin_status(
     app: AppHandle,
@@ -31,6 +42,21 @@ pub async fn install_opinionated_plugin(
         "rtk" => install_rtk().await,
         "caveman" => install_caveman(&app).await,
         "superpowers" => install_superpowers(&app).await,
+        _ => Err(format!("Unknown plugin: {plugin_name}")),
+    }
+}
+
+#[tauri::command]
+pub async fn uninstall_opinionated_plugin(
+    app: AppHandle,
+    plugin_name: String,
+) -> Result<String, String> {
+    match plugin_name.as_str() {
+        "caveman" => uninstall_caveman(&app).await,
+        "superpowers" => uninstall_superpowers(&app).await,
+        "rtk" => {
+            Err("RTK is a system-wide CLI; uninstall it with your package manager".to_string())
+        }
         _ => Err(format!("Unknown plugin: {plugin_name}")),
     }
 }
@@ -260,6 +286,324 @@ fn plugin_installed_marker(home: &std::path::Path, plugin_id: &str) -> bool {
     false
 }
 
+fn remove_path_if_exists(path: &Path, removed: &mut Vec<String>) -> Result<(), String> {
+    if !path.exists() {
+        return Ok(());
+    }
+
+    if path.is_dir() {
+        std::fs::remove_dir_all(path)
+            .map_err(|e| format!("Failed to remove directory {path:?}: {e}"))?;
+    } else {
+        std::fs::remove_file(path).map_err(|e| format!("Failed to remove file {path:?}: {e}"))?;
+    }
+
+    removed.push(path.display().to_string());
+    Ok(())
+}
+
+fn remove_matching_skill_dirs(
+    skills_dir: &Path,
+    skill_id: &str,
+    removed: &mut Vec<String>,
+) -> Result<(), String> {
+    if !skills_dir.is_dir() {
+        return Ok(());
+    }
+
+    let entries = std::fs::read_dir(skills_dir)
+        .map_err(|e| format!("Failed to read skills dir {skills_dir:?}: {e}"))?;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let name = entry.file_name().to_string_lossy().to_lowercase();
+        if path.is_dir() && path.join("SKILL.md").exists() && name.contains(skill_id) {
+            remove_path_if_exists(&path, removed)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn claude_plugin_keys(plugin_id: &str) -> Vec<String> {
+    match plugin_id {
+        "superpowers" => vec![
+            "superpowers@claude-plugins-official".to_string(),
+            "superpowers@superpowers".to_string(),
+            "superpowers@superpowers-dev".to_string(),
+        ],
+        "caveman" => vec!["caveman@caveman".to_string()],
+        _ => Vec::new(),
+    }
+}
+
+fn remove_json_object_keys(
+    json_path: &Path,
+    object_path: &[&str],
+    keys: &[String],
+    removed: &mut Vec<String>,
+) -> Result<(), String> {
+    if !json_path.exists() {
+        return Ok(());
+    }
+
+    let contents = std::fs::read_to_string(json_path)
+        .map_err(|e| format!("Failed to read JSON file {json_path:?}: {e}"))?;
+    let mut json: serde_json::Value = serde_json::from_str(&contents)
+        .map_err(|e| format!("Failed to parse JSON file {json_path:?}: {e}"))?;
+
+    let mut target = &mut json;
+    for segment in object_path {
+        let Some(next) = target.get_mut(*segment) else {
+            return Ok(());
+        };
+        target = next;
+    }
+
+    let Some(object) = target.as_object_mut() else {
+        return Ok(());
+    };
+
+    let mut changed = false;
+    for key in keys {
+        if object.remove(key).is_some() {
+            removed.push(format!("{} [{}]", json_path.display(), key));
+            changed = true;
+        }
+    }
+
+    if changed {
+        let rendered = serde_json::to_string_pretty(&json)
+            .map_err(|e| format!("Failed to render JSON file {json_path:?}: {e}"))?;
+        std::fs::write(json_path, format!("{rendered}\n"))
+            .map_err(|e| format!("Failed to write JSON file {json_path:?}: {e}"))?;
+    }
+
+    Ok(())
+}
+
+fn remove_claude_plugin_registration(
+    home: &Path,
+    plugin_id: &str,
+    removed: &mut Vec<String>,
+) -> Result<(), String> {
+    let keys = claude_plugin_keys(plugin_id);
+    if keys.is_empty() {
+        return Ok(());
+    }
+
+    remove_json_object_keys(
+        &home.join(".claude").join("settings.json"),
+        &["enabledPlugins"],
+        &keys,
+        removed,
+    )?;
+    remove_json_object_keys(
+        &home
+            .join(".claude")
+            .join("plugins")
+            .join("installed_plugins.json"),
+        &["plugins"],
+        &keys,
+        removed,
+    )?;
+
+    Ok(())
+}
+
+fn remove_claude_plugin_markers(
+    home: &Path,
+    plugin_id: &str,
+    removed: &mut Vec<String>,
+) -> Result<(), String> {
+    for dir in [
+        home.join(".claude").join("skills"),
+        home.join(".claude").join("plugins").join("data"),
+        home.join(".claude").join("plugins").join("cache"),
+    ] {
+        if !dir.is_dir() {
+            continue;
+        }
+
+        let entries = std::fs::read_dir(&dir)
+            .map_err(|e| format!("Failed to read Claude plugin dir {dir:?}: {e}"))?;
+        for entry in entries.flatten() {
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            if name.contains(plugin_id) {
+                remove_path_if_exists(&entry.path(), removed)?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn codex_plugin_key(plugin_id: &str) -> String {
+    format!("{plugin_id}@openai-curated")
+}
+
+fn codex_plugin_registered(home: &Path, plugin_id: &str) -> bool {
+    let config_path = home.join(".codex").join("config.toml");
+    let Ok(contents) = std::fs::read_to_string(config_path) else {
+        return false;
+    };
+    let Ok(doc) = contents.parse::<toml_edit::DocumentMut>() else {
+        return contents.contains(&format!("[plugins.\"{}\"]", codex_plugin_key(plugin_id)));
+    };
+
+    doc.get("plugins")
+        .and_then(|plugins| plugins.as_table())
+        .and_then(|plugins| plugins.get(&codex_plugin_key(plugin_id)))
+        .is_some()
+}
+
+fn remove_codex_plugin_registration(
+    home: &Path,
+    plugin_id: &str,
+    removed: &mut Vec<String>,
+) -> Result<(), String> {
+    let config_path = home.join(".codex").join("config.toml");
+    if !config_path.exists() {
+        return Ok(());
+    }
+
+    let contents = std::fs::read_to_string(&config_path)
+        .map_err(|e| format!("Failed to read Codex config {config_path:?}: {e}"))?;
+    let mut doc = contents
+        .parse::<toml_edit::DocumentMut>()
+        .map_err(|e| format!("Failed to parse Codex config {config_path:?}: {e}"))?;
+
+    let key = codex_plugin_key(plugin_id);
+    let removed_entry = doc
+        .get_mut("plugins")
+        .and_then(|plugins| plugins.as_table_mut())
+        .and_then(|plugins| plugins.remove(&key))
+        .is_some();
+
+    if removed_entry {
+        std::fs::write(&config_path, doc.to_string())
+            .map_err(|e| format!("Failed to write Codex config {config_path:?}: {e}"))?;
+        removed.push(format!("{} [{}]", config_path.display(), key));
+    }
+
+    Ok(())
+}
+
+fn remove_codex_plugin_cache(
+    home: &Path,
+    plugin_id: &str,
+    removed: &mut Vec<String>,
+) -> Result<(), String> {
+    remove_path_if_exists(
+        &home
+            .join(".codex")
+            .join("plugins")
+            .join("cache")
+            .join("openai-curated")
+            .join(plugin_id),
+        removed,
+    )?;
+    remove_path_if_exists(
+        &home
+            .join(".codex")
+            .join(".tmp")
+            .join("plugins")
+            .join("plugins")
+            .join(plugin_id),
+        removed,
+    )?;
+
+    Ok(())
+}
+
+fn uninstall_caveman_from_home(home: &Path) -> Result<Vec<String>, String> {
+    let mut removed = Vec::new();
+
+    remove_claude_plugin_registration(home, "caveman", &mut removed)?;
+    remove_claude_plugin_markers(home, "caveman", &mut removed)?;
+    remove_matching_skill_dirs(&home.join(".codex").join("skills"), "caveman", &mut removed)?;
+
+    let opencode_dir = opencode_config_dir(home);
+    remove_matching_skill_dirs(&opencode_dir.join("skills"), "caveman", &mut removed)?;
+    remove_path_if_exists(&opencode_dir.join("plugins").join("caveman"), &mut removed)?;
+    remove_path_if_exists(
+        &opencode_dir.join("commands").join("caveman.md"),
+        &mut removed,
+    )?;
+
+    remove_matching_skill_dirs(
+        &home.join(".cursor").join("skills-cursor"),
+        "caveman",
+        &mut removed,
+    )?;
+    remove_path_if_exists(
+        &home.join(".cursor").join("rules").join("caveman.mdc"),
+        &mut removed,
+    )?;
+
+    Ok(removed)
+}
+
+fn uninstall_superpowers_from_home(home: &Path) -> Result<Vec<String>, String> {
+    let mut removed = Vec::new();
+
+    remove_claude_plugin_registration(home, "superpowers", &mut removed)?;
+    remove_claude_plugin_markers(home, "superpowers", &mut removed)?;
+    remove_matching_skill_dirs(
+        &home.join(".codex").join("skills"),
+        "superpowers",
+        &mut removed,
+    )?;
+    remove_codex_plugin_registration(home, "superpowers", &mut removed)?;
+    remove_codex_plugin_cache(home, "superpowers", &mut removed)?;
+    remove_matching_skill_dirs(
+        &opencode_config_dir(home).join("skills"),
+        "superpowers",
+        &mut removed,
+    )?;
+    remove_matching_skill_dirs(
+        &home.join(".cursor").join("skills-cursor"),
+        "superpowers",
+        &mut removed,
+    )?;
+
+    Ok(removed)
+}
+
+async fn uninstall_caveman(_app: &AppHandle) -> Result<String, String> {
+    let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
+    let removed = tokio::task::spawn_blocking(move || uninstall_caveman_from_home(&home))
+        .await
+        .map_err(|e| e.to_string())??;
+
+    if removed.is_empty() {
+        Ok("Caveman was not installed".to_string())
+    } else {
+        Ok(format!(
+            "Caveman uninstalled from {} location{}",
+            removed.len(),
+            if removed.len() == 1 { "" } else { "s" }
+        ))
+    }
+}
+
+async fn uninstall_superpowers(_app: &AppHandle) -> Result<String, String> {
+    let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
+    let removed = tokio::task::spawn_blocking(move || uninstall_superpowers_from_home(&home))
+        .await
+        .map_err(|e| e.to_string())??;
+
+    if removed.is_empty() {
+        Ok("Superpowers was not installed".to_string())
+    } else {
+        Ok(format!(
+            "Superpowers uninstalled from {} location{}",
+            removed.len(),
+            if removed.len() == 1 { "" } else { "s" }
+        ))
+    }
+}
+
 fn detected_jean_backends(app: &AppHandle) -> Vec<&'static str> {
     let candidates = [
         ("claude", crate::claude_cli::resolve_cli_binary(app)),
@@ -307,7 +651,17 @@ fn caveman_installed_for_backend(home: &Path, backend: &str) -> bool {
 fn superpowers_installed_for_backend(home: &Path, backend: &str) -> bool {
     match backend {
         "claude" => plugin_installed_marker(home, "superpowers"),
-        "codex" => skill_installed_marker(&home.join(".codex").join("skills"), "superpowers"),
+        "codex" => {
+            skill_installed_marker(&home.join(".codex").join("skills"), "superpowers")
+                || codex_plugin_registered(home, "superpowers")
+                || home
+                    .join(".codex")
+                    .join("plugins")
+                    .join("cache")
+                    .join("openai-curated")
+                    .join("superpowers")
+                    .exists()
+        }
         "opencode" => {
             skill_installed_marker(&opencode_config_dir(home).join("skills"), "superpowers")
         }
@@ -391,11 +745,17 @@ fn copy_superpowers_skills(
         }
 
         let name = entry.file_name().to_string_lossy().to_string();
+        if is_blocked_superpowers_skill_dir(&name) {
+            continue;
+        }
         let target_name = if name.starts_with("superpowers") {
             name
         } else {
             format!("superpowers-{name}")
         };
+        if is_blocked_superpowers_skill_dir(&target_name) {
+            continue;
+        }
         let target = target_skills_dir.join(target_name);
         copy_dir_replace(&source, &target)?;
         copied += 1;
@@ -495,6 +855,86 @@ fn skill_installed_marker(skills_dir: &Path, skill_id: &str) -> bool {
     })
 }
 
+fn remove_superpowers_git_worktree_skill(
+    home: &Path,
+    removed: &mut Vec<String>,
+) -> Result<(), String> {
+    let blocked_names = [
+        SUPERPOWERS_GIT_WORKTREE_SKILL.to_string(),
+        format!("superpowers-{SUPERPOWERS_GIT_WORKTREE_SKILL}"),
+    ];
+
+    for skills_dir in [
+        home.join(".claude").join("skills"),
+        home.join(".codex").join("skills"),
+        opencode_config_dir(home).join("skills"),
+        home.join(".cursor").join("skills-cursor"),
+    ] {
+        for name in &blocked_names {
+            remove_path_if_exists(&skills_dir.join(name), removed)?;
+        }
+    }
+
+    for root in [
+        home.join(".claude").join("plugins").join("cache"),
+        home.join(".claude").join("plugins").join("data"),
+        home.join(".codex")
+            .join("plugins")
+            .join("cache")
+            .join("openai-curated")
+            .join("superpowers"),
+        home.join(".codex")
+            .join(".tmp")
+            .join("plugins")
+            .join("plugins")
+            .join("superpowers"),
+    ] {
+        remove_named_skill_dirs_under(&root, &blocked_names, removed)?;
+    }
+
+    Ok(())
+}
+
+pub fn cleanup_disallowed_opinionated_skills_on_startup() -> Result<usize, String> {
+    let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
+    cleanup_disallowed_opinionated_skills_in_home(&home)
+}
+
+fn cleanup_disallowed_opinionated_skills_in_home(home: &Path) -> Result<usize, String> {
+    let mut removed = Vec::new();
+    remove_superpowers_git_worktree_skill(home, &mut removed)?;
+    Ok(removed.len())
+}
+
+fn remove_named_skill_dirs_under(
+    root: &Path,
+    blocked_names: &[String],
+    removed: &mut Vec<String>,
+) -> Result<(), String> {
+    if !root.is_dir() {
+        return Ok(());
+    }
+
+    let entries =
+        std::fs::read_dir(root).map_err(|e| format!("Failed to read directory {root:?}: {e}"))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+
+        let name = entry.file_name().to_string_lossy().to_string();
+        if blocked_names.iter().any(|blocked| blocked == &name) && path.join("SKILL.md").exists() {
+            remove_path_if_exists(&path, removed)?;
+            continue;
+        }
+
+        remove_named_skill_dirs_under(&path, blocked_names, removed)?;
+    }
+
+    Ok(())
+}
+
 async fn install_superpowers(app: &AppHandle) -> Result<String, String> {
     let backends = detected_jean_backends(app);
     if backends.is_empty() {
@@ -530,7 +970,7 @@ async fn install_superpowers(app: &AppHandle) -> Result<String, String> {
         let bin = binary_path;
         let install_result = tokio::task::spawn_blocking(move || {
             silent_command(&bin)
-                .args(["plugin", "install", "superpowers@superpowers"])
+                .args(["plugin", "install", superpowers_claude_plugin_target()])
                 .output()
         })
         .await
@@ -592,6 +1032,21 @@ async fn install_superpowers(app: &AppHandle) -> Result<String, String> {
 
     if let Some(path) = cloned_repo_root {
         let _ = std::fs::remove_dir_all(path);
+    }
+
+    let home_for_cleanup = home.clone();
+    let cleanup_result = tokio::task::spawn_blocking(move || {
+        let mut removed = Vec::new();
+        remove_superpowers_git_worktree_skill(&home_for_cleanup, &mut removed)?;
+        Ok::<usize, String>(removed.len())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    if let Err(e) = cleanup_result {
+        warnings.push(format!(
+            "Failed to remove Superpowers git worktree skill: {e}"
+        ));
     }
 
     if installed.is_empty() {
@@ -665,6 +1120,41 @@ mod tests {
     fn caveman_status_is_installed_when_any_backend_is_covered() {
         assert!(caveman_status_installed(&["claude"], &["claude", "codex"]));
         assert!(!caveman_status_installed(&[], &["claude"]));
+    }
+
+    #[test]
+    fn identifies_superpowers_git_worktree_skill_names() {
+        assert!(is_blocked_superpowers_skill_dir("using-git-worktrees"));
+        assert!(is_blocked_superpowers_skill_dir(
+            "superpowers-using-git-worktrees"
+        ));
+        assert!(!is_blocked_superpowers_skill_dir("writing-plans"));
+    }
+
+    #[test]
+    fn uses_official_claude_marketplace_for_superpowers_install() {
+        assert_eq!(
+            superpowers_claude_plugin_target(),
+            "superpowers@claude-plugins-official"
+        );
+    }
+
+    #[test]
+    fn startup_cleanup_removes_only_superpowers_git_worktree_skill() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let codex_skills = temp.path().join(".codex").join("skills");
+        let blocked = codex_skills.join("superpowers-using-git-worktrees");
+        let allowed = codex_skills.join("superpowers-writing-plans");
+        std::fs::create_dir_all(&blocked).expect("create blocked skill");
+        std::fs::create_dir_all(&allowed).expect("create allowed skill");
+        std::fs::write(blocked.join("SKILL.md"), "# blocked").expect("write blocked");
+        std::fs::write(allowed.join("SKILL.md"), "# allowed").expect("write allowed");
+
+        let removed = cleanup_disallowed_opinionated_skills_in_home(temp.path()).expect("cleanup");
+
+        assert_eq!(removed, 1);
+        assert!(!blocked.exists());
+        assert!(allowed.join("SKILL.md").exists());
     }
 
     #[test]

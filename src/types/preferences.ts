@@ -192,7 +192,17 @@ export const DEFAULT_PR_CONTENT_PROMPT = `<task>Generate a pull request title an
 
 <diff>
 {diff}
-</diff>`
+</diff>
+
+<instructions>
+- Use merged pull request metadata as the primary source when present; use commits and diff as fallback context.
+- Inspect pull request titles, bodies, and commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Normalize closing keywords in the final body to lowercase forms: closes, fixes, resolves.
+- Reference the pull request number for each relevant bullet when known: \`(#123)\`.
+- If a pull request closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: \`(#123, fixes #456, #789)\`.
+- Do not invent pull request numbers or issue references; only use detected metadata.
+- Keep the description concise and user-facing; avoid internal implementation details unless needed for review.
+</instructions>`
 
 /** Default prompt for commit message generation */
 export const DEFAULT_COMMIT_MESSAGE_PROMPT = `Generate a conventional commit message for these staged changes.
@@ -566,8 +576,14 @@ export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `### 1. Plan Mode Default
 
 ## Core Principles
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **VERY IMPORTANT: Keep Code Simple**: Do not over-engineer. Always implement the simplest maintainable solution. Avoid extra abstractions, frameworks, configuration, or future-proofing unless clearly required.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
+
+## Jean Worktree Policy
+- Do NOT create git worktrees manually (\`git worktree add\`, Superpowers \`using-git-worktrees\`, or similar) unless the user explicitly asks for a new worktree.
+- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.
+- If already in a Jean worktree or base/main workspace, continue in the current workspace.
 
 ## Important!
 
@@ -922,7 +938,7 @@ export interface AppPreferences {
   theme: string
   selected_model: ClaudeModel // Claude model ID passed to --model flag
   thinking_level: ThinkingLevel // Thinking level: 'off' | 'think' | 'megathink' | 'ultrathink'
-  default_effort_level: EffortLevel // Effort level for Opus adaptive thinking: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  default_effort_level: EffortLevel // Effort level for Opus adaptive thinking: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultracode'
   terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty' | 'iterm2' | 'powershell' | 'windows-terminal'
   terminal_renderer?: TerminalRenderer // Embedded terminal renderer: 'xterm' or 'ghostty-web' (experimental)
   terminal_font?: TerminalFont // Embedded terminal font
@@ -1243,6 +1259,11 @@ export const effortLevelOptions: {
     description: 'Extra high Claude Opus effort',
   },
   { value: 'max', label: 'Max', description: 'Maximum Claude Opus effort' },
+  {
+    value: 'ultracode',
+    label: 'Ultracode',
+    description: 'xHigh effort plus automatic Claude Code workflows',
+  },
 ]
 
 // =============================================================================

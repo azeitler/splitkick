@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useTheme } from '@/hooks/use-theme'
 import {
   Toaster as Sonner,
@@ -160,7 +161,7 @@ const Toaster = ({ position, style, ...props }: ToasterProps) => {
   const { theme = 'system' } = useTheme()
   const resolvedPosition = position ?? 'bottom-right'
 
-  return (
+  const content = (
     <>
       <Sonner
         theme={theme as ToasterProps['theme']}
@@ -180,6 +181,10 @@ const Toaster = ({ position, style, ...props }: ToasterProps) => {
       <ToastGestureDismiss position={resolvedPosition} />
     </>
   )
+
+  if (typeof document === 'undefined') return content
+
+  return createPortal(content, document.body)
 }
 
 export { Toaster }

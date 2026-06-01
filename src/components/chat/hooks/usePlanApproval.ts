@@ -38,6 +38,7 @@ const EFFORT_LEVEL_VALUES = new Set<EffortLevel>([
   'high',
   'xhigh',
   'max',
+  'ultracode',
 ])
 
 function isEffortLevel(value: string | null | undefined): value is EffortLevel {

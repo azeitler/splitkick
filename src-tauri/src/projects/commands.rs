@@ -34,8 +34,8 @@ use super::linear_issues::{
 };
 use super::names::generate_unique_workspace_name;
 use super::release_notes::{
-    build_pr_issue_refs_from_commit_range, build_pr_issue_refs_from_commit_subjects,
-    build_release_notes_prompt_context, format_issue_groups, PrIssueRefsMap,
+    build_pr_prompt_context_from_revision_range, build_release_notes_prompt_context,
+    format_issue_groups, PrIssueRefsMap,
 };
 use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
 use super::types::{
@@ -5891,7 +5891,17 @@ const PR_CONTENT_PROMPT: &str = r#"<task>Generate a pull request title and descr
 
 <diff>
 {diff}
-</diff>"#;
+</diff>
+
+<instructions>
+- Use merged pull request metadata as the primary source when present; use commits and diff as fallback context.
+- Inspect pull request titles, bodies, and commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Normalize closing keywords in the final body to lowercase forms: closes, fixes, resolves.
+- Reference the pull request number for each relevant bullet when known: `(#123)`.
+- If a pull request closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: `(#123, fixes #456, #789)`.
+- Do not invent pull request numbers or issue references; only use detected metadata.
+- Keep the description concise and user-facing; avoid internal implementation details unless needed for review.
+</instructions>"#;
 
 /// Structured response from PR content generation
 #[derive(Debug, Deserialize, Serialize)]
@@ -6095,12 +6105,17 @@ fn generate_pr_content(
 
     let commits = get_branch_commits(repo_path, target_branch, head_ref)?;
     let commit_count = count_branch_commits(repo_path, target_branch, head_ref)?;
-    let related_pr_issue_refs = build_pr_issue_refs_from_commit_range(
+    let pr_prompt_context = build_pr_prompt_context_from_revision_range(
         app,
         repo_path,
         &format!("origin/{target_branch}..{head_ref}"),
     )
-    .unwrap_or_default();
+    .unwrap_or_else(
+        |_| crate::projects::release_notes::ReleaseNotesPromptContext {
+            pull_requests: String::new(),
+            pr_issue_refs: PrIssueRefsMap::new(),
+        },
+    );
     generate_pr_content_from_inputs(
         app,
         repo_path,
@@ -6116,7 +6131,8 @@ fn generate_pr_content(
         &commits,
         commit_count,
         &diff,
-        &related_pr_issue_refs,
+        &pr_prompt_context.pull_requests,
+        &pr_prompt_context.pr_issue_refs,
     )
 }
 
@@ -6554,83 +6570,6 @@ pub async fn merge_github_pr(
 // AI-Powered PR Update
 // =============================================================================
 
-/// Response from updating a PR with AI-generated content
-#[derive(Debug, Clone, Serialize)]
-pub struct UpdatePrResponse {
-    pub pr_number: u32,
-    pub title: String,
-    pub body: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PrGenerationTargetInfo {
-    number: u32,
-    #[serde(default)]
-    base_ref_name: String,
-    #[serde(default)]
-    head_ref_name: String,
-    #[serde(default)]
-    commits: Vec<PrGenerationCommit>,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct PrGenerationCommit {
-    #[serde(default)]
-    message_headline: String,
-}
-
-fn get_pr_generation_target_info(
-    gh: &std::path::Path,
-    repo_path: &str,
-    pr_number: u32,
-) -> Result<PrGenerationTargetInfo, String> {
-    let output = silent_command(gh)
-        .args([
-            "pr",
-            "view",
-            &pr_number.to_string(),
-            "--json",
-            "number,baseRefName,headRefName,commits",
-        ])
-        .current_dir(repo_path)
-        .output()
-        .map_err(|e| format!("Failed to run gh pr view: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
-            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
-        }
-        return Err(format!("Failed to load PR #{pr_number}: {stderr}"));
-    }
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    serde_json::from_str::<PrGenerationTargetInfo>(&stdout)
-        .map_err(|e| format!("Failed to parse PR #{pr_number}: {e}"))
-}
-
-fn get_pr_generation_diff(
-    repo_path: &str,
-    pr_number: u32,
-    gh: &std::path::Path,
-) -> Result<String, String> {
-    let output = silent_command(gh)
-        .args(["pr", "diff", &pr_number.to_string()])
-        .current_dir(repo_path)
-        .output()
-        .map_err(|e| format!("Failed to run gh pr diff: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to get diff for PR #{pr_number}: {stderr}"));
-    }
-
-    let diff = String::from_utf8_lossy(&output.stdout).to_string();
-    Ok(truncate_diff_at_file_boundaries(&diff, 200_000))
-}
-
 #[allow(clippy::too_many_arguments)]
 fn generate_pr_content_from_inputs(
     app: &AppHandle,
@@ -6647,9 +6586,14 @@ fn generate_pr_content_from_inputs(
     commits: &str,
     commit_count: u32,
     diff: &str,
+    detected_pull_requests: &str,
     related_pr_issue_refs: &PrIssueRefsMap,
 ) -> Result<PrContentResponse, String> {
-    let related_pull_requests = format_related_pull_requests(related_pr_issue_refs);
+    let related_pull_requests = if detected_pull_requests.trim().is_empty() {
+        format_related_pull_requests(related_pr_issue_refs)
+    } else {
+        detected_pull_requests.to_string()
+    };
 
     let prompt_template = custom_prompt
         .filter(|p| !p.trim().is_empty())
@@ -6788,188 +6732,6 @@ fn generate_pr_content_from_inputs(
     })?;
     response.body = augment_pr_references_in_body(&response.body, related_pr_issue_refs);
     Ok(response)
-}
-
-/// Generate AI content for updating a PR (does not apply changes)
-///
-/// Returns the generated title and body for the frontend to display/edit.
-#[tauri::command]
-pub async fn generate_pr_update_content(
-    app: AppHandle,
-    worktree_path: String,
-    pr_number: Option<u32>,
-    session_id: Option<String>,
-    custom_prompt: Option<String>,
-    model: Option<String>,
-    custom_profile_name: Option<String>,
-    reasoning_effort: Option<String>,
-) -> Result<UpdatePrResponse, String> {
-    log::trace!("Generating PR update content for: {worktree_path}");
-
-    let data = load_projects_data(&app)?;
-    let worktree = data
-        .worktrees
-        .iter()
-        .find(|w| w.path == worktree_path)
-        .ok_or_else(|| format!("Worktree not found: {worktree_path}"))?;
-
-    let project = data
-        .find_project(&worktree.project_id)
-        .ok_or_else(|| format!("Project not found: {}", worktree.project_id))?;
-
-    // Gather issue/PR context for this session AND worktree (same logic as create_pr_with_ai_content)
-    let effective_session_id = session_id.as_deref().unwrap_or("");
-    let worktree_id = &worktree.id;
-
-    let (mut issue_nums, mut pr_nums, _security_nums) =
-        get_session_context_numbers(&app, effective_session_id).unwrap_or_default();
-    let mut context_content =
-        get_session_context_content(&app, effective_session_id, &project.path).unwrap_or_default();
-
-    if worktree_id != effective_session_id {
-        let (wt_issue_nums, wt_pr_nums, _wt_security_nums) =
-            get_session_context_numbers(&app, worktree_id).unwrap_or_default();
-        for n in wt_issue_nums {
-            if !issue_nums.contains(&n) {
-                issue_nums.push(n);
-            }
-        }
-        for n in wt_pr_nums {
-            if !pr_nums.contains(&n) {
-                pr_nums.push(n);
-            }
-        }
-        let wt_content =
-            get_session_context_content(&app, worktree_id, &project.path).unwrap_or_default();
-        if !wt_content.is_empty() {
-            if context_content.is_empty() {
-                context_content = wt_content;
-            } else {
-                context_content = format!("{context_content}\n\n{wt_content}");
-            }
-        }
-    }
-
-    let selected_pr_number = pr_number
-        .or(worktree.pr_number)
-        .ok_or_else(|| "Enter a pull request number".to_string())?;
-    let gh = resolve_gh_binary(&app);
-    let pr_target = get_pr_generation_target_info(&gh, &worktree_path, selected_pr_number)?;
-    let commit_subjects = pr_target
-        .commits
-        .iter()
-        .map(|commit| commit.message_headline.clone())
-        .collect::<Vec<_>>();
-    let commits = commit_subjects.join("\n");
-    let commit_count = pr_target.commits.len() as u32;
-    let diff = get_pr_generation_diff(&worktree_path, selected_pr_number, &gh)?;
-    if diff.trim().is_empty() {
-        return Err(format!("No changes found for PR #{selected_pr_number}"));
-    }
-    let related_pr_issue_refs =
-        build_pr_issue_refs_from_commit_subjects(&app, &worktree_path, &commit_subjects)
-            .unwrap_or_default();
-
-    let pr_magic_backend = crate::get_preferences_path(&app)
-        .ok()
-        .and_then(|p| std::fs::read_to_string(p).ok())
-        .and_then(|c| serde_json::from_str::<crate::AppPreferences>(&c).ok())
-        .and_then(|p| p.magic_prompt_backends.pr_content_backend);
-    let mut pr_content = generate_pr_content_from_inputs(
-        &app,
-        &worktree_path,
-        &pr_target.head_ref_name,
-        &pr_target.base_ref_name,
-        custom_prompt.as_deref(),
-        model.as_deref(),
-        &context_content,
-        custom_profile_name.as_deref(),
-        Some(worktree_id),
-        pr_magic_backend.as_deref(),
-        reasoning_effort.as_deref(),
-        &commits,
-        commit_count,
-        &diff,
-        &related_pr_issue_refs,
-    )?;
-
-    // Gather Linear identifiers
-    let project_name = &project.name;
-    let mut linear_identifiers =
-        get_session_linear_identifiers(&app, effective_session_id, project_name)
-            .unwrap_or_default();
-    if worktree_id != effective_session_id {
-        let wt_linear =
-            get_session_linear_identifiers(&app, worktree_id, project_name).unwrap_or_default();
-        for id in wt_linear {
-            if !linear_identifiers.contains(&id) {
-                linear_identifiers.push(id);
-            }
-        }
-    }
-
-    // Also check worktree's linear_issue_identifier field
-    if let Some(ref lid) = worktree.linear_issue_identifier {
-        if !linear_identifiers.contains(lid) {
-            linear_identifiers.push(lid.clone());
-        }
-    }
-
-    // Append unconditional issue/PR/Linear references to the body
-    let mut refs: Vec<String> = Vec::new();
-    for num in &issue_nums {
-        refs.push(format!("Fixes #{num}"));
-    }
-    for num in &pr_nums {
-        refs.push(format!("Related to #{num}"));
-    }
-    for identifier in &linear_identifiers {
-        refs.push(format!("Addresses {identifier}"));
-    }
-    if !refs.is_empty() {
-        pr_content.body = format!("{}\n\n---\n\n{}", pr_content.body, refs.join("\n"));
-    }
-
-    Ok(UpdatePrResponse {
-        pr_number: selected_pr_number,
-        title: pr_content.title,
-        body: pr_content.body,
-    })
-}
-
-/// Update a PR's title and body on GitHub
-#[tauri::command]
-pub async fn update_pr_description(
-    app: AppHandle,
-    worktree_path: String,
-    pr_number: u32,
-    title: String,
-    body: String,
-) -> Result<(), String> {
-    log::trace!("Updating PR #{pr_number} description");
-
-    let gh = resolve_gh_binary(&app);
-    let output = silent_command(&gh)
-        .args([
-            "pr",
-            "edit",
-            &pr_number.to_string(),
-            "--title",
-            &title,
-            "--body",
-            &body,
-        ])
-        .current_dir(&worktree_path)
-        .output()
-        .map_err(|e| format!("Failed to run gh pr edit: {e}"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Failed to update PR: {stderr}"));
-    }
-
-    log::trace!("Successfully updated PR #{pr_number}");
-    Ok(())
 }
 
 // =============================================================================
@@ -7763,6 +7525,35 @@ fn extract_codex_review_structured_output(output: &str) -> Result<String, String
     Err("No structured output found in Codex response".to_string())
 }
 
+fn build_codex_review_args(
+    actual_model: &str,
+    is_fast: bool,
+    schema_file: &Path,
+    working_dir: Option<&Path>,
+) -> Vec<std::ffi::OsString> {
+    let mut args = vec![
+        "exec".into(),
+        "--json".into(),
+        "--model".into(),
+        actual_model.into(),
+        "--full-auto".into(),
+        "--output-schema".into(),
+        schema_file.as_os_str().to_os_string(),
+    ];
+    if is_fast {
+        args.push("-c".into());
+        args.push("service_tier=\"fast\"".into());
+    }
+    if let Some(dir) = working_dir {
+        args.push("--cd".into());
+        args.push(dir.as_os_str().to_os_string());
+    } else {
+        args.push("--skip-git-repo-check".into());
+    }
+    args.push("-".into());
+    args
+}
+
 fn execute_codex_review(
     app: &AppHandle,
     prompt: &str,
@@ -7789,26 +7580,15 @@ fn execute_codex_review(
     );
 
     let mut cmd = crate::platform::silent_command(&cli_path);
-    cmd.args([
-        "exec",
-        "--json",
-        "--model",
+    cmd.args(build_codex_review_args(
         actual_model,
-        "--full-auto",
-        "--output-schema",
-    ]);
-    if is_fast {
-        cmd.args(["-c", "service_tier=\"fast\""]);
-    }
-    cmd.arg(&schema_file);
+        is_fast,
+        &schema_file,
+        working_dir,
+    ));
     if let Some(dir) = working_dir {
-        cmd.arg("--cd");
-        cmd.arg(dir);
         cmd.current_dir(dir);
-    } else {
-        cmd.arg("--skip-git-repo-check");
     }
-    cmd.arg("-");
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -8464,6 +8244,45 @@ pub async fn run_coderabbit_review(
 }
 
 #[cfg(test)]
+mod codex_review_args_tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn fast_service_tier_does_not_split_output_schema_from_schema_path() {
+        let schema_file = Path::new("/tmp/jean-codex-review-schema.json");
+        let working_dir = Path::new("/tmp/project");
+
+        let args = build_codex_review_args("gpt-5.3-codex", true, schema_file, Some(working_dir));
+
+        let output_schema_position = args
+            .iter()
+            .position(|arg| arg == "--output-schema")
+            .expect("--output-schema arg is present");
+        assert_eq!(
+            args.get(output_schema_position + 1),
+            Some(&schema_file.as_os_str().to_os_string()),
+            "schema path must immediately follow --output-schema"
+        );
+        assert!(args.windows(2).any(|window| {
+            window
+                == [
+                    OsString::from("-c"),
+                    OsString::from("service_tier=\"fast\""),
+                ]
+        }));
+        assert!(args.windows(2).any(|window| {
+            window
+                == [
+                    OsString::from("--cd"),
+                    working_dir.as_os_str().to_os_string(),
+                ]
+        }));
+        assert_eq!(args.last(), Some(&OsString::from("-")));
+    }
+}
+
+#[cfg(test)]
 mod coderabbit_review_tests {
     use super::*;
 
@@ -8934,7 +8753,8 @@ fn generate_release_notes_content(
 }
 
 fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> String {
-    RELEASE_NOTES_PAREN_RE
+    let mut referenced_prs = std::collections::BTreeSet::new();
+    let mut augmented = RELEASE_NOTES_PAREN_RE
         .replace_all(body, |captures: &regex::Captures<'_>| {
             let Some(content_match) = captures.get(1) else {
                 return captures[0].to_string();
@@ -8949,6 +8769,7 @@ fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> 
             let Ok(pr_number) = pr_number_match.as_str().parse::<u32>() else {
                 return captures[0].to_string();
             };
+            referenced_prs.insert(pr_number);
             let Some(issue_groups) = pr_issue_refs.get(&pr_number) else {
                 return captures[0].to_string();
             };
@@ -8958,7 +8779,27 @@ fn augment_pr_references_in_body(body: &str, pr_issue_refs: &PrIssueRefsMap) -> 
 
             format!("(#{pr_number}, {})", format_issue_groups(issue_groups))
         })
-        .into_owned()
+        .into_owned();
+
+    let missing_refs = pr_issue_refs
+        .iter()
+        .filter(|(pr_number, issue_groups)| {
+            !referenced_prs.contains(pr_number) && !issue_groups.is_empty()
+        })
+        .map(|(pr_number, issue_groups)| {
+            format!("- (#{pr_number}, {})", format_issue_groups(issue_groups))
+        })
+        .collect::<Vec<_>>();
+
+    if !missing_refs.is_empty() {
+        if !augmented.ends_with('\n') {
+            augmented.push_str("\n\n");
+        }
+        augmented.push_str("Related issue references:\n");
+        augmented.push_str(&missing_refs.join("\n"));
+    }
+
+    augmented
 }
 
 fn format_related_pull_requests(pr_issue_refs: &PrIssueRefsMap) -> String {
@@ -9018,6 +8859,20 @@ mod release_notes_body_tests {
         let result =
             augment_pr_references_in_body(body, &issue_map(&[(9503, &[("fixes", &[9501, 9504])])]));
         assert_eq!(result, "- Added support (#9503, fixes #9501, #9504)");
+    }
+
+    #[test]
+    fn appends_missing_known_pr_references_not_present_in_body() {
+        let body = "- Added support";
+        let result =
+            augment_pr_references_in_body(body, &issue_map(&[(9503, &[("fixes", &[9501])])]));
+        assert_eq!(
+            result,
+            "- Added support
+
+Related issue references:
+- (#9503, fixes #9501)"
+        );
     }
 
     #[test]

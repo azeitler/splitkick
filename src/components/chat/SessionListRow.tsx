@@ -5,6 +5,7 @@ import {
   EyeOff,
   FileText,
   Pencil,
+  RefreshCw,
   Shield,
   Tag,
   Terminal,
@@ -30,6 +31,7 @@ import {
   statusConfig,
   type SessionCardProps,
 } from './session-card-utils'
+import { canReconnectSession } from '@/services/chat'
 
 export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
   function SessionListRow(
@@ -47,6 +49,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
       onWorktreeYoloApprove,
       onToggleLabel,
       onToggleReview,
+      onReconnect,
       isRenaming,
       renameValue,
       onRenameValueChange,
@@ -59,6 +62,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
     const config = statusConfig[card.status]
     const hasPlan = !!(card.planFilePath || card.planContent)
     const resumeCommand = getResumeCommand(card.session)
+    const canReconnect = canReconnectSession(card.session)
     const renameInputRef = useCallback((node: HTMLInputElement | null) => {
       if (node) {
         node.focus()
@@ -276,6 +280,12 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             >
               <Terminal className="mr-2 h-4 w-4" />
               Copy Resume Command
+            </ContextMenuItem>
+          )}
+          {onReconnect && canReconnect && (
+            <ContextMenuItem onSelect={onReconnect}>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Reconnect
             </ContextMenuItem>
           )}
           <ContextMenuSeparator />

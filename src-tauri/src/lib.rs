@@ -90,7 +90,7 @@ pub struct AppPreferences {
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String, // Thinking level: off, think, megathink, ultrathink
     #[serde(default = "default_effort_level")]
-    pub default_effort_level: String, // Effort level for Opus adaptive thinking: low, medium, high, xhigh, max
+    pub default_effort_level: String, // Effort level for Opus adaptive thinking: low, medium, high, xhigh, max, ultracode
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
     #[serde(default = "default_terminal_renderer")]
@@ -597,6 +597,11 @@ mod tests {
         assert!(prompt.contains("Claude AskUserQuestion"));
         assert!(prompt.contains("OpenCode question"));
         assert!(prompt.contains("Use a plain-text Unresolved Questions section only"));
+        assert!(prompt.contains("Jean Worktree Policy"));
+        assert!(prompt.contains("Do NOT create git worktrees manually"));
+        assert!(prompt.contains("Jean MCP/tools"));
+        assert!(prompt.contains("VERY IMPORTANT: Keep Code Simple"));
+        assert!(prompt.contains("Always implement the simplest maintainable solution"));
     }
 
     #[test]
@@ -891,7 +896,17 @@ fn default_pr_content_prompt() -> String {
 
 <diff>
 {diff}
-</diff>"#
+</diff>
+
+<instructions>
+- Use merged pull request metadata as the primary source when present; use commits and diff as fallback context.
+- Inspect pull request titles, bodies, and commit messages for GitHub closing keywords: close/closes/closed, fix/fixes/fixed, resolve/resolves/resolved.
+- Normalize closing keywords in the final body to lowercase forms: closes, fixes, resolves.
+- Reference the pull request number for each relevant bullet when known: `(#123)`.
+- If a pull request closes/fixes/resolves issues, include the issue refs after the PR using the detected keyword: `(#123, fixes #456, #789)`.
+- Do not invent pull request numbers or issue references; only use detected metadata.
+- Keep the description concise and user-facing; avoid internal implementation details unless needed for review.
+</instructions>"#
         .to_string()
 }
 
@@ -1308,8 +1323,14 @@ fn default_global_system_prompt() -> String {
 
 ## Core Principles
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **VERY IMPORTANT: Keep Code Simple**: Do not over-engineer. Always implement the simplest maintainable solution. Avoid extra abstractions, frameworks, configuration, or future-proofing unless clearly required.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
+
+## Jean Worktree Policy
+- Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.
+- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.
+- If already in a Jean worktree or base/main workspace, continue in the current workspace.
 
 ## Important!
 
@@ -3287,6 +3308,33 @@ pub fn run() {
 
             log::info!("Startup: orphaned server cleanup spawned at {:?}", setup_start.elapsed());
 
+            let opinionated_cleanup_started_at = setup_start.elapsed();
+            tauri::async_runtime::spawn(async move {
+                let result = tokio::task::spawn_blocking(|| {
+                    opinionated::cleanup_disallowed_opinionated_skills_on_startup()
+                })
+                .await;
+
+                match result {
+                    Ok(Ok(count)) if count > 0 => log::info!(
+                        "Startup: removed {count} disallowed opinionated skill path(s)"
+                    ),
+                    Ok(Ok(_)) => log::trace!(
+                        "Startup: no disallowed opinionated skills found during cleanup"
+                    ),
+                    Ok(Err(e)) => log::warn!(
+                        "Startup: disallowed opinionated skill cleanup failed: {e}"
+                    ),
+                    Err(e) => log::warn!(
+                        "Startup: disallowed opinionated skill cleanup task failed: {e}"
+                    ),
+                }
+            });
+            log::info!(
+                "Startup: opinionated skill cleanup spawned at {:?}",
+                opinionated_cleanup_started_at
+            );
+
             // Allow image access from all known project/worktree directories.
             let app_handle = app.handle().clone();
             match crate::projects::storage::load_projects_data(&app_handle) {
@@ -3650,8 +3698,6 @@ pub fn run() {
             projects::open_pull_request,
             projects::create_pr_with_ai_content,
             projects::merge_github_pr,
-            projects::generate_pr_update_content,
-            projects::update_pr_description,
             projects::create_commit_with_ai,
             projects::revert_last_local_commit,
             projects::run_review_with_ai,
@@ -3950,6 +3996,7 @@ pub fn run() {
             // Opinionated plugin commands
             opinionated::check_opinionated_plugin_status,
             opinionated::install_opinionated_plugin,
+            opinionated::uninstall_opinionated_plugin,
             // OpenCode server commands
             opencode_server::start_opencode_server,
             opencode_server::stop_opencode_server,
