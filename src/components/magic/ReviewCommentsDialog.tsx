@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { invoke } from '@/lib/transport'
 import {
   Loader2,
@@ -11,6 +11,7 @@ import {
   CheckCircle2,
   XCircle,
   MessageCircle,
+  CalendarClock,
 } from 'lucide-react'
 import {
   Dialog,
@@ -20,6 +21,7 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Kbd, KbdGroup } from '@/components/ui/kbd'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -28,6 +30,7 @@ import { useWorktrees } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { DEFAULT_REVIEW_COMMENTS_PROMPT } from '@/types/preferences'
 import { Markdown } from '@/components/ui/markdown'
+import { cn } from '@/lib/utils'
 import type {
   GitHubReviewComment,
   GitHubComment,
@@ -43,6 +46,17 @@ type ConversationItem =
   | { kind: 'comment'; data: GitHubComment }
   | { kind: 'review'; data: GitHubReview }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  const tagName = target.tagName.toLowerCase()
+  return (
+    tagName === 'input' ||
+    tagName === 'textarea' ||
+    tagName === 'select' ||
+    target.isContentEditable
+  )
+}
+
 function getCreatedAt(
   obj: { created_at?: string; createdAt?: string } & Record<string, unknown>
 ): string {
@@ -50,6 +64,35 @@ function getCreatedAt(
     ((obj as Record<string, unknown>).createdAt as string) ||
     ((obj as Record<string, unknown>).created_at as string) ||
     ''
+  )
+}
+
+function getDateMs(dateStr: string): number {
+  const ms = new Date(dateStr).getTime()
+  return Number.isFinite(ms) ? ms : 0
+}
+
+function formatCommentDate(dateStr: string): string {
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return dateStr
+  return date.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
+function getConversationItemDate(item: ConversationItem): string {
+  return item.kind === 'review'
+    ? (item.data.submittedAt ?? '')
+    : getCreatedAt(item.data as unknown as Record<string, unknown>)
+}
+
+function sortByNewestDate<T>(items: T[], getDate: (item: T) => string): T[] {
+  return [...items].sort(
+    (a, b) => getDateMs(getDate(b)) - getDateMs(getDate(a))
   )
 }
 
@@ -122,6 +165,33 @@ function reviewStateLabel(state: string): string {
   }
 }
 
+function formatInlineReviewComment(c: GitHubReviewComment): string {
+  const lineInfo = c.line ? `:${c.line}` : ''
+  return `### File: ${c.path}${lineInfo}
+**@${c.author.login}** (${c.createdAt}):
+${c.body}
+
+\`\`\`diff
+${c.diffHunk}
+\`\`\``
+}
+
+function formatConversationReviewItem(item: ConversationItem): string {
+  if (item.kind === 'review') {
+    const r = item.data
+    const date = r.submittedAt ?? ''
+    return `### Review (${reviewStateLabel(r.state)})
+**@${r.author.login}** — ${date}:
+${r.body}`
+  }
+
+  const c = item.data
+  const date = getCreatedAt(c as unknown as Record<string, unknown>)
+  return `### PR Comment
+**@${c.author.login}** — ${date}:
+${c.body}`
+}
+
 function ReviewStateBadge({ state }: { state: string }) {
   const upper = state.toUpperCase()
   const isApproved = upper === 'APPROVED'
@@ -166,6 +236,8 @@ export function ReviewCommentsDialog() {
   const [error, setError] = useState<string | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [tab, setTab] = useState<CommentTab>('inline')
+  const [activeIndex, setActiveIndex] = useState(0)
+  const activeRowRefs = useRef<Record<string, HTMLDivElement | null>>({})
 
   // Inline code comments state
   const [comments, setComments] = useState<GitHubReviewComment[]>([])
@@ -184,18 +256,24 @@ export function ReviewCommentsDialog() {
     new Set()
   )
 
-  const fetchComments = useCallback(async () => {
-    if (!worktreePath || !prNumber) return
-
+  const resetTransientState = useCallback(() => {
     setPhase('loading')
     setError(null)
+    setIsSending(false)
     setComments([])
     setSelected(new Set())
     setExpanded(new Set())
     setDiffExpanded(new Set())
+    setActiveIndex(0)
     setConversationItems([])
     setConversationSelected(new Set())
     setConversationExpanded(new Set())
+  }, [])
+
+  const fetchComments = useCallback(async () => {
+    if (!worktreePath || !prNumber) return
+
+    resetTransientState()
 
     try {
       const [inlineResult, prDetail] = await Promise.all([
@@ -210,8 +288,12 @@ export function ReviewCommentsDialog() {
       ])
 
       // Inline code comments
-      setComments(inlineResult)
-      setSelected(new Set(inlineResult.map((_, i) => i)))
+      const sortedInlineComments = sortByNewestDate(
+        inlineResult,
+        comment => comment.createdAt
+      )
+      setComments(sortedInlineComments)
+      setSelected(new Set(sortedInlineComments.map((_, i) => i)))
 
       // Build conversation items: PR comments + non-empty review bodies
       const items: ConversationItem[] = []
@@ -223,8 +305,12 @@ export function ReviewCommentsDialog() {
           items.push({ kind: 'review', data: r })
         }
       }
-      setConversationItems(items)
-      setConversationSelected(new Set(items.map((_, i) => i)))
+      const sortedConversationItems = sortByNewestDate(
+        items,
+        getConversationItemDate
+      )
+      setConversationItems(sortedConversationItems)
+      setConversationSelected(new Set(sortedConversationItems.map((_, i) => i)))
 
       // Default to whichever tab has content; prefer inline
       if (inlineResult.length === 0 && items.length > 0) {
@@ -232,13 +318,14 @@ export function ReviewCommentsDialog() {
       } else {
         setTab('inline')
       }
+      setActiveIndex(0)
 
       setPhase('select')
     } catch (err) {
       setError(String(err))
       setPhase('select')
     }
-  }, [worktreePath, prNumber])
+  }, [worktreePath, prNumber, resetTransientState])
 
   // Fetch when modal opens
   useEffect(() => {
@@ -250,21 +337,13 @@ export function ReviewCommentsDialog() {
   const handleOpenChange = useCallback(
     (open: boolean) => {
       if (!open) {
-        setPhase('loading')
-        setComments([])
-        setSelected(new Set())
-        setExpanded(new Set())
-        setDiffExpanded(new Set())
-        setConversationItems([])
-        setConversationSelected(new Set())
-        setConversationExpanded(new Set())
-        setError(null)
-        setIsSending(false)
+        resetTransientState()
         setTab('inline')
+        setActiveIndex(0)
       }
       setReviewCommentsModalOpen(open)
     },
-    [setReviewCommentsModalOpen]
+    [resetTransientState, setReviewCommentsModalOpen]
   )
 
   // Inline selection helpers
@@ -320,6 +399,26 @@ export function ReviewCommentsDialog() {
   const allSelected =
     activeItems.length > 0 && activeSelected.size === activeItems.length
 
+  useEffect(() => {
+    setActiveIndex(0)
+  }, [tab])
+
+  useEffect(() => {
+    if (activeItems.length === 0) {
+      if (activeIndex !== 0) setActiveIndex(0)
+      return
+    }
+    if (activeIndex >= activeItems.length) {
+      setActiveIndex(activeItems.length - 1)
+    }
+  }, [activeIndex, activeItems.length])
+
+  useEffect(() => {
+    const row = activeRowRefs.current[`${tab}-${activeIndex}`]
+    row?.focus({ preventScroll: true })
+    row?.scrollIntoView?.({ block: 'nearest' })
+  }, [tab, activeIndex])
+
   const toggleAll = useCallback(() => {
     if (tab === 'inline') {
       if (selected.size === comments.length) setSelected(new Set())
@@ -337,78 +436,58 @@ export function ReviewCommentsDialog() {
     conversationItems.length,
   ])
 
-  const handleSendToChat = useCallback(() => {
-    if (!prNumber) return
+  const buildPrompt = useCallback(
+    (formattedComments: string) => {
+      if (!prNumber) return ''
 
-    const currentSelected = tab === 'inline' ? selected : conversationSelected
-    if (currentSelected.size === 0) return
+      const customPrompt = preferences?.magic_prompts?.review_comments
+      const template =
+        customPrompt && customPrompt.trim()
+          ? customPrompt
+          : DEFAULT_REVIEW_COMMENTS_PROMPT
+      return template
+        .replace(/\{prNumber\}/g, String(prNumber))
+        .replace(/\{reviewComments\}/g, formattedComments)
+    },
+    [prNumber, preferences?.magic_prompts?.review_comments]
+  )
 
-    setIsSending(true)
-
-    let formattedComments: string
-
+  const getSelectedFormattedComments = useCallback((): string[] => {
     if (tab === 'inline') {
-      formattedComments = comments
+      return comments
         .filter((_, i) => selected.has(i))
-        .map(c => {
-          const lineInfo = c.line ? `:${c.line}` : ''
-          return `### File: ${c.path}${lineInfo}
-**@${c.author.login}** (${c.createdAt}):
-${c.body}
-
-\`\`\`diff
-${c.diffHunk}
-\`\`\``
-        })
-        .join('\n\n---\n\n')
-    } else {
-      formattedComments = conversationItems
-        .filter((_, i) => conversationSelected.has(i))
-        .map(item => {
-          if (item.kind === 'review') {
-            const r = item.data
-            const date = r.submittedAt ?? ''
-            return `### Review (${reviewStateLabel(r.state)})
-**@${r.author.login}** — ${date}:
-${r.body}`
-          } else {
-            const c = item.data
-            const date = getCreatedAt(c as unknown as Record<string, unknown>)
-            return `### PR Comment
-**@${c.author.login}** — ${date}:
-${c.body}`
-          }
-        })
-        .join('\n\n---\n\n')
+        .map(formatInlineReviewComment)
     }
 
-    // Build prompt from magic prompt template
-    const customPrompt = preferences?.magic_prompts?.review_comments
-    const template =
-      customPrompt && customPrompt.trim()
-        ? customPrompt
-        : DEFAULT_REVIEW_COMMENTS_PROMPT
-    const prompt = template
-      .replace(/\{prNumber\}/g, String(prNumber))
-      .replace(/\{reviewComments\}/g, formattedComments)
+    return conversationItems
+      .filter((_, i) => conversationSelected.has(i))
+      .map(formatConversationReviewItem)
+  }, [tab, comments, selected, conversationItems, conversationSelected])
 
-    // Close dialog
-    setReviewCommentsModalOpen(false)
+  const dispatchReviewCommentsPrompts = useCallback(
+    (detail: {
+      prompt?: string
+      prompts?: string[]
+      executionMode?: 'plan' | 'build' | 'yolo'
+    }) => {
+      setIsSending(false)
+      setReviewCommentsModalOpen(false)
 
-    // Dispatch to ChatWindow via magic-command event or pending command
-    const chatState = useChatStore.getState()
-    if (chatState.activeWorktreePath) {
-      window.dispatchEvent(
-        new CustomEvent('magic-command', {
-          detail: { command: 'review-comments', prompt },
-        })
-      )
-    } else {
+      const chatState = useChatStore.getState()
+      if (chatState.activeWorktreePath) {
+        window.dispatchEvent(
+          new CustomEvent('magic-command', {
+            detail: { command: 'review-comments', ...detail },
+          })
+        )
+        return
+      }
+
       const worktreeId = selectedWorktreeId
       if (worktreeId && worktree?.path) {
         useChatStore
           .getState()
-          .setPendingMagicCommand({ command: 'review-comments', prompt })
+          .setPendingMagicCommand({ command: 'review-comments', ...detail })
         window.dispatchEvent(
           new CustomEvent('open-session-modal', {
             detail: {
@@ -419,25 +498,111 @@ ${c.body}`
           })
         )
       }
-    }
+    },
+    [selectedWorktreeId, setReviewCommentsModalOpen, worktree?.path]
+  )
+
+  const handleSendToChat = useCallback(() => {
+    if (!prNumber) return
+
+    const formatted = getSelectedFormattedComments()
+    if (formatted.length === 0) return
+
+    setIsSending(true)
+    dispatchReviewCommentsPrompts({
+      prompt: buildPrompt(formatted.join('\n\n---\n\n')),
+    })
   }, [
-    tab,
-    selected,
-    comments,
-    conversationSelected,
-    conversationItems,
     prNumber,
-    preferences?.magic_prompts?.review_comments,
-    setReviewCommentsModalOpen,
-    selectedWorktreeId,
-    worktree?.path,
+    getSelectedFormattedComments,
+    dispatchReviewCommentsPrompts,
+    buildPrompt,
   ])
+
+  const handleSendSeparately = useCallback(() => {
+    if (!prNumber) return
+
+    const formatted = getSelectedFormattedComments()
+    if (formatted.length === 0) return
+
+    setIsSending(true)
+    dispatchReviewCommentsPrompts({
+      prompts: formatted.map(buildPrompt),
+      executionMode: 'plan',
+    })
+  }, [
+    prNumber,
+    getSelectedFormattedComments,
+    dispatchReviewCommentsPrompts,
+    buildPrompt,
+  ])
+
+  const handleDialogKeyDown = useCallback(
+    (event: React.KeyboardEvent) => {
+      if (isEditableTarget(event.target) || phase !== 'select' || error) return
+
+      const sendShortcut =
+        event.key === 'Enter' && (event.metaKey || event.ctrlKey)
+      if (sendShortcut) {
+        event.preventDefault()
+        if (event.shiftKey) {
+          handleSendSeparately()
+        } else {
+          handleSendToChat()
+        }
+        return
+      }
+
+      if (activeItems.length === 0) return
+
+      if (event.key === 'ArrowDown') {
+        event.preventDefault()
+        setActiveIndex(index => Math.min(index + 1, activeItems.length - 1))
+        return
+      }
+
+      if (event.key === 'ArrowUp') {
+        event.preventDefault()
+        setActiveIndex(index => Math.max(index - 1, 0))
+        return
+      }
+
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        if (tab === 'inline') toggleExpand(activeIndex)
+        else toggleConversationExpand(activeIndex)
+        return
+      }
+
+      if (event.key === ' ') {
+        event.preventDefault()
+        if (tab === 'inline') toggleSelect(activeIndex)
+        else toggleConversationSelect(activeIndex)
+      }
+    },
+    [
+      activeIndex,
+      activeItems.length,
+      error,
+      handleSendSeparately,
+      handleSendToChat,
+      phase,
+      tab,
+      toggleConversationExpand,
+      toggleConversationSelect,
+      toggleExpand,
+      toggleSelect,
+    ]
+  )
 
   const hasAnyComments = comments.length > 0 || conversationItems.length > 0
 
   return (
     <Dialog open={reviewCommentsModalOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="!fixed !inset-0 !translate-x-0 !translate-y-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none flex flex-col overflow-hidden sm:!inset-auto sm:!top-[50%] sm:!left-[50%] sm:!translate-x-[-50%] sm:!translate-y-[-50%] sm:!w-[95vw] sm:!h-[90vh] sm:!max-w-none sm:!rounded-lg">
+      <DialogContent
+        onKeyDown={handleDialogKeyDown}
+        className="!fixed !inset-0 !translate-x-0 !translate-y-0 !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none flex flex-col overflow-hidden sm:!inset-auto sm:!top-[50%] sm:!left-[50%] sm:!translate-x-[-50%] sm:!translate-y-[-50%] sm:!w-[95vw] sm:!h-[90vh] sm:!max-w-none sm:!rounded-lg"
+      >
         <DialogHeader className="pr-10 sm:pr-0">
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="size-4" />
@@ -481,7 +646,10 @@ ${c.body}`
                 variant={tab === 'inline' ? 'default' : 'outline'}
                 size="sm"
                 className="h-7 text-xs gap-1.5"
-                onClick={() => setTab('inline')}
+                onClick={() => {
+                  setTab('inline')
+                  setActiveIndex(0)
+                }}
               >
                 <Code className="size-3" />
                 Code Comments ({comments.length})
@@ -490,7 +658,10 @@ ${c.body}`
                 variant={tab === 'conversation' ? 'default' : 'outline'}
                 size="sm"
                 className="h-7 text-xs gap-1.5"
-                onClick={() => setTab('conversation')}
+                onClick={() => {
+                  setTab('conversation')
+                  setActiveIndex(0)
+                }}
               >
                 <MessagesSquare className="size-3" />
                 Conversation ({conversationItems.length})
@@ -498,14 +669,28 @@ ${c.body}`
             </div>
 
             {/* Selection controls */}
-            <div className="flex items-center justify-between px-1 pb-2">
-              <span className="text-xs text-muted-foreground">
-                {activeSelected.size} of {activeItems.length} selected
-              </span>
+            <div className="flex items-center justify-between gap-3 px-1 pb-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                <span>
+                  {activeSelected.size} of {activeItems.length} selected
+                </span>
+                <span className="hidden items-center gap-1 sm:inline-flex">
+                  <Kbd className="h-4 min-w-0 px-1 text-[10px]">↑/↓</Kbd>
+                  move
+                </span>
+                <span className="hidden items-center gap-1 sm:inline-flex">
+                  <Kbd className="h-4 min-w-0 px-1 text-[10px]">↵</Kbd>
+                  expand
+                </span>
+                <span className="hidden items-center gap-1 sm:inline-flex">
+                  <Kbd className="h-4 min-w-0 px-1 text-[10px]">Space</Kbd>
+                  select
+                </span>
+              </div>
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-6 text-xs"
+                className="h-6 shrink-0 text-xs"
                 onClick={toggleAll}
               >
                 {allSelected ? 'Deselect All' : 'Select All'}
@@ -520,10 +705,26 @@ ${c.body}`
                     const isExpanded = expanded.has(index)
                     const isDiffExpanded = diffExpanded.has(index)
                     const lineInfo = comment.line ? `:${comment.line}` : ''
+                    const date = formatCommentDate(comment.createdAt)
                     const preview = previewLine(comment.body)
 
+                    const isActive = activeIndex === index
+
                     return (
-                      <div key={index} className="px-3 py-2.5">
+                      <div
+                        key={index}
+                        ref={node => {
+                          activeRowRefs.current[`inline-${index}`] = node
+                        }}
+                        data-active={isActive}
+                        tabIndex={isActive ? 0 : -1}
+                        data-testid={`review-comment-row-inline-${index}`}
+                        className={cn(
+                          'px-3 py-2.5 outline-none transition-colors',
+                          isActive && 'bg-accent/40 ring-1 ring-ring/50'
+                        )}
+                        onClick={() => setActiveIndex(index)}
+                      >
                         <div className="flex items-start gap-2">
                           <Checkbox
                             checked={selected.has(index)}
@@ -560,6 +761,10 @@ ${c.body}`
                                 </code>
                                 <span className="text-muted-foreground/70 shrink-0">
                                   @{comment.author.login}
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-muted-foreground/60 shrink-0">
+                                  <CalendarClock className="size-3" />
+                                  {date}
                                 </span>
                               </div>
                             </button>
@@ -612,15 +817,27 @@ ${c.body}`
                     const isExpanded = conversationExpanded.has(index)
                     const body = item.data.body ?? ''
                     const preview = previewLine(body)
-                    const date =
-                      item.kind === 'review'
-                        ? (item.data.submittedAt ?? '')
-                        : getCreatedAt(
-                            item.data as unknown as Record<string, unknown>
-                          )
+                    const date = formatCommentDate(
+                      getConversationItemDate(item)
+                    )
+
+                    const isActive = activeIndex === index
 
                     return (
-                      <div key={index} className="px-3 py-2.5">
+                      <div
+                        key={index}
+                        ref={node => {
+                          activeRowRefs.current[`conversation-${index}`] = node
+                        }}
+                        data-active={isActive}
+                        tabIndex={isActive ? 0 : -1}
+                        data-testid={`review-comment-row-conversation-${index}`}
+                        className={cn(
+                          'px-3 py-2.5 outline-none transition-colors',
+                          isActive && 'bg-accent/40 ring-1 ring-ring/50'
+                        )}
+                        onClick={() => setActiveIndex(index)}
+                      >
                         <div className="flex items-start gap-2">
                           <Checkbox
                             checked={conversationSelected.has(index)}
@@ -659,7 +876,8 @@ ${c.body}`
                                 {item.kind === 'review' && (
                                   <ReviewStateBadge state={item.data.state} />
                                 )}
-                                <span className="text-muted-foreground/60 text-[10px]">
+                                <span className="inline-flex items-center gap-1 text-muted-foreground/60 text-[10px]">
+                                  <CalendarClock className="size-3" />
                                   {date}
                                 </span>
                               </div>
@@ -693,9 +911,19 @@ ${c.body}`
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handleOpenChange(false)}
+                disabled={activeSelected.size === 0 || isSending}
+                onClick={handleSendSeparately}
               >
-                Cancel
+                {isSending ? (
+                  <Loader2 className="size-3.5 mr-1.5 animate-spin" />
+                ) : (
+                  <MessagesSquare className="size-3.5 mr-1.5" />
+                )}
+                Send Separately ({activeSelected.size})
+                <KbdGroup className="ml-1.5 hidden sm:inline-flex">
+                  <Kbd className="h-4 min-w-4 px-1 text-[10px]">⇧</Kbd>
+                  <Kbd className="h-4 min-w-4 px-1 text-[10px]">⌘↵</Kbd>
+                </KbdGroup>
               </Button>
               <Button
                 size="sm"
@@ -708,6 +936,10 @@ ${c.body}`
                   <MessageSquare className="size-3.5 mr-1.5" />
                 )}
                 Send to Chat ({activeSelected.size})
+                <KbdGroup className="ml-1.5 hidden sm:inline-flex">
+                  <Kbd className="h-4 min-w-4 px-1 text-[10px]">⌘</Kbd>
+                  <Kbd className="h-4 min-w-4 px-1 text-[10px]">↵</Kbd>
+                </KbdGroup>
               </Button>
             </div>
           </>

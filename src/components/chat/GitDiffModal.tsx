@@ -211,6 +211,21 @@ const DIFF_TYPE_SHORTCUTS: Record<DiffType, string> = {
   commits: '3',
 }
 
+const COMMIT_SHORTCUT_LABEL = '⌘↵'
+
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return (
+    target.tagName === 'INPUT' ||
+    target.tagName === 'TEXTAREA' ||
+    target.isContentEditable
+  )
+}
+
+function hasSelectedText(): boolean {
+  return (window.getSelection()?.toString().trim().length ?? 0) > 0
+}
+
 /**
  * Modal dialog for viewing GitHub-style git diffs using @pierre/diffs
  */
@@ -258,6 +273,7 @@ export function GitDiffModal({
   const [selectedFileIndex, setSelectedFileIndex] = useState<number>(0)
   const [fileFilter, setFileFilter] = useState('')
   const fileListRef = useRef<HTMLDivElement>(null)
+  const fileFilterInputRef = useRef<HTMLInputElement>(null)
 
   // Use transition for file switching to keep UI responsive during heavy diff rendering
   const [, startTransition] = useTransition()
@@ -673,6 +689,77 @@ export function GitDiffModal({
   // Check if there are any files to display
   const hasFiles = flattenedFiles.length > 0
 
+  const canCommitFromDiff =
+    activeDiffType === 'uncommitted' &&
+    !!diff &&
+    filteredFiles.length > 0 &&
+    !isCommitting
+
+  // Vim-style quick focus for the file filter. Keep it scoped to the diff
+  // modal and preserve normal typing/selection behavior.
+  useEffect(() => {
+    if (!diffRequest) return
+
+    const focusFileFilter = () => {
+      if (isMobile) {
+        setShowMobileSidebar(true)
+      }
+
+      requestAnimationFrame(() => {
+        fileFilterInputRef.current?.focus({ preventScroll: true })
+        fileFilterInputRef.current?.select()
+      })
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key !== '/' ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey ||
+        e.shiftKey ||
+        isEditableKeyboardTarget(e.target) ||
+        hasSelectedText()
+      ) {
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+      focusFileFilter()
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [diffRequest, isMobile])
+
+  // Commit selected (or all) uncommitted files with Cmd+Enter from the diff modal.
+  // Preserve normal copy behavior while typing or when any text is selected.
+  useEffect(() => {
+    if (!diffRequest || !canCommitFromDiff) return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        !e.metaKey ||
+        e.ctrlKey ||
+        e.altKey ||
+        e.shiftKey ||
+        e.key !== 'Enter' ||
+        isEditableKeyboardTarget(e.target) ||
+        hasSelectedText()
+      ) {
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+      handleCommitFromDiff()
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [diffRequest, canCommitFromDiff, handleCommitFromDiff])
+
   // Handle file selection from sidebar
   // Use transition to keep sidebar responsive while diff renders
   const handleSelectFile = useCallback((index: number) => {
@@ -878,7 +965,7 @@ export function GitDiffModal({
         <DialogContent
           ref={dialogContentRef}
           showCloseButton={false}
-          className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 backdrop-blur-sm overflow-hidden flex flex-col"
+          className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95 overflow-hidden flex flex-col"
           style={{ fontSize: 'var(--ui-font-size)' }}
           onOpenAutoFocus={e => {
             // Prevent Radix from focusing the first focusable element (a tooltip trigger button),
@@ -1055,12 +1142,20 @@ export function GitDiffModal({
                           <GitCommitHorizontal className="h-3.5 w-3.5 shrink-0" />
                         )}
                         <span>{commitButtonLabel}</span>
+                        <Kbd className="hidden h-4 min-w-4 bg-primary-foreground/15 px-1 text-[10px] text-primary-foreground/80 sm:inline-flex">
+                          {COMMIT_SHORTCUT_LABEL}
+                        </Kbd>
                       </button>
                     </TooltipTrigger>
                     <TooltipContent>
-                      {selectedFileCount > 0
-                        ? `Commit ${selectedFileCount} selected file${selectedFileCount !== 1 ? 's' : ''}`
-                        : 'Commit all changes'}
+                      <div className="flex items-center gap-2">
+                        <span>
+                          {selectedFileCount > 0
+                            ? `Commit ${selectedFileCount} selected file${selectedFileCount !== 1 ? 's' : ''}`
+                            : 'Commit all changes'}
+                        </span>
+                        <Kbd>{COMMIT_SHORTCUT_LABEL}</Kbd>
+                      </div>
                     </TooltipContent>
                   </Tooltip>
                 )}
@@ -1184,6 +1279,7 @@ export function GitDiffModal({
                             <div className="relative">
                               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
                               <input
+                                ref={fileFilterInputRef}
                                 type="text"
                                 value={fileFilter}
                                 onChange={e => {
@@ -1369,6 +1465,7 @@ export function GitDiffModal({
                               <div className="relative">
                                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
                                 <input
+                                  ref={fileFilterInputRef}
                                   type="text"
                                   value={fileFilter}
                                   onChange={e => {

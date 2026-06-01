@@ -32,6 +32,7 @@ import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
+import { getResumeArgs } from '@/components/chat/session-card-utils'
 import type { ReviewResponse, Worktree } from '@/types/projects'
 
 /** Default number of recent runs loaded on initial session fetch. */
@@ -61,6 +62,77 @@ export function cleanupSessionTerminalForRemovedSession(
   useTerminalStore.getState().removeTerminal(worktreeId, terminalId)
 
   return terminalId
+}
+
+/**
+ * Whether a session can be reconnected — i.e. it's a native CLI terminal
+ * session with a known way to relaunch (a backend resume id, or its persisted
+ * terminal command). Used to gate the "Reconnect" menu item.
+ */
+export function canReconnectSession(session: Session): boolean {
+  return (
+    session.primary_surface === 'terminal' &&
+    (!!getResumeArgs(session) || !!session.terminal_command)
+  )
+}
+
+/**
+ * Relaunch a native CLI session's terminal. Used by the session header
+ * "Reconnect" action when the live terminal connection is lost (e.g. dropped
+ * websocket over web access).
+ *
+ * Prefers the backend resume args (`claude --resume <id>`, `codex resume <id>`,
+ * …) when a resume id was captured; otherwise falls back to the session's
+ * persisted terminal command + args (how it was originally launched, which for
+ * sessions opened from native history already includes the resume flags).
+ *
+ * Kills/disposes the old terminal (if any) then spawns a fresh one and reveals
+ * the terminal surface.
+ */
+export async function reconnectNativeCliSession(
+  session: Session,
+  worktreeId: string
+): Promise<void> {
+  const resume = getResumeArgs(session)
+  const launch = resume ?? {
+    command: session.terminal_command ?? '',
+    args: session.terminal_command_args ?? [],
+  }
+  if (!launch.command) {
+    toast.error('No command available to reconnect this session')
+    return
+  }
+
+  const terminalStore = useTerminalStore.getState()
+  const uiStore = useUIStore.getState()
+
+  const oldTerminalId = uiStore.sessionTerminalIds[session.id]
+  if (oldTerminalId) {
+    await invoke('stop_terminal', { terminalId: oldTerminalId }).catch(() => {
+      // Terminal may already be stopped.
+    })
+    await disposeTerminal(oldTerminalId)
+    terminalStore.removeTerminal(worktreeId, oldTerminalId)
+  }
+
+  const newTerminalId = terminalStore.addTerminal(
+    worktreeId,
+    launch.command,
+    session.terminal_label ?? session.name,
+    {
+      kind: 'session',
+      commandArgs: launch.args,
+      activate: false,
+      openPanel: false,
+    }
+  )
+
+  uiStore.setSessionPrimarySurface(session.id, 'terminal')
+  uiStore.setSessionTerminalId(session.id, newTerminalId)
+  terminalStore.setModalTerminalOpen(worktreeId, true)
+  useChatStore.getState().setActiveSession(worktreeId, session.id)
+
+  toast.success('Reconnecting session…')
 }
 
 // Query keys for chat

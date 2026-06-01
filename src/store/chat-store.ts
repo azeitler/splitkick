@@ -39,7 +39,7 @@ import type { ClaudeModel, CodexModel } from '@/types/preferences'
 export type { ClaudeModel, CodexModel }
 
 /** Default model to use when none is selected (fallback only - preferences take priority) */
-export const DEFAULT_MODEL: ClaudeModel = 'claude-opus-4-7[1m]'
+export const DEFAULT_MODEL: ClaudeModel = 'claude-opus-4-8[1m]'
 
 /** Default Codex model */
 export const DEFAULT_CODEX_MODEL: CodexModel = 'gpt-5.5'
@@ -272,9 +272,19 @@ interface ChatUIState {
   codexGoals: Record<string, string>
 
   // Pending magic command to execute when ChatWindow mounts (from canvas navigation)
-  pendingMagicCommand: { command: string; prompt?: string } | null
+  pendingMagicCommand: {
+    command: string
+    prompt?: string
+    prompts?: string[]
+    executionMode?: ExecutionMode
+  } | null
   setPendingMagicCommand: (
-    cmd: { command: string; prompt?: string } | null
+    cmd: {
+      command: string
+      prompt?: string
+      prompts?: string[]
+      executionMode?: ExecutionMode
+    } | null
   ) => void
 
   // Actions - Session management

@@ -105,6 +105,11 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["preferences"]);
             Ok(Value::Null)
         }
+        "set_window_vibrancy" => {
+            let enabled: bool = from_field(&args, "enabled")?;
+            crate::set_window_vibrancy(app.clone(), enabled).await?;
+            Ok(Value::Null)
+        }
         "load_ui_state" => {
             let result = crate::load_ui_state(app.clone()).await?;
             to_value(result)
@@ -374,6 +379,20 @@ pub async fn dispatch_command(
             if result.is_some() {
                 emit_cache_invalidation(app, &["projects"]);
             }
+            to_value(result)
+        }
+        "link_worktree_pr" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
+            let result = crate::projects::link_worktree_pr(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                pr_number,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["projects"]);
             to_value(result)
         }
         "detect_open_pr_for_branch" => {
@@ -1107,6 +1126,12 @@ pub async fn dispatch_command(
                     }
                     Some(crate::chat::types::ThinkingLevel::Off)
                 }
+                Some("ultracode") => {
+                    if effort_level.is_none() {
+                        effort_level = Some(crate::chat::types::EffortLevel::Ultracode);
+                    }
+                    Some(crate::chat::types::ThinkingLevel::Off)
+                }
                 Some(other) => {
                     return Err(format!(
                             "invalid args `thinkingLevel` for command `send_chat_message`: unknown variant `{other}`, expected one of `off`, `think`, `megathink`, `ultrathink`"
@@ -1626,6 +1651,14 @@ pub async fn dispatch_command(
         }
         "list_codex_skills" => {
             let result = crate::projects::list_codex_skills().await?;
+            to_value(result)
+        }
+        "list_opencode_skills" => {
+            let result = crate::projects::list_opencode_skills().await?;
+            to_value(result)
+        }
+        "list_cursor_skills" => {
+            let result = crate::projects::list_cursor_skills().await?;
             to_value(result)
         }
         "list_plugin_skills" => {
@@ -2593,44 +2626,6 @@ pub async fn dispatch_command(
             let result = crate::projects::git_stash_pop(worktree_path).await?;
             to_value(result)
         }
-        "generate_pr_update_content" => {
-            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let pr_number: Option<u32> = field_opt(&args, "prNumber", "pr_number")?;
-            let session_id: Option<String> = field_opt(&args, "sessionId", "session_id")?;
-            let custom_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
-            let model: Option<String> = from_field_opt(&args, "model")?;
-            let custom_profile_name: Option<String> =
-                field_opt(&args, "customProfileName", "custom_profile_name")?;
-            let reasoning_effort: Option<String> =
-                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
-            let result = crate::projects::generate_pr_update_content(
-                app.clone(),
-                worktree_path,
-                pr_number,
-                session_id,
-                custom_prompt,
-                model,
-                custom_profile_name,
-                reasoning_effort,
-            )
-            .await?;
-            to_value(result)
-        }
-        "update_pr_description" => {
-            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let pr_number: u32 = field(&args, "prNumber", "pr_number")?;
-            let title: String = from_field(&args, "title")?;
-            let body: String = from_field(&args, "body")?;
-            crate::projects::update_pr_description(
-                app.clone(),
-                worktree_path,
-                pr_number,
-                title,
-                body,
-            )
-            .await?;
-            Ok(Value::Null)
-        }
         "get_jean_config" => {
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let result = crate::projects::get_jean_config(project_path).await;
@@ -2841,13 +2836,21 @@ pub async fn dispatch_command(
         // =====================================================================
         "check_opinionated_plugin_status" => {
             let plugin_name: String = from_field(&args, "pluginName")?;
-            let result = crate::opinionated::check_opinionated_plugin_status(plugin_name).await?;
+            let result =
+                crate::opinionated::check_opinionated_plugin_status(app.clone(), plugin_name)
+                    .await?;
             to_value(result)
         }
         "install_opinionated_plugin" => {
             let plugin_name: String = from_field(&args, "pluginName")?;
             let result =
                 crate::opinionated::install_opinionated_plugin(app.clone(), plugin_name).await?;
+            to_value(result)
+        }
+        "uninstall_opinionated_plugin" => {
+            let plugin_name: String = from_field(&args, "pluginName")?;
+            let result =
+                crate::opinionated::uninstall_opinionated_plugin(app.clone(), plugin_name).await?;
             to_value(result)
         }
 

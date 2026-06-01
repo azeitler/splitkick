@@ -46,9 +46,16 @@ const CODEX_DEFAULT_PLAN_MODE_PROMPT: &str = "\
 const CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT: &str = "\
 ## Not Plan Mode
 
+- **VERY IMPORTANT: Keep Code Simple**: Do not over-engineer. Always implement the simplest maintainable solution. Avoid extra abstractions, frameworks, configuration, or future-proofing unless clearly required.
 - After each finished task, please write a few bullet points on how to test the changes.
 - When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task subagents simultaneously rather than sequentially.
-- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.";
+- When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.
+
+## Jean Worktree Policy
+
+- Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.
+- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.
+- If already in a Jean worktree or base/main workspace, continue in the current workspace.";
 const DEFAULT_PARALLEL_EXECUTION_PROMPT: &str = r#"In plan mode, structure plans so subagents can work simultaneously. In build/execute mode, use subagents in parallel for faster implementation.
 
 When launching multiple Task subagents, prefer sending them in a single message rather than sequentially. Group independent work items (e.g., editing separate files, researching unrelated questions) into parallel Task calls. Only sequence Tasks when one depends on another's output.
@@ -2450,7 +2457,7 @@ pub async fn send_chat_message(
                 log::trace!("About to call execute_codex_via_server...");
 
                 // Map EffortLevel to Codex reasoning effort values
-                // Codex has no "max"; cap at xhigh.
+                // Codex has no "max" or "ultracode"; cap at xhigh.
                 let codex_reasoning_effort: Option<String> =
                     thread_effort_level.as_ref().and_then(|e| match e {
                         super::types::EffortLevel::Low => Some("low".to_string()),
@@ -2458,6 +2465,7 @@ pub async fn send_chat_message(
                         super::types::EffortLevel::High => Some("high".to_string()),
                         super::types::EffortLevel::Xhigh => Some("xhigh".to_string()),
                         super::types::EffortLevel::Max => Some("xhigh".to_string()),
+                        super::types::EffortLevel::Ultracode => Some("xhigh".to_string()),
                         super::types::EffortLevel::Off => None,
                     });
 
@@ -2928,6 +2936,7 @@ pub async fn send_chat_message(
                         super::types::EffortLevel::High => Some("high".to_string()),
                         super::types::EffortLevel::Xhigh => Some("xhigh".to_string()),
                         super::types::EffortLevel::Max => Some("xhigh".to_string()),
+                        super::types::EffortLevel::Ultracode => Some("xhigh".to_string()),
                         super::types::EffortLevel::Off => None,
                     });
 
@@ -4935,11 +4944,80 @@ pub async fn write_file_content(path: String, content: String) -> Result<(), Str
     std::fs::write(&file_path, &content).map_err(|e| format!("Failed to write file: {e}"))
 }
 
+fn editor_location(path: &str, line: Option<u32>, column: Option<u32>) -> String {
+    match (line, column) {
+        (Some(line), Some(column)) => format!("{path}:{line}:{column}"),
+        (Some(line), None) => format!("{path}:{line}"),
+        _ => path.to_string(),
+    }
+}
+
+fn editor_file_args(
+    editor: &str,
+    path: &str,
+    line: Option<u32>,
+    column: Option<u32>,
+) -> Vec<String> {
+    match editor {
+        "vscode" | "cursor" => {
+            if line.is_some() {
+                vec!["-g".to_string(), editor_location(path, line, column)]
+            } else {
+                vec![path.to_string()]
+            }
+        }
+        "xcode" => {
+            if let Some(line) = line {
+                vec!["-l".to_string(), line.to_string(), path.to_string()]
+            } else {
+                vec![path.to_string()]
+            }
+        }
+        "intellij" => {
+            if let Some(line) = line {
+                vec!["--line".to_string(), line.to_string(), path.to_string()]
+            } else {
+                vec![path.to_string()]
+            }
+        }
+        "zed" => vec![editor_location(path, line, column)],
+        _ => {
+            if line.is_some() {
+                vec!["-g".to_string(), editor_location(path, line, column)]
+            } else {
+                vec![path.to_string()]
+            }
+        }
+    }
+}
+
+fn macos_open_app_args(
+    app_name: &str,
+    editor: &str,
+    path: &str,
+    line: Option<u32>,
+    column: Option<u32>,
+) -> Vec<String> {
+    let mut args = vec!["-a".to_string(), app_name.to_string()];
+    if line.is_some() {
+        args.push("--args".to_string());
+        args.extend(editor_file_args(editor, path, line, column));
+    } else {
+        args.push(path.to_string());
+    }
+    args
+}
+
 /// Open a file in the user's preferred editor
 ///
 /// Uses the editor preference (zed, vscode, cursor, xcode, intellij) to open files.
 #[tauri::command]
-pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> Result<(), String> {
+pub async fn open_file_in_default_app(
+    path: String,
+    editor: Option<String>,
+    line: Option<u32>,
+    column: Option<u32>,
+) -> Result<(), String> {
     let editor_app = editor.unwrap_or_else(|| "zed".to_string());
     log::trace!("Opening file in {editor_app}: {path}");
 
@@ -4955,39 +5033,65 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
     #[cfg(target_os = "macos")]
     {
         let result = match editor_app.as_str() {
-            "zed" => match std::process::Command::new("zed").arg(&path).spawn() {
+            "zed" => match std::process::Command::new("zed")
+                .args(editor_file_args("zed", &path, line, column))
+                .spawn()
+            {
                 Ok(child) => Ok(child),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     std::process::Command::new("open")
-                        .args(["-a", "Zed", &path])
+                        .args(macos_open_app_args("Zed", "zed", &path, line, column))
                         .spawn()
                 }
                 Err(e) => Err(e),
             },
-            "cursor" => match std::process::Command::new("cursor").arg(&path).spawn() {
+            "cursor" => match std::process::Command::new("cursor")
+                .args(editor_file_args("cursor", &path, line, column))
+                .spawn()
+            {
                 Ok(child) => Ok(child),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     std::process::Command::new("open")
-                        .args(["-a", "Cursor", &path])
+                        .args(macos_open_app_args("Cursor", "cursor", &path, line, column))
                         .spawn()
                 }
                 Err(e) => Err(e),
             },
-            "xcode" => std::process::Command::new("xed").arg(&path).spawn(),
-            "intellij" => match std::process::Command::new("idea").arg(&path).spawn() {
+            "xcode" => std::process::Command::new("xed")
+                .args(editor_file_args("xcode", &path, line, column))
+                .spawn(),
+            "intellij" => match std::process::Command::new("idea")
+                .args(editor_file_args("intellij", &path, line, column))
+                .spawn()
+            {
                 Ok(child) => Ok(child),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     std::process::Command::new("open")
-                        .args(["-a", "IntelliJ IDEA", &path])
+                        .args(macos_open_app_args(
+                            "IntelliJ IDEA",
+                            "intellij",
+                            &path,
+                            line,
+                            column,
+                        ))
                         .spawn()
                 }
                 Err(e) => Err(e),
             },
-            _ => match std::process::Command::new("code").arg(&path).spawn() {
+            _ => match std::process::Command::new("code")
+                .args(editor_file_args("vscode", &path, line, column))
+                .spawn()
+            {
                 Ok(child) => Ok(child),
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                     std::process::Command::new("open")
-                        .args(["-a", "Visual Studio Code", &path])
+                        .args(macos_open_app_args(
+                            "Visual Studio Code",
+                            "vscode",
+                            &path,
+                            line,
+                            column,
+                        ))
                         .spawn()
                 }
                 Err(e) => Err(e),
@@ -5012,18 +5116,23 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
         const CREATE_NO_WINDOW: u32 = 0x08000000;
 
         let result = match editor_app.as_str() {
-            "zed" => std::process::Command::new("zed").arg(&path).spawn(),
+            "zed" => std::process::Command::new("zed")
+                .args(editor_file_args("zed", &path, line, column))
+                .spawn(),
             "cursor" => std::process::Command::new("cmd")
-                .args(["/c", "cursor", &path])
+                .args(["/c", "cursor"])
+                .args(editor_file_args("cursor", &path, line, column))
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn(),
             "intellij" => std::process::Command::new("cmd")
-                .args(["/c", "idea", &path])
+                .args(["/c", "idea"])
+                .args(editor_file_args("intellij", &path, line, column))
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn(),
             "xcode" => return Err("Xcode is only available on macOS".to_string()),
             _ => std::process::Command::new("cmd")
-                .args(["/c", "code", &path])
+                .args(["/c", "code"])
+                .args(editor_file_args("vscode", &path, line, column))
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn(),
         };
@@ -5040,11 +5149,19 @@ pub async fn open_file_in_default_app(path: String, editor: Option<String>) -> R
     #[cfg(target_os = "linux")]
     {
         let result = match editor_app.as_str() {
-            "zed" => std::process::Command::new("zed").arg(&path).spawn(),
-            "cursor" => std::process::Command::new("cursor").arg(&path).spawn(),
-            "intellij" => std::process::Command::new("idea").arg(&path).spawn(),
+            "zed" => std::process::Command::new("zed")
+                .args(editor_file_args("zed", &path, line, column))
+                .spawn(),
+            "cursor" => std::process::Command::new("cursor")
+                .args(editor_file_args("cursor", &path, line, column))
+                .spawn(),
+            "intellij" => std::process::Command::new("idea")
+                .args(editor_file_args("intellij", &path, line, column))
+                .spawn(),
             "xcode" => return Err("Xcode is only available on macOS".to_string()),
-            _ => std::process::Command::new("code").arg(&path).spawn(),
+            _ => std::process::Command::new("code")
+                .args(editor_file_args("vscode", &path, line, column))
+                .spawn(),
         };
 
         result.map_err(|e| {
@@ -5606,7 +5723,7 @@ fn execute_summarization_claude(
     magic_backend: Option<&str>,
     reasoning_effort: Option<&str>,
 ) -> Result<ContextSummaryResponse, String> {
-    let model_str = model.unwrap_or("claude-opus-4-7[1m]");
+    let model_str = model.unwrap_or("claude-opus-4-8[1m]");
 
     // Per-operation backend > project/global default_backend
     let backend = resolve_magic_prompt_backend(app, magic_backend, worktree_id);
@@ -6861,6 +6978,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn editor_file_args_uses_goto_location_for_vscode_and_cursor() {
+        assert_eq!(
+            editor_file_args("vscode", "/tmp/main.ts", Some(42), Some(3)),
+            vec!["-g".to_string(), "/tmp/main.ts:42:3".to_string()]
+        );
+        assert_eq!(
+            editor_file_args("cursor", "/tmp/main.ts", Some(42), None),
+            vec!["-g".to_string(), "/tmp/main.ts:42".to_string()]
+        );
+    }
+
+    #[test]
+    fn editor_file_args_uses_editor_specific_line_flags() {
+        assert_eq!(
+            editor_file_args("xcode", "/tmp/main.swift", Some(7), Some(2)),
+            vec![
+                "-l".to_string(),
+                "7".to_string(),
+                "/tmp/main.swift".to_string()
+            ]
+        );
+        assert_eq!(
+            editor_file_args("intellij", "/tmp/Main.kt", Some(7), Some(2)),
+            vec![
+                "--line".to_string(),
+                "7".to_string(),
+                "/tmp/Main.kt".to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn test_queue_default_allowed_tools_match_frontend_git_scope() {
         assert!(QUEUE_DEFAULT_ALLOWED_TOOLS.contains(&"Bash(git:*)"));
         assert!(!QUEUE_DEFAULT_ALLOWED_TOOLS.contains(&"Bash"));
@@ -6882,12 +7031,18 @@ mod tests {
         assert!(!build_prompt.contains("update_plan"));
         assert!(!build_prompt.contains("CodexPlan"));
         assert!(build_prompt.contains("## Not Plan Mode"));
+        assert!(build_prompt.contains("Jean Worktree Policy"));
+        assert!(build_prompt.contains("Do NOT create git worktrees manually"));
+        assert!(build_prompt.contains("Jean MCP/tools"));
+        assert!(build_prompt.contains("VERY IMPORTANT: Keep Code Simple"));
+        assert!(build_prompt.contains("Always implement the simplest maintainable solution"));
 
         let yolo_prompt = codex_default_global_system_prompt(Some("yolo"));
         assert!(!yolo_prompt.contains("## Plan Mode"));
         assert!(!yolo_prompt.contains("update_plan"));
         assert!(!yolo_prompt.contains("CodexPlan"));
         assert!(yolo_prompt.contains("## Not Plan Mode"));
+        assert!(yolo_prompt.contains("VERY IMPORTANT: Keep Code Simple"));
     }
 
     #[test]

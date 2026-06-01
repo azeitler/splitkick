@@ -76,8 +76,14 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 \n\
 ## Core Principles\n\
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.\n\
+- **VERY IMPORTANT: Keep Code Simple**: Do not over-engineer. Always implement the simplest maintainable solution. Avoid extra abstractions, frameworks, configuration, or future-proofing unless clearly required.\n\
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.\n\
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.\n\
+\n\
+## Jean Worktree Policy\n\
+- Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.\n\
+- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.\n\
+- If already in a Jean worktree or base/main workspace, continue in the current workspace.\n\
 \n\
 ## Important!\n\
 \n\
@@ -352,13 +358,13 @@ fn build_claude_args(
     }
 
     // Model (strip "-fast" suffix: "opus-fast" → model="opus" + fastMode setting)
-    let is_fast = if let Some(m) = model {
+    let (is_fast, fast_base_model) = if let Some(m) = model {
         let (actual_model, fast) = split_fast_model(m);
         args.push("--model".to_string());
         args.push(actual_model.to_string());
-        fast
+        (fast, fast.then(|| actual_model.to_string()))
     } else {
-        false
+        (false, None)
     };
 
     // Permission mode
@@ -432,6 +438,16 @@ fn build_claude_args(
         if let Some(map) = obj.as_object_mut() {
             map.insert("fastMode".to_string(), serde_json::Value::Bool(true));
         }
+    }
+
+    // Fast mode picks the CLI's default fast Opus version (4.8 in Claude Code
+    // v2.1.154+), ignoring --model for the Opus version. Pin to 4.6 when the
+    // user explicitly selected the 4.6 fast variant.
+    if fast_base_model.as_deref() == Some("claude-opus-4-6[1m]") {
+        env_vars.push((
+            "CLAUDE_CODE_OPUS_4_6_FAST_MODE_OVERRIDE".to_string(),
+            "1".to_string(),
+        ));
     }
 
     // Emit --settings if we have any settings to pass
@@ -2161,6 +2177,12 @@ mod tests {
             .contains("after the user answers native `request_user_input`"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Every Codex plan-mode response"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("OpenCode question"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean Worktree Policy"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Do NOT create git worktrees manually"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean MCP/tools"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("VERY IMPORTANT: Keep Code Simple"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("Always implement the simplest maintainable solution"));
     }
 
     #[test]

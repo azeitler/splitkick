@@ -55,6 +55,7 @@ export interface SessionCardProps {
   onWorktreeYoloApprove?: () => void
   onToggleLabel?: () => void
   onToggleReview?: () => void
+  onReconnect?: () => void
   onRename?: (sessionId: string, newName: string) => void
   isRenaming?: boolean
   renameValue?: string
@@ -383,6 +384,42 @@ export function getResumeCommand(session: Session): string | null {
   }
   if (session.backend === 'cursor' && session.cursor_chat_id) {
     return `cursor-agent --resume ${session.cursor_chat_id}`
+  }
+  return null
+}
+
+/**
+ * Resolve the command + args needed to relaunch a native CLI session's terminal
+ * resuming the same backend conversation. Prefers the persisted resolved binary
+ * path (`terminal_command`) over the bare backend name.
+ */
+export function getResumeArgs(
+  session: Session
+): { command: string; args: string[] } | null {
+  const cmd = session.terminal_command || ''
+  if (session.backend === 'claude' && session.claude_session_id) {
+    return {
+      command: cmd || 'claude',
+      args: ['--resume', session.claude_session_id],
+    }
+  }
+  if (session.backend === 'codex' && session.codex_thread_id) {
+    return {
+      command: cmd || 'codex',
+      args: ['resume', session.codex_thread_id],
+    }
+  }
+  if (session.backend === 'opencode' && session.opencode_session_id) {
+    return {
+      command: cmd || 'opencode',
+      args: ['-s', session.opencode_session_id],
+    }
+  }
+  if (session.backend === 'cursor' && session.cursor_chat_id) {
+    return {
+      command: cmd || 'cursor-agent',
+      args: ['--resume', session.cursor_chat_id],
+    }
   }
   return null
 }
