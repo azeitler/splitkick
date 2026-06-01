@@ -24,8 +24,15 @@ export type ThinkingLevel = 'off' | 'think' | 'megathink' | 'ultrathink'
  * - high: Deep reasoning (default), almost always thinks
  * - xhigh: Extra high effort (Opus 4.8 recommended default for coding/agentic)
  * - max: No constraints on thinking depth
+ * - ultracode: Claude Code ultracode mode (xhigh + Dynamic Workflows)
  */
-export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export type EffortLevel =
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh'
+  | 'max'
+  | 'ultracode'
 
 /**
  * Backend for a chat session (Claude CLI, Codex CLI, OpenCode, or Cursor)

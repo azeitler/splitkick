@@ -90,7 +90,7 @@ pub struct AppPreferences {
     #[serde(default = "default_thinking_level")]
     pub thinking_level: String, // Thinking level: off, think, megathink, ultrathink
     #[serde(default = "default_effort_level")]
-    pub default_effort_level: String, // Effort level for Opus adaptive thinking: low, medium, high, xhigh, max
+    pub default_effort_level: String, // Effort level for Opus adaptive thinking: low, medium, high, xhigh, max, ultracode
     #[serde(default = "default_terminal")]
     pub terminal: String, // Terminal app: terminal, warp, ghostty, iterm2, powershell, windows-terminal
     #[serde(default = "default_terminal_renderer")]
@@ -598,6 +598,8 @@ mod tests {
         assert!(prompt.contains("Jean Worktree Policy"));
         assert!(prompt.contains("Do NOT create git worktrees manually"));
         assert!(prompt.contains("Jean MCP/tools"));
+        assert!(prompt.contains("VERY IMPORTANT: Keep Code Simple"));
+        assert!(prompt.contains("Always implement the simplest maintainable solution"));
     }
 
     #[test]
@@ -1319,6 +1321,7 @@ fn default_global_system_prompt() -> String {
 
 ## Core Principles
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **VERY IMPORTANT: Keep Code Simple**: Do not over-engineer. Always implement the simplest maintainable solution. Avoid extra abstractions, frameworks, configuration, or future-proofing unless clearly required.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
 

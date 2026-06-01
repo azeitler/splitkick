@@ -13,7 +13,6 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
-  FileText,
   GitBranchPlus,
   GitPullRequestArrow,
   Pencil,
@@ -245,8 +244,6 @@ export function SessionChatModal({
   const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
   // Canonical store state shared with canvas for consistent status derivation.
   const storeState = useCanvasStoreState()
-  const planFilePaths = useChatStore(state => state.planFilePaths)
-
   // Compute card data once per session — same derivation as ProjectCanvasView,
   // so canvas badges and modal tab badges stay in sync.
   const cards = useMemo(
@@ -1074,8 +1071,6 @@ export function SessionChatModal({
                     const config = statusConfig[status]
                     const chatState = useChatStore.getState()
                     const sessionLabel = chatState.sessionLabels[session.id]
-                    const sessionHasPlan =
-                      !!planFilePaths[session.id] || !!session.plan_file_path
                     const resumeCommand = getResumeCommand(session)
                     return (
                       <ContextMenu key={session.id}>
@@ -1222,22 +1217,6 @@ export function SessionChatModal({
                             </ContextMenuItem>
                           )}
                           <ContextMenuSeparator />
-                          <ContextMenuItem
-                            disabled={!sessionHasPlan}
-                            onSelect={() => {
-                              useChatStore
-                                .getState()
-                                .setActiveSession(worktreeId, session.id)
-                              requestAnimationFrame(() => {
-                                window.dispatchEvent(
-                                  new CustomEvent('open-plan')
-                                )
-                              })
-                            }}
-                          >
-                            <FileText className="mr-2 h-4 w-4" />
-                            Plan
-                          </ContextMenuItem>
                           <ContextMenuItem
                             onSelect={() => handleArchiveSession(session.id)}
                           >

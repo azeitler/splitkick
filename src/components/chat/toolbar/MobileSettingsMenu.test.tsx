@@ -189,7 +189,7 @@ describe('MobileSettingsMenu', () => {
     expect(screen.queryByText('Linked')).not.toBeInTheDocument()
   })
 
-  it('hides Claude-only Max effort for Codex', async () => {
+  it('hides Claude-only Max and Ultracode effort for Codex', async () => {
     const user = userEvent.setup()
 
     render(
@@ -209,6 +209,7 @@ describe('MobileSettingsMenu', () => {
 
     expect(screen.getByText('xHigh')).toBeInTheDocument()
     expect(screen.queryByText('Max')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ultracode')).not.toBeInTheDocument()
   })
 
   it('keeps Max effort available for Claude adaptive thinking', async () => {
@@ -226,5 +227,22 @@ describe('MobileSettingsMenu', () => {
     await user.click(screen.getByText('Effort'))
 
     expect(screen.getAllByText('Max').length).toBeGreaterThan(0)
+  })
+
+  it('keeps Ultracode effort available for Claude adaptive thinking', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MobileSettingsMenu
+        {...baseProps}
+        selectedEffortLevel="ultracode"
+        useAdaptiveThinking
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: /settings/i }))
+    await user.click(screen.getByText('Effort'))
+
+    expect(screen.getAllByText('Ultracode').length).toBeGreaterThan(0)
   })
 })

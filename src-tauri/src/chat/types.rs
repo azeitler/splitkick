@@ -108,6 +108,7 @@ pub enum ThinkingLevel {
 /// Effort level for Opus adaptive thinking
 /// Controls --settings {"effort": "<level>"} via CLI
 /// Replaces ThinkingLevel when model is Opus (latest) on CLI >= 2.1.32
+/// Ultracode enables Claude Code's xhigh-effort Dynamic Workflow mode.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum EffortLevel {
@@ -119,6 +120,7 @@ pub enum EffortLevel {
     High,
     Xhigh,
     Max,
+    Ultracode,
 }
 
 impl EffortLevel {
@@ -131,6 +133,7 @@ impl EffortLevel {
             EffortLevel::High => Some("high"),
             EffortLevel::Xhigh => Some("xhigh"),
             EffortLevel::Max => Some("max"),
+            EffortLevel::Ultracode => Some("ultracode"),
         }
     }
 }
@@ -1193,7 +1196,7 @@ pub struct RunEntry {
     /// Thinking level (off, think, megathink, ultrathink)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thinking_level: Option<String>,
-    /// Effort level for Opus adaptive thinking (low, medium, high, xhigh, max)
+    /// Effort level for Opus adaptive thinking (low, medium, high, xhigh, max, ultracode)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_level: Option<String>,
     /// Unix timestamp when run started
@@ -1549,6 +1552,11 @@ mod tests {
     // ========================================================================
     // ThinkingLevel tests
     // ========================================================================
+
+    #[test]
+    fn test_effort_level_ultracode_value() {
+        assert_eq!(EffortLevel::Ultracode.effort_value(), Some("ultracode"));
+    }
 
     #[test]
     fn test_thinking_level_is_enabled() {

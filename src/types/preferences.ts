@@ -576,6 +576,7 @@ export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `### 1. Plan Mode Default
 
 ## Core Principles
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
+- **VERY IMPORTANT: Keep Code Simple**: Do not over-engineer. Always implement the simplest maintainable solution. Avoid extra abstractions, frameworks, configuration, or future-proofing unless clearly required.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
 
@@ -937,7 +938,7 @@ export interface AppPreferences {
   theme: string
   selected_model: ClaudeModel // Claude model ID passed to --model flag
   thinking_level: ThinkingLevel // Thinking level: 'off' | 'think' | 'megathink' | 'ultrathink'
-  default_effort_level: EffortLevel // Effort level for Opus adaptive thinking: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  default_effort_level: EffortLevel // Effort level for Opus adaptive thinking: 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultracode'
   terminal: TerminalApp // Terminal app: 'terminal' | 'warp' | 'ghostty' | 'iterm2' | 'powershell' | 'windows-terminal'
   terminal_renderer?: TerminalRenderer // Embedded terminal renderer: 'xterm' or 'ghostty-web' (experimental)
   terminal_font?: TerminalFont // Embedded terminal font
@@ -1257,6 +1258,11 @@ export const effortLevelOptions: {
     description: 'Extra high Claude Opus effort',
   },
   { value: 'max', label: 'Max', description: 'Maximum Claude Opus effort' },
+  {
+    value: 'ultracode',
+    label: 'Ultracode',
+    description: 'xHigh effort plus automatic Claude Code workflows',
+  },
 ]
 
 // =============================================================================

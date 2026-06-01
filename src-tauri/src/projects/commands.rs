@@ -7525,6 +7525,35 @@ fn extract_codex_review_structured_output(output: &str) -> Result<String, String
     Err("No structured output found in Codex response".to_string())
 }
 
+fn build_codex_review_args(
+    actual_model: &str,
+    is_fast: bool,
+    schema_file: &Path,
+    working_dir: Option<&Path>,
+) -> Vec<std::ffi::OsString> {
+    let mut args = vec![
+        "exec".into(),
+        "--json".into(),
+        "--model".into(),
+        actual_model.into(),
+        "--full-auto".into(),
+        "--output-schema".into(),
+        schema_file.as_os_str().to_os_string(),
+    ];
+    if is_fast {
+        args.push("-c".into());
+        args.push("service_tier=\"fast\"".into());
+    }
+    if let Some(dir) = working_dir {
+        args.push("--cd".into());
+        args.push(dir.as_os_str().to_os_string());
+    } else {
+        args.push("--skip-git-repo-check".into());
+    }
+    args.push("-".into());
+    args
+}
+
 fn execute_codex_review(
     app: &AppHandle,
     prompt: &str,
@@ -7551,26 +7580,15 @@ fn execute_codex_review(
     );
 
     let mut cmd = crate::platform::silent_command(&cli_path);
-    cmd.args([
-        "exec",
-        "--json",
-        "--model",
+    cmd.args(build_codex_review_args(
         actual_model,
-        "--full-auto",
-        "--output-schema",
-    ]);
-    if is_fast {
-        cmd.args(["-c", "service_tier=\"fast\""]);
-    }
-    cmd.arg(&schema_file);
+        is_fast,
+        &schema_file,
+        working_dir,
+    ));
     if let Some(dir) = working_dir {
-        cmd.arg("--cd");
-        cmd.arg(dir);
         cmd.current_dir(dir);
-    } else {
-        cmd.arg("--skip-git-repo-check");
     }
-    cmd.arg("-");
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -8223,6 +8241,45 @@ pub async fn run_coderabbit_review(
     }
 
     parse_coderabbit_review_output(&stdout)
+}
+
+#[cfg(test)]
+mod codex_review_args_tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn fast_service_tier_does_not_split_output_schema_from_schema_path() {
+        let schema_file = Path::new("/tmp/jean-codex-review-schema.json");
+        let working_dir = Path::new("/tmp/project");
+
+        let args = build_codex_review_args("gpt-5.3-codex", true, schema_file, Some(working_dir));
+
+        let output_schema_position = args
+            .iter()
+            .position(|arg| arg == "--output-schema")
+            .expect("--output-schema arg is present");
+        assert_eq!(
+            args.get(output_schema_position + 1),
+            Some(&schema_file.as_os_str().to_os_string()),
+            "schema path must immediately follow --output-schema"
+        );
+        assert!(args.windows(2).any(|window| {
+            window
+                == [
+                    OsString::from("-c"),
+                    OsString::from("service_tier=\"fast\""),
+                ]
+        }));
+        assert!(args.windows(2).any(|window| {
+            window
+                == [
+                    OsString::from("--cd"),
+                    working_dir.as_os_str().to_os_string(),
+                ]
+        }));
+        assert_eq!(args.last(), Some(&OsString::from("-")));
+    }
 }
 
 #[cfg(test)]

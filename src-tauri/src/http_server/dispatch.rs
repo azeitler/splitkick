@@ -1121,6 +1121,12 @@ pub async fn dispatch_command(
                     }
                     Some(crate::chat::types::ThinkingLevel::Off)
                 }
+                Some("ultracode") => {
+                    if effort_level.is_none() {
+                        effort_level = Some(crate::chat::types::EffortLevel::Ultracode);
+                    }
+                    Some(crate::chat::types::ThinkingLevel::Off)
+                }
                 Some(other) => {
                     return Err(format!(
                             "invalid args `thinkingLevel` for command `send_chat_message`: unknown variant `{other}`, expected one of `off`, `think`, `megathink`, `ultrathink`"

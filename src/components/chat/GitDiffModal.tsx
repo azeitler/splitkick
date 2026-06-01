@@ -273,6 +273,7 @@ export function GitDiffModal({
   const [selectedFileIndex, setSelectedFileIndex] = useState<number>(0)
   const [fileFilter, setFileFilter] = useState('')
   const fileListRef = useRef<HTMLDivElement>(null)
+  const fileFilterInputRef = useRef<HTMLInputElement>(null)
 
   // Use transition for file switching to keep UI responsive during heavy diff rendering
   const [, startTransition] = useTransition()
@@ -693,6 +694,44 @@ export function GitDiffModal({
     !!diff &&
     filteredFiles.length > 0 &&
     !isCommitting
+
+  // Vim-style quick focus for the file filter. Keep it scoped to the diff
+  // modal and preserve normal typing/selection behavior.
+  useEffect(() => {
+    if (!diffRequest) return
+
+    const focusFileFilter = () => {
+      if (isMobile) {
+        setShowMobileSidebar(true)
+      }
+
+      requestAnimationFrame(() => {
+        fileFilterInputRef.current?.focus({ preventScroll: true })
+        fileFilterInputRef.current?.select()
+      })
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.key !== '/' ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey ||
+        e.shiftKey ||
+        isEditableKeyboardTarget(e.target) ||
+        hasSelectedText()
+      ) {
+        return
+      }
+
+      e.preventDefault()
+      e.stopPropagation()
+      focusFileFilter()
+    }
+
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => document.removeEventListener('keydown', handleKeyDown, true)
+  }, [diffRequest, isMobile])
 
   // Commit selected (or all) uncommitted files with Cmd+Enter from the diff modal.
   // Preserve normal copy behavior while typing or when any text is selected.
@@ -1240,6 +1279,7 @@ export function GitDiffModal({
                             <div className="relative">
                               <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
                               <input
+                                ref={fileFilterInputRef}
                                 type="text"
                                 value={fileFilter}
                                 onChange={e => {
@@ -1425,6 +1465,7 @@ export function GitDiffModal({
                               <div className="relative">
                                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-[1em] w-[1em] text-muted-foreground pointer-events-none" />
                                 <input
+                                  ref={fileFilterInputRef}
                                   type="text"
                                   value={fileFilter}
                                   onChange={e => {

@@ -193,8 +193,13 @@ export function DesktopToolbarControls({
   const effortLevelOptions = isCodex
     ? CODEX_EFFORT_LEVEL_OPTIONS
     : EFFORT_LEVEL_OPTIONS
-  const displayedEffortLevel =
-    isCodex && selectedEffortLevel === 'max' ? 'high' : selectedEffortLevel
+  const displayedEffortLevel = isCodex
+    ? selectedEffortLevel === 'max'
+      ? 'high'
+      : selectedEffortLevel === 'ultracode'
+        ? 'xhigh'
+        : selectedEffortLevel
+    : selectedEffortLevel
   const displayedEffortLabel =
     effortLevelOptions.find(o => o.value === displayedEffortLevel)?.label ??
     displayedEffortLevel
