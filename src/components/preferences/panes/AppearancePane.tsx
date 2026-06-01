@@ -31,6 +31,7 @@ import {
 } from '@/types/preferences'
 import { isMacOS } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
+import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { isValidHex } from '@/lib/terminal-theme'
 import { SettingsSection } from '../SettingsSection'
@@ -67,12 +68,17 @@ const ScalingField: React.FC<{
   </div>
 )
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 const modKey = isMacOS ? 'Cmd' : 'Ctrl'
 
 export const AppearancePane: React.FC = () => {
   const { theme, setTheme } = useTheme()
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
+  const [isVibrancyPending, setIsVibrancyPending] = useState(false)
 
   // Zoom uses commit-only saving to avoid flickering the webview during drag.
   // localZoom tracks slider position, preferences are saved only on release.
@@ -206,15 +212,38 @@ export const AppearancePane: React.FC = () => {
 
   const handleVibrancyChange = useCallback(
     async (checked: boolean) => {
-      patchPreferences.mutate({ window_vibrancy: checked })
+      const previous = preferences?.window_vibrancy ?? false
+      if (checked === previous) return
+
+      setIsVibrancyPending(true)
+      try {
+        await patchPreferences.mutateAsync({ window_vibrancy: checked })
+      } catch {
+        setIsVibrancyPending(false)
+        return
+      }
+
       try {
         await invoke('set_window_vibrancy', { enabled: checked })
-      } catch {
-        // Revert on failure
-        patchPreferences.mutate({ window_vibrancy: !checked })
+      } catch (error) {
+        try {
+          await invoke('set_window_vibrancy', { enabled: previous })
+          await patchPreferences.mutateAsync({ window_vibrancy: previous })
+        } catch (rollbackError) {
+          toast.error('Window transparency was not applied or rolled back', {
+            description: getErrorMessage(rollbackError),
+          })
+          return
+        }
+
+        toast.error('Window transparency was not applied', {
+          description: getErrorMessage(error),
+        })
+      } finally {
+        setIsVibrancyPending(false)
       }
     },
-    [patchPreferences]
+    [patchPreferences, preferences?.window_vibrancy]
   )
 
   return (
@@ -303,7 +332,7 @@ export const AppearancePane: React.FC = () => {
               <Switch
                 checked={preferences?.window_vibrancy ?? false}
                 onCheckedChange={handleVibrancyChange}
-                disabled={patchPreferences.isPending}
+                disabled={patchPreferences.isPending || isVibrancyPending}
               />
             </InlineField>
           )}
