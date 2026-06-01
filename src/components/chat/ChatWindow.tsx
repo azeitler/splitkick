@@ -659,10 +659,13 @@ export function ChatWindow({
   )
   const rawSelectedEffortLevel: EffortLevel =
     sessionEffortLevel ?? defaultEffortLevel
-  const selectedEffortLevel: EffortLevel =
-    isCodexBackend && rawSelectedEffortLevel === 'max'
+  const selectedEffortLevel: EffortLevel = isCodexBackend
+    ? rawSelectedEffortLevel === 'max'
       ? 'high'
-      : rawSelectedEffortLevel
+      : rawSelectedEffortLevel === 'ultracode'
+        ? 'xhigh'
+        : rawSelectedEffortLevel
+    : rawSelectedEffortLevel
 
   // MCP servers: resolve enabled servers cascade (session → project → global)
   // Fetches from ALL installed backends so toolbar shows grouped sections
@@ -1161,7 +1164,8 @@ export function ChatWindow({
             : yoloBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : yoloBackend === 'commandcode'
-                ? (preferences?.selected_commandcode_model ?? 'commandcode/default')
+                ? (preferences?.selected_commandcode_model ??
+                  'commandcode/default')
                 : selectedModelRef.current)
       const yoloOverride =
         yoloModelRef.current || yoloBackend
@@ -1179,7 +1183,12 @@ export function ChatWindow({
       if (yoloBackend) {
         store.setSelectedBackend(
           newSession.id,
-          yoloBackend as 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+          yoloBackend as
+            | 'claude'
+            | 'codex'
+            | 'opencode'
+            | 'cursor'
+            | 'commandcode'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
@@ -1332,7 +1341,8 @@ export function ChatWindow({
             : buildBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : buildBackend === 'commandcode'
-                ? (preferences?.selected_commandcode_model ?? 'commandcode/default')
+                ? (preferences?.selected_commandcode_model ??
+                  'commandcode/default')
                 : selectedModelRef.current)
       const buildOverride =
         buildModelRef.current || buildBackend
@@ -1350,7 +1360,12 @@ export function ChatWindow({
       if (buildBackend) {
         store.setSelectedBackend(
           newSession.id,
-          buildBackend as 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+          buildBackend as
+            | 'claude'
+            | 'codex'
+            | 'opencode'
+            | 'cursor'
+            | 'commandcode'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
@@ -1582,7 +1597,8 @@ export function ChatWindow({
             : modeBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : modeBackend === 'commandcode'
-                ? (preferences?.selected_commandcode_model ?? 'commandcode/default')
+                ? (preferences?.selected_commandcode_model ??
+                  'commandcode/default')
                 : selectedModelRef.current)
       const modeOverride =
         modeModelRef.current || modeBackend
@@ -1600,7 +1616,12 @@ export function ChatWindow({
       if (modeBackend) {
         store.setSelectedBackend(
           newSession.id,
-          modeBackend as 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+          modeBackend as
+            | 'claude'
+            | 'codex'
+            | 'opencode'
+            | 'cursor'
+            | 'commandcode'
         )
       }
       queryClient.setQueryData<Session>(
@@ -2736,8 +2757,7 @@ export function ChatWindow({
                                   onSubmit={(_toolCallId, answers) =>
                                     handleCodexUserInputAnswer(
                                       activeCodexUserInputRequest,
-                                      answers,
-                                      activeCodexUserInputQuestions
+                                      answers
                                     )
                                   }
                                   isSkipped={false}

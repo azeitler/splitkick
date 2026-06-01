@@ -165,7 +165,7 @@ describe('DesktopToolbarControls', () => {
     expect(screen.getByRole('button', { name: /magic/i })).toBeDisabled()
   })
 
-  it('hides Claude-only Max effort for Codex', () => {
+  it('hides Claude-only Max and Ultracode effort for Codex', () => {
     renderDesktopToolbarControls({
       isCodex: true,
       selectedBackend: 'codex',
@@ -176,6 +176,7 @@ describe('DesktopToolbarControls', () => {
 
     expect(screen.getByText('xHigh')).toBeInTheDocument()
     expect(screen.queryByText('Max')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ultracode')).not.toBeInTheDocument()
   })
 
   it('keeps Max effort available for Claude adaptive thinking', () => {
@@ -188,5 +189,17 @@ describe('DesktopToolbarControls', () => {
     })
 
     expect(screen.getAllByText('Max').length).toBeGreaterThan(0)
+  })
+
+  it('keeps Ultracode effort available for Claude adaptive thinking', () => {
+    renderDesktopToolbarControls({
+      isCodex: false,
+      selectedBackend: 'claude',
+      useAdaptiveThinking: true,
+      selectedEffortLevel: 'ultracode',
+      thinkingDropdownOpen: true,
+    })
+
+    expect(screen.getAllByText('Ultracode').length).toBeGreaterThan(0)
   })
 })

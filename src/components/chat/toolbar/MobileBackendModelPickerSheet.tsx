@@ -17,7 +17,13 @@ interface MobileBackendModelPickerSheetProps {
   selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
   selectedProvider: string | null
   selectedModel: string
-  installedBackends: ('claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode')[]
+  installedBackends: (
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'commandcode'
+  )[]
   customCliProfiles: CustomCliProfile[]
   onModelChange: (model: string) => void
   onBackendModelChange: (

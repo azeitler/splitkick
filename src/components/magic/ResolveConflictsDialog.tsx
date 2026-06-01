@@ -121,7 +121,8 @@ export function ResolveConflictsDialog({
           : backend === 'cursor'
             ? (preferences?.selected_cursor_model ?? 'cursor/auto')
             : defaultBackend === 'commandcode'
-              ? (preferences?.selected_commandcode_model ?? 'commandcode/default')
+              ? (preferences?.selected_commandcode_model ??
+                'commandcode/default')
               : (preferences?.selected_model ?? 'sonnet'))
     const provider = resolveMagicPromptProvider(
       preferences?.magic_prompt_providers,

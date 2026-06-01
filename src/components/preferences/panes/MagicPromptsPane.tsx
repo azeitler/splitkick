@@ -26,11 +26,13 @@ import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { useAvailableCursorModels } from '@/services/cursor-cli'
+import { useAvailableCommandCodeModels } from '@/services/commandcode-cli'
 import {
   formatCursorModelLabel,
   formatOpencodeModelLabel,
 } from '@/components/chat/toolbar/toolbar-utils'
 import {
+  COMMANDCODE_MODEL_OPTIONS as COMMANDCODE_FALLBACK_OPTIONS,
   CURSOR_MODEL_OPTIONS as CURSOR_FALLBACK_OPTIONS,
   OPENCODE_MODEL_OPTIONS as OPENCODE_FALLBACK_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
@@ -119,7 +121,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ISSUE_PROMPT,
-        defaultModel: 'claude-opus-4-7[1m]',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_pr',
@@ -140,7 +142,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_PR_PROMPT,
-        defaultModel: 'claude-opus-4-7[1m]',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_workflow_run',
@@ -167,7 +169,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
-        defaultModel: 'claude-opus-4-7[1m]',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_security_alert',
@@ -189,7 +191,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
-        defaultModel: 'claude-opus-4-7[1m]',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_advisory',
@@ -209,7 +211,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
-        defaultModel: 'claude-opus-4-7[1m]',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_linear_issue',
@@ -234,7 +236,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
-        defaultModel: 'claude-opus-4-7[1m]',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
     ],
   },
@@ -261,7 +263,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_CODE_REVIEW_PROMPT,
-        defaultModel: 'claude-opus-4-7[1m]',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'review_comments',
@@ -283,7 +285,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_REVIEW_COMMENTS_PROMPT,
-        defaultModel: 'claude-opus-4-7[1m]',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'commit_message',
@@ -353,7 +355,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
         description: 'Instructions appended to conflict resolution prompts.',
         variables: [],
         defaultValue: DEFAULT_RESOLVE_CONFLICTS_PROMPT,
-        defaultModel: 'claude-opus-4-7[1m]',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'release_notes',
@@ -469,6 +471,7 @@ export function getMagicPromptItemId(key: keyof MagicPrompts): string {
 }
 
 const CLAUDE_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
+  { value: 'claude-opus-4-8[1m]', label: 'Opus 4.8 (1M)' },
   { value: 'claude-opus-4-7[1m]', label: 'Opus 4.7 (1M)' },
   { value: 'claude-opus-4-6[1m]', label: 'Opus 4.6 (1M)' },
   { value: 'sonnet', label: 'Sonnet 4.6' },
@@ -510,6 +513,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
 
   const { data: availableOpencodeModels } = useAvailableOpencodeModels()
   const { data: availableCursorModels } = useAvailableCursorModels()
+  const { data: availableCommandCodeModels } = useAvailableCommandCodeModels()
   const { installedBackends } = useInstalledBackends()
 
   const formatOpenCodeLabel = (value: string) => {
@@ -540,15 +544,21 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
       label: option.label || formatCursorModelLabel(option.value),
     }))
   }, [availableCursorModels])
-  const commandCodeModelOptions = useMemo(
-    () => [
-      {
-        value: 'commandcode/default' as MagicPromptModel,
-        label: 'CLI default (no --model)',
-      },
-    ],
-    []
-  )
+  const commandCodeModelOptions = useMemo(() => {
+    const options = availableCommandCodeModels?.length
+      ? [
+          { value: 'commandcode/default', label: 'CLI default (no --model)' },
+          ...availableCommandCodeModels.map(model => ({
+            value: `commandcode/${model.id}`,
+            label: model.label,
+          })),
+        ]
+      : COMMANDCODE_FALLBACK_OPTIONS
+    return options.map(option => ({
+      value: option.value as MagicPromptModel,
+      label: option.label,
+    }))
+  }, [availableCommandCodeModels])
 
   const currentPrompts = preferences?.magic_prompts ?? DEFAULT_MAGIC_PROMPTS
   const currentModels =

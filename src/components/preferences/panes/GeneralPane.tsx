@@ -78,6 +78,7 @@ import {
 } from '@/services/cursor-cli'
 import {
   getCommandCodeInstallCommand,
+  useAvailableCommandCodeModels,
   useCommandCodeCliStatus,
   useCommandCodeCliAuth,
   useCommandCodePathDetection,
@@ -144,6 +145,7 @@ import {
   type NewSessionKind,
 } from '@/types/preferences'
 import {
+  COMMANDCODE_MODEL_OPTIONS,
   CURSOR_MODEL_OPTIONS,
   OPENCODE_MODEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
@@ -319,6 +321,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const { data: availableCursorModels } = useAvailableCursorModels({
     enabled: !!cursorStatus?.installed,
   })
+  const { data: availableCommandCodeModels } = useAvailableCommandCodeModels({
+    enabled: !!commandcodeStatus?.installed,
+  })
 
   // Re-check CLI status when the source preference changes (handles initial load
   // with source already set to "path" and any timing issues with onSuccess invalidation)
@@ -391,8 +396,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const [checkingCodeRabbitAuth, setCheckingCodeRabbitAuth] = useState(false)
   const [checkingOpenCodeAuth, setCheckingOpenCodeAuth] = useState(false)
   const [checkingCursorAuth, setCheckingCursorAuth] = useState(false)
-  const [checkingCommandCodeAuth, setCheckingCommandCodeAuth] =
-    useState(false)
+  const [checkingCommandCodeAuth, setCheckingCommandCodeAuth] = useState(false)
   const [openCodeModelPopoverOpen, setOpenCodeModelPopoverOpen] =
     useState(false)
   const [cursorModelPopoverOpen, setCursorModelPopoverOpen] = useState(false)
@@ -832,9 +836,15 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     effectiveBackend) as CliBackend
   const selectedCommandCodeModel =
     preferences?.selected_commandcode_model ?? 'commandcode/default'
-  const commandCodeModelOptions = [
-    { value: 'commandcode/default', label: 'CLI default (no --model)' },
-  ]
+  const commandCodeModelOptions = availableCommandCodeModels?.length
+    ? [
+        { value: 'commandcode/default', label: 'CLI default (no --model)' },
+        ...availableCommandCodeModels.map(model => ({
+          value: `commandcode/${model.id}`,
+          label: model.label,
+        })),
+      ]
+    : COMMANDCODE_MODEL_OPTIONS
   const cursorAuthMessage = cursorAuth?.timed_out
     ? 'Auth check timed out. Try again or run login manually.'
     : cursorAuth?.error
@@ -1150,7 +1160,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     if (!commandcodeStatus?.path) return
     setCheckingCommandCodeAuth(true)
     try {
-      await queryClient.invalidateQueries({ queryKey: commandcodeCliQueryKeys.auth() })
+      await queryClient.invalidateQueries({
+        queryKey: commandcodeCliQueryKeys.auth(),
+      })
       const result = await queryClient.fetchQuery<CommandCodeAuthStatus>({
         queryKey: commandcodeCliQueryKeys.auth(),
       })
@@ -2271,7 +2283,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               description="Claude model for AI assistance"
             >
               <Select
-                value={preferences?.selected_model ?? 'claude-opus-4-7[1m]'}
+                value={preferences?.selected_model ?? 'claude-opus-4-8[1m]'}
                 onValueChange={handleModelChange}
               >
                 <SelectTrigger className="w-full sm:min-w-96">

@@ -58,7 +58,13 @@ function mapCodexReasoningToEffort(
 }
 
 function getDefaultModelForBackend(
-  backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode' | undefined,
+  backend:
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'commandcode'
+    | undefined,
   preferences:
     | {
         selected_model?: string | null
@@ -81,7 +87,7 @@ function getDefaultModelForBackend(
   if (backend === 'commandcode') {
     return preferences?.selected_commandcode_model ?? 'commandcode/default'
   }
-  return preferences?.selected_model ?? 'claude-opus-4-7[1m]'
+  return preferences?.selected_model ?? 'claude-opus-4-8[1m]'
 }
 
 interface UseClearContextApprovalParams {

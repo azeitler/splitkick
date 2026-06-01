@@ -7,6 +7,7 @@ import type {
   CommandCodeAuthStatus,
   CommandCodeCliStatus,
   CommandCodeInstallCommand,
+  CommandCodeModelInfo,
 } from '@/types/commandcode-cli'
 import { hasBackend } from '@/lib/environment'
 
@@ -16,7 +17,9 @@ export const commandcodeCliQueryKeys = {
   all: ['commandcode-cli'] as const,
   status: () => [...commandcodeCliQueryKeys.all, 'status'] as const,
   auth: () => [...commandcodeCliQueryKeys.all, 'auth'] as const,
-  installCommand: () => [...commandcodeCliQueryKeys.all, 'install-command'] as const,
+  models: () => [...commandcodeCliQueryKeys.all, 'models'] as const,
+  installCommand: () =>
+    [...commandcodeCliQueryKeys.all, 'install-command'] as const,
 }
 
 export function useCommandCodePathDetection(options?: { enabled?: boolean }) {
@@ -29,13 +32,23 @@ export function useCommandCodePathDetection(options?: { enabled?: boolean }) {
       package_manager: string | null
     }> => {
       if (!isTauri()) {
-        return { found: false, path: null, version: null, package_manager: null }
+        return {
+          found: false,
+          path: null,
+          version: null,
+          package_manager: null,
+        }
       }
       try {
         return await invoke('detect_commandcode_in_path')
       } catch (error) {
         logger.debug('Command Code path detection failed', { error })
-        return { found: false, path: null, version: null, package_manager: null }
+        return {
+          found: false,
+          path: null,
+          version: null,
+          package_manager: null,
+        }
       }
     },
     enabled: options?.enabled ?? true,
@@ -50,7 +63,9 @@ export function useCommandCodeCliStatus(options?: { enabled?: boolean }) {
     queryFn: async (): Promise<CommandCodeCliStatus> => {
       if (!isTauri()) return { installed: false, version: null, path: null }
       try {
-        return await invoke<CommandCodeCliStatus>('check_commandcode_cli_installed')
+        return await invoke<CommandCodeCliStatus>(
+          'check_commandcode_cli_installed'
+        )
       } catch (error) {
         logger.error('Failed to check Command Code CLI status', { error })
         return { installed: false, version: null, path: null }
@@ -68,7 +83,11 @@ export function useCommandCodeCliAuth(options?: { enabled?: boolean }) {
     queryKey: commandcodeCliQueryKeys.auth(),
     queryFn: async (): Promise<CommandCodeAuthStatus> => {
       if (!isTauri()) {
-        return { authenticated: false, error: 'Not in Tauri context', timed_out: false }
+        return {
+          authenticated: false,
+          error: 'Not in Tauri context',
+          timed_out: false,
+        }
       }
       try {
         return await invoke<CommandCodeAuthStatus>('check_commandcode_cli_auth')
@@ -79,6 +98,24 @@ export function useCommandCodeCliAuth(options?: { enabled?: boolean }) {
           error: error instanceof Error ? error.message : String(error),
           timed_out: false,
         }
+      }
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: 1000 * 60 * 5,
+    gcTime: 1000 * 60 * 10,
+  })
+}
+
+export function useAvailableCommandCodeModels(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: commandcodeCliQueryKeys.models(),
+    queryFn: async (): Promise<CommandCodeModelInfo[]> => {
+      if (!isTauri()) return []
+      try {
+        return await invoke<CommandCodeModelInfo[]>('list_commandcode_models')
+      } catch (error) {
+        logger.error('Failed to list Command Code models', { error })
+        return []
       }
     },
     enabled: options?.enabled ?? true,

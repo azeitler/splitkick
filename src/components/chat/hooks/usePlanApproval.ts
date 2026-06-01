@@ -38,6 +38,7 @@ const EFFORT_LEVEL_VALUES = new Set<EffortLevel>([
   'high',
   'xhigh',
   'max',
+  'ultracode',
 ])
 
 function isEffortLevel(value: string | null | undefined): value is EffortLevel {
@@ -164,8 +165,8 @@ export function usePlanApproval({
       const model = overridesApply
         ? (preferences?.build_model ??
           preferences?.selected_model ??
-          'claude-opus-4-7[1m]')
-        : (preferences?.selected_model ?? 'claude-opus-4-7[1m]')
+          'claude-opus-4-8[1m]')
+        : (preferences?.selected_model ?? 'claude-opus-4-8[1m]')
       const buildThinkingOverride = overridesApply
         ? preferences?.build_thinking_level
         : null
@@ -367,8 +368,8 @@ export function usePlanApproval({
       const model = overridesApplyYolo
         ? (preferences?.yolo_model ??
           preferences?.selected_model ??
-          'claude-opus-4-7[1m]')
-        : (preferences?.selected_model ?? 'claude-opus-4-7[1m]')
+          'claude-opus-4-8[1m]')
+        : (preferences?.selected_model ?? 'claude-opus-4-8[1m]')
       const yoloThinkingOverride = overridesApplyYolo
         ? preferences?.yolo_thinking_level
         : null

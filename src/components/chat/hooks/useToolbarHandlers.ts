@@ -23,7 +23,13 @@ interface UseToolbarHandlersParams {
   activeWorktreePathRef: RefObject<string | null | undefined>
   enabledMcpServersRef: RefObject<string[]>
   selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
-  installedBackends: ('claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode')[]
+  installedBackends: (
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'commandcode'
+  )[]
   session: Session | null | undefined
   preferences:
     | {
@@ -33,6 +39,7 @@ interface UseToolbarHandlersParams {
         selected_cursor_model?: string
         selected_commandcode_model?: string
         custom_cli_profiles?: { name: string }[]
+        default_execution_mode?: ExecutionMode
       }
     | undefined
   queryClient: QueryClient
@@ -77,10 +84,20 @@ export function useToolbarHandlers({
   setLoadContextModalOpen,
 }: UseToolbarHandlersParams) {
   const persistToolbarBackendAndModel = useCallback(
-    (backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode', model: string) => {
+    (
+      backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode',
+      model: string
+    ) => {
+      const currentMode =
+        (activeSessionId
+          ? useChatStore.getState().executionModes[activeSessionId]
+          : undefined) ??
+        session?.selected_execution_mode ??
+        preferences?.default_execution_mode ??
+        'plan'
       const nextExecutionMode = normalizeExecutionModeForBackend(
         backend,
-        session?.selected_execution_mode ?? 'plan'
+        currentMode
       )
 
       if (activeSessionId && activeWorktreeId && activeWorktreePath) {
@@ -151,6 +168,7 @@ export function useToolbarHandlers({
       activeWorktreeId,
       activeWorktreePath,
       queryClient,
+      preferences?.default_execution_mode,
       session?.selected_execution_mode,
       setSessionBackend,
       setSessionModel,
@@ -199,7 +217,8 @@ export function useToolbarHandlers({
             : backend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : backend === 'commandcode'
-                ? (preferences?.selected_commandcode_model ?? 'commandcode/default')
+                ? (preferences?.selected_commandcode_model ??
+                  'commandcode/default')
                 : ((preferences?.selected_model as string) ?? DEFAULT_MODEL)
 
       persistToolbarBackendAndModel(backend, model)
@@ -215,7 +234,10 @@ export function useToolbarHandlers({
   )
 
   const handleToolbarBackendModelChange = useCallback(
-    (backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode', model: string) => {
+    (
+      backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode',
+      model: string
+    ) => {
       persistToolbarBackendAndModel(backend, model)
     },
     [persistToolbarBackendAndModel]

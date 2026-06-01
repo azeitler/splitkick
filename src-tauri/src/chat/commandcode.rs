@@ -12,6 +12,8 @@ use std::path::Path;
 use std::process::Stdio;
 use tauri::AppHandle;
 
+const DEFAULT_MAX_TURNS: &str = "30";
+
 #[derive(serde::Serialize, Clone)]
 struct ChunkEvent {
     session_id: String,
@@ -147,14 +149,20 @@ pub fn execute_commandcode_headless(
 
     let mut command = silent_command(&binary_path);
     command.current_dir(working_dir);
-    command.arg("-p").arg("--trust").arg("--skip-onboarding");
+    command
+        .arg("-p")
+        .arg("--trust")
+        .arg("--skip-onboarding")
+        .arg("--max-turns")
+        .arg(DEFAULT_MAX_TURNS);
     let cli_model = normalize_model_for_cli(model);
     if let Some(cli_model) = &cli_model {
         command.arg("--model").arg(cli_model);
         log::info!(
-            "Command Code run session={} using --model {}",
+            "Command Code run session={} using --model {} max_turns={}",
             jean_session_id,
-            cli_model
+            cli_model,
+            DEFAULT_MAX_TURNS
         );
     }
     match mode {
@@ -333,7 +341,12 @@ pub fn execute_one_shot_commandcode(
     if let Some(dir) = working_dir {
         command.current_dir(dir);
     }
-    command.arg("-p").arg("--trust").arg("--skip-onboarding");
+    command
+        .arg("-p")
+        .arg("--trust")
+        .arg("--skip-onboarding")
+        .arg("--max-turns")
+        .arg(DEFAULT_MAX_TURNS);
     let cli_model = normalize_model_for_cli(model);
     if let Some(cli_model) = &cli_model {
         command.arg("--model").arg(cli_model);

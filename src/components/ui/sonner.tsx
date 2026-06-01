@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useTheme } from '@/hooks/use-theme'
 import {
   Toaster as Sonner,
@@ -11,6 +12,7 @@ import {
 const POINTER_DISMISS_THRESHOLD = 28
 const WHEEL_DISMISS_THRESHOLD = 32
 const WHEEL_DISMISS_RESET_MS = 180
+const TOASTER_Z_INDEX = 2147483647
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest('button, a'))
@@ -159,7 +161,7 @@ const Toaster = ({ position, style, ...props }: ToasterProps) => {
   const { theme = 'system' } = useTheme()
   const resolvedPosition = position ?? 'bottom-right'
 
-  return (
+  const content = (
     <>
       <Sonner
         theme={theme as ToasterProps['theme']}
@@ -171,6 +173,7 @@ const Toaster = ({ position, style, ...props }: ToasterProps) => {
             '--normal-text': 'var(--popover-foreground)',
             '--normal-border': 'var(--toast-border, var(--border))',
             ...style,
+            zIndex: TOASTER_Z_INDEX,
           } as React.CSSProperties
         }
         {...props}
@@ -178,6 +181,10 @@ const Toaster = ({ position, style, ...props }: ToasterProps) => {
       <ToastGestureDismiss position={resolvedPosition} />
     </>
   )
+
+  if (typeof document === 'undefined') return content
+
+  return createPortal(content, document.body)
 }
 
 export { Toaster }

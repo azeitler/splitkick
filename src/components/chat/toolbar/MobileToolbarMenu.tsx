@@ -15,6 +15,7 @@ import {
   MessageSquare,
   RefreshCw,
   Sparkles,
+  Undo2,
   Wand2,
 } from 'lucide-react'
 import {
@@ -38,10 +39,12 @@ interface MobileToolbarMenuProps {
   onLoadContext: () => void
   onCommit: () => void
   onCommitAndPush: () => void
+  onRevertLastCommit: () => void
   onOpenPr: () => void
   onReview: () => void
   onMerge: () => void
   onMergePr: () => void
+  onOpenMagicModal: () => void
 
   handlePullClick: () => void
   handlePushClick: () => void
@@ -56,10 +59,12 @@ export function MobileToolbarMenu({
   onLoadContext,
   onCommit,
   onCommitAndPush,
+  onRevertLastCommit,
   onOpenPr,
   onReview,
   onMerge,
   onMergePr,
+  onOpenMagicModal,
   handlePullClick,
   handlePushClick,
 }: MobileToolbarMenuProps) {
@@ -79,6 +84,26 @@ export function MobileToolbarMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={isMobile ? 'end' : 'start'} className="w-56">
+        <DropdownMenuItem
+          onClick={() => {
+            setMenuOpen(false)
+            onOpenMagicModal()
+          }}
+        >
+          <Wand2 className="h-4 w-4" />
+          Magic
+          <span
+            className={cn(
+              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+              isMobile && 'hidden'
+            )}
+          >
+            ⌘M
+          </span>
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
         <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Context
         </div>
@@ -168,6 +193,23 @@ export function MobileToolbarMenu({
             )}
           >
             P
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            setMenuOpen(false)
+            onRevertLastCommit()
+          }}
+        >
+          <Undo2 className="h-4 w-4" />
+          Revert Commit
+          <span
+            className={cn(
+              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+              isMobile && 'hidden'
+            )}
+          >
+            Z
           </span>
         </DropdownMenuItem>
 

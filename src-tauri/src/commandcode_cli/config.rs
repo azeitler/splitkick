@@ -4,11 +4,17 @@ use crate::platform::silent_command;
 use std::path::PathBuf;
 use tauri::AppHandle;
 
+#[cfg(windows)]
+pub const CLI_BINARY_NAME: &str = "cmdc";
+#[cfg(not(windows))]
 pub const CLI_BINARY_NAME: &str = "cmd";
 pub const LEGACY_CLI_BINARY_NAME: &str = "command-code";
 
 #[cfg(windows)]
 pub const CLI_BINARY_CANDIDATES: &[&str] = &[
+    "cmdc.cmd",
+    "cmdc.ps1",
+    "cmdc.exe",
     "cmd.cmd",
     "cmd.ps1",
     "command-code.cmd",
@@ -17,7 +23,7 @@ pub const CLI_BINARY_CANDIDATES: &[&str] = &[
 ];
 
 #[cfg(not(windows))]
-pub const CLI_BINARY_CANDIDATES: &[&str] = &[CLI_BINARY_NAME, LEGACY_CLI_BINARY_NAME];
+pub const CLI_BINARY_CANDIDATES: &[&str] = &[CLI_BINARY_NAME, LEGACY_CLI_BINARY_NAME, "cmdc"];
 
 pub fn resolve_cli_binary(_app: &AppHandle) -> PathBuf {
     let which_cmd = if cfg!(target_os = "windows") {

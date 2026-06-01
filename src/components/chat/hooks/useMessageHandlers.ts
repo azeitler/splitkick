@@ -9,6 +9,7 @@ import {
   persistEnqueue,
 } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
+import { buildCodexUserInputAnswerMap } from '@/types/chat'
 import type {
   ChatMessage,
   CodexCommandApprovalRequest,
@@ -41,6 +42,7 @@ import type {
   WorktreeCreatedEvent,
   WorktreeCreateErrorEvent,
 } from '@/types/projects'
+import { clearPlanApprovalTransientState } from './plan-approval-state'
 
 /** Git commands to auto-approve for magic prompts (no permission prompts needed) */
 export const GIT_ALLOWED_TOOLS = [
@@ -95,7 +97,9 @@ interface UseMessageHandlersParams {
   yoloBackendRef: RefObject<string | null>
   yoloThinkingLevelRef: RefObject<string | null>
   yoloEffortLevelRef: RefObject<string | null>
-  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'>
+  selectedBackendRef: RefObject<
+    'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+  >
   getCustomProfileName: () => string | undefined
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
@@ -157,8 +161,7 @@ interface MessageHandlers {
   handleCodexPermissionRequestDecline: (request: CodexPermissionRequest) => void
   handleCodexUserInputAnswer: (
     request: CodexUserInputRequest,
-    answers: QuestionAnswer[],
-    questions: Question[]
+    answers: QuestionAnswer[]
   ) => void
   handleCodexMcpElicitationAccept: (
     request: CodexMcpElicitationRequest,
@@ -230,7 +233,7 @@ function getDefaultModelForBackend(
   if (backend === 'commandcode') {
     return preferences?.selected_commandcode_model ?? 'commandcode/default'
   }
-  return preferences?.selected_model ?? 'claude-opus-4-7[1m]'
+  return preferences?.selected_model ?? 'claude-opus-4-8[1m]'
 }
 
 /**
@@ -596,20 +599,11 @@ export function useMessageHandlers({
         setLastSentMessage,
         setError,
         setExecutingMode,
-        setSessionReviewing,
-        setWaitingForInput,
-        setPendingPlanMessageId,
-        clearToolCalls,
-        clearStreamingContentBlocks,
       } = useChatStore.getState()
       setMode(sessionId, 'build')
 
-      // Clear the preserved tool calls and review state since we're sending a response
-      clearToolCalls(sessionId)
-      clearStreamingContentBlocks(sessionId)
-      setSessionReviewing(sessionId, false)
-      setWaitingForInput(sessionId, false)
-      setPendingPlanMessageId(sessionId, null)
+      const isCodex = selectedBackendRef.current === 'codex'
+      clearPlanApprovalTransientState(sessionId)
 
       // Mark as at-bottom so Tier 4 / Tier 2 auto-scroll kicks in when
       // streaming starts. Don't physically scroll — let native CSS scroll
@@ -618,7 +612,6 @@ export function useMessageHandlers({
 
       // Format approval message - include updated plan if provided
       // For Codex: use explicit execution instruction since it resumes a thread
-      const isCodex = selectedBackendRef.current === 'codex'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : isCodex
@@ -780,20 +773,11 @@ export function useMessageHandlers({
         setLastSentMessage,
         setError,
         setExecutingMode,
-        setSessionReviewing,
-        setWaitingForInput,
-        setPendingPlanMessageId,
-        clearToolCalls,
-        clearStreamingContentBlocks,
       } = useChatStore.getState()
       setMode(sessionId, 'yolo')
 
-      // Clear the preserved tool calls and review state since we're sending a response
-      clearToolCalls(sessionId)
-      clearStreamingContentBlocks(sessionId)
-      setSessionReviewing(sessionId, false)
-      setWaitingForInput(sessionId, false)
-      setPendingPlanMessageId(sessionId, null)
+      const isCodexYolo = selectedBackendRef.current === 'codex'
+      clearPlanApprovalTransientState(sessionId)
 
       // Mark as at-bottom so Tier 4 / Tier 2 auto-scroll kicks in when
       // streaming starts. Don't physically scroll — let native CSS scroll
@@ -801,7 +785,6 @@ export function useMessageHandlers({
       markAtBottom()
 
       // Format approval message - include updated plan if provided
-      const isCodexYolo = selectedBackendRef.current === 'codex'
       const message = updatedPlan
         ? `I've updated the plan. Please review and execute:\n\n<updated-plan>\n${updatedPlan}\n</updated-plan>`
         : isCodexYolo
@@ -930,18 +913,11 @@ export function useMessageHandlers({
       setError,
       addSendingSession,
       setExecutingMode,
-      setSessionReviewing,
-      setWaitingForInput,
-      clearToolCalls,
-      clearStreamingContentBlocks,
     } = useChatStore.getState()
     setStreamingPlanApproved(sessionId, true)
 
-    // Clear the preserved tool calls and review state since we're sending a response
-    clearToolCalls(sessionId)
-    clearStreamingContentBlocks(sessionId)
-    setSessionReviewing(sessionId, false)
-    setWaitingForInput(sessionId, false)
+    const isCodex = selectedBackendRef.current === 'codex'
+    clearPlanApprovalTransientState(sessionId)
 
     // Mark as at-bottom so Tier 4 / Tier 2 auto-scroll kicks in when
     // streaming starts. Don't physically scroll — let native CSS scroll
@@ -974,8 +950,9 @@ export function useMessageHandlers({
     // Send approval message to Claude so it continues with execution
     // NOTE: setLastSentMessage is critical for permission denial flow - without it,
     // the denied message context won't be set and approval UI won't work
-    const buildApprovalMsg =
-      'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
+    const buildApprovalMsg = isCodex
+      ? 'Execute the plan you created. Implement all changes described.'
+      : 'Plan approved. Begin implementing the changes now. Do not re-explain the plan — start writing code.'
     setLastSentMessage(sessionId, buildApprovalMsg)
     setError(sessionId, null)
     addSendingSession(sessionId)
@@ -1039,18 +1016,11 @@ export function useMessageHandlers({
       setError,
       addSendingSession,
       setExecutingMode,
-      setSessionReviewing,
-      setWaitingForInput,
-      clearToolCalls,
-      clearStreamingContentBlocks,
     } = useChatStore.getState()
     setStreamingPlanApproved(sessionId, true)
 
-    // Clear the preserved tool calls and review state since we're sending a response
-    clearToolCalls(sessionId)
-    clearStreamingContentBlocks(sessionId)
-    setSessionReviewing(sessionId, false)
-    setWaitingForInput(sessionId, false)
+    const isCodexYolo = selectedBackendRef.current === 'codex'
+    clearPlanApprovalTransientState(sessionId)
 
     // Mark as at-bottom so Tier 4 / Tier 2 auto-scroll kicks in when
     // streaming starts. Don't physically scroll — let native CSS scroll
@@ -1080,8 +1050,9 @@ export function useMessageHandlers({
     setSelectedModel(sessionId, streamYoloModel)
 
     // Send approval message to Claude so it continues with execution
-    const yoloApprovalMsg =
-      'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
+    const yoloApprovalMsg = isCodexYolo
+      ? 'Execute the plan you created. Implement all changes described.'
+      : 'Plan approved (yolo mode). Begin implementing all changes immediately without asking for confirmation. Do not re-explain the plan — start writing code.'
     setLastSentMessage(sessionId, yoloApprovalMsg)
     setError(sessionId, null)
     addSendingSession(sessionId)
@@ -1253,7 +1224,12 @@ export function useMessageHandlers({
       if (resolvedBackend) {
         store.setSelectedBackend(
           newSession.id,
-          resolvedBackend as 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+          resolvedBackend as
+            | 'claude'
+            | 'codex'
+            | 'opencode'
+            | 'cursor'
+            | 'commandcode'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model
@@ -1494,7 +1470,12 @@ export function useMessageHandlers({
       if (resolvedBackend) {
         store.setSelectedBackend(
           newSession.id,
-          resolvedBackend as 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+          resolvedBackend as
+            | 'claude'
+            | 'codex'
+            | 'opencode'
+            | 'cursor'
+            | 'commandcode'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
@@ -1840,7 +1821,12 @@ export function useMessageHandlers({
       if (resolvedBackend) {
         store.setSelectedBackend(
           newSession.id,
-          resolvedBackend as 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+          resolvedBackend as
+            | 'claude'
+            | 'codex'
+            | 'opencode'
+            | 'cursor'
+            | 'commandcode'
         )
       }
       queryClient.setQueryData<Session>(
@@ -2147,7 +2133,12 @@ export function useMessageHandlers({
       if (resolvedBackend) {
         store.setSelectedBackend(
           newSession.id,
-          resolvedBackend as 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+          resolvedBackend as
+            | 'claude'
+            | 'codex'
+            | 'opencode'
+            | 'cursor'
+            | 'commandcode'
         )
       }
       queryClient.setQueryData<Session>(
@@ -2878,11 +2869,7 @@ export function useMessageHandlers({
   )
 
   const handleCodexUserInputAnswer = useCallback(
-    (
-      request: CodexUserInputRequest,
-      answers: QuestionAnswer[],
-      questions: Question[]
-    ) => {
+    (request: CodexUserInputRequest, answers: QuestionAnswer[]) => {
       const sessionId = activeSessionIdRef.current
       const worktreeId = activeWorktreeIdRef.current
       const worktreePath = activeWorktreePathRef.current
@@ -2900,31 +2887,7 @@ export function useMessageHandlers({
       )
       store.setWaitingForInput(sessionId, false)
 
-      const answerMap = Object.fromEntries(
-        questions.map((question, index) => {
-          const answer = answers.find(item => item.questionIndex === index)
-          const selected = answer?.customText?.trim()
-            ? [answer.customText.trim()]
-            : (answer?.selectedOptions ?? [])
-                .map(optionIndex => question.options[optionIndex]?.label)
-                .filter((label): label is string => !!label)
-          const questionId =
-            typeof request.questions[index] === 'object' &&
-            request.questions[index] !== null &&
-            'id' in
-              (request.questions[index] as unknown as Record<string, unknown>)
-              ? String(
-                  (
-                    request.questions[index] as unknown as Record<
-                      string,
-                      unknown
-                    >
-                  ).id
-                )
-              : String(index)
-          return [questionId, { answers: selected }]
-        })
-      )
+      const answerMap = buildCodexUserInputAnswerMap(request.questions, answers)
 
       const persistAnsweredState = () => {
         persistCodexPendingState(sessionId, worktreeId, worktreePath)

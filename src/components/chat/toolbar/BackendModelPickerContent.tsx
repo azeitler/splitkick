@@ -21,6 +21,7 @@ import {
 import { usePatchPreferences, usePreferences } from '@/services/preferences'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { useAvailableCursorModels } from '@/services/cursor-cli'
+import { useAvailableCommandCodeModels } from '@/services/commandcode-cli'
 import { cn } from '@/lib/utils'
 import {
   getBackendIcon,
@@ -128,6 +129,9 @@ export function BackendModelPickerContent({
   const { data: availableCursorModels } = useAvailableCursorModels({
     enabled: installedBackends.includes('cursor'),
   })
+  const { data: availableCommandCodeModels } = useAvailableCommandCodeModels({
+    enabled: installedBackends.includes('commandcode'),
+  })
 
   const opencodeModelOptions = useMemo(
     () =>
@@ -145,6 +149,14 @@ export function BackendModelPickerContent({
       })),
     [availableCursorModels]
   )
+  const commandcodeModelOptions = useMemo(
+    () =>
+      availableCommandCodeModels?.map(model => ({
+        value: `commandcode/${model.id}`,
+        label: model.label,
+      })),
+    [availableCommandCodeModels]
+  )
 
   const { backendModelSections } = useToolbarDerivedState({
     selectedBackend,
@@ -152,6 +164,7 @@ export function BackendModelPickerContent({
     selectedModel,
     opencodeModelOptions,
     cursorModelOptions,
+    commandcodeModelOptions,
     customCliProfiles,
     installedBackends,
   })

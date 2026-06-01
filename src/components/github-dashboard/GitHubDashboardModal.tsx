@@ -506,7 +506,7 @@ function ProjectSection({
 }) {
   return (
     <div>
-      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-muted/80 backdrop-blur-sm border-b border-border">
+      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-muted/80 border-b border-border">
         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
           {project.name}
         </span>

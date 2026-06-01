@@ -18,8 +18,15 @@ interface UseToolbarDerivedStateArgs {
   selectedModel: string
   opencodeModelOptions?: { value: string; label: string }[]
   cursorModelOptions?: { value: string; label: string }[]
+  commandcodeModelOptions?: { value: string; label: string }[]
   customCliProfiles: CustomCliProfile[]
-  installedBackends?: ('claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode')[]
+  installedBackends?: (
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'commandcode'
+  )[]
   availableMcpServers?: { name: string; disabled?: boolean }[]
   enabledMcpServers?: string[]
 }
@@ -30,6 +37,7 @@ export function useToolbarDerivedState({
   selectedModel,
   opencodeModelOptions,
   cursorModelOptions,
+  commandcodeModelOptions,
   customCliProfiles,
   installedBackends = ['claude', 'codex', 'opencode', 'cursor', 'commandcode'],
   availableMcpServers = [],
@@ -86,6 +94,8 @@ export function useToolbarDerivedState({
   const resolvedOpencodeModelOptions =
     opencodeModelOptions ?? OPENCODE_MODEL_OPTIONS
   const resolvedCursorModelOptions = cursorModelOptions ?? CURSOR_MODEL_OPTIONS
+  const resolvedCommandCodeModelOptions =
+    commandcodeModelOptions ?? COMMANDCODE_MODEL_OPTIONS
 
   const backendModelSections = useMemo(() => {
     const sections: {
@@ -123,7 +133,7 @@ export function useToolbarDerivedState({
         sections.push({
           backend,
           label: 'Command Code',
-          options: COMMANDCODE_MODEL_OPTIONS,
+          options: resolvedCommandCodeModelOptions,
         })
       }
     }
@@ -134,6 +144,7 @@ export function useToolbarDerivedState({
     codexModelOptions,
     installedBackends,
     resolvedCursorModelOptions,
+    resolvedCommandCodeModelOptions,
     resolvedOpencodeModelOptions,
   ])
 
@@ -141,7 +152,7 @@ export function useToolbarDerivedState({
     if (isCodex) return codexModelOptions
     if (isOpencode) return resolvedOpencodeModelOptions
     if (isCursor) return resolvedCursorModelOptions
-    if (isCommandCode) return COMMANDCODE_MODEL_OPTIONS
+    if (isCommandCode) return resolvedCommandCodeModelOptions
     return claudeModelOptions
   }, [
     claudeModelOptions,
@@ -150,6 +161,7 @@ export function useToolbarDerivedState({
     isCursor,
     isCommandCode,
     isOpencode,
+    resolvedCommandCodeModelOptions,
     resolvedCursorModelOptions,
     resolvedOpencodeModelOptions,
   ])
@@ -172,6 +184,7 @@ export function useToolbarDerivedState({
     backendModelSections,
     claudeModelOptions,
     cursorModelOptions: resolvedCursorModelOptions,
+    commandcodeModelOptions: resolvedCommandCodeModelOptions,
     filteredModelOptions,
     opencodeModelOptions: resolvedOpencodeModelOptions,
     selectedModelLabel,

@@ -71,6 +71,10 @@ interface UseInvestigateHandlersParams {
         onError?: (error: unknown) => void
       }
     ) => void
+    mutateAsync: (args: {
+      worktreeId: string
+      worktreePath: string
+    }) => Promise<Session>
   }
   resolveCustomProfile: (
     model: string,
@@ -765,7 +769,10 @@ export function useInvestigateHandlers({
   )
 
   const handleReviewComments = useCallback(
-    async (prompt: string) => {
+    async (
+      promptOrPrompts: string | string[],
+      options?: { executionMode?: ExecutionMode }
+    ) => {
       const worktreeId = activeWorktreeIdRef.current
       const worktreePath = activeWorktreePathRef.current
       if (!worktreeId || !worktreePath) return
@@ -795,8 +802,16 @@ export function useInvestigateHandlers({
           defaultBackend
         ) ?? resolveBackend(reviewCommentsModel)
 
+      const prompts = Array.isArray(promptOrPrompts)
+        ? promptOrPrompts.filter(prompt => prompt.trim().length > 0)
+        : [promptOrPrompts].filter(prompt => prompt.trim().length > 0)
+      if (prompts.length === 0) return
+
+      const requestedExecutionMode =
+        options?.executionMode ?? executionModeRef.current
+
       // Helper to send the message once we have a session ID
-      const sendInSession = (sessionId: string) => {
+      const sendInSession = (sessionId: string, prompt: string) => {
         const {
           addSendingSession,
           setLastSentMessage,
@@ -812,7 +827,7 @@ export function useInvestigateHandlers({
         addSendingSession(sessionId)
         setSelectedModel(sessionId, reviewCommentsModel)
         setSelectedProvider(sessionId, reviewCommentsProvider)
-        setExecutingMode(sessionId, executionModeRef.current)
+        setExecutingMode(sessionId, requestedExecutionMode)
         setZustandBackend(sessionId, reviewCommentsBackend)
 
         useChatStore.getState().setSelectedModel(sessionId, reviewCommentsModel)
@@ -866,7 +881,7 @@ export function useInvestigateHandlers({
             worktreePath,
             message: prompt,
             model: reviewCommentsModel,
-            executionMode: executionModeRef.current,
+            executionMode: requestedExecutionMode,
             thinkingLevel: selectedThinkingLevelRef.current,
             effortLevel: useAdaptive
               ? selectedEffortLevelRef.current
@@ -890,43 +905,49 @@ export function useInvestigateHandlers({
         )
       }
 
-      // Create a new session for review comments
-      createSession.mutate(
-        { worktreeId, worktreePath },
-        {
-          onSuccess: session => {
-            const { setActiveSession, copySessionSettings, activeSessionIds } =
-              useChatStore.getState()
-            const currentSessionId = activeSessionIds[worktreeId]
-            if (currentSessionId) {
-              copySessionSettings(currentSessionId, session.id)
-            }
-            useChatStore
-              .getState()
-              .setSelectedBackend(session.id, reviewCommentsBackend)
-            useChatStore
-              .getState()
-              .setSelectedModel(session.id, reviewCommentsModel)
-            useChatStore
-              .getState()
-              .setSelectedProvider(session.id, reviewCommentsProvider)
-            primeSessionSelection(
-              session.id,
-              reviewCommentsBackend,
-              reviewCommentsModel,
-              reviewCommentsProvider
-            )
-            setActiveSession(worktreeId, session.id)
-            queryClient.invalidateQueries({
-              queryKey: chatQueryKeys.sessions(worktreeId),
-            })
-            sendInSession(session.id)
-          },
-          onError: error => {
-            console.error('[REVIEW-COMMENTS] Failed to create session:', error)
-          },
+      // Create one session per selected review comment prompt. Use mutateAsync
+      // instead of repeated mutate(..., { onSuccess }) calls because TanStack
+      // Query only guarantees per-call callbacks for the latest consecutive
+      // mutate observer, which can leave earlier/later sessions empty.
+      const baseSessionId = useChatStore.getState().activeSessionIds[worktreeId]
+      for (const prompt of prompts) {
+        let session: Session
+        try {
+          session = await createSession.mutateAsync({
+            worktreeId,
+            worktreePath,
+          })
+        } catch (error) {
+          console.error('[REVIEW-COMMENTS] Failed to create session:', error)
+          continue
         }
-      )
+
+        const { setActiveSession, copySessionSettings } =
+          useChatStore.getState()
+        if (baseSessionId) {
+          copySessionSettings(baseSessionId, session.id)
+        }
+        useChatStore
+          .getState()
+          .setSelectedBackend(session.id, reviewCommentsBackend)
+        useChatStore
+          .getState()
+          .setSelectedModel(session.id, reviewCommentsModel)
+        useChatStore
+          .getState()
+          .setSelectedProvider(session.id, reviewCommentsProvider)
+        primeSessionSelection(
+          session.id,
+          reviewCommentsBackend,
+          reviewCommentsModel,
+          reviewCommentsProvider
+        )
+        setActiveSession(worktreeId, session.id)
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.sessions(worktreeId),
+        })
+        sendInSession(session.id, prompt)
+      }
     },
     [
       sendMessage,

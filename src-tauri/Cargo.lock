@@ -2489,7 +2489,7 @@ dependencies = [
 
 [[package]]
 name = "jean"
-version = "0.1.50"
+version = "0.1.52"
 dependencies = [
  "arboard",
  "axum",
@@ -2502,6 +2502,7 @@ dependencies = [
  "image",
  "libc",
  "log",
+ "objc2-app-kit",
  "once_cell",
  "portable-pty",
  "rand 0.8.5",

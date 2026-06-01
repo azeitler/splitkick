@@ -17,3 +17,8 @@ export interface CommandCodeInstallCommand {
   args: string[]
   description: string
 }
+
+export interface CommandCodeModelInfo {
+  id: string
+  label: string
+}

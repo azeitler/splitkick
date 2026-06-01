@@ -37,7 +37,9 @@ interface UseMessageSendingParams {
   isCodexBackendRef: RefObject<boolean>
   mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
   enabledMcpServersRef: RefObject<string[]>
-  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'>
+  selectedBackendRef: RefObject<
+    'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+  >
   preferences:
     | {
         custom_cli_profiles?: { name: string }[]
@@ -410,9 +412,19 @@ export function useMessageSending({
           queryClient.getQueryData<{ name: string }[]>(
             skillQueryKeys.codexSkills()
           ) ?? []
+        const opencodeSkills =
+          queryClient.getQueryData<{ name: string }[]>(
+            skillQueryKeys.opencodeSkills()
+          ) ?? []
+        const cursorSkills =
+          queryClient.getQueryData<{ name: string }[]>(
+            skillQueryKeys.cursorSkills()
+          ) ?? []
         const isSkill =
           claudeSkills.some(s => s.name === slashName) ||
-          codexSkills.some(s => s.name === slashName)
+          codexSkills.some(s => s.name === slashName) ||
+          opencodeSkills.some(s => s.name === slashName) ||
+          cursorSkills.some(s => s.name === slashName)
         if (!isSkill) {
           const claudeCommands =
             queryClient.getQueryData<{ name: string; path: string }[]>(
