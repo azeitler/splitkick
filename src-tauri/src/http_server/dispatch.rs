@@ -105,6 +105,11 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["preferences"]);
             Ok(Value::Null)
         }
+        "set_window_vibrancy" => {
+            let enabled: bool = from_field(&args, "enabled")?;
+            crate::set_window_vibrancy(app.clone(), enabled).await?;
+            Ok(Value::Null)
+        }
         "load_ui_state" => {
             let result = crate::load_ui_state(app.clone()).await?;
             to_value(result)

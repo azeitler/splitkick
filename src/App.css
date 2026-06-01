@@ -359,14 +359,14 @@
   }
 }
 
-/* Pulsing glow for running terminal icon indicator */
+/* Pulsing glow for running terminal icon indicator (opacity-based, GPU-friendly) */
 @keyframes icon-glow {
   0%,
   100% {
-    filter: drop-shadow(0 0 2px rgba(250, 204, 21, 0.5));
+    opacity: 0.7;
   }
   50% {
-    filter: drop-shadow(0 0 5px rgba(250, 204, 21, 0.8));
+    opacity: 1;
   }
 }
 
@@ -622,4 +622,26 @@ kbd {
 
 .xterm .composition-view {
   color: var(--foreground) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-wave,
+  .animate-blink,
+  .animate-border-spin,
+  .animate-icon-glow,
+  .animate-dots,
+  .square-spinner::before,
+  .card-border-spin::before {
+    animation: none !important;
+  }
+}
+
+.window-blurred .animate-wave,
+.window-blurred .animate-blink,
+.window-blurred .animate-border-spin,
+.window-blurred .animate-icon-glow,
+.window-blurred .animate-dots,
+.window-blurred .card-border-spin::before,
+.window-blurred .square-spinner::before {
+  animation-play-state: paused !important;
 }

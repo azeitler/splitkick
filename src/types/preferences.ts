@@ -1025,6 +1025,7 @@ export interface AppPreferences {
   gh_cli_source: 'jean' | 'path' // GitHub CLI source: 'jean' (managed) or 'path' (system PATH)
   coderabbit_cli_source?: 'jean' | 'path' // CodeRabbit CLI source: 'jean' (managed) or 'path' (system PATH)
   expand_tool_calls_by_default: boolean // Expand all tool call collapsibles by default
+  window_vibrancy: boolean // macOS window vibrancy effect (high GPU cost, default false)
   terminal_background: TerminalBackgroundMode // Override the terminal background independently of the app theme
   terminal_background_custom: string | null // Hex color used when terminal_background === 'custom'
   auto_update_ai_backends: boolean // Auto-install CLI updates in background when a new version is detected
@@ -1823,6 +1824,7 @@ export const defaultPreferences: AppPreferences = {
   gh_cli_source: 'jean', // Default: Jean-managed
   coderabbit_cli_source: 'jean', // Default: Jean-managed
   expand_tool_calls_by_default: false, // Default: collapsed
+  window_vibrancy: false, // Default: disabled (high GPU cost)
   terminal_background: 'auto',
   terminal_background_custom: null,
   auto_update_ai_backends: true, // Default: auto-update AI backends in the background

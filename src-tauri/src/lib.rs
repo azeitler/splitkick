@@ -263,6 +263,8 @@ pub struct AppPreferences {
     pub coderabbit_cli_source: String, // CodeRabbit CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default)]
     pub expand_tool_calls_by_default: bool, // Expand all tool call collapsibles by default (default: false)
+    #[serde(default)]
+    pub window_vibrancy: bool, // macOS window vibrancy effect (high GPU cost, default false)
     #[serde(default = "default_terminal_background")]
     pub terminal_background: String, // "auto" | "light" | "dark" | "custom"
     #[serde(default)]
@@ -1690,6 +1692,7 @@ impl Default for AppPreferences {
             gh_cli_source: default_cli_source(),
             coderabbit_cli_source: default_cli_source(),
             expand_tool_calls_by_default: false,
+            window_vibrancy: false,
             terminal_background: default_terminal_background(),
             terminal_background_custom: None,
             auto_update_ai_backends: default_auto_update_ai_backends(),
@@ -2128,6 +2131,64 @@ async fn patch_preferences(app: AppHandle, patch: Value) -> Result<(), String> {
     let merged: AppPreferences =
         serde_json::from_value(current_json).map_err(|e| format!("Merge error: {e}"))?;
     save_preferences(app, merged).await
+}
+
+#[cfg(target_os = "macos")]
+fn apply_macos_window_opacity(window: &tauri::WebviewWindow, opaque: bool) -> Result<(), String> {
+    use objc2_app_kit::{NSColor, NSWindow};
+
+    let ns_window_ptr = window.ns_window().map_err(|e| format!("ns_window: {e}"))?;
+    if ns_window_ptr.is_null() {
+        return Err("ns_window pointer is null".into());
+    }
+    let ptr_addr = ns_window_ptr as usize;
+
+    window
+        .run_on_main_thread(move || unsafe {
+            let ns_window: &NSWindow = &*(ptr_addr as *const NSWindow);
+            ns_window.setOpaque(opaque);
+            let bg = if opaque {
+                NSColor::windowBackgroundColor()
+            } else {
+                NSColor::clearColor()
+            };
+            ns_window.setBackgroundColor(Some(&bg));
+        })
+        .map_err(|e| format!("run_on_main_thread: {e}"))
+}
+
+#[tauri::command]
+async fn set_window_vibrancy(app: AppHandle, enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri::window::Effect;
+        if let Some(window) = app.get_webview_window("main") {
+            if enabled {
+                // Window must be transparent for the vibrancy effect to be visible.
+                apply_macos_window_opacity(&window, false)?;
+                window
+                    .set_effects(tauri::utils::config::WindowEffectsConfig {
+                        effects: vec![Effect::Sidebar],
+                        radius: Some(12.0),
+                        state: Some(tauri::window::EffectState::Active),
+                        color: None,
+                    })
+                    .map_err(|e| format!("Failed to set vibrancy: {e}"))?;
+            } else {
+                window
+                    .set_effects(None)
+                    .map_err(|e| format!("Failed to clear vibrancy: {e}"))?;
+                // Make the window opaque so the compositor stops blending the
+                // transparent backing layer (huge WindowServer GPU win).
+                apply_macos_window_opacity(&window, true)?;
+            }
+        }
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, enabled);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -3309,6 +3370,46 @@ pub fn run() {
 
             log::info!("Startup: projects loaded + asset scopes registered at {:?}", setup_start.elapsed());
 
+            // Apply window vibrancy / opacity from saved preferences (macOS only).
+            // The bundled tauri.conf.json sets `transparent: true` so vibrancy is
+            // possible at runtime, but the default preference is opaque. Without
+            // this branch the compositor would keep blending a transparent
+            // backing layer for every user that hasn't enabled vibrancy.
+            #[cfg(target_os = "macos")]
+            if !headless {
+                let vibrancy_handle = app.handle().clone();
+                let mut want_vibrancy = false;
+                if let Ok(prefs_path) = get_preferences_path(&vibrancy_handle) {
+                    if prefs_path.exists() {
+                        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
+                            if let Ok(prefs) = serde_json::from_str::<AppPreferences>(&contents) {
+                                want_vibrancy = prefs.window_vibrancy;
+                            }
+                        }
+                    }
+                }
+                if let Some(window) = vibrancy_handle.get_webview_window("main") {
+                    if want_vibrancy {
+                        use tauri::window::Effect;
+                        let _ = apply_macos_window_opacity(&window, false);
+                        let _ = window.set_effects(tauri::utils::config::WindowEffectsConfig {
+                            effects: vec![Effect::Sidebar],
+                            radius: Some(12.0),
+                            state: Some(tauri::window::EffectState::Active),
+                            color: None,
+                        });
+                        log::info!("Applied window vibrancy from saved preferences");
+                    } else {
+                        // Match set_window_vibrancy(false): clear any effect
+                        // before going opaque so no NSVisualEffectView lingers
+                        // in the layer tree for the compositor to blend.
+                        let _ = window.set_effects(None);
+                        let _ = apply_macos_window_opacity(&window, true);
+                        log::info!("Window opaque (vibrancy disabled in preferences)");
+                    }
+                }
+            }
+
             // NOTE: Run recovery (crash recovery) is handled by check_resumable_sessions
             // which the frontend calls once it's ready. Previously this was done here in
             // setup(), but that caused a double-invocation bug: the second call from the
@@ -3546,6 +3647,7 @@ pub fn run() {
             load_preferences,
             save_preferences,
             patch_preferences,
+            set_window_vibrancy,
             save_cli_profile,
             delete_cli_profile,
             load_ui_state,

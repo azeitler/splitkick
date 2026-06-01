@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { renderHook, waitFor } from '@testing-library/react'
+import {
+  act,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+} from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import {
@@ -7,6 +14,7 @@ import {
   useSavePreferences,
   preferencesQueryKeys,
 } from './preferences'
+import { AppearancePane } from '@/components/preferences/panes/AppearancePane'
 import type { AppPreferences } from '@/types/preferences'
 import {
   FONT_SIZE_DEFAULT,
@@ -22,11 +30,29 @@ import {
   modelOptions,
   normalizeClaudeModel,
   normalizeCodexModel,
+  defaultPreferences,
 } from '@/types/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 
 vi.mock('@/lib/transport', () => ({
   invoke: vi.fn(),
+}))
+
+vi.mock('@/lib/platform', () => ({
+  isMacOS: true,
+  isWindows: false,
+  isLinux: false,
+  getModifierSymbol: vi.fn(() => '⌘'),
+  getFileManagerName: vi.fn(() => 'Finder'),
+  openExternal: vi.fn(),
+  preOpenWindow: vi.fn(() => null),
+}))
+
+vi.mock('@/hooks/use-theme', () => ({
+  useTheme: () => ({
+    theme: 'system',
+    setTheme: vi.fn(),
+  }),
 }))
 
 vi.mock('sonner', () => ({
@@ -105,9 +131,13 @@ describe('model option helpers', () => {
       'Every Codex plan-mode response'
     )
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Jean Worktree Policy')
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Do NOT create git worktrees manually')
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+      'Do NOT create git worktrees manually'
+    )
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Jean MCP/tools')
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('VERY IMPORTANT: Keep Code Simple')
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+      'VERY IMPORTANT: Keep Code Simple'
+    )
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
       'Always implement the simplest maintainable solution'
     )
@@ -123,6 +153,14 @@ describe('preferences service', () => {
     // Mock Tauri environment
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
       value: { invoke: vi.fn() },
+      configurable: true,
+    })
+    Object.defineProperty(globalThis, 'ResizeObserver', {
+      value: class ResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
       configurable: true,
     })
   })
@@ -228,6 +266,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
         terminal_background: 'auto',
         terminal_background_custom: null,
         auto_update_ai_backends: true,
@@ -370,6 +409,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
         terminal_background: 'auto',
         terminal_background_custom: null,
         auto_update_ai_backends: true,
@@ -482,6 +522,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
         terminal_background: 'auto',
         terminal_background_custom: null,
         auto_update_ai_backends: true,
@@ -594,6 +635,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
         terminal_background: 'auto',
         terminal_background_custom: null,
         auto_update_ai_backends: true,
@@ -708,6 +750,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
         terminal_background: 'auto',
         terminal_background_custom: null,
         auto_update_ai_backends: true,
@@ -728,6 +771,48 @@ describe('preferences service', () => {
         preferencesQueryKeys.preferences()
       )
       expect(cached).toEqual(newPrefs)
+    })
+
+    it('persists window vibrancy and returns it on subsequent loads', async () => {
+      const { invoke } = await import('@/lib/transport')
+      let persistedPreferences: AppPreferences = {
+        ...defaultPreferences,
+        window_vibrancy: false,
+      }
+      vi.mocked(invoke).mockImplementation(async (command, args) => {
+        if (command === 'save_preferences') {
+          persistedPreferences = (args as { preferences: AppPreferences })
+            .preferences
+          return undefined
+        }
+        if (command === 'load_preferences') return persistedPreferences
+        throw new Error(`Unexpected command ${command}`)
+      })
+
+      const prefsWithVibrancy: AppPreferences = {
+        ...persistedPreferences,
+        window_vibrancy: true,
+      }
+      const { result: saveResult } = renderHook(() => useSavePreferences(), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      await act(async () => {
+        await saveResult.current.mutateAsync(prefsWithVibrancy)
+      })
+
+      expect(persistedPreferences.window_vibrancy).toBe(true)
+      expect(invoke).toHaveBeenCalledWith('save_preferences', {
+        preferences: prefsWithVibrancy,
+      })
+
+      const reloadQueryClient = createTestQueryClient()
+      const { result: loadResult } = renderHook(() => usePreferences(), {
+        wrapper: createWrapper(reloadQueryClient),
+      })
+
+      await waitFor(() => expect(loadResult.current.isSuccess).toBe(true))
+      expect(loadResult.current.data?.window_vibrancy).toBe(true)
     })
 
     it('skips persistence when not in Tauri context', async () => {
@@ -822,6 +907,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
         terminal_background: 'auto',
         terminal_background_custom: null,
         auto_update_ai_backends: true,
@@ -934,6 +1020,7 @@ describe('preferences service', () => {
         opencode_cli_source: 'jean',
         gh_cli_source: 'jean',
         expand_tool_calls_by_default: false,
+        window_vibrancy: false,
         terminal_background: 'auto',
         terminal_background_custom: null,
         auto_update_ai_backends: true,
@@ -950,6 +1037,55 @@ describe('preferences service', () => {
 
       await waitFor(() => expect(result.current.isError).toBe(true))
 
+      expect(toast.error).toHaveBeenCalledWith('Failed to save preferences', {
+        description: 'Save failed',
+      })
+    })
+  })
+
+  describe('AppearancePane window vibrancy', () => {
+    it('keeps the switch off and skips runtime vibrancy when persistence fails', async () => {
+      const { invoke } = await import('@/lib/transport')
+      const { toast } = await import('sonner')
+      vi.mocked(invoke).mockImplementation(async command => {
+        if (command === 'load_preferences') {
+          return { ...defaultPreferences, window_vibrancy: false }
+        }
+        if (command === 'patch_preferences') {
+          throw new Error('Save failed')
+        }
+        if (command === 'set_window_vibrancy') return undefined
+        throw new Error(`Unexpected command ${command}`)
+      })
+
+      const user = userEvent.setup()
+      render(
+        createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          createElement(AppearancePane)
+        )
+      )
+
+      const switchEl = await screen.findByRole('switch')
+      expect(switchEl).toHaveAttribute('aria-checked', 'false')
+
+      await user.click(switchEl)
+
+      await waitFor(() => {
+        expect(invoke).toHaveBeenCalledWith('patch_preferences', {
+          patch: { window_vibrancy: true },
+        })
+      })
+      expect(invoke).not.toHaveBeenCalledWith('set_window_vibrancy', {
+        enabled: true,
+      })
+      expect(
+        queryClient.getQueryData<AppPreferences>(
+          preferencesQueryKeys.preferences()
+        )?.window_vibrancy
+      ).toBe(false)
+      expect(switchEl).toHaveAttribute('aria-checked', 'false')
       expect(toast.error).toHaveBeenCalledWith('Failed to save preferences', {
         description: 'Save failed',
       })
