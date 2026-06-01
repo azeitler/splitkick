@@ -159,6 +159,7 @@ import { SettingsSection } from '../SettingsSection'
 interface CleanupResult {
   deleted_worktrees: number
   deleted_sessions: number
+  deleted_orphan_indexes?: number
 }
 
 const InlineField: React.FC<{
@@ -397,6 +398,11 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
       if (result.deleted_sessions > 0) {
         parts.push(
           `${result.deleted_sessions} session${result.deleted_sessions === 1 ? '' : 's'}`
+        )
+      }
+      if ((result.deleted_orphan_indexes ?? 0) > 0) {
+        parts.push(
+          `${result.deleted_orphan_indexes} orphaned session index file${result.deleted_orphan_indexes === 1 ? '' : 's'}`
         )
       }
 

@@ -24,6 +24,19 @@ interface ResolvedLocalTerminalLink {
   column?: number
 }
 
+type OpenResolvedLocalFile = (
+  resolved: ResolvedLocalTerminalLink,
+  editor: AppPreferences['editor'] | undefined
+) => Promise<void>
+
+const openResolvedLocalFile: OpenResolvedLocalFile = (resolved, editor) =>
+  invoke('open_file_in_default_app', {
+    path: resolved.path,
+    editor,
+    line: resolved.line,
+    column: resolved.column,
+  })
+
 const LOCAL_LINK_REGEX =
   /(?:file:\/\/[^\s<>"'`]+|(?:\.{0,2}\/|[A-Za-z0-9_.-]+\/)[^\s<>"'`]+)/g
 const TRAILING_PUNCTUATION = /[),.;!?\]}]+$/
@@ -214,7 +227,10 @@ export class LocalTerminalLinkProvider implements ILinkProvider {
   constructor(
     private readonly terminal: Terminal,
     private readonly worktreePath: string,
-    private readonly getEditor: () => AppPreferences['editor'] | undefined
+    private readonly getEditor: () =>
+      | AppPreferences['editor']
+      | undefined = () => undefined,
+    private readonly openFile: OpenResolvedLocalFile = openResolvedLocalFile
   ) {}
 
   provideLinks(
@@ -233,10 +249,7 @@ export class LocalTerminalLinkProvider implements ILinkProvider {
       activate: () => {
         const resolved = resolveLocalTerminalLink(link.text, this.worktreePath)
         if (!resolved) return
-        void invoke('open_file_in_default_app', {
-          path: resolved.path,
-          editor: this.getEditor(),
-        })
+        void this.openFile(resolved, this.getEditor())
       },
     }))
 

@@ -9405,24 +9405,33 @@ pub struct CleanupResult {
     pub deleted_worktrees: u32,
     pub deleted_sessions: u32,
     pub deleted_contexts: u32,
+    pub deleted_orphan_indexes: u32,
 }
 
 /// Cleanup archived worktrees and sessions older than the specified retention period
 ///
 /// This command runs on app startup to automatically clean up old archives.
-/// Set retention_days to 0 to disable cleanup.
+/// Set retention_days to 0 to disable archive retention cleanup; orphan janitors still run.
 #[tauri::command]
 pub async fn cleanup_old_archives(
     app: AppHandle,
     retention_days: u32,
 ) -> Result<CleanupResult, String> {
-    // If retention is 0, cleanup is disabled
+    // If retention is 0, archive retention cleanup is disabled.
     if retention_days == 0 {
-        log::trace!("Archive cleanup is disabled (retention_days = 0)");
+        log::trace!(
+            "Archive retention cleanup is disabled (retention_days = 0); running orphan janitors"
+        );
+        let deleted_orphan_indexes =
+            crate::chat::storage::cleanup_orphaned_session_indexes(&app).unwrap_or(0);
+        let _ = crate::chat::storage::cleanup_orphaned_session_data(&app);
+        let _ = crate::chat::storage::cleanup_orphaned_combined_contexts(&app);
+        let _ = crate::chat::storage::cleanup_orphaned_pasted_files(&app);
         return Ok(CleanupResult {
             deleted_worktrees: 0,
             deleted_sessions: 0,
             deleted_contexts: 0,
+            deleted_orphan_indexes,
         });
     }
 
@@ -9567,6 +9576,10 @@ pub async fn cleanup_old_archives(
         }
     }
 
+    // --- Clean up orphaned session index files before orphan data cleanup ---
+    let deleted_orphan_indexes =
+        crate::chat::storage::cleanup_orphaned_session_indexes(&app).unwrap_or(0);
+
     // --- Clean up orphaned session data directories ---
     // Background janitor only — not archive-related, not user-facing.
     let _ = crate::chat::storage::cleanup_orphaned_session_data(&app);
@@ -9582,16 +9595,18 @@ pub async fn cleanup_old_archives(
     let _ = crate::chat::storage::cleanup_orphaned_pasted_files(&app);
 
     log::trace!(
-        "Archive cleanup complete: deleted {} worktrees, {} sessions, and {} contexts",
+        "Archive cleanup complete: deleted {} worktrees, {} sessions, {} contexts, and {} orphan indexes",
         deleted_worktrees,
         deleted_sessions,
-        deleted_contexts
+        deleted_contexts,
+        deleted_orphan_indexes
     );
 
     Ok(CleanupResult {
         deleted_worktrees,
         deleted_sessions,
         deleted_contexts,
+        deleted_orphan_indexes,
     })
 }
 
@@ -9737,6 +9752,11 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
     // Also clean up orphaned contexts (pass 0 for retention_days to clean all orphans)
     let deleted_contexts = super::github_issues::cleanup_orphaned_contexts(&app, 0).unwrap_or(0);
 
+    // Clean up orphaned session index files, then orphaned session data
+    let deleted_orphan_indexes =
+        crate::chat::storage::cleanup_orphaned_session_indexes(&app).unwrap_or(0);
+    let _ = crate::chat::storage::cleanup_orphaned_session_data(&app);
+
     // Clean up orphaned combined-context files
     let _ = crate::chat::storage::cleanup_orphaned_combined_contexts(&app);
 
@@ -9744,16 +9764,18 @@ pub async fn delete_all_archives(app: AppHandle) -> Result<CleanupResult, String
     let _ = crate::chat::storage::cleanup_orphaned_pasted_files(&app);
 
     log::trace!(
-        "Deleted all archives: {} worktrees, {} sessions, and {} contexts",
+        "Deleted all archives: {} worktrees, {} sessions, {} contexts, and {} orphan indexes",
         deleted_worktrees,
         deleted_sessions,
-        deleted_contexts
+        deleted_contexts,
+        deleted_orphan_indexes
     );
 
     Ok(CleanupResult {
         deleted_worktrees,
         deleted_sessions,
         deleted_contexts,
+        deleted_orphan_indexes,
     })
 }
 
