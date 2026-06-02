@@ -32,6 +32,7 @@ interface UseToolbarHandlersParams {
         selected_opencode_model?: string
         selected_cursor_model?: string
         custom_cli_profiles?: { name: string }[]
+        default_execution_mode?: ExecutionMode
       }
     | undefined
   queryClient: QueryClient
@@ -45,6 +46,8 @@ interface UseToolbarHandlersParams {
   setSessionProvider: { mutate: (args: any) => void }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setSessionThinkingLevel: { mutate: (args: any) => void }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setSessionEffortLevel: { mutate: (args: any) => void }
   setExecutionMode: (sessionId: string, mode: ExecutionMode) => void
   setLoadContextModalOpen: (open: boolean) => void
 }
@@ -72,14 +75,22 @@ export function useToolbarHandlers({
   setSessionBackend,
   setSessionProvider,
   setSessionThinkingLevel,
+  setSessionEffortLevel,
   setExecutionMode,
   setLoadContextModalOpen,
 }: UseToolbarHandlersParams) {
   const persistToolbarBackendAndModel = useCallback(
     (backend: 'claude' | 'codex' | 'opencode' | 'cursor', model: string) => {
+      const currentMode =
+        (activeSessionId
+          ? useChatStore.getState().executionModes[activeSessionId]
+          : undefined) ??
+        session?.selected_execution_mode ??
+        preferences?.default_execution_mode ??
+        'plan'
       const nextExecutionMode = normalizeExecutionModeForBackend(
         backend,
-        session?.selected_execution_mode ?? 'plan'
+        currentMode
       )
 
       if (activeSessionId && activeWorktreeId && activeWorktreePath) {
@@ -150,6 +161,7 @@ export function useToolbarHandlers({
       activeWorktreeId,
       activeWorktreePath,
       queryClient,
+      preferences?.default_execution_mode,
       session?.selected_execution_mode,
       setSessionBackend,
       setSessionModel,
@@ -192,7 +204,7 @@ export function useToolbarHandlers({
     (backend: 'claude' | 'codex' | 'opencode' | 'cursor') => {
       const model =
         backend === 'codex'
-          ? (preferences?.selected_codex_model ?? 'gpt-5.4')
+          ? (preferences?.selected_codex_model ?? 'gpt-5.5')
           : backend === 'opencode'
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
             : backend === 'cursor'
@@ -281,9 +293,29 @@ export function useToolbarHandlers({
 
   const handleToolbarEffortLevelChange = useCallback((level: EffortLevel) => {
     const sessionId = activeSessionIdRef.current
-    if (!sessionId) return
+    const worktreeId = activeWorktreeIdRef.current
+    const worktreePath = activeWorktreePathRef.current
+    if (!sessionId || !worktreeId || !worktreePath) return
+
     useChatStore.getState().setEffortLevel(sessionId, level)
+    queryClient.setQueryData(
+      chatQueryKeys.session(sessionId),
+      (old: Session | null | undefined) =>
+        old ? applySessionSettingToSession(old, 'effortLevel', level) : old
+    )
+    setSessionEffortLevel.mutate({
+      sessionId,
+      worktreeId,
+      worktreePath,
+      effortLevel: level,
+    })
+    invoke('broadcast_session_setting', {
+      sessionId,
+      key: 'effortLevel',
+      value: level,
+    }).catch(() => undefined)
     window.dispatchEvent(new CustomEvent('focus-chat-input'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mutate is stable, refs used for IDs
   }, [])
 
   const handleToggleMcpServer = useCallback((serverName: string) => {

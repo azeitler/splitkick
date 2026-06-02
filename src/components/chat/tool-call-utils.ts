@@ -1,5 +1,11 @@
 import type { ToolCall, ContentBlock, Todo, PlanToolInput } from '@/types/chat'
-import { isTodoWrite, isCollabToolCall, isPlanToolCall } from '@/types/chat'
+import {
+  isTodoWrite,
+  isCollabToolCall,
+  isPlanToolCall,
+  isAskUserQuestion,
+  normalizeCodexQuestions,
+} from '@/types/chat'
 
 /** Check if a tool is a task/agent container (Claude CLI uses both names) */
 function isAgentTool(name: string): boolean {
@@ -203,10 +209,32 @@ function mergeConsecutiveStackables(items: TimelineItem[]): TimelineItem[] {
  * @param toolCalls - All tool calls from the message
  * @returns Timeline items in the correct order for rendering
  */
+/**
+ * Merge consecutive text blocks into one.
+ *
+ * Replay/snapshot paths may deliver text as many separate `ContentBlock::Text`
+ * entries (one per streaming delta). Streaming in-memory state coalesces them
+ * via `chat-store.addTextBlock`. Run both inputs through this helper so the
+ * timeline sees an identical shape regardless of origin.
+ */
+export function coalesceContentBlocks(blocks: ContentBlock[]): ContentBlock[] {
+  const out: ContentBlock[] = []
+  for (const block of blocks) {
+    const last = out[out.length - 1]
+    if (block.type === 'text' && last?.type === 'text') {
+      out[out.length - 1] = { type: 'text', text: last.text + block.text }
+    } else {
+      out.push(block)
+    }
+  }
+  return out
+}
+
 export function buildTimeline(
   contentBlocks: ContentBlock[],
   toolCalls: ToolCall[]
 ): TimelineItem[] {
+  const normalizedBlocks = coalesceContentBlocks(contentBlocks)
   const result: TimelineItem[] = []
 
   // Build a map of tool calls by ID for quick lookup
@@ -235,7 +263,7 @@ export function buildTimeline(
   // Find Tasks and their sub-tools by processing content_blocks in order
   // This respects the actual output sequence - text blocks indicate Task completion
   let currentTaskId: string | null = null
-  for (const block of contentBlocks) {
+  for (const block of normalizedBlocks) {
     if (block.type === 'text' && block.text.trim()) {
       // Text breaks the Task context - the agent has returned
       currentTaskId = null
@@ -267,8 +295,8 @@ export function buildTimeline(
   let lastTextIndex: number | null = null
 
   // Process content blocks in order
-  for (let i = 0; i < contentBlocks.length; i++) {
-    const block = contentBlocks[i]
+  for (let i = 0; i < normalizedBlocks.length; i++) {
+    const block = normalizedBlocks[i]
     if (!block) continue
 
     if (block.type === 'thinking') {
@@ -293,13 +321,7 @@ export function buildTimeline(
       if (!toolCall) continue
 
       // Handle special tools
-      if (
-        (toolCall.name === 'AskUserQuestion' || toolCall.name === 'question') &&
-        typeof toolCall.input === 'object' &&
-        toolCall.input !== null &&
-        'questions' in toolCall.input &&
-        Array.isArray((toolCall.input as { questions: unknown }).questions)
-      ) {
+      if (isAskUserQuestion(toolCall)) {
         // Skip if we've already processed this AskUserQuestion
         if (renderedAskUserQuestions.has(toolCall.id)) continue
         renderedAskUserQuestions.add(toolCall.id)
@@ -316,10 +338,22 @@ export function buildTimeline(
           }
         }
 
+        const questionToolCall =
+          toolCall.name === 'request_user_input'
+            ? {
+                ...toolCall,
+                input: {
+                  questions: normalizeCodexQuestions(
+                    (toolCall.input as { questions: unknown[] }).questions
+                  ),
+                },
+              }
+            : toolCall
+
         // Render inline in natural position (not at end)
         result.push({
           type: 'askUserQuestion',
-          tool: toolCall,
+          tool: questionToolCall,
           introText,
           key: `ask-${toolCall.id}`,
         })
@@ -553,6 +587,29 @@ export function isDuplicatePlanTextBlock(
   const extracted = extractPlanSectionFromText(text)
   if (!extracted) return false
   return normalizePlanText(extracted) === normalizePlanText(resolvedPlanContent)
+}
+
+export function getIntroTextBeforeDuplicatePlan(
+  text: string,
+  resolvedPlanContent: string | null
+): string | null {
+  if (!resolvedPlanContent) return null
+
+  // If the whole assistant text is the rendered plan, there is no separate intro
+  // to show. This happens when Codex final_answer is mirrored into CodexPlan.
+  if (normalizePlanText(text) === normalizePlanText(resolvedPlanContent)) {
+    return null
+  }
+
+  const split = splitTextAroundPlan(text)
+  if (!split.plan) return null
+  if (
+    normalizePlanText(split.plan) !== normalizePlanText(resolvedPlanContent)
+  ) {
+    return null
+  }
+
+  return split.beforePlan
 }
 
 export function getPlanTextBlockIndicesToHide(

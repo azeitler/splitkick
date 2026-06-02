@@ -6,7 +6,6 @@ import {
   isAskUserQuestion,
   isPlanToolCall,
   type Session,
-  type SessionDigest,
   type ExecutionMode,
   type ToolCall,
   type ContentBlock,
@@ -38,8 +37,6 @@ export interface SessionCardData {
   planFilePath: string | null
   planContent: string | null
   pendingPlanMessageId: string | null
-  hasRecap: boolean
-  recapDigest: SessionDigest | null
   label: LabelData | null
 }
 
@@ -50,7 +47,6 @@ export interface SessionCardProps {
   onArchive: () => void
   onDelete: () => void
   onPlanView: () => void
-  onRecapView: () => void
   onApprove?: () => void
   onYolo?: () => void
   onClearContextApprove?: () => void
@@ -59,6 +55,7 @@ export interface SessionCardProps {
   onWorktreeYoloApprove?: () => void
   onToggleLabel?: () => void
   onToggleReview?: () => void
+  onReconnect?: () => void
   onRename?: (sessionId: string, newName: string) => void
   isRenaming?: boolean
   renameValue?: string
@@ -122,8 +119,33 @@ export interface ChatStoreState {
   waitingForInputSessionIds: Record<string, boolean>
   reviewingSessions: Record<string, boolean>
   pendingPermissionDenials: Record<string, PermissionDenial[]>
-  sessionDigests: Record<string, SessionDigest>
   sessionLabels: Record<string, LabelData>
+}
+
+export function sessionCanBeWaiting(session: Session): boolean {
+  return (
+    !session.last_run_status ||
+    session.last_run_status === 'running' ||
+    session.last_run_status === 'resumable' ||
+    (session.last_run_status === 'completed' &&
+      session.waiting_for_input_type === 'plan')
+  )
+}
+
+export function getEffectiveSessionWaiting(
+  session: Session,
+  storeState: Pick<
+    ChatStoreState,
+    'waitingForInputSessionIds' | 'reviewingSessions'
+  >
+): boolean {
+  const canBeWaiting = sessionCanBeWaiting(session)
+  if (!canBeWaiting) return false
+  if (session.waiting_for_input ?? false) return true
+  const isInReviewState =
+    storeState.reviewingSessions[session.id] || !!session.review_results
+  if (isInReviewState) return false
+  return storeState.waitingForInputSessionIds[session.id] ?? false
 }
 
 export function computeSessionCardData(
@@ -141,7 +163,6 @@ export function computeSessionCardData(
     waitingForInputSessionIds,
     reviewingSessions,
     pendingPermissionDenials,
-    sessionDigests,
     sessionLabels,
   } = storeState
 
@@ -178,8 +199,15 @@ export function computeSessionCardData(
       contentBlocks: currentStreamingContentBlocks,
     }).content
 
+  // Mirrors `canBeWaiting` filter in prefetchSessions (src/services/chat.ts).
+  // A session's waiting flag is only meaningful while the run is active, resumable,
+  // or parked after a plan approval. Otherwise (e.g. completed non-plan run) the
+  // flag is stale and must not be trusted — either in persisted state or Zustand.
+  const runCanBeWaiting = sessionCanBeWaiting(session)
+
   // Use persisted waiting_for_input flag from session metadata
-  const persistedWaitingForInput = session.waiting_for_input ?? false
+  const persistedWaitingForInput =
+    runCanBeWaiting && (session.waiting_for_input ?? false)
 
   // Check if there are approved plan message IDs
   const approvedPlanIds = new Set(session.approved_plan_message_ids ?? [])
@@ -238,14 +266,20 @@ export function computeSessionCardData(
     }
   }
 
-  // Use persisted waiting state as fallback when messages aren't loaded
-  const isExplicitlyWaiting = waitingForInputSessionIds[session.id] ?? false
+  // Stale Zustand flag must not pin status to "waiting" when the backend has
+  // already moved the session into review. Backend `waiting_for_input` still
+  // flows through `persistedWaitingForInput` below, so genuine waiting wins.
+  const isExplicitlyWaiting = getEffectiveSessionWaiting(session, {
+    waitingForInputSessionIds,
+    reviewingSessions,
+  })
   const hasActionableStreamingPlan = hasStreamingExitPlan && !sessionSending
   const isWaitingFromMessages =
-    hasStreamingQuestion ||
-    hasActionableStreamingPlan ||
-    hasPendingQuestion ||
-    hasPendingExitPlan
+    runCanBeWaiting &&
+    (hasStreamingQuestion ||
+      hasActionableStreamingPlan ||
+      hasPendingQuestion ||
+      hasPendingExitPlan)
   // When sessionSending is true, persisted waiting_for_input from TanStack Query
   // may be stale (not yet refetched after approval). Only use it as fallback when idle.
   const isWaiting = sessionSending
@@ -318,11 +352,6 @@ export function computeSessionCardData(
     status = 'completed'
   }
 
-  // Check for session recap/digest
-  // Zustand has priority (freshly generated), fall back to persisted digest
-  const recapDigest = sessionDigests[session.id] ?? session.digest ?? null
-  const hasRecap = recapDigest !== null
-
   // Label from Zustand store (populated from persisted data on load)
   const label = sessionLabels[session.id] ?? null
 
@@ -339,8 +368,6 @@ export function computeSessionCardData(
     planFilePath,
     planContent,
     pendingPlanMessageId,
-    hasRecap,
-    recapDigest,
     label,
   }
 }
@@ -361,6 +388,42 @@ export function getResumeCommand(session: Session): string | null {
   return null
 }
 
+/**
+ * Resolve the command + args needed to relaunch a native CLI session's terminal
+ * resuming the same backend conversation. Prefers the persisted resolved binary
+ * path (`terminal_command`) over the bare backend name.
+ */
+export function getResumeArgs(
+  session: Session
+): { command: string; args: string[] } | null {
+  const cmd = session.terminal_command || ''
+  if (session.backend === 'claude' && session.claude_session_id) {
+    return {
+      command: cmd || 'claude',
+      args: ['--resume', session.claude_session_id],
+    }
+  }
+  if (session.backend === 'codex' && session.codex_thread_id) {
+    return {
+      command: cmd || 'codex',
+      args: ['resume', session.codex_thread_id],
+    }
+  }
+  if (session.backend === 'opencode' && session.opencode_session_id) {
+    return {
+      command: cmd || 'opencode',
+      args: ['-s', session.opencode_session_id],
+    }
+  }
+  if (session.backend === 'cursor' && session.cursor_chat_id) {
+    return {
+      command: cmd || 'cursor-agent',
+      args: ['--resume', session.cursor_chat_id],
+    }
+  }
+  return null
+}
+
 // --- Status grouping ---
 
 export interface StatusGroup {
@@ -374,14 +437,14 @@ const STATUS_GROUP_ORDER: {
   title: string
   statuses: SessionStatus[]
 }[] = [
-  { key: 'idle', title: 'Idle', statuses: ['idle'] },
-  { key: 'review', title: 'Review', statuses: ['review', 'completed'] },
   { key: 'waiting', title: 'Waiting', statuses: ['waiting', 'permission'] },
   {
     key: 'inProgress',
     title: 'In Progress',
     statuses: ['planning', 'vibing', 'yoloing'],
   },
+  { key: 'review', title: 'Review', statuses: ['review', 'completed'] },
+  { key: 'idle', title: 'Idle', statuses: ['idle'] },
 ]
 
 /** Group cards by status. Returns only non-empty groups.

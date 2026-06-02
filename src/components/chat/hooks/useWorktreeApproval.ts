@@ -56,6 +56,7 @@ function mapCodexReasoningToEffort(
     case 'high':
       return 'high'
     case 'xhigh':
+      return 'xhigh'
     case 'max':
       return 'max'
     default:
@@ -75,7 +76,7 @@ function getDefaultModelForBackend(
     | undefined
 ): string {
   if (backend === 'codex') {
-    return preferences?.selected_codex_model ?? 'gpt-5.4'
+    return preferences?.selected_codex_model ?? 'gpt-5.5'
   }
   if (backend === 'opencode') {
     return preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex'
@@ -83,7 +84,21 @@ function getDefaultModelForBackend(
   if (backend === 'cursor') {
     return preferences?.selected_cursor_model ?? 'cursor/auto'
   }
-  return preferences?.selected_model ?? 'opus'
+  return preferences?.selected_model ?? 'claude-opus-4-8[1m]'
+}
+
+function clearWorktreeApprovalUiState(
+  sessionId: string,
+  options: { preserveToolCalls: boolean }
+) {
+  const store = useChatStore.getState()
+  if (!options.preserveToolCalls) {
+    store.clearToolCalls(sessionId)
+    store.clearStreamingContentBlocks(sessionId)
+  }
+  store.setSessionReviewing(sessionId, false)
+  store.setWaitingForInput(sessionId, false)
+  store.setPendingPlanMessageId(sessionId, null)
 }
 
 interface UseWorktreeApprovalParams {
@@ -119,7 +134,6 @@ export function useWorktreeApproval({
 
       const sessionId = card.session.id
       const messageId = card.pendingPlanMessageId
-      const toastId = toast.loading('Creating worktree...')
 
       // Step 1: Mark plan approved on original session
       if (messageId) {
@@ -167,13 +181,11 @@ export function useWorktreeApproval({
         })
       }
 
-      // Clear waiting state on original session
-      const store = useChatStore.getState()
-      store.clearToolCalls(sessionId)
-      store.clearStreamingContentBlocks(sessionId)
-      store.setSessionReviewing(sessionId, false)
-      store.setWaitingForInput(sessionId, false)
-      store.setPendingPlanMessageId(sessionId, null)
+      // Clear waiting state on original session. Codex keeps plan tasks in its
+      // native update_plan/CodexPlan state, so preserve those tool calls.
+      clearWorktreeApprovalUiState(sessionId, {
+        preserveToolCalls: card.session.backend === 'codex',
+      })
 
       invoke('update_session_state', {
         worktreeId,
@@ -194,12 +206,12 @@ export function useWorktreeApproval({
         try {
           planContent = await readPlanFile(card.planFilePath)
         } catch (err) {
-          toast.error(`Failed to read plan file: ${err}`, { id: toastId })
+          toast.error(`Failed to read plan file: ${err}`)
           return
         }
       }
       if (!planContent) {
-        toast.error('No plan content available', { id: toastId })
+        toast.error('No plan content available')
         return
       }
 
@@ -210,10 +222,9 @@ export function useWorktreeApproval({
           projectId,
         })
       } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`, { id: toastId })
+        toast.error(`Failed to create worktree: ${err}`)
         return
       }
-
       // Step 4: Wait for worktree to be ready
       let readyWorktree: Worktree
       try {
@@ -249,11 +260,9 @@ export function useWorktreeApproval({
           )
         })
       } catch (err) {
-        toast.error(`Worktree creation failed: ${err}`, { id: toastId })
+        toast.error(`Worktree creation failed: ${err}`)
         return
       }
-
-      toast.loading('Sending plan...', { id: toastId })
 
       // Step 5: Use the default session auto-created by the backend, or create one if none exists
       let newSession: Session
@@ -271,7 +280,7 @@ export function useWorktreeApproval({
           })
         }
       } catch (err) {
-        toast.error(`Failed to get session: ${err}`, { id: toastId })
+        toast.error(`Failed to get session: ${err}`)
         return
       }
 
@@ -339,6 +348,9 @@ export function useWorktreeApproval({
       const modeThinkingPref = isYolo
         ? preferences?.yolo_thinking_level
         : preferences?.build_thinking_level
+      const modeEffortPref = isYolo
+        ? preferences?.yolo_effort_level
+        : preferences?.build_effort_level
       const modeBackendOverride = modeBackendPref as
         | 'claude'
         | 'codex'
@@ -359,7 +371,6 @@ export function useWorktreeApproval({
         modeModelPref || modeBackendOverride
           ? [backend, model].filter(Boolean).join(' / ')
           : ''
-      if (modeOverride) toast.info(`${modeLabel}: ${modeOverride}`)
       let thinkingLevel: ThinkingLevel = 'off'
       let effortLevel: EffortLevel | undefined
       if (backend === 'codex') {
@@ -368,7 +379,7 @@ export function useWorktreeApproval({
             preferences?.default_codex_reasoning_effort
           ) ?? 'high'
         effortLevel =
-          mapCodexReasoningToEffort(modeThinkingPref) ?? defaultCodexEffort
+          mapCodexReasoningToEffort(modeEffortPref) ?? defaultCodexEffort
       } else {
         const fallbackThinking = isThinkingLevel(preferences?.thinking_level)
           ? preferences.thinking_level
@@ -376,9 +387,10 @@ export function useWorktreeApproval({
         thinkingLevel = isThinkingLevel(modeThinkingPref)
           ? modeThinkingPref
           : fallbackThinking
+        effortLevel = mapCodexReasoningToEffort(modeEffortPref)
       }
       const resolvedPlanFilePath =
-        card.planFilePath || store.getPlanFilePath(sessionId)
+        card.planFilePath || useChatStore.getState().getPlanFilePath(sessionId)
       const planFileLine = resolvedPlanFilePath
         ? `\nPlan file: ${resolvedPlanFilePath}\n`
         : ''
@@ -467,8 +479,6 @@ export function useWorktreeApproval({
         customProfileName: card.session.selected_provider ?? undefined,
         backend,
       })
-
-      toast.success(`Plan sent to new worktree (${modeLabel})`, { id: toastId })
 
       // Optionally close the original session
       if (preferences?.close_original_on_clear_context) {

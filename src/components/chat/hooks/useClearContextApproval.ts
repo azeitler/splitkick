@@ -49,6 +49,7 @@ function mapCodexReasoningToEffort(
     case 'high':
       return 'high'
     case 'xhigh':
+      return 'xhigh'
     case 'max':
       return 'max'
     default:
@@ -68,7 +69,7 @@ function getDefaultModelForBackend(
     | undefined
 ): string {
   if (backend === 'codex') {
-    return preferences?.selected_codex_model ?? 'gpt-5.4'
+    return preferences?.selected_codex_model ?? 'gpt-5.5'
   }
   if (backend === 'opencode') {
     return preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex'
@@ -76,7 +77,7 @@ function getDefaultModelForBackend(
   if (backend === 'cursor') {
     return preferences?.selected_cursor_model ?? 'cursor/auto'
   }
-  return preferences?.selected_model ?? 'opus'
+  return preferences?.selected_model ?? 'claude-opus-4-8[1m]'
 }
 
 interface UseClearContextApprovalParams {
@@ -260,6 +261,9 @@ export function useClearContextApproval({
       const modeThinkingPref = isYolo
         ? preferences?.yolo_thinking_level
         : preferences?.build_thinking_level
+      const modeEffortPref = isYolo
+        ? preferences?.yolo_effort_level
+        : preferences?.build_effort_level
       const modeBackendOverride = modeBackendPref as
         | 'claude'
         | 'codex'
@@ -289,7 +293,7 @@ export function useClearContextApproval({
             preferences?.default_codex_reasoning_effort
           ) ?? 'high'
         effortLevel =
-          mapCodexReasoningToEffort(modeThinkingPref) ?? defaultCodexEffort
+          mapCodexReasoningToEffort(modeEffortPref) ?? defaultCodexEffort
       } else {
         const fallbackThinking = isThinkingLevel(preferences?.thinking_level)
           ? preferences.thinking_level
@@ -297,6 +301,7 @@ export function useClearContextApproval({
         thinkingLevel = isThinkingLevel(modeThinkingPref)
           ? modeThinkingPref
           : fallbackThinking
+        effortLevel = mapCodexReasoningToEffort(modeEffortPref)
       }
       const resolvedPlanFilePath =
         card.planFilePath || store.getPlanFilePath(sessionId)

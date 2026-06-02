@@ -24,19 +24,8 @@ import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useChatStore } from '@/store/chat-store'
 import type { McpHealthStatus } from '@/types/chat'
 import type { CliBackend } from '@/types/preferences'
-
-const SettingsSection: React.FC<{
-  title: string
-  children: React.ReactNode
-}> = ({ title, children }) => (
-  <div className="space-y-4">
-    <div>
-      <h3 className="text-lg font-medium text-foreground">{title}</h3>
-      <Separator className="mt-2" />
-    </div>
-    {children}
-  </div>
-)
+import { SettingsSection } from '../SettingsSection'
+import { JeanMcpSection } from './JeanMcpSection'
 
 function mcpAuthHint(backend: CliBackend): string {
   switch (backend) {
@@ -115,6 +104,24 @@ function HealthIndicator({
     default:
       return null
   }
+}
+
+function jeanMcpMode(
+  serverName: string,
+  config: unknown
+): 'dev' | 'prod' | null {
+  if (serverName === 'jean-dev') return 'dev'
+  if (serverName === 'jean') return 'prod'
+  if (!config || typeof config !== 'object') return null
+  const record = config as Record<string, unknown>
+  const env =
+    record.env && typeof record.env === 'object'
+      ? (record.env as Record<string, unknown>)
+      : record.environment && typeof record.environment === 'object'
+        ? (record.environment as Record<string, unknown>)
+        : null
+  const mode = env?.JEAN_MCP_MODE
+  return mode === 'dev' || mode === 'prod' ? mode : null
 }
 
 export const McpServersPane: React.FC = () => {
@@ -198,7 +205,11 @@ export const McpServersPane: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <SettingsSection title="Default MCP Servers">
+      <JeanMcpSection />
+      <SettingsSection
+        title="Default MCP Servers"
+        anchorId="pref-mcp-section-default-servers"
+      >
         <p className="text-sm text-muted-foreground">
           Selected servers will be enabled by default in new sessions. You can
           override per-session from the toolbar.
@@ -251,6 +262,11 @@ export const McpServersPane: React.FC = () => {
                     >
                       {server.name}
                     </Label>
+                    {jeanMcpMode(server.name, server.config) && (
+                      <span className="rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase text-muted-foreground">
+                        {jeanMcpMode(server.name, server.config)}
+                      </span>
+                    )}
                     <HealthIndicator
                       status={healthStatuses[mcpKey(backend, server.name)]}
                       isChecking={isHealthChecking}

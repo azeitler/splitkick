@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react'
-import { Copy, Sparkles } from 'lucide-react'
+import { Copy } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { normalizePath } from '@/lib/path-utils'
 import { Markdown } from '@/components/ui/markdown'
@@ -14,10 +14,10 @@ import { ToolCallInline, TaskCallInline, StackedGroup } from './ToolCallInline'
 import {
   buildTimeline,
   findPlanFilePath,
+  getIntroTextBeforeDuplicatePlan,
   getPlanTextBlockIndicesToHide,
   isDuplicatePlanTextBlock,
   resolvePlanContent,
-  splitTextAroundPlan,
 } from './tool-call-utils'
 import { PlanDisplay } from './PlanFileDisplay'
 import { ImageLightbox } from './ImageLightbox'
@@ -27,6 +27,7 @@ import { SkillBadge } from './SkillBadge'
 import { ToolCallsDisplay } from './ToolCallsDisplay'
 import { ExitPlanModeButton } from './ExitPlanModeButton'
 import { EditedFilesDisplay } from './EditedFilesDisplay'
+import type { FileEdit } from './FileEditsDiffModal'
 import {
   Tooltip,
   TooltipTrigger,
@@ -51,12 +52,7 @@ import {
   stripAllMarkers,
 } from './message-content-utils'
 import { hasQuestionAnswerOutput } from '@/types/chat'
-import {
-  EFFORT_LEVEL_OPTIONS,
-  MODEL_OPTIONS,
-  THINKING_LEVEL_OPTIONS,
-} from '@/components/chat/toolbar/toolbar-options'
-import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
+import { MessageSettingsBadges } from '@/components/chat/MessageSettingsBadges'
 
 interface MessageItemProps {
   /** The message to render */
@@ -108,7 +104,7 @@ interface MessageItemProps {
   /** Callback when user clicks a file path */
   onFileClick: (path: string) => void
   /** Callback when user clicks an edited file badge (opens diff modal) */
-  onEditedFileClick: (path: string) => void
+  onEditedFileClick: (path: string, edits: FileEdit[]) => void
   /** Callback when user fixes a finding */
   onFixFinding: (finding: ReviewFinding, suggestion?: string) => Promise<void>
   /** Callback when user fixes all findings */
@@ -248,15 +244,21 @@ export const MessageItem = memo(function MessageItem({
     message.content_blocks,
     resolvedPlan.content
   )
-  const fallbackTextSplit =
-    message.role === 'assistant'
-      ? splitTextAroundPlan(displayContent)
-      : { beforePlan: null, plan: null }
   const fallbackPrePlanText =
+    message.role === 'assistant'
+      ? getIntroTextBeforeDuplicatePlan(displayContent, resolvedPlan.content)
+      : null
+  const isDuplicateAssistantPlanContent =
     message.role === 'assistant' &&
     isDuplicatePlanTextBlock(displayContent, resolvedPlan.content)
-      ? fallbackTextSplit.beforePlan
-      : null
+  const shouldRenderDisplayContent =
+    Boolean(showContent) && !isDuplicateAssistantPlanContent
+  const durationBadge =
+    message.role === 'assistant' && durationMs != null && durationMs > 0 ? (
+      <span className="mt-1 block min-h-4 text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono">
+        {formatDuration(durationMs)}
+      </span>
+    ) : null
 
   const messageBoxContent = (
     <>
@@ -354,7 +356,11 @@ export const MessageItem = memo(function MessageItem({
                   <div className="text-sm text-muted-foreground italic">
                     <span>[Message could not be rendered]</span>
                     {message.content && (
-                      <Markdown streaming={message.cancelled}>
+                      <Markdown
+                        streaming={message.cancelled}
+                        messageId={message.id}
+                        sessionId={sessionId}
+                      >
                         {message.content}
                       </Markdown>
                     )}
@@ -377,12 +383,36 @@ export const MessageItem = memo(function MessageItem({
                       ? displayContent
                       : null))
                   : null
+              const lastVisibleTextKey = [...timeline].reverse().find(item => {
+                if (item.type !== 'text') return false
+                const textBlockIndex = message.content_blocks?.findIndex(
+                  block => block.type === 'text' && block.text === item.text
+                )
+                if (
+                  textBlockIndex !== undefined &&
+                  textBlockIndex >= 0 &&
+                  hiddenPlanTextBlockIndices.has(textBlockIndex)
+                ) {
+                  return false
+                }
+                return !isDuplicatePlanTextBlock(
+                  item.text,
+                  resolvedPlan.content
+                )
+              })?.key
               return (
                 <>
                   {fallbackAssistantIntro && (
-                    <Markdown streaming={message.cancelled}>
-                      {fallbackAssistantIntro}
-                    </Markdown>
+                    <>
+                      <Markdown
+                        streaming={message.cancelled ?? false}
+                        messageId={message.id}
+                        sessionId={sessionId}
+                      >
+                        {fallbackAssistantIntro}
+                      </Markdown>
+                      {!lastVisibleTextKey && durationBadge}
+                    </>
                   )}
                   {timeline.map(item => (
                     <ErrorBoundary
@@ -429,7 +459,11 @@ export const MessageItem = memo(function MessageItem({
                               const strippedText = stripFindingBlocks(item.text)
                               return (
                                 <div>
-                                  <Markdown streaming={message.cancelled}>
+                                  <Markdown
+                                    streaming={message.cancelled ?? false}
+                                    messageId={message.id}
+                                    sessionId={sessionId}
+                                  >
                                     {strippedText}
                                   </Markdown>
                                   {findings.length > 0 && (
@@ -442,13 +476,23 @@ export const MessageItem = memo(function MessageItem({
                                       disabled={isSending}
                                     />
                                   )}
+                                  {item.key === lastVisibleTextKey &&
+                                    durationBadge}
                                 </div>
                               )
                             }
                             return (
-                              <Markdown streaming={message.cancelled}>
-                                {item.text}
-                              </Markdown>
+                              <>
+                                <Markdown
+                                  streaming={message.cancelled ?? false}
+                                  messageId={message.id}
+                                  sessionId={sessionId}
+                                >
+                                  {item.text}
+                                </Markdown>
+                                {item.key === lastVisibleTextKey &&
+                                  durationBadge}
+                              </>
                             )
                           }
                           case 'task':
@@ -618,9 +662,16 @@ export const MessageItem = memo(function MessageItem({
       ) : (
         <>
           {message.role === 'assistant' && fallbackPrePlanText && (
-            <Markdown streaming={message.cancelled}>
-              {fallbackPrePlanText}
-            </Markdown>
+            <>
+              <Markdown
+                streaming={message.cancelled ?? false}
+                messageId={message.id}
+                sessionId={sessionId}
+              >
+                {fallbackPrePlanText}
+              </Markdown>
+              {durationBadge}
+            </>
           )}
           {/* Fallback: Show tool calls first for assistant messages (old format) */}
           {message.role === 'assistant' &&
@@ -647,38 +698,46 @@ export const MessageItem = memo(function MessageItem({
               />
             )}
           {/* Show content after tool calls */}
-          {showContent &&
-            !(
-              message.role === 'assistant' &&
-              isDuplicatePlanTextBlock(displayContent, resolvedPlan.content)
-            ) && (
-              <div>
-                {message.role === 'assistant' &&
-                hasReviewFindings(displayContent) ? (
-                  <>
-                    <Markdown streaming={message.cancelled}>
-                      {stripFindingBlocks(displayContent)}
-                    </Markdown>
-                    <ReviewFindingsList
-                      findings={parseReviewFindings(displayContent)}
-                      sessionId={sessionId}
-                      onFix={onFixFinding}
-                      onFixAll={onFixAllFindings}
-                      isFixedFn={handleIsFindingFixed}
-                      disabled={isSending}
-                    />
-                  </>
-                ) : message.role === 'user' ? (
-                  <div className="whitespace-pre-wrap break-words">
-                    {displayContent}
-                  </div>
-                ) : (
-                  <Markdown streaming={message.cancelled}>
+          {shouldRenderDisplayContent && (
+            <div>
+              {message.role === 'assistant' &&
+              hasReviewFindings(displayContent) ? (
+                <>
+                  <Markdown
+                    streaming={message.cancelled ?? false}
+                    messageId={message.id}
+                    sessionId={sessionId}
+                  >
+                    {stripFindingBlocks(displayContent)}
+                  </Markdown>
+                  <ReviewFindingsList
+                    findings={parseReviewFindings(displayContent)}
+                    sessionId={sessionId}
+                    onFix={onFixFinding}
+                    onFixAll={onFixAllFindings}
+                    isFixedFn={handleIsFindingFixed}
+                    disabled={isSending}
+                  />
+                  {!fallbackPrePlanText && durationBadge}
+                </>
+              ) : message.role === 'user' ? (
+                <div className="whitespace-pre-wrap break-words">
+                  {displayContent}
+                </div>
+              ) : (
+                <>
+                  <Markdown
+                    streaming={message.cancelled ?? false}
+                    messageId={message.id}
+                    sessionId={sessionId}
+                  >
                     {displayContent}
                   </Markdown>
-                )}
-              </div>
-            )}
+                  {!fallbackPrePlanText && durationBadge}
+                </>
+              )}
+            </div>
+          )}
           {/* Show ExitPlanMode button after content */}
           {message.role === 'assistant' &&
             (message.tool_calls?.length ?? 0) > 0 &&
@@ -720,12 +779,6 @@ export const MessageItem = memo(function MessageItem({
           (cancelled)
         </span>
       )}
-
-      {message.role === 'assistant' && durationMs != null && durationMs > 0 && (
-        <span className="mt-1 block min-h-4 text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono">
-          {formatDuration(durationMs)}
-        </span>
-      )}
     </>
   )
 
@@ -745,7 +798,7 @@ export const MessageItem = memo(function MessageItem({
                 <button
                   type="button"
                   onClick={handleCopyToInput}
-                  className="shrink-0 mt-2 p-1 rounded cursor-pointer text-muted-foreground/0 hover:text-muted-foreground hover:bg-muted/50 group-hover:text-muted-foreground/50 transition-colors"
+                  className="shrink-0 mt-2 p-1 rounded cursor-pointer text-muted-foreground/0 [@media(pointer:coarse)]:text-muted-foreground/60 hover:text-muted-foreground hover:bg-muted/50 group-hover:text-muted-foreground/50 transition-colors"
                 >
                   <Copy className="h-3.5 w-3.5" />
                 </button>
@@ -756,35 +809,14 @@ export const MessageItem = memo(function MessageItem({
           <div className="text-foreground border border-border rounded-lg px-3 py-2 bg-muted/20 min-w-0 break-words">
             {messageBoxContent}
             {message.model && (
-              <div className="mt-1 flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
-                <Sparkles className="h-2 w-2" />
-                {MODEL_OPTIONS.find(o => o.value === message.model)?.label ??
-                  (message.model?.includes('/') ? formatOpencodeModelLabel(message.model) : message.model)}
-                {message.execution_mode &&
-                  message.execution_mode !== 'plan' && (
-                    <span className="capitalize">
-                      · {message.execution_mode}
-                    </span>
-                  )}
-                {!message.model?.startsWith('cursor/') && message.effort_level && (
-                  <span>
-                    ·{' '}
-                    {EFFORT_LEVEL_OPTIONS.find(
-                      o => o.value === message.effort_level
-                    )?.label ?? message.effort_level}
-                  </span>
-                )}
-                {!message.model?.startsWith('cursor/') &&
-                  !message.effort_level &&
-                  message.thinking_level &&
-                  message.thinking_level !== 'off' && (
-                    <span>
-                      ·{' '}
-                      {THINKING_LEVEL_OPTIONS.find(
-                        o => o.value === message.thinking_level
-                      )?.label ?? message.thinking_level}
-                    </span>
-                  )}
+              <div className="mt-1.5">
+                <MessageSettingsBadges
+                  model={message.model}
+                  executionMode={message.execution_mode}
+                  thinkingLevel={message.thinking_level}
+                  effortLevel={message.effort_level}
+                  isCursor={message.model.startsWith('cursor/')}
+                />
               </div>
             )}
           </div>

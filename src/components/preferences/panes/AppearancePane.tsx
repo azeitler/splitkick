@@ -1,7 +1,7 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
 import { Slider } from '@/components/ui/slider'
+import { Switch } from '@/components/ui/switch'
 import {
   Select,
   SelectContent,
@@ -17,6 +17,7 @@ import {
   syntaxThemeDarkOptions,
   syntaxThemeLightOptions,
   fileEditModeOptions,
+  terminalBackgroundOptions,
   FONT_SIZE_DEFAULT,
   ZOOM_LEVEL_DEFAULT,
   uiFontScaleTicks,
@@ -26,21 +27,14 @@ import {
   type ChatFont,
   type SyntaxTheme,
   type FileEditMode,
+  type TerminalBackgroundMode,
 } from '@/types/preferences'
 import { isMacOS } from '@/lib/platform'
-
-const SettingsSection: React.FC<{
-  title: string
-  children: React.ReactNode
-}> = ({ title, children }) => (
-  <div className="space-y-4">
-    <div>
-      <h3 className="text-lg font-medium text-foreground">{title}</h3>
-      <Separator className="mt-2" />
-    </div>
-    {children}
-  </div>
-)
+import { invoke } from '@/lib/transport'
+import { toast } from 'sonner'
+import { Input } from '@/components/ui/input'
+import { isValidHex } from '@/lib/terminal-theme'
+import { SettingsSection } from '../SettingsSection'
 
 const InlineField: React.FC<{
   label: string
@@ -74,12 +68,17 @@ const ScalingField: React.FC<{
   </div>
 )
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
 const modKey = isMacOS ? 'Cmd' : 'Ctrl'
 
 export const AppearancePane: React.FC = () => {
   const { theme, setTheme } = useTheme()
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
+  const [isVibrancyPending, setIsVibrancyPending] = useState(false)
 
   // Zoom uses commit-only saving to avoid flickering the webview during drag.
   // localZoom tracks slider position, preferences are saved only on release.
@@ -126,6 +125,84 @@ export const AppearancePane: React.FC = () => {
     [patchPreferences]
   )
 
+  const handleTerminalBackgroundModeChange = useCallback(
+    (value: TerminalBackgroundMode) => {
+      patchPreferences.mutate({ terminal_background: value })
+    },
+    [patchPreferences]
+  )
+
+  // Custom terminal color: keep an uncommitted draft so the hex field can be
+  // typed into character by character, and debounce persistence so dragging
+  // the native color picker does not flood the backend with disk writes.
+  const terminalMode = preferences?.terminal_background ?? 'auto'
+  const savedCustomColor = preferences?.terminal_background_custom ?? null
+  const [customColorDraft, setCustomColorDraft] = useState<string | null>(null)
+  const customSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const customColorValue = customColorDraft ?? savedCustomColor ?? ''
+
+  // Drop the draft whenever the mode is no longer "custom" so the field
+  // re-syncs to the saved value next time it is shown.
+  useEffect(() => {
+    if (terminalMode !== 'custom') setCustomColorDraft(null)
+  }, [terminalMode])
+
+  useEffect(() => {
+    return () => {
+      if (customSaveTimer.current) clearTimeout(customSaveTimer.current)
+    }
+  }, [])
+
+  const scheduleCustomColorSave = useCallback(
+    (value: string | null) => {
+      if (customSaveTimer.current) clearTimeout(customSaveTimer.current)
+      customSaveTimer.current = setTimeout(() => {
+        customSaveTimer.current = null
+        patchPreferences.mutate({ terminal_background_custom: value })
+      }, 200)
+    },
+    [patchPreferences]
+  )
+
+  const handleCustomColorPick = useCallback(
+    (value: string) => {
+      setCustomColorDraft(value)
+      scheduleCustomColorSave(value)
+    },
+    [scheduleCustomColorSave]
+  )
+
+  const handleCustomColorText = useCallback(
+    (value: string) => {
+      setCustomColorDraft(value)
+      const trimmed = value.trim()
+      if (trimmed === '') {
+        scheduleCustomColorSave(null)
+      } else if (isValidHex(trimmed)) {
+        scheduleCustomColorSave(trimmed)
+      }
+    },
+    [scheduleCustomColorSave]
+  )
+
+  const handleCustomColorBlur = useCallback(() => {
+    if (customSaveTimer.current) {
+      clearTimeout(customSaveTimer.current)
+      customSaveTimer.current = null
+    }
+    const trimmed = (customColorDraft ?? '').trim()
+    if (customColorDraft !== null) {
+      if (trimmed === '') {
+        patchPreferences.mutate({ terminal_background_custom: null })
+      } else if (isValidHex(trimmed)) {
+        patchPreferences.mutate({ terminal_background_custom: trimmed })
+      }
+    }
+    // Resync the field to the persisted value (discards invalid drafts).
+    setCustomColorDraft(null)
+  }, [customColorDraft, patchPreferences])
+
   const handleFileEditModeChange = useCallback(
     (value: FileEditMode) => {
       patchPreferences.mutate({ file_edit_mode: value })
@@ -133,9 +210,45 @@ export const AppearancePane: React.FC = () => {
     [patchPreferences]
   )
 
+  const handleVibrancyChange = useCallback(
+    async (checked: boolean) => {
+      const previous = preferences?.window_vibrancy ?? false
+      if (checked === previous) return
+
+      setIsVibrancyPending(true)
+      try {
+        await patchPreferences.mutateAsync({ window_vibrancy: checked })
+      } catch {
+        setIsVibrancyPending(false)
+        return
+      }
+
+      try {
+        await invoke('set_window_vibrancy', { enabled: checked })
+      } catch (error) {
+        try {
+          await invoke('set_window_vibrancy', { enabled: previous })
+          await patchPreferences.mutateAsync({ window_vibrancy: previous })
+        } catch (rollbackError) {
+          toast.error('Window transparency was not applied or rolled back', {
+            description: getErrorMessage(rollbackError),
+          })
+          return
+        }
+
+        toast.error('Window transparency was not applied', {
+          description: getErrorMessage(error),
+        })
+      } finally {
+        setIsVibrancyPending(false)
+      }
+    },
+    [patchPreferences, preferences?.window_vibrancy]
+  )
+
   return (
     <div className="space-y-6">
-      <SettingsSection title="Theme">
+      <SettingsSection title="Theme" anchorId="pref-appearance-section-theme">
         <div className="space-y-4">
           <InlineField
             label="Color theme"
@@ -210,10 +323,76 @@ export const AppearancePane: React.FC = () => {
               </SelectContent>
             </Select>
           </InlineField>
+
+          {isMacOS && (
+            <InlineField
+              label="Window transparency"
+              description="Translucent window with desktop blur (uses significant GPU)"
+            >
+              <Switch
+                checked={preferences?.window_vibrancy ?? false}
+                onCheckedChange={handleVibrancyChange}
+                disabled={patchPreferences.isPending || isVibrancyPending}
+              />
+            </InlineField>
+          )}
+
+          <InlineField
+            label="Terminal background"
+            description="Pick a background color for the terminal panel"
+          >
+            <Select
+              value={terminalMode}
+              onValueChange={value =>
+                handleTerminalBackgroundModeChange(
+                  value as TerminalBackgroundMode
+                )
+              }
+              disabled={patchPreferences.isPending}
+            >
+              <SelectTrigger className="w-96">
+                <SelectValue placeholder="Select" />
+              </SelectTrigger>
+              <SelectContent>
+                {terminalBackgroundOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </InlineField>
+
+          {terminalMode === 'custom' && (
+            <InlineField
+              label="Custom terminal color"
+              description="Choose any color you like for the terminal background"
+            >
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={
+                    isValidHex(customColorValue) ? customColorValue : '#101010'
+                  }
+                  onChange={e => handleCustomColorPick(e.target.value)}
+                  className="h-9 w-12 cursor-pointer rounded border"
+                  aria-label="Pick terminal background color"
+                />
+                <Input
+                  value={customColorValue}
+                  onChange={e => handleCustomColorText(e.target.value)}
+                  onBlur={handleCustomColorBlur}
+                  placeholder="#101010"
+                  className="w-40 font-mono"
+                  spellCheck={false}
+                />
+              </div>
+            </InlineField>
+          )}
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Fonts">
+      <SettingsSection title="Fonts" anchorId="pref-appearance-section-fonts">
         <div className="space-y-4">
           <InlineField label="UI font" description="Font for interface text">
             <Select
@@ -259,7 +438,10 @@ export const AppearancePane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Scaling">
+      <SettingsSection
+        title="Scaling"
+        anchorId="pref-appearance-section-scaling"
+      >
         <div className="space-y-5">
           <ScalingField
             label="UI font scaling"
@@ -308,7 +490,10 @@ export const AppearancePane: React.FC = () => {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="File Viewer">
+      <SettingsSection
+        title="File Viewer"
+        anchorId="pref-appearance-section-file-viewer"
+      >
         <div className="space-y-4">
           <InlineField
             label="Edit files in"

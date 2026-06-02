@@ -4,6 +4,7 @@ import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import { generateId } from '@/lib/uuid'
+import { disposeTerminal } from '@/lib/terminal-instances'
 import {
   beginSessionStateHydration,
   endSessionStateHydration,
@@ -13,6 +14,7 @@ import type {
   ArchivedSessionEntry,
   ChatMessage,
   ChatHistory,
+  LoadedMessages,
   Session,
   WorktreeSessions,
   Question,
@@ -23,17 +25,114 @@ import type {
   LabelData,
   QueuedMessage,
 } from '@/types/chat'
+
 import { isTauri, projectsQueryKeys } from '@/services/projects'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
+import { useTerminalStore } from '@/store/terminal-store'
+import { getResumeArgs } from '@/components/chat/session-card-utils'
 import type { ReviewResponse, Worktree } from '@/types/projects'
+
+/** Default number of recent runs loaded on initial session fetch. */
+export const INITIAL_RUN_LIMIT = 10
+/** Number of older runs to load per scroll-up batch. */
+export const OLDER_RUN_BATCH = 10
 
 /** Check if an error is from a WebSocket disconnect (suppress toasts during reconnect). */
 function isWsDisconnectError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error)
   return msg.includes('WebSocket disconnected')
+}
+
+export function cleanupSessionTerminalForRemovedSession(
+  worktreeId: string,
+  sessionId: string
+): string | undefined {
+  const terminalId = useUIStore
+    .getState()
+    .clearSessionTerminalSurface(sessionId)
+  if (!terminalId) return undefined
+
+  invoke('stop_terminal', { terminalId }).catch(() => {
+    // Terminal may already be stopped.
+  })
+  disposeTerminal(terminalId)
+  useTerminalStore.getState().removeTerminal(worktreeId, terminalId)
+
+  return terminalId
+}
+
+/**
+ * Whether a session can be reconnected — i.e. it's a native CLI terminal
+ * session with a known way to relaunch (a backend resume id, or its persisted
+ * terminal command). Used to gate the "Reconnect" menu item.
+ */
+export function canReconnectSession(session: Session): boolean {
+  return (
+    session.primary_surface === 'terminal' &&
+    (!!getResumeArgs(session) || !!session.terminal_command)
+  )
+}
+
+/**
+ * Relaunch a native CLI session's terminal. Used by the session header
+ * "Reconnect" action when the live terminal connection is lost (e.g. dropped
+ * websocket over web access).
+ *
+ * Prefers the backend resume args (`claude --resume <id>`, `codex resume <id>`,
+ * …) when a resume id was captured; otherwise falls back to the session's
+ * persisted terminal command + args (how it was originally launched, which for
+ * sessions opened from native history already includes the resume flags).
+ *
+ * Kills/disposes the old terminal (if any) then spawns a fresh one and reveals
+ * the terminal surface.
+ */
+export async function reconnectNativeCliSession(
+  session: Session,
+  worktreeId: string
+): Promise<void> {
+  const resume = getResumeArgs(session)
+  const launch = resume ?? {
+    command: session.terminal_command ?? '',
+    args: session.terminal_command_args ?? [],
+  }
+  if (!launch.command) {
+    toast.error('No command available to reconnect this session')
+    return
+  }
+
+  const terminalStore = useTerminalStore.getState()
+  const uiStore = useUIStore.getState()
+
+  const oldTerminalId = uiStore.sessionTerminalIds[session.id]
+  if (oldTerminalId) {
+    await invoke('stop_terminal', { terminalId: oldTerminalId }).catch(() => {
+      // Terminal may already be stopped.
+    })
+    await disposeTerminal(oldTerminalId)
+    terminalStore.removeTerminal(worktreeId, oldTerminalId)
+  }
+
+  const newTerminalId = terminalStore.addTerminal(
+    worktreeId,
+    launch.command,
+    session.terminal_label ?? session.name,
+    {
+      kind: 'session',
+      commandArgs: launch.args,
+      activate: false,
+      openPanel: false,
+    }
+  )
+
+  uiStore.setSessionPrimarySurface(session.id, 'terminal')
+  uiStore.setSessionTerminalId(session.id, newTerminalId)
+  terminalStore.setModalTerminalOpen(worktreeId, true)
+  useChatStore.getState().setActiveSession(worktreeId, session.id)
+
+  toast.success('Reconnecting session…')
 }
 
 // Query keys for chat
@@ -47,6 +146,30 @@ export const chatQueryKeys = {
     [...chatQueryKeys.all, 'sessions', worktreeId] as const,
   session: (sessionId: string) =>
     [...chatQueryKeys.all, 'session', sessionId] as const,
+  nativeCliSessions: (
+    worktreePath: string,
+    backend: string,
+    searchQuery: string,
+    resultLimit: number
+  ) =>
+    [
+      ...chatQueryKeys.all,
+      'native-cli-sessions',
+      backend,
+      worktreePath,
+      searchQuery,
+      resultLimit,
+    ] as const,
+}
+
+export interface NativeCliHistorySession {
+  backend: NonNullable<Session['backend']>
+  id: string
+  title: string
+  cwd: string
+  updatedAt: number
+  resumeArgs: string[]
+  sourcePath: string
 }
 
 // ============================================================================
@@ -140,6 +263,49 @@ export function useSessions(
   })
 }
 
+export function useNativeCliSessions(
+  worktreePath: string | null,
+  backend: NonNullable<Session['backend']> | null,
+  options?: { enabled?: boolean; searchQuery?: string; resultLimit?: number }
+) {
+  const searchQuery = options?.searchQuery?.trim() ?? ''
+  const resultLimit = options?.resultLimit ?? (searchQuery ? 100 : 5)
+
+  return useQuery({
+    queryKey: chatQueryKeys.nativeCliSessions(
+      worktreePath ?? '',
+      backend ?? '',
+      searchQuery,
+      resultLimit
+    ),
+    queryFn: async (): Promise<NativeCliHistorySession[]> => {
+      if (!isTauri() || !worktreePath || !backend) return []
+      try {
+        return await invoke<NativeCliHistorySession[]>(
+          'list_native_cli_sessions',
+          {
+            worktreePath,
+            backend,
+            searchQuery,
+            resultLimit,
+          }
+        )
+      } catch (error) {
+        logger.warn('Failed to load native CLI sessions', {
+          backend,
+          worktreePath,
+          searchQuery,
+          error,
+        })
+        return []
+      }
+    },
+    enabled: (options?.enabled ?? true) && !!worktreePath && !!backend,
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60 * 5,
+  })
+}
+
 /**
  * Prefetch sessions for a worktree (for startup loading).
  * This populates the query cache so indicators show immediately.
@@ -164,6 +330,7 @@ export async function prefetchSessions(
     const reviewingUpdates: Record<string, boolean> = {}
     const waitingUpdates: Record<string, boolean> = {}
     const executionModeUpdates: Record<string, ExecutionMode> = {}
+    const primarySurfaceUpdates: Record<string, 'chat' | 'terminal'> = {}
     const labelUpdates: Record<string, LabelData> = {}
     const reviewResultsUpdates: Record<string, ReviewResponse> = {}
     const answeredQuestionsUpdates: Record<string, Set<string>> = {}
@@ -190,6 +357,9 @@ export async function prefetchSessions(
       }
       if (session.selected_execution_mode) {
         executionModeUpdates[session.id] = session.selected_execution_mode
+      }
+      if (session.primary_surface) {
+        primarySurfaceUpdates[session.id] = session.primary_surface
       }
       if (session.label) {
         labelUpdates[session.id] = session.label
@@ -252,6 +422,14 @@ export async function prefetchSessions(
         ...currentState.executionModes,
         ...executionModeUpdates,
       }
+    }
+    if (Object.keys(primarySurfaceUpdates).length > 0) {
+      useUIStore.setState(state => ({
+        sessionPrimarySurface: {
+          ...state.sessionPrimarySurface,
+          ...primarySurfaceUpdates,
+        },
+      }))
     }
     if (Object.keys(labelUpdates).length > 0) {
       storeUpdates.sessionLabels = {
@@ -350,16 +528,23 @@ export function useSession(
           worktreeId,
           worktreePath,
           sessionId,
+          limit: INITIAL_RUN_LIMIT,
         })
         logger.info('[useSession] loaded', {
           sessionId,
           messageCount: session.messages.length,
+          totalRuns: session.total_runs,
+          loadedFromRun: session.loaded_run_start_index,
           backend: session.backend,
         })
 
         // Preserve optimistic messages from sendMessage.onMutate that the
         // backend hasn't persisted yet (race: refetchOnMount fires before
         // the send_chat_message invoke writes the user message to disk).
+        // Also preserve messages the user loaded via scroll-up pagination:
+        // fresh fetch uses INITIAL_RUN_LIMIT so its loaded_run_start_index
+        // reflects only the last N runs — using it would wrongly re-show
+        // the "load older" button for runs the cache already contains.
         const cached = queryClient.getQueryData<Session>(
           chatQueryKeys.session(sessionId)
         )
@@ -370,9 +555,17 @@ export function useSession(
               sessionId,
               cachedCount: cached.messages.length,
               diskCount: session.messages.length,
+              cachedStart: cached.loaded_run_start_index,
+              freshStart: session.loaded_run_start_index,
             }
           )
-          return { ...session, messages: cached.messages }
+          return {
+            ...session,
+            messages: cached.messages,
+            // Keep cached pagination cursor (reflects what's actually in
+            // messages); fresh total_runs is still authoritative.
+            loaded_run_start_index: cached.loaded_run_start_index,
+          }
         }
 
         return session
@@ -387,6 +580,79 @@ export function useSession(
     // Respects staleTime; cross-client sync handled by cache:invalidate broadcast
     // from Rust after send_chat_message completes (JSONL fully written).
     refetchOnMount: true,
+  })
+}
+
+/**
+ * Hook to load an older window of messages for an already-cached session.
+ * Prepends the fetched messages into the existing `useSession` cache and
+ * advances `loaded_run_start_index` so subsequent calls walk backward.
+ */
+export function useLoadOlderMessages() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    retry: false,
+    mutationFn: async ({
+      sessionId,
+      beforeRunIndex,
+      limit = OLDER_RUN_BATCH,
+    }: {
+      sessionId: string
+      beforeRunIndex: number
+      limit?: number
+    }): Promise<LoadedMessages> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+      logger.debug('[useLoadOlderMessages] fetching', {
+        sessionId,
+        beforeRunIndex,
+        limit,
+      })
+      const result = await invoke<LoadedMessages>(
+        'load_older_session_messages',
+        {
+          sessionId,
+          beforeRunIndex,
+          limit,
+        }
+      )
+      logger.info('[useLoadOlderMessages] loaded', {
+        sessionId,
+        added: result.messages.length,
+        newStart: result.loaded_run_start_index,
+      })
+      return result
+    },
+    onSuccess: (loaded, { sessionId }) => {
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(sessionId),
+        old => {
+          if (!old) return old
+          // Guard: if backend returned empty (race) keep cache untouched.
+          if (loaded.messages.length === 0) {
+            return {
+              ...old,
+              total_runs: loaded.total_runs,
+              loaded_run_start_index: loaded.loaded_run_start_index,
+            }
+          }
+          return {
+            ...old,
+            messages: [...loaded.messages, ...old.messages],
+            total_runs: loaded.total_runs,
+            loaded_run_start_index: loaded.loaded_run_start_index,
+          }
+        }
+      )
+    },
+    onError: error => {
+      if (isWsDisconnectError(error)) return
+      const message = error instanceof Error ? error.message : String(error)
+      logger.error('Failed to load older messages', { error })
+      toast.error('Failed to load older messages', { description: message })
+    },
   })
 }
 
@@ -405,10 +671,20 @@ export function useCreateSession() {
       worktreeId,
       worktreePath,
       name,
+      backend,
+      primarySurface,
+      terminalCommand,
+      terminalCommandArgs,
+      terminalLabel,
     }: {
       worktreeId: string
       worktreePath: string
       name?: string
+      backend?: NonNullable<Session['backend']>
+      primarySurface?: Session['primary_surface']
+      terminalCommand?: string | null
+      terminalCommandArgs?: string[]
+      terminalLabel?: string
     }): Promise<Session> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -419,6 +695,11 @@ export function useCreateSession() {
         worktreeId,
         worktreePath,
         name,
+        backend,
+        primarySurface,
+        terminalCommand,
+        terminalCommandArgs,
+        terminalLabel,
       })
       logger.info('Session created', { sessionId: session.id })
       return session
@@ -529,6 +810,7 @@ export function useUpdateSessionState() {
       pendingPlanMessageId,
       enabledMcpServers,
       selectedExecutionMode,
+      tableCheckedRows,
     }: {
       worktreeId: string
       worktreePath: string
@@ -595,6 +877,7 @@ export function useUpdateSessionState() {
       pendingPlanMessageId?: string | null
       enabledMcpServers?: string[] | null
       selectedExecutionMode?: ExecutionMode | null
+      tableCheckedRows?: Record<string, number[]>
     }): Promise<void> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
@@ -621,6 +904,7 @@ export function useUpdateSessionState() {
         pendingPlanMessageId,
         enabledMcpServers,
         selectedExecutionMode,
+        tableCheckedRows,
       })
       logger.debug('Session state updated')
     },
@@ -681,6 +965,7 @@ export function useCloseSession() {
 
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
+      cleanupSessionTerminalForRemovedSession(worktreeId, sessionId)
 
       // Switch to the new active session — but only if the caller hasn't already
       // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
@@ -746,6 +1031,7 @@ export function useArchiveSession() {
 
       // Clear all session-scoped state
       useChatStore.getState().clearSessionState(sessionId)
+      cleanupSessionTerminalForRemovedSession(worktreeId, sessionId)
 
       // Switch to the new active session — but only if the caller hasn't already
       // picked a neighbor (e.g. SessionChatModal sets it based on visual tab order)
@@ -1356,7 +1642,12 @@ export function useSendMessage() {
         tool_calls: [],
         model,
         execution_mode: executionMode,
-        thinking_level: backend === 'cursor' ? undefined : (effortLevel ? undefined : thinkingLevel),
+        thinking_level:
+          backend === 'cursor'
+            ? undefined
+            : effortLevel
+              ? undefined
+              : thinkingLevel,
         effort_level: backend === 'cursor' ? undefined : effortLevel,
       }
 
@@ -1509,15 +1800,6 @@ export function useSendMessage() {
         queryClient.invalidateQueries({
           queryKey: chatQueryKeys.sessions(worktreeId),
         })
-        toast.error(
-          isDisconnect
-            ? 'Connection lost — refreshing...'
-            : 'Response timed out — refreshing...',
-          {
-            id: isDisconnect ? 'ws-disconnect-toast' : undefined,
-            description: 'Your message was likely processed successfully.',
-          }
-        )
         return
       }
 
@@ -1891,6 +2173,62 @@ export function useSetSessionThinkingLevel() {
             : 'Unknown error occurred'
       logger.error('Failed to save thinking level selection', { error })
       toast.error('Failed to save thinking level', { description: message })
+    },
+  })
+}
+
+/**
+ * Hook to set the selected effort level for a session
+ */
+export function useSetSessionEffortLevel() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({
+      worktreeId,
+      worktreePath,
+      sessionId,
+      effortLevel,
+    }: {
+      worktreeId: string
+      worktreePath: string
+      sessionId: string
+      effortLevel: EffortLevel
+    }): Promise<void> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+
+      logger.debug('Setting session effort level', {
+        sessionId,
+        effortLevel,
+      })
+      await invoke('set_session_effort_level', {
+        worktreeId,
+        worktreePath,
+        sessionId,
+        effortLevel,
+      })
+      logger.info('Session effort level saved')
+    },
+    onSuccess: (_, { sessionId, worktreeId }) => {
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.session(sessionId),
+      })
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.sessions(worktreeId),
+      })
+    },
+    onError: error => {
+      if (isWsDisconnectError(error)) return
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error occurred'
+      logger.error('Failed to save effort level selection', { error })
+      toast.error('Failed to save effort level', { description: message })
     },
   })
 }

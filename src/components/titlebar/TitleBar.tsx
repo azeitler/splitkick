@@ -1,7 +1,7 @@
 import type React from 'react'
 import { useState, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import { isMacOS, openExternal } from '@/lib/platform'
+import { isLinux, isMacOS, openExternal } from '@/lib/platform'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -24,6 +24,7 @@ import { isNativeApp } from '@/lib/environment'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
+import { LinuxWindowControls } from './LinuxWindowControls'
 
 interface TitleBarProps {
   className?: string
@@ -62,7 +63,7 @@ export function TitleBar({
       {...(native ? { 'data-tauri-drag-region': true } : {})}
       className={cn(
         'relative flex h-8 w-full shrink-0 items-center justify-between',
-        'bg-background/80 backdrop-blur-md md:px-2',
+        'bg-background/80 md:px-2',
         native ? 'z-[60]' : 'z-50',
         className
       )}
@@ -198,6 +199,7 @@ export function TitleBar({
             v{appVersion}
           </button>
         )}
+        {native && isLinux && <LinuxWindowControls />}
       </div>
     </div>
   )

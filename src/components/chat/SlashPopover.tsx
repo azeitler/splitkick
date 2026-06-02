@@ -41,16 +41,34 @@ interface SlashPopoverProps {
   worktreePath?: string | null
   handleRef?: React.RefObject<SlashPopoverHandle | null>
   installedBackends?: CliBackend[]
+  /** Active session backend — gates codex-only built-ins (/goal). */
+  sessionBackend?: 'claude' | 'codex' | 'opencode' | 'cursor'
+}
+
+const CODEX_GOAL_BUILTIN: ClaudeCommand = {
+  name: 'goal',
+  path: '<built-in:codex-goal>',
+  description: 'Set, view, or clear long-horizon objective',
 }
 
 type ListItem =
-  | { type: 'command'; backend: CliBackend; data: ClaudeCommand }
-  | { type: 'skill'; backend: CliBackend; data: ClaudeSkill }
+  | {
+      type: 'command'
+      backend: CliBackend
+      data: ClaudeCommand
+      pluginName?: string
+    }
+  | {
+      type: 'skill'
+      backend: CliBackend
+      data: ClaudeSkill
+      pluginName?: string
+    }
 
 interface RenderGroup {
   key: string
   heading: string
-  items: Array<{ item: ListItem; globalIndex: number }>
+  items: { item: ListItem; globalIndex: number }[]
 }
 
 export function SlashPopover({
@@ -65,6 +83,7 @@ export function SlashPopover({
   worktreePath,
   handleRef,
   installedBackends,
+  sessionBackend,
 }: SlashPopoverProps) {
   const backendGroups = useAllBackendSkills(worktreePath, installedBackends)
   const listRef = useRef<HTMLDivElement>(null)
@@ -73,19 +92,35 @@ export function SlashPopover({
   const filteredItems = useMemo(() => {
     const items: ListItem[] = []
 
+    if (isAtPromptStart && sessionBackend === 'codex') {
+      fuzzySearchItems([CODEX_GOAL_BUILTIN], searchQuery, 1).forEach(cmd => {
+        items.push({ type: 'command', backend: 'codex', data: cmd })
+      })
+    }
+
     for (const group of backendGroups) {
       if (isAtPromptStart) {
         fuzzySearchItems(group.commands, searchQuery, 10).forEach(cmd => {
-          items.push({ type: 'command', backend: group.backend, data: cmd })
+          items.push({
+            type: 'command',
+            backend: group.backend,
+            data: cmd,
+            pluginName: group.pluginName,
+          })
         })
       }
       fuzzySearchItems(group.skills, searchQuery, 10).forEach(skill => {
-        items.push({ type: 'skill', backend: group.backend, data: skill })
+        items.push({
+          type: 'skill',
+          backend: group.backend,
+          data: skill,
+          pluginName: group.pluginName,
+        })
       })
     }
 
     return items.slice(0, 15)
-  }, [backendGroups, searchQuery, isAtPromptStart])
+  }, [backendGroups, searchQuery, isAtPromptStart, sessionBackend])
 
   const renderGroups = useMemo(() => {
     const groups: RenderGroup[] = []
@@ -93,15 +128,22 @@ export function SlashPopover({
     let currentGroup: RenderGroup | null = null
 
     filteredItems.forEach((item, globalIndex) => {
-      const key = `${item.backend}-${item.type}`
+      const pluginSuffix = item.pluginName ? `-${item.pluginName}` : '-user'
+      const key = `${item.backend}-${item.type}${pluginSuffix}`
       if (key !== currentKey) {
-        const backendLabel = getBackendLabel(item.backend)
-        const typeLabel = item.type === 'command' ? 'Commands' : 'Skills'
-        currentGroup = { key, heading: `${backendLabel} ${typeLabel}`, items: [] }
+        let heading: string
+        if (item.pluginName) {
+          heading = `${item.pluginName} Skills`
+        } else {
+          const backendLabel = getBackendLabel(item.backend)
+          const typeLabel = item.type === 'command' ? 'Commands' : 'Skills'
+          heading = `${backendLabel} ${typeLabel}`
+        }
+        currentGroup = { key, heading, items: [] }
         groups.push(currentGroup)
         currentKey = key
       }
-      currentGroup!.items.push({ item, globalIndex })
+      currentGroup?.items.push({ item, globalIndex })
     })
 
     return groups

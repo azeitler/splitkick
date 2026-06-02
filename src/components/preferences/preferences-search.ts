@@ -1,0 +1,800 @@
+import Fuse from 'fuse.js'
+import type { PreferencePane } from '@/store/ui-store'
+import { KEYBINDING_DEFINITIONS } from '@/types/keybindings'
+import type { KeybindingAction } from '@/types/keybindings'
+import type { MagicPrompts } from '@/types/preferences'
+import { getKeybindingRowId } from './panes/KeybindingsPane'
+import { getMagicPromptItemId } from './panes/MagicPromptsPane'
+import { isNativeApp } from '@/lib/environment'
+
+export interface PreferenceSearchEntry {
+  id: string
+  pane: PreferencePane
+  paneTitle: string
+  type: 'pane' | 'section' | 'item'
+  title: string
+  description?: string
+  sectionTitle?: string
+  keywords: string[]
+  anchorId?: string
+  fallbackAnchorId?: string
+  detailKey?: keyof MagicPrompts
+  keybindingAction?: KeybindingAction
+}
+
+const paneEntries: PreferenceSearchEntry[] = [
+  {
+    id: 'pane-general',
+    pane: 'general',
+    paneTitle: 'General',
+    type: 'pane',
+    title: 'General Settings',
+    keywords: ['settings', 'preferences', 'defaults', 'archive'],
+    anchorId: 'pref-pane-general',
+  },
+  {
+    id: 'pane-claude',
+    pane: 'claude',
+    paneTitle: 'Claude',
+    type: 'pane',
+    title: 'Claude Settings',
+    keywords: ['claude', 'claude cli', 'claude model', 'anthropic'],
+    anchorId: 'pref-pane-claude',
+  },
+  {
+    id: 'pane-codex',
+    pane: 'codex',
+    paneTitle: 'Codex',
+    type: 'pane',
+    title: 'Codex Settings',
+    keywords: ['codex', 'codex cli', 'codex model', 'openai'],
+    anchorId: 'pref-pane-codex',
+  },
+  {
+    id: 'pane-opencode',
+    pane: 'opencode',
+    paneTitle: 'OpenCode',
+    type: 'pane',
+    title: 'OpenCode Settings',
+    keywords: ['opencode', 'opencode cli', 'opencode model'],
+    anchorId: 'pref-pane-opencode',
+  },
+  {
+    id: 'pane-cursor',
+    pane: 'cursor',
+    paneTitle: 'Cursor',
+    type: 'pane',
+    title: 'Cursor Settings',
+    keywords: ['cursor', 'cursor cli', 'cursor agent', 'cursor model'],
+    anchorId: 'pref-pane-cursor',
+  },
+  {
+    id: 'pane-github',
+    pane: 'github',
+    paneTitle: 'GitHub CLI',
+    type: 'pane',
+    title: 'GitHub CLI Settings',
+    keywords: ['github', 'github cli', 'gh', 'github login'],
+    anchorId: 'pref-pane-github',
+  },
+  {
+    id: 'pane-coderabbit',
+    pane: 'coderabbit',
+    paneTitle: 'CodeRabbit CLI',
+    type: 'pane',
+    title: 'CodeRabbit CLI Settings',
+    keywords: ['coderabbit', 'coderabbit cli', 'coderabbit login'],
+    anchorId: 'pref-pane-coderabbit',
+  },
+  {
+    id: 'pane-providers',
+    pane: 'providers',
+    paneTitle: 'Providers',
+    type: 'pane',
+    title: 'Providers',
+    keywords: ['claude cli', 'profiles', 'anthropic', 'provider'],
+    anchorId: 'pref-pane-providers',
+  },
+  {
+    id: 'pane-usage',
+    pane: 'usage',
+    paneTitle: 'Usage',
+    type: 'pane',
+    title: 'Usage',
+    keywords: ['claude usage', 'codex usage', 'limits', 'credits'],
+    anchorId: 'pref-pane-usage',
+  },
+  {
+    id: 'pane-appearance',
+    pane: 'appearance',
+    paneTitle: 'Appearance',
+    type: 'pane',
+    title: 'Appearance',
+    keywords: ['theme', 'font', 'zoom', 'scaling'],
+    anchorId: 'pref-pane-appearance',
+  },
+  {
+    id: 'pane-keybindings',
+    pane: 'keybindings',
+    paneTitle: 'Keybindings',
+    type: 'pane',
+    title: 'Keybindings',
+    keywords: ['shortcuts', 'hotkeys', 'keyboard'],
+    anchorId: 'pref-pane-keybindings',
+  },
+  {
+    id: 'pane-terminal',
+    pane: 'terminal',
+    paneTitle: 'Terminal',
+    type: 'pane',
+    title: 'Terminal',
+    keywords: ['terminal', 'shell', 'pty', 'xterm', 'ghostty', 'font'],
+    anchorId: 'pref-pane-terminal',
+  },
+  {
+    id: 'pane-magic-prompts',
+    pane: 'magic-prompts',
+    paneTitle: 'Magic Prompts',
+    type: 'pane',
+    title: 'Magic Prompts',
+    keywords: ['prompt', 'investigate', 'review', 'release notes'],
+    anchorId: 'pref-pane-magic-prompts',
+  },
+  {
+    id: 'pane-mcp-servers',
+    pane: 'mcp-servers',
+    paneTitle: 'MCP Servers',
+    type: 'pane',
+    title: 'MCP Servers',
+    keywords: ['mcp', 'server', 'tools'],
+    anchorId: 'pref-pane-mcp-servers',
+  },
+  {
+    id: 'pane-integrations',
+    pane: 'integrations',
+    paneTitle: 'Integrations',
+    type: 'pane',
+    title: 'Integrations',
+    keywords: ['linear', 'api key'],
+    anchorId: 'pref-pane-integrations',
+  },
+  {
+    id: 'pane-experimental',
+    pane: 'experimental',
+    paneTitle: 'Experimental',
+    type: 'pane',
+    title: 'Experimental',
+    keywords: ['beta', 'debug'],
+    anchorId: 'pref-pane-experimental',
+  },
+  {
+    id: 'pane-opinionated',
+    pane: 'opinionated',
+    paneTitle: 'Opinionated',
+    type: 'pane',
+    title: 'Opinionated',
+    keywords: [
+      'plugins',
+      'recommended',
+      'rtk',
+      'caveman',
+      'superpowers',
+      'tools',
+    ],
+    anchorId: 'pref-pane-opinionated',
+  },
+  {
+    id: 'pane-web-access',
+    pane: 'web-access',
+    paneTitle: 'Web Access',
+    type: 'pane',
+    title: 'Web Access',
+    keywords: ['http', 'server', 'token', 'port', 'network'],
+    anchorId: 'pref-pane-web-access',
+  },
+]
+
+const sectionEntries: PreferenceSearchEntry[] = [
+  {
+    id: 'claude-cli',
+    pane: 'claude',
+    paneTitle: 'Claude',
+    type: 'section',
+    title: 'Claude CLI',
+    sectionTitle: 'Claude',
+    keywords: [
+      'install claude',
+      'login claude',
+      'claude version',
+      'claude source',
+    ],
+    anchorId: 'pref-claude-section-cli',
+    fallbackAnchorId: 'pref-pane-claude',
+  },
+  {
+    id: 'claude-settings',
+    pane: 'claude',
+    paneTitle: 'Claude',
+    type: 'section',
+    title: 'Claude Settings',
+    sectionTitle: 'Claude',
+    keywords: [
+      'claude model',
+      'thinking',
+      'effort',
+      'chrome browser integration',
+    ],
+    anchorId: 'pref-claude-section-settings',
+    fallbackAnchorId: 'pref-pane-claude',
+  },
+  {
+    id: 'coderabbit-cli',
+    pane: 'coderabbit',
+    paneTitle: 'CodeRabbit CLI',
+    type: 'section',
+    title: 'CodeRabbit CLI',
+    sectionTitle: 'CodeRabbit CLI',
+    keywords: [
+      'coderabbit',
+      'install coderabbit',
+      'coderabbit login',
+      'code review',
+    ],
+    anchorId: 'pref-coderabbit-section-cli',
+    fallbackAnchorId: 'pref-pane-coderabbit',
+  },
+  {
+    id: 'codex-cli',
+    pane: 'codex',
+    paneTitle: 'Codex',
+    type: 'section',
+    title: 'Codex CLI',
+    sectionTitle: 'Codex',
+    keywords: ['codex', 'install codex', 'codex login', 'codex source'],
+    anchorId: 'pref-codex-section-cli',
+    fallbackAnchorId: 'pref-pane-codex',
+  },
+  {
+    id: 'codex-settings',
+    pane: 'codex',
+    paneTitle: 'Codex',
+    type: 'section',
+    title: 'Codex Settings',
+    sectionTitle: 'Codex',
+    keywords: [
+      'codex model',
+      'codex reasoning',
+      'goal execution mode',
+      'multi-agent',
+      'max agent threads',
+    ],
+    anchorId: 'pref-codex-section-settings',
+    fallbackAnchorId: 'pref-pane-codex',
+  },
+  {
+    id: 'opencode-cli',
+    pane: 'opencode',
+    paneTitle: 'OpenCode',
+    type: 'section',
+    title: 'OpenCode CLI',
+    sectionTitle: 'OpenCode',
+    keywords: [
+      'opencode',
+      'install opencode',
+      'opencode login',
+      'opencode source',
+    ],
+    anchorId: 'pref-opencode-section-cli',
+    fallbackAnchorId: 'pref-pane-opencode',
+  },
+  {
+    id: 'opencode-settings',
+    pane: 'opencode',
+    paneTitle: 'OpenCode',
+    type: 'section',
+    title: 'OpenCode Settings',
+    sectionTitle: 'OpenCode',
+    keywords: ['opencode model', 'provider model'],
+    anchorId: 'pref-opencode-section-settings',
+    fallbackAnchorId: 'pref-pane-opencode',
+  },
+  {
+    id: 'cursor-cli',
+    pane: 'cursor',
+    paneTitle: 'Cursor',
+    type: 'section',
+    title: 'Cursor CLI',
+    sectionTitle: 'Cursor',
+    keywords: ['cursor', 'install cursor', 'cursor login', 'cursor agent'],
+    anchorId: 'pref-cursor-section-cli',
+    fallbackAnchorId: 'pref-pane-cursor',
+  },
+  {
+    id: 'cursor-settings',
+    pane: 'cursor',
+    paneTitle: 'Cursor',
+    type: 'section',
+    title: 'Cursor Settings',
+    sectionTitle: 'Cursor',
+    keywords: ['cursor model', 'cursor agent model'],
+    anchorId: 'pref-cursor-section-settings',
+    fallbackAnchorId: 'pref-pane-cursor',
+  },
+  {
+    id: 'github-cli',
+    pane: 'github',
+    paneTitle: 'GitHub CLI',
+    type: 'section',
+    title: 'GitHub CLI',
+    sectionTitle: 'GitHub CLI',
+    keywords: ['install gh', 'github login', 'gh version'],
+    anchorId: 'pref-github-section-cli',
+    fallbackAnchorId: 'pref-pane-github',
+  },
+  {
+    id: 'general-defaults',
+    pane: 'general',
+    paneTitle: 'General',
+    type: 'section',
+    title: 'Defaults',
+    sectionTitle: 'General',
+    keywords: [
+      'default backend',
+      'default mode',
+      'compact chat view',
+      'compact chat',
+      'ticker',
+      'parallel execution prompting',
+      'parallel execution prompt',
+      'parallelization prompt',
+      'build execution',
+      'yolo execution',
+      'ai language',
+      'allow web tools',
+      'editor',
+      'terminal',
+      'open in',
+      'git poll interval',
+      'remote poll interval',
+    ],
+    anchorId: 'pref-general-section-defaults',
+    fallbackAnchorId: 'pref-pane-general',
+  },
+  {
+    id: 'general-notifications',
+    pane: 'general',
+    paneTitle: 'General',
+    type: 'section',
+    title: 'Notifications',
+    sectionTitle: 'General',
+    keywords: ['waiting sound', 'review sound', 'notification'],
+    anchorId: 'pref-general-section-notifications',
+    fallbackAnchorId: 'pref-pane-general',
+  },
+  {
+    id: 'general-auto-generate',
+    pane: 'general',
+    paneTitle: 'General',
+    type: 'section',
+    title: 'Auto-generate',
+    sectionTitle: 'General',
+    keywords: ['auto branch naming', 'auto session naming'],
+    anchorId: 'pref-general-section-auto-generate',
+    fallbackAnchorId: 'pref-pane-general',
+  },
+  {
+    id: 'general-worktrees',
+    pane: 'general',
+    paneTitle: 'General',
+    type: 'section',
+    title: 'Worktrees',
+    sectionTitle: 'General',
+    keywords: ['auto-pull base branch', 'restore last session'],
+    anchorId: 'pref-general-section-worktrees',
+    fallbackAnchorId: 'pref-pane-general',
+  },
+  {
+    id: 'general-archive',
+    pane: 'general',
+    paneTitle: 'General',
+    type: 'section',
+    title: 'Archive',
+    sectionTitle: 'General',
+    keywords: [
+      'confirm before closing',
+      'close original session',
+      'removal behavior',
+      'auto-archive',
+      'auto-delete archives',
+      'delete all archives',
+    ],
+    anchorId: 'pref-general-section-archive',
+    fallbackAnchorId: 'pref-pane-general',
+  },
+  {
+    id: 'general-troubleshooting',
+    pane: 'general',
+    paneTitle: 'General',
+    type: 'section',
+    title: 'Troubleshooting',
+    sectionTitle: 'General',
+    keywords: ['logs', 'application logs'],
+    anchorId: 'pref-general-section-troubleshooting',
+    fallbackAnchorId: 'pref-pane-general',
+  },
+  {
+    id: 'appearance-theme',
+    pane: 'appearance',
+    paneTitle: 'Appearance',
+    type: 'section',
+    title: 'Theme',
+    sectionTitle: 'Appearance',
+    keywords: [
+      'color theme',
+      'syntax dark',
+      'syntax light',
+      'terminal background',
+      'terminal color',
+    ],
+    anchorId: 'pref-appearance-section-theme',
+    fallbackAnchorId: 'pref-pane-appearance',
+  },
+  {
+    id: 'appearance-fonts',
+    pane: 'appearance',
+    paneTitle: 'Appearance',
+    type: 'section',
+    title: 'Fonts',
+    sectionTitle: 'Appearance',
+    keywords: ['ui font', 'chat font'],
+    anchorId: 'pref-appearance-section-fonts',
+    fallbackAnchorId: 'pref-pane-appearance',
+  },
+  {
+    id: 'appearance-scaling',
+    pane: 'appearance',
+    paneTitle: 'Appearance',
+    type: 'section',
+    title: 'Scaling',
+    sectionTitle: 'Appearance',
+    keywords: ['ui font scaling', 'chat font scaling', 'zoom'],
+    anchorId: 'pref-appearance-section-scaling',
+    fallbackAnchorId: 'pref-pane-appearance',
+  },
+  {
+    id: 'appearance-file-viewer',
+    pane: 'appearance',
+    paneTitle: 'Appearance',
+    type: 'section',
+    title: 'File Viewer',
+    sectionTitle: 'Appearance',
+    keywords: ['file viewer', 'edit files in', 'external editor'],
+    anchorId: 'pref-appearance-section-file-viewer',
+    fallbackAnchorId: 'pref-pane-appearance',
+  },
+  {
+    id: 'providers-claude-cli',
+    pane: 'providers',
+    paneTitle: 'Providers',
+    type: 'section',
+    title: 'Claude CLI Profiles',
+    sectionTitle: 'Providers',
+    keywords: ['custom profile', 'settings json', 'default provider'],
+    anchorId: 'pref-providers-section-claude-cli',
+    fallbackAnchorId: 'pref-pane-providers',
+  },
+  {
+    id: 'usage-claude',
+    pane: 'usage',
+    paneTitle: 'Usage',
+    type: 'section',
+    title: 'Claude Usage',
+    sectionTitle: 'Usage',
+    keywords: ['claude usage'],
+    anchorId: 'pref-usage-section-claude',
+    fallbackAnchorId: 'pref-pane-usage',
+  },
+  {
+    id: 'usage-codex',
+    pane: 'usage',
+    paneTitle: 'Usage',
+    type: 'section',
+    title: 'Codex Usage',
+    sectionTitle: 'Usage',
+    keywords: ['codex usage', 'plan', 'credits', 'limits', 'session', 'weekly'],
+    anchorId: 'pref-usage-section-codex',
+    fallbackAnchorId: 'pref-pane-usage',
+  },
+  {
+    id: 'mcp-default-servers',
+    pane: 'mcp-servers',
+    paneTitle: 'MCP Servers',
+    type: 'section',
+    title: 'Default MCP Servers',
+    sectionTitle: 'MCP Servers',
+    keywords: ['mcp health', 'enable mcp servers', 'tools'],
+    anchorId: 'pref-mcp-section-default-servers',
+    fallbackAnchorId: 'pref-pane-mcp-servers',
+  },
+  {
+    id: 'integrations-linear',
+    pane: 'integrations',
+    paneTitle: 'Integrations',
+    type: 'section',
+    title: 'Linear',
+    sectionTitle: 'Integrations',
+    keywords: ['linear api key', 'personal api key'],
+    anchorId: 'pref-integrations-section-linear',
+    fallbackAnchorId: 'pref-pane-integrations',
+  },
+  {
+    id: 'experimental-developer-tools',
+    pane: 'experimental',
+    paneTitle: 'Experimental',
+    type: 'section',
+    title: 'Developer Tools',
+    sectionTitle: 'Experimental',
+    keywords: ['debug mode'],
+    anchorId: 'pref-experimental-section-developer-tools',
+    fallbackAnchorId: 'pref-pane-experimental',
+  },
+  {
+    id: 'terminal-settings',
+    pane: 'terminal',
+    paneTitle: 'Terminal',
+    type: 'section',
+    title: 'Terminal',
+    sectionTitle: 'Terminal',
+    keywords: [
+      'embedded terminal renderer',
+      'terminal renderer',
+      'terminal font',
+      'terminal font size',
+      'ghostty web',
+      'xterm',
+      'xterm.js',
+      'jetbrains mono',
+    ],
+    anchorId: 'pref-terminal-section-terminal',
+    fallbackAnchorId: 'pref-pane-terminal',
+  },
+  {
+    id: 'opinionated-recommended-plugins',
+    pane: 'opinionated',
+    paneTitle: 'Opinionated',
+    type: 'section',
+    title: 'Recommended Plugins',
+    sectionTitle: 'Opinionated',
+    keywords: [
+      'plugins',
+      'rtk',
+      'caveman',
+      'superpowers',
+      'tokens',
+      'recommended tools',
+    ],
+    anchorId: 'pref-opinionated-section-recommended-plugins',
+    fallbackAnchorId: 'pref-pane-opinionated',
+  },
+  {
+    id: 'web-access-server',
+    pane: 'web-access',
+    paneTitle: 'Web Access',
+    type: 'section',
+    title: 'Server',
+    sectionTitle: 'Web Access',
+    keywords: ['enable http server', 'port', 'auto-start', 'localhost only'],
+    anchorId: 'pref-web-access-section-server',
+    fallbackAnchorId: 'pref-pane-web-access',
+  },
+  {
+    id: 'web-access-authentication',
+    pane: 'web-access',
+    paneTitle: 'Web Access',
+    type: 'section',
+    title: 'Authentication',
+    sectionTitle: 'Web Access',
+    keywords: ['require access token', 'access token', 'access url'],
+    anchorId: 'pref-web-access-section-authentication',
+    fallbackAnchorId: 'pref-pane-web-access',
+  },
+]
+
+const nativeOnlySectionIds = new Set([
+  'claude-cli',
+  'coderabbit-cli',
+  'codex-cli',
+  'opencode-cli',
+  'cursor-cli',
+  'github-cli',
+  'general-troubleshooting',
+  'web-access-server',
+  'web-access-authentication',
+])
+
+const getVisibleSectionEntries = (includeNativeOnlySections: boolean) =>
+  sectionEntries.filter(entry => {
+    if (nativeOnlySectionIds.has(entry.id)) {
+      return includeNativeOnlySections
+    }
+    return true
+  })
+
+const keybindingEntries: PreferenceSearchEntry[] = KEYBINDING_DEFINITIONS.map(
+  def => ({
+    id: `keybinding-${def.action}`,
+    pane: 'keybindings',
+    paneTitle: 'Keybindings',
+    type: 'item',
+    title: def.label,
+    description: def.description,
+    sectionTitle: `Keybindings (${def.category})`,
+    keywords: [def.action, def.category, def.default_shortcut],
+    anchorId: getKeybindingRowId(def.action),
+    fallbackAnchorId: 'pref-pane-keybindings',
+    keybindingAction: def.action,
+  })
+)
+
+const magicPromptDefinitions: {
+  key: keyof MagicPrompts
+  title: string
+  description: string
+  keywords: string[]
+}[] = [
+  {
+    key: 'investigate_issue',
+    title: 'Investigate Issue Prompt',
+    description: 'Analyze GitHub issues loaded into the context.',
+    keywords: ['investigate issue', 'github issue prompt'],
+  },
+  {
+    key: 'investigate_pr',
+    title: 'Investigate PR Prompt',
+    description: 'Analyze GitHub pull requests loaded into the context.',
+    keywords: ['investigate pr', 'pull request prompt'],
+  },
+  {
+    key: 'investigate_workflow_run',
+    title: 'Investigate Workflow Run Prompt',
+    description: 'Investigate failed GitHub Actions workflow runs.',
+    keywords: ['workflow run prompt', 'github actions prompt'],
+  },
+  {
+    key: 'investigate_security_alert',
+    title: 'Investigate Dependabot Alert Prompt',
+    description: 'Investigate dependency vulnerability alerts.',
+    keywords: ['dependabot alert prompt', 'security alert prompt'],
+  },
+  {
+    key: 'investigate_advisory',
+    title: 'Investigate Security Advisory Prompt',
+    description: 'Investigate repository security advisories.',
+    keywords: ['security advisory prompt'],
+  },
+  {
+    key: 'investigate_linear_issue',
+    title: 'Investigate Linear Issue Prompt',
+    description: 'Analyze Linear issues embedded into prompt context.',
+    keywords: ['linear issue prompt', 'linear prompt'],
+  },
+  {
+    key: 'code_review',
+    title: 'Code Review Prompt',
+    description: 'Review code changes with structured findings.',
+    keywords: ['code review prompt'],
+  },
+  {
+    key: 'review_comments',
+    title: 'Review Comments Prompt',
+    description: 'Address inline PR review comments.',
+    keywords: ['review comments prompt', 'pr comments prompt'],
+  },
+  {
+    key: 'commit_message',
+    title: 'Commit Message Prompt',
+    description: 'Generate commit messages from staged changes.',
+    keywords: ['commit message prompt'],
+  },
+  {
+    key: 'pr_content',
+    title: 'PR Description Prompt',
+    description: 'Generate pull request title and description.',
+    keywords: ['pr description prompt', 'pr content prompt'],
+  },
+  {
+    key: 'resolve_conflicts',
+    title: 'Resolve Conflicts Prompt',
+    description: 'Additional instructions for conflict resolution.',
+    keywords: ['resolve conflicts prompt'],
+  },
+  {
+    key: 'release_notes',
+    title: 'Release Notes Prompt',
+    description: 'Generate release notes from changes.',
+    keywords: ['release notes prompt', 'changelog prompt'],
+  },
+  {
+    key: 'context_summary',
+    title: 'Context Summary Prompt',
+    description: 'Summarize conversation context for reuse.',
+    keywords: ['context summary prompt', 'summary prompt'],
+  },
+  {
+    key: 'session_naming',
+    title: 'Session Naming Prompt',
+    description: 'Generate names for sessions.',
+    keywords: ['session naming prompt'],
+  },
+  {
+    key: 'parallel_execution',
+    title: 'Parallel Execution Prompt',
+    description: 'System prompt encouraging sub-agent parallelization.',
+    keywords: ['parallel execution prompt', 'parallelization prompt'],
+  },
+  {
+    key: 'global_system_prompt',
+    title: 'Global System Prompt',
+    description: 'System prompt applied to every session.',
+    keywords: ['global system prompt', 'system prompt'],
+  },
+]
+
+const magicPromptEntries: PreferenceSearchEntry[] = magicPromptDefinitions.map(
+  prompt => ({
+    id: `magic-prompt-${prompt.key}`,
+    pane: 'magic-prompts',
+    paneTitle: 'Magic Prompts',
+    type: 'item',
+    title: prompt.title,
+    description: prompt.description,
+    sectionTitle: 'Magic Prompts',
+    keywords: prompt.keywords,
+    anchorId: getMagicPromptItemId(prompt.key),
+    fallbackAnchorId: 'pref-pane-magic-prompts',
+    detailKey: prompt.key,
+  })
+)
+
+const fuseOptions = {
+  includeScore: true,
+  threshold: 0.38,
+  ignoreLocation: true,
+  keys: [
+    { name: 'title', weight: 3 },
+    { name: 'keywords', weight: 2 },
+    { name: 'sectionTitle', weight: 1.2 },
+    { name: 'description', weight: 1 },
+    { name: 'paneTitle', weight: 0.8 },
+  ],
+}
+
+const buildPreferenceSearchEntries = (includeNativeSections: boolean) => [
+  ...paneEntries,
+  ...getVisibleSectionEntries(includeNativeSections),
+  ...keybindingEntries,
+  ...magicPromptEntries,
+]
+
+const browserPreferenceSearchEntries = buildPreferenceSearchEntries(false)
+const nativePreferenceSearchEntries = buildPreferenceSearchEntries(true)
+
+const browserFuse = new Fuse(browserPreferenceSearchEntries, fuseOptions)
+const nativeFuse = new Fuse(nativePreferenceSearchEntries, fuseOptions)
+
+export function getPreferenceSearchEntries() {
+  return isNativeApp()
+    ? nativePreferenceSearchEntries
+    : browserPreferenceSearchEntries
+}
+
+export function searchPreferenceEntries(
+  query: string,
+  limit = 30
+): PreferenceSearchEntry[] {
+  const normalized = query.trim()
+  if (!normalized) return []
+
+  const fuse = isNativeApp() ? nativeFuse : browserFuse
+  return fuse.search(normalized, { limit }).map(result => result.item)
+}

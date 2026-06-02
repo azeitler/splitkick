@@ -36,6 +36,7 @@ import {
 import { useUIStore } from './store/ui-store'
 import type { AppPreferences } from './types/preferences'
 import { useChatStore } from './store/chat-store'
+import { useProjectsStore } from './store/projects-store'
 import { useFontSettings } from './hooks/use-font-settings'
 import { useZoom } from './hooks/use-zoom'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
@@ -44,7 +45,9 @@ import { useQueueProcessor } from './hooks/useQueueProcessor'
 import { useBackgroundInvestigation } from './hooks/useBackgroundInvestigation'
 import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
 import { useMagicPromptAutoDefaults } from './hooks/useMagicPromptAutoDefaults'
+import { usePreferences } from './services/preferences'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
+import { hydrateRunningSnapshot } from './lib/hydrate-running-snapshot'
 import { preloadAllSounds } from './lib/sounds'
 import {
   beginSessionStateHydration,
@@ -52,6 +55,7 @@ import {
 } from './lib/session-state-hydration'
 import { scheduleIdleWork } from './lib/idle'
 import { isWindows } from './lib/platform'
+import { checkWebClientVersion } from './lib/web-client-version'
 
 /** Loading screen shown while preloading initial data (browser mode only). */
 function WebLoadingScreen() {
@@ -65,6 +69,18 @@ function WebLoadingScreen() {
   )
 }
 
+/** Full-screen overlay shown while the WebSocket reconnects so stale cached data isn't visible. */
+function WsReconnectOverlay() {
+  return (
+    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/95">
+      <div className="flex flex-col items-center gap-3">
+        <div className="size-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
+        <span className="text-sm text-muted-foreground">Reconnecting…</span>
+      </div>
+    </div>
+  )
+}
+
 /** Full-screen auth error overlay for web access mode. */
 function WsAuthErrorOverlay() {
   const authError = useWsAuthError()
@@ -72,7 +88,7 @@ function WsAuthErrorOverlay() {
   if (!authError) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/90">
       <div className="mx-4 max-w-md rounded-lg border border-destructive/50 bg-background p-6 shadow-lg">
         <div className="flex items-center gap-2 text-destructive">
           <svg
@@ -94,24 +110,14 @@ function WsAuthErrorOverlay() {
   )
 }
 
-function WsReconnectingOverlay() {
-  return (
-    <div className="fixed inset-0 z-40 flex items-center justify-center bg-background/90 backdrop-blur-sm">
-      <div className="flex flex-col items-center gap-3">
-        <div className="size-6 animate-spin rounded-full border-2 border-muted border-t-primary" />
-        <div className="text-sm font-medium">Reconnecting...</div>
-        <div className="text-xs text-muted-foreground">
-          Reloading session state
-        </div>
-      </div>
-    </div>
-  )
-}
-
 function App() {
   // Track preloading state for web view
   const [isPreloading, setIsPreloading] = useState(!isNativeApp())
   const queryClient = useQueryClient()
+  const { data: preferences } = usePreferences()
+  const onboardingOpen = useUIStore(state => state.onboardingOpen)
+  const featureTourOpen = useUIStore(state => state.featureTourOpen)
+  const jeanMcpIntroOpen = useUIStore(state => state.jeanMcpIntroOpen)
   const hasStartedTransportRef = useRef(false)
 
   // Holds the update object so the title bar indicator can trigger install later
@@ -189,6 +195,11 @@ function App() {
   // Used on both initial preload and WebSocket reconnect.
   const seedCache = useCallback(
     (data: InitialData) => {
+      const runningSnapshotMessages: {
+        sessionId: string
+        message: Session['messages'][number]
+      }[] = []
+
       // Seed projects into TanStack Query cache
       if (data.projects) {
         queryClient.setQueryData(projectsQueryKeys.list(), data.projects)
@@ -326,6 +337,17 @@ function App() {
               return init
             }
           )
+
+          const seededSession = queryClient.getQueryData<Session>(
+            chatQueryKeys.session(sessionId)
+          )
+          const lastMsg = seededSession?.messages.at(-1)
+          if (
+            lastMsg?.role === 'assistant' &&
+            lastMsg.id.startsWith('running-')
+          ) {
+            runningSnapshotMessages.push({ sessionId, message: lastMsg })
+          }
         }
       }
       // Replace sendingSessionIds with exactly the server's running sessions.
@@ -378,6 +400,20 @@ function App() {
           },
         }
       })
+
+      for (const { sessionId, message } of runningSnapshotMessages) {
+        hydrateRunningSnapshot(sessionId, message, { allowWhileSending: true })
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(sessionId),
+          old =>
+            old
+              ? {
+                  ...old,
+                  messages: old.messages.filter(m => m.id !== message.id),
+                }
+              : old
+        )
+      }
       // Note: Git status is included in worktree cached_* fields, no separate cache needed
       // Seed preferences into cache
       if (data.preferences) {
@@ -399,12 +435,15 @@ function App() {
   useEffect(() => {
     if (isNativeApp()) return
 
-    preloadInitialData()
+    const initialSelectedProjectId =
+      useProjectsStore.getState().selectedProjectId
+    preloadInitialData(initialSelectedProjectId)
       .then(data => {
         if (data) {
           logger.info('Preloaded initial data via HTTP', {
             projects: Array.isArray(data.projects) ? data.projects.length : 0,
           })
+          checkWebClientVersion(data)
           seedCache(data)
           ingestBootstrapEvents(data.replayEvents ?? [])
           setWsDataReady(true)
@@ -417,6 +456,70 @@ function App() {
         setIsPreloading(false)
       })
   }, [queryClient, seedCache])
+
+  // Global safety net for uncaught async errors / promise rejections.
+  // Without this, a thrown invoke() (e.g. auth/network failure) can leave the
+  // app in a half-broken state until the next ErrorBoundary catches it.
+  useEffect(() => {
+    const truncate = (s: string, n: number) =>
+      s.length > n ? `${s.slice(0, n)}…` : s
+
+    const isAlreadySurfacedAuthError = (msg: string): boolean => {
+      const lower = msg.toLowerCase()
+      return (
+        lower.includes('not authenticated') ||
+        lower.includes('unauthorized') ||
+        lower.includes('connection failed')
+      )
+    }
+
+    const isTransientTransportError = (msg: string): boolean => {
+      return msg.includes('WebSocket disconnected')
+    }
+
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason
+      const message =
+        reason instanceof Error
+          ? reason.message
+          : typeof reason === 'string'
+            ? reason
+            : 'Unknown error'
+      logger.error('Unhandled promise rejection', {
+        message,
+        stack: reason instanceof Error ? reason.stack : undefined,
+      })
+      if (
+        !isAlreadySurfacedAuthError(message) &&
+        !isTransientTransportError(message)
+      ) {
+        toast.error(`Unexpected error: ${truncate(message, 200)}`)
+      }
+      event.preventDefault()
+    }
+
+    const handleError = (event: ErrorEvent) => {
+      const message = event.error?.message ?? event.message ?? 'Unknown error'
+      logger.error('Uncaught window error', {
+        message,
+        stack: event.error?.stack,
+        filename: event.filename,
+      })
+      if (
+        !isAlreadySurfacedAuthError(message) &&
+        !isTransientTransportError(message)
+      ) {
+        toast.error(`Unexpected error: ${truncate(message, 200)}`)
+      }
+    }
+
+    window.addEventListener('unhandledrejection', handleRejection)
+    window.addEventListener('error', handleError)
+    return () => {
+      window.removeEventListener('unhandledrejection', handleRejection)
+      window.removeEventListener('error', handleError)
+    }
+  }, [])
 
   // Apply font settings from preferences
   useFontSettings()
@@ -461,7 +564,6 @@ function App() {
   // On reconnect: re-fetch bulk data via HTTP to restore everything fast.
   const wsConnected = useWsConnectionStatus()
   const wsDataReady = useWsDataReady()
-  const wsAuthError = useWsAuthError()
   const hadWsConnectionRef = useRef(false)
   useEffect(() => {
     if (isNativeApp() || !wsConnected) return
@@ -475,11 +577,16 @@ function App() {
       // so the server loads the correct sessions even when ui_state.json
       // on disk is stale (debounced save hasn't flushed yet).
       const activeSessionIds = useChatStore.getState().activeSessionIds
-      const dataPromise = refetchInitialData(activeSessionIds)
+      const selectedProjectId = useProjectsStore.getState().selectedProjectId
+      const dataPromise = refetchInitialData(
+        activeSessionIds,
+        selectedProjectId
+      )
       logger.info('WebSocket reconnected, re-fetching initial data via HTTP')
       dataPromise
         .then(data => {
           if (data) {
+            checkWebClientVersion(data)
             seedCache(data)
             ingestBootstrapEvents(data.replayEvents ?? [])
             logger.info('Reconnect: re-seeded cache from HTTP')
@@ -541,6 +648,20 @@ function App() {
   useEffect(() => {
     if (isNativeApp()) {
       document.body.classList.add('native-app')
+    }
+  }, [])
+
+  // Pause animations when window loses focus to save GPU
+  useEffect(() => {
+    const onBlur = () =>
+      document.documentElement.classList.add('window-blurred')
+    const onFocus = () =>
+      document.documentElement.classList.remove('window-blurred')
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocus)
     }
   }, [])
 
@@ -653,6 +774,66 @@ function App() {
     queryClient,
   ])
 
+  // Show the one-time Jean MCP announcement only after setup is complete.
+  // This must never compete with first-run onboarding or the feature tour.
+  useEffect(() => {
+    if (!isNativeApp()) return
+    if (!cliCheckReady || !preferences) return
+    if (preferences.has_seen_jean_mcp_intro) return
+    if (onboardingOpen || featureTourOpen || jeanMcpIntroOpen) return
+
+    if (!claudeStatus || !codexStatus || !opencodeStatus || !ghStatus) return
+
+    const isLoading =
+      isClaudeStatusLoading ||
+      isCodexStatusLoading ||
+      isOpencodeStatusLoading ||
+      isGhStatusLoading ||
+      (claudeStatus?.installed && isClaudeAuthLoading) ||
+      (codexStatus?.installed && isCodexAuthLoading) ||
+      (opencodeStatus?.installed && isOpencodeAuthLoading) ||
+      (ghStatus?.installed && isGhAuthLoading)
+    if (isLoading) return
+
+    const ghReady = !!ghStatus?.installed && !!ghAuth?.authenticated
+    const claudeReady = !!claudeStatus?.installed && !!claudeAuth?.authenticated
+    const codexReady = !!codexStatus?.installed && !!codexAuth?.authenticated
+    const opencodeReady =
+      !!opencodeStatus?.installed && !!opencodeAuth?.authenticated
+    const hasAiBackendReady = claudeReady || codexReady || opencodeReady
+
+    // If setup is incomplete, onboarding owns the startup surface.
+    if (!ghReady || !hasAiBackendReady) return
+
+    // Existing first-run tour has priority; show MCP intro on a later tick/reload
+    // after that preference has been marked seen.
+    if (!preferences.has_seen_feature_tour) return
+
+    useUIStore.getState().setJeanMcpIntroOpen(true)
+  }, [
+    preferences,
+    onboardingOpen,
+    featureTourOpen,
+    jeanMcpIntroOpen,
+    claudeStatus,
+    codexStatus,
+    opencodeStatus,
+    ghStatus,
+    claudeAuth,
+    codexAuth,
+    opencodeAuth,
+    ghAuth,
+    isClaudeStatusLoading,
+    isCodexStatusLoading,
+    isOpencodeStatusLoading,
+    isGhStatusLoading,
+    isClaudeAuthLoading,
+    isCodexAuthLoading,
+    isOpencodeAuthLoading,
+    isGhAuthLoading,
+    cliCheckReady,
+  ])
+
   // Show feature tour after CLI onboarding completes (first launch or manual trigger)
   useEffect(() => {
     let wasOpen = useUIStore.getState().onboardingOpen
@@ -684,6 +865,8 @@ function App() {
 
   // Kill all terminals on page refresh/close (backup for Rust-side cleanup)
   useEffect(() => {
+    if (!isNativeApp()) return
+
     const handleBeforeUnload = () => {
       // Best-effort sync cleanup for refresh scenarios
       // Note: async operations may not complete, but Rust-side RunEvent::Exit
@@ -755,20 +938,27 @@ function App() {
 
     const cancelIdleStartupWork = scheduleIdleWork(() => {
       // Preload notification sounds after the shell is interactive.
-      preloadAllSounds()
+      const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
+      preloadAllSounds({
+        webAccessSoundsEnabled: prefs?.web_access_sounds_enabled ?? true,
+      })
 
-      // Kill any orphaned terminals from previous session/reload.
-      invoke<number>('kill_all_terminals')
-        .then(killed => {
-          if (killed > 0) {
-            logger.info(
-              `Cleaned up ${killed} orphaned terminal(s) from previous session`
-            )
-          }
-        })
-        .catch(error => {
-          logger.warn('Failed to cleanup orphaned terminals', { error })
-        })
+      if (isNativeApp()) {
+        // Kill any orphaned terminals from previous native app session/reload.
+        // Web access clients must not kill server-owned terminals when their
+        // browser tab reloads, sleeps, or is discarded.
+        invoke<number>('kill_all_terminals')
+          .then(killed => {
+            if (killed > 0) {
+              logger.info(
+                `Cleaned up ${killed} orphaned terminal(s) from previous session`
+              )
+            }
+          })
+          .catch(error => {
+            logger.warn('Failed to cleanup orphaned terminals', { error })
+          })
+      }
 
       // Clean up old recovery files on startup.
       cleanupOldFiles().catch(error => {
@@ -882,21 +1072,9 @@ function App() {
                 }
               }
 
-              if (!store.streamingContentBlocks[session.session_id]?.length) {
-                for (const block of lastMsg.content_blocks ?? []) {
-                  if (block.type === 'text') {
-                    store.addTextBlock(session.session_id, block.text)
-                  } else if (block.type === 'tool_use') {
-                    store.addToolBlock(session.session_id, block.tool_call_id)
-                  } else if (block.type === 'thinking') {
-                    store.addThinkingBlock(session.session_id, block.thinking)
-                  }
-                }
-
-                for (const tc of lastMsg.tool_calls ?? []) {
-                  store.addToolCall(session.session_id, tc)
-                }
-              }
+              hydrateRunningSnapshot(session.session_id, lastMsg, {
+                allowWhileSending: true,
+              })
 
               queryClient.setQueryData<Session>(
                 chatQueryKeys.session(session.session_id),
@@ -950,14 +1128,13 @@ function App() {
     return <WebLoadingScreen />
   }
 
-  const showReconnectOverlay =
-    !isNativeApp() && hadWsConnectionRef.current && !wsDataReady && !wsAuthError
-
   return (
     <ErrorBoundary>
       <ThemeProvider>
         <MainWindow />
-        {showReconnectOverlay && <WsReconnectingOverlay />}
+        {!isNativeApp() && !isPreloading && !wsDataReady && (
+          <WsReconnectOverlay />
+        )}
         {!isNativeApp() && <WsAuthErrorOverlay />}
       </ThemeProvider>
     </ErrorBoundary>

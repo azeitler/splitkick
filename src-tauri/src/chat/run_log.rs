@@ -14,7 +14,8 @@ use super::storage::{
     get_session_dir, list_all_session_ids, load_metadata, save_metadata, with_metadata_mut,
 };
 use super::types::{
-    Backend, ChatMessage, ContentBlock, MessageRole, RunEntry, RunStatus, ToolCall, UsageData,
+    Backend, ChatMessage, ContentBlock, LoadedMessages, MessageRole, RunEntry, RunStatus, ToolCall,
+    UsageData,
 };
 
 // ============================================================================
@@ -254,6 +255,7 @@ impl RunLogWriter {
                     run.codex_thread_id = Some(tid);
                     run.codex_turn_id = tuid;
                 }
+                metadata.codex_thread_id = Some(thread_id.to_string());
                 Ok(())
             },
         )?;
@@ -529,6 +531,72 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
     // Skip it during replay so the prompt doesn't appear twice.
     let mut skipped_prompt_echo = false;
 
+    // Mirror live-stream Monitor gating (see claude.rs): while a Monitor tool
+    // call is armed and its initial post-arm result has fired, subsequent
+    // assistant text is a per-notification wake-up and must NOT be written
+    // into the chat message `content` — otherwise all tick text lands in the
+    // persisted chat blob when the run completes.
+    struct MonitorArm {
+        initial_turn_finished: bool,
+    }
+    let mut armed_monitors: std::collections::HashMap<String, MonitorArm> =
+        std::collections::HashMap::new();
+    // Reconstruct per-tool Monitor event logs so they survive session reload.
+    // Frontend MonitorExpanded consumes `tool_call.output` when in-memory
+    // `events` are empty (after reload). Each entry encodes
+    // `<unix_ms>|<text>` so the UI can render real relative timestamps.
+    let mut monitor_event_log: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
+    // Track the most recent timestamp seen in the stream (from user-msg
+    // ISO 8601 `timestamp` field). System and assistant messages don't
+    // carry explicit timestamps, so we fall back to this.
+    let mut last_ms: u64 = (run.started_at as u64).saturating_mul(1000);
+    fn parse_iso8601_ms(s: &str) -> Option<u64> {
+        // Very small ISO 8601 parser: "YYYY-MM-DDTHH:MM:SS(.fff)?Z".
+        // Good enough for Claude CLI's output; avoids pulling a date lib.
+        use std::num::ParseIntError;
+        fn part(s: &str, a: usize, b: usize) -> Result<i64, ParseIntError> {
+            s[a..b].parse::<i64>()
+        }
+        if s.len() < 19 {
+            return None;
+        }
+        let year = part(s, 0, 4).ok()?;
+        let month = part(s, 5, 7).ok()?;
+        let day = part(s, 8, 10).ok()?;
+        let hour = part(s, 11, 13).ok()?;
+        let minute = part(s, 14, 16).ok()?;
+        let second = part(s, 17, 19).ok()?;
+        // Optional .fff
+        let mut ms: i64 = 0;
+        let mut idx = 19;
+        if s.as_bytes().get(idx) == Some(&b'.') {
+            idx += 1;
+            let end = s[idx..]
+                .find(|c: char| !c.is_ascii_digit())
+                .map(|n| idx + n)
+                .unwrap_or(s.len());
+            if let Ok(frac) = part(s, idx, end) {
+                let digits = (end - idx) as u32;
+                ms = match digits {
+                    1 => frac * 100,
+                    2 => frac * 10,
+                    3 => frac,
+                    _ => frac / 10i64.pow(digits - 3),
+                };
+            }
+        }
+        // Days-since-epoch via civil_from_days (no leap-second concerns here).
+        let y = if month <= 2 { year - 1 } else { year };
+        let era = y.div_euclid(400);
+        let yoe = (y - era * 400) as i64;
+        let doy = (153 * (month + (if month > 2 { -3 } else { 9 })) + 2) / 5 + day - 1;
+        let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+        let days = era * 146097 + doe - 719468;
+        let total_secs = days * 86400 + hour * 3600 + minute * 60 + second;
+        Some((total_secs * 1000 + ms) as u64)
+    }
+
     for line in lines {
         if line.trim().is_empty() {
             continue;
@@ -555,10 +623,22 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
 
+        // Update last-seen absolute timestamp from message's `timestamp` field.
+        if let Some(ts_str) = msg.get("timestamp").and_then(|v| v.as_str()) {
+            if let Some(ms) = parse_iso8601_ms(ts_str) {
+                last_ms = ms;
+            }
+        }
+
         let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
         match msg_type {
             "assistant" => {
+                // Text-routing gate (mirrors live-stream logic): if ANY armed
+                // Monitor has initial_turn_finished=true, this assistant turn
+                // is a per-notification wake-up, so skip its text from chat.
+                let in_monitor_wakeup = armed_monitors.values().any(|a| a.initial_turn_finished);
+
                 if let Some(message) = msg.get("message") {
                     if let Some(blocks) = message.get("content").and_then(|c| c.as_array()) {
                         for block in blocks {
@@ -580,10 +660,56 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                                             skipped_prompt_echo = true;
                                             continue;
                                         }
-                                        content.push_str(text);
-                                        content_blocks.push(ContentBlock::Text {
-                                            text: text.to_string(),
-                                        });
+                                        // Route this block's text to either chat or
+                                        // Monitor event log. We split on lines so we
+                                        // can peel off `[Monitor notification...]`
+                                        // fragments that the CLI bakes into Claude's
+                                        // assistant text when Monitor output drains
+                                        // mid-turn. CLI emits multiple shapes
+                                        // (`[Monitor notification]`,
+                                        // `[Monitor notification: <payload>]`, …);
+                                        // prefix match without closing bracket catches all.
+                                        let monitor_target = if !armed_monitors.is_empty()
+                                            || in_monitor_wakeup
+                                        {
+                                            armed_monitors.iter().next().map(|(id, _)| id.clone())
+                                        } else {
+                                            None
+                                        };
+
+                                        let mut chat_buf = String::new();
+                                        for raw_line in text.split_inclusive('\n') {
+                                            let trimmed = raw_line.trim_end_matches('\n');
+                                            let is_notification = trimmed
+                                                .trim_start()
+                                                .starts_with("[Monitor notification");
+                                            if is_notification || in_monitor_wakeup {
+                                                // Flush any queued chat text first.
+                                                if !chat_buf.is_empty() {
+                                                    content.push_str(&chat_buf);
+                                                    content_blocks.push(ContentBlock::Text {
+                                                        text: chat_buf.clone(),
+                                                    });
+                                                    chat_buf.clear();
+                                                }
+                                                if let Some(ref id) = monitor_target {
+                                                    let line = trimmed.trim();
+                                                    if !line.is_empty() {
+                                                        monitor_event_log
+                                                            .entry(id.clone())
+                                                            .or_default()
+                                                            .push(format!("{last_ms}|{line}"));
+                                                    }
+                                                }
+                                            } else {
+                                                chat_buf.push_str(raw_line);
+                                            }
+                                        }
+                                        if !chat_buf.is_empty() {
+                                            content.push_str(&chat_buf);
+                                            content_blocks
+                                                .push(ContentBlock::Text { text: chat_buf });
+                                        }
                                     }
                                 }
                                 "tool_use" => {
@@ -601,6 +727,16 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                                         .get("input")
                                         .cloned()
                                         .unwrap_or(serde_json::Value::Null);
+
+                                    // Track armed Monitors so we can gate subsequent text.
+                                    if name == "Monitor" {
+                                        armed_monitors.insert(
+                                            id.clone(),
+                                            MonitorArm {
+                                                initial_turn_finished: false,
+                                            },
+                                        );
+                                    }
 
                                     tool_calls.push(ToolCall {
                                         id: id.clone(),
@@ -652,8 +788,20 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                                     errored_tool_ids.insert(tool_id.to_string());
                                 }
 
-                                // Update matching tool call's output
-                                if let Some(tc) = tool_calls.iter_mut().find(|t| t.id == tool_id) {
+                                // For armed Monitors, capture the tool_result text
+                                // into the event log instead of overwriting .output
+                                // (which we'll fill with the event log at the end).
+                                if armed_monitors.contains_key(tool_id) {
+                                    if !output.is_empty() {
+                                        monitor_event_log
+                                            .entry(tool_id.to_string())
+                                            .or_default()
+                                            .push(format!("{last_ms}|{output}"));
+                                    }
+                                } else if let Some(tc) =
+                                    tool_calls.iter_mut().find(|t| t.id == tool_id)
+                                {
+                                    // Non-Monitor tool: normal output update
                                     tc.output = Some(output.to_string());
                                 }
                             }
@@ -662,6 +810,16 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                 }
             }
             "result" => {
+                // Each `result` closes a turn; flip the post-arm flag on every
+                // armed Monitor so subsequent assistant text is gated out.
+                for arm in armed_monitors.values_mut() {
+                    arm.initial_turn_finished = true;
+                }
+                // Advance wall-clock cursor by this turn's duration so
+                // Monitor event timestamps within the next turn are distinct.
+                if let Some(dur) = msg.get("duration_ms").and_then(|v| v.as_u64()) {
+                    last_ms = last_ms.saturating_add(dur);
+                }
                 // Use result if we somehow missed content
                 if content.is_empty() {
                     if let Some(result) = msg.get("result").and_then(|v| v.as_str()) {
@@ -669,7 +827,86 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                     }
                 }
             }
+            "system" => {
+                let subtype = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
+                let tool_id = msg.get("tool_use_id").and_then(|v| v.as_str());
+
+                // Capture Monitor lifecycle events into its event log.
+                if matches!(
+                    subtype,
+                    "task_started" | "task_updated" | "task_notification"
+                ) {
+                    if let Some(id) = tool_id.filter(|id| armed_monitors.contains_key(*id)) {
+                        let line = match subtype {
+                            "task_started" => {
+                                let desc = msg
+                                    .get("description")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("");
+                                if desc.is_empty() {
+                                    "task started".to_string()
+                                } else {
+                                    format!("task started — {desc}")
+                                }
+                            }
+                            "task_updated" => {
+                                let s = msg
+                                    .get("patch")
+                                    .and_then(|p| p.get("status"))
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("updated");
+                                format!("task {s}")
+                            }
+                            "task_notification" => {
+                                let s = msg
+                                    .get("status")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("update");
+                                let summary =
+                                    msg.get("summary").and_then(|v| v.as_str()).unwrap_or("");
+                                if summary.is_empty() {
+                                    s.to_string()
+                                } else {
+                                    format!("{s} — {summary}")
+                                }
+                            }
+                            _ => String::new(),
+                        };
+                        if !line.is_empty() {
+                            monitor_event_log
+                                .entry(id.to_string())
+                                .or_default()
+                                .push(format!("{last_ms}|{line}"));
+                        }
+                    }
+                }
+
+                // Disarm Monitor on task_notification { status: "completed" |
+                // "error" | "timeout" } so any final summary turn after it
+                // lands in chat (as intended).
+                if subtype == "task_notification" {
+                    let status = msg.get("status").and_then(|v| v.as_str());
+                    if matches!(status, Some("completed") | Some("error") | Some("timeout")) {
+                        if let Some(id) = tool_id {
+                            armed_monitors.remove(id);
+                        }
+                    }
+                }
+            }
             _ => {}
+        }
+    }
+
+    // Materialize Monitor event logs onto each Monitor tool_call.output.
+    // Frontend MonitorExpanded falls back to parsing `output` line-by-line
+    // when in-memory `events` is empty (after session reload).
+    for tc in tool_calls.iter_mut() {
+        if tc.name == "Monitor" {
+            if let Some(events) = monitor_event_log.remove(&tc.id) {
+                if !events.is_empty() {
+                    tc.output = Some(events.join("\n"));
+                }
+            }
         }
     }
 
@@ -812,23 +1049,47 @@ pub fn load_session_messages(
     app: &tauri::AppHandle,
     session_id: &str,
 ) -> Result<Vec<ChatMessage>, String> {
+    Ok(load_session_messages_window(app, session_id, None, None)?.messages)
+}
+
+/// Load a window of messages for a session by parsing JSONL files.
+///
+/// - `limit`: max number of runs (most recent within window) to parse. `None` = all.
+/// - `before_run_index`: only parse runs strictly before this index. `None` = up to end.
+///
+/// Returned `LoadedMessages.loaded_run_start_index` is the index of the first run actually
+/// parsed; subsequent paginated loads should pass that value as `before_run_index`.
+pub fn load_session_messages_window(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    limit: Option<usize>,
+    before_run_index: Option<usize>,
+) -> Result<LoadedMessages, String> {
     let metadata = match load_metadata(app, session_id)? {
         Some(m) => m,
         None => {
             log::debug!("[LoadMessages] session={session_id} no metadata found");
-            return Ok(vec![]);
+            return Ok(LoadedMessages {
+                messages: vec![],
+                total_runs: 0,
+                loaded_run_start_index: 0,
+            });
         }
     };
 
+    let total_runs = metadata.runs.len();
+    let end = before_run_index.unwrap_or(total_runs).min(total_runs);
+    let start = limit.map_or(0, |n| end.saturating_sub(n));
+
     log::debug!(
-        "[LoadMessages] session={session_id} metadata has {} runs (backend={:?})",
-        metadata.runs.len(),
+        "[LoadMessages] session={session_id} metadata has {} runs (backend={:?}) — window [{start}..{end}]",
+        total_runs,
         metadata.backend
     );
 
     let mut messages = Vec::new();
 
-    for run in &metadata.runs {
+    for run in &metadata.runs[start..end] {
         // Skip user message for instant-cancelled runs (undo_send)
         // These have Cancelled status but no assistant_message_id
         let is_undo_send = run.status == RunStatus::Cancelled && run.assistant_message_id.is_none();
@@ -954,7 +1215,11 @@ pub fn load_session_messages(
         }
     }
 
-    Ok(messages)
+    Ok(LoadedMessages {
+        messages,
+        total_runs,
+        loaded_run_start_index: start,
+    })
 }
 
 #[cfg(test)]
@@ -1161,15 +1426,71 @@ pub fn persist_partial_cancelled_content(
 
     let path = get_run_log_path(app, session_id, &run.run_id)?;
 
-    // Only write if the file doesn't already have content (avoid double-write
-    // if the command handler already wrote the synthetic line)
+    // Reconcile the frontend's authoritative streaming view with whatever the
+    // backend already managed to flush before the kill. The previous "skip if
+    // any assistant content exists" logic dropped tool calls in web access mode
+    // where the backend's incremental writes lagged behind frontend Zustand state.
+    //
+    // We scan the existing JSONL for tool_use ids, tool_result ids, and whether
+    // any text-bearing assistant block is present. Then we append only the
+    // pieces the disk is missing. parse_run_to_message() accumulates tool_calls
+    // and text across multiple assistant lines, so appending will not duplicate.
     let existing_lines = read_run_log(app, session_id, &run.run_id).unwrap_or_default();
-    let has_assistant_content = existing_lines.iter().any(|line| {
-        line.contains("\"type\":\"assistant\"") || line.contains("\"type\": \"assistant\"")
-    });
-    if has_assistant_content {
+    let mut existing_tool_use_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut existing_tool_result_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut existing_has_text = false;
+
+    for line in &existing_lines {
+        let msg: serde_json::Value = match serde_json::from_str(line) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        let blocks = msg
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array());
+        let Some(blocks) = blocks else { continue };
+        for block in blocks {
+            let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            match (msg_type, block_type) {
+                ("assistant", "tool_use") => {
+                    if let Some(id) = block.get("id").and_then(|v| v.as_str()) {
+                        existing_tool_use_ids.insert(id.to_string());
+                    }
+                }
+                ("assistant", "text") => {
+                    let text = block.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    if !text.trim().is_empty() {
+                        existing_has_text = true;
+                    }
+                }
+                ("user", "tool_result") => {
+                    if let Some(id) = block.get("tool_use_id").and_then(|v| v.as_str()) {
+                        existing_tool_result_ids.insert(id.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Determine what's missing from disk
+    let missing_tool_calls: Vec<&ToolCall> = tool_calls
+        .iter()
+        .filter(|tc| !existing_tool_use_ids.contains(&tc.id))
+        .collect();
+    let missing_tool_results: Vec<&ToolCall> = tool_calls
+        .iter()
+        .filter(|tc| tc.output.is_some() && !existing_tool_result_ids.contains(&tc.id))
+        .collect();
+    let needs_text = !existing_has_text && !content.trim().is_empty();
+
+    if missing_tool_calls.is_empty() && missing_tool_results.is_empty() && !needs_text {
         log::trace!(
-            "JSONL already has assistant content, skipping persist for session {session_id}"
+            "JSONL already in sync with frontend payload for session {session_id}, skipping persist"
         );
         return Ok(());
     }
@@ -1181,80 +1502,107 @@ pub fn persist_partial_cancelled_content(
         .open(&path)
         .map_err(|e| format!("Failed to open run log for partial content: {e}"))?;
 
-    // Build assistant message with structured content blocks if available,
-    // matching the format parse_run_to_message() expects
+    // Build a single synthetic assistant line containing only the blocks the
+    // disk is missing. We prefer the order from `content_blocks` when present
+    // so text/tool_use interleaving roughly matches the original stream.
+    let mut blocks: Vec<serde_json::Value> = Vec::new();
+    let mut wrote_text = !needs_text;
+
     if !content_blocks.is_empty() {
-        let blocks: Vec<serde_json::Value> = content_blocks
-            .iter()
-            .map(|cb| match cb {
+        for cb in content_blocks {
+            match cb {
                 ContentBlock::Text { text } => {
-                    serde_json::json!({"type": "text", "text": text})
+                    if !wrote_text && !text.trim().is_empty() {
+                        blocks.push(serde_json::json!({"type": "text", "text": text}));
+                        wrote_text = true;
+                    }
                 }
                 ContentBlock::ToolUse { tool_call_id } => {
+                    if existing_tool_use_ids.contains(tool_call_id) {
+                        continue;
+                    }
                     if let Some(tc) = tool_calls.iter().find(|t| t.id == *tool_call_id) {
-                        serde_json::json!({
+                        blocks.push(serde_json::json!({
                             "type": "tool_use",
                             "id": tc.id,
                             "name": tc.name,
                             "input": tc.input
-                        })
+                        }));
                     } else {
-                        serde_json::json!({
+                        blocks.push(serde_json::json!({
                             "type": "tool_use",
                             "id": tool_call_id,
                             "name": "",
                             "input": null
-                        })
+                        }));
                     }
                 }
                 ContentBlock::Thinking { thinking } => {
-                    serde_json::json!({"type": "thinking", "thinking": thinking})
+                    blocks.push(serde_json::json!({"type": "thinking", "thinking": thinking}));
                 }
-            })
-            .collect();
+            }
+        }
+    }
 
+    // Append any tool_calls that weren't represented in content_blocks (e.g.,
+    // when the frontend payload had tool_calls without matching ToolUse blocks).
+    for tc in &missing_tool_calls {
+        let already_in_blocks = blocks.iter().any(|b| {
+            b.get("type").and_then(|v| v.as_str()) == Some("tool_use")
+                && b.get("id").and_then(|v| v.as_str()) == Some(tc.id.as_str())
+        });
+        if already_in_blocks {
+            continue;
+        }
+        blocks.push(serde_json::json!({
+            "type": "tool_use",
+            "id": tc.id,
+            "name": tc.name,
+            "input": tc.input
+        }));
+    }
+
+    // Fallback: text-only when no structured blocks were supplied.
+    if blocks.is_empty() && !wrote_text && !content.trim().is_empty() {
+        blocks.push(serde_json::json!({"type": "text", "text": content}));
+        wrote_text = true;
+    }
+
+    if !blocks.is_empty() {
         let synthetic = serde_json::json!({
             "type": "assistant",
             "message": { "content": blocks }
         });
         writeln!(file, "{synthetic}")
             .map_err(|e| format!("Failed to write partial content: {e}"))?;
+    }
 
-        // Write tool results as user messages so parse_run_to_message() can
-        // associate outputs with tool calls
-        for tc in tool_calls {
-            if let Some(output) = &tc.output {
-                let tool_result = serde_json::json!({
-                    "type": "user",
-                    "message": {
-                        "content": [{
-                            "type": "tool_result",
-                            "tool_use_id": tc.id,
-                            "content": output
-                        }]
-                    }
-                });
-                writeln!(file, "{tool_result}")
-                    .map_err(|e| format!("Failed to write tool result: {e}"))?;
-            }
-        }
-    } else {
-        // Fallback: text-only (no structured blocks available)
-        let synthetic = serde_json::json!({
-            "type": "assistant",
+    // Write any tool_results the disk is missing as separate user messages so
+    // parse_run_to_message() can associate outputs with their tool calls.
+    for tc in &missing_tool_results {
+        let output = tc.output.as_deref().unwrap_or("");
+        let tool_result = serde_json::json!({
+            "type": "user",
             "message": {
-                "content": [{"type": "text", "text": content}]
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": tc.id,
+                    "content": output
+                }]
             }
         });
-        writeln!(file, "{synthetic}")
-            .map_err(|e| format!("Failed to write partial content: {e}"))?;
+        writeln!(file, "{tool_result}").map_err(|e| format!("Failed to write tool result: {e}"))?;
     }
 
     file.flush()
         .map_err(|e| format!("Failed to flush partial content: {e}"))?;
 
     log::trace!(
-        "Persisted partial cancelled content ({} chars, {} blocks, {} tool calls) for session {session_id}",
+        "Reconciled partial cancelled content for session {session_id} \
+         (added {} tool_uses, {} tool_results, text_added={}; total payload: {} chars, {} blocks, {} tool calls)",
+        missing_tool_calls.len(),
+        missing_tool_results.len(),
+        wrote_text && needs_text,
         content.len(),
         content_blocks.len(),
         tool_calls.len(),

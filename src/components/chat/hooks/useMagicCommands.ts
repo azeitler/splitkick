@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useChatStore } from '@/store/chat-store'
+import type { ExecutionMode } from '@/types/chat'
 
 export interface WorkflowRunDetail {
   workflowName: string
@@ -26,13 +27,17 @@ interface MagicCommandHandlers {
   handleOpenPr: () => void
   handleReview: () => void
   handleMerge: () => void
+  handleMergePr: () => void
   handleResolveConflicts: (override?: InvestigateOverride) => void
   handleInvestigateWorkflowRun: (detail: WorkflowRunDetail) => void
   handleInvestigate: (
-    type: 'issue' | 'pr',
+    type: 'issue' | 'pr' | 'advisory',
     override?: InvestigateOverride
   ) => void
-  handleReviewComments: (prompt: string) => void
+  handleReviewComments: (
+    prompt: string | string[],
+    options?: { executionMode?: ExecutionMode }
+  ) => void
 }
 
 interface UseMagicCommandsOptions extends MagicCommandHandlers {
@@ -62,6 +67,7 @@ export function useMagicCommands({
   handleOpenPr,
   handleReview,
   handleMerge,
+  handleMergePr,
   handleResolveConflicts,
   handleInvestigateWorkflowRun,
   handleInvestigate,
@@ -81,6 +87,7 @@ export function useMagicCommands({
     handleOpenPr,
     handleReview,
     handleMerge,
+    handleMergePr,
     handleResolveConflicts,
     handleInvestigateWorkflowRun,
     handleInvestigate,
@@ -101,6 +108,7 @@ export function useMagicCommands({
       handleOpenPr,
       handleReview,
       handleMerge,
+      handleMergePr,
       handleResolveConflicts,
       handleInvestigateWorkflowRun,
       handleInvestigate,
@@ -117,7 +125,13 @@ export function useMagicCommands({
 
     const handleMagicCommand = (
       e: CustomEvent<
-        { command: string; sessionId?: string } & Partial<WorkflowRunDetail>
+        {
+          command: string
+          sessionId?: string
+          prompt?: string
+          prompts?: string[]
+          executionMode?: ExecutionMode
+        } & Partial<WorkflowRunDetail>
       >
     ) => {
       const { command, ...rest } = e.detail
@@ -153,6 +167,9 @@ export function useMagicCommands({
         case 'merge':
           handlers.handleMerge()
           break
+        case 'merge-pr':
+          handlers.handleMergePr()
+          break
         case 'resolve-conflicts':
           handlers.handleResolveConflicts(
             (rest as { override?: InvestigateOverride }).override
@@ -160,17 +177,29 @@ export function useMagicCommands({
           break
         case 'investigate':
           handlers.handleInvestigate(
-            (rest as { type: 'issue' | 'pr'; override?: InvestigateOverride })
-              .type ?? 'issue',
+            (
+              rest as {
+                type: 'issue' | 'pr' | 'advisory'
+                override?: InvestigateOverride
+              }
+            ).type ?? 'issue',
             (rest as { override?: InvestigateOverride }).override
           )
           break
         case 'investigate-workflow-run':
           handlers.handleInvestigateWorkflowRun(rest as WorkflowRunDetail)
           break
-        case 'review-comments':
-          handlers.handleReviewComments((rest as { prompt: string }).prompt)
+        case 'review-comments': {
+          const detail = rest as {
+            prompt?: string
+            prompts?: string[]
+            executionMode?: ExecutionMode
+          }
+          handlers.handleReviewComments(detail.prompts ?? detail.prompt ?? '', {
+            executionMode: detail.executionMode,
+          })
           break
+        }
       }
     }
 
@@ -198,12 +227,18 @@ export function useMagicCommands({
       case 'merge':
         handlers.handleMerge()
         break
+      case 'merge-pr':
+        handlers.handleMergePr()
+        break
       case 'resolve-conflicts':
         handlers.handleResolveConflicts()
         break
       case 'review-comments':
-        if (pendingMagicCommand.prompt) {
-          handlers.handleReviewComments(pendingMagicCommand.prompt)
+        if (pendingMagicCommand.prompts?.length || pendingMagicCommand.prompt) {
+          handlers.handleReviewComments(
+            pendingMagicCommand.prompts ?? pendingMagicCommand.prompt ?? '',
+            { executionMode: pendingMagicCommand.executionMode }
+          )
         }
         break
     }

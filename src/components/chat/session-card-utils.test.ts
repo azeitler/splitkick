@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   computeSessionCardData,
+  getEffectiveSessionWaiting,
   type ChatStoreState,
 } from './session-card-utils'
 import type { Session } from '@/types/chat'
@@ -33,7 +34,6 @@ describe('computeSessionCardData', () => {
       waitingForInputSessionIds: {},
       reviewingSessions: {},
       pendingPermissionDenials: {},
-      sessionDigests: {},
       sessionLabels: {},
       ...overrides,
     }
@@ -121,6 +121,92 @@ describe('computeSessionCardData', () => {
 
     expect(card.planContent).toBe('Plan:\n- Implement changes\n- Add tests')
     expect(card.hasExitPlanMode).toBe(true)
+    expect(card.isWaiting).toBe(true)
+    expect(card.status).toBe('waiting')
+  })
+
+  it('ignores stale Zustand waiting flag when session is completed and reviewing', () => {
+    const session: Session = {
+      ...createBaseSession(),
+      waiting_for_input: false,
+      is_reviewing: true,
+      last_run_status: 'completed',
+      last_run_execution_mode: 'plan',
+    }
+    const storeState = createBaseStoreState({
+      waitingForInputSessionIds: { 'session-1': true },
+      reviewingSessions: { 'session-1': true },
+    })
+
+    const card = computeSessionCardData(session, storeState)
+
+    expect(card.isWaiting).toBe(false)
+    expect(card.status).toBe('review')
+  })
+
+  it('ignores stale Zustand waiting flag when remote run completed normally', () => {
+    const session: Session = {
+      ...createBaseSession(),
+      waiting_for_input: false,
+      is_reviewing: false,
+      last_run_status: 'completed',
+      last_run_execution_mode: 'build',
+    }
+    const storeState = createBaseStoreState({
+      waitingForInputSessionIds: { 'session-1': true },
+    })
+
+    const card = computeSessionCardData(session, storeState)
+
+    expect(getEffectiveSessionWaiting(session, storeState)).toBe(false)
+    expect(card.isWaiting).toBe(false)
+    expect(card.status).toBe('completed')
+  })
+
+  it('ignores stale persisted waiting_for_input on completed non-plan run', () => {
+    const session: Session = {
+      ...createBaseSession(),
+      waiting_for_input: true,
+      waiting_for_input_type: null,
+      last_run_status: 'completed',
+      last_run_execution_mode: 'yolo',
+    }
+    const storeState = createBaseStoreState()
+
+    const card = computeSessionCardData(session, storeState)
+
+    expect(card.isWaiting).toBe(false)
+    expect(card.status).not.toBe('waiting')
+  })
+
+  it('honors persisted waiting_for_input when run paused for plan approval', () => {
+    const session: Session = {
+      ...createBaseSession(),
+      waiting_for_input: true,
+      waiting_for_input_type: 'plan',
+      last_run_status: 'completed',
+      last_run_execution_mode: 'plan',
+    }
+    const storeState = createBaseStoreState()
+
+    const card = computeSessionCardData(session, storeState)
+
+    expect(card.isWaiting).toBe(true)
+    expect(card.status).toBe('waiting')
+  })
+
+  it('honors persisted waiting_for_input while run still active', () => {
+    const session: Session = {
+      ...createBaseSession(),
+      waiting_for_input: true,
+      waiting_for_input_type: 'question',
+      last_run_status: 'running',
+      last_run_execution_mode: 'plan',
+    }
+    const storeState = createBaseStoreState()
+
+    const card = computeSessionCardData(session, storeState)
+
     expect(card.isWaiting).toBe(true)
     expect(card.status).toBe('waiting')
   })

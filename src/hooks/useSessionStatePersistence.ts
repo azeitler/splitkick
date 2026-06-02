@@ -1,12 +1,18 @@
 import { useEffect, useRef, useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import {
   useUpdateSessionState,
   useSessions,
   chatQueryKeys,
 } from '@/services/chat'
+import { sessionCanBeWaiting } from '@/components/chat/session-card-utils'
 import { logger } from '@/lib/logger'
+import {
+  beginSessionStateHydration,
+  endSessionStateHydration,
+} from '@/lib/session-state-hydration'
 import type {
   QuestionAnswer,
   PermissionDenial,
@@ -82,6 +88,7 @@ interface SessionState {
   pendingPlanMessageId: string | null
   enabledMcpServers: string[] | null
   selectedExecutionMode: ExecutionMode | null
+  tableCheckedRows: Record<string, number[]>
 }
 
 /**
@@ -95,9 +102,14 @@ export function useSessionStatePersistence() {
   // Subscribe to primitive values to trigger re-renders only when context actually changes.
   // Prefer full-view active session, fall back to canvas-modal selected session
   // (canvas modals don't set activeWorktreeId).
+  // Track modal worktree id so canvas-modal sessions still get persistence.
+  const modalWorktreeId = useUIStore(state =>
+    state.sessionChatModalOpen ? state.sessionChatModalWorktreeId : null
+  )
   const activeSessionId = useChatStore(state => {
-    if (state.activeWorktreeId) {
-      return state.activeSessionIds[state.activeWorktreeId] ?? null
+    const worktreeId = state.activeWorktreeId ?? modalWorktreeId
+    if (worktreeId) {
+      return state.activeSessionIds[worktreeId] ?? null
     }
     return null
   })
@@ -115,11 +127,16 @@ export function useSessionStatePersistence() {
       sessionWorktreeMap,
       worktreePaths,
     } = useChatStore.getState()
-    const wtId = activeWorktreeId ?? sessionWorktreeMap[activeSessionId] ?? null
+    const wtId =
+      activeWorktreeId ??
+      modalWorktreeId ??
+      sessionWorktreeMap[activeSessionId] ??
+      null
     const wtPath =
-      activeWorktreePath ?? (wtId ? (worktreePaths[wtId] ?? null) : null)
+      (activeWorktreeId ? activeWorktreePath : null) ??
+      (wtId ? (worktreePaths[wtId] ?? null) : null)
     return { effectiveWorktreeId: wtId, effectiveWorktreePath: wtPath }
-  }, [activeSessionId])
+  }, [activeSessionId, modalWorktreeId])
 
   // Load sessions to get session data
   const { data: sessionsData } = useSessions(
@@ -162,6 +179,7 @@ export function useSessionStatePersistence() {
         pendingPlanMessageIds,
         enabledMcpServers,
         executionModes,
+        tableCheckedRows,
       } = useChatStore.getState()
 
       const ctx = deniedMessageContext[sessionId]
@@ -196,6 +214,11 @@ export function useSessionStatePersistence() {
         pendingPlanMessageId: pendingPlanMessageIds[sessionId] ?? null,
         enabledMcpServers: enabledMcpServers[sessionId] ?? null,
         selectedExecutionMode: executionModes[sessionId] ?? null,
+        tableCheckedRows: Object.fromEntries(
+          Object.entries(tableCheckedRows[sessionId] ?? {}).map(
+            ([key, set]) => [key, Array.from(set).sort((a, b) => a - b)]
+          )
+        ),
       }
     },
     []
@@ -244,6 +267,7 @@ export function useSessionStatePersistence() {
         pendingPlanMessageId: state.pendingPlanMessageId,
         enabledMcpServers: state.enabledMcpServers,
         selectedExecutionMode: state.selectedExecutionMode,
+        tableCheckedRows: state.tableCheckedRows,
       })
     }, 500)
 
@@ -273,14 +297,49 @@ export function useSessionStatePersistence() {
   useEffect(() => {
     if (!activeSessionId || !sessionsData) return
 
+    const session = sessionsData.sessions.find(s => s.id === activeSessionId)
+    if (!session) return
+
+    // Always resync authoritative status fields from backend refetches.
+    // Other session UI state is loaded once below to avoid overwriting local edits,
+    // but waiting/reviewing must track remote web/mobile completion immediately.
+    const statusCurrentState = useChatStore.getState()
+    const statusUpdates: Partial<typeof statusCurrentState> = {}
+    const effectiveWaiting =
+      sessionCanBeWaiting(session) && (session.waiting_for_input ?? false)
+    const statusCurrentWaiting =
+      statusCurrentState.waitingForInputSessionIds[activeSessionId] ?? false
+    if (statusCurrentWaiting !== effectiveWaiting) {
+      statusUpdates.waitingForInputSessionIds = {
+        ...statusCurrentState.waitingForInputSessionIds,
+        [activeSessionId]: effectiveWaiting,
+      }
+    }
+
+    const effectiveReviewing = session.is_reviewing ?? false
+    const statusCurrentReviewing =
+      statusCurrentState.reviewingSessions[activeSessionId] ?? false
+    if (statusCurrentReviewing !== effectiveReviewing) {
+      statusUpdates.reviewingSessions = {
+        ...statusCurrentState.reviewingSessions,
+        [activeSessionId]: effectiveReviewing,
+      }
+    }
+
+    if (Object.keys(statusUpdates).length > 0) {
+      beginSessionStateHydration()
+      try {
+        useChatStore.setState(statusUpdates)
+      } finally {
+        endSessionStateHydration()
+      }
+    }
+
     // Only load from disk when switching to a new session.
     // Re-loading on every sessionsData refetch would overwrite in-memory
     // Zustand state with stale on-disk data (due to 500ms debounced saves),
     // causing answered questions / fixed findings to flicker.
     if (loadedSessionRef.current === activeSessionId) return
-
-    const session = sessionsData.sessions.find(s => s.id === activeSessionId)
-    if (!session) return
 
     // Mark as loaded only after finding the session (retry on next refetch if not found)
     loadedSessionRef.current = activeSessionId
@@ -428,7 +487,8 @@ export function useSessionStatePersistence() {
     }
 
     // Load waiting for input status
-    const waitingForInput = session.waiting_for_input ?? false
+    const waitingForInput =
+      sessionCanBeWaiting(session) && (session.waiting_for_input ?? false)
     const currentWaiting =
       currentState.waitingForInputSessionIds[activeSessionId] ?? false
     if (currentWaiting !== waitingForInput) {
@@ -467,6 +527,23 @@ export function useSessionStatePersistence() {
       updates.executionModes = {
         ...currentState.executionModes,
         [activeSessionId]: session.selected_execution_mode,
+      }
+    }
+
+    // Load per-table checklist state (tableKey -> Set of checked row indices)
+    if (
+      session.table_checked_rows &&
+      Object.keys(session.table_checked_rows).length > 0
+    ) {
+      const hydrated: Record<string, Set<number>> = {}
+      for (const [tableKey, rows] of Object.entries(
+        session.table_checked_rows
+      )) {
+        hydrated[tableKey] = new Set(rows)
+      }
+      updates.tableCheckedRows = {
+        ...currentState.tableCheckedRows,
+        [activeSessionId]: hydrated,
       }
     }
 
@@ -688,6 +765,8 @@ export function useSessionStatePersistence() {
     let prevEnabledMcpServers =
       useChatStore.getState().enabledMcpServers[sessionId]
     let prevExecutionMode = useChatStore.getState().executionModes[sessionId]
+    let prevTableCheckedRows =
+      useChatStore.getState().tableCheckedRows[sessionId]
 
     const unsubscribe = useChatStore.subscribe(state => {
       if (isLoadingRef.current) return
@@ -713,6 +792,7 @@ export function useSessionStatePersistence() {
       const currentPendingPlanMessageId = state.pendingPlanMessageIds[sessionId]
       const currentEnabledMcpServers = state.enabledMcpServers[sessionId]
       const currentExecutionMode = state.executionModes[sessionId]
+      const currentTableCheckedRows = state.tableCheckedRows[sessionId]
 
       const hasChanges =
         currentAnswered !== prevAnsweredQuestions ||
@@ -731,7 +811,8 @@ export function useSessionStatePersistence() {
         currentPlanFilePath !== prevPlanFilePath ||
         currentPendingPlanMessageId !== prevPendingPlanMessageId ||
         currentEnabledMcpServers !== prevEnabledMcpServers ||
-        currentExecutionMode !== prevExecutionMode
+        currentExecutionMode !== prevExecutionMode ||
+        currentTableCheckedRows !== prevTableCheckedRows
 
       if (hasChanges) {
         prevAnsweredQuestions = currentAnswered
@@ -751,6 +832,7 @@ export function useSessionStatePersistence() {
         prevPendingPlanMessageId = currentPendingPlanMessageId
         prevEnabledMcpServers = currentEnabledMcpServers
         prevExecutionMode = currentExecutionMode
+        prevTableCheckedRows = currentTableCheckedRows
 
         const currentState = getCurrentSessionState(sessionId)
         debouncedSaveRef.current?.(currentState)

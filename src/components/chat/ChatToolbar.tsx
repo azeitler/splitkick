@@ -1,6 +1,8 @@
-import { memo, useCallback, useMemo, useState } from 'react'
-import { Paperclip } from 'lucide-react'
-import { toast } from 'sonner'
+import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { Zap } from 'lucide-react'
+import { dismissibleToast } from '@/lib/dismissible-toast'
+import { invoke } from '@/lib/transport'
+import { useUIStore } from '@/store/ui-store'
 import {
   gitPush,
   triggerImmediateGitPoll,
@@ -10,7 +12,7 @@ import {
 import { useChatStore } from '@/store/chat-store'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
 import { useAllBackendsMcpHealth } from '@/services/mcp'
-import type { ClaudeModel } from '@/types/preferences'
+import { getModelFastInfo, type ClaudeModel } from '@/types/preferences'
 import {
   getSupportedExecutionModes,
   type EffortLevel,
@@ -18,8 +20,10 @@ import {
 } from '@/types/chat'
 import type { ChatToolbarProps } from '@/components/chat/toolbar/types'
 import { MobileToolbarMenu } from '@/components/chat/toolbar/MobileToolbarMenu'
+import { MobileSettingsMenu } from '@/components/chat/toolbar/MobileSettingsMenu'
 import { MobileBackendModelPickerSheet } from '@/components/chat/toolbar/MobileBackendModelPickerSheet'
 import { DesktopToolbarControls } from '@/components/chat/toolbar/DesktopToolbarControls'
+import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
 import { ExecutionModeDropdown } from '@/components/chat/toolbar/ExecutionModeDropdown'
 import { SendCancelButton } from '@/components/chat/toolbar/SendCancelButton'
 import { ContextViewerDialog } from '@/components/chat/toolbar/ContextViewerDialog'
@@ -40,11 +44,7 @@ import {
   BackendLabel,
   getBackendPlainLabel,
 } from '@/components/ui/backend-label'
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '@/components/ui/tooltip'
+import type { RevertCommitResponse } from '@/types/projects'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export {
@@ -72,10 +72,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   sessionHasMessages,
   providerLocked,
   baseBranch,
-  uncommittedAdded,
-  uncommittedRemoved,
-  branchDiffAdded,
-  branchDiffRemoved,
   prUrl,
   prNumber,
   displayStatus,
@@ -99,10 +95,10 @@ export const ChatToolbar = memo(function ChatToolbar({
   onOpenPr,
   onReview,
   onMerge,
+  onMergePr,
   onResolvePrConflicts,
   onResolveConflicts,
   hasOpenPr,
-  onSetDiffRequest,
   installedBackends,
   onModelChange,
   onBackendModelChange,
@@ -149,6 +145,13 @@ export const ChatToolbar = memo(function ChatToolbar({
     setThinkingDropdownOpen,
   })
 
+  // Signal to FloatingDock that its burger counterpart now lives in this toolbar.
+  useEffect(() => {
+    const { setChatToolbarMounted } = useUIStore.getState()
+    setChatToolbarMounted(true)
+    return () => setChatToolbarMounted(false)
+  }, [])
+
   const { data: availableOpencodeModels } = useAvailableOpencodeModels({
     enabled: selectedBackend === 'opencode',
   })
@@ -158,17 +161,23 @@ export const ChatToolbar = memo(function ChatToolbar({
       label: formatOpencodeModelLabel(model),
     })) ?? OPENCODE_MODEL_OPTIONS
 
-  const { isCodex, activeMcpCount, selectedModelLabel } =
+  const { isCodex, activeMcpCount, backendModelSections, selectedModelLabel } =
     useToolbarDerivedState({
       selectedBackend,
       selectedProvider,
       selectedModel,
       opencodeModelOptions,
       customCliProfiles,
+      installedBackends,
       availableMcpServers,
       enabledMcpServers,
     })
   const availableExecutionModes = getSupportedExecutionModes(selectedBackend)
+  const hasMultipleBackendModelChoices =
+    backendModelSections.reduce(
+      (count, section) => count + section.options.length,
+      0
+    ) > 1
 
   const backendModelLabel = useMemo(
     () => (
@@ -178,9 +187,15 @@ export const ChatToolbar = memo(function ChatToolbar({
           badgeClassName="text-[9px] leading-3"
         />
         <span className="truncate">· {selectedModelLabel}</span>
+        {getModelFastInfo(selectedBackend, selectedModel).isFast && (
+          <Zap
+            className="h-3 w-3 shrink-0 fill-current text-yellow-500"
+            aria-label="Fast mode"
+          />
+        )}
       </>
     ),
-    [selectedBackend, selectedModelLabel]
+    [selectedBackend, selectedModel, selectedModelLabel]
   )
 
   const backendModelLabelText = useMemo(
@@ -215,15 +230,19 @@ export const ChatToolbar = memo(function ChatToolbar({
     (value: string) => {
       const provider = value === 'default' ? null : value
       onProviderChange(provider)
-      if (
-        provider &&
-        provider !== '__anthropic__' &&
-        (selectedModel === 'claude-opus-4-6[1m]' ||
+      if (provider && provider !== '__anthropic__') {
+        if (selectedModel === 'claude-opus-4-8[1m]') {
+          onModelChange('claude-opus-4-8' as ClaudeModel)
+        } else if (selectedModel === 'claude-opus-4-7[1m]') {
+          onModelChange('claude-opus-4-7' as ClaudeModel)
+        } else if (
+          selectedModel === 'claude-opus-4-6[1m]' ||
           selectedModel === 'claude-sonnet-4-6[1m]' ||
-          selectedModel === 'opus-fast' ||
-          selectedModel === 'claude-opus-4-6[1m]-fast')
-      ) {
-        onModelChange('opus' as ClaudeModel)
+          selectedModel === 'claude-opus-4-6-fast' ||
+          selectedModel === 'claude-opus-4-6[1m]-fast'
+        ) {
+          onModelChange('claude-opus-4-6' as ClaudeModel)
+        }
       }
     },
     [onProviderChange, onModelChange, selectedModel]
@@ -266,84 +285,86 @@ export const ChatToolbar = memo(function ChatToolbar({
       const { setWorktreeLoading, clearWorktreeLoading } =
         useChatStore.getState()
       setWorktreeLoading(worktreeId, 'push')
-      const toastId = toast.loading('Pushing changes...')
+      const opToast = dismissibleToast.loading('Pushing changes...')
       try {
         const result = await gitPush(activeWorktreePath, prNumber, remote)
         triggerImmediateGitPoll()
         if (projectId) fetchWorktreesStatus(projectId)
         if (result.fellBack) {
-          toast.warning(
-            'Could not push to PR branch, pushed to new branch instead',
-            { id: toastId }
+          opToast.warning(
+            'Could not push to PR branch, pushed to new branch instead'
           )
         } else {
-          toast.success('Changes pushed', { id: toastId })
+          opToast.success('Changes pushed')
         }
       } catch (error) {
-        toast.error(`Push failed: ${error}`, { id: toastId })
+        opToast.error(`Push failed: ${error}`)
       } finally {
         clearWorktreeLoading(worktreeId)
       }
     })
   }, [activeWorktreePath, worktreeId, projectId, prNumber, pickRemoteOrRun])
 
-  const handleUncommittedDiffClick = useCallback(() => {
-    onSetDiffRequest({
-      type: 'uncommitted',
-      worktreePath: activeWorktreePath ?? '',
-      baseBranch,
-    })
-  }, [activeWorktreePath, baseBranch, onSetDiffRequest])
-
-  const handleBranchDiffClick = useCallback(() => {
-    onSetDiffRequest({
-      type: 'branch',
-      worktreePath: activeWorktreePath ?? '',
-      baseBranch,
-    })
-  }, [activeWorktreePath, baseBranch, onSetDiffRequest])
+  const handleRevertLastCommit = useCallback(async () => {
+    if (!activeWorktreePath) return
+    const revertToast = dismissibleToast.loading('Reverting last commit...')
+    try {
+      const result = await invoke<RevertCommitResponse>(
+        'revert_last_local_commit',
+        { worktreePath: activeWorktreePath }
+      )
+      triggerImmediateGitPoll()
+      if (projectId) fetchWorktreesStatus(projectId)
+      revertToast.success(`Reverted: ${result.commit_message}`)
+    } catch (error) {
+      revertToast.error(`Failed to revert: ${error}`)
+    }
+  }, [activeWorktreePath, projectId])
 
   const canSend = hasInputValue || hasPendingAttachments
 
   return (
     <div className="@container flex justify-start px-4 py-2 md:px-6">
-      <div className="inline-flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap rounded-lg bg-transparent scrollbar-hide">
+      <div className="inline-flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap bg-transparent scrollbar-hide">
+        <DockBurgerButton
+          activeMcpCount={activeMcpCount}
+          className="flex @xl:hidden"
+        />
+
         <MobileToolbarMenu
-          isDisabled={isSending || hasPendingQuestions}
+          isDisabled={hasPendingQuestions}
           hasOpenPr={hasOpenPr}
+          hasIssueContexts={loadedIssueContexts.length > 0}
+          hasPrContexts={loadedPRContexts.length > 0}
+          onSaveContext={onSaveContext}
+          onLoadContext={onLoadContext}
+          onCommit={onCommit}
+          onCommitAndPush={onCommitAndPush}
+          onRevertLastCommit={handleRevertLastCommit}
+          onOpenPr={onOpenPr}
+          onReview={onReview}
+          onMerge={onMerge}
+          onMergePr={onMergePr}
+          onOpenMagicModal={onOpenMagicModal}
+          handlePullClick={handlePullClick}
+          handlePushClick={handlePushClick}
+        />
+
+        <MobileSettingsMenu
+          isDisabled={hasPendingQuestions}
           providerLocked={providerLocked}
           selectedBackend={selectedBackend}
           selectedProvider={selectedProvider}
           backendModelLabel={backendModelLabel}
           backendModelLabelText={backendModelLabelText}
+          hasMultipleBackendModelChoices={hasMultipleBackendModelChoices}
           selectedEffortLevel={selectedEffortLevel}
           selectedThinkingLevel={selectedThinkingLevel}
           hideThinkingLevel={hideThinkingLevel}
           useAdaptiveThinking={useAdaptiveThinking}
           isCodex={isCodex}
           customCliProfiles={customCliProfiles}
-          uncommittedAdded={uncommittedAdded}
-          uncommittedRemoved={uncommittedRemoved}
-          branchDiffAdded={branchDiffAdded}
-          branchDiffRemoved={branchDiffRemoved}
-          prUrl={prUrl}
-          prNumber={prNumber}
-          displayStatus={displayStatus}
-          checkStatus={checkStatus}
-          activeWorktreePath={activeWorktreePath}
-          onSaveContext={onSaveContext}
-          onLoadContext={onLoadContext}
-          onCommit={onCommit}
-          onCommitAndPush={onCommitAndPush}
-          onOpenPr={onOpenPr}
-          onReview={onReview}
-          onMerge={onMerge}
-          onResolveConflicts={onResolveConflicts}
           onOpenBackendModelPicker={() => setMobileBackendModelPickerOpen(true)}
-          handlePullClick={handlePullClick}
-          handlePushClick={handlePushClick}
-          handleUncommittedDiffClick={handleUncommittedDiffClick}
-          handleBranchDiffClick={handleBranchDiffClick}
           handleProviderChange={handleProviderChange}
           handleEffortLevelChange={handleEffortLevelChange}
           handleThinkingLevelChange={handleThinkingLevelChange}
@@ -363,22 +384,12 @@ export const ChatToolbar = memo(function ChatToolbar({
           enabledMcpServers={enabledMcpServers}
           activeMcpCount={activeMcpCount}
           onToggleMcpServer={onToggleMcpServer}
+          prUrl={prUrl}
+          prNumber={prNumber}
+          prDisplayStatus={displayStatus}
+          worktreeId={worktreeId}
+          onAttach={onAttach}
         />
-
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <button
-              type="button"
-              onClick={onAttach}
-              disabled={hasPendingQuestions}
-              className="flex @xl:hidden h-8 items-center justify-center px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              aria-label="Attach images"
-            >
-              <Paperclip className="h-4 w-4" />
-            </button>
-          </TooltipTrigger>
-          <TooltipContent>Attach images</TooltipContent>
-        </Tooltip>
 
         {isMobile && (
           <MobileBackendModelPickerSheet

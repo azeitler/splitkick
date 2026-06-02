@@ -1,4 +1,6 @@
-import { useState, useMemo } from 'react'
+import { useState, useEffect } from 'react'
+import { usePreferences } from '@/services/preferences'
+import { useChatStore } from '@/store/chat-store'
 import {
   FileText,
   Edit,
@@ -25,8 +27,8 @@ import {
   FileCode,
   List,
   Code,
+  Activity,
 } from 'lucide-react'
-import { diffLines } from 'diff'
 import type { ToolCall } from '@/types/chat'
 import type { StackableItem } from './tool-call-utils'
 import { Markdown } from '@/components/ui/markdown'
@@ -37,10 +39,27 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
+import { InlineFileDiff } from './InlineFileDiff'
 
 function shouldRenderRawOutput(toolCall: ToolCall): boolean {
-  return Boolean(toolCall.output) && toolCall.name !== 'FileChange'
+  return (
+    Boolean(toolCall.output) &&
+    toolCall.name !== 'FileChange' &&
+    toolCall.name !== 'Monitor'
+  )
 }
+
+// Single source of truth for tool call row layout. Bump min-h-9/px-2.5 here, all rows update.
+// min-h ensures consistent baseline regardless of inline-content height (pill vs no-pill).
+export const TOOL_CALL_ROW_CLASS =
+  'flex min-h-9 w-full items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 select-none min-w-0'
+
+export const TOOL_CALL_SUB_ROW_CLASS =
+  'flex min-h-7 w-full items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground/80 hover:bg-muted/30 select-none min-w-0'
+
+// Detail pill — sits AFTER label, snug to content (no flex-1 stretch).
+export const TOOL_CALL_DETAIL_PILL_CLASS =
+  'min-w-0 max-w-[55%] sm:max-w-full truncate rounded px-1 text-[0.6875rem] font-sans leading-none'
 
 interface ToolCallInlineProps {
   toolCall: ToolCall
@@ -64,7 +83,10 @@ export function ToolCallInline({
   isStreaming,
   isIncomplete,
 }: ToolCallInlineProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { data: preferences } = usePreferences()
+  const [isOpen, setIsOpen] = useState(
+    preferences?.expand_tool_calls_by_default ?? false
+  )
   const { icon, label, detail, filePath, expandedContent } =
     getToolDisplay(toolCall)
 
@@ -87,9 +109,11 @@ export function ToolCallInline({
           isOpen && 'bg-muted/50'
         )}
       >
-        <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 cursor-pointer select-none min-w-0">
+        <CollapsibleTrigger className={TOOL_CALL_ROW_CLASS}>
           {icon}
-          <span className="font-medium">{label}</span>
+          <span className="font-medium shrink-0 flex-none whitespace-nowrap">
+            {label}
+          </span>
           {detail && filePath && onFileClick ? (
             <code
               role="button"
@@ -99,15 +123,16 @@ export function ToolCallInline({
                 e.key === 'Enter' &&
                 handleFileClick(e as unknown as React.MouseEvent)
               }
-              className="inline-flex items-center gap-1 truncate rounded bg-muted/50 px-1.5 py-0.5 text-xs hover:bg-primary/20 hover:text-primary transition-colors cursor-pointer"
+              className={cn(
+                TOOL_CALL_DETAIL_PILL_CLASS,
+                'inline-flex items-center gap-1 hover:bg-primary/20 hover:text-primary transition-colors cursor-pointer'
+              )}
             >
               <span className="truncate">{detail}</span>
               <ExternalLink className="h-3 w-3 shrink-0 opacity-60" />
             </code>
           ) : detail ? (
-            <code className="truncate rounded bg-muted/50 px-1.5 py-0.5 text-xs">
-              {detail}
-            </code>
+            <code className={TOOL_CALL_DETAIL_PILL_CLASS}>{detail}</code>
           ) : null}
           {isStreaming && isIncomplete ? (
             <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground/50" />
@@ -170,7 +195,10 @@ export function TaskCallInline({
   isStreaming,
   isIncomplete,
 }: TaskCallInlineProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { data: preferences } = usePreferences()
+  const [isOpen, setIsOpen] = useState(
+    preferences?.expand_tool_calls_by_default ?? false
+  )
   const input = taskToolCall.input as Record<string, unknown>
   const subagentType = input.subagent_type as string | undefined
   const description = input.description as string | undefined
@@ -188,19 +216,17 @@ export function TaskCallInline({
           isOpen && 'bg-muted/50'
         )}
       >
-        <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 cursor-pointer select-none min-w-0">
+        <CollapsibleTrigger className={TOOL_CALL_ROW_CLASS}>
           <Bot className="h-3.5 w-3.5 shrink-0" />
-          <span className="font-medium">
+          <span className="font-medium shrink-0 whitespace-nowrap">
             {subagentType ? `Task (${subagentType})` : 'Task'}
           </span>
           {description && (
-            <code className="truncate rounded bg-muted/50 px-1.5 py-0.5 text-xs">
-              {description}
-            </code>
+            <code className={TOOL_CALL_DETAIL_PILL_CLASS}>{description}</code>
           )}
           {/* Show sub-tool count badge */}
           {subToolCalls.length > 0 && (
-            <span className="ml-auto text-xs text-muted-foreground/60">
+            <span className="ml-auto shrink-0 text-xs text-muted-foreground/60">
               {subToolCalls.length} tool{subToolCalls.length === 1 ? '' : 's'}
             </span>
           )}
@@ -286,7 +312,10 @@ export function StackedGroup({
   isStreaming,
   isIncomplete,
 }: StackedGroupProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { data: preferences } = usePreferences()
+  const [isOpen, setIsOpen] = useState(
+    preferences?.expand_tool_calls_by_default ?? false
+  )
 
   // Count thinking blocks and tools for summary
   let thinkingCount = 0
@@ -327,9 +356,11 @@ export function StackedGroup({
           isOpen && 'bg-muted/50'
         )}
       >
-        <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2.5 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 cursor-pointer select-none min-w-0">
+        <CollapsibleTrigger className={TOOL_CALL_ROW_CLASS}>
           <Layers className="h-3.5 w-3.5 shrink-0" />
-          <span className="font-medium">{summary}</span>
+          <span className="font-medium shrink-0 whitespace-nowrap">
+            {summary}
+          </span>
           {isStreaming && isIncomplete ? (
             <Loader2 className="ml-auto h-3 w-3 shrink-0 animate-spin text-muted-foreground/50" />
           ) : (
@@ -373,7 +404,10 @@ interface SubThinkingItemProps {
  * Similar style to SubToolItem but for thinking content
  */
 function SubThinkingItem({ thinking }: SubThinkingItemProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { data: preferences } = usePreferences()
+  const [isOpen, setIsOpen] = useState(
+    preferences?.expand_tool_calls_by_default ?? false
+  )
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
@@ -383,9 +417,11 @@ function SubThinkingItem({ thinking }: SubThinkingItemProps) {
           isOpen && 'bg-muted/30'
         )}
       >
-        <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground/80 hover:bg-muted/30 cursor-pointer select-none">
+        <CollapsibleTrigger className={TOOL_CALL_SUB_ROW_CLASS}>
           <Brain className="h-3 w-3 shrink-0 text-purple-500" />
-          <span className="font-medium">Thinking</span>
+          <span className="font-medium shrink-0 whitespace-nowrap">
+            Thinking
+          </span>
           <ChevronRight
             className={cn(
               'ml-auto h-2.5 w-2.5 shrink-0 transition-transform duration-200',
@@ -415,7 +451,10 @@ interface SubToolItemProps {
  * Even more minimal than ToolCallInline - just icon, label, and detail inline
  */
 function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const { data: preferences } = usePreferences()
+  const [isOpen, setIsOpen] = useState(
+    preferences?.expand_tool_calls_by_default ?? false
+  )
   const { icon, label, detail, filePath, expandedContent } =
     getToolDisplay(toolCall)
 
@@ -434,9 +473,11 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
           isOpen && 'bg-muted/30'
         )}
       >
-        <CollapsibleTrigger className="flex w-full items-center gap-1.5 px-2 py-1 text-xs text-muted-foreground/80 hover:bg-muted/30 cursor-pointer select-none">
-          <span className="[&>svg]:h-3 [&>svg]:w-3">{icon}</span>
-          <span className="font-medium">{label}</span>
+        <CollapsibleTrigger className={TOOL_CALL_SUB_ROW_CLASS}>
+          <span className="shrink-0 [&>svg]:h-3 [&>svg]:w-3">{icon}</span>
+          <span className="font-medium shrink-0 flex-none whitespace-nowrap">
+            {label}
+          </span>
           {detail && filePath && onFileClick ? (
             <code
               role="button"
@@ -446,13 +487,13 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
                 e.key === 'Enter' &&
                 handleFileClick(e as unknown as React.MouseEvent)
               }
-              className="inline-flex items-center gap-0.5 truncate rounded bg-muted/30 px-1 py-0.5 text-[0.625rem] hover:bg-primary/20 hover:text-primary transition-colors cursor-pointer"
+              className="inline-flex min-w-0 max-w-[55%] sm:max-w-full items-center gap-0.5 truncate rounded px-0.5 text-[0.625rem] font-sans leading-none hover:bg-primary/20 hover:text-primary transition-colors cursor-pointer"
             >
               <span className="truncate">{detail}</span>
               <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-60" />
             </code>
           ) : detail ? (
-            <code className="truncate rounded bg-muted/30 px-1 py-0.5 text-[0.625rem]">
+            <code className="min-w-0 max-w-[55%] sm:max-w-full truncate rounded px-0.5 text-[0.625rem] font-sans leading-none">
               {detail}
             </code>
           ) : null}
@@ -489,56 +530,10 @@ function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
 interface ToolDisplay {
   icon: React.ReactNode
   label: string
-  detail?: string
+  detail?: React.ReactNode
   /** Full file path for file-related tools (Read, Edit, Write) */
   filePath?: string
   expandedContent: React.ReactNode
-}
-
-/** Renders a unified diff view with colored +/- lines */
-function DiffView({
-  oldString,
-  newString,
-  filePath,
-  className,
-}: {
-  oldString: string
-  newString: string
-  filePath: string
-  className?: string
-}) {
-  const parts = useMemo(
-    () => diffLines(oldString, newString),
-    [oldString, newString]
-  )
-
-  return (
-    <div className={className}>
-      <div className="text-muted-foreground mb-1.5 font-mono">
-        Path: {filePath}
-      </div>
-      <div className="rounded border border-border/30 overflow-auto max-h-64">
-        {parts.map((part, i) => {
-          const lines = part.value.replace(/\n$/, '').split('\n')
-          return lines.map((line, j) => (
-            <div
-              key={`${i}-${j}`}
-              className={cn(
-                'px-2 font-mono',
-                part.added && 'bg-green-500/15 text-green-400',
-                part.removed && 'bg-red-500/15 text-red-400'
-              )}
-            >
-              <span className="inline-block w-4 select-none opacity-60">
-                {part.added ? '+' : part.removed ? '-' : ' '}
-              </span>
-              {line}
-            </div>
-          ))
-        })}
-      </div>
-    </div>
-  )
 }
 
 /** A single Codex file change entry */
@@ -574,34 +569,6 @@ function parseCodexFileChanges(input: unknown): CodexFileChange[] {
   return []
 }
 
-/** Renders a pre-computed unified diff patch with colored +/- lines */
-function PatchDiffView({ patch }: { patch: string }) {
-  const lines = patch.split('\n')
-  if (lines.length > 0 && lines[lines.length - 1] === '') {
-    lines.pop()
-  }
-
-  return (
-    <div className="rounded border border-border/30 overflow-auto max-h-64">
-      {lines.map((line, i) => (
-        <div
-          key={i}
-          className={cn(
-            'px-2 font-mono',
-            line.startsWith('@@') && 'text-blue-400 bg-blue-500/10',
-            line.startsWith('+') &&
-              !line.startsWith('@@') &&
-              'bg-green-500/15 text-green-400',
-            line.startsWith('-') && 'bg-red-500/15 text-red-400'
-          )}
-        >
-          {line}
-        </div>
-      ))}
-    </div>
-  )
-}
-
 /** Renders one or more Codex file changes with diffs */
 function FileChangeDiffView({ input }: { input: unknown }) {
   const changes = parseCodexFileChanges(input)
@@ -617,27 +584,14 @@ function FileChangeDiffView({ input }: { input: unknown }) {
           ? getFilename(change.path)
           : `file ${idx + 1}`
         const changeType = change.kind?.type ?? 'update'
-        const typeColor =
-          changeType === 'create'
-            ? 'text-green-500'
-            : changeType === 'delete'
-              ? 'text-red-500'
-              : changeType === 'rename'
-                ? 'text-yellow-500'
-                : 'text-blue-500'
 
         return (
           <div key={change.path ?? idx}>
             <div className="flex items-center gap-1.5 mb-1">
-              <span className={cn('font-mono truncate', typeColor)}>
+              <span className="font-mono truncate text-muted-foreground">
                 {filename}
               </span>
-              <span
-                className={cn(
-                  'text-[0.625rem] uppercase font-medium px-1 rounded',
-                  typeColor
-                )}
-              >
+              <span className="text-[0.625rem] uppercase tracking-wide font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                 {changeType}
               </span>
               {change.kind?.move_path && (
@@ -647,7 +601,7 @@ function FileChangeDiffView({ input }: { input: unknown }) {
               )}
             </div>
             {change.diff ? (
-              <PatchDiffView patch={change.diff} />
+              <InlineFileDiff patch={change.diff} filePath={change.path} />
             ) : (
               <div className="text-muted-foreground/50 italic">
                 No diff available
@@ -658,6 +612,72 @@ function FileChangeDiffView({ input }: { input: unknown }) {
       })}
     </div>
   )
+}
+
+function formatWakeupDelay(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return 'now'
+  if (seconds < 60) return `${Math.round(seconds)}s`
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.round(seconds % 60)
+  if (mins < 60) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`
+  const hours = Math.floor(mins / 60)
+  const remMins = mins % 60
+  return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`
+}
+
+/** Live-ticking remaining seconds for a pending ScheduleWakeup. */
+function useWakeupRemaining(fireAtUnix: number | undefined): number | null {
+  const [nowUnix, setNowUnix] = useState<number | null>(null)
+  useEffect(() => {
+    if (!fireAtUnix) return
+    const updateNow = () => setNowUnix(Math.floor(Date.now() / 1000))
+    updateNow()
+    const id = setInterval(updateNow, 1000)
+    return () => clearInterval(id)
+  }, [fireAtUnix])
+  if (!fireAtUnix) return null
+  if (nowUnix === null) return null
+  return Math.max(0, fireAtUnix - nowUnix)
+}
+
+interface ScheduleWakeupIndicatorProps {
+  toolCallId: string
+  fallbackDelaySeconds?: number
+}
+
+/** Collapsed-row icon that reflects ScheduleWakeup status (pending/fired/cancelled).
+ *
+ * The wakeup scheduler in Rust emits `chat:wakeup_scheduled` → pending, and
+ * clears the entry from memory (not from chat history) when it fires or is
+ * cancelled. On app reload the `list_pending_wakeups` hydration pass seeds
+ * the store with every still-pending entry; anything *not* in the store by
+ * that point is assumed to have already fired in a prior session, so we
+ * render it as completed rather than spinning forever.
+ */
+function ScheduleWakeupIcon({ toolCallId }: ScheduleWakeupIndicatorProps) {
+  const entry = useChatStore(state => state.scheduledWakeups[toolCallId])
+  const status = entry?.status ?? 'fired'
+  if (status === 'pending') {
+    return <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+  }
+  if (status === 'cancelled') {
+    return <XCircle className="h-4 w-4 shrink-0" />
+  }
+  return <CheckCircle2 className="h-4 w-4 shrink-0" />
+}
+
+/** Collapsed-row detail text that live-ticks until fire_at_unix. */
+function ScheduleWakeupCountdown({ toolCallId }: ScheduleWakeupIndicatorProps) {
+  const entry = useChatStore(state => state.scheduledWakeups[toolCallId])
+  const remaining = useWakeupRemaining(entry?.fire_at_unix)
+  const status = entry?.status ?? 'fired'
+  if (status === 'cancelled') return <span>cancelled</span>
+  if (status === 'pending') {
+    if (remaining === null) return null
+    if (remaining <= 0) return <span>firing…</span>
+    return <span>fires in {formatWakeupDelay(remaining)}</span>
+  }
+  return <span>fired</span>
 }
 
 function getToolDisplay(toolCall: ToolCall): ToolDisplay {
@@ -692,7 +712,7 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
         detail: filename,
         filePath,
         expandedContent: filePath ? (
-          <DiffView
+          <InlineFileDiff
             filePath={filePath}
             oldString={oldString ?? ''}
             newString={newString ?? ''}
@@ -1093,6 +1113,88 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
       }
     }
 
+    case 'ScheduleWakeup': {
+      const delaySeconds =
+        typeof input.delaySeconds === 'number' ? input.delaySeconds : undefined
+      const prompt = typeof input.prompt === 'string' ? input.prompt : undefined
+      const reason = typeof input.reason === 'string' ? input.reason : undefined
+      const bodyParts: string[] = []
+      if (reason) bodyParts.push(`**Reason:** ${reason}`)
+      if (prompt) bodyParts.push(`**Prompt:**\n\n${prompt}`)
+      const markdownBody = bodyParts.join('\n\n')
+      return {
+        icon: (
+          <ScheduleWakeupIcon
+            toolCallId={toolCall.id}
+            fallbackDelaySeconds={delaySeconds}
+          />
+        ),
+        label: 'Scheduled Wakeup',
+        detail: (
+          <ScheduleWakeupCountdown
+            toolCallId={toolCall.id}
+            fallbackDelaySeconds={delaySeconds}
+          />
+        ),
+        expandedContent: markdownBody ? (
+          <Markdown>{markdownBody}</Markdown>
+        ) : (
+          JSON.stringify(input, null, 2)
+        ),
+      }
+    }
+
+    case 'Monitor': {
+      const description =
+        typeof input.description === 'string' ? input.description : undefined
+      const command =
+        typeof input.command === 'string' ? input.command : undefined
+      // Live events come from Zustand during an active run. After reload,
+      // events are reconstructed from tool_call.output (multi-line string
+      // written by parse_run_to_message). Each line is "<unix_ms>|<text>"
+      // so real relative timestamps survive session reload.
+      let events = toolCall.events ?? []
+      if (events.length === 0 && toolCall.output) {
+        events = toolCall.output
+          .split('\n')
+          .filter(l => l.length > 0)
+          .map((line, idx) => {
+            const sep = line.indexOf('|')
+            if (sep > 0) {
+              const tsStr = line.slice(0, sep)
+              const text = line.slice(sep + 1)
+              const ts = Number.parseInt(tsStr, 10)
+              if (Number.isFinite(ts)) {
+                return {
+                  kind: 'monitor_event' as const,
+                  payload: { text },
+                  ts_ms: ts,
+                }
+              }
+            }
+            return {
+              kind: 'monitor_event' as const,
+              payload: { text: line },
+              ts_ms: idx,
+            }
+          })
+      }
+      const status: NonNullable<ToolCall['status']> =
+        toolCall.status ??
+        (toolCall.output ? 'done' : events.length > 0 ? 'running' : 'armed')
+      const label = description ? `Monitor: ${description}` : 'Monitor'
+      return {
+        icon: <Activity className="h-4 w-4 shrink-0" />,
+        label,
+        detail: (
+          <MonitorStatusBadge status={status} eventCount={events.length} />
+        ),
+        expandedContent: (
+          <MonitorExpanded command={command} events={events} status={status} />
+        ),
+      }
+    }
+
     default: {
       const isMcpTool = toolCall.name.startsWith('mcp__')
       return {
@@ -1102,5 +1204,173 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
         expandedContent: JSON.stringify(input, null, 2),
       }
     }
+  }
+}
+
+// -- Monitor renderer helpers ------------------------------------------------
+
+function MonitorStatusBadge({
+  status,
+  eventCount,
+}: {
+  status: NonNullable<ToolCall['status']>
+  eventCount: number
+}) {
+  const tone =
+    status === 'done'
+      ? 'text-green-600 dark:text-green-400'
+      : status === 'error' || status === 'timeout'
+        ? 'text-red-600 dark:text-red-400'
+        : 'text-amber-600 dark:text-amber-400'
+  const label =
+    status === 'armed' ? 'armed' : status === 'running' ? 'running' : status
+  return (
+    <span className={cn('font-mono text-[11px]', tone)}>
+      {label}
+      {eventCount > 0
+        ? ` · ${eventCount} event${eventCount === 1 ? '' : 's'}`
+        : ''}
+    </span>
+  )
+}
+
+function MonitorExpanded({
+  command,
+  events,
+  status,
+}: {
+  command: string | undefined
+  events: NonNullable<ToolCall['events']>
+  status: NonNullable<ToolCall['status']>
+}) {
+  const isActive =
+    status !== 'done' && status !== 'error' && status !== 'timeout'
+  return (
+    <div className="space-y-2">
+      {command ? (
+        <div>
+          <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+            Command
+          </div>
+          <pre className="mt-1 whitespace-pre-wrap break-all rounded bg-muted/50 p-2 font-mono text-[11px]">
+            {command}
+          </pre>
+        </div>
+      ) : null}
+      <div>
+        <div className="flex items-center justify-between text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span>Live events</span>
+          {isActive ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+        </div>
+        {events.length === 0 ? (
+          <div className="mt-1 text-[11px] italic text-muted-foreground">
+            {status === 'armed' ? 'Waiting for events…' : 'No events emitted.'}
+          </div>
+        ) : (
+          <div className="mt-1 max-h-64 divide-y divide-border/30 overflow-auto rounded bg-muted/50 p-2 font-mono text-[11px]">
+            {events.map((ev, i) => {
+              const text = formatMonitorEventText(ev)
+              return (
+                <div
+                  key={`${ev.ts_ms}-${i}`}
+                  className="py-1 first:pt-0 last:pb-0"
+                >
+                  <span
+                    className={cn(
+                      'whitespace-pre-wrap break-all',
+                      ev.kind === 'monitor_status' &&
+                        'text-amber-600 dark:text-amber-400',
+                      ev.kind === 'monitor_done' &&
+                        'text-green-600 dark:text-green-400'
+                    )}
+                  >
+                    {text}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function formatMonitorEventText(
+  ev: NonNullable<ToolCall['events']>[number]
+): string {
+  const p = ev.payload as Record<string, unknown> | null
+
+  // System-lifecycle events from Claude CLI:
+  //   { type: "system", subtype: "task_started" | "task_updated" | "task_notification", ... }
+  if (p && (p.type === 'system' || typeof p.subtype === 'string')) {
+    const subtype =
+      typeof p.subtype === 'string' ? (p.subtype as string) : undefined
+    if (subtype === 'task_started') {
+      const desc = typeof p.description === 'string' ? p.description : ''
+      return `task started${desc ? ` — ${desc}` : ''}`
+    }
+    if (subtype === 'task_updated') {
+      const patch = (p.patch as Record<string, unknown> | undefined) ?? {}
+      const status =
+        typeof patch.status === 'string' ? (patch.status as string) : 'updated'
+      return `task ${status}`
+    }
+    if (subtype === 'task_notification') {
+      const status =
+        typeof p.status === 'string' ? (p.status as string) : 'update'
+      const summary = typeof p.summary === 'string' ? p.summary : ''
+      return `${status}${summary ? ` — ${summary}` : ''}`
+    }
+  }
+
+  if (ev.kind === 'monitor_status') {
+    const status = (p as { status?: string } | null)?.status
+    return `status: ${status ?? 'unknown'}`
+  }
+  if (ev.kind === 'monitor_done') {
+    const status = (p as { status?: string } | null)?.status
+    return `monitor ${status ?? 'done'}`
+  }
+
+  // monitor_event: payload may be a tool_result block ({content: string | array}),
+  // an assistant-text payload ({type:"text", text}), or a system notification.
+  if (p) {
+    // Direct text-ish fields (assistant-text payload, system summary, etc.)
+    for (const key of ['text', 'summary', 'line', 'output', 'message']) {
+      const v = p[key]
+      if (typeof v === 'string' && v.length > 0) return v
+    }
+    // tool_result.content as string
+    const content = p.content
+    if (typeof content === 'string' && content.length > 0) return content
+    // tool_result.content as array → concat text fields with real newlines
+    if (Array.isArray(content)) {
+      const parts: string[] = []
+      for (const item of content) {
+        if (item && typeof item === 'object') {
+          const t = (item as { text?: unknown }).text
+          if (typeof t === 'string') parts.push(t)
+        }
+      }
+      if (parts.length > 0) return parts.join('\n')
+    }
+    // Nested message.content[].text (for user-message broadcasts)
+    const nested = (p as { message?: { content?: unknown } }).message?.content
+    if (Array.isArray(nested)) {
+      const parts: string[] = []
+      for (const b of nested) {
+        if (b && typeof b === 'object') {
+          const t = (b as { text?: unknown }).text
+          if (typeof t === 'string') parts.push(t)
+        }
+      }
+      if (parts.length > 0) return parts.join('\n')
+    }
+  }
+  try {
+    return JSON.stringify(ev.payload)
+  } catch {
+    return '(event)'
   }
 }

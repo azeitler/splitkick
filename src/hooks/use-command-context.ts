@@ -4,7 +4,7 @@ import { toast } from 'sonner'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
-import { useTerminalStore } from '@/store/terminal-store'
+import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { ThemeProviderContext, type Theme } from '@/lib/theme-context'
 import { notify } from '@/lib/notifications'
 import { logger } from '@/lib/logger'
@@ -493,8 +493,8 @@ export function useCommandContext(
   }, [themeContext])
 
   const getCurrentModel = useCallback((): ClaudeModel => {
-    // Default to opus - actual model comes from preferences
-    return 'opus'
+    // Default - actual model comes from preferences
+    return 'claude-opus-4-8[1m]'
   }, [])
 
   const getCurrentThinkingLevel = useCallback((): ThinkingLevel => {
@@ -628,6 +628,7 @@ export function useCommandContext(
     const terminals = useTerminalStore
       .getState()
       .getTerminals(selectedWorktreeId)
+      .filter(isPanelTerminal)
 
     // Create a new terminal if none exists
     if (terminals.length === 0) {

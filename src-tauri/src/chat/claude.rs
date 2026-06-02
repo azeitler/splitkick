@@ -6,7 +6,8 @@ use super::types::{
 };
 use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
-    get_github_contexts_dir, get_session_issue_refs, get_session_pr_refs,
+    get_github_contexts_dir, get_session_advisory_refs, get_session_issue_refs,
+    get_session_pr_refs, get_session_security_refs,
 };
 use crate::projects::linear_issues::get_session_linear_refs;
 use crate::projects::storage::load_projects_data;
@@ -23,32 +24,43 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 - Use plan mode for verification steps, not just building\n\
 - Write detailed specs upfront to reduce ambiguity\n\
 - Make the plan extremely concise. Sacrifice grammar for the sake of concision.\n\
-- At the end of each plan, give me a list of unresolved questions to answer, if any.\n\
+- In planning mode, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex update_plan/CodexPlan, Cursor/OpenCode equivalent), not plain text only.\n\
+- For unresolved questions in plan mode, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question.\n\
+- For Codex specifically: after the user answers native `request_user_input`/open questions in plan mode, immediately call `update_plan`/emit `CodexPlan` again with the revised plan before any implementation.\n\
+- Every Codex plan-mode response that contains or revises a plan must use `update_plan`/`CodexPlan`; do not provide plain-text-only plans.\n\
+- Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.\n\
 \n\
-### 2. Subagent Strategy to keep main context window clean\n\
+### 2. Documentation First\n\
+- Before designing or coding against any external library/framework/SDK/API/CLI, run WebSearch for current docs.\n\
+- Verify version, API shape, and breaking changes — training data may be stale.\n\
+- Cite the source URL in your plan or commit reasoning when behavior is non-obvious.\n\
+- Skip only for trivial edits to code already read this session.\n\
+- Do NOT use Context7 — WebSearch only.\n\
+\n\
+### 3. Subagent Strategy to keep main context window clean\n\
 - Offload research, exploration, and parallel analysis to subagents\n\
 - For complex problems, throw more compute at it via subagents\n\
 - One task per subagent for focused execution\n\
 \n\
-### 3. Self-Improvement Loop\n\
+### 4. Self-Improvement Loop\n\
 - After ANY correction from the user: update '.ai/lessons.md' with the pattern\n\
 - Write rules for yourself that prevent the same mistake\n\
 - Ruthlessly iterate on these lessons until mistake rate drops\n\
 - Review lessons at session start for relevant project\n\
 \n\
-### 4. Verification Before Done\n\
+### 5. Verification Before Done\n\
 - Never mark a task complete without proving it works\n\
 - Diff behavior between main and your changes when relevant\n\
 - Ask yourself: \"Would a staff engineer approve this?\"\n\
 - Run tests, check logs, demonstrate correctness\n\
 \n\
-### 5. Demand Elegance (Balanced)\n\
+### 6. Demand Elegance (Balanced)\n\
 - For non-trivial changes: pause and ask \"is there a more elegant way?\"\n\
 - If a fix feels hacky: \"Knowing everything I know now, implement the elegant solution\"\n\
 - Skip this for simple, obvious fixes - don't over-engineer\n\
 - Challenge your own work before presenting it\n\
 \n\
-### 6. Autonomous Bug Fixing\n\
+### 7. Autonomous Bug Fixing\n\
 - When given a bug report: just fix it. Don't ask for hand-holding\n\
 - Point at logs, errors, failing tests -> then resolve them\n\
 - Zero context switching required from the user\n\
@@ -64,8 +76,14 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 \n\
 ## Core Principles\n\
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.\n\
+- **VERY IMPORTANT: Keep Code Simple**: Do not over-engineer. Always implement the simplest maintainable solution. Avoid extra abstractions, frameworks, configuration, or future-proofing unless clearly required.\n\
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.\n\
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.\n\
+\n\
+## Jean Worktree Policy\n\
+- Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.\n\
+- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.\n\
+- If already in a Jean worktree or base/main workspace, continue in the current workspace.\n\
 \n\
 ## Important!\n\
 \n\
@@ -183,6 +201,19 @@ struct ToolResultEvent {
     output: String,
 }
 
+/// Payload for live tool-event (e.g. Monitor notifications) streamed to frontend.
+/// Unlike tool_result which is atomic, this carries incremental events
+/// while a long-running tool (like Monitor) is still armed.
+#[derive(serde::Serialize, Clone)]
+struct ToolEventEvent {
+    session_id: String,
+    worktree_id: String,
+    tool_use_id: String,
+    kind: String, // "monitor_event" | "monitor_status" | "monitor_done"
+    payload: serde_json::Value,
+    ts_ms: u64,
+}
+
 // PermissionDenial and PermissionDeniedEvent are in types.rs
 
 /// Payload for compacting-in-progress events sent to frontend
@@ -265,6 +296,9 @@ fn build_claude_args(
     args.push("--input-format".to_string());
     args.push("stream-json".to_string());
     args.push("--verbose".to_string());
+    // Stream partial messages so long-running tools (Monitor, etc.) can push events
+    // to the UI without waiting for message boundaries.
+    args.push("--include-partial-messages".to_string());
 
     // Add app data directories
     if let Ok(app_data_dir) = app.path().app_data_dir() {
@@ -289,6 +323,28 @@ fn build_claude_args(
         }
     }
 
+    // Add linked project directories for read access
+    let linked_project_paths: Vec<String> = crate::projects::storage::load_projects_data(app)
+        .ok()
+        .and_then(|data| {
+            let worktree = data.find_worktree(worktree_id)?;
+            let project = data.find_project(&worktree.project_id)?;
+            Some(
+                project
+                    .linked_project_ids
+                    .iter()
+                    .filter_map(|id| data.find_project(id))
+                    .filter(|p| !p.path.trim().is_empty())
+                    .map(|p| p.path.clone())
+                    .collect(),
+            )
+        })
+        .unwrap_or_default();
+    for dir in &linked_project_paths {
+        args.push("--add-dir".to_string());
+        args.push(dir.clone());
+    }
+
     // Add Claude CLI skills and commands directories (~/.claude/skills and ~/.claude/commands)
     if let Some(home_dir) = dirs::home_dir() {
         let claude_dir = home_dir.join(".claude");
@@ -302,13 +358,13 @@ fn build_claude_args(
     }
 
     // Model (strip "-fast" suffix: "opus-fast" → model="opus" + fastMode setting)
-    let is_fast = if let Some(m) = model {
+    let (is_fast, fast_base_model) = if let Some(m) = model {
         let (actual_model, fast) = split_fast_model(m);
         args.push("--model".to_string());
         args.push(actual_model.to_string());
-        fast
+        (fast, fast.then(|| actual_model.to_string()))
     } else {
-        false
+        (false, None)
     };
 
     // Permission mode
@@ -319,6 +375,13 @@ fn build_claude_args(
     };
     args.push("--permission-mode".to_string());
     args.push(perm_mode.to_string());
+
+    // In build/yolo, remove ExitPlanMode entirely so Claude can't loop back
+    // into plan-approval after the user already approved one.
+    if matches!(execution_mode.unwrap_or("plan"), "build" | "yolo") {
+        args.push("--disallowedTools".to_string());
+        args.push("ExitPlanMode".to_string());
+    }
 
     // Custom profile settings: resolve name → file path, pass to --settings (secrets stay in file, not in ps)
     if let Some(name) = custom_profile_name {
@@ -377,6 +440,16 @@ fn build_claude_args(
         }
     }
 
+    // Fast mode picks the CLI's default fast Opus version (4.8 in Claude Code
+    // v2.1.154+), ignoring --model for the Opus version. Pin to 4.6 when the
+    // user explicitly selected the 4.6 fast variant.
+    if fast_base_model.as_deref() == Some("claude-opus-4-6[1m]") {
+        env_vars.push((
+            "CLAUDE_CODE_OPUS_4_6_FAST_MODE_OVERRIDE".to_string(),
+            "1".to_string(),
+        ));
+    }
+
     // Emit --settings if we have any settings to pass
     if let Some(settings) = &settings_json {
         args.push("--settings".to_string());
@@ -405,25 +478,7 @@ fn build_claude_args(
     args.push("--allowedTools".to_string());
     args.push("Bash(*claude-cli/claude*)".to_string());
 
-    // MCP server configuration
-    if let Some(config) = mcp_config {
-        if !config.is_empty() {
-            args.push("--mcp-config".to_string());
-            args.push(config.to_string());
-            args.push("--strict-mcp-config".to_string());
-
-            // Auto-allow all tools from configured MCP servers
-            // Pattern "mcp__<name>" matches all tools from that server
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
-                if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
-                    for server_name in servers.keys() {
-                        args.push("--allowedTools".to_string());
-                        args.push(format!("mcp__{server_name}"));
-                    }
-                }
-            }
-        }
-    }
+    append_mcp_config_args(&mut args, mcp_config);
 
     // Chrome browser integration (beta)
     if chrome_enabled {
@@ -459,8 +514,6 @@ fn build_claude_args(
         }
     }
 
-    // Explicit mode override for Claude so build/yolo do not fall back into plan mode
-    // due to the default global prompt.
     if let Some(mode_instruction) = execution_mode_instruction(execution_mode) {
         system_prompt_parts.push(mode_instruction.to_string());
     }
@@ -473,7 +526,7 @@ fn build_claude_args(
         }
     }
 
-    // Per-project custom system prompt
+    // Per-project custom system prompt + linked project instructions
     if let Ok(data) = load_projects_data(app) {
         if let Some(worktree) = data.find_worktree(worktree_id) {
             if let Some(project) = data.find_project(&worktree.project_id) {
@@ -482,6 +535,20 @@ fn build_claude_args(
                     if !prompt.is_empty() {
                         system_prompt_parts.push(prompt.to_string());
                     }
+                }
+
+                // Linked projects: inject instruction to check their directories
+                if !linked_project_paths.is_empty() {
+                    let dirs_list = linked_project_paths
+                        .iter()
+                        .map(|p| format!("- {p}"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    system_prompt_parts.push(format!(
+                        "This project is linked to other projects for cross-project context. \
+                         Check the following directories for additional instructions and documentation \
+                         (e.g., CLAUDE.md, AGENTS.md, docs/):\n{dirs_list}"
+                    ));
                 }
             }
         }
@@ -518,6 +585,9 @@ fn build_claude_args(
             ));
         }
     }
+
+    // End-of-turn recap instruction (compact view surfaces this block)
+    system_prompt_parts.push(super::RECAP_INSTRUCTION.to_string());
 
     // Collect all context files (issues and PRs) and concatenate into a single file
     let mut all_context_paths: Vec<std::path::PathBuf> = Vec::new();
@@ -575,6 +645,55 @@ fn build_claude_args(
                     let file_path = contexts_dir.join(format!("{repo_key}-pr-{number}.md"));
                     if file_path.exists() {
                         log::trace!("Adding PR context file: {:?}", file_path);
+                        all_context_paths.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check for security alert context files (shared storage)
+    let mut security_keys = get_session_security_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_security_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !security_keys.contains(&key) {
+                security_keys.push(key);
+            }
+        }
+    }
+    if !security_keys.is_empty() {
+        if let Ok(contexts_dir) = get_github_contexts_dir(app) {
+            for key in security_keys {
+                let parts: Vec<&str> = key.rsplitn(2, '-').collect();
+                if parts.len() == 2 {
+                    let number = parts[0];
+                    let repo_key = parts[1];
+                    let file_path = contexts_dir.join(format!("{repo_key}-security-{number}.md"));
+                    if file_path.exists() {
+                        log::trace!("Adding security context file: {:?}", file_path);
+                        all_context_paths.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check repository advisory context files (shared storage)
+    let mut advisory_keys = get_session_advisory_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_advisory_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !advisory_keys.contains(&key) {
+                advisory_keys.push(key);
+            }
+        }
+    }
+    if !advisory_keys.is_empty() {
+        if let Ok(contexts_dir) = get_github_contexts_dir(app) {
+            for key in advisory_keys {
+                if let Some((repo_key, ghsa_id)) = key.split_once("::") {
+                    let file_path = contexts_dir.join(format!("{repo_key}-advisory-{ghsa_id}.md"));
+                    if file_path.exists() {
+                        log::trace!("Adding advisory context file: {:?}", file_path);
                         all_context_paths.push(file_path);
                     }
                 }
@@ -665,6 +784,20 @@ fn build_claude_args(
                     s.contains("git-context") && s.contains("-pr-")
                 })
                 .count();
+            let security_count = all_context_paths
+                .iter()
+                .filter(|p| {
+                    let s = p.to_string_lossy();
+                    s.contains("git-context") && s.contains("-security-")
+                })
+                .count();
+            let advisory_count = all_context_paths
+                .iter()
+                .filter(|p| {
+                    let s = p.to_string_lossy();
+                    s.contains("git-context") && s.contains("-advisory-")
+                })
+                .count();
             let linear_count = all_context_paths
                 .iter()
                 .filter(|p| {
@@ -700,7 +833,13 @@ fn build_claude_args(
                 combined_content
                     .push_str("You should be aware of this when working on this task.\n\n");
 
-                if issue_count > 0 || pr_count > 0 || linear_count > 0 || saved_context_count > 0 {
+                if issue_count > 0
+                    || pr_count > 0
+                    || security_count > 0
+                    || advisory_count > 0
+                    || linear_count > 0
+                    || saved_context_count > 0
+                {
                     combined_content.push_str("**Summary:**\n");
                     if issue_count > 0 {
                         combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
@@ -708,6 +847,14 @@ fn build_claude_args(
                     if pr_count > 0 {
                         combined_content
                             .push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
+                    }
+                    if security_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} Security Alert(s)\n", security_count));
+                    }
+                    if advisory_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} Security Advisory(s)\n", advisory_count));
                     }
                     if linear_count > 0 {
                         combined_content.push_str(&format!("- {} Linear Issue(s)\n", linear_count));
@@ -760,6 +907,10 @@ fn build_claude_args(
     // Debug env vars
     env_vars.push(("JEAN_SESSION_ID".to_string(), session_id.to_string()));
     env_vars.push(("JEAN_WORKTREE_ID".to_string(), worktree_id.to_string()));
+    // Jean MCP recursion-depth chain. Always set so a Claude spawned by another
+    // Jean-spawned Claude can be capped at the configured depth.
+    let (depth_key, depth_val) = super::jean_mcp::child_depth_env();
+    env_vars.push((depth_key, depth_val));
     env_vars.push((
         "JEAN_MODEL".to_string(),
         model.unwrap_or("default").to_string(),
@@ -773,6 +924,34 @@ fn build_claude_args(
     }
 
     (args, env_vars)
+}
+
+fn append_mcp_config_args(args: &mut Vec<String>, mcp_config: Option<&str>) {
+    let Some(config) = mcp_config else {
+        return;
+    };
+    if config.is_empty() {
+        return;
+    }
+
+    args.push("--mcp-config".to_string());
+    args.push(config.to_string());
+    args.push("--strict-mcp-config".to_string());
+
+    // Auto-allow all tools from configured MCP servers. Claude CLI has accepted
+    // both the server-level form and the wildcard form across releases; include
+    // both so non-interactive `--print` runs can actually execute MCP calls
+    // instead of stopping after emitting a tool_use that Jean cannot approve.
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
+        if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
+            for server_name in servers.keys() {
+                args.push("--allowedTools".to_string());
+                args.push(format!("mcp__{server_name}"));
+                args.push("--allowedTools".to_string());
+                args.push(format!("mcp__{server_name}__*"));
+            }
+        }
+    }
 }
 
 /// Execute Claude CLI in detached mode.
@@ -968,6 +1147,40 @@ pub fn tail_claude_output(
     let mut usage: Option<UsageData> = None;
     let mut error_lines: Vec<String> = Vec::new();
 
+    // Track Monitor tool_use_ids that are currently armed along with their
+    // arm-time and declared timeout_ms. Claude CLI keeps the stream open
+    // (sending notifications) until all Monitors resolve; we only break on
+    // "result" once this map is empty. We disarm either on process death,
+    // user cancellation, or when wall-clock elapsed > timeout_ms + grace —
+    // NEVER on arbitrary tool_result (which Monitor may emit multiple times,
+    // once per event or once for start + once for end).
+    struct MonitorArm {
+        armed_at: Instant,
+        timeout_ms: u64,
+        /// Have we seen the first `result` turn AFTER arming?
+        /// The first such turn is Claude's reply to the user's original
+        /// request (goes to main chat). Subsequent turns while the Monitor
+        /// is armed are per-notification wake-ups (route to tool_event).
+        initial_turn_finished: bool,
+        /// task_id assigned by CLI (from `system.task_started`), if seen.
+        task_id: Option<String>,
+    }
+    let mut armed_monitors: std::collections::HashMap<String, MonitorArm> =
+        std::collections::HashMap::new();
+    let mut saw_final_result = false;
+
+    // Optional raw-stream dump for diagnosing new event shapes (Monitor, etc.).
+    // Enable with JEAN_DUMP_STREAM=1.
+    let stream_dump_path = if std::env::var("JEAN_DUMP_STREAM").ok().as_deref() == Some("1") {
+        app.path().app_data_dir().ok().map(|dir| {
+            let p = dir.join("debug");
+            let _ = std::fs::create_dir_all(&p);
+            p.join(format!("stream-{session_id}.jsonl"))
+        })
+    } else {
+        None
+    };
+
     // Timeout configuration:
     // - Startup timeout: Wait up to 120 seconds for first Claude output (API connection time)
     // - Dead process timeout: After receiving output, wait 2 seconds for more if process seems dead
@@ -1004,6 +1217,18 @@ pub fn tail_claude_output(
                 received_claude_output = true;
             }
 
+            // Optionally dump every raw line for offline analysis.
+            if let Some(path) = stream_dump_path.as_ref() {
+                use std::io::Write;
+                if let Ok(mut f) = std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                {
+                    let _ = writeln!(f, "{line}");
+                }
+            }
+
             // Parse the JSON line
             let msg: serde_json::Value = match serde_json::from_str(&line) {
                 Ok(m) => m,
@@ -1035,6 +1260,20 @@ pub fn tail_claude_output(
 
             match msg_type {
                 "assistant" => {
+                    // Route assistant text to a Monitor's event log when this
+                    // turn is a per-notification wake-up:
+                    //   - at least one Monitor is armed
+                    //   - its initial post-arm result has already fired (so
+                    //     this is a *subsequent* turn, not Claude's reply to
+                    //     the user's original Monitor-triggering request).
+                    // Monitor wake-up turns don't carry parent_tool_use_id,
+                    // so the window is bounded by initial_turn_finished on
+                    // each armed Monitor.
+                    let monitor_text_target: Option<String> = armed_monitors
+                        .iter()
+                        .find(|(_, arm)| arm.initial_turn_finished)
+                        .map(|(id, _)| id.clone());
+
                     if let Some(message) = msg.get("message") {
                         if let Some(blocks) = message.get("content").and_then(|c| c.as_array()) {
                             for block in blocks {
@@ -1051,20 +1290,98 @@ pub fn tail_claude_output(
                                             if text == "(no content)" {
                                                 continue;
                                             }
-                                            full_content.push_str(text);
-                                            content_blocks.push(ContentBlock::Text {
-                                                text: text.to_string(),
-                                            });
 
-                                            // Emit chunk event
-                                            let event = ChunkEvent {
-                                                session_id: session_id.to_string(),
-                                                worktree_id: worktree_id.to_string(),
-                                                content: text.to_string(),
-                                            };
-                                            if let Err(e) = app.emit_all("chat:chunk", &event) {
-                                                log::error!("Failed to emit chunk: {e}");
+                                            // Pick a Monitor target for routing any
+                                            // Monitor-ish lines inside this text block.
+                                            let monitor_target: Option<String> =
+                                                monitor_text_target.clone().or_else(|| {
+                                                    armed_monitors.keys().next().cloned()
+                                                });
+
+                                            // Walk lines: `[Monitor notification...]`
+                                            // fragments are CLI-baked Monitor stdout
+                                            // mixed into Claude's text — strip them out
+                                            // of chat and route to the Monitor event log.
+                                            // CLI emits multiple shapes: `[Monitor notification]`,
+                                            // `[Monitor notification: <payload>]`, etc. Prefix
+                                            // match without the closing bracket catches all.
+                                            // Also route the whole block when this is a
+                                            // pure wake-up turn (monitor_text_target).
+                                            let now_ms = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .map(|d| d.as_millis() as u64)
+                                                .unwrap_or(0);
+                                            let mut chat_buf = String::new();
+                                            for raw_line in text.split_inclusive('\n') {
+                                                let trimmed = raw_line.trim_end_matches('\n');
+                                                let is_notification = trimmed
+                                                    .trim_start()
+                                                    .starts_with("[Monitor notification");
+                                                let route_to_monitor = is_notification
+                                                    || monitor_text_target.is_some();
+                                                if route_to_monitor {
+                                                    if !chat_buf.is_empty() {
+                                                        full_content.push_str(&chat_buf);
+                                                        content_blocks.push(ContentBlock::Text {
+                                                            text: chat_buf.clone(),
+                                                        });
+                                                        let chunk = ChunkEvent {
+                                                            session_id: session_id.to_string(),
+                                                            worktree_id: worktree_id.to_string(),
+                                                            content: chat_buf.clone(),
+                                                        };
+                                                        if let Err(e) =
+                                                            app.emit_all("chat:chunk", &chunk)
+                                                        {
+                                                            log::error!(
+                                                                "Failed to emit chunk: {e}"
+                                                            );
+                                                        }
+                                                        chat_buf.clear();
+                                                    }
+                                                    if let Some(ref mon_id) = monitor_target {
+                                                        let line = trimmed.trim();
+                                                        if !line.is_empty() {
+                                                            let evt = ToolEventEvent {
+                                                                session_id: session_id.to_string(),
+                                                                worktree_id: worktree_id
+                                                                    .to_string(),
+                                                                tool_use_id: mon_id.clone(),
+                                                                kind: "monitor_event".to_string(),
+                                                                payload: serde_json::json!({
+                                                                    "type": "text",
+                                                                    "text": line,
+                                                                }),
+                                                                ts_ms: now_ms,
+                                                            };
+                                                            if let Err(e) = app
+                                                                .emit_all("chat:tool_event", &evt)
+                                                            {
+                                                                log::error!(
+                                                                    "Failed to emit tool_event (assistant-line): {e}"
+                                                                );
+                                                            }
+                                                        }
+                                                    }
+                                                } else {
+                                                    chat_buf.push_str(raw_line);
+                                                }
                                             }
+                                            if !chat_buf.is_empty() {
+                                                full_content.push_str(&chat_buf);
+                                                content_blocks.push(ContentBlock::Text {
+                                                    text: chat_buf.clone(),
+                                                });
+                                                let chunk = ChunkEvent {
+                                                    session_id: session_id.to_string(),
+                                                    worktree_id: worktree_id.to_string(),
+                                                    content: chat_buf,
+                                                };
+                                                if let Err(e) = app.emit_all("chat:chunk", &chunk) {
+                                                    log::error!("Failed to emit chunk: {e}");
+                                                }
+                                            }
+                                            continue;
                                         }
                                     }
                                     "tool_use" => {
@@ -1106,6 +1423,61 @@ pub fn tail_claude_output(
                                         };
                                         if let Err(e) = app.emit_all("chat:tool_use", &event) {
                                             log::error!("Failed to emit tool_use: {e}");
+                                        }
+
+                                        // Track armed Monitors so we don't close the
+                                        // stream on the first "result" message.
+                                        if name == "Monitor" {
+                                            let timeout_ms = input
+                                                .get("timeout_ms")
+                                                .and_then(|v| v.as_u64())
+                                                .unwrap_or(60_000);
+                                            armed_monitors.insert(
+                                                id.clone(),
+                                                MonitorArm {
+                                                    armed_at: Instant::now(),
+                                                    timeout_ms,
+                                                    initial_turn_finished: false,
+                                                    task_id: None,
+                                                },
+                                            );
+                                            let now_ms = std::time::SystemTime::now()
+                                                .duration_since(std::time::UNIX_EPOCH)
+                                                .map(|d| d.as_millis() as u64)
+                                                .unwrap_or(0);
+                                            let event = ToolEventEvent {
+                                                session_id: session_id.to_string(),
+                                                worktree_id: worktree_id.to_string(),
+                                                tool_use_id: id.clone(),
+                                                kind: "monitor_status".to_string(),
+                                                payload: serde_json::json!({
+                                                    "status": "armed",
+                                                    "input": input,
+                                                }),
+                                                ts_ms: now_ms,
+                                            };
+                                            if let Err(e) = app.emit_all("chat:tool_event", &event)
+                                            {
+                                                log::error!(
+                                                    "Failed to emit tool_event (armed): {e}"
+                                                );
+                                            }
+                                        }
+
+                                        // Register ScheduleWakeup so the stored prompt
+                                        // fires back into this session after delaySeconds.
+                                        if name == "ScheduleWakeup" {
+                                            if let Err(e) = super::wakeup::schedule_from_tool_input(
+                                                app,
+                                                session_id,
+                                                worktree_id,
+                                                &id,
+                                                &input,
+                                            ) {
+                                                log::error!(
+                                                    "ScheduleWakeup schedule failed (session={session_id}): {e}"
+                                                );
+                                            }
                                         }
 
                                         // Emit tool_block event
@@ -1189,11 +1561,80 @@ pub fn tail_claude_output(
                                 let block_type =
                                     block.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
+                                // While Monitors are armed, forward *any* non-tool_result
+                                // user-block as a live monitor_event. Monitor notifications
+                                // may arrive as plain text blocks, system-reminder blocks,
+                                // or other shapes without an explicit tool_use_id reference
+                                // — so we broadcast to whichever Monitor(s) are armed.
+                                if !armed_monitors.is_empty() && block_type != "tool_result" {
+                                    let referenced_id = block
+                                        .get("tool_use_id")
+                                        .and_then(|v| v.as_str())
+                                        .filter(|s| armed_monitors.contains_key(*s))
+                                        .map(|s| s.to_string());
+                                    let targets: Vec<String> = match referenced_id {
+                                        Some(id) => vec![id],
+                                        None => armed_monitors.keys().cloned().collect(),
+                                    };
+                                    let now_ms = std::time::SystemTime::now()
+                                        .duration_since(std::time::UNIX_EPOCH)
+                                        .map(|d| d.as_millis() as u64)
+                                        .unwrap_or(0);
+                                    for target in targets {
+                                        let evt = ToolEventEvent {
+                                            session_id: session_id.to_string(),
+                                            worktree_id: worktree_id.to_string(),
+                                            tool_use_id: target,
+                                            kind: "monitor_event".to_string(),
+                                            payload: block.clone(),
+                                            ts_ms: now_ms,
+                                        };
+                                        if let Err(e) = app.emit_all("chat:tool_event", &evt) {
+                                            log::error!(
+                                                "Failed to emit tool_event (user-block): {e}"
+                                            );
+                                        }
+                                    }
+                                    // Drop out of block loop — don't fall through to
+                                    // tool_result handler (wrong branch) or let this
+                                    // leak as chat content elsewhere.
+                                    continue;
+                                }
+
                                 if block_type == "tool_result" {
                                     let tool_id = block
                                         .get("tool_use_id")
                                         .and_then(|v| v.as_str())
                                         .unwrap_or("");
+                                    // For armed Monitors, *also* forward tool_result
+                                    // content as a live monitor_event so each delivery
+                                    // surfaces immediately — Monitor may emit many
+                                    // tool_results (one per notification) before the
+                                    // tool truly ends. We do NOT disarm here; disarm
+                                    // is driven by timeout_ms / cancel / process death.
+                                    if armed_monitors.contains_key(tool_id) {
+                                        let now_ms = std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .map(|d| d.as_millis() as u64)
+                                            .unwrap_or(0);
+                                        let evt = ToolEventEvent {
+                                            session_id: session_id.to_string(),
+                                            worktree_id: worktree_id.to_string(),
+                                            tool_use_id: tool_id.to_string(),
+                                            kind: "monitor_event".to_string(),
+                                            payload: block.clone(),
+                                            ts_ms: now_ms,
+                                        };
+                                        if let Err(e) = app.emit_all("chat:tool_event", &evt) {
+                                            log::error!(
+                                                "Failed to emit tool_event (tool_result): {e}"
+                                            );
+                                        }
+                                        // Skip regular tool_result emit for armed
+                                        // Monitors — the event log already shows it;
+                                        // mirroring to .output would render it twice.
+                                        continue;
+                                    }
                                     // Content can be a string OR an array of content blocks
                                     let output = block
                                         .get("content")
@@ -1339,12 +1780,106 @@ pub fn tail_claude_output(
                         }
                     }
 
-                    completed = true;
-                    log::trace!("Received result message - Claude CLI completed");
+                    saw_final_result = true;
+                    // For each armed Monitor, flip initial_turn_finished so
+                    // subsequent assistant text is routed to that Monitor's
+                    // event log (per-notification wake-up turns).
+                    for arm in armed_monitors.values_mut() {
+                        arm.initial_turn_finished = true;
+                    }
+                    if armed_monitors.is_empty() {
+                        completed = true;
+                        log::trace!("Received result message - Claude CLI completed");
+                    } else {
+                        log::trace!(
+                            "Received result message but {} Monitor(s) still armed; keeping stream open",
+                            armed_monitors.len()
+                        );
+                    }
                 }
                 "system" => {
                     let subtype = msg.get("subtype").and_then(|v| v.as_str()).unwrap_or("");
-                    if subtype == "compact_boundary" {
+
+                    // Monitor lifecycle events from Claude CLI:
+                    //   task_started      → arms confirmed, carries task_id
+                    //   task_updated      → status patch (queued/running/completed)
+                    //   task_notification → per-notification summary / end-of-stream
+                    if matches!(
+                        subtype,
+                        "task_started" | "task_updated" | "task_notification"
+                    ) {
+                        // task_started / task_notification carry tool_use_id directly;
+                        // task_updated carries task_id only, so map via task_id.
+                        let direct_tool_id = msg
+                            .get("tool_use_id")
+                            .and_then(|v| v.as_str())
+                            .filter(|s| armed_monitors.contains_key(*s))
+                            .map(|s| s.to_string());
+                        let via_task_id =
+                            msg.get("task_id").and_then(|v| v.as_str()).and_then(|tid| {
+                                armed_monitors
+                                    .iter()
+                                    .find(|(_, a)| a.task_id.as_deref() == Some(tid))
+                                    .map(|(id, _)| id.clone())
+                            });
+                        let target_tool_id = direct_tool_id.or(via_task_id);
+
+                        if let Some(tool_id) = target_tool_id {
+                            // Record task_id on the first task_started.
+                            if subtype == "task_started" {
+                                if let Some(tid) = msg.get("task_id").and_then(|v| v.as_str()) {
+                                    if let Some(arm) = armed_monitors.get_mut(&tool_id) {
+                                        arm.task_id = Some(tid.to_string());
+                                    }
+                                }
+                            }
+
+                            let now_ms = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_millis() as u64)
+                                .unwrap_or(0);
+
+                            let status_val =
+                                msg.get("status").and_then(|v| v.as_str()).or_else(|| {
+                                    msg.get("patch")
+                                        .and_then(|p| p.get("status"))
+                                        .and_then(|v| v.as_str())
+                                });
+                            let is_final = subtype == "task_notification"
+                                && matches!(
+                                    status_val,
+                                    Some("completed") | Some("error") | Some("timeout")
+                                );
+
+                            let kind = if is_final {
+                                "monitor_done"
+                            } else if subtype == "task_started" {
+                                "monitor_status"
+                            } else {
+                                "monitor_event"
+                            };
+
+                            let evt = ToolEventEvent {
+                                session_id: session_id.to_string(),
+                                worktree_id: worktree_id.to_string(),
+                                tool_use_id: tool_id.clone(),
+                                kind: kind.to_string(),
+                                payload: msg.clone(),
+                                ts_ms: now_ms,
+                            };
+                            if let Err(e) = app.emit_all("chat:tool_event", &evt) {
+                                log::error!("Failed to emit tool_event (system): {e}");
+                            }
+
+                            if is_final {
+                                armed_monitors.remove(&tool_id);
+                                if saw_final_result && armed_monitors.is_empty() {
+                                    completed = true;
+                                }
+                            }
+                        }
+                        // Fall through to skip the compact_boundary branch.
+                    } else if subtype == "compact_boundary" {
                         log::trace!("Detected compact_boundary system message");
 
                         // Signal UI that compaction is in progress
@@ -1373,7 +1908,78 @@ pub fn tail_claude_output(
                         }
                     }
                 }
-                _ => {}
+                _ => {
+                    // Unknown msg_type. Only forward if it explicitly references an
+                    // armed Monitor by tool_use_id — avoids flooding the UI with
+                    // unrelated partial-message / stream_event deltas.
+                    if !armed_monitors.is_empty() {
+                        let referenced_id = msg
+                            .get("tool_use_id")
+                            .and_then(|v| v.as_str())
+                            .or_else(|| {
+                                msg.get("message")
+                                    .and_then(|m| m.get("tool_use_id"))
+                                    .and_then(|v| v.as_str())
+                            })
+                            .filter(|s| armed_monitors.contains_key(*s))
+                            .map(|s| s.to_string());
+                        if let Some(target) = referenced_id {
+                            let now_ms = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.as_millis() as u64)
+                                .unwrap_or(0);
+                            let evt = ToolEventEvent {
+                                session_id: session_id.to_string(),
+                                worktree_id: worktree_id.to_string(),
+                                tool_use_id: target,
+                                kind: "monitor_event".to_string(),
+                                payload: msg.clone(),
+                                ts_ms: now_ms,
+                            };
+                            if let Err(e) = app.emit_all("chat:tool_event", &evt) {
+                                log::error!("Failed to emit tool_event (unknown): {e}");
+                            }
+                        } else {
+                            log::trace!(
+                                "Unknown msg_type '{msg_type}' while Monitors armed (no id ref)"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        // Disarm Monitors whose declared timeout (+5s grace) has elapsed.
+        if !armed_monitors.is_empty() {
+            let now = Instant::now();
+            let expired: Vec<String> = armed_monitors
+                .iter()
+                .filter(|(_, arm)| {
+                    now.saturating_duration_since(arm.armed_at)
+                        > Duration::from_millis(arm.timeout_ms.saturating_add(5_000))
+                })
+                .map(|(id, _)| id.clone())
+                .collect();
+            for id in expired {
+                armed_monitors.remove(&id);
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let evt = ToolEventEvent {
+                    session_id: session_id.to_string(),
+                    worktree_id: worktree_id.to_string(),
+                    tool_use_id: id,
+                    kind: "monitor_done".to_string(),
+                    payload: serde_json::json!({ "status": "timeout" }),
+                    ts_ms: now_ms,
+                };
+                if let Err(e) = app.emit_all("chat:tool_event", &evt) {
+                    log::error!("Failed to emit tool_event (timeout): {e}");
+                }
+            }
+            if saw_final_result && armed_monitors.is_empty() {
+                completed = true;
             }
         }
 
@@ -1444,6 +2050,33 @@ pub fn tail_claude_output(
         } else {
             POLL_INTERVAL
         });
+    }
+
+    // Drain any still-armed Monitors (process died / user cancel / completed)
+    // so the UI flips their status pill away from "armed".
+    if !armed_monitors.is_empty() {
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0);
+        let final_kind = if user_cancelled || cancelled {
+            "error"
+        } else {
+            "done"
+        };
+        for (id, _) in armed_monitors.drain() {
+            let evt = ToolEventEvent {
+                session_id: session_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+                tool_use_id: id,
+                kind: "monitor_done".to_string(),
+                payload: serde_json::json!({ "status": final_kind }),
+                ts_ms: now_ms,
+            };
+            if let Err(e) = app.emit_all("chat:tool_event", &evt) {
+                log::error!("Failed to emit tool_event (drain): {e}");
+            }
+        }
     }
 
     // Surface CLI errors when process failed with no meaningful output
@@ -1533,5 +2166,42 @@ mod tests {
         );
         assert_eq!(split_fast_model("sonnet"), ("sonnet", false));
         assert_eq!(split_fast_model("haiku"), ("haiku", false));
+    }
+
+    #[test]
+    fn default_global_system_prompt_prefers_interactive_plan_questions() {
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("backend-native interactive question UI"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Claude AskUserQuestion"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Codex request_user_input"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("after the user answers native `request_user_input`"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Every Codex plan-mode response"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("OpenCode question"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean Worktree Policy"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Do NOT create git worktrees manually"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean MCP/tools"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("VERY IMPORTANT: Keep Code Simple"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("Always implement the simplest maintainable solution"));
+    }
+
+    #[test]
+    fn mcp_config_auto_allows_server_and_wildcard_tools() {
+        let config = r#"{
+            "mcpServers": {
+                "jean-dev": { "type": "stdio", "command": "jean" },
+                "github": { "type": "stdio", "command": "github-mcp" }
+            }
+        }"#;
+        let mut args = Vec::new();
+
+        append_mcp_config_args(&mut args, Some(config));
+
+        assert!(args.contains(&"--mcp-config".to_string()));
+        assert!(args.contains(&"--strict-mcp-config".to_string()));
+        assert!(args.contains(&"mcp__jean-dev".to_string()));
+        assert!(args.contains(&"mcp__jean-dev__*".to_string()));
+        assert!(args.contains(&"mcp__github".to_string()));
+        assert!(args.contains(&"mcp__github__*".to_string()));
     }
 }

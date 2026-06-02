@@ -5,16 +5,13 @@ import {
   FolderOpen,
   GitMerge,
   GitPullRequest,
-  Loader2,
   Paperclip,
-  Plug,
   Shield,
   ShieldAlert,
   Wand2,
 } from 'lucide-react'
 import { useCallback } from 'react'
 import { Kbd } from '@/components/ui/kbd'
-import { BackendLabel } from '@/components/ui/backend-label'
 import {
   Tooltip,
   TooltipContent,
@@ -22,7 +19,6 @@ import {
 } from '@/components/ui/tooltip'
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -56,12 +52,7 @@ import type {
 import { openExternal } from '@/lib/platform'
 import { cn } from '@/lib/utils'
 import {
-  McpStatusDot,
-  mcpStatusHint,
-} from '@/components/chat/toolbar/McpStatusDot'
-import { groupServersByBackend, mcpKey } from '@/services/mcp'
-import type { CliBackend } from '@/types/preferences'
-import {
+  CODEX_EFFORT_LEVEL_OPTIONS,
   EFFORT_LEVEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
@@ -71,6 +62,7 @@ import {
 } from '@/components/chat/toolbar/toolbar-utils'
 import { DesktopBackendModelPicker } from '@/components/chat/toolbar/DesktopBackendModelPicker'
 import { ExecutionModeDropdown } from '@/components/chat/toolbar/ExecutionModeDropdown'
+import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
 
 interface DesktopToolbarControlsProps {
   hasPendingQuestions: boolean
@@ -160,11 +152,11 @@ export function DesktopToolbarControls({
   checkStatus: _checkStatus,
   mergeableStatus,
   activeWorktreePath: _activeWorktreePath,
-  availableMcpServers,
-  enabledMcpServers,
+  availableMcpServers: _availableMcpServers,
+  enabledMcpServers: _enabledMcpServers,
   activeMcpCount,
-  isHealthChecking,
-  mcpStatuses,
+  isHealthChecking: _isHealthChecking,
+  mcpStatuses: _mcpStatuses,
   loadedIssueContexts,
   loadedPRContexts,
   loadedSecurityContexts,
@@ -173,19 +165,19 @@ export function DesktopToolbarControls({
   attachedSavedContexts,
   providerDropdownOpen,
   thinkingDropdownOpen,
-  mcpDropdownOpen,
+  mcpDropdownOpen: _mcpDropdownOpen,
   setProviderDropdownOpen,
   setThinkingDropdownOpen,
-  onMcpDropdownOpenChange,
+  onMcpDropdownOpenChange: _onMcpDropdownOpenChange,
   onOpenMagicModal,
-  onOpenProjectSettings,
+  onOpenProjectSettings: _onOpenProjectSettings,
   onResolvePrConflicts,
   onLoadContext,
   onAttach,
   installedBackends,
   onSetExecutionMode,
   availableExecutionModes,
-  onToggleMcpServer,
+  onToggleMcpServer: _onToggleMcpServer,
   handleModelChange,
   handleBackendModelChange,
   handleProviderChange,
@@ -198,6 +190,20 @@ export function DesktopToolbarControls({
   handleViewLinear,
   handleViewSavedContext,
 }: DesktopToolbarControlsProps) {
+  const effortLevelOptions = isCodex
+    ? CODEX_EFFORT_LEVEL_OPTIONS
+    : EFFORT_LEVEL_OPTIONS
+  const displayedEffortLevel = isCodex
+    ? selectedEffortLevel === 'max'
+      ? 'high'
+      : selectedEffortLevel === 'ultracode'
+        ? 'xhigh'
+        : selectedEffortLevel
+    : selectedEffortLevel
+  const displayedEffortLabel =
+    effortLevelOptions.find(o => o.value === displayedEffortLevel)?.label ??
+    displayedEffortLevel
+
   // Prevent Radix from restoring focus to the trigger button;
   // redirect focus to the chat input instead.
   const focusChatInput = useCallback((e: Event) => {
@@ -215,140 +221,42 @@ export function DesktopToolbarControls({
 
   return (
     <>
-      <button
-        type="button"
-        className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-        disabled={hasPendingQuestions}
-        onClick={onOpenMagicModal}
-      >
-        <Wand2 className="h-3.5 w-3.5" />
-      </button>
-
-      <div className="hidden @xl:block h-4 w-px bg-border/50" />
-
-      <DropdownMenu
-        open={mcpDropdownOpen}
-        onOpenChange={onMcpDropdownOpenChange}
-      >
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
-              <button
-                type="button"
-                disabled={hasPendingQuestions}
-                className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-              >
-                <Plug
-                  className={cn(
-                    'h-3.5 w-3.5',
-                    activeMcpCount > 0 &&
-                      'text-emerald-600 dark:text-emerald-400'
-                  )}
-                />
-                {activeMcpCount > 0 && <span>{activeMcpCount}</span>}
-              </button>
-            </DropdownMenuTrigger>
-          </TooltipTrigger>
-          <TooltipContent>
-            {activeMcpCount > 0
-              ? `${activeMcpCount} MCP server(s) enabled`
-              : 'No MCP servers enabled'}
-          </TooltipContent>
-        </Tooltip>
-        <DropdownMenuContent align="end">
-          <DropdownMenuLabel className="flex items-center gap-2">
-            MCP Servers
-            {isHealthChecking && (
-              <Loader2 className="size-3 animate-spin text-muted-foreground" />
-            )}
-          </DropdownMenuLabel>
-          <DropdownMenuSeparator />
-          {availableMcpServers.length > 0 ? (
-            (() => {
-              const grouped = groupServersByBackend(availableMcpServers)
-              const backends = Object.keys(grouped) as CliBackend[]
-              const showHeaders = backends.length > 1
-              return backends.map((backend, idx) => (
-                <div key={backend}>
-                  {showHeaders && (
-                    <>
-                      {idx > 0 && <DropdownMenuSeparator />}
-                      <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-muted-foreground/70 font-medium py-1">
-                        <BackendLabel
-                          backend={backend}
-                          badgeClassName="text-[8px] leading-3"
-                        />
-                      </DropdownMenuLabel>
-                    </>
-                  )}
-                  {(grouped[backend] ?? []).map(server => {
-                    const key = mcpKey(backend, server.name)
-                    const status = mcpStatuses?.[key]
-                    const hint = mcpStatusHint(status, backend)
-                    const item = (
-                      <DropdownMenuCheckboxItem
-                        key={`${backend}-${server.name}`}
-                        checked={
-                          !server.disabled && enabledMcpServers.includes(key)
-                        }
-                        onCheckedChange={() => onToggleMcpServer(key)}
-                        disabled={server.disabled}
-                        className={server.disabled ? 'opacity-50' : undefined}
-                      >
-                        <span className="flex items-center gap-1.5">
-                          <McpStatusDot status={status} backend={backend} />
-                          {server.name}
-                        </span>
-                        <span className="ml-auto pl-4 text-xs text-muted-foreground">
-                          {server.disabled ? 'disabled' : server.scope}
-                        </span>
-                      </DropdownMenuCheckboxItem>
-                    )
-                    if (!hint) return item
-                    return (
-                      <Tooltip key={`${backend}-${server.name}`}>
-                        <TooltipTrigger asChild>{item}</TooltipTrigger>
-                        <TooltipContent side="left">{hint}</TooltipContent>
-                      </Tooltip>
-                    )
-                  })}
-                </div>
-              ))
-            })()
-          ) : (
-            <DropdownMenuItem disabled>
-              <span className="text-xs text-muted-foreground">
-                No MCP servers configured
-              </span>
-            </DropdownMenuItem>
-          )}
-          {onOpenProjectSettings && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={onOpenProjectSettings}>
-                <span className="text-xs text-muted-foreground">
-                  Set defaults in project settings
-                </span>
-              </DropdownMenuItem>
-            </>
-          )}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <DockBurgerButton
+        activeMcpCount={activeMcpCount}
+        className="hidden @xl:flex"
+      />
 
       <Tooltip>
         <TooltipTrigger asChild>
           <button
             type="button"
+            aria-label="Magic"
             disabled={hasPendingQuestions}
+            className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            onClick={onOpenMagicModal}
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Magic (⌘M)</TooltipContent>
+      </Tooltip>
+
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="Attachments"
+            disabled={hasPendingQuestions}
+            className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={onAttach}
-            className="hidden @xl:flex h-8 items-center justify-center px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-            aria-label="Attach images"
           >
             <Paperclip className="h-3.5 w-3.5" />
           </button>
         </TooltipTrigger>
-        <TooltipContent>Attach images from device</TooltipContent>
+        <TooltipContent>Attachments</TooltipContent>
       </Tooltip>
+
+      <div className="hidden @xl:block h-4 w-px bg-border/50" />
 
       {(loadedIssueCount > 0 ||
         loadedPRCount > 0 ||
@@ -366,14 +274,11 @@ export function DesktopToolbarControls({
                 <CircleDot className="h-3.5 w-3.5" />
                 <span>
                   {[
-                    loadedIssueCount > 0 &&
-                      `${loadedIssueCount} Issue${loadedIssueCount > 1 ? 's' : ''}`,
-                    loadedPRCount > 0 &&
-                      `${loadedPRCount} PR${loadedPRCount > 1 ? 's' : ''}`,
+                    loadedIssueCount > 0 && `${loadedIssueCount}`,
+                    loadedPRCount > 0 && `${loadedPRCount}`,
                     loadedSecurityCount > 0 && `${loadedSecurityCount}`,
-                    loadedLinearCount > 0 && `${loadedLinearCount} Linear`,
-                    loadedContextCount > 0 &&
-                      `${loadedContextCount} Context${loadedContextCount > 1 ? 's' : ''}`,
+                    loadedLinearCount > 0 && `${loadedLinearCount}`,
+                    loadedContextCount > 0 && `${loadedContextCount}`,
                   ]
                     .filter(Boolean)
                     .join(', ')}
@@ -730,18 +635,12 @@ export function DesktopToolbarControls({
                   className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
                   <Brain className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
-                  <span>
-                    {
-                      EFFORT_LEVEL_OPTIONS.find(
-                        o => o.value === selectedEffortLevel
-                      )?.label
-                    }
-                  </span>
+                  <span>{displayedEffortLabel}</span>
                 </button>
               </DropdownMenuTrigger>
             </TooltipTrigger>
             <TooltipContent>
-              {`Effort: ${EFFORT_LEVEL_OPTIONS.find(o => o.value === selectedEffortLevel)?.label} (⌘⇧E)`}
+              {`Effort: ${displayedEffortLabel} (⌘⇧E)`}
             </TooltipContent>
           </Tooltip>
           <DropdownMenuContent
@@ -750,10 +649,10 @@ export function DesktopToolbarControls({
             onCloseAutoFocus={focusChatInput}
           >
             <DropdownMenuRadioGroup
-              value={selectedEffortLevel}
+              value={displayedEffortLevel}
               onValueChange={handleEffortLevelChange}
             >
-              {EFFORT_LEVEL_OPTIONS.map((option, i) => (
+              {effortLevelOptions.map((option, i) => (
                 <DropdownMenuRadioItem key={option.value} value={option.value}>
                   <Brain className="mr-2 h-4 w-4" />
                   {option.label}

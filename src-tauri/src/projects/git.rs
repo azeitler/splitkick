@@ -459,6 +459,19 @@ pub fn branch_exists(repo_path: &str, branch_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if a remote-tracking branch exists (refs/remotes/origin/<branch>)
+pub fn remote_branch_exists(repo_path: &str, branch_name: &str) -> bool {
+    wsl_aware_command("git", Some(Path::new(repo_path)))
+        .args([
+            "rev-parse",
+            "--verify",
+            &format!("refs/remotes/origin/{branch_name}"),
+        ])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Check if a repository has any commits
 pub fn has_commits(repo_path: &str) -> bool {
     wsl_aware_command("git", Some(Path::new(repo_path)))
@@ -481,8 +494,10 @@ pub fn get_valid_base_branch(repo_path: &str, preferred_branch: &str) -> Result<
             .to_string());
     }
 
-    // Try preferred branch first
-    if branch_exists(repo_path, preferred_branch) {
+    // Try preferred branch first (local or remote-tracking)
+    if branch_exists(repo_path, preferred_branch)
+        || remote_branch_exists(repo_path, preferred_branch)
+    {
         return Ok(preferred_branch.to_string());
     }
 
@@ -705,9 +720,11 @@ pub fn git_stash(repo_path: &str) -> Result<String, String> {
         log::trace!("Stash result: {stdout}");
         Ok(stdout)
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        log::error!("Failed to stash: {stderr}");
-        Err(stderr)
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let combined = format!("{stdout}\n{stderr}").trim().to_string();
+        log::error!("Failed to stash: {combined}");
+        Err(combined)
     }
 }
 
@@ -725,16 +742,89 @@ pub fn git_stash_pop(repo_path: &str) -> Result<String, String> {
         log::trace!("Stash pop result: {stdout}");
         Ok(stdout)
     } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        log::error!("Failed to pop stash: {stderr}");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let combined = format!("{stdout}\n{stderr}").trim().to_string();
+        log::error!("Failed to pop stash: {combined}");
+        Err(combined)
+    }
+}
+
+fn push_output_text(output: &std::process::Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    // Git push often outputs to stderr even on success
+    if stdout.is_empty() {
+        stderr
+    } else {
+        stdout
+    }
+}
+
+fn git_push_needs_upstream_retry(stderr: &str) -> bool {
+    stderr.contains("has no upstream branch")
+        || stderr.contains("upstream branch of your current branch does not match")
+        || stderr.contains("push.default is set to simple")
+}
+
+fn current_upstream(repo_path: &str) -> Option<(String, String)> {
+    let output = wsl_aware_command("git", Some(Path::new(repo_path)))
+        .args(["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let upstream = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    let (remote, branch) = upstream.split_once('/')?;
+    if remote.is_empty() || branch.is_empty() {
+        return None;
+    }
+
+    Some((remote.to_string(), branch.to_string()))
+}
+
+fn git_push_set_upstream(repo_path: &str, remote: &str) -> Result<String, String> {
+    log::trace!("Publishing branch with upstream: git push -u {remote} HEAD");
+    let output = wsl_aware_command("git", Some(Path::new(repo_path)))
+        .args(["push", "-u", remote, "HEAD"])
+        .output()
+        .map_err(|e| format!("Failed to run git push -u: {e}"))?;
+
+    if output.status.success() {
+        log::trace!("Successfully pushed with upstream set");
+        Ok(push_output_text(&output))
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        log::error!("Failed to push with -u: {stderr}");
         Err(stderr)
     }
 }
 
-/// Push current branch to remote
+/// Push current branch to remote.
+///
+/// New Jean worktrees are created from `origin/<base>`, which can make the new
+/// local branch track `origin/main`. A plain `git push origin` then fails when
+/// `push.default=simple` because the upstream branch name differs. Publish with
+/// `-u <remote> HEAD` whenever upstream is missing or not the same-named branch
+/// on the selected remote.
 pub fn git_push(repo_path: &str, remote: Option<&str>) -> Result<String, String> {
     let remote = remote.unwrap_or("origin");
     log::trace!("Pushing to {remote} in {repo_path}");
+
+    let current_branch = get_current_branch(repo_path)?;
+    let upstream_matches = current_upstream(repo_path)
+        .map(|(upstream_remote, upstream_branch)| {
+            upstream_remote == remote && upstream_branch == current_branch
+        })
+        .unwrap_or(false);
+
+    if !upstream_matches {
+        log::trace!("Upstream is missing or mismatched; publishing {current_branch} to {remote}");
+        return git_push_set_upstream(repo_path, remote);
+    }
 
     let output = wsl_aware_command("git", Some(Path::new(repo_path)))
         .args(["push", remote])
@@ -742,34 +832,15 @@ pub fn git_push(repo_path: &str, remote: Option<&str>) -> Result<String, String>
         .map_err(|e| format!("Failed to run git push: {e}"))?;
 
     if output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        // Git push often outputs to stderr even on success
-        let result = if stdout.is_empty() { stderr } else { stdout };
+        let result = push_output_text(&output);
         log::trace!("Successfully pushed to {remote}");
         Ok(result)
     } else {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-        // Check if branch doesn't have upstream yet (same pattern as rebase_feature_branch)
-        if stderr.contains("has no upstream branch") {
-            log::trace!("No upstream branch, retrying with -u {remote} HEAD");
-            let push_u_output = wsl_aware_command("git", Some(Path::new(repo_path)))
-                .args(["push", "-u", remote, "HEAD"])
-                .output()
-                .map_err(|e| format!("Failed to run git push -u: {e}"))?;
-
-            if push_u_output.status.success() {
-                let stdout = String::from_utf8_lossy(&push_u_output.stdout).to_string();
-                let stderr = String::from_utf8_lossy(&push_u_output.stderr).to_string();
-                let result = if stdout.is_empty() { stderr } else { stdout };
-                log::trace!("Successfully pushed with upstream set");
-                return Ok(result);
-            } else {
-                let stderr = String::from_utf8_lossy(&push_u_output.stderr).to_string();
-                log::error!("Failed to push with -u: {stderr}");
-                return Err(stderr);
-            }
+        if git_push_needs_upstream_retry(&stderr) {
+            log::trace!("Push failed due to upstream config, retrying with -u {remote} HEAD");
+            return git_push_set_upstream(repo_path, remote);
         }
 
         log::error!("Failed to push to {remote}: {stderr}");
@@ -784,6 +855,10 @@ pub struct PushResult {
     pub fell_back: bool,
     /// true when push failed due to permission/authentication errors (e.g. fork PR without write access)
     pub permission_denied: bool,
+    /// Remote actually pushed to (e.g., "origin" or a fork owner). None on fallback/denied.
+    pub pushed_remote: Option<String>,
+    /// Branch on pushed_remote that was updated. None on fallback/denied.
+    pub pushed_branch: Option<String>,
 }
 
 /// Check if a git push stderr indicates a permission/authentication error
@@ -834,6 +909,8 @@ pub fn git_push_to_pr(
             output,
             fell_back: true,
             permission_denied: false,
+            pushed_remote: None,
+            pushed_branch: None,
         });
     }
 
@@ -863,6 +940,8 @@ pub fn git_push_to_pr(
                 output: result,
                 fell_back: false,
                 permission_denied: false,
+                pushed_remote: Some("origin".to_string()),
+                pushed_branch: Some(head_ref_name.to_string()),
             });
         } else {
             let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -872,6 +951,8 @@ pub fn git_push_to_pr(
                     output: stderr,
                     fell_back: false,
                     permission_denied: true,
+                    pushed_remote: None,
+                    pushed_branch: None,
                 });
             }
             log::warn!(
@@ -882,6 +963,8 @@ pub fn git_push_to_pr(
                 output: fallback_output,
                 fell_back: true,
                 permission_denied: false,
+                pushed_remote: None,
+                pushed_branch: None,
             });
         }
     }
@@ -975,6 +1058,8 @@ pub fn git_push_to_pr(
             output: result,
             fell_back: false,
             permission_denied: false,
+            pushed_remote: Some(remote_name.clone()),
+            pushed_branch: Some(head_ref_name.to_string()),
         })
     } else {
         let stderr = String::from_utf8_lossy(&push_output.stderr).to_string();
@@ -984,6 +1069,8 @@ pub fn git_push_to_pr(
                 output: stderr,
                 fell_back: false,
                 permission_denied: true,
+                pushed_remote: None,
+                pushed_branch: None,
             });
         }
         log::warn!("Failed to push to {remote_name}/{head_ref_name}, falling back to regular push: {stderr}");
@@ -992,6 +1079,8 @@ pub fn git_push_to_pr(
             output: fallback_output,
             fell_back: true,
             permission_denied: false,
+            pushed_remote: None,
+            pushed_branch: None,
         })
     }
 }
@@ -1963,8 +2052,9 @@ pub fn rebase_onto_base(
 
     if !push_output.status.success() {
         let stderr = String::from_utf8_lossy(&push_output.stderr);
-        // Check if branch doesn't have upstream yet
-        if stderr.contains("has no upstream branch") {
+        // Check if branch doesn't have upstream yet, or upstream points at a
+        // differently named branch (common for worktrees created from origin/main)
+        if git_push_needs_upstream_retry(&stderr) {
             // Try regular push with -u
             let push_u_output = wsl_aware_command("git", Some(Path::new(repo_path)))
                 .args(["push", "-u", "origin", "HEAD"])
@@ -2417,6 +2507,37 @@ mod tests {
         assert!(supports_login("/bin/tcsh"));
         assert!(!supports_login("/bin/sh"));
         assert!(!supports_login("/bin/dash"));
+    }
+
+    // ========================================================================
+    // git push upstream retry tests
+    // ========================================================================
+
+    #[test]
+    fn test_git_push_needs_upstream_retry_for_no_upstream() {
+        let stderr = "fatal: The current branch feature has no upstream branch.";
+        assert!(git_push_needs_upstream_retry(stderr));
+    }
+
+    #[test]
+    fn test_git_push_needs_upstream_retry_for_simple_mismatch() {
+        let stderr = "fatal: The upstream branch of your current branch does not match\n\
+                      the name of your current branch.  To push to the upstream branch\n\
+                      on the remote, use\n\n\
+                      git push origin HEAD:main\n\n\
+                      To push to the branch of the same name on the remote, use\n\n\
+                      git push origin HEAD\n\n\
+                      To choose either option permanently, see push.default in git-config.\n\
+                      fatal: push.default is set to simple";
+        assert!(git_push_needs_upstream_retry(stderr));
+    }
+
+    #[test]
+    fn test_git_push_needs_upstream_retry_ignores_permission_errors() {
+        let stderr = "remote: Permission to owner/repo.git denied to user.\n\
+                      fatal: unable to access 'https://github.com/owner/repo.git/': \
+                      The requested URL returned error: 403";
+        assert!(!git_push_needs_upstream_retry(stderr));
     }
 
     // ========================================================================

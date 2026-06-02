@@ -49,7 +49,6 @@ import {
   DEFAULT_RELEASE_NOTES_PROMPT,
   DEFAULT_REVIEW_COMMENTS_PROMPT,
   DEFAULT_SESSION_NAMING_PROMPT,
-  DEFAULT_SESSION_RECAP_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   DEFAULT_GLOBAL_SYSTEM_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
@@ -60,6 +59,7 @@ import {
   CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
   OPENCODE_DEFAULT_MAGIC_PROMPT_BACKENDS,
   CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
+  CODEX_FAST_DEFAULT_MAGIC_PROMPT_MODELS,
   OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
   codexModelOptions,
   isCodexModel,
@@ -118,7 +118,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ISSUE_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_pr',
@@ -139,7 +139,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_PR_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_workflow_run',
@@ -166,7 +166,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_security_alert',
@@ -188,7 +188,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_advisory',
@@ -208,7 +208,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_linear_issue',
@@ -233,7 +233,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
     ],
   },
@@ -260,7 +260,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_CODE_REVIEW_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'review_comments',
@@ -282,7 +282,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_REVIEW_COMMENTS_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'commit_message',
@@ -352,7 +352,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
         description: 'Instructions appended to conflict resolution prompts.',
         variables: [],
         defaultValue: DEFAULT_RESOLVE_CONFLICTS_PROMPT,
-        defaultModel: 'opus',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'release_notes',
@@ -374,6 +374,16 @@ const PROMPT_SECTIONS: PromptSection[] = [
           {
             name: '{commits}',
             description: 'Commit messages since the selected release',
+          },
+          {
+            name: '{pull_requests}',
+            description:
+              'Matched merged pull requests and detected issue references',
+          },
+          {
+            name: '{related_pull_requests}',
+            description:
+              'Exact PR/issue reference formats detected from closing keywords',
           },
         ],
         defaultValue: DEFAULT_RELEASE_NOTES_PROMPT,
@@ -423,43 +433,26 @@ const PROMPT_SECTIONS: PromptSection[] = [
         defaultValue: DEFAULT_SESSION_NAMING_PROMPT,
         defaultModel: 'sonnet',
       },
-      {
-        key: 'session_recap',
-        modelKey: 'session_recap_model',
-        providerKey: 'session_recap_provider',
-        backendKey: 'session_recap_backend',
-        label: 'Session Recap',
-        description:
-          'Prompt for generating session recaps (digests) when returning to unfocused sessions.',
-        variables: [
-          {
-            name: '{conversation}',
-            description: 'Full conversation transcript',
-          },
-        ],
-        defaultValue: DEFAULT_SESSION_RECAP_PROMPT,
-        defaultModel: 'sonnet',
-      },
     ],
   },
   {
     label: 'System Prompts',
     configs: [
       {
-        key: 'global_system_prompt',
-        label: 'Global System Prompt',
-        description:
-          'Appended to every chat session. Works like ~/.claude/CLAUDE.md but managed in settings.',
-        variables: [],
-        defaultValue: DEFAULT_GLOBAL_SYSTEM_PROMPT,
-      },
-      {
         key: 'parallel_execution',
         label: 'Parallel Execution',
         description:
-          'System prompt appended to every chat session when enabled in Experimental settings. Encourages sub-agent parallelization.',
+          'System prompt appended to every chat session when enabled in General defaults. Encourages sub-agent parallelization.',
         variables: [],
         defaultValue: DEFAULT_PARALLEL_EXECUTION_PROMPT,
+      },
+      {
+        key: 'global_system_prompt',
+        label: 'Global System Prompt',
+        description:
+          'Global system prompt appended to every chat session (like ~/.claude/CLAUDE.md).',
+        variables: [],
+        defaultValue: DEFAULT_GLOBAL_SYSTEM_PROMPT,
       },
     ],
   },
@@ -467,24 +460,53 @@ const PROMPT_SECTIONS: PromptSection[] = [
 
 // Flat list for lookups
 const PROMPT_CONFIGS = PROMPT_SECTIONS.flatMap(s => s.configs)
+const PROMPT_CONFIG_KEYS = new Set(PROMPT_CONFIGS.map(config => config.key))
+const MAGIC_PROMPT_HIGHLIGHT_DURATION_MS = 1800
+
+export function getMagicPromptItemId(key: keyof MagicPrompts): string {
+  return `settings-magic-prompt-${key}`
+}
 
 const CLAUDE_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
-  { value: 'opus', label: 'Opus 4.6' },
+  { value: 'claude-opus-4-8[1m]', label: 'Opus 4.8 (1M)' },
+  { value: 'claude-opus-4-7[1m]', label: 'Opus 4.7 (1M)' },
+  { value: 'claude-opus-4-6[1m]', label: 'Opus 4.6 (1M)' },
   { value: 'sonnet', label: 'Sonnet 4.6' },
   { value: 'haiku', label: 'Haiku' },
 ]
 
-const CODEX_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] =
-  codexModelOptions.map(o => ({ value: o.value, label: o.label }))
+const CODEX_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
+  { value: 'gpt-5.5', label: 'GPT 5.5' },
+  { value: 'gpt-5.5-fast', label: 'GPT 5.5 Fast' },
+  { value: 'gpt-5.4', label: 'GPT 5.4' },
+  { value: 'gpt-5.4-fast', label: 'GPT 5.4 Fast' },
+  { value: 'gpt-5.4-mini', label: 'GPT 5.4 Mini' },
+  { value: 'gpt-5.4-mini-fast', label: 'GPT 5.4 Mini Fast' },
+  ...codexModelOptions
+    .filter(
+      o => !['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'].includes(o.value) // Already listed above
+    )
+    .map(o => ({ value: o.value as MagicPromptModel, label: o.label })),
+]
 
-export const MagicPromptsPane: React.FC = () => {
+interface MagicPromptsPaneProps {
+  searchTargetPromptKey?: keyof MagicPrompts | null
+}
+
+export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
+  searchTargetPromptKey = null,
+}) => {
   const { data: preferences } = usePreferences()
   const patchPreferences = usePatchPreferences()
   const [selectedKey, setSelectedKey] =
     useState<keyof MagicPrompts>('investigate_issue')
+  const [highlightedKey, setHighlightedKey] = useState<
+    keyof MagicPrompts | null
+  >(null)
   const [localValue, setLocalValue] = useState('')
   const [modelPopoverOpen, setModelPopoverOpen] = useState(false)
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const highlightTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   const { data: availableOpencodeModels } = useAvailableOpencodeModels()
   const { data: availableCursorModels } = useAvailableCursorModels()
@@ -608,8 +630,38 @@ export const MagicPromptsPane: React.FC = () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current)
       }
+      if (highlightTimeoutRef.current) {
+        clearTimeout(highlightTimeoutRef.current)
+      }
     }
   }, [])
+
+  useEffect(() => {
+    if (
+      !searchTargetPromptKey ||
+      !PROMPT_CONFIG_KEYS.has(searchTargetPromptKey)
+    ) {
+      return
+    }
+
+    setSelectedKey(searchTargetPromptKey)
+    setHighlightedKey(searchTargetPromptKey)
+
+    const targetElement = document.getElementById(
+      getMagicPromptItemId(searchTargetPromptKey)
+    )
+    targetElement?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+
+    if (highlightTimeoutRef.current) {
+      clearTimeout(highlightTimeoutRef.current)
+    }
+    highlightTimeoutRef.current = setTimeout(() => {
+      setHighlightedKey(current =>
+        current === searchTargetPromptKey ? null : current
+      )
+      highlightTimeoutRef.current = null
+    }, MAGIC_PROMPT_HIGHLIGHT_DURATION_MS)
+  }, [searchTargetPromptKey])
 
   const handleChange = useCallback(
     (newValue: string) => {
@@ -717,7 +769,7 @@ export const MagicPromptsPane: React.FC = () => {
       let defaultModel: MagicPromptModel | undefined
       if (selectedConfig.modelKey) {
         if (backend === 'claude') {
-          defaultModel = selectedConfig.defaultModel ?? 'haiku'
+          defaultModel = selectedConfig.defaultModel ?? 'sonnet'
         } else if (backend === 'codex') {
           defaultModel = CODEX_MODEL_OPTIONS[0]?.value
         } else if (backend === 'opencode') {
@@ -767,6 +819,14 @@ export const MagicPromptsPane: React.FC = () => {
     if (!preferences) return
     patchPreferences.mutate({
       magic_prompt_models: CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
+      magic_prompt_backends: CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
+    })
+  }, [preferences, patchPreferences])
+
+  const handleApplyCodexFastDefaults = useCallback(() => {
+    if (!preferences) return
+    patchPreferences.mutate({
+      magic_prompt_models: CODEX_FAST_DEFAULT_MAGIC_PROMPT_MODELS,
       magic_prompt_backends: CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
   }, [preferences, patchPreferences])
@@ -833,6 +893,15 @@ export const MagicPromptsPane: React.FC = () => {
         <Button
           variant="outline"
           size="sm"
+          onClick={handleApplyCodexFastDefaults}
+          disabled={!installedBackends.includes('codex')}
+          className="h-7 text-xs"
+        >
+          Codex (Fast) Defaults
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
           onClick={handleApplyOpenCodeDefaults}
           disabled={!installedBackends.includes('opencode')}
           className="h-7 text-xs"
@@ -856,11 +925,16 @@ export const MagicPromptsPane: React.FC = () => {
                   <button
                     key={config.key}
                     onClick={() => setSelectedKey(config.key)}
+                    id={getMagicPromptItemId(config.key)}
+                    data-settings-target={config.key}
                     className={cn(
-                      'w-full px-2 py-1.5 rounded-md text-left text-sm transition-colors truncate',
+                      'w-full px-2 py-1.5 rounded-md text-left text-sm transition-colors truncate ring-1 ring-transparent',
                       selectedKey === config.key
                         ? 'bg-accent text-accent-foreground'
-                        : 'hover:bg-muted/50 text-foreground'
+                        : 'hover:bg-muted/50 text-foreground',
+                      highlightedKey === config.key
+                        ? 'ring-border bg-accent/40'
+                        : ''
                     )}
                   >
                     {config.label}
@@ -893,7 +967,11 @@ export const MagicPromptsPane: React.FC = () => {
                   value={effectiveBackend}
                   onValueChange={handleBackendChange}
                 >
-                  <SelectTrigger size="sm" className="w-[120px] text-xs">
+                  <SelectTrigger
+                    size="sm"
+                    className="w-[120px] text-xs"
+                    hideIcon={installedBackends.length <= 1}
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -978,7 +1056,16 @@ export const MagicPromptsPane: React.FC = () => {
                           )
                         })()}
                       </span>
-                      <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+                      {(effectiveBackend === 'claude'
+                        ? filteredClaudeOptions
+                        : effectiveBackend === 'codex'
+                          ? CODEX_MODEL_OPTIONS
+                          : effectiveBackend === 'cursor'
+                            ? cursorModelOptions
+                            : opencodeModelOptions
+                      ).length > 1 && (
+                        <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+                      )}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent

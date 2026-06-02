@@ -176,6 +176,7 @@ function snapshotLg() {
 const serverLg = () => true
 
 export function FloatingDock() {
+  const chatToolbarMounted = useUIStore(state => state.chatToolbarMounted)
   const isMobile = useIsMobile()
   const isLg = useSyncExternalStore(subscribeLg, snapshotLg, serverLg)
   const { data: preferences } = usePreferences()
@@ -205,6 +206,11 @@ export function FloatingDock() {
   )
   const activeSessionId = useChatStore(state =>
     currentWorktreeId ? state.activeSessionIds[currentWorktreeId] : undefined
+  )
+  const isTerminalSession = useUIStore(state =>
+    activeSessionId
+      ? state.sessionPrimarySurface[activeSessionId] === 'terminal'
+      : false
   )
   const selectedBackend = useChatStore(state =>
     activeSessionId ? state.selectedBackends[activeSessionId] : undefined
@@ -274,7 +280,7 @@ export function FloatingDock() {
         ...chatQueryKeys.sessions(currentWorktreeId),
         'with-counts',
       ])
-    const session = cached?.sessions.find(s => s.id === activeSessionId)
+    const session = cached?.sessions?.find(s => s.id === activeSessionId)
     return session ? getResumeCommand(session) : null
   }, [queryClient])
 
@@ -393,7 +399,7 @@ export function FloatingDock() {
       DEFAULT_KEYBINDINGS.open_usage_dropdown) as string
   )
   const isWebAccess = !isNativeApp()
-  const showConnectionIndicator = isWebAccess
+  const showConnectionIndicator = isWebAccess && !isMobile
   const showKeybindingHints = isNativeApp() && !isMobile
   const popoverSide = isMobile || isLg ? 'top' : ('right' as const)
   const popoverAlign = isMobile ? 'end' : ('start' as const)
@@ -404,9 +410,16 @@ export function FloatingDock() {
       ? `calc(${modalTerminalHeight + 8}px + var(--safe-area-bottom))`
       : 'calc(8px + var(--safe-area-bottom))'
 
+  // When the chat toolbar is mounted, the DockBurgerButton there exposes the
+  // same menu — hide this corner dock to avoid duplicate UI and overlap with
+  // the chat textarea.
+  // Terminal sessions are full-screen inside the chat bounds and have no
+  // bottom input/toolbar, so the corner dock would cover terminal output.
+  if (chatToolbarMounted || isTerminalSession) return null
+
   return (
     <div
-      className="absolute right-4 z-10 flex flex-row items-center gap-0.5 rounded-lg border border-border bg-muted/50 backdrop-blur-md px-1 py-0.5 transition-[bottom] duration-200 sm:left-4 sm:right-auto sm:flex-col sm:px-0.5 sm:py-1 xl:flex-row xl:px-1 xl:py-0.5"
+      className="absolute right-4 z-10 flex flex-row items-center gap-0.5 rounded-lg border border-border bg-muted/50 px-1 py-0.5 transition-[bottom] duration-200 sm:left-4 sm:right-auto sm:flex-col sm:px-0.5 sm:py-1 xl:flex-row xl:px-1 xl:py-0.5"
       style={{ bottom: bottomOffset }}
     >
       <DropdownMenu open={menuOpen} onOpenChange={handleQuickMenuOpenChange}>
@@ -527,28 +540,20 @@ export function FloatingDock() {
         </TooltipContent>
       </Tooltip>
 
-      {activeUsageEntry && (
+      {!isMobile && activeUsageEntry && (
         <DropdownMenu open={usageMenuOpen} onOpenChange={setUsageMenuOpen}>
           <Tooltip>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
                 <Button
                   variant="ghost"
-                  size={isLg ? 'sm' : 'icon'}
-                  className={
-                    isLg
-                      ? 'h-7 w-[88px] justify-center px-2 text-muted-foreground hover:text-foreground'
-                      : 'h-7 w-7 text-muted-foreground hover:text-foreground'
-                  }
+                  size="icon"
+                  className="h-7 w-7 text-muted-foreground hover:text-foreground xl:w-[88px] xl:justify-center xl:px-2"
                 >
-                  <activeUsageEntry.Icon
-                    className={isLg ? 'mr-1 size-3.5 shrink-0' : 'size-4'}
-                  />
-                  {isLg && (
-                    <span className="text-[11px] leading-none tabular-nums">
-                      {usageBadge.text}
-                    </span>
-                  )}
+                  <activeUsageEntry.Icon className="size-4 shrink-0 xl:mr-1 xl:size-3.5" />
+                  <span className="hidden text-[11px] leading-none tabular-nums xl:inline">
+                    {usageBadge.text}
+                  </span>
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>

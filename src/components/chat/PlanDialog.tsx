@@ -82,7 +82,7 @@ export function PlanDialog({
   const { data: preferences } = usePreferences()
   const sessionBackend = useChatStore(state =>
     _approvalContext?.sessionId
-      ? state.selectedBackends[_approvalContext.sessionId] ?? null
+      ? (state.selectedBackends[_approvalContext.sessionId] ?? null)
       : null
   )
   const buildLabel = resolveApprovalLabel('build', preferences, sessionBackend)

@@ -1,8 +1,9 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
+import type { WorktreeSortMode } from '@/types/projects'
 
 export interface ProjectCanvasSettings {
-  worktreeSortMode?: 'created' | 'last_activity'
+  worktreeSortMode?: WorktreeSortMode
 }
 
 interface ProjectsUIState {
@@ -76,6 +77,12 @@ interface ProjectsUIState {
   expandFolder: (id: string) => void
   collapseFolder: (id: string) => void
 
+  // Bulk expansion actions
+  expandAllFolders: (ids: string[]) => void
+  collapseAllFolders: () => void
+  expandAllProjects: (ids: string[]) => void
+  collapseAllProjects: () => void
+
   setAddProjectDialogOpen: (
     open: boolean,
     parentFolderId?: string | null
@@ -95,7 +102,7 @@ interface ProjectsUIState {
   ) => void
   setProjectCanvasWorktreeSortMode: (
     projectId: string,
-    sortMode: 'created' | 'last_activity'
+    sortMode: WorktreeSortMode
   ) => void
 }
 
@@ -297,6 +304,41 @@ export const useProjectsStore = create<ProjectsUIState>()(
           },
           undefined,
           'collapseFolder'
+        ),
+
+      // Bulk expansion actions
+      expandAllFolders: ids =>
+        set(
+          () => ({ expandedFolderIds: new Set(ids) }),
+          undefined,
+          'expandAllFolders'
+        ),
+
+      collapseAllFolders: () =>
+        set(
+          state =>
+            state.expandedFolderIds.size === 0
+              ? state
+              : { expandedFolderIds: new Set<string>() },
+          undefined,
+          'collapseAllFolders'
+        ),
+
+      expandAllProjects: ids =>
+        set(
+          () => ({ expandedProjectIds: new Set(ids) }),
+          undefined,
+          'expandAllProjects'
+        ),
+
+      collapseAllProjects: () =>
+        set(
+          state =>
+            state.expandedProjectIds.size === 0
+              ? state
+              : { expandedProjectIds: new Set<string>() },
+          undefined,
+          'collapseAllProjects'
         ),
 
       // Dialog actions
