@@ -452,7 +452,7 @@ export function SessionChatModal({
         }
       } else {
         selectVisualNeighbor(session.id)
-        handleArchiveSession(session.id)
+        handleDeleteSession(session.id)
       }
     },
     [
@@ -512,7 +512,6 @@ export function SessionChatModal({
     sessions,
     currentSessionId,
     onClose,
-    handleArchiveSession,
     handleDeleteSession,
     selectVisualNeighbor,
     preferences?.confirm_session_close,

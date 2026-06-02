@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { Zap } from 'lucide-react'
-import { render, screen } from '@/test/test-utils'
+import { fireEvent, render, screen } from '@/test/test-utils'
 import { MobileSettingsMenu } from './MobileSettingsMenu'
 import * as platform from '@/lib/platform'
 
@@ -210,6 +210,30 @@ describe('MobileSettingsMenu', () => {
     expect(screen.getByText('xHigh')).toBeInTheDocument()
     expect(screen.queryByText('Max')).not.toBeInTheDocument()
     expect(screen.queryByText('Ultracode')).not.toBeInTheDocument()
+  })
+
+  it('calls effort change handler when selecting an effort on mobile', async () => {
+    const user = userEvent.setup()
+    const handleEffortLevelChange = vi.fn()
+
+    render(
+      <MobileSettingsMenu
+        {...baseProps}
+        useAdaptiveThinking
+        handleEffortLevelChange={handleEffortLevelChange}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: /settings/i }))
+    await user.click(screen.getByText('Effort'))
+    const xHighItem = screen
+      .getAllByRole('menuitemradio', { name: /xhigh/i })
+      .find(item => item.textContent?.startsWith('xHigh'))
+    expect(xHighItem).toBeDefined()
+    if (!xHighItem) return
+    fireEvent.click(xHighItem)
+
+    expect(handleEffortLevelChange).toHaveBeenCalledWith('xhigh')
   })
 
   it('keeps Max effort available for Claude adaptive thinking', async () => {

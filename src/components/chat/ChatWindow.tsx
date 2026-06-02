@@ -33,6 +33,7 @@ import {
   useSendMessage,
   useSetSessionModel,
   useSetSessionThinkingLevel,
+  useSetSessionEffortLevel,
   useSetSessionBackend,
   useSetSessionProvider,
   useCreateSession,
@@ -493,6 +494,7 @@ export function ChatWindow({
   const createSession = useCreateSession()
   const setSessionModel = useSetSessionModel()
   const setSessionThinkingLevel = useSetSessionThinkingLevel()
+  const setSessionEffortLevel = useSetSessionEffortLevel()
   const setSessionBackend = useSetSessionBackend()
   const setSessionProvider = useSetSessionProvider()
 
@@ -658,7 +660,9 @@ export function ChatWindow({
     deferredSessionId ? state.effortLevels[deferredSessionId] : undefined
   )
   const rawSelectedEffortLevel: EffortLevel =
-    sessionEffortLevel ?? defaultEffortLevel
+    (session?.selected_effort_level as EffortLevel | undefined) ??
+    sessionEffortLevel ??
+    defaultEffortLevel
   const selectedEffortLevel: EffortLevel = isCodexBackend
     ? rawSelectedEffortLevel === 'max'
       ? 'high'
@@ -1947,6 +1951,7 @@ export function ChatWindow({
     setSessionBackend,
     setSessionProvider,
     setSessionThinkingLevel,
+    setSessionEffortLevel,
     setExecutionMode,
     setLoadContextModalOpen,
   })

@@ -391,6 +391,10 @@ export function MagicModal() {
   const [linkPrDialogOpen, setLinkPrDialogOpen] = useState(false)
   const [linkPrNumber, setLinkPrNumber] = useState('')
   const [linkPrError, setLinkPrError] = useState<string | null>(null)
+  const [detectedLinkPr, setDetectedLinkPr] = useState<DetectPrResponse | null>(
+    null
+  )
+  const [isDetectingLinkPr, setIsDetectingLinkPr] = useState(false)
   const [isLinkingPr, setIsLinkingPr] = useState(false)
   const [resolveSelectionMode, setResolveSelectionMode] =
     useState<ResolveSelectionMode>('settings-default')
@@ -1511,6 +1515,38 @@ ${resolveInstructions}`
     executeGitDirectly,
   ])
 
+  const detectLinkPrForCurrentBranch = useCallback(async () => {
+    if (!selectedWorktreeId || !worktree?.path) return
+
+    setIsDetectingLinkPr(true)
+    try {
+      const result = await invoke<DetectPrResponse | null>(
+        'detect_and_link_pr',
+        {
+          worktreeId: selectedWorktreeId,
+          worktreePath: worktree.path,
+        }
+      )
+
+      if (!result) return
+
+      setDetectedLinkPr(result)
+      setLinkPrNumber(String(result.pr_number))
+      queryClient.invalidateQueries({
+        queryKey: projectsQueryKeys.worktrees(worktree.project_id),
+      })
+      queryClient.invalidateQueries({
+        queryKey: [...projectsQueryKeys.all, 'worktree', selectedWorktreeId],
+      })
+      triggerImmediateGitPoll()
+      if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)
+    } catch (error) {
+      setLinkPrError(`Failed to search current branch for PR: ${error}`)
+    } finally {
+      setIsDetectingLinkPr(false)
+    }
+  }, [queryClient, selectedWorktreeId, worktree?.path, worktree?.project_id])
+
   const handleLinkPrSubmit = useCallback(async () => {
     if (!selectedWorktreeId || !worktree?.path) return
 
@@ -1616,9 +1652,13 @@ ${resolveInstructions}`
           return
         }
         setLinkPrNumber(worktree.pr_number ? String(worktree.pr_number) : '')
+        setDetectedLinkPr(null)
         setLinkPrError(null)
         setMagicModalOpen(false)
         setLinkPrDialogOpen(true)
+        if (!worktree.pr_number) {
+          void detectLinkPrForCurrentBranch()
+        }
         return
       }
 
@@ -1760,6 +1800,7 @@ ${resolveInstructions}`
       activeSessionId,
       worktree?.path,
       worktree?.pr_number,
+      detectLinkPrForCurrentBranch,
     ]
   )
 
@@ -1930,6 +1971,7 @@ ${resolveInstructions}`
                 value={linkPrNumber}
                 onChange={e => {
                   setLinkPrNumber(e.target.value)
+                  setDetectedLinkPr(null)
                   setLinkPrError(null)
                 }}
                 onKeyDown={e => {
@@ -1940,6 +1982,16 @@ ${resolveInstructions}`
                 }}
                 autoFocus
               />
+              {isDetectingLinkPr && (
+                <p className="text-xs text-muted-foreground">
+                  Searching current branch for open PR…
+                </p>
+              )}
+              {detectedLinkPr && (
+                <p className="text-sm text-foreground">
+                  Found PR #{detectedLinkPr.pr_number}: {detectedLinkPr.title}
+                </p>
+              )}
               {linkPrError && (
                 <p className="text-sm text-destructive">{linkPrError}</p>
               )}
@@ -1953,11 +2005,14 @@ ${resolveInstructions}`
               <Button
                 variant="outline"
                 onClick={() => setLinkPrDialogOpen(false)}
-                disabled={isLinkingPr}
+                disabled={isLinkingPr || isDetectingLinkPr}
               >
                 Cancel
               </Button>
-              <Button onClick={handleLinkPrSubmit} disabled={isLinkingPr}>
+              <Button
+                onClick={handleLinkPrSubmit}
+                disabled={isLinkingPr || isDetectingLinkPr}
+              >
                 {isLinkingPr ? 'Linking…' : 'Link PR'}
               </Button>
             </div>

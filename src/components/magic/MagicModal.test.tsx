@@ -198,10 +198,48 @@ describe('MagicModal manual PR link', () => {
     vi.clearAllMocks()
     mocks.worktree.pr_number = null
     mocks.worktree.pr_url = null
-    mocks.invokeMock.mockResolvedValue({
-      pr_number: 123,
-      pr_url: 'https://github.com/o/r/pull/123',
-      title: 'Fix bug',
+    mocks.invokeMock.mockImplementation((command: string) => {
+      if (command === 'detect_and_link_pr') return Promise.resolve(null)
+      if (command === 'link_worktree_pr') {
+        return Promise.resolve({
+          pr_number: 123,
+          pr_url: 'https://github.com/o/r/pull/123',
+          title: 'Fix bug',
+        })
+      }
+      return Promise.resolve(null)
+    })
+  })
+
+  it('opens a Link PR dialog and searches current branch for an existing PR', async () => {
+    const user = userEvent.setup()
+    mocks.invokeMock.mockImplementation((command: string) => {
+      if (command === 'detect_and_link_pr') {
+        return Promise.resolve({
+          pr_number: 456,
+          pr_url: 'https://github.com/o/r/pull/456',
+          title: 'Existing branch PR',
+        })
+      }
+      return Promise.resolve(null)
+    })
+
+    render(<MagicModal />)
+
+    await user.click(screen.getByRole('button', { name: /link pr/i }))
+
+    await waitFor(() => {
+      expect(mocks.invokeMock).toHaveBeenCalledWith('detect_and_link_pr', {
+        worktreeId: 'wt-1',
+        worktreePath: '/repo/worktree',
+      })
+    })
+    expect(await screen.findByDisplayValue('456')).toBeInTheDocument()
+    expect(
+      screen.getByText(/Found PR #456: Existing branch PR/i)
+    ).toBeInTheDocument()
+    expect(mocks.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: ['projects', 'project-1', 'worktrees'],
     })
   })
 

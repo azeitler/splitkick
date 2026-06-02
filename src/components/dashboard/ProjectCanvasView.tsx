@@ -1,4 +1,14 @@
 import {
+  draggable,
+  dropTargetForElements,
+  monitorForElements,
+} from '@atlaskit/pragmatic-drag-and-drop/element/adapter'
+import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine'
+import {
+  attachClosestEdge,
+  type Edge,
+} from '@atlaskit/pragmatic-drag-and-drop-hitbox/closest-edge'
+import {
   useCallback,
   useEffect,
   useMemo,
@@ -35,8 +45,16 @@ import {
   Home,
   Terminal,
   Trash2,
+  GripVertical,
+  Tag,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,6 +80,7 @@ import {
   useOpenWorktreeInFinder,
   useOpenWorktreeInTerminal,
   useRemoveProject,
+  useReorderWorktrees,
   projectsQueryKeys,
 } from '@/services/projects'
 import { chatQueryKeys, cancelChatMessage } from '@/services/chat'
@@ -124,6 +143,10 @@ import { usePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { useIsMobile } from '@/hooks/use-mobile'
+import {
+  shouldDisableWorktreeTextSelection,
+  shouldShowWorktreeLabelContextMenu,
+} from './worktree-label-context'
 const GitDiffModal = lazy(() =>
   import('@/components/chat/GitDiffModal').then(mod => ({
     default: mod.GitDiffModal,
@@ -143,6 +166,24 @@ import {
   performGitPull,
 } from '@/services/git-status'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
+import {
+  DRAG_SCOPE_CANVAS_WORKTREE_LIST,
+  isWorktreeDragData,
+} from '@/lib/drag-and-drop/types'
+import { reorderWithClosestEdge } from '@/lib/drag-and-drop/reorder'
+import { announceDrag } from '@/lib/drag-and-drop/live-region'
+import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
+import {
+  applyWorktreeDropSnapshot,
+  emptyWorktreeDropSnapshot,
+  getSnapshotFromWorktreeDropTarget,
+  getSnapshotFromWorktreeElement,
+  getWorktreeDropTargetForScope,
+  getWorktreeElementFromEventTarget,
+  getWorktreeElementFromPoint,
+  type WorktreeDropSnapshot,
+  type WorktreeReorderDragState,
+} from '@/lib/drag-and-drop/worktree-reorder-ux'
 
 interface ProjectCanvasViewProps {
   projectId: string
@@ -152,6 +193,113 @@ interface WorktreeSection {
   worktree: Worktree
   cards: SessionCardData[]
   isPending?: boolean
+}
+
+function canManuallyReorderWorktree(worktree: Worktree): boolean {
+  return (
+    !isBaseSession(worktree) &&
+    (!worktree.status ||
+      worktree.status === 'ready' ||
+      worktree.status === 'error')
+  )
+}
+
+type CanvasWorktreeDragState = WorktreeReorderDragState
+
+function SortableCanvasWorktreeSection({
+  section,
+  disabled,
+  isDragging,
+  closestEdge,
+  projectId,
+  children,
+}: {
+  section: WorktreeSection
+  disabled: boolean
+  isDragging: boolean
+  closestEdge: Edge | null
+  projectId: string
+  children: React.ReactNode
+}) {
+  const elementRef = useRef<HTMLDivElement | null>(null)
+  const dragHandleRef = useRef<HTMLButtonElement | null>(null)
+
+  useEffect(() => {
+    const element = elementRef.current
+    if (!element) return
+
+    const cleanupFns = [
+      dropTargetForElements({
+        element,
+        canDrop: ({ source }) => {
+          return (
+            !disabled &&
+            isWorktreeDragData(source.data) &&
+            source.data.projectId === projectId &&
+            source.data.scope === DRAG_SCOPE_CANVAS_WORKTREE_LIST &&
+            source.data.worktreeId !== section.worktree.id
+          )
+        },
+        getData: ({ input, element }) => {
+          return attachClosestEdge(
+            {
+              type: 'worktree-section',
+              projectId,
+              worktreeId: section.worktree.id,
+              scope: DRAG_SCOPE_CANVAS_WORKTREE_LIST,
+            },
+            {
+              input,
+              element,
+              allowedEdges: ['top', 'bottom'],
+            }
+          )
+        },
+      }),
+    ]
+
+    const dragHandle = dragHandleRef.current
+    if (!disabled && dragHandle) {
+      cleanupFns.push(
+        draggable({
+          element,
+          dragHandle,
+          canDrag: () => !disabled,
+          getInitialData: () => ({
+            type: 'worktree-section',
+            projectId,
+            worktreeId: section.worktree.id,
+            scope: DRAG_SCOPE_CANVAS_WORKTREE_LIST,
+          }),
+        })
+      )
+    }
+
+    return combine(...cleanupFns)
+  }, [disabled, projectId, section.worktree.id])
+
+  return (
+    <div
+      ref={elementRef}
+      data-pdnd-worktree-id={section.worktree.id}
+      data-pdnd-worktree-scope={DRAG_SCOPE_CANVAS_WORKTREE_LIST}
+      className={cn('relative transition-opacity', isDragging && 'opacity-40')}
+    >
+      <DropIndicator edge={closestEdge} insetClassName="left-0 right-0" />
+      {!disabled && (
+        <button
+          ref={dragHandleRef}
+          type="button"
+          className="absolute -left-5 top-2 z-10 flex h-7 w-5 cursor-grab items-center justify-center rounded text-muted-foreground/45 opacity-0 transition-opacity hover:bg-muted/70 hover:text-muted-foreground group-hover/canvas-list:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 active:cursor-grabbing"
+          aria-label={`Reorder ${isBaseSession(section.worktree) ? 'Base Session' : section.worktree.name}`}
+          onClick={event => event.stopPropagation()}
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      )}
+      {children}
+    </div>
+  )
 }
 
 interface FlatCard {
@@ -303,6 +451,8 @@ function WorktreeSectionHeader({
   shortcutNumber,
   onRowClick,
   onDiffClick,
+  onSetLabels,
+  disableTextSelection = false,
 }: {
   worktree: Worktree
   projectId: string
@@ -318,6 +468,8 @@ function WorktreeSectionHeader({
     baseBranch: string,
     type: 'uncommitted' | 'branch'
   ) => void
+  onSetLabels?: () => void
+  disableTextSelection?: boolean
 }) {
   const stackedOnPR =
     worktree.base_branch && worktree.base_branch !== defaultBranch
@@ -420,132 +572,73 @@ function WorktreeSectionHeader({
   const displayBranch = gitStatus?.current_branch ?? worktree.branch
   const worktreeLabels = getWorktreeLabels(worktree)
 
-  return (
-    <>
-      <div
-        className={cn(
-          'group relative border border-transparent transition-colors',
-          showDetails
-            ? 'mb-1 rounded-md px-3 py-2'
-            : 'mb-0.5 flex items-center gap-2',
-          onRowClick &&
-            (showDetails
-              ? 'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60'
-              : 'cursor-pointer px-2 -mx-2 py-1 hover:bg-muted/50'),
-          isSelected && onRowClick && 'border-border/40 bg-muted/35'
-        )}
-        onClick={onRowClick}
-        onKeyDown={e => {
-          if (!onRowClick) return
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onRowClick()
-          }
-        }}
-        role={onRowClick ? 'button' : undefined}
-        tabIndex={onRowClick ? 0 : undefined}
-        aria-label={
-          onRowClick
-            ? `Open ${isBase ? 'Base Session' : worktree.name}`
-            : undefined
+  const row = (
+    <div
+      className={cn(
+        'group relative border border-transparent transition-colors',
+        showDetails
+          ? 'mb-1 rounded-md px-3 py-2'
+          : 'mb-0.5 flex items-center gap-2',
+        onRowClick &&
+          (showDetails
+            ? 'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60'
+            : 'cursor-pointer px-2 -mx-2 py-1 hover:bg-muted/50'),
+        isSelected && onRowClick && 'border-border/40 bg-muted/35',
+        disableTextSelection && 'select-none'
+      )}
+      style={disableTextSelection ? { WebkitTouchCallout: 'none' } : undefined}
+      onClick={onRowClick}
+      onKeyDown={e => {
+        if (!onRowClick) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onRowClick()
         }
-      >
-        {showDetails && isSelected && onRowClick && (
-          <span className="absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-primary" />
-        )}
+      }}
+      role={onRowClick ? 'button' : undefined}
+      tabIndex={onRowClick ? 0 : undefined}
+      aria-label={
+        onRowClick
+          ? `Open ${isBase ? 'Base Session' : worktree.name}`
+          : undefined
+      }
+    >
+      {showDetails && isSelected && onRowClick && (
+        <span className="absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-primary" />
+      )}
 
-        <div className={cn(showDetails ? 'flex flex-col gap-1.5' : 'contents')}>
-          <div className="flex min-w-0 items-center gap-2">
-            {shortcutNumber !== undefined && (
-              <kbd className="hidden shrink-0 h-4 min-w-4 items-center justify-center rounded border border-border/50 bg-muted/50 px-0.5 font-mono text-muted-foreground sm:inline-flex">
-                <span className="text-[9px]">⌘{shortcutNumber}</span>
-              </kbd>
-            )}
-            <TerminalStatusIndicator
-              worktreeId={worktree.id}
-              iconSize="h-3 w-3"
-            />
-            <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 flex-1 truncate">
-                  {isBase ? 'Base Session' : worktree.name}
-                </span>
-                {displayBranch && (
-                  <span className="hidden items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
-                    <GitBranch className="h-2.5 w-2.5" />
-                    <span className="max-w-40 truncate">{displayBranch}</span>
-                    {worktree.base_branch &&
-                      worktree.base_branch !== defaultBranch && (
-                        <>
-                          <span className="text-border">·</span>
-                          <GitBranchPlus className="h-2.5 w-2.5" />
-                          <span className="max-w-32 truncate">
-                            {worktree.base_branch}
-                          </span>
-                          {stackedOnPR && (
-                            <>
-                              <GitPullRequestArrow className="h-2.5 w-2.5" />#
-                              {stackedOnPR.number}
-                            </>
-                          )}
-                        </>
-                      )}
-                    {worktree.pr_number && (
-                      <>
-                        <span className="text-border">·</span>
-                        <GitPullRequestArrow className="h-2.5 w-2.5" />#
-                        {worktree.pr_number}
-                      </>
-                    )}
-                    {worktree.security_alert_number && (
-                      <>
-                        <span className="text-border">·</span>
-                        <ShieldAlert className="h-2.5 w-2.5 text-orange-500" />#
-                        {worktree.security_alert_number}
-                      </>
-                    )}
-                    {worktree.advisory_ghsa_id && (
-                      <>
-                        <span className="text-border">·</span>
-                        <ShieldAlert className="h-2.5 w-2.5 text-orange-500" />
-                        <span className="max-w-20 truncate">
-                          {worktree.advisory_ghsa_id}
-                        </span>
-                      </>
-                    )}
-                  </span>
-                )}
-                <span
-                  className="inline-flex items-center font-normal hover:bg-muted/50 rounded px-1.5 py-0.5"
-                  onClick={e => e.stopPropagation()}
-                >
-                  <GitStatusBadges
-                    behindCount={behindCount}
-                    unpushedCount={unpushedCount}
-                    diffAdded={diffAdded}
-                    diffRemoved={diffRemoved}
-                    onPull={handlePull}
-                    onPush={handlePush}
-                    onDiffClick={handleDiffClick}
-                  />
-                </span>
+      <div className={cn(showDetails ? 'flex flex-col gap-1.5' : 'contents')}>
+        <div className="flex min-w-0 items-center gap-2">
+          {shortcutNumber !== undefined && (
+            <kbd className="hidden shrink-0 h-4 min-w-4 items-center justify-center rounded border border-border/50 bg-muted/50 px-0.5 font-mono text-muted-foreground sm:inline-flex">
+              <span className="text-[9px]">⌘{shortcutNumber}</span>
+            </kbd>
+          )}
+          <TerminalStatusIndicator
+            worktreeId={worktree.id}
+            iconSize="h-3 w-3"
+          />
+          <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate">
+                {isBase ? 'Base Session' : worktree.name}
               </span>
               {displayBranch && (
-                <span className="inline-flex max-w-full items-center gap-1 self-start rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">
-                  <GitBranch className="h-2.5 w-2.5 shrink-0" />
-                  <span className="max-w-full truncate">{displayBranch}</span>
+                <span className="hidden items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
+                  <GitBranch className="h-2.5 w-2.5" />
+                  <span className="max-w-40 truncate">{displayBranch}</span>
                   {worktree.base_branch &&
                     worktree.base_branch !== defaultBranch && (
                       <>
                         <span className="text-border">·</span>
-                        <GitBranchPlus className="h-2.5 w-2.5 shrink-0" />
+                        <GitBranchPlus className="h-2.5 w-2.5" />
                         <span className="max-w-32 truncate">
                           {worktree.base_branch}
                         </span>
                         {stackedOnPR && (
                           <>
-                            <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />
-                            #{stackedOnPR.number}
+                            <GitPullRequestArrow className="h-2.5 w-2.5" />#
+                            {stackedOnPR.number}
                           </>
                         )}
                       </>
@@ -553,21 +646,21 @@ function WorktreeSectionHeader({
                   {worktree.pr_number && (
                     <>
                       <span className="text-border">·</span>
-                      <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />#
+                      <GitPullRequestArrow className="h-2.5 w-2.5" />#
                       {worktree.pr_number}
                     </>
                   )}
                   {worktree.security_alert_number && (
                     <>
                       <span className="text-border">·</span>
-                      <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />
-                      #{worktree.security_alert_number}
+                      <ShieldAlert className="h-2.5 w-2.5 text-orange-500" />#
+                      {worktree.security_alert_number}
                     </>
                   )}
                   {worktree.advisory_ghsa_id && (
                     <>
                       <span className="text-border">·</span>
-                      <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />
+                      <ShieldAlert className="h-2.5 w-2.5 text-orange-500" />
                       <span className="max-w-20 truncate">
                         {worktree.advisory_ghsa_id}
                       </span>
@@ -575,60 +668,73 @@ function WorktreeSectionHeader({
                   )}
                 </span>
               )}
+              <span
+                className="inline-flex items-center font-normal hover:bg-muted/50 rounded px-1.5 py-0.5"
+                onClick={e => e.stopPropagation()}
+              >
+                <GitStatusBadges
+                  behindCount={behindCount}
+                  unpushedCount={unpushedCount}
+                  diffAdded={diffAdded}
+                  diffRemoved={diffRemoved}
+                  onPull={handlePull}
+                  onPush={handlePush}
+                  onDiffClick={handleDiffClick}
+                />
+              </span>
             </span>
-            {worktreeLabels.length > 0 && (
-              <span className="ml-auto flex max-w-[45%] flex-wrap justify-end gap-1 self-start shrink-0">
-                {worktreeLabels.slice(0, 3).map(label => (
-                  <span
-                    key={label.name}
-                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    style={{
-                      backgroundColor: label.color,
-                      color: getLabelTextColor(label.color),
-                    }}
-                  >
-                    {label.name}
-                  </span>
-                ))}
-                {worktreeLabels.length > 3 && (
-                  <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                    +{worktreeLabels.length - 3}
-                  </span>
+            {displayBranch && (
+              <span className="inline-flex max-w-full items-center gap-1 self-start rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">
+                <GitBranch className="h-2.5 w-2.5 shrink-0" />
+                <span className="max-w-full truncate">{displayBranch}</span>
+                {worktree.base_branch &&
+                  worktree.base_branch !== defaultBranch && (
+                    <>
+                      <span className="text-border">·</span>
+                      <GitBranchPlus className="h-2.5 w-2.5 shrink-0" />
+                      <span className="max-w-32 truncate">
+                        {worktree.base_branch}
+                      </span>
+                      {stackedOnPR && (
+                        <>
+                          <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />
+                          #{stackedOnPR.number}
+                        </>
+                      )}
+                    </>
+                  )}
+                {worktree.pr_number && (
+                  <>
+                    <span className="text-border">·</span>
+                    <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />#
+                    {worktree.pr_number}
+                  </>
+                )}
+                {worktree.security_alert_number && (
+                  <>
+                    <span className="text-border">·</span>
+                    <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />
+                    #{worktree.security_alert_number}
+                  </>
+                )}
+                {worktree.advisory_ghsa_id && (
+                  <>
+                    <span className="text-border">·</span>
+                    <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />
+                    <span className="max-w-20 truncate">
+                      {worktree.advisory_ghsa_id}
+                    </span>
+                  </>
                 )}
               </span>
             )}
-          </div>
-          {showDetails && sessionMetrics && (
-            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              {sessionMetrics.waitingCount > 0 && (
-                <span className="rounded bg-yellow-500/90 px-2 py-0.5 text-black">
-                  {sessionMetrics.waitingCount} waiting
-                </span>
-              )}
-              {sessionMetrics.planningCount > 0 && (
-                <span className="rounded bg-sky-500/10 px-2 py-0.5 text-sky-600">
-                  {sessionMetrics.planningCount} planning
-                </span>
-              )}
-              {sessionMetrics.buildingCount > 0 && (
-                <span className="rounded bg-indigo-500/10 px-2 py-0.5 text-indigo-600">
-                  {sessionMetrics.buildingCount} building
-                </span>
-              )}
-              {sessionMetrics.yoloCount > 0 && (
-                <span className="rounded bg-red-500/10 px-2 py-0.5 text-red-600">
-                  {sessionMetrics.yoloCount} yolo
-                </span>
-              )}
-              {sessionMetrics.reviewCount > 0 && (
-                <span className="rounded bg-green-500/10 px-2 py-0.5 text-green-600">
-                  {sessionMetrics.reviewCount} review
-                </span>
-              )}
-              {uniqueSessionLabels.map(label => (
+          </span>
+          {worktreeLabels.length > 0 && (
+            <span className="ml-auto flex max-w-[45%] flex-wrap justify-end gap-1 self-start shrink-0">
+              {worktreeLabels.slice(0, 3).map(label => (
                 <span
                   key={label.name}
-                  className="rounded px-2 py-0.5 text-[10px] font-medium"
+                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
                   style={{
                     backgroundColor: label.color,
                     color: getLabelTextColor(label.color),
@@ -637,22 +743,82 @@ function WorktreeSectionHeader({
                   {label.name}
                 </span>
               ))}
-              {lastActivity && (
-                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5">
-                  <Clock3 className="h-3 w-3" />
-                  {lastActivity}
+              {worktreeLabels.length > 3 && (
+                <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  +{worktreeLabels.length - 3}
                 </span>
               )}
-              {onRowClick && (
-                <span className="ml-auto hidden text-[11px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:inline-flex">
-                  Press Enter to open
-                </span>
-              )}
-            </div>
+            </span>
           )}
         </div>
+        {showDetails && sessionMetrics && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            {sessionMetrics.waitingCount > 0 && (
+              <span className="rounded bg-yellow-500/90 px-2 py-0.5 text-black">
+                {sessionMetrics.waitingCount} waiting
+              </span>
+            )}
+            {sessionMetrics.planningCount > 0 && (
+              <span className="rounded bg-sky-500/10 px-2 py-0.5 text-sky-600">
+                {sessionMetrics.planningCount} planning
+              </span>
+            )}
+            {sessionMetrics.buildingCount > 0 && (
+              <span className="rounded bg-indigo-500/10 px-2 py-0.5 text-indigo-600">
+                {sessionMetrics.buildingCount} building
+              </span>
+            )}
+            {sessionMetrics.yoloCount > 0 && (
+              <span className="rounded bg-red-500/10 px-2 py-0.5 text-red-600">
+                {sessionMetrics.yoloCount} yolo
+              </span>
+            )}
+            {sessionMetrics.reviewCount > 0 && (
+              <span className="rounded bg-green-500/10 px-2 py-0.5 text-green-600">
+                {sessionMetrics.reviewCount} review
+              </span>
+            )}
+            {uniqueSessionLabels.map(label => (
+              <span
+                key={label.name}
+                className="rounded px-2 py-0.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: label.color,
+                  color: getLabelTextColor(label.color),
+                }}
+              >
+                {label.name}
+              </span>
+            ))}
+            {lastActivity && (
+              <span className="inline-flex items-center gap-1 rounded px-2 py-0.5">
+                <Clock3 className="h-3 w-3" />
+                {lastActivity}
+              </span>
+            )}
+            {onRowClick && (
+              <span className="ml-auto hidden text-[11px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:inline-flex">
+                Press Enter to open
+              </span>
+            )}
+          </div>
+        )}
       </div>
-    </>
+    </div>
+  )
+
+  if (!onSetLabels) return row
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent className="w-44">
+        <ContextMenuItem onSelect={onSetLabels}>
+          <Tag className="mr-2 h-4 w-4" />
+          Set labels
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -666,6 +832,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Project action mutations
   const createBaseSession = useCreateBaseSession()
   const removeProject = useRemoveProject()
+  const reorderWorktrees = useReorderWorktrees()
   const openOnGitHub = useOpenProjectOnGitHub()
   const openInFinder = useOpenWorktreeInFinder()
   const openWorktreesFolder = useOpenProjectWorktreesFolder()
@@ -676,6 +843,13 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const [activeFilterTab, setActiveFilterTab] = useState<CanvasFilterTab>('all')
   const isMobile = useIsMobile()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
+  const showWorktreeLabelContextMenu = shouldShowWorktreeLabelContextMenu({
+    isMobile,
+    isNative: isTauri(),
+  })
+  const disableWorktreeTextSelection = shouldDisableWorktreeTextSelection({
+    isMobile,
+  })
 
   // Get project info
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
@@ -832,16 +1006,10 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const queryClient = useQueryClient()
 
   const markWorktreeLastUsed = useCallback(
-    (worktreeId: string, reason: string) => {
+    (worktreeId: string) => {
       if (!isTauri()) return
 
       const now = Math.floor(Date.now() / 1000)
-      console.debug('[ProjectCanvasView] markWorktreeLastUsed:start', {
-        projectId,
-        worktreeId,
-        reason,
-        now,
-      })
 
       queryClient.setQueryData<Worktree[]>(
         projectsQueryKeys.worktrees(projectId),
@@ -855,23 +1023,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
       void invoke('set_worktree_last_opened', { worktreeId })
         .then(() => {
-          console.debug('[ProjectCanvasView] markWorktreeLastUsed:success', {
-            projectId,
-            worktreeId,
-            reason,
-            now,
-          })
           queryClient.invalidateQueries({
             queryKey: projectsQueryKeys.worktrees(projectId),
           })
         })
-        .catch(error => {
-          console.debug('[ProjectCanvasView] markWorktreeLastUsed:error', {
-            projectId,
-            worktreeId,
-            reason,
-            error,
-          })
+        .catch(() => {
           queryClient.invalidateQueries({
             queryKey: projectsQueryKeys.worktrees(projectId),
           })
@@ -881,17 +1037,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   )
 
   const openWorktreeModal = useCallback(
-    (worktreeId: string, worktreePath: string, reason: string) => {
-      console.debug('[ProjectCanvasView] openWorktreeModal', {
-        projectId,
-        worktreeId,
-        worktreePath,
-        reason,
-      })
-      markWorktreeLastUsed(worktreeId, reason)
+    (worktreeId: string, worktreePath: string) => {
+      markWorktreeLastUsed(worktreeId)
       setSelectedWorktreeModal({ worktreeId, worktreePath })
     },
-    [markWorktreeLastUsed, projectId]
+    [markWorktreeLastUsed]
   )
 
   // Build worktree sections with computed card data
@@ -996,49 +1146,261 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     activeFilterTab,
   ])
 
-  useEffect(() => {
-    if (worktreeSortMode !== 'last_activity') return
+  const canvasReorderEnabled =
+    activeFilterTab === 'all' && searchQuery.trim().length === 0
 
-    console.debug(
-      '[ProjectCanvasView] last-activity sort snapshot',
+  const canvasDraggableIds = useMemo(
+    () =>
       worktreeSections
-        .map(section => ({
-          id: section.worktree.id,
-          name: section.worktree.name,
-          created_at: section.worktree.created_at,
-          latest_activity_at: section.isPending
-            ? section.worktree.created_at
-            : getSessionMetrics(section.cards).latestActivityAt,
-          latest_activity_label: formatRelativeTime(
-            section.isPending
-              ? section.worktree.created_at
-              : getSessionMetrics(section.cards).latestActivityAt
-          ),
-          session_activity_sources: section.isPending
-            ? []
-            : section.cards.map(card => ({
-                session_id: card.session.id,
-                last_message_at: card.session.last_message_at ?? null,
-                updated_at: card.session.updated_at,
-                created_at: card.session.created_at,
-                effective_activity_at: getSessionActivityTimestamp(
-                  card.session
-                ),
-              })),
-          is_base: isBaseSession(section.worktree),
-          is_pending: section.isPending ?? false,
-        }))
-        .sort((a, b) => {
-          if (a.is_base && !b.is_base) return -1
-          if (!a.is_base && b.is_base) return 1
-          const aLastActivity = a.latest_activity_at ?? 0
-          const bLastActivity = b.latest_activity_at ?? 0
-          if (bLastActivity !== aLastActivity)
-            return bLastActivity - aLastActivity
-          return b.created_at - a.created_at
+        .filter(section => canManuallyReorderWorktree(section.worktree))
+        .map(section => section.worktree.id),
+    [worktreeSections]
+  )
+
+  const canvasDraggableIdSet = useMemo(
+    () => new Set(canvasDraggableIds),
+    [canvasDraggableIds]
+  )
+  const [canvasDragState, setCanvasDragState] =
+    useState<CanvasWorktreeDragState>({
+      draggingId: null,
+      targetId: null,
+      closestEdge: null,
+    })
+  const latestCanvasDropTargetRef = useRef<WorktreeDropSnapshot>(
+    emptyWorktreeDropSnapshot
+  )
+  const canvasDragStateRef = useRef(canvasDragState)
+
+  useEffect(() => {
+    canvasDragStateRef.current = canvasDragState
+  }, [canvasDragState])
+
+  const getCanvasWorktreeDropTarget = useCallback(
+    (dropTargets: { data: Record<string | symbol, unknown> }[]) =>
+      getWorktreeDropTargetForScope(
+        dropTargets,
+        DRAG_SCOPE_CANVAS_WORKTREE_LIST
+      ),
+    []
+  )
+
+  const reorderCanvasFromDrop = useCallback(
+    (activeId: string, overId: string, closestEdge: Edge | null) => {
+      if (!canvasReorderEnabled || activeId === overId) return
+
+      const oldIndex = canvasDraggableIds.indexOf(activeId)
+      const newIndex = canvasDraggableIds.indexOf(overId)
+
+      if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
+
+      const reorderedDraggableIds = reorderWithClosestEdge({
+        items: canvasDraggableIds,
+        startIndex: oldIndex,
+        indexOfTarget: newIndex,
+        closestEdgeOfTarget: closestEdge,
+      })
+      const nextDraggableIds = [...reorderedDraggableIds]
+      const fullOrderedIds = worktreeSections.map(section => {
+        const worktreeId = section.worktree.id
+        if (!canvasDraggableIdSet.has(worktreeId)) return worktreeId
+        return nextDraggableIds.shift() ?? worktreeId
+      })
+
+      reorderWorktrees.mutate({
+        projectId,
+        worktreeIds: fullOrderedIds.filter(worktreeId => {
+          const worktree = worktrees.find(wt => wt.id === worktreeId)
+          return (
+            worktree != null &&
+            (isBaseSession(worktree) || canManuallyReorderWorktree(worktree))
+          )
+        }),
+        switchToManualSort: worktreeSortMode !== 'manual',
+      })
+      announceDrag('Worktree section reordered')
+    },
+    [
+      canvasDraggableIdSet,
+      canvasDraggableIds,
+      canvasReorderEnabled,
+      projectId,
+      reorderWorktrees,
+      worktreeSections,
+      worktrees,
+      worktreeSortMode,
+    ]
+  )
+
+  const nativeCanvasDropHandledRef = useRef(false)
+
+  useEffect(() => {
+    return monitorForElements({
+      canMonitor: ({ source }) =>
+        isWorktreeDragData(source.data) &&
+        source.data.projectId === projectId &&
+        source.data.scope === DRAG_SCOPE_CANVAS_WORKTREE_LIST,
+      onDragStart: ({ source }) => {
+        if (!isWorktreeDragData(source.data)) return
+        latestCanvasDropTargetRef.current = emptyWorktreeDropSnapshot
+        setCanvasDragState({
+          draggingId: source.data.worktreeId,
+          targetId: null,
+          closestEdge: null,
         })
-    )
-  }, [worktreeSortMode, worktreeSections])
+        announceDrag('Started dragging worktree section')
+      },
+      onDropTargetChange: ({ location }) => {
+        const snapshot = getSnapshotFromWorktreeDropTarget(
+          getCanvasWorktreeDropTarget(location.current.dropTargets)
+        )
+        latestCanvasDropTargetRef.current = snapshot
+        setCanvasDragState(state => applyWorktreeDropSnapshot(state, snapshot))
+      },
+      onDrag: ({ location }) => {
+        const snapshot = getSnapshotFromWorktreeDropTarget(
+          getCanvasWorktreeDropTarget(location.current.dropTargets)
+        )
+        setCanvasDragState(state => {
+          latestCanvasDropTargetRef.current = snapshot
+          return applyWorktreeDropSnapshot(state, snapshot)
+        })
+      },
+      onDrop: ({ source, location }) => {
+        if (nativeCanvasDropHandledRef.current) {
+          nativeCanvasDropHandledRef.current = false
+          return
+        }
+        setCanvasDragState({
+          draggingId: null,
+          targetId: null,
+          closestEdge: null,
+        })
+        if (!isWorktreeDragData(source.data)) return
+        const targetSnapshot = getSnapshotFromWorktreeDropTarget(
+          getCanvasWorktreeDropTarget(location.current.dropTargets)
+        )
+        const fallback = latestCanvasDropTargetRef.current
+        const snapshot = targetSnapshot.targetId ? targetSnapshot : fallback
+        latestCanvasDropTargetRef.current = emptyWorktreeDropSnapshot
+        const { targetId, closestEdge } = snapshot
+        if (!targetId) {
+          announceDrag('Worktree section move cancelled')
+          return
+        }
+        reorderCanvasFromDrop(source.data.worktreeId, targetId, closestEdge)
+      },
+    })
+  }, [getCanvasWorktreeDropTarget, projectId, reorderCanvasFromDrop])
+
+  const handleNativeCanvasDragOver = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      if (!canvasDragState.draggingId) return
+      const target = getWorktreeElementFromEventTarget({
+        eventTarget: event.target,
+        scope: DRAG_SCOPE_CANVAS_WORKTREE_LIST,
+      })
+      const snapshot = getSnapshotFromWorktreeElement({
+        element: target,
+        draggingId: canvasDragState.draggingId,
+        clientY: event.clientY,
+      })
+      if (!snapshot.targetId) return
+
+      event.preventDefault()
+      latestCanvasDropTargetRef.current = snapshot
+      setCanvasDragState(state => applyWorktreeDropSnapshot(state, snapshot))
+    },
+    [canvasDragState.draggingId]
+  )
+
+  const handleNativeCanvasDrop = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      if (!canvasDragState.draggingId) return
+      event.preventDefault()
+      event.stopPropagation()
+      const fallback = latestCanvasDropTargetRef.current
+      nativeCanvasDropHandledRef.current = true
+      setCanvasDragState({
+        draggingId: null,
+        targetId: null,
+        closestEdge: null,
+      })
+      latestCanvasDropTargetRef.current = emptyWorktreeDropSnapshot
+      if (fallback.targetId) {
+        reorderCanvasFromDrop(
+          canvasDragState.draggingId,
+          fallback.targetId,
+          fallback.closestEdge
+        )
+      }
+    },
+    [canvasDragState.draggingId, reorderCanvasFromDrop]
+  )
+
+  const handleNativeCanvasDragEnd = useCallback(() => {
+    latestCanvasDropTargetRef.current = emptyWorktreeDropSnapshot
+    setCanvasDragState({ draggingId: null, targetId: null, closestEdge: null })
+  }, [])
+
+  useEffect(() => {
+    const handleDocumentDragOver = (event: DragEvent) => {
+      const draggingId = canvasDragStateRef.current.draggingId
+      if (!draggingId) return
+      const target = getWorktreeElementFromPoint({
+        clientX: event.clientX,
+        clientY: event.clientY,
+        scope: DRAG_SCOPE_CANVAS_WORKTREE_LIST,
+      })
+      const snapshot = getSnapshotFromWorktreeElement({
+        element: target,
+        draggingId,
+        clientY: event.clientY,
+      })
+      if (!snapshot.targetId) return
+
+      event.preventDefault()
+      latestCanvasDropTargetRef.current = snapshot
+      setCanvasDragState(state => applyWorktreeDropSnapshot(state, snapshot))
+    }
+
+    const handleDocumentDrop = (event: DragEvent) => {
+      const draggingId = canvasDragStateRef.current.draggingId
+      if (!draggingId) return
+      const fallback = latestCanvasDropTargetRef.current
+      if (!fallback.targetId) return
+      event.preventDefault()
+      event.stopPropagation()
+      nativeCanvasDropHandledRef.current = true
+      setCanvasDragState({
+        draggingId: null,
+        targetId: null,
+        closestEdge: null,
+      })
+      latestCanvasDropTargetRef.current = emptyWorktreeDropSnapshot
+      reorderCanvasFromDrop(draggingId, fallback.targetId, fallback.closestEdge)
+    }
+
+    const handleDocumentDragEnd = () => {
+      if (!canvasDragStateRef.current.draggingId) return
+      latestCanvasDropTargetRef.current = emptyWorktreeDropSnapshot
+      setCanvasDragState({
+        draggingId: null,
+        targetId: null,
+        closestEdge: null,
+      })
+    }
+
+    document.addEventListener('dragover', handleDocumentDragOver, true)
+    document.addEventListener('drop', handleDocumentDrop, true)
+    document.addEventListener('dragend', handleDocumentDragEnd, true)
+
+    return () => {
+      document.removeEventListener('dragover', handleDocumentDragOver, true)
+      document.removeEventListener('drop', handleDocumentDrop, true)
+      document.removeEventListener('dragend', handleDocumentDragEnd, true)
+    }
+  }, [reorderCanvasFromDrop])
 
   const projectSummary = useMemo(() => {
     let reviewCount = 0
@@ -1230,11 +1592,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     const handleOpenModal = (
       e: CustomEvent<{ worktreeId: string; worktreePath: string }>
     ) => {
-      openWorktreeModal(
-        e.detail.worktreeId,
-        e.detail.worktreePath,
-        'open-worktree-modal-event'
-      )
+      openWorktreeModal(e.detail.worktreeId, e.detail.worktreePath)
     }
     window.addEventListener(
       'open-worktree-modal',
@@ -1379,7 +1737,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         }
 
         useChatStore.getState().setActiveSession(worktreeId, sessionId)
-        openWorktreeModal(worktreeId, worktree.path, 'auto-open-session')
+        openWorktreeModal(worktreeId, worktree.path)
         break
       }
 
@@ -1409,7 +1767,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
         // Set active session so the modal opens on the right tab
         useChatStore.getState().setActiveSession(worktreeId, targetSession.id)
-        openWorktreeModal(worktreeId, worktree.path, 'auto-open-session')
+        openWorktreeModal(worktreeId, worktree.path)
         break // Only one per render cycle
       }
     }
@@ -1542,11 +1900,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         useChatStore
           .getState()
           .setActiveSession(targetCard.worktreeId, sessionIdToOpen)
-        openWorktreeModal(
-          targetCard.worktreeId,
-          targetCard.worktreePath,
-          'restore-last-session'
-        )
+        openWorktreeModal(targetCard.worktreeId, targetCard.worktreePath)
       }
     }
   }, [
@@ -1561,7 +1915,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Handle clicking on a worktree row - open modal
   const handleWorktreeClick = useCallback(
     (worktreeId: string, worktreePath: string) => {
-      openWorktreeModal(worktreeId, worktreePath, 'canvas-row-click')
+      openWorktreeModal(worktreeId, worktreePath)
 
       // Persist last-opened project context immediately on open so project switch
       // restore does not depend on a subsequent tab change event.
@@ -1593,6 +1947,50 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     [flatCards, handleWorktreeClick]
   )
 
+  const moveSelectedWorktreeByKeyboard = useCallback(
+    (direction: -1 | 1) => {
+      if (!canvasReorderEnabled || reorderWorktrees.isPending) return
+
+      const selectedItem =
+        selectedIndex === null ? null : (flatCards[selectedIndex] ?? null)
+      const selectedWorktreeId =
+        selectedItem?.worktreeId ??
+        useProjectsStore.getState().selectedWorktreeId ??
+        null
+      if (!selectedWorktreeId || selectedItem?.isPending) return
+
+      const activeId = selectedWorktreeId
+      const oldIndex = canvasDraggableIds.indexOf(activeId)
+      if (oldIndex === -1) return
+
+      const targetId = canvasDraggableIds[oldIndex + direction]
+      if (!targetId) return
+
+      if (selectedItem?.card) {
+        highlightedCardRef.current = {
+          worktreeId: activeId,
+          sessionId: selectedItem.card.session.id,
+        }
+      } else {
+        highlightedCardRef.current = null
+      }
+
+      reorderCanvasFromDrop(
+        activeId,
+        targetId,
+        direction > 0 ? 'bottom' : 'top'
+      )
+    },
+    [
+      canvasDraggableIds,
+      canvasReorderEnabled,
+      flatCards,
+      reorderCanvasFromDrop,
+      reorderWorktrees.isPending,
+      selectedIndex,
+    ]
+  )
+
   // Handle selection change for tracking in store
   const syncSelectionToStore = useCallback(
     (index: number) => {
@@ -1608,6 +2006,24 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     },
     [flatCards]
   )
+
+  useEffect(() => {
+    const handleMoveSelectedWorktree = (event: Event) => {
+      const direction = (event as CustomEvent).detail?.direction
+      if (direction === 'up') moveSelectedWorktreeByKeyboard(-1)
+      if (direction === 'down') moveSelectedWorktreeByKeyboard(1)
+    }
+
+    window.addEventListener(
+      'move-selected-worktree',
+      handleMoveSelectedWorktree
+    )
+    return () =>
+      window.removeEventListener(
+        'move-selected-worktree',
+        handleMoveSelectedWorktree
+      )
+  }, [moveSelectedWorktreeByKeyboard])
 
   const handleFilterTabChange = useCallback(
     (value: CanvasFilterTab) => {
@@ -1748,6 +2164,14 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     currentLabels: LabelData[]
   } | null>(null)
 
+  const openWorktreeLabelModal = useCallback((worktree: Worktree) => {
+    setWorktreeLabelTarget({
+      worktreeId: worktree.id,
+      currentLabels: getWorktreeLabels(worktree),
+    })
+    setWorktreeLabelModalOpen(true)
+  }, [])
+
   // Listen for toggle-session-label event — open label modal for worktree
   useEffect(() => {
     if (!!selectedWorktreeModal || selectedIndex === null) return
@@ -1761,17 +2185,19 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       )
       if (!section) return
 
-      setWorktreeLabelTarget({
-        worktreeId: section.worktree.id,
-        currentLabels: getWorktreeLabels(section.worktree),
-      })
-      setWorktreeLabelModalOpen(true)
+      openWorktreeLabelModal(section.worktree)
     }
 
     window.addEventListener('toggle-session-label', handleToggleLabel)
     return () =>
       window.removeEventListener('toggle-session-label', handleToggleLabel)
-  }, [selectedWorktreeModal, selectedIndex, flatCards, worktreeSections])
+  }, [
+    selectedWorktreeModal,
+    selectedIndex,
+    flatCards,
+    worktreeSections,
+    openWorktreeLabelModal,
+  ])
 
   // Linked projects modal (opened by MagicModal via UI store)
   const linkedProjectsModalOpen = useUIStore(
@@ -1904,6 +2330,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     onSelect: handleSelect,
     onNavigateLeft: handleNavigateFilterTabLeft,
     onNavigateRight: handleNavigateFilterTabRight,
+    onMoveUp: () => moveSelectedWorktreeByKeyboard(-1),
+    onMoveDown: () => moveSelectedWorktreeByKeyboard(1),
     enabled: !isModalOpen,
     onSelectionChange: syncSelectionToStore,
   })
@@ -2085,7 +2513,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           highlightedCardRef.current = { worktreeId, sessionId }
           useChatStore.getState().setActiveSession(worktreeId, sessionId)
         }
-        openWorktreeModal(worktreeId, worktreePath, 'open-session-modal-event')
+        openWorktreeModal(worktreeId, worktreePath)
         return
       }
 
@@ -2405,6 +2833,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                       <DropdownMenuRadioItem value="last_activity">
                         Last activity
                       </DropdownMenuRadioItem>
+                      <DropdownMenuRadioItem value="manual">
+                        Manual
+                      </DropdownMenuRadioItem>
                     </DropdownMenuRadioGroup>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -2578,59 +3009,105 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
               </div>
             )
           ) : (
-            <div className="flex flex-col gap-1">
+            <div
+              className="group/canvas-list flex flex-col gap-1"
+              onDragOver={handleNativeCanvasDragOver}
+              onDrop={handleNativeCanvasDrop}
+              onDragEnd={handleNativeCanvasDragEnd}
+            >
               {(() => {
                 let shortcutNum = 0
                 return worktreeSections.map(section => {
                   const currentIndex = cardIndex++
+                  const isReorderDisabled =
+                    !canvasReorderEnabled ||
+                    reorderWorktrees.isPending ||
+                    !canManuallyReorderWorktree(section.worktree)
+
                   if (section.isPending) {
                     return (
-                      <WorktreeSetupCard
+                      <SortableCanvasWorktreeSection
                         key={section.worktree.id}
-                        ref={el => {
-                          cardRefs.current[currentIndex] = el
-                        }}
-                        worktree={section.worktree}
-                        layout="list"
-                        isSelected={selectedIndex === currentIndex}
-                        onSelect={() => handleSelectedIndexChange(currentIndex)}
-                      />
+                        section={section}
+                        disabled={true}
+                        isDragging={
+                          canvasDragState.draggingId === section.worktree.id
+                        }
+                        closestEdge={
+                          canvasDragState.targetId === section.worktree.id
+                            ? canvasDragState.closestEdge
+                            : null
+                        }
+                        projectId={projectId}
+                      >
+                        <WorktreeSetupCard
+                          ref={el => {
+                            cardRefs.current[currentIndex] = el
+                          }}
+                          worktree={section.worktree}
+                          layout="list"
+                          isSelected={selectedIndex === currentIndex}
+                          onSelect={() =>
+                            handleSelectedIndexChange(currentIndex)
+                          }
+                        />
+                      </SortableCanvasWorktreeSection>
                     )
                   }
                   const thisShortcut =
                     ++shortcutNum <= 9 ? shortcutNum : undefined
                   return (
-                    <div
+                    <SortableCanvasWorktreeSection
                       key={section.worktree.id}
-                      ref={el => {
-                        cardRefs.current[currentIndex] = el
-                      }}
+                      section={section}
+                      disabled={isReorderDisabled}
+                      isDragging={
+                        canvasDragState.draggingId === section.worktree.id
+                      }
+                      closestEdge={
+                        canvasDragState.targetId === section.worktree.id
+                          ? canvasDragState.closestEdge
+                          : null
+                      }
+                      projectId={projectId}
                     >
-                      <WorktreeSectionHeader
-                        worktree={section.worktree}
-                        projectId={projectId}
-                        defaultBranch={project.default_branch}
-                        openPRs={openPRs}
-                        cards={section.cards}
-                        showDetails={true}
-                        isSelected={selectedIndex === currentIndex}
-                        shortcutNumber={thisShortcut}
-                        onRowClick={() => {
-                          handleSelectedIndexChange(currentIndex)
-                          handleWorktreeClick(
-                            section.worktree.id,
-                            section.worktree.path
-                          )
+                      <div
+                        ref={el => {
+                          cardRefs.current[currentIndex] = el
                         }}
-                        onDiffClick={(worktreePath, baseBranch, type) => {
-                          setCanvasDiffRequest({
-                            type,
-                            worktreePath,
-                            baseBranch,
-                          })
-                        }}
-                      />
-                    </div>
+                      >
+                        <WorktreeSectionHeader
+                          worktree={section.worktree}
+                          projectId={projectId}
+                          defaultBranch={project.default_branch}
+                          openPRs={openPRs}
+                          cards={section.cards}
+                          showDetails={true}
+                          isSelected={selectedIndex === currentIndex}
+                          shortcutNumber={thisShortcut}
+                          onRowClick={() => {
+                            handleSelectedIndexChange(currentIndex)
+                            handleWorktreeClick(
+                              section.worktree.id,
+                              section.worktree.path
+                            )
+                          }}
+                          onDiffClick={(worktreePath, baseBranch, type) => {
+                            setCanvasDiffRequest({
+                              type,
+                              worktreePath,
+                              baseBranch,
+                            })
+                          }}
+                          onSetLabels={
+                            showWorktreeLabelContextMenu
+                              ? () => openWorktreeLabelModal(section.worktree)
+                              : undefined
+                          }
+                          disableTextSelection={disableWorktreeTextSelection}
+                        />
+                      </div>
+                    </SortableCanvasWorktreeSection>
                   )
                 })
               })()}

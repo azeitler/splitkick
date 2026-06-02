@@ -214,6 +214,8 @@ export interface Session {
   selected_model?: string
   /** Selected thinking level for this session */
   selected_thinking_level?: ThinkingLevel
+  /** Selected effort level for this session */
+  selected_effort_level?: EffortLevel
   /** Selected provider (custom CLI profile name) for this session */
   selected_provider?: string
   /** Selected execution mode for this session (plan/build/yolo) */

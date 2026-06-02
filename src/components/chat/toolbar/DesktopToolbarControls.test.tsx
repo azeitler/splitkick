@@ -179,6 +179,29 @@ describe('DesktopToolbarControls', () => {
     expect(screen.queryByText('Ultracode')).not.toBeInTheDocument()
   })
 
+  it('calls effort change handler when selecting an effort on desktop', async () => {
+    const user = userEvent.setup()
+    const handleEffortLevelChange = vi.fn()
+
+    renderDesktopToolbarControls({
+      isCodex: false,
+      selectedBackend: 'claude',
+      useAdaptiveThinking: true,
+      selectedEffortLevel: 'medium',
+      thinkingDropdownOpen: true,
+      handleEffortLevelChange,
+    })
+
+    const xHighItem = screen
+      .getAllByRole('menuitemradio', { name: /xhigh/i })
+      .find(item => item.textContent?.startsWith('xHigh'))
+    expect(xHighItem).toBeDefined()
+    if (!xHighItem) return
+    await user.click(xHighItem)
+
+    expect(handleEffortLevelChange).toHaveBeenCalledWith('xhigh')
+  })
+
   it('keeps Max effort available for Claude adaptive thinking', () => {
     renderDesktopToolbarControls({
       isCodex: false,

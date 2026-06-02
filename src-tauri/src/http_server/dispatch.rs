@@ -1210,6 +1210,22 @@ pub async fn dispatch_command(
             .await?;
             Ok(Value::Null)
         }
+        "set_session_effort_level" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let effort_level: crate::chat::types::EffortLevel =
+                field(&args, "effortLevel", "effort_level")?;
+            crate::chat::set_session_effort_level(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                session_id,
+                effort_level,
+            )
+            .await?;
+            Ok(Value::Null)
+        }
         "mark_plan_approved" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;

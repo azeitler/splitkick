@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use once_cell::sync::Lazy;
@@ -434,6 +434,66 @@ pub fn cleanup_orphaned_session_data(app: &AppHandle) -> Result<u32, String> {
     Ok(deleted)
 }
 
+/// Delete session index files that are not associated with a known worktree or
+/// a preserved base-session index for a known project.
+///
+/// This cleans up stale `sessions/index/*.json` files left behind when a
+/// worktree record was removed before its session index file was deleted.
+pub fn cleanup_orphaned_session_indexes(app: &AppHandle) -> Result<u32, String> {
+    let index_dir = get_index_dir(app)?;
+    let projects_data = crate::projects::storage::load_projects_data(app)?;
+
+    let mut valid_index_stems = HashSet::new();
+    for worktree in &projects_data.worktrees {
+        valid_index_stems.insert(sanitize_filename(&worktree.id));
+    }
+    for project in &projects_data.projects {
+        valid_index_stems.insert(format!("base-{}", sanitize_filename(&project.id)));
+    }
+
+    cleanup_orphaned_session_indexes_in_dir(&index_dir, &valid_index_stems)
+}
+
+fn cleanup_orphaned_session_indexes_in_dir(
+    index_dir: &Path,
+    valid_index_stems: &HashSet<String>,
+) -> Result<u32, String> {
+    if !index_dir.exists() {
+        return Ok(0);
+    }
+
+    let entries = fs::read_dir(index_dir)
+        .map_err(|e| format!("Failed to read session index directory: {e}"))?;
+    let mut deleted = 0u32;
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_file() || !path.extension().is_some_and(|ext| ext == "json") {
+            continue;
+        }
+
+        let Some(stem) = path.file_stem().and_then(|name| name.to_str()) else {
+            continue;
+        };
+
+        if valid_index_stems.contains(stem) {
+            continue;
+        }
+
+        log::trace!("Deleting orphaned session index: {}", path.display());
+        match fs::remove_file(&path) {
+            Ok(()) => deleted += 1,
+            Err(e) => log::warn!("Failed to delete orphaned session index {path:?}: {e}"),
+        }
+    }
+
+    if deleted > 0 {
+        log::debug!("Cleaned up {deleted} orphaned session index file(s)");
+    }
+
+    Ok(deleted)
+}
+
 /// Delete combined-context files for a specific session.
 /// Best-effort: logs warnings on failure, never returns an error.
 pub fn cleanup_combined_context_files(app: &AppHandle, session_id: &str) {
@@ -668,6 +728,7 @@ pub fn load_sessions(
                 commandcode_session_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
+                selected_effort_level: None,
                 selected_provider: None,
                 selected_execution_mode: None,
                 session_naming_completed: false,
@@ -767,6 +828,7 @@ where
                 commandcode_session_id: None,
                 selected_model: None,
                 selected_thinking_level: None,
+                selected_effort_level: None,
                 selected_provider: None,
                 selected_execution_mode: None,
                 session_naming_completed: false,
@@ -1163,5 +1225,31 @@ mod tests {
         assert_eq!(metadata.order, 0);
         assert!(metadata.runs.is_empty());
         assert_eq!(metadata.version, 1);
+    }
+
+    #[test]
+    fn test_cleanup_orphaned_session_indexes_keeps_linked_and_base_indexes() {
+        use std::collections::HashSet;
+
+        let temp = tempfile::tempdir().expect("temp dir");
+        let index_dir = temp.path();
+
+        std::fs::write(index_dir.join("wt-1.json"), "{}").expect("write linked index");
+        std::fs::write(index_dir.join("base-project-1.json"), "{}").expect("write base index");
+        std::fs::write(index_dir.join("orphan-wt.json"), "{}").expect("write orphan index");
+        std::fs::write(index_dir.join("base-old-project.json"), "{}").expect("write stale base");
+        std::fs::write(index_dir.join("notes.txt"), "ignore").expect("write non-json");
+
+        let valid_stems = HashSet::from(["wt-1".to_string(), "base-project-1".to_string()]);
+
+        let deleted =
+            cleanup_orphaned_session_indexes_in_dir(index_dir, &valid_stems).expect("cleanup");
+
+        assert_eq!(deleted, 2);
+        assert!(index_dir.join("wt-1.json").exists());
+        assert!(index_dir.join("base-project-1.json").exists());
+        assert!(!index_dir.join("orphan-wt.json").exists());
+        assert!(!index_dir.join("base-old-project.json").exists());
+        assert!(index_dir.join("notes.txt").exists());
     }
 }
