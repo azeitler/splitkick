@@ -3883,6 +3883,7 @@ pub fn run() {
             chat::set_session_model,
             chat::set_session_backend,
             chat::set_session_thinking_level,
+            chat::set_session_effort_level,
             chat::set_session_provider,
             chat::cancel_chat_message,
             chat::has_running_sessions,

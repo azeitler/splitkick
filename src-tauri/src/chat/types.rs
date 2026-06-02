@@ -524,6 +524,9 @@ pub struct Session {
     /// Selected thinking level for this session
     #[serde(default)]
     pub selected_thinking_level: Option<ThinkingLevel>,
+    /// Selected effort level for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_effort_level: Option<EffortLevel>,
     /// Selected provider (custom CLI profile name) for this session
     #[serde(default)]
     pub selected_provider: Option<String>,
@@ -719,6 +722,7 @@ impl Session {
             cursor_chat_id: None,
             selected_model: None,
             selected_thinking_level: None,
+            selected_effort_level: None,
             selected_provider: None,
             selected_execution_mode: None,
             session_naming_completed: false,
@@ -917,6 +921,7 @@ impl SessionMetadata {
             cursor_chat_id: self.cursor_chat_id.clone(),
             selected_model: self.selected_model.clone(),
             selected_thinking_level: self.selected_thinking_level.clone(),
+            selected_effort_level: self.selected_effort_level.clone(),
             selected_provider: self.selected_provider.clone(),
             selected_execution_mode: self.selected_execution_mode.clone(),
             session_naming_completed: self.session_naming_completed,
@@ -976,6 +981,7 @@ impl SessionMetadata {
         self.cursor_chat_id = session.cursor_chat_id.clone();
         self.selected_model = session.selected_model.clone();
         self.selected_thinking_level = session.selected_thinking_level.clone();
+        self.selected_effort_level = session.selected_effort_level.clone();
         self.selected_provider = session.selected_provider.clone();
         self.selected_execution_mode = session.selected_execution_mode.clone();
         self.session_naming_completed = session.session_naming_completed;
@@ -1276,6 +1282,9 @@ pub struct SessionMetadata {
     /// Selected thinking level for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_thinking_level: Option<ThinkingLevel>,
+    /// Selected effort level for this session
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub selected_effort_level: Option<EffortLevel>,
     /// Selected provider (custom CLI profile name) for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_provider: Option<String>,
@@ -1459,6 +1468,7 @@ impl SessionMetadata {
             cursor_chat_id: None,
             selected_model: None,
             selected_thinking_level: None,
+            selected_effort_level: None,
             selected_provider: None,
             selected_execution_mode: None,
             session_naming_completed: false,

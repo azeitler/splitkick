@@ -3930,6 +3930,7 @@ pub async fn clear_session_history(
         if let Some(session) = sessions.find_session_mut(&session_id) {
             let selected_model = session.selected_model.clone();
             let selected_thinking_level = session.selected_thinking_level.clone();
+            let selected_effort_level = session.selected_effort_level.clone();
             let selected_provider = session.selected_provider.clone();
 
             session.messages.clear();
@@ -3939,6 +3940,7 @@ pub async fn clear_session_history(
             session.cursor_chat_id = None;
             session.selected_model = selected_model;
             session.selected_thinking_level = selected_thinking_level;
+            session.selected_effort_level = selected_effort_level;
             session.selected_provider = selected_provider;
 
             log::trace!("Session history cleared");
@@ -3988,6 +3990,28 @@ pub async fn set_session_thinking_level(
         if let Some(session) = sessions.find_session_mut(&session_id) {
             session.selected_thinking_level = Some(thinking_level);
             log::trace!("Thinking level selection saved");
+            Ok(())
+        } else {
+            Err(format!("Session not found: {session_id}"))
+        }
+    })
+}
+
+/// Set the selected effort level for a session
+#[tauri::command]
+pub async fn set_session_effort_level(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    session_id: String,
+    effort_level: EffortLevel,
+) -> Result<(), String> {
+    log::trace!("Setting effort level for session {session_id}: {effort_level:?}");
+
+    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+        if let Some(session) = sessions.find_session_mut(&session_id) {
+            session.selected_effort_level = Some(effort_level);
+            log::trace!("Effort level selection saved");
             Ok(())
         } else {
             Err(format!("Session not found: {session_id}"))

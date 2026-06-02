@@ -46,8 +46,15 @@ import {
   Terminal,
   Trash2,
   GripVertical,
+  Tag,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -136,6 +143,10 @@ import { usePreferences } from '@/services/preferences'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { useIsMobile } from '@/hooks/use-mobile'
+import {
+  shouldDisableWorktreeTextSelection,
+  shouldShowWorktreeLabelContextMenu,
+} from './worktree-label-context'
 const GitDiffModal = lazy(() =>
   import('@/components/chat/GitDiffModal').then(mod => ({
     default: mod.GitDiffModal,
@@ -440,6 +451,8 @@ function WorktreeSectionHeader({
   shortcutNumber,
   onRowClick,
   onDiffClick,
+  onSetLabels,
+  disableTextSelection = false,
 }: {
   worktree: Worktree
   projectId: string
@@ -455,6 +468,8 @@ function WorktreeSectionHeader({
     baseBranch: string,
     type: 'uncommitted' | 'branch'
   ) => void
+  onSetLabels?: () => void
+  disableTextSelection?: boolean
 }) {
   const stackedOnPR =
     worktree.base_branch && worktree.base_branch !== defaultBranch
@@ -557,132 +572,73 @@ function WorktreeSectionHeader({
   const displayBranch = gitStatus?.current_branch ?? worktree.branch
   const worktreeLabels = getWorktreeLabels(worktree)
 
-  return (
-    <>
-      <div
-        className={cn(
-          'group relative border border-transparent transition-colors',
-          showDetails
-            ? 'mb-1 rounded-md px-3 py-2'
-            : 'mb-0.5 flex items-center gap-2',
-          onRowClick &&
-            (showDetails
-              ? 'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60'
-              : 'cursor-pointer px-2 -mx-2 py-1 hover:bg-muted/50'),
-          isSelected && onRowClick && 'border-border/40 bg-muted/35'
-        )}
-        onClick={onRowClick}
-        onKeyDown={e => {
-          if (!onRowClick) return
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault()
-            onRowClick()
-          }
-        }}
-        role={onRowClick ? 'button' : undefined}
-        tabIndex={onRowClick ? 0 : undefined}
-        aria-label={
-          onRowClick
-            ? `Open ${isBase ? 'Base Session' : worktree.name}`
-            : undefined
+  const row = (
+    <div
+      className={cn(
+        'group relative border border-transparent transition-colors',
+        showDetails
+          ? 'mb-1 rounded-md px-3 py-2'
+          : 'mb-0.5 flex items-center gap-2',
+        onRowClick &&
+          (showDetails
+            ? 'cursor-pointer hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60'
+            : 'cursor-pointer px-2 -mx-2 py-1 hover:bg-muted/50'),
+        isSelected && onRowClick && 'border-border/40 bg-muted/35',
+        disableTextSelection && 'select-none'
+      )}
+      style={disableTextSelection ? { WebkitTouchCallout: 'none' } : undefined}
+      onClick={onRowClick}
+      onKeyDown={e => {
+        if (!onRowClick) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onRowClick()
         }
-      >
-        {showDetails && isSelected && onRowClick && (
-          <span className="absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-primary" />
-        )}
+      }}
+      role={onRowClick ? 'button' : undefined}
+      tabIndex={onRowClick ? 0 : undefined}
+      aria-label={
+        onRowClick
+          ? `Open ${isBase ? 'Base Session' : worktree.name}`
+          : undefined
+      }
+    >
+      {showDetails && isSelected && onRowClick && (
+        <span className="absolute top-2 bottom-2 left-0 w-0.5 rounded-full bg-primary" />
+      )}
 
-        <div className={cn(showDetails ? 'flex flex-col gap-1.5' : 'contents')}>
-          <div className="flex min-w-0 items-center gap-2">
-            {shortcutNumber !== undefined && (
-              <kbd className="hidden shrink-0 h-4 min-w-4 items-center justify-center rounded border border-border/50 bg-muted/50 px-0.5 font-mono text-muted-foreground sm:inline-flex">
-                <span className="text-[9px]">⌘{shortcutNumber}</span>
-              </kbd>
-            )}
-            <TerminalStatusIndicator
-              worktreeId={worktree.id}
-              iconSize="h-3 w-3"
-            />
-            <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
-              <span className="flex min-w-0 items-center gap-1.5">
-                <span className="min-w-0 flex-1 truncate">
-                  {isBase ? 'Base Session' : worktree.name}
-                </span>
-                {displayBranch && (
-                  <span className="hidden items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
-                    <GitBranch className="h-2.5 w-2.5" />
-                    <span className="max-w-40 truncate">{displayBranch}</span>
-                    {worktree.base_branch &&
-                      worktree.base_branch !== defaultBranch && (
-                        <>
-                          <span className="text-border">·</span>
-                          <GitBranchPlus className="h-2.5 w-2.5" />
-                          <span className="max-w-32 truncate">
-                            {worktree.base_branch}
-                          </span>
-                          {stackedOnPR && (
-                            <>
-                              <GitPullRequestArrow className="h-2.5 w-2.5" />#
-                              {stackedOnPR.number}
-                            </>
-                          )}
-                        </>
-                      )}
-                    {worktree.pr_number && (
-                      <>
-                        <span className="text-border">·</span>
-                        <GitPullRequestArrow className="h-2.5 w-2.5" />#
-                        {worktree.pr_number}
-                      </>
-                    )}
-                    {worktree.security_alert_number && (
-                      <>
-                        <span className="text-border">·</span>
-                        <ShieldAlert className="h-2.5 w-2.5 text-orange-500" />#
-                        {worktree.security_alert_number}
-                      </>
-                    )}
-                    {worktree.advisory_ghsa_id && (
-                      <>
-                        <span className="text-border">·</span>
-                        <ShieldAlert className="h-2.5 w-2.5 text-orange-500" />
-                        <span className="max-w-20 truncate">
-                          {worktree.advisory_ghsa_id}
-                        </span>
-                      </>
-                    )}
-                  </span>
-                )}
-                <span
-                  className="inline-flex items-center font-normal hover:bg-muted/50 rounded px-1.5 py-0.5"
-                  onClick={e => e.stopPropagation()}
-                >
-                  <GitStatusBadges
-                    behindCount={behindCount}
-                    unpushedCount={unpushedCount}
-                    diffAdded={diffAdded}
-                    diffRemoved={diffRemoved}
-                    onPull={handlePull}
-                    onPush={handlePush}
-                    onDiffClick={handleDiffClick}
-                  />
-                </span>
+      <div className={cn(showDetails ? 'flex flex-col gap-1.5' : 'contents')}>
+        <div className="flex min-w-0 items-center gap-2">
+          {shortcutNumber !== undefined && (
+            <kbd className="hidden shrink-0 h-4 min-w-4 items-center justify-center rounded border border-border/50 bg-muted/50 px-0.5 font-mono text-muted-foreground sm:inline-flex">
+              <span className="text-[9px]">⌘{shortcutNumber}</span>
+            </kbd>
+          )}
+          <TerminalStatusIndicator
+            worktreeId={worktree.id}
+            iconSize="h-3 w-3"
+          />
+          <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="min-w-0 flex-1 truncate">
+                {isBase ? 'Base Session' : worktree.name}
               </span>
               {displayBranch && (
-                <span className="inline-flex max-w-full items-center gap-1 self-start rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">
-                  <GitBranch className="h-2.5 w-2.5 shrink-0" />
-                  <span className="max-w-full truncate">{displayBranch}</span>
+                <span className="hidden items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
+                  <GitBranch className="h-2.5 w-2.5" />
+                  <span className="max-w-40 truncate">{displayBranch}</span>
                   {worktree.base_branch &&
                     worktree.base_branch !== defaultBranch && (
                       <>
                         <span className="text-border">·</span>
-                        <GitBranchPlus className="h-2.5 w-2.5 shrink-0" />
+                        <GitBranchPlus className="h-2.5 w-2.5" />
                         <span className="max-w-32 truncate">
                           {worktree.base_branch}
                         </span>
                         {stackedOnPR && (
                           <>
-                            <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />
-                            #{stackedOnPR.number}
+                            <GitPullRequestArrow className="h-2.5 w-2.5" />#
+                            {stackedOnPR.number}
                           </>
                         )}
                       </>
@@ -690,21 +646,21 @@ function WorktreeSectionHeader({
                   {worktree.pr_number && (
                     <>
                       <span className="text-border">·</span>
-                      <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />#
+                      <GitPullRequestArrow className="h-2.5 w-2.5" />#
                       {worktree.pr_number}
                     </>
                   )}
                   {worktree.security_alert_number && (
                     <>
                       <span className="text-border">·</span>
-                      <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />
-                      #{worktree.security_alert_number}
+                      <ShieldAlert className="h-2.5 w-2.5 text-orange-500" />#
+                      {worktree.security_alert_number}
                     </>
                   )}
                   {worktree.advisory_ghsa_id && (
                     <>
                       <span className="text-border">·</span>
-                      <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />
+                      <ShieldAlert className="h-2.5 w-2.5 text-orange-500" />
                       <span className="max-w-20 truncate">
                         {worktree.advisory_ghsa_id}
                       </span>
@@ -712,60 +668,73 @@ function WorktreeSectionHeader({
                   )}
                 </span>
               )}
+              <span
+                className="inline-flex items-center font-normal hover:bg-muted/50 rounded px-1.5 py-0.5"
+                onClick={e => e.stopPropagation()}
+              >
+                <GitStatusBadges
+                  behindCount={behindCount}
+                  unpushedCount={unpushedCount}
+                  diffAdded={diffAdded}
+                  diffRemoved={diffRemoved}
+                  onPull={handlePull}
+                  onPush={handlePush}
+                  onDiffClick={handleDiffClick}
+                />
+              </span>
             </span>
-            {worktreeLabels.length > 0 && (
-              <span className="ml-auto flex max-w-[45%] flex-wrap justify-end gap-1 self-start shrink-0">
-                {worktreeLabels.slice(0, 3).map(label => (
-                  <span
-                    key={label.name}
-                    className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
-                    style={{
-                      backgroundColor: label.color,
-                      color: getLabelTextColor(label.color),
-                    }}
-                  >
-                    {label.name}
-                  </span>
-                ))}
-                {worktreeLabels.length > 3 && (
-                  <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                    +{worktreeLabels.length - 3}
-                  </span>
+            {displayBranch && (
+              <span className="inline-flex max-w-full items-center gap-1 self-start rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:hidden">
+                <GitBranch className="h-2.5 w-2.5 shrink-0" />
+                <span className="max-w-full truncate">{displayBranch}</span>
+                {worktree.base_branch &&
+                  worktree.base_branch !== defaultBranch && (
+                    <>
+                      <span className="text-border">·</span>
+                      <GitBranchPlus className="h-2.5 w-2.5 shrink-0" />
+                      <span className="max-w-32 truncate">
+                        {worktree.base_branch}
+                      </span>
+                      {stackedOnPR && (
+                        <>
+                          <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />
+                          #{stackedOnPR.number}
+                        </>
+                      )}
+                    </>
+                  )}
+                {worktree.pr_number && (
+                  <>
+                    <span className="text-border">·</span>
+                    <GitPullRequestArrow className="h-2.5 w-2.5 shrink-0" />#
+                    {worktree.pr_number}
+                  </>
+                )}
+                {worktree.security_alert_number && (
+                  <>
+                    <span className="text-border">·</span>
+                    <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />
+                    #{worktree.security_alert_number}
+                  </>
+                )}
+                {worktree.advisory_ghsa_id && (
+                  <>
+                    <span className="text-border">·</span>
+                    <ShieldAlert className="h-2.5 w-2.5 shrink-0 text-orange-500" />
+                    <span className="max-w-20 truncate">
+                      {worktree.advisory_ghsa_id}
+                    </span>
+                  </>
                 )}
               </span>
             )}
-          </div>
-          {showDetails && sessionMetrics && (
-            <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              {sessionMetrics.waitingCount > 0 && (
-                <span className="rounded bg-yellow-500/90 px-2 py-0.5 text-black">
-                  {sessionMetrics.waitingCount} waiting
-                </span>
-              )}
-              {sessionMetrics.planningCount > 0 && (
-                <span className="rounded bg-sky-500/10 px-2 py-0.5 text-sky-600">
-                  {sessionMetrics.planningCount} planning
-                </span>
-              )}
-              {sessionMetrics.buildingCount > 0 && (
-                <span className="rounded bg-indigo-500/10 px-2 py-0.5 text-indigo-600">
-                  {sessionMetrics.buildingCount} building
-                </span>
-              )}
-              {sessionMetrics.yoloCount > 0 && (
-                <span className="rounded bg-red-500/10 px-2 py-0.5 text-red-600">
-                  {sessionMetrics.yoloCount} yolo
-                </span>
-              )}
-              {sessionMetrics.reviewCount > 0 && (
-                <span className="rounded bg-green-500/10 px-2 py-0.5 text-green-600">
-                  {sessionMetrics.reviewCount} review
-                </span>
-              )}
-              {uniqueSessionLabels.map(label => (
+          </span>
+          {worktreeLabels.length > 0 && (
+            <span className="ml-auto flex max-w-[45%] flex-wrap justify-end gap-1 self-start shrink-0">
+              {worktreeLabels.slice(0, 3).map(label => (
                 <span
                   key={label.name}
-                  className="rounded px-2 py-0.5 text-[10px] font-medium"
+                  className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium"
                   style={{
                     backgroundColor: label.color,
                     color: getLabelTextColor(label.color),
@@ -774,22 +743,82 @@ function WorktreeSectionHeader({
                   {label.name}
                 </span>
               ))}
-              {lastActivity && (
-                <span className="inline-flex items-center gap-1 rounded px-2 py-0.5">
-                  <Clock3 className="h-3 w-3" />
-                  {lastActivity}
+              {worktreeLabels.length > 3 && (
+                <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  +{worktreeLabels.length - 3}
                 </span>
               )}
-              {onRowClick && (
-                <span className="ml-auto hidden text-[11px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:inline-flex">
-                  Press Enter to open
-                </span>
-              )}
-            </div>
+            </span>
           )}
         </div>
+        {showDetails && sessionMetrics && (
+          <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+            {sessionMetrics.waitingCount > 0 && (
+              <span className="rounded bg-yellow-500/90 px-2 py-0.5 text-black">
+                {sessionMetrics.waitingCount} waiting
+              </span>
+            )}
+            {sessionMetrics.planningCount > 0 && (
+              <span className="rounded bg-sky-500/10 px-2 py-0.5 text-sky-600">
+                {sessionMetrics.planningCount} planning
+              </span>
+            )}
+            {sessionMetrics.buildingCount > 0 && (
+              <span className="rounded bg-indigo-500/10 px-2 py-0.5 text-indigo-600">
+                {sessionMetrics.buildingCount} building
+              </span>
+            )}
+            {sessionMetrics.yoloCount > 0 && (
+              <span className="rounded bg-red-500/10 px-2 py-0.5 text-red-600">
+                {sessionMetrics.yoloCount} yolo
+              </span>
+            )}
+            {sessionMetrics.reviewCount > 0 && (
+              <span className="rounded bg-green-500/10 px-2 py-0.5 text-green-600">
+                {sessionMetrics.reviewCount} review
+              </span>
+            )}
+            {uniqueSessionLabels.map(label => (
+              <span
+                key={label.name}
+                className="rounded px-2 py-0.5 text-[10px] font-medium"
+                style={{
+                  backgroundColor: label.color,
+                  color: getLabelTextColor(label.color),
+                }}
+              >
+                {label.name}
+              </span>
+            ))}
+            {lastActivity && (
+              <span className="inline-flex items-center gap-1 rounded px-2 py-0.5">
+                <Clock3 className="h-3 w-3" />
+                {lastActivity}
+              </span>
+            )}
+            {onRowClick && (
+              <span className="ml-auto hidden text-[11px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:inline-flex">
+                Press Enter to open
+              </span>
+            )}
+          </div>
+        )}
       </div>
-    </>
+    </div>
+  )
+
+  if (!onSetLabels) return row
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+      <ContextMenuContent className="w-44">
+        <ContextMenuItem onSelect={onSetLabels}>
+          <Tag className="mr-2 h-4 w-4" />
+          Set labels
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   )
 }
 
@@ -814,6 +843,14 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const [activeFilterTab, setActiveFilterTab] = useState<CanvasFilterTab>('all')
   const isMobile = useIsMobile()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
+  const showWorktreeLabelContextMenu = shouldShowWorktreeLabelContextMenu({
+    isMobile,
+    isNative: isTauri(),
+  })
+  const disableWorktreeTextSelection = shouldDisableWorktreeTextSelection({
+    isMobile,
+  })
+
   // Get project info
   const { data: projects = [], isLoading: projectsLoading } = useProjects()
   const project = projects.find(p => p.id === projectId)
@@ -2127,6 +2164,14 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     currentLabels: LabelData[]
   } | null>(null)
 
+  const openWorktreeLabelModal = useCallback((worktree: Worktree) => {
+    setWorktreeLabelTarget({
+      worktreeId: worktree.id,
+      currentLabels: getWorktreeLabels(worktree),
+    })
+    setWorktreeLabelModalOpen(true)
+  }, [])
+
   // Listen for toggle-session-label event — open label modal for worktree
   useEffect(() => {
     if (!!selectedWorktreeModal || selectedIndex === null) return
@@ -2140,17 +2185,19 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       )
       if (!section) return
 
-      setWorktreeLabelTarget({
-        worktreeId: section.worktree.id,
-        currentLabels: getWorktreeLabels(section.worktree),
-      })
-      setWorktreeLabelModalOpen(true)
+      openWorktreeLabelModal(section.worktree)
     }
 
     window.addEventListener('toggle-session-label', handleToggleLabel)
     return () =>
       window.removeEventListener('toggle-session-label', handleToggleLabel)
-  }, [selectedWorktreeModal, selectedIndex, flatCards, worktreeSections])
+  }, [
+    selectedWorktreeModal,
+    selectedIndex,
+    flatCards,
+    worktreeSections,
+    openWorktreeLabelModal,
+  ])
 
   // Linked projects modal (opened by MagicModal via UI store)
   const linkedProjectsModalOpen = useUIStore(
@@ -3052,6 +3099,12 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                               baseBranch,
                             })
                           }}
+                          onSetLabels={
+                            showWorktreeLabelContextMenu
+                              ? () => openWorktreeLabelModal(section.worktree)
+                              : undefined
+                          }
+                          disableTextSelection={disableWorktreeTextSelection}
                         />
                       </div>
                     </SortableCanvasWorktreeSection>

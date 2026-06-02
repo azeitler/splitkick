@@ -1896,6 +1896,12 @@ export default function useStreamingEvents({
             value as 'off' | 'think' | 'megathink' | 'ultrathink'
           )
           break
+        case 'effortLevel':
+          store.setEffortLevel(
+            session_id,
+            value as 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'ultracode'
+          )
+          break
         case 'executionMode':
           store.setExecutionMode(session_id, value as 'plan' | 'build' | 'yolo')
           break
