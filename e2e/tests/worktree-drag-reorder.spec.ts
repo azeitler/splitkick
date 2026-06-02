@@ -1,7 +1,101 @@
 import { test, expect } from '../fixtures/tauri-mock'
-import { worktree1, worktree2 } from '../fixtures/invoke-handlers'
+import { project, worktree1, worktree2 } from '../fixtures/invoke-handlers'
+import { createSession } from '../fixtures/mock-data'
+
+const baseWorktree = {
+  ...worktree1,
+  id: 'base-worktree',
+  name: 'Base Session',
+  branch: project.default_branch,
+  path: project.path,
+  session_type: 'base',
+  order: 0,
+  sessions: [createSession({ id: 'base-session', name: 'Base Session' })],
+}
 
 test.describe('Worktree drag reorder', () => {
+  test.describe('canvas base session gutter', () => {
+    test.use({
+      responseOverrides: {
+        list_worktrees: [
+          baseWorktree,
+          {
+            ...worktree1,
+            order: 1,
+            sessions: [createSession({ id: 'worktree-1-session' })],
+          },
+          {
+            ...worktree2,
+            order: 2,
+            sessions: [createSession({ id: 'worktree-2-session' })],
+          },
+        ],
+      },
+    })
+
+    test('aligns the base session with reorderable worktrees without showing a handle', async ({
+      mockPage,
+    }) => {
+      await expect(mockPage.getByText('Test Project')).toBeVisible({
+        timeout: 5000,
+      })
+
+      const baseSection = mockPage.locator(
+        `[data-pdnd-worktree-scope="canvas-worktree-list"][data-pdnd-worktree-id="${baseWorktree.id}"]`
+      )
+
+      await expect(baseSection).toBeVisible()
+      const worktreeSection = mockPage.locator(
+        `[data-pdnd-worktree-scope="canvas-worktree-list"][data-pdnd-worktree-id="${worktree1.id}"]`
+      )
+
+      await expect(worktreeSection).toBeVisible()
+      const baseBox = await baseSection.boundingBox()
+      const worktreeBox = await worktreeSection.boundingBox()
+      expect(baseBox).not.toBeNull()
+      expect(worktreeBox).not.toBeNull()
+      expect(Math.round(baseBox!.x)).toBe(Math.round(worktreeBox!.x))
+      await expect(
+        baseSection.getByRole('button', { name: /reorder base session/i })
+      ).toHaveCount(0)
+    })
+
+    test('moves the selected canvas worktree with Meta+ArrowUp and Meta+ArrowDown', async ({
+      mockPage,
+    }) => {
+      await expect(mockPage.getByText('Test Project')).toBeVisible({
+        timeout: 5000,
+      })
+
+      await mockPage.keyboard.press('ArrowDown')
+      await mockPage.waitForTimeout(100)
+      await mockPage.keyboard.press('Meta+ArrowDown')
+
+      await expect
+        .poll(async () =>
+          mockPage
+            .locator('[data-pdnd-worktree-scope="canvas-worktree-list"]')
+            .evaluateAll(rows =>
+              rows.map(row => (row as HTMLElement).dataset.pdndWorktreeId)
+            )
+        )
+        .toEqual([baseWorktree.id, worktree2.id, worktree1.id])
+
+      await mockPage.waitForTimeout(100)
+      await mockPage.keyboard.press('Meta+ArrowUp')
+
+      await expect
+        .poll(async () =>
+          mockPage
+            .locator('[data-pdnd-worktree-scope="canvas-worktree-list"]')
+            .evaluateAll(rows =>
+              rows.map(row => (row as HTMLElement).dataset.pdndWorktreeId)
+            )
+        )
+        .toEqual([baseWorktree.id, worktree1.id, worktree2.id])
+    })
+  })
+
   test('reorders sidebar worktrees with the Pragmatic DnD drop indicator', async ({
     mockPage,
   }) => {

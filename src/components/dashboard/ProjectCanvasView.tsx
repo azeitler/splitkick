@@ -272,18 +272,14 @@ function SortableCanvasWorktreeSection({
       ref={elementRef}
       data-pdnd-worktree-id={section.worktree.id}
       data-pdnd-worktree-scope={DRAG_SCOPE_CANVAS_WORKTREE_LIST}
-      className={cn(
-        'relative transition-opacity',
-        !disabled && 'pl-5',
-        isDragging && 'opacity-40'
-      )}
+      className={cn('relative transition-opacity', isDragging && 'opacity-40')}
     >
-      <DropIndicator edge={closestEdge} insetClassName="left-5 right-0" />
+      <DropIndicator edge={closestEdge} insetClassName="left-0 right-0" />
       {!disabled && (
         <button
           ref={dragHandleRef}
           type="button"
-          className="absolute left-0 top-2 z-10 flex h-7 w-5 cursor-grab items-center justify-center rounded text-muted-foreground/45 opacity-0 transition-opacity hover:bg-muted/70 hover:text-muted-foreground group-hover/canvas-list:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 active:cursor-grabbing"
+          className="absolute -left-5 top-2 z-10 flex h-7 w-5 cursor-grab items-center justify-center rounded text-muted-foreground/45 opacity-0 transition-opacity hover:bg-muted/70 hover:text-muted-foreground group-hover/canvas-list:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 active:cursor-grabbing"
           aria-label={`Reorder ${isBaseSession(section.worktree) ? 'Base Session' : section.worktree.name}`}
           onClick={event => event.stopPropagation()}
         >
@@ -1914,6 +1910,50 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     [flatCards, handleWorktreeClick]
   )
 
+  const moveSelectedWorktreeByKeyboard = useCallback(
+    (direction: -1 | 1) => {
+      if (!canvasReorderEnabled || reorderWorktrees.isPending) return
+
+      const selectedItem =
+        selectedIndex === null ? null : (flatCards[selectedIndex] ?? null)
+      const selectedWorktreeId =
+        selectedItem?.worktreeId ??
+        useProjectsStore.getState().selectedWorktreeId ??
+        null
+      if (!selectedWorktreeId || selectedItem?.isPending) return
+
+      const activeId = selectedWorktreeId
+      const oldIndex = canvasDraggableIds.indexOf(activeId)
+      if (oldIndex === -1) return
+
+      const targetId = canvasDraggableIds[oldIndex + direction]
+      if (!targetId) return
+
+      if (selectedItem?.card) {
+        highlightedCardRef.current = {
+          worktreeId: activeId,
+          sessionId: selectedItem.card.session.id,
+        }
+      } else {
+        highlightedCardRef.current = null
+      }
+
+      reorderCanvasFromDrop(
+        activeId,
+        targetId,
+        direction > 0 ? 'bottom' : 'top'
+      )
+    },
+    [
+      canvasDraggableIds,
+      canvasReorderEnabled,
+      flatCards,
+      reorderCanvasFromDrop,
+      reorderWorktrees.isPending,
+      selectedIndex,
+    ]
+  )
+
   // Handle selection change for tracking in store
   const syncSelectionToStore = useCallback(
     (index: number) => {
@@ -1929,6 +1969,24 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     },
     [flatCards]
   )
+
+  useEffect(() => {
+    const handleMoveSelectedWorktree = (event: Event) => {
+      const direction = (event as CustomEvent).detail?.direction
+      if (direction === 'up') moveSelectedWorktreeByKeyboard(-1)
+      if (direction === 'down') moveSelectedWorktreeByKeyboard(1)
+    }
+
+    window.addEventListener(
+      'move-selected-worktree',
+      handleMoveSelectedWorktree
+    )
+    return () =>
+      window.removeEventListener(
+        'move-selected-worktree',
+        handleMoveSelectedWorktree
+      )
+  }, [moveSelectedWorktreeByKeyboard])
 
   const handleFilterTabChange = useCallback(
     (value: CanvasFilterTab) => {
@@ -2225,6 +2283,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     onSelect: handleSelect,
     onNavigateLeft: handleNavigateFilterTabLeft,
     onNavigateRight: handleNavigateFilterTabRight,
+    onMoveUp: () => moveSelectedWorktreeByKeyboard(-1),
+    onMoveDown: () => moveSelectedWorktreeByKeyboard(1),
     enabled: !isModalOpen,
     onSelectionChange: syncSelectionToStore,
   })

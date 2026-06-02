@@ -51,9 +51,20 @@ export const test = base.extend<TauriMockFixtures>({
 
         function getWorktreeStore(worktreeId: string) {
           if (!sessionStore[worktreeId]) {
+            const seededWorktree = worktreeStore.find(
+              worktree => worktree.id === worktreeId
+            )
+            const seededSessions = Array.isArray(seededWorktree?.sessions)
+              ? structuredClone(
+                  seededWorktree.sessions as Record<string, unknown>[]
+                )
+              : []
             sessionStore[worktreeId] = {
-              sessions: [],
-              active_session_id: null,
+              sessions: seededSessions,
+              active_session_id:
+                typeof seededSessions[0]?.id === 'string'
+                  ? seededSessions[0].id
+                  : null,
             }
           }
           return sessionStore[worktreeId]
@@ -179,8 +190,12 @@ export const test = base.extend<TauriMockFixtures>({
         const handlers: Record<string, (args?: any) => unknown> = {}
 
         for (const [cmd, data] of Object.entries(responseMap)) {
-          // If explicitly overridden, use static response (override wins over dynamic)
-          if (overrideSet.has(cmd)) {
+          // Keep worktree list overrides stateful so reorder_worktrees can update
+          // the same in-memory data during tests.
+          if (cmd === 'list_worktrees' || cmd === 'reorder_worktrees') {
+            handlers[cmd] = dynamicHandlers[cmd]
+          } else if (overrideSet.has(cmd)) {
+            // If explicitly overridden, use static response (override wins over dynamic)
             handlers[cmd] = () => structuredClone(data)
           } else if (dynamicHandlers[cmd]) {
             handlers[cmd] = dynamicHandlers[cmd]
