@@ -14,6 +14,13 @@ pub struct LabelData {
     pub name: String,
     /// Background color hex value (e.g. "#eab308")
     pub color: String,
+    /// Show this worktree label as a project-view filter tab when used in the current project.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub pinned: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// Deserializes label from either a plain string (old format) or a LabelData object (new format).
@@ -27,6 +34,7 @@ where
         Some(serde_json::Value::String(s)) => Ok(Some(LabelData {
             name: s,
             color: DEFAULT_LABEL_COLOR.to_string(),
+            pinned: false,
         })),
         Some(serde_json::Value::Object(_)) => {
             let label: LabelData =

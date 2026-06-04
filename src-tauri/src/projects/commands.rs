@@ -5478,6 +5478,7 @@ fn append_coderabbit_review_label(labels: &mut Vec<LabelData>) {
     labels.push(LabelData {
         name: CODERABBIT_REVIEW_LABEL_NAME.to_string(),
         color: CODERABBIT_REVIEW_LABEL_COLOR.to_string(),
+        pinned: false,
     });
 }
 
@@ -7529,7 +7530,8 @@ fn build_codex_review_args(
         "--json".into(),
         "--model".into(),
         actual_model.into(),
-        "--full-auto".into(),
+        "--sandbox".into(),
+        "workspace-write".into(),
         "--output-schema".into(),
         schema_file.as_os_str().to_os_string(),
     ];
@@ -8340,6 +8342,14 @@ mod codex_review_args_tests {
                     working_dir.as_os_str().to_os_string(),
                 ]
         }));
+        assert!(args.windows(2).any(|window| {
+            window
+                == [
+                    OsString::from("--sandbox"),
+                    OsString::from("workspace-write"),
+                ]
+        }));
+        assert!(!args.iter().any(|arg| arg == "--full-auto"));
         assert_eq!(args.last(), Some(&OsString::from("-")));
     }
 }
