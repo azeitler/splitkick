@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import {
   Select,
   SelectContent,
@@ -176,7 +177,15 @@ export function WslSetupStep({ onComplete }: WslSetupStepProps) {
         >
           <Terminal className="h-8 w-8 text-muted-foreground" />
           <div className="text-center">
-            <div className="font-medium">WSL</div>
+            <div className="flex items-center justify-center gap-1.5 font-medium">
+              <span>WSL</span>
+              <Badge
+                variant="outline"
+                className="rounded-sm border-yellow-500/40 bg-yellow-500/10 px-1.5 py-0 text-[10px] leading-4 tracking-wide text-yellow-600 uppercase dark:text-yellow-400"
+              >
+                Beta
+              </Badge>
+            </div>
             <div className="text-muted-foreground mt-1 text-xs">
               Your repos and tools live inside WSL
             </div>
