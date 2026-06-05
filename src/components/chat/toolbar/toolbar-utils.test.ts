@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formatCommandCodeModelLabel,
   getProviderDisplayName,
   getSessionProviderDisplayName,
 } from './toolbar-utils'
@@ -28,6 +29,20 @@ describe('getSessionProviderDisplayName', () => {
     expect(getSessionProviderDisplayName('claude', null)).toBe('Anthropic')
     expect(getSessionProviderDisplayName('claude', 'openrouter')).toBe(
       'openrouter'
+    )
+  })
+})
+
+describe('formatCommandCodeModelLabel', () => {
+  it('formats CommandCode provider/model ids as backend-prefixed model names', () => {
+    expect(
+      formatCommandCodeModelLabel('commandcode/deepseek/deepseek-v4-flash')
+    ).toBe('CommandCode · Deepseek V4 Flash')
+    expect(
+      formatCommandCodeModelLabel('commandcode/claude-sonnet-4-6')
+    ).toBe('CommandCode · Claude Sonnet 4.6')
+    expect(formatCommandCodeModelLabel('commandcode/moonshotai/Kimi-K2.5')).toBe(
+      'CommandCode · Kimi K2.5'
     )
   })
 })

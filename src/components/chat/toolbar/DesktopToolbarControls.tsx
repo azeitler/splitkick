@@ -209,6 +209,8 @@ export function DesktopToolbarControls({
   const displayedEffortLabel =
     effortLevelOptions.find(o => o.value === displayedEffortLevel)?.label ??
     displayedEffortLevel
+  const hideReasoningControl =
+    hideThinkingLevel || selectedBackend === 'commandcode'
 
   // Prevent Radix from restoring focus to the trigger button;
   // redirect focus to the chat input instead.
@@ -623,11 +625,11 @@ export function DesktopToolbarControls({
         onBackendModelChange={handleBackendModelChange}
       />
 
-      {!hideThinkingLevel && (
+      {!hideReasoningControl && (
         <div className="hidden @xl:block h-4 w-px bg-border/50" />
       )}
 
-      {hideThinkingLevel ? null : useAdaptiveThinking || isCodex ? (
+      {hideReasoningControl ? null : useAdaptiveThinking || isCodex ? (
         <DropdownMenu
           open={thinkingDropdownOpen}
           onOpenChange={setThinkingDropdownOpen}

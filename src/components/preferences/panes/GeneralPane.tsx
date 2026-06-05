@@ -77,7 +77,6 @@ import {
   cursorCliQueryKeys,
 } from '@/services/cursor-cli'
 import {
-  getCommandCodeInstallCommand,
   useAvailableCommandCodeModels,
   useCommandCodeCliStatus,
   useCommandCodeCliAuth,
@@ -214,7 +213,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteCliTarget, setDeleteCliTarget] = useState<
-    'claude' | 'codex' | 'opencode' | 'gh' | 'coderabbit' | null
+    'claude' | 'codex' | 'opencode' | 'gh' | 'coderabbit' | 'commandcode' | null
   >(null)
   const [isDeletingCli, setIsDeletingCli] = useState(false)
 
@@ -596,7 +595,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     }
   }
 
-  const handleCommandCodeSourceChange = (value: 'path') => {
+  const handleCommandCodeSourceChange = (value: 'jean' | 'path') => {
     if (preferences) {
       patchPreferences.mutate(
         { commandcode_cli_source: value },
@@ -626,6 +625,10 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
         name: 'CodeRabbit CLI',
         cmd: 'uninstall_coderabbit_cli' as const,
       },
+      commandcode: {
+        name: 'Command Code CLI',
+        cmd: 'uninstall_commandcode_cli' as const,
+      },
     }
     const { name, cmd } = labelMap[target]
     setIsDeletingCli(true)
@@ -641,7 +644,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               ? 'opencode_cli_source'
               : target === 'gh'
                 ? 'gh_cli_source'
-                : 'coderabbit_cli_source'
+                : target === 'commandcode'
+                  ? 'commandcode_cli_source'
+                  : 'coderabbit_cli_source'
       await new Promise<void>((resolve, reject) => {
         patchPreferences.mutate(
           { [sourceKey]: 'path' } as Partial<AppPreferences>,
@@ -660,7 +665,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               ? opencodeCliQueryKeys.all
               : target === 'gh'
                 ? ghCliQueryKeys.all
-                : coderabbitCliQueryKeys.all
+                : target === 'commandcode'
+                  ? commandcodeCliQueryKeys.all
+                  : coderabbitCliQueryKeys.all
       queryClient.invalidateQueries({ queryKey: queryKeys })
       const pathFound =
         target === 'claude'
@@ -671,7 +678,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               ? opencodePathDetection?.found
               : target === 'gh'
                 ? ghPathDetection?.found
-                : coderabbitPathDetection?.found
+                : target === 'commandcode'
+                  ? commandcodePathDetection?.found
+                  : coderabbitPathDetection?.found
       if (pathFound) {
         toast.success(`Jean-managed ${name} removed. Using system PATH.`, {
           id: toastId,
@@ -1188,21 +1197,16 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     openCliLoginModal('commandcode', commandcodeStatus.path, ['login'])
   }, [commandcodeStatus?.path, openCliLoginModal])
 
-  const handleCommandCodeInstall = useCallback(async () => {
-    try {
-      const installCommand = await getCommandCodeInstallCommand()
-      openCliLoginModal(
-        'commandcode',
-        installCommand.command,
-        installCommand.args,
-        'install'
-      )
-    } catch (error) {
-      toast.error('Failed to prepare Command Code install command', {
-        description: error instanceof Error ? error.message : String(error),
-      })
+  const handleCommandCodeInstall = useCallback(() => {
+    if (preferences?.commandcode_cli_source !== 'jean') {
+      patchPreferences.mutate({ commandcode_cli_source: 'jean' })
     }
-  }, [openCliLoginModal])
+    openCliUpdateModal('commandcode')
+  }, [
+    openCliUpdateModal,
+    patchPreferences,
+    preferences?.commandcode_cli_source,
+  ])
 
   const handleCopyPath = useCallback((path: string | null | undefined) => {
     if (!path) return
@@ -2175,9 +2179,13 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               {isCommandCodeLoading ? (
                 <Loader2 className="size-4 animate-spin text-muted-foreground" />
               ) : commandcodeStatus?.installed ? (
-                <span className="text-sm">
+                <Button
+                  variant="outline"
+                  className="w-full sm:w-40 justify-between"
+                  onClick={handleCommandCodeInstall}
+                >
                   {commandcodeStatus.version ?? 'Installed'}
-                </span>
+                </Button>
               ) : (
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-muted-foreground">
@@ -2193,44 +2201,62 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                 </div>
               )}
             </InlineField>
-            {(commandcodeStatus?.installed ||
-              commandcodePathDetection?.found) && (
-              <InlineField
-                label="Source"
-                description={
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <button
-                        onClick={() =>
-                          handleCopyPath(
-                            commandcodePathDetection?.path ??
-                              commandcodeStatus?.path
-                          )
-                        }
-                        className="text-left hover:underline cursor-pointer"
-                      >
-                        {commandcodePathDetection?.path ??
-                          commandcodeStatus?.path ??
-                          'System PATH'}
-                      </button>
-                    </TooltipTrigger>
-                    <TooltipContent>Click to copy path</TooltipContent>
-                  </Tooltip>
-                }
-              >
+            <InlineField
+              label="Source"
+              description={
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() =>
+                        handleCopyPath(
+                          preferences?.commandcode_cli_source === 'path'
+                            ? commandcodePathDetection?.path
+                            : commandcodeStatus?.path
+                        )
+                      }
+                      className="text-left hover:underline cursor-pointer"
+                    >
+                      {preferences?.commandcode_cli_source === 'path'
+                        ? (commandcodePathDetection?.path ?? 'System PATH')
+                        : (commandcodeStatus?.path ?? 'Not installed')}
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>Click to copy path</TooltipContent>
+                </Tooltip>
+              }
+            >
+              <div className="flex items-center gap-2">
                 <Select
-                  value={preferences?.commandcode_cli_source ?? 'path'}
+                  value={preferences?.commandcode_cli_source ?? 'jean'}
                   onValueChange={handleCommandCodeSourceChange}
                 >
-                  <SelectTrigger className="w-96" hideIcon>
+                  <SelectTrigger className="w-96">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="path">System PATH</SelectItem>
+                    <SelectItem value="jean">Jean (managed)</SelectItem>
+                    <SelectItem
+                      value="path"
+                      disabled={!commandcodePathDetection?.found}
+                    >
+                      System PATH
+                      {!commandcodePathDetection?.found && ' (not found)'}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
-              </InlineField>
-            )}
+                {preferences?.commandcode_cli_source === 'jean' &&
+                  commandcodeStatus?.installed && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setDeleteCliTarget('commandcode')}
+                    >
+                      Delete managed install
+                    </Button>
+                  )}
+              </div>
+            </InlineField>
           </div>
         </SettingsSection>
       )}
@@ -3745,7 +3771,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                     ? 'OpenCode CLI'
                     : deleteCliTarget === 'coderabbit'
                       ? 'CodeRabbit CLI'
-                      : 'GitHub CLI'}
+                      : deleteCliTarget === 'commandcode'
+                        ? 'Command Code CLI'
+                        : 'GitHub CLI'}
               ?
             </AlertDialogTitle>
             <AlertDialogDescription>
@@ -3761,7 +3789,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                           ? ghPathDetection?.found
                           : deleteCliTarget === 'coderabbit'
                             ? coderabbitPathDetection?.found
-                            : false
+                            : deleteCliTarget === 'commandcode'
+                              ? commandcodePathDetection?.found
+                              : false
                 return pathFound
                   ? 'The Jean-managed binary will be removed and the source will switch to System PATH. You can reinstall it later from this page.'
                   : 'The Jean-managed binary will be removed. No System PATH version was detected, so this backend will be unavailable until you reinstall it.'

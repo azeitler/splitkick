@@ -13,6 +13,14 @@ use std::process::Stdio;
 use tauri::AppHandle;
 
 const DEFAULT_MAX_TURNS: &str = "30";
+const JEAN_PLAN_OPEN: &str = "<jean-plan>";
+const JEAN_PLAN_CLOSE: &str = "</jean-plan>";
+const COMMANDCODE_PLAN_CONTRACT: &str = r#"<commandcode_plan_contract>
+Jean runs Command Code headlessly, so native interactive plan-exit callbacks are unavailable.
+- For normal answers, questions, greetings, and analysis that is not ready for implementation approval: respond normally.
+- When you have a concrete implementation plan that should pause for Jean's Approve/YOLO controls: wrap only that plan in <jean-plan>...</jean-plan>.
+- Do not call exit_plan_mode in this headless integration.
+</commandcode_plan_contract>"#;
 
 #[derive(serde::Serialize, Clone)]
 struct ChunkEvent {
@@ -34,7 +42,13 @@ pub struct CommandCodeResponse {
     pub tool_calls: Vec<ToolCall>,
     pub content_blocks: Vec<ContentBlock>,
     pub cancelled: bool,
+    pub waiting_for_plan: bool,
     pub usage: Option<UsageData>,
+}
+
+struct ParsedCommandCodeOutput {
+    content: String,
+    waiting_for_plan: bool,
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -75,12 +89,38 @@ fn commandcode_error_for_status(code: Option<i32>, stderr: &str) -> String {
     }
 }
 
-fn build_prompt(system_context: Option<&str>, message: &str) -> String {
+fn parse_commandcode_plan_output(content: &str) -> ParsedCommandCodeOutput {
+    let trimmed = content.trim();
+    let Some(start) = trimmed.find(JEAN_PLAN_OPEN) else {
+        return ParsedCommandCodeOutput {
+            content: trimmed.to_string(),
+            waiting_for_plan: false,
+        };
+    };
+    let plan_start = start + JEAN_PLAN_OPEN.len();
+    let Some(relative_end) = trimmed[plan_start..].find(JEAN_PLAN_CLOSE) else {
+        return ParsedCommandCodeOutput {
+            content: trimmed.to_string(),
+            waiting_for_plan: false,
+        };
+    };
+    let end = plan_start + relative_end;
+    ParsedCommandCodeOutput {
+        content: trimmed[plan_start..end].trim().to_string(),
+        waiting_for_plan: true,
+    }
+}
+
+fn build_prompt(system_context: Option<&str>, message: &str, mode: &str) -> String {
     let mut prompt = String::new();
     if let Some(ctx) = system_context.map(str::trim).filter(|s| !s.is_empty()) {
         prompt.push_str("<jean_context>\n");
         prompt.push_str(ctx);
         prompt.push_str("\n</jean_context>\n\n");
+    }
+    if mode == "plan" {
+        prompt.push_str(COMMANDCODE_PLAN_CONTRACT);
+        prompt.push_str("\n\n");
     }
     prompt.push_str(message);
     prompt
@@ -196,7 +236,7 @@ pub fn execute_commandcode_headless(
     }
 
     if let Some(mut stdin) = child.stdin.take() {
-        let prompt = build_prompt(system_context, message);
+        let prompt = build_prompt(system_context, message, mode);
         log::debug!(
             "Writing Command Code stdin session={} prompt_bytes={} prompt_preview=\"{}\"",
             jean_session_id,
@@ -243,7 +283,9 @@ pub fn execute_commandcode_headless(
         return Err(commandcode_error_for_status(output.status.code(), &stderr));
     }
 
-    let content = stdout.trim().to_string();
+    let parsed_output = parse_commandcode_plan_output(stdout.trim());
+    let content = parsed_output.content;
+    let waiting_for_plan = mode == "plan" && parsed_output.waiting_for_plan;
     if !content.is_empty() {
         match app.emit_all(
             "chat:chunk",
@@ -276,13 +318,13 @@ pub fn execute_commandcode_headless(
         &DoneEvent {
             session_id: jean_session_id.to_string(),
             worktree_id: worktree_id.to_string(),
-            waiting_for_plan: mode == "plan" && !content.is_empty(),
+            waiting_for_plan,
         },
     ) {
         Ok(_) => log::debug!(
             "Emitted Command Code chat:done session={} waiting_for_plan={}",
             jean_session_id,
-            mode == "plan" && !content.is_empty()
+            waiting_for_plan
         ),
         Err(error) => log::warn!(
             "Failed to emit Command Code chat:done session={}: {}",
@@ -306,6 +348,7 @@ pub fn execute_commandcode_headless(
             tool_calls: vec![],
             content_blocks,
             cancelled: false,
+            waiting_for_plan,
             usage: None,
         },
     ))
@@ -413,4 +456,41 @@ pub fn execute_one_shot_commandcode(
         return Err(commandcode_error_for_status(output.status.code(), &stderr));
     }
     Ok(stdout.trim().to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn commandcode_plan_detection_does_not_wait_for_plain_chat() {
+        let output =
+            parse_commandcode_plan_output("Doing well, thanks. What are we working on today?");
+
+        assert_eq!(
+            output.content,
+            "Doing well, thanks. What are we working on today?"
+        );
+        assert!(!output.waiting_for_plan);
+    }
+
+    #[test]
+    fn commandcode_plan_detection_waits_for_marked_plan() {
+        let output = parse_commandcode_plan_output(
+            "I found the issue.\n\n<jean-plan>\n1. Add regression test\n2. Fix parser\n</jean-plan>",
+        );
+
+        assert_eq!(output.content, "1. Add regression test\n2. Fix parser");
+        assert!(output.waiting_for_plan);
+    }
+
+    #[test]
+    fn commandcode_plan_prompt_guidance_is_only_added_in_plan_mode() {
+        let plan_prompt = build_prompt(Some("context"), "message", "plan");
+        assert!(plan_prompt.contains("<commandcode_plan_contract>"));
+        assert!(plan_prompt.contains("<jean-plan>"));
+
+        let build_prompt = build_prompt(Some("context"), "message", "build");
+        assert!(!build_prompt.contains("<commandcode_plan_contract>"));
+    }
 }

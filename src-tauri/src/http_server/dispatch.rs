@@ -2144,9 +2144,28 @@ pub async fn dispatch_command(
             let result = crate::commandcode_cli::list_commandcode_models(app.clone()).await?;
             to_value(result)
         }
-        "get_commandcode_install_command" => {
-            let result = crate::commandcode_cli::get_commandcode_install_command().await?;
+        "get_available_commandcode_versions" => {
+            let result =
+                crate::commandcode_cli::get_available_commandcode_versions(app.clone()).await?;
             to_value(result)
+        }
+        "get_commandcode_install_command" => {
+            let result =
+                crate::commandcode_cli::get_commandcode_install_command(app.clone()).await?;
+            to_value(result)
+        }
+        "install_commandcode_cli" => {
+            let version: Option<String> = from_field_opt(&args, "version")?;
+            crate::commandcode_cli::install_commandcode_cli(app.clone(), version).await?;
+            Ok(Value::Null)
+        }
+        "uninstall_commandcode_cli" => {
+            crate::commandcode_cli::uninstall_commandcode_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
+        "update_commandcode_cli" => {
+            crate::commandcode_cli::update_commandcode_cli(app.clone()).await?;
+            Ok(Value::Null)
         }
         "check_cursor_cli_installed" => {
             let result = crate::cursor_cli::check_cursor_cli_installed(app.clone()).await?;

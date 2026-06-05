@@ -1,13 +1,17 @@
 /** Command Code CLI management service. */
 
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useCallback, useState } from 'react'
+import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import type {
   CommandCodeAuthStatus,
   CommandCodeCliStatus,
   CommandCodeInstallCommand,
+  CommandCodeInstallProgress,
   CommandCodeModelInfo,
+  CommandCodeReleaseInfo,
 } from '@/types/commandcode-cli'
 import { hasBackend } from '@/lib/environment'
 
@@ -18,6 +22,7 @@ export const commandcodeCliQueryKeys = {
   status: () => [...commandcodeCliQueryKeys.all, 'status'] as const,
   auth: () => [...commandcodeCliQueryKeys.all, 'auth'] as const,
   models: () => [...commandcodeCliQueryKeys.all, 'models'] as const,
+  versions: () => [...commandcodeCliQueryKeys.all, 'versions'] as const,
   installCommand: () =>
     [...commandcodeCliQueryKeys.all, 'install-command'] as const,
 }
@@ -122,6 +127,104 @@ export function useAvailableCommandCodeModels(options?: { enabled?: boolean }) {
     staleTime: 1000 * 60 * 5,
     gcTime: 1000 * 60 * 10,
   })
+}
+
+export function useAvailableCommandCodeVersions(options?: {
+  enabled?: boolean
+}) {
+  return useQuery({
+    queryKey: commandcodeCliQueryKeys.versions(),
+    queryFn: async (): Promise<CommandCodeReleaseInfo[]> => {
+      if (!isTauri()) return []
+      try {
+        const versions = await invoke<
+          {
+            version: string
+            tag_name: string
+            published_at: string
+            prerelease: boolean
+          }[]
+        >('get_available_commandcode_versions')
+        return versions.map(v => ({
+          version: v.version,
+          tagName: v.tag_name,
+          publishedAt: v.published_at,
+          prerelease: v.prerelease,
+        }))
+      } catch (error) {
+        logger.error('Failed to fetch Command Code CLI versions', { error })
+        return []
+      }
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: 1000 * 60 * 15,
+    gcTime: 1000 * 60 * 30,
+    refetchInterval: 1000 * 60 * 60,
+  })
+}
+
+export function useInstallCommandCodeCli() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (version?: string) => {
+      await invoke('install_commandcode_cli', { version: version ?? null })
+    },
+    retry: false,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: commandcodeCliQueryKeys.all })
+      toast.success('Command Code CLI installed successfully')
+    },
+    onError: error => {
+      logger.error('Failed to install Command Code CLI', { error })
+      toast.error('Failed to install Command Code CLI', {
+        description: String(error),
+      })
+    },
+  })
+}
+
+export function useCommandCodeInstallProgress(): [
+  CommandCodeInstallProgress | null,
+  () => void,
+] {
+  const [progress, setProgress] = useState<CommandCodeInstallProgress | null>(
+    null
+  )
+  const resetProgress = useCallback(() => setProgress(null), [])
+  return [progress, resetProgress]
+}
+
+export function useCommandCodeCliSetup() {
+  const status = useCommandCodeCliStatus()
+  const versions = useAvailableCommandCodeVersions()
+  const installMutation = useInstallCommandCodeCli()
+  const [progress, resetProgress] = useCommandCodeInstallProgress()
+
+  const install = (
+    version: string,
+    options?: { onSuccess?: () => void; onError?: (error: Error) => void }
+  ) => {
+    resetProgress()
+    installMutation.mutate(version, {
+      onSuccess: () => options?.onSuccess?.(),
+      onError: error => options?.onError?.(error),
+    })
+  }
+
+  return {
+    status: status.data,
+    isStatusLoading: status.isLoading,
+    versions: versions.data ?? [],
+    isVersionsLoading: versions.isFetching,
+    isVersionsError: versions.isError,
+    refetchVersions: versions.refetch,
+    needsSetup: !status.isLoading && !status.data?.installed,
+    isInstalling: installMutation.isPending,
+    installError: installMutation.error,
+    progress,
+    install,
+    refetchStatus: status.refetch,
+  }
 }
 
 export async function getCommandCodeInstallCommand(): Promise<CommandCodeInstallCommand> {

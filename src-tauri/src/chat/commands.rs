@@ -165,6 +165,39 @@ pub(crate) fn resolve_magic_prompt_backend(
     resolve_default_backend(app, worktree_id)
 }
 
+fn infer_backend_from_model(model: &str, fallback: Backend) -> Backend {
+    if crate::is_cursor_model(model) {
+        Backend::Cursor
+    } else if crate::is_opencode_model(model) {
+        Backend::Opencode
+    } else if model.starts_with("commandcode/") {
+        Backend::Commandcode
+    } else if crate::is_codex_model(model) {
+        Backend::Codex
+    } else {
+        fallback
+    }
+}
+
+fn default_model_for_backend(
+    backend: &Backend,
+    preferences: &crate::AppPreferences,
+) -> Option<String> {
+    let model = match backend {
+        Backend::Codex => &preferences.selected_codex_model,
+        Backend::Opencode => &preferences.selected_opencode_model,
+        Backend::Cursor => &preferences.selected_cursor_model,
+        Backend::Commandcode => &preferences.selected_commandcode_model,
+        Backend::Claude => &preferences.selected_model,
+    };
+
+    if model.trim().is_empty() {
+        None
+    } else {
+        Some(model.clone())
+    }
+}
+
 /// Get current Unix timestamp in seconds
 fn now() -> u64 {
     SystemTime::now()
@@ -535,6 +568,8 @@ pub async fn create_session(
 ) -> Result<Session, String> {
     log::trace!("Creating new session for worktree: {worktree_id}");
 
+    let preferences = crate::load_preferences(app.clone()).await.ok();
+
     // Resolve backend: explicit param → project default → global preference → Claude
     let backend_enum = match backend.as_deref() {
         Some("codex") => Backend::Codex,
@@ -545,7 +580,7 @@ pub async fn create_session(
         _ => {
             // No explicit backend — check project default, then global preference
             let mut resolved = Backend::Claude;
-            if let Ok(prefs) = crate::load_preferences(app.clone()).await {
+            if let Some(prefs) = preferences.as_ref() {
                 if prefs.default_backend == "codex" {
                     resolved = Backend::Codex;
                 } else if prefs.default_backend == "opencode" {
@@ -597,6 +632,11 @@ pub async fn create_session(
         session.terminal_command = terminal_command.clone();
         session.terminal_command_args = terminal_command_args.clone().unwrap_or_default();
         session.terminal_label = terminal_label.clone();
+        if primary_surface.as_deref() != Some("terminal") {
+            session.selected_model = preferences
+                .as_ref()
+                .and_then(|prefs| default_model_for_backend(&backend_enum, prefs));
+        }
         let session_id = session.id.clone();
 
         sessions.sessions.push(session.clone());
@@ -2118,15 +2158,7 @@ pub async fn send_chat_message(
     };
     // Override backend based on model string (safety net: model always wins)
     let effective_backend = if let Some(ref m) = model {
-        if crate::is_cursor_model(m) {
-            Backend::Cursor
-        } else if crate::is_opencode_model(m) {
-            Backend::Opencode
-        } else if crate::is_codex_model(m) {
-            Backend::Codex
-        } else {
-            effective_backend
-        }
+        infer_backend_from_model(m, effective_backend)
     } else {
         effective_backend
     };
@@ -2267,6 +2299,8 @@ pub async fn send_chat_message(
         tool_calls: Vec<super::types::ToolCall>,
         content_blocks: Vec<super::types::ContentBlock>,
         cancelled: bool,
+        /// True when the backend produced an approval-ready plan.
+        waiting_for_plan: bool,
         /// Whether a chat:error event was emitted during execution
         error_emitted: bool,
         usage: Option<super::types::UsageData>,
@@ -2418,6 +2452,7 @@ pub async fn send_chat_message(
                                     tool_calls: response.tool_calls,
                                     content_blocks: response.content_blocks,
                                     cancelled: response.cancelled,
+                                    waiting_for_plan: false,
                                     error_emitted: false,
                                     usage: response.usage,
                                     backend: Backend::Claude,
@@ -2911,6 +2946,7 @@ pub async fn send_chat_message(
                             tool_calls: response.tool_calls,
                             content_blocks: response.content_blocks,
                             cancelled: response.cancelled,
+                            waiting_for_plan: false,
                             error_emitted: response.error_emitted,
                             usage: response.usage,
                             backend: Backend::Codex,
@@ -3267,22 +3303,27 @@ pub async fn send_chat_message(
                     system_prompt.as_deref(),
                     cancel_flag,
                 ) {
-                    Ok(response) => Ok((
-                        // OpenCode has no child process PID; use 0 as a sentinel.
-                        // Crash recovery checks run.pid via is_process_alive — None means
-                        // the pid_callback was never called, which is correct for OpenCode.
-                        0,
-                        UnifiedResponse {
-                            content: response.content,
-                            resume_id: response.session_id,
-                            tool_calls: response.tool_calls,
-                            content_blocks: response.content_blocks,
-                            cancelled: response.cancelled,
-                            error_emitted: false,
-                            usage: response.usage,
-                            backend: Backend::Opencode,
-                        },
-                    )),
+                    Ok(response) => {
+                        let waiting_for_plan = thread_execution_mode.as_deref() == Some("plan")
+                            && !response.content.is_empty();
+                        Ok((
+                            // OpenCode has no child process PID; use 0 as a sentinel.
+                            // Crash recovery checks run.pid via is_process_alive — None means
+                            // the pid_callback was never called, which is correct for OpenCode.
+                            0,
+                            UnifiedResponse {
+                                content: response.content,
+                                resume_id: response.session_id,
+                                tool_calls: response.tool_calls,
+                                content_blocks: response.content_blocks,
+                                cancelled: response.cancelled,
+                                waiting_for_plan,
+                                error_emitted: false,
+                                usage: response.usage,
+                                backend: Backend::Opencode,
+                            },
+                        ))
+                    }
                     Err(e) => {
                         log::error!("execute_opencode FAILED: {e}");
                         Err(e)
@@ -3429,6 +3470,7 @@ pub async fn send_chat_message(
                             tool_calls: response.tool_calls,
                             content_blocks: response.content_blocks,
                             cancelled: response.cancelled,
+                            waiting_for_plan: false,
                             error_emitted: false,
                             usage: response.usage,
                             backend: Backend::Cursor,
@@ -3466,6 +3508,7 @@ pub async fn send_chat_message(
                             tool_calls: response.tool_calls,
                             content_blocks: response.content_blocks,
                             cancelled: response.cancelled,
+                            waiting_for_plan: response.waiting_for_plan,
                             error_emitted: false,
                             usage: response.usage,
                             backend: Backend::Commandcode,
@@ -3828,9 +3871,10 @@ pub async fn send_chat_message(
         .iter()
         .any(|tc| tc.name == "ExitPlanMode" || tc.name == "CodexPlan");
     let is_plan_mode_with_content = match response_backend {
-        Backend::Opencode | Backend::Commandcode => {
+        Backend::Opencode => {
             execution_mode.as_deref() == Some("plan") && has_content && !has_plan_tool
         }
+        Backend::Commandcode => unified_response.waiting_for_plan,
         Backend::Cursor => false, // Plan approval only on real createPlanToolCall / interaction_query
         _ => false,
     };
@@ -7101,6 +7145,26 @@ mod tests {
         assert!(QUEUE_DEFAULT_ALLOWED_TOOLS.contains(&"Read"));
         assert!(QUEUE_DEFAULT_ALLOWED_TOOLS.contains(&"Glob"));
         assert!(QUEUE_DEFAULT_ALLOWED_TOOLS.contains(&"Grep"));
+    }
+
+    #[test]
+    fn commandcode_model_implies_commandcode_backend() {
+        assert_eq!(
+            infer_backend_from_model("commandcode/deepseek/deepseek-v4-flash", Backend::Claude),
+            Backend::Commandcode
+        );
+    }
+
+    #[test]
+    fn default_model_for_commandcode_backend_uses_commandcode_preference() {
+        let mut prefs = crate::AppPreferences::default();
+        prefs.selected_model = "claude-sonnet-4-6[1m]".to_string();
+        prefs.selected_commandcode_model = "commandcode/deepseek/deepseek-v4-flash".to_string();
+
+        assert_eq!(
+            default_model_for_backend(&Backend::Commandcode, &prefs),
+            Some("commandcode/deepseek/deepseek-v4-flash".to_string())
+        );
     }
 
     #[test]

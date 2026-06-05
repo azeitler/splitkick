@@ -1855,7 +1855,7 @@ export const defaultPreferences: AppPreferences = {
   codex_cli_source: 'jean', // Default: Jean-managed
   opencode_cli_source: 'jean', // Default: Jean-managed
   gh_cli_source: 'jean', // Default: Jean-managed
-  commandcode_cli_source: 'path', // Default: system PATH (npm-distributed CLI)
+  commandcode_cli_source: 'jean', // Default: Jean-managed
   wsl_mode_chosen: false, // Default: not yet chosen
   wsl_enabled: false, // Default: native Windows
   wsl_distro: '', // Default: empty

@@ -42,6 +42,7 @@ export type CliUpdateModalType =
   | 'codex'
   | 'opencode'
   | 'coderabbit'
+  | 'commandcode'
   | null
 
 export type CliLoginModalType =
@@ -171,9 +172,7 @@ interface UIState {
     projectPath?: string | null,
     branch?: string | null
   ) => void
-  openCliUpdateModal: (
-    type: 'claude' | 'gh' | 'codex' | 'opencode' | 'coderabbit'
-  ) => void
+  openCliUpdateModal: (type: Exclude<CliUpdateModalType, null>) => void
   closeCliUpdateModal: () => void
   openCliLoginModal: (
     type:

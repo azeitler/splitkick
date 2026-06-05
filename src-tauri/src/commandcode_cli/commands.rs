@@ -3,13 +3,19 @@
 use serde::{Deserialize, Serialize};
 use std::io::Read;
 use std::process::{Command, Output, Stdio};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
-use super::config::{resolve_cli_binary, CLI_BINARY_CANDIDATES};
+use super::config::{
+    ensure_cli_dir, find_system_commandcode_binary, get_cli_binary_path, get_cli_dir,
+    resolve_cli_binary,
+};
 use crate::platform::silent_command;
 
 const AUTH_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
+const COMMANDCODE_NPM_REGISTRY_URL: &str = "https://registry.npmjs.org/command-code";
+const COMMANDCODE_VERSIONS_CACHE_FILE: &str = "commandcode-versions-cache.json";
+const FALLBACK_COMMANDCODE_VERSION: &str = "latest";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommandCodeCliStatus {
@@ -45,6 +51,20 @@ pub struct CommandCodeInstallCommand {
 pub struct CommandCodeModelInfo {
     pub id: String,
     pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommandCodeReleaseInfo {
+    pub version: String,
+    pub tag_name: String,
+    pub published_at: String,
+    pub prerelease: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct CachedCommandCodeVersions {
+    versions: Vec<CommandCodeReleaseInfo>,
+    fetched_at: String,
 }
 
 fn strip_ansi(input: &str) -> String {
@@ -130,8 +150,13 @@ fn is_model_token(token: &str) -> bool {
     let token = token.trim_matches(|c: char| {
         c == '`' || c == '"' || c == '\'' || c == ',' || c == '|' || c == '*'
     });
+    let lower = token.to_ascii_lowercase();
     if token.is_empty()
         || token.starts_with('-')
+        || token.starts_with("http://")
+        || token.starts_with("https://")
+        || token.contains(':')
+        || token.matches('/').count() > 1
         || token.eq_ignore_ascii_case("model")
         || token.eq_ignore_ascii_case("id")
         || token.eq_ignore_ascii_case("name")
@@ -143,32 +168,80 @@ fn is_model_token(token: &str) -> bool {
     {
         return false;
     }
-    token.contains('/')
+
+    let provider_model = token
+        .split_once('/')
+        .is_some_and(|(provider, model)| !provider.is_empty() && !model.is_empty());
+
+    provider_model
         || token.starts_with("claude-")
         || token.starts_with("gpt-")
         || token.starts_with("gemini-")
-        || token.to_ascii_lowercase().contains("kimi-")
+        || lower.contains("kimi-")
+}
+
+fn format_model_word(word: &str) -> String {
+    let lower = word.to_ascii_lowercase();
+    match lower.as_str() {
+        "claude" => "Claude".to_string(),
+        "gpt" => "GPT".to_string(),
+        "glm" => "GLM".to_string(),
+        "kimi" => "Kimi".to_string(),
+        "codex" => "Codex".to_string(),
+        "sonnet" => "Sonnet".to_string(),
+        "haiku" => "Haiku".to_string(),
+        "opus" => "Opus".to_string(),
+        "minimax" => "MiniMax".to_string(),
+        "qwen" => "Qwen".to_string(),
+        "nvidia" => "NVIDIA".to_string(),
+        _ if lower.starts_with("qwen") => format!("Qwen{}", &word[4..]),
+        _ if lower.starts_with("kimi") => format!("Kimi{}", &word[4..]),
+        _ if word.len() <= 3 || word.chars().any(|c| c.is_ascii_digit()) => {
+            word.to_ascii_uppercase()
+        }
+        _ => {
+            let mut chars = word.chars();
+            match chars.next() {
+                Some(first) => {
+                    first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
+                }
+                None => String::new(),
+            }
+        }
+    }
 }
 
 fn label_from_model_id(id: &str) -> String {
-    id.rsplit('/')
+    let raw_tokens: Vec<String> = id
+        .rsplit('/')
         .next()
         .unwrap_or(id)
         .replace(['-', '_'], " ")
         .split_whitespace()
-        .map(|word| {
-            if word.len() <= 3 || word.chars().any(|c| c.is_ascii_digit()) {
-                word.to_ascii_uppercase()
-            } else {
-                let mut chars = word.chars();
-                match chars.next() {
-                    Some(first) => {
-                        first.to_uppercase().collect::<String>() + &chars.as_str().to_lowercase()
-                    }
-                    None => String::new(),
-                }
-            }
-        })
+        .map(ToString::to_string)
+        .collect();
+
+    let mut merged_tokens = Vec::new();
+    let mut i = 0;
+    while i < raw_tokens.len() {
+        let current = &raw_tokens[i];
+        if current.len() == 1
+            && current.chars().all(|c| c.is_ascii_digit())
+            && raw_tokens
+                .get(i + 1)
+                .is_some_and(|next| next.len() == 1 && next.chars().all(|c| c.is_ascii_digit()))
+        {
+            merged_tokens.push(format!("{}.{}", current, raw_tokens[i + 1]));
+            i += 2;
+            continue;
+        }
+        merged_tokens.push(current.clone());
+        i += 1;
+    }
+
+    merged_tokens
+        .iter()
+        .map(|word| format_model_word(word))
         .collect::<Vec<_>>()
         .join(" ")
 }
@@ -358,36 +431,17 @@ pub async fn check_commandcode_cli_auth(app: AppHandle) -> Result<CommandCodeAut
 
 #[tauri::command]
 pub async fn detect_commandcode_in_path(
-    _app: AppHandle,
+    app: AppHandle,
 ) -> Result<CommandCodePathDetection, String> {
-    let which_cmd = if cfg!(target_os = "windows") {
-        "where"
-    } else {
-        "which"
-    };
-    let mut found_path = String::new();
-    for binary_name in CLI_BINARY_CANDIDATES {
-        found_path = match silent_command(which_cmd).arg(binary_name).output() {
-            Ok(output) if output.status.success() => String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .next()
-                .unwrap_or("")
-                .trim()
-                .to_string(),
-            _ => String::new(),
-        };
-        if !found_path.is_empty() {
-            break;
-        }
-    }
-    if found_path.is_empty() {
+    let Some(found_path) = find_system_commandcode_binary(&app) else {
         return Ok(CommandCodePathDetection {
             found: false,
             path: None,
             version: None,
             package_manager: None,
         });
-    }
+    };
+
     let version = silent_command(&found_path)
         .arg("--version")
         .output()
@@ -399,14 +453,11 @@ pub async fn detect_commandcode_in_path(
                 None
             }
         });
-    let package_manager = if found_path.contains("/npm/") || found_path.contains("node_modules") {
-        Some("npm".to_string())
-    } else {
-        None
-    };
+    let package_manager = crate::platform::detect_package_manager(&found_path);
+
     Ok(CommandCodePathDetection {
         found: true,
-        path: Some(found_path),
+        path: Some(found_path.to_string_lossy().to_string()),
         version,
         package_manager,
     })
@@ -445,15 +496,319 @@ pub async fn list_commandcode_models(app: AppHandle) -> Result<Vec<CommandCodeMo
     )))
 }
 
+fn version_sort_key(version: &str) -> Vec<u64> {
+    version
+        .split(['.', '-'])
+        .take(3)
+        .map(|part| {
+            part.chars()
+                .take_while(|c| c.is_ascii_digit())
+                .collect::<String>()
+                .parse::<u64>()
+                .unwrap_or(0)
+        })
+        .collect()
+}
+
+fn is_prerelease_version(version: &str) -> bool {
+    version.contains('-')
+}
+
+fn parse_npm_commandcode_versions(body: &str) -> Result<Vec<CommandCodeReleaseInfo>, String> {
+    let value: serde_json::Value =
+        serde_json::from_str(body).map_err(|e| format!("Failed to parse npm metadata: {e}"))?;
+    let versions_obj = value
+        .get("versions")
+        .and_then(|versions| versions.as_object())
+        .ok_or("npm metadata missing versions object")?;
+
+    let mut versions: Vec<CommandCodeReleaseInfo> = versions_obj
+        .keys()
+        .filter(|version| !version.trim().is_empty())
+        .map(|version| CommandCodeReleaseInfo {
+            version: version.to_string(),
+            tag_name: format!("command-code@{version}"),
+            published_at: String::new(),
+            prerelease: is_prerelease_version(version),
+        })
+        .collect();
+
+    versions.sort_by(|a, b| {
+        a.prerelease
+            .cmp(&b.prerelease)
+            .then_with(|| version_sort_key(&b.version).cmp(&version_sort_key(&a.version)))
+            .then_with(|| b.version.cmp(&a.version))
+    });
+    versions.truncate(20);
+    Ok(versions)
+}
+
+fn fallback_commandcode_versions() -> Vec<CommandCodeReleaseInfo> {
+    vec![CommandCodeReleaseInfo {
+        version: FALLBACK_COMMANDCODE_VERSION.to_string(),
+        tag_name: "command-code@latest".to_string(),
+        published_at: String::new(),
+        prerelease: false,
+    }]
+}
+
+fn save_commandcode_versions_cache(app: &AppHandle, versions: &[CommandCodeReleaseInfo]) {
+    let cache_path = match ensure_cli_dir(app) {
+        Ok(dir) => dir.join(COMMANDCODE_VERSIONS_CACHE_FILE),
+        Err(e) => {
+            log::warn!("Cannot resolve/create Command Code CLI dir for cache: {e}");
+            return;
+        }
+    };
+    let cached = CachedCommandCodeVersions {
+        versions: versions.to_vec(),
+        fetched_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs().to_string())
+            .unwrap_or_default(),
+    };
+    match serde_json::to_string(&cached) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(&cache_path, json) {
+                log::warn!("Failed to write Command Code versions cache: {e}");
+            }
+        }
+        Err(e) => log::warn!("Failed to serialize Command Code versions cache: {e}"),
+    }
+}
+
+fn load_commandcode_versions_cache(app: &AppHandle) -> Option<Vec<CommandCodeReleaseInfo>> {
+    let cache_path = get_cli_dir(app).ok()?.join(COMMANDCODE_VERSIONS_CACHE_FILE);
+    let contents = std::fs::read_to_string(cache_path).ok()?;
+    let cached: CachedCommandCodeVersions = serde_json::from_str(&contents).ok()?;
+    if cached.versions.is_empty() {
+        None
+    } else {
+        Some(cached.versions)
+    }
+}
+
+async fn fetch_commandcode_versions_from_npm() -> Result<Vec<CommandCodeReleaseInfo>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("Jean-App/1.0")
+        .build()
+        .map_err(|e| format!("Failed to create npm registry client: {e}"))?;
+    let response = client
+        .get(COMMANDCODE_NPM_REGISTRY_URL)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch Command Code npm metadata: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "npm registry returned status: {}",
+            response.status()
+        ));
+    }
+    let body = response
+        .text()
+        .await
+        .map_err(|e| format!("Failed to read npm registry response: {e}"))?;
+    parse_npm_commandcode_versions(&body)
+}
+
 #[tauri::command]
-pub async fn get_commandcode_install_command() -> Result<CommandCodeInstallCommand, String> {
+pub async fn get_available_commandcode_versions(
+    app: AppHandle,
+) -> Result<Vec<CommandCodeReleaseInfo>, String> {
+    match fetch_commandcode_versions_from_npm().await {
+        Ok(versions) if !versions.is_empty() => {
+            save_commandcode_versions_cache(&app, &versions);
+            Ok(versions)
+        }
+        Ok(_) => {
+            log::warn!("npm registry returned no Command Code versions, falling back to cache");
+            Ok(load_commandcode_versions_cache(&app).unwrap_or_else(fallback_commandcode_versions))
+        }
+        Err(e) => {
+            log::warn!("Command Code npm registry request failed ({e}), falling back to cache");
+            Ok(load_commandcode_versions_cache(&app).unwrap_or_else(fallback_commandcode_versions))
+        }
+    }
+}
+
+fn commandcode_package(version: Option<&str>) -> String {
+    match version.map(str::trim).filter(|v| !v.is_empty()) {
+        Some("latest") | None => "command-code@latest".to_string(),
+        Some(version) if version.starts_with("command-code@") => version.to_string(),
+        Some(version) => format!("command-code@{version}"),
+    }
+}
+
+#[tauri::command]
+pub async fn get_commandcode_install_command(
+    app: AppHandle,
+) -> Result<CommandCodeInstallCommand, String> {
+    let cli_dir = get_cli_dir(&app)?;
     Ok(CommandCodeInstallCommand {
         command: "npm".to_string(),
         args: vec![
             "install".to_string(),
-            "-g".to_string(),
-            "command-code@latest".to_string(),
+            "--prefix".to_string(),
+            cli_dir.to_string_lossy().to_string(),
+            commandcode_package(None),
         ],
-        description: "Install the latest Command Code globally with npm".to_string(),
+        description: "Install the latest Command Code into Jean's managed app-data directory"
+            .to_string(),
     })
+}
+
+#[tauri::command]
+pub async fn install_commandcode_cli(
+    app: AppHandle,
+    version: Option<String>,
+) -> Result<(), String> {
+    let cli_dir = ensure_cli_dir(&app)?;
+    let package = commandcode_package(version.as_deref());
+    let output = silent_command("npm")
+        .args(["install", "--prefix"])
+        .arg(&cli_dir)
+        .arg(package)
+        .output()
+        .map_err(|e| format!("Failed to run npm install for Command Code CLI: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        return Err(format!(
+            "Command Code CLI install failed: {}",
+            if stderr.is_empty() { stdout } else { stderr }
+        ));
+    }
+
+    let binary_path = get_cli_binary_path(&app)?;
+    if !binary_path.exists() {
+        return Err(format!(
+            "Command Code install completed but binary was not found at {}",
+            binary_path.display()
+        ));
+    }
+
+    let verify = silent_command(&binary_path)
+        .arg("--version")
+        .output()
+        .map_err(|e| format!("Failed to verify Command Code CLI: {e}"))?;
+    if !verify.status.success() {
+        return Err("Command Code CLI verification failed".to_string());
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn uninstall_commandcode_cli(app: AppHandle) -> Result<(), String> {
+    let cli_dir = get_cli_dir(&app)?;
+    if cli_dir.exists() {
+        std::fs::remove_dir_all(&cli_dir)
+            .map_err(|e| format!("Failed to remove Command Code CLI directory: {e}"))?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_commandcode_cli(app: AppHandle) -> Result<(), String> {
+    install_commandcode_cli(app, None).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_npm_commandcode_versions_sorts_latest_stable_first() {
+        let versions = parse_npm_commandcode_versions(
+            r#"{
+  "dist-tags": { "latest": "1.2.0" },
+  "versions": {
+    "1.0.0": {},
+    "1.2.0-beta.1": {},
+    "1.1.0": {},
+    "1.2.0": {}
+  }
+}"#,
+        )
+        .expect("valid npm metadata should parse");
+
+        assert_eq!(
+            versions
+                .iter()
+                .map(|v| (&v.version, v.prerelease))
+                .collect::<Vec<_>>(),
+            vec![
+                (&"1.2.0".to_string(), false),
+                (&"1.1.0".to_string(), false),
+                (&"1.0.0".to_string(), false),
+                (&"1.2.0-beta.1".to_string(), true),
+            ]
+        );
+        assert_eq!(versions[0].tag_name, "command-code@1.2.0");
+    }
+
+    fn parse_models_output_formats_versions_and_skips_help_lines() {
+        let models = parse_models_output(
+            r#"
+Available models  ·  28 models
+
+Anthropic
+
+claude-sonnet-4-6                  best combo of speed & intelligence (recommended)
+claude-opus-4-8                    most intelligent for agents and coding
+claude-haiku-4-5                   fastest & most compact, great for quick tasks
+
+OpenAI
+
+gpt-5.5                            latest frontier model for general complex work
+gpt-5.3-codex                      frontier coding model
+
+Open Source
+
+moonshotai/Kimi-K2.5               multimodal frontend coding (default)
+nvidia/nemotron-3-ultra-550b-a55b  open reasoning model for long-horizon autonomous agents
+
+"/:
+commandcode/"/:
+
+Pass the full id, or just the short name after the last "/":
+cmd --model moonshotai/Kimi-K2.5
+cmd --model kimi-k2.5
+
+Docs:  https://commandcode.ai/docs/reference/cli/models
+"#,
+        );
+
+        assert_eq!(
+            models
+                .iter()
+                .find(|model| model.id == "claude-sonnet-4-6")
+                .map(|model| model.label.as_str()),
+            Some("Claude Sonnet 4.6")
+        );
+        assert_eq!(
+            models
+                .iter()
+                .find(|model| model.id == "claude-opus-4-8")
+                .map(|model| model.label.as_str()),
+            Some("Claude Opus 4.8")
+        );
+        assert_eq!(
+            models
+                .iter()
+                .find(|model| model.id == "nvidia/nemotron-3-ultra-550b-a55b")
+                .map(|model| model.label.as_str()),
+            Some("Nemotron 3 Ultra 550B A55B")
+        );
+        assert!(!models.iter().any(|model| model.id.starts_with("https://")));
+        assert!(!models.iter().any(|model| model.id == "/\":"));
+        assert_eq!(
+            models
+                .iter()
+                .filter(|model| model.id == "moonshotai/Kimi-K2.5")
+                .count(),
+            1
+        );
+    }
 }

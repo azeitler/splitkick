@@ -4074,7 +4074,11 @@ pub fn run() {
             commandcode_cli::detect_commandcode_in_path,
             commandcode_cli::check_commandcode_cli_auth,
             commandcode_cli::list_commandcode_models,
+            commandcode_cli::get_available_commandcode_versions,
             commandcode_cli::get_commandcode_install_command,
+            commandcode_cli::install_commandcode_cli,
+            commandcode_cli::uninstall_commandcode_cli,
+            commandcode_cli::update_commandcode_cli,
             // Cursor CLI management commands
             cursor_cli::check_cursor_cli_installed,
             cursor_cli::detect_cursor_in_path,

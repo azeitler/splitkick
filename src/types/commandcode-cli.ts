@@ -22,3 +22,16 @@ export interface CommandCodeModelInfo {
   id: string
   label: string
 }
+
+export interface CommandCodeReleaseInfo {
+  version: string
+  tagName: string
+  publishedAt: string
+  prerelease: boolean
+}
+
+export interface CommandCodeInstallProgress {
+  stage: string
+  message: string
+  percent: number
+}

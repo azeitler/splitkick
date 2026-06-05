@@ -1,6 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useUIStore } from './ui-store'
 
+describe('Command Code CLI update modal', () => {
+  it('accepts commandcode as a CLI update modal type', () => {
+    useUIStore.getState().openCliUpdateModal('commandcode')
+
+    expect(useUIStore.getState().cliUpdateModalOpen).toBe(true)
+    expect(useUIStore.getState().cliUpdateModalType).toBe('commandcode')
+  })
+})
+
 describe('UIStore', () => {
   beforeEach(() => {
     // Reset store state before each test

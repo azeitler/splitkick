@@ -56,12 +56,7 @@ import {
   useAttachedSavedContexts,
 } from '@/services/github'
 import { useLoadedLinearIssueContexts } from '@/services/linear'
-import {
-  useChatStore,
-  DEFAULT_MODEL,
-  DEFAULT_THINKING_LEVEL,
-  type ClaudeModel,
-} from '@/store/chat-store'
+import { useChatStore, DEFAULT_THINKING_LEVEL } from '@/store/chat-store'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { PREDEFINED_CLI_PROFILES, type CliBackend } from '@/types/preferences'
@@ -126,6 +121,7 @@ import { StreamingStatusBar } from './StreamingStatusBar'
 import { ChatErrorFallback } from './ChatErrorFallback'
 import { logger } from '@/lib/logger'
 import { saveCrashState } from '@/lib/recovery'
+import { resolveDefaultModelForBackend } from '@/lib/session-defaults'
 import { ErrorBanner } from './ErrorBanner'
 import {
   VirtualizedMessageList,
@@ -620,17 +616,13 @@ export function ChatWindow({
       ? (installedBackends[0] as CliBackend)
       : resolvedBackend)
   const isCodexBackend = selectedBackend === 'codex'
-  const isOpencodeBackend = selectedBackend === 'opencode'
   const isCursorBackend = selectedBackend === 'cursor'
 
   // Per-session model selection, falls back to preferences default (backend-aware)
-  const defaultModel: string = isCodexBackend
-    ? (preferences?.selected_codex_model ?? 'gpt-5.5')
-    : isOpencodeBackend
-      ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-      : isCursorBackend
-        ? (preferences?.selected_cursor_model ?? 'cursor/auto')
-        : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
+  const defaultModel = resolveDefaultModelForBackend(
+    selectedBackend,
+    preferences
+  )
   const selectedModel: string = session?.selected_model ?? defaultModel
 
   // Per-session thinking level, falls back to preferences default
