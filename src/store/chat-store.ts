@@ -737,17 +737,28 @@ export const useChatStore = create<ChatUIState>()(
       // Session management
       setActiveSession: (worktreeId, sessionId, options) => {
         set(
-          state => ({
-            activeSessionIds: {
-              ...state.activeSessionIds,
-              [worktreeId]: sessionId,
-            },
-            // Also track which worktree this session belongs to
-            sessionWorktreeMap: {
-              ...state.sessionWorktreeMap,
-              [sessionId]: worktreeId,
-            },
-          }),
+          state => {
+            const activeUnchanged =
+              state.activeSessionIds[worktreeId] === sessionId
+            const mapUnchanged =
+              state.sessionWorktreeMap[sessionId] === worktreeId
+            if (activeUnchanged && mapUnchanged) return state
+            return {
+              activeSessionIds: activeUnchanged
+                ? state.activeSessionIds
+                : {
+                    ...state.activeSessionIds,
+                    [worktreeId]: sessionId,
+                  },
+              // Also track which worktree this session belongs to
+              sessionWorktreeMap: mapUnchanged
+                ? state.sessionWorktreeMap
+                : {
+                    ...state.sessionWorktreeMap,
+                    [sessionId]: worktreeId,
+                  },
+            }
+          },
           undefined,
           'setActiveSession'
         )
@@ -1008,7 +1019,15 @@ export const useChatStore = create<ChatUIState>()(
       setSessionLabel: (sessionId, label) =>
         set(
           state => {
+            const current = state.sessionLabels[sessionId]
             if (label) {
+              if (
+                current?.name === label.name &&
+                current?.color === label.color &&
+                current?.pinned === label.pinned
+              ) {
+                return state
+              }
               return {
                 sessionLabels: {
                   ...state.sessionLabels,
@@ -1016,6 +1035,7 @@ export const useChatStore = create<ChatUIState>()(
                 },
               }
             } else {
+              if (!current) return state
               const { [sessionId]: _, ...rest } = state.sessionLabels
               return { sessionLabels: rest }
             }
@@ -1149,9 +1169,12 @@ export const useChatStore = create<ChatUIState>()(
 
       registerWorktreePath: (worktreeId, path) =>
         set(
-          state => ({
-            worktreePaths: { ...state.worktreePaths, [worktreeId]: path },
-          }),
+          state =>
+            state.worktreePaths[worktreeId] === path
+              ? state
+              : {
+                  worktreePaths: { ...state.worktreePaths, [worktreeId]: path },
+                },
           undefined,
           'registerWorktreePath'
         ),
@@ -1183,8 +1206,9 @@ export const useChatStore = create<ChatUIState>()(
       removeSendingSession: sessionId =>
         set(
           state => {
+            if (!(sessionId in state.sendingSessionIds)) return state
             console.log(`[Store] removeSendingSession id=${sessionId}`, {
-              wasSending: !!state.sendingSessionIds[sessionId],
+              wasSending: true,
               currentSending: Object.keys(state.sendingSessionIds),
             })
             const { [sessionId]: _, ...rest } = state.sendingSessionIds
@@ -1612,9 +1636,12 @@ export const useChatStore = create<ChatUIState>()(
       // Input drafts (session-based)
       setInputDraft: (sessionId, value) =>
         set(
-          state => ({
-            inputDrafts: { ...state.inputDrafts, [sessionId]: value },
-          }),
+          state =>
+            state.inputDrafts[sessionId] === value
+              ? state
+              : {
+                  inputDrafts: { ...state.inputDrafts, [sessionId]: value },
+                },
           undefined,
           'setInputDraft'
         ),
@@ -1652,17 +1679,37 @@ export const useChatStore = create<ChatUIState>()(
       setExecutionMode: (sessionId, mode) =>
         set(
           state => {
-            const newState: Partial<ChatUIState> = {
-              executionModes: {
-                ...state.executionModes,
-                [sessionId]: mode,
-              },
-            }
-            // Clear pending denials when switching to yolo mode (no approvals needed)
+            const modeUnchanged = state.executionModes[sessionId] === mode
+            const hasClassicDenials =
+              (state.pendingPermissionDenials[sessionId]?.length ?? 0) > 0
+            const hasCodexApprovals =
+              (state.pendingCodexCommandApprovalRequests[sessionId]?.length ??
+                0) > 0 ||
+              (state.pendingCodexPermissionRequests[sessionId]?.length ?? 0) >
+                0 ||
+              (state.pendingCodexUserInputRequests[sessionId]?.length ?? 0) >
+                0 ||
+              (state.pendingCodexMcpElicitationRequests[sessionId]?.length ??
+                0) > 0 ||
+              (state.pendingCodexDynamicToolCallRequests[sessionId]?.length ??
+                0) > 0
             if (
-              mode === 'yolo' &&
-              state.pendingPermissionDenials[sessionId]?.length
+              modeUnchanged &&
+              (mode !== 'yolo' || (!hasClassicDenials && !hasCodexApprovals))
             ) {
+              return state
+            }
+
+            const newState: Partial<ChatUIState> = modeUnchanged
+              ? {}
+              : {
+                  executionModes: {
+                    ...state.executionModes,
+                    [sessionId]: mode,
+                  },
+                }
+            // Clear pending denials when switching to yolo mode (no approvals needed)
+            if (mode === 'yolo' && hasClassicDenials) {
               const { [sessionId]: _, ...restDenials } =
                 state.pendingPermissionDenials
               newState.pendingPermissionDenials = restDenials
@@ -1670,7 +1717,7 @@ export const useChatStore = create<ChatUIState>()(
                 state.deniedMessageContext
               newState.deniedMessageContext = restContext
             }
-            if (mode === 'yolo') {
+            if (mode === 'yolo' && hasCodexApprovals) {
               const { [sessionId]: _cmd, ...restCommandApprovals } =
                 state.pendingCodexCommandApprovalRequests
               const { [sessionId]: _, ...restPermissionRequests } =
@@ -1699,12 +1746,15 @@ export const useChatStore = create<ChatUIState>()(
       // Thinking level (session-based)
       setThinkingLevel: (sessionId, level) =>
         set(
-          state => ({
-            thinkingLevels: {
-              ...state.thinkingLevels,
-              [sessionId]: level,
-            },
-          }),
+          state =>
+            state.thinkingLevels[sessionId] === level
+              ? state
+              : {
+                  thinkingLevels: {
+                    ...state.thinkingLevels,
+                    [sessionId]: level,
+                  },
+                },
           undefined,
           'setThinkingLevel'
         ),
@@ -1714,12 +1764,15 @@ export const useChatStore = create<ChatUIState>()(
       // Effort level (session-based, for Opus 4.6 adaptive thinking)
       setEffortLevel: (sessionId, level) =>
         set(
-          state => ({
-            effortLevels: {
-              ...state.effortLevels,
-              [sessionId]: level,
-            },
-          }),
+          state =>
+            state.effortLevels[sessionId] === level
+              ? state
+              : {
+                  effortLevels: {
+                    ...state.effortLevels,
+                    [sessionId]: level,
+                  },
+                },
           undefined,
           'setEffortLevel'
         ),
@@ -1729,12 +1782,15 @@ export const useChatStore = create<ChatUIState>()(
       // Selected backend (session-based)
       setSelectedBackend: (sessionId, backend) =>
         set(
-          state => ({
-            selectedBackends: {
-              ...state.selectedBackends,
-              [sessionId]: backend,
-            },
-          }),
+          state =>
+            state.selectedBackends[sessionId] === backend
+              ? state
+              : {
+                  selectedBackends: {
+                    ...state.selectedBackends,
+                    [sessionId]: backend,
+                  },
+                },
           undefined,
           'setSelectedBackend'
         ),
@@ -1742,12 +1798,15 @@ export const useChatStore = create<ChatUIState>()(
       // Selected model (session-based)
       setSelectedModel: (sessionId, model) =>
         set(
-          state => ({
-            selectedModels: {
-              ...state.selectedModels,
-              [sessionId]: model,
-            },
-          }),
+          state =>
+            state.selectedModels[sessionId] === model
+              ? state
+              : {
+                  selectedModels: {
+                    ...state.selectedModels,
+                    [sessionId]: model,
+                  },
+                },
           undefined,
           'setSelectedModel'
         ),
@@ -1757,9 +1816,11 @@ export const useChatStore = create<ChatUIState>()(
         set(
           state => {
             if (provider === undefined) {
+              if (!(sessionId in state.selectedProviders)) return state
               const { [sessionId]: _, ...rest } = state.selectedProviders
               return { selectedProviders: rest }
             }
+            if (state.selectedProviders[sessionId] === provider) return state
             return {
               selectedProviders: {
                 ...state.selectedProviders,
@@ -1823,12 +1884,22 @@ export const useChatStore = create<ChatUIState>()(
       // MCP servers (session-based)
       setEnabledMcpServers: (sessionId, servers) =>
         set(
-          state => ({
-            enabledMcpServers: {
-              ...state.enabledMcpServers,
-              [sessionId]: servers,
-            },
-          }),
+          state => {
+            const current = state.enabledMcpServers[sessionId]
+            if (
+              current &&
+              current.length === servers.length &&
+              current.every((server, index) => server === servers[index])
+            ) {
+              return state
+            }
+            return {
+              enabledMcpServers: {
+                ...state.enabledMcpServers,
+                [sessionId]: servers,
+              },
+            }
+          },
           undefined,
           'setEnabledMcpServers'
         ),
