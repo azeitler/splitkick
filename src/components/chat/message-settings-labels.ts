@@ -42,7 +42,8 @@ export function getMessageModelLabel(model: string): string {
   }
 
   if (model.startsWith('cursor/')) return formatCursorModelLabel(model)
-  if (model.startsWith('commandcode/')) return formatCommandCodeModelLabel(model)
+  if (model.startsWith('commandcode/'))
+    return formatCommandCodeModelLabel(model)
   return model.includes('/') ? formatOpencodeModelLabel(model) : model
 }
 
@@ -63,6 +64,7 @@ export function getMessagePromptModelLabel(model: string): string {
     return `OpenCode · ${formatOpenCodePromptModelLabel(model)}`
   }
   if (isCursorModel(model)) return `Cursor · ${getMessageModelLabel(model)}`
-  if (isClaudeMessageModel(model)) return `Claude · ${getMessageModelLabel(model)}`
+  if (isClaudeMessageModel(model))
+    return `Claude · ${getMessageModelLabel(model)}`
   return getMessageModelLabel(model)
 }

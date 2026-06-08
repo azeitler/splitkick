@@ -189,7 +189,6 @@ describe('MobileSettingsMenu', () => {
     expect(screen.queryByText('Linked')).not.toBeInTheDocument()
   })
 
-
   it('hides reasoning control for Command Code in mobile settings', async () => {
     const user = userEvent.setup()
 

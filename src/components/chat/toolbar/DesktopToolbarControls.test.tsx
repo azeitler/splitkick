@@ -165,7 +165,6 @@ describe('DesktopToolbarControls', () => {
     expect(screen.getByRole('button', { name: /magic/i })).toBeDisabled()
   })
 
-
   it('hides reasoning control for Command Code on desktop', () => {
     renderDesktopToolbarControls({
       selectedBackend: 'commandcode',
@@ -175,7 +174,9 @@ describe('DesktopToolbarControls', () => {
       hideThinkingLevel: false,
     })
 
-    expect(screen.queryByRole('button', { name: /think/i })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /think/i })
+    ).not.toBeInTheDocument()
     expect(screen.queryByText('Effort')).not.toBeInTheDocument()
   })
 
