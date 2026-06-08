@@ -5942,21 +5942,61 @@ fn extract_structured_output(output: &str) -> Result<String, String> {
     Err("No structured output found in Claude response".to_string())
 }
 
+/// Extract the first complete, balanced top-level JSON object from arbitrary
+/// text (PI/other CLIs may wrap JSON in prose). Brace-counts while respecting
+/// string literals and escapes, so braces inside strings don't break bounds.
 fn extract_json_object_from_text(text: &str) -> Result<String, String> {
     let trimmed = text.trim();
-    if trimmed.starts_with('{') && trimmed.ends_with('}') {
-        return Ok(trimmed.to_string());
+    if trimmed.is_empty() {
+        return Err("Empty response from backend".to_string());
     }
-    let start = trimmed
-        .find('{')
-        .ok_or_else(|| "No JSON object found in response".to_string())?;
-    let end = trimmed
-        .rfind('}')
-        .ok_or_else(|| "No JSON object end found in response".to_string())?;
-    if end <= start {
-        return Err("Invalid JSON object bounds in response".to_string());
+
+    let mut start: Option<usize> = None;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (idx, ch) in trimmed.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+                continue;
+            }
+            match ch {
+                '\\' => escaped = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+
+        match ch {
+            '"' => in_string = true,
+            '{' => {
+                if depth == 0 {
+                    start = Some(idx);
+                }
+                depth += 1;
+            }
+            '}' => {
+                if depth == 0 {
+                    continue;
+                }
+                depth -= 1;
+                if depth == 0 {
+                    let s = start.ok_or_else(|| "Invalid JSON object start".to_string())?;
+                    let candidate = &trimmed[s..=idx];
+                    if serde_json::from_str::<serde_json::Value>(candidate).is_ok() {
+                        return Ok(candidate.to_string());
+                    }
+                    return Err("Found JSON-like object but failed to parse".to_string());
+                }
+            }
+            _ => {}
+        }
     }
-    Ok(trimmed[start..=end].to_string())
+
+    Err("No valid JSON object found in response".to_string())
 }
 
 fn build_claude_structured_output_args(model: &str, tools: &str, schema: &str) -> Vec<String> {
@@ -11020,6 +11060,53 @@ pub async fn revert_last_local_commit(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extract_json_object_plain() {
+        let out = extract_json_object_from_text(r#"{"title":"a","body":"b"}"#).unwrap();
+        assert_eq!(out, r#"{"title":"a","body":"b"}"#);
+    }
+
+    #[test]
+    fn extract_json_object_prose_wrapped() {
+        let text = "Sure, here is the JSON:\n{\"title\":\"a\"}\nHope that helps!";
+        assert_eq!(
+            extract_json_object_from_text(text).unwrap(),
+            r#"{"title":"a"}"#
+        );
+    }
+
+    #[test]
+    fn extract_json_object_with_braces_inside_strings() {
+        let text = r#"prefix {"body":"use {braces} and a \" quote"} suffix"#;
+        assert_eq!(
+            extract_json_object_from_text(text).unwrap(),
+            r#"{"body":"use {braces} and a \" quote"}"#
+        );
+    }
+
+    #[test]
+    fn extract_json_object_returns_first_of_multiple() {
+        let text = r#"{"a":1} then {"b":2}"#;
+        assert_eq!(extract_json_object_from_text(text).unwrap(), r#"{"a":1}"#);
+    }
+
+    #[test]
+    fn extract_json_object_nested() {
+        let text = r#"noise {"outer":{"inner":[1,2]}} noise"#;
+        assert_eq!(
+            extract_json_object_from_text(text).unwrap(),
+            r#"{"outer":{"inner":[1,2]}}"#
+        );
+    }
+
+    #[test]
+    fn extract_json_object_malformed_errors() {
+        assert!(extract_json_object_from_text("no json here").is_err());
+        assert!(extract_json_object_from_text("").is_err());
+        // Unbalanced — never closes the top-level object.
+        assert!(extract_json_object_from_text(r#"{"a":1"#).is_err());
+    }
 
     #[test]
     fn test_sanitize_folder_name() {

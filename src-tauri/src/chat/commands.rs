@@ -1949,6 +1949,20 @@ pub async fn set_sessions_last_opened_bulk(
 /// 5. Adds the assistant response
 /// 6. Saves the updated session
 /// 7. Returns the assistant message
+/// Persist a salvaged resume/session ID onto the correct backend field.
+/// Used by the thread-error/thread-panic recovery paths so the next send can
+/// resume the conversation instead of starting fresh.
+fn persist_salvaged_resume_id(session: &mut Session, backend: &Backend, sid: &str) {
+    match backend {
+        Backend::Claude => session.claude_session_id = Some(sid.to_string()),
+        Backend::Codex => session.codex_thread_id = Some(sid.to_string()),
+        Backend::Opencode => session.opencode_session_id = Some(sid.to_string()),
+        Backend::Cursor => session.cursor_chat_id = Some(sid.to_string()),
+        Backend::Pi => session.pi_session_id = Some(sid.to_string()),
+        Backend::Commandcode => {}
+    }
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn send_chat_message(
@@ -3625,6 +3639,35 @@ pub async fn send_chat_message(
                         }
                     }
 
+                    // Embedded binary path hints — prefer the bundled binaries in
+                    // packaged installs instead of relying on PATH.
+                    let gh_binary = crate::gh_cli::config::resolve_gh_binary(&thread_app);
+                    if gh_binary != std::path::PathBuf::from("gh") {
+                        parts.push(format!(
+                            "When running GitHub CLI commands, use the full path to the embedded binary: {}\n\
+                             Do NOT use bare `gh` — always use the full path above.",
+                            gh_binary.display()
+                        ));
+                    }
+                    if let Ok(claude_binary) = crate::claude_cli::get_cli_binary_path(&thread_app) {
+                        if claude_binary.exists() {
+                            parts.push(format!(
+                                "When running Claude CLI commands, use the full path to the embedded binary: {}\n\
+                                 Do NOT use bare `claude` — always use the full path above.",
+                                claude_binary.display()
+                            ));
+                        }
+                    }
+                    if let Ok(codex_binary) = crate::codex_cli::get_cli_binary_path(&thread_app) {
+                        if codex_binary.exists() {
+                            parts.push(format!(
+                                "When running Codex CLI commands, use the full path to the embedded binary: {}\n\
+                                 Do NOT use bare `codex` — always use the full path above.",
+                                codex_binary.display()
+                            ));
+                        }
+                    }
+
                     parts.push(super::RECAP_INSTRUCTION.to_string());
 
                     if parts.is_empty() {
@@ -3707,7 +3750,7 @@ pub async fn send_chat_message(
                         if let Err(save_err) =
                             with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                                 if let Some(session) = sessions.find_session_mut(&session_id) {
-                                    session.claude_session_id = Some(sid.clone());
+                                    persist_salvaged_resume_id(session, &effective_backend, sid);
                                     session.is_reviewing = true;
                                     session.waiting_for_input = false;
                                 }
@@ -3728,7 +3771,7 @@ pub async fn send_chat_message(
                     if let Some(ref sid) = partial_sid {
                         let _ = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                             if let Some(session) = sessions.find_session_mut(&session_id) {
-                                session.claude_session_id = Some(sid.clone());
+                                persist_salvaged_resume_id(session, &effective_backend, sid);
                             }
                             Ok(())
                         });
@@ -3767,7 +3810,7 @@ pub async fn send_chat_message(
                 if let Some(ref sid) = partial_sid {
                     let _ = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                         if let Some(session) = sessions.find_session_mut(&session_id) {
-                            session.claude_session_id = Some(sid.clone());
+                            persist_salvaged_resume_id(session, &effective_backend, sid);
                         }
                         Ok(())
                     });

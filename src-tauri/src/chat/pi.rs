@@ -157,189 +157,199 @@ fn message_usage_from_value(value: &Value) -> Option<UsageData> {
     value.get("message").and_then(usage_from_value)
 }
 
-fn parse_pi_json_stream_inner(input: &str) -> PiResponse {
-    let mut content = String::new();
-    let mut session_id = String::new();
-    let mut tool_calls = Vec::new();
-    let mut content_blocks = Vec::new();
-    let mut usage = None;
-
-    for line in input.lines().map(str::trim).filter(|line| !line.is_empty()) {
-        let Ok(value) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-
-        if let Some(id) = value
-            .get("session_id")
-            .or_else(|| value.get("sessionId"))
-            .or_else(|| {
-                if value.get("type").and_then(Value::as_str) == Some("session") {
-                    value.get("id")
-                } else {
-                    None
-                }
-            })
-            .and_then(Value::as_str)
-        {
-            if !id.is_empty() {
-                session_id = id.to_string();
+/// Merge a single already-parsed PI JSON line into the accumulating response.
+///
+/// This is the per-line core of PI stream parsing. Both the batch parser
+/// (`parse_pi_json_stream_inner`) and the streaming parser (`parse_pi_stream`)
+/// call this once per line, so the live stream never re-parses the whole
+/// accumulated buffer (avoids O(n²) work on long sessions).
+fn merge_pi_line(response: &mut PiResponse, value: &Value) {
+    if let Some(id) = value
+        .get("session_id")
+        .or_else(|| value.get("sessionId"))
+        .or_else(|| {
+            if value.get("type").and_then(Value::as_str) == Some("session") {
+                value.get("id")
+            } else {
+                None
             }
+        })
+        .and_then(Value::as_str)
+    {
+        if !id.is_empty() {
+            response.session_id = id.to_string();
         }
+    }
 
-        let event_type = value.get("type").and_then(Value::as_str).unwrap_or("");
-        match event_type {
-            "message" => {
-                let Some(message) = value.get("message") else {
-                    continue;
-                };
-                match message.get("role").and_then(Value::as_str) {
-                    Some("assistant") => {
-                        for block in iter_content_blocks(message) {
-                            match block.get("type").and_then(Value::as_str) {
-                                Some("text") => {
-                                    if let Some(text) = block.get("text").and_then(Value::as_str) {
-                                        content.push_str(text);
-                                        content_blocks.push(ContentBlock::Text {
-                                            text: text.to_string(),
-                                        });
-                                    }
-                                }
-                                Some("thinking") => {
-                                    if let Some(thinking) =
-                                        block.get("thinking").and_then(Value::as_str)
-                                    {
-                                        content_blocks.push(ContentBlock::Thinking {
-                                            thinking: thinking.to_string(),
-                                        });
-                                    }
-                                }
-                                Some("toolCall") => {
-                                    let id = block
-                                        .get("id")
-                                        .and_then(Value::as_str)
-                                        .unwrap_or("")
-                                        .to_string();
-                                    if id.is_empty() {
-                                        continue;
-                                    }
-                                    let raw_name =
-                                        block.get("name").and_then(Value::as_str).unwrap_or("");
-                                    let input = block
-                                        .get("arguments")
-                                        .or_else(|| block.get("input"))
-                                        .cloned()
-                                        .unwrap_or(Value::Null);
-                                    tool_calls.push(ToolCall {
-                                        id: id.clone(),
-                                        name: normalize_tool_name(raw_name),
-                                        input,
-                                        output: None,
-                                        parent_tool_use_id: None,
+    let event_type = value.get("type").and_then(Value::as_str).unwrap_or("");
+    match event_type {
+        "message" => {
+            let Some(message) = value.get("message") else {
+                return;
+            };
+            match message.get("role").and_then(Value::as_str) {
+                Some("assistant") => {
+                    for block in iter_content_blocks(message) {
+                        match block.get("type").and_then(Value::as_str) {
+                            Some("text") => {
+                                if let Some(text) = block.get("text").and_then(Value::as_str) {
+                                    response.content.push_str(text);
+                                    response.content_blocks.push(ContentBlock::Text {
+                                        text: text.to_string(),
                                     });
-                                    content_blocks.push(ContentBlock::ToolUse { tool_call_id: id });
                                 }
-                                _ => {}
                             }
-                        }
-                        if let Some(next_usage) = usage_from_value(message) {
-                            usage = Some(next_usage);
+                            Some("thinking") => {
+                                if let Some(thinking) =
+                                    block.get("thinking").and_then(Value::as_str)
+                                {
+                                    response.content_blocks.push(ContentBlock::Thinking {
+                                        thinking: thinking.to_string(),
+                                    });
+                                }
+                            }
+                            Some("toolCall") => {
+                                let id = block
+                                    .get("id")
+                                    .and_then(Value::as_str)
+                                    .unwrap_or("")
+                                    .to_string();
+                                if id.is_empty() {
+                                    continue;
+                                }
+                                let raw_name =
+                                    block.get("name").and_then(Value::as_str).unwrap_or("");
+                                let input = block
+                                    .get("arguments")
+                                    .or_else(|| block.get("input"))
+                                    .cloned()
+                                    .unwrap_or(Value::Null);
+                                response.tool_calls.push(ToolCall {
+                                    id: id.clone(),
+                                    name: normalize_tool_name(raw_name),
+                                    input,
+                                    output: None,
+                                    parent_tool_use_id: None,
+                                });
+                                response
+                                    .content_blocks
+                                    .push(ContentBlock::ToolUse { tool_call_id: id });
+                            }
+                            _ => {}
                         }
                     }
-                    Some("toolResult") => {
-                        let id = message
-                            .get("toolCallId")
-                            .or_else(|| message.get("tool_call_id"))
-                            .and_then(Value::as_str)
-                            .unwrap_or("");
-                        let output = text_content_from_blocks(message);
-                        if let Some(tool) = tool_calls.iter_mut().find(|tool| tool.id == id) {
-                            tool.output = Some(output);
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            "message_update" | "assistant" => {
-                if value.get("role").and_then(Value::as_str) != Some("user") {
-                    if let Some(text) = text_delta_from_value(&value) {
-                        content.push_str(text);
-                        content_blocks.push(ContentBlock::Text {
-                            text: text.to_string(),
-                        });
+                    if let Some(next_usage) = usage_from_value(message) {
+                        response.usage = Some(next_usage);
                     }
                 }
-            }
-            "tool_execution_start" | "tool_call" => {
-                let id = value
-                    .get("id")
-                    .or_else(|| value.get("tool_use_id"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("")
-                    .to_string();
-                if id.is_empty() {
-                    continue;
+                Some("toolResult") => {
+                    let id = message
+                        .get("toolCallId")
+                        .or_else(|| message.get("tool_call_id"))
+                        .and_then(Value::as_str)
+                        .unwrap_or("");
+                    let output = text_content_from_blocks(message);
+                    if let Some(tool) = response.tool_calls.iter_mut().find(|tool| tool.id == id) {
+                        tool.output = Some(output);
+                    }
                 }
-                let raw_name = value
-                    .get("name")
-                    .or_else(|| value.get("tool_name"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let input = value
-                    .get("input")
-                    .or_else(|| value.get("args"))
-                    .cloned()
-                    .unwrap_or(Value::Null);
-                tool_calls.push(ToolCall {
-                    id: id.clone(),
-                    name: normalize_tool_name(raw_name),
-                    input,
-                    output: None,
-                    parent_tool_use_id: None,
-                });
-                content_blocks.push(ContentBlock::ToolUse { tool_call_id: id });
+                _ => {}
             }
-            "tool_execution_end" | "tool_result" => {
-                let id = value
-                    .get("id")
-                    .or_else(|| value.get("tool_use_id"))
-                    .and_then(Value::as_str)
-                    .unwrap_or("");
-                let output = value
-                    .get("output")
-                    .or_else(|| value.get("result"))
-                    .or_else(|| value.get("content"))
-                    .map(|v| {
-                        v.as_str()
-                            .map(ToOwned::to_owned)
-                            .unwrap_or_else(|| v.to_string())
-                    })
-                    .unwrap_or_default();
-                if let Some(tool) = tool_calls.iter_mut().find(|tool| tool.id == id) {
-                    tool.output = Some(output);
+        }
+        "message_update" | "assistant" => {
+            if value.get("role").and_then(Value::as_str) != Some("user") {
+                if let Some(text) = text_delta_from_value(value) {
+                    response.content.push_str(text);
+                    response.content_blocks.push(ContentBlock::Text {
+                        text: text.to_string(),
+                    });
                 }
             }
-            "message_end" | "turn_end" => {
-                if let Some(next_usage) = message_usage_from_value(&value) {
-                    usage = Some(next_usage);
-                }
+        }
+        "tool_execution_start" | "tool_call" => {
+            let id = value
+                .get("id")
+                .or_else(|| value.get("tool_use_id"))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string();
+            if id.is_empty() {
+                return;
             }
-            "agent_end" | "result" => {
-                if let Some(next_usage) = usage_from_value(&value) {
-                    usage = Some(next_usage);
-                }
+            let raw_name = value
+                .get("name")
+                .or_else(|| value.get("tool_name"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let input = value
+                .get("input")
+                .or_else(|| value.get("args"))
+                .cloned()
+                .unwrap_or(Value::Null);
+            response.tool_calls.push(ToolCall {
+                id: id.clone(),
+                name: normalize_tool_name(raw_name),
+                input,
+                output: None,
+                parent_tool_use_id: None,
+            });
+            response
+                .content_blocks
+                .push(ContentBlock::ToolUse { tool_call_id: id });
+        }
+        "tool_execution_end" | "tool_result" => {
+            let id = value
+                .get("id")
+                .or_else(|| value.get("tool_use_id"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            let output = value
+                .get("output")
+                .or_else(|| value.get("result"))
+                .or_else(|| value.get("content"))
+                .map(|v| {
+                    v.as_str()
+                        .map(ToOwned::to_owned)
+                        .unwrap_or_else(|| v.to_string())
+                })
+                .unwrap_or_default();
+            if let Some(tool) = response.tool_calls.iter_mut().find(|tool| tool.id == id) {
+                tool.output = Some(output);
             }
-            _ => {}
+        }
+        "message_end" | "turn_end" => {
+            if let Some(next_usage) = message_usage_from_value(value) {
+                response.usage = Some(next_usage);
+            }
+        }
+        "agent_end" | "result" => {
+            if let Some(next_usage) = usage_from_value(value) {
+                response.usage = Some(next_usage);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn empty_pi_response() -> PiResponse {
+    PiResponse {
+        content: String::new(),
+        session_id: String::new(),
+        tool_calls: Vec::new(),
+        content_blocks: Vec::new(),
+        cancelled: false,
+        usage: None,
+    }
+}
+
+fn parse_pi_json_stream_inner(input: &str) -> PiResponse {
+    let mut response = empty_pi_response();
+    for line in input.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        if let Ok(value) = serde_json::from_str::<Value>(line) {
+            merge_pi_line(&mut response, &value);
         }
     }
-
-    PiResponse {
-        content,
-        session_id,
-        tool_calls,
-        content_blocks,
-        cancelled: false,
-        usage,
-    }
+    response
 }
 
 fn raw_pi_model(model: Option<&str>) -> Option<&str> {
@@ -381,27 +391,18 @@ fn parse_pi_stream<R: BufRead>(
     worktree_id: &str,
     reader: R,
 ) -> Result<PiResponse, String> {
-    let mut raw = String::new();
-    let mut response = PiResponse {
-        content: String::new(),
-        session_id: String::new(),
-        tool_calls: Vec::new(),
-        content_blocks: Vec::new(),
-        cancelled: false,
-        usage: None,
-    };
+    let mut response = empty_pi_response();
 
     for line in reader.lines() {
         let line = line.map_err(|e| format!("Failed to read PI output: {e}"))?;
-        raw.push_str(&line);
-        raw.push('\n');
         let Ok(value) = serde_json::from_str::<Value>(&line) else {
             continue;
         };
 
         let before_content_len = response.content.len();
         let before_tool_count = response.tool_calls.len();
-        response = parse_pi_json_stream_inner(&raw);
+        // Merge only this line — no re-parse of the whole accumulated buffer.
+        merge_pi_line(&mut response, &value);
 
         if let Some(app) = app {
             if response.content.len() > before_content_len {

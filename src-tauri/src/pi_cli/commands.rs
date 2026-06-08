@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::time::Duration;
 use tauri::AppHandle;
 
 use super::config::{find_pi_in_path, get_cli_dir, resolve_cli_binary};
@@ -9,6 +10,12 @@ use crate::platform::silent_command;
 
 const PI_NPM_PACKAGE: &str = "@earendil-works/pi-coding-agent";
 
+// NOTE: These structs intentionally use snake_case on the wire (no
+// `#[serde(rename_all = "camelCase")]`). PI path/status detection is routed
+// through the SAME shared `useCliVersionCheck` hook as gh/codex/coderabbit/cursor,
+// all of which read snake_case fields (`package_manager`, `is_default`). The TS
+// types in `src/types/pi-cli.ts` match this. Switching PI alone to camelCase
+// would break that shared hook and diverge from its siblings.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PiCliStatus {
     pub installed: bool,
@@ -163,7 +170,12 @@ fn pi_env_auth_exists() -> bool {
         "OPENROUTER_API_KEY",
     ]
     .iter()
-    .any(|key| std::env::var_os(key).is_some())
+    .any(|key| {
+        std::env::var(key)
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .is_some()
+    })
 }
 
 #[tauri::command]
@@ -261,10 +273,25 @@ fn default_pi_models() -> Vec<PiModelInfo> {
         .collect()
 }
 
+/// Split a semver string into numeric components for ordering, so `0.10.0`
+/// correctly sorts ahead of `0.9.0` (string ordering gets this wrong).
+fn semver_parts(version: &str) -> Vec<u32> {
+    version
+        .split(['.', '-'])
+        .map(|p| p.parse::<u32>().unwrap_or(0))
+        .collect()
+}
+
 #[tauri::command]
 pub async fn get_available_pi_versions(_app: AppHandle) -> Result<Vec<PiReleaseInfo>, String> {
     let url = "https://registry.npmjs.org/%40earendil-works%2Fpi-coding-agent";
-    let value: serde_json::Value = reqwest::get(url)
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+        .map_err(|e| format!("Failed to build PI HTTP client: {e}"))?;
+    let value: serde_json::Value = client
+        .get(url)
+        .send()
         .await
         .map_err(|e| format!("Failed to fetch PI versions: {e}"))?
         .json()
@@ -283,7 +310,7 @@ pub async fn get_available_pi_versions(_app: AppHandle) -> Result<Vec<PiReleaseI
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    versions.sort_by(|a, b| b.version.cmp(&a.version));
+    versions.sort_by(|a, b| semver_parts(&b.version).cmp(&semver_parts(&a.version)));
     Ok(versions)
 }
 
