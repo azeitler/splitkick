@@ -34,15 +34,6 @@ use crate::projects::types::SessionType;
 const QUEUE_DEFAULT_ALLOWED_TOOLS: [&str; 4] = ["Bash(git:*)", "Read", "Glob", "Grep"];
 const IMAGE_ONLY_DEFAULT_PROMPT: &str = "Please check this image and tell me what is wrong.";
 const TEXT_ONLY_DEFAULT_PROMPT: &str = "Please check the attached text as reference.";
-const CODEX_DEFAULT_PLAN_MODE_PROMPT: &str = "\
-## Plan Mode
-
-- Make the plan extremely concise. Sacrifice grammar for the sake of concision.
-- In planning mode, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex update_plan/CodexPlan, Cursor/OpenCode equivalent), not plain text only.
-- For unresolved questions in plan mode, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question.
-- For Codex specifically: after the user answers native `request_user_input`/open questions in plan mode, immediately call `update_plan`/emit `CodexPlan` again with the revised plan before any implementation.
-- Every Codex plan-mode response that contains or revises a plan must use `update_plan`/`CodexPlan`; do not provide plain-text-only plans.
-- Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.";
 const CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT: &str = "\
 ## Not Plan Mode
 
@@ -91,12 +82,8 @@ fn codex_execution_mode_instruction(execution_mode: Option<&str>) -> Option<&'st
     }
 }
 
-fn codex_default_global_system_prompt(execution_mode: Option<&str>) -> String {
-    if execution_mode.unwrap_or("plan") == "plan" {
-        format!("{CODEX_DEFAULT_PLAN_MODE_PROMPT}\n\n{CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT}")
-    } else {
-        CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT.to_string()
-    }
+fn codex_default_global_system_prompt(_execution_mode: Option<&str>) -> String {
+    CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT.to_string()
 }
 
 /// Resolve the default backend from preferences + project settings (sync).
@@ -114,6 +101,8 @@ pub(crate) fn resolve_default_backend(app: &AppHandle, worktree_id: Option<&str>
         "codex" => Backend::Codex,
         "opencode" => Backend::Opencode,
         "cursor" => Backend::Cursor,
+        "pi" => Backend::Pi,
+        "commandcode" => Backend::Commandcode,
         _ => Backend::Claude,
     };
 
@@ -132,6 +121,8 @@ pub(crate) fn resolve_default_backend(app: &AppHandle, worktree_id: Option<&str>
                         "codex" => Backend::Codex,
                         "opencode" => Backend::Opencode,
                         "cursor" => Backend::Cursor,
+                        "pi" => Backend::Pi,
+                        "commandcode" => Backend::Commandcode,
                         "claude" => Backend::Claude,
                         _ => resolved,
                     };
@@ -154,12 +145,50 @@ pub(crate) fn resolve_magic_prompt_backend(
         match b {
             "opencode" => return Backend::Opencode,
             "cursor" => return Backend::Cursor,
+            "pi" => return Backend::Pi,
+            "commandcode" => return Backend::Commandcode,
             "codex" => return Backend::Codex,
             "claude" => return Backend::Claude,
             _ => {}
         }
     }
     resolve_default_backend(app, worktree_id)
+}
+
+fn infer_backend_from_model(model: &str, fallback: Backend) -> Backend {
+    if crate::is_cursor_model(model) {
+        Backend::Cursor
+    } else if crate::is_pi_model(model) {
+        Backend::Pi
+    } else if crate::is_opencode_model(model) {
+        Backend::Opencode
+    } else if model.starts_with("commandcode/") {
+        Backend::Commandcode
+    } else if crate::is_codex_model(model) {
+        Backend::Codex
+    } else {
+        fallback
+    }
+}
+
+fn default_model_for_backend(
+    backend: &Backend,
+    preferences: &crate::AppPreferences,
+) -> Option<String> {
+    let model = match backend {
+        Backend::Codex => &preferences.selected_codex_model,
+        Backend::Opencode => &preferences.selected_opencode_model,
+        Backend::Cursor => &preferences.selected_cursor_model,
+        Backend::Pi => &preferences.selected_pi_model,
+        Backend::Commandcode => &preferences.selected_commandcode_model,
+        Backend::Claude => &preferences.selected_model,
+    };
+
+    if model.trim().is_empty() {
+        None
+    } else {
+        Some(model.clone())
+    }
 }
 
 /// Get current Unix timestamp in seconds
@@ -532,22 +561,30 @@ pub async fn create_session(
 ) -> Result<Session, String> {
     log::trace!("Creating new session for worktree: {worktree_id}");
 
+    let preferences = crate::load_preferences(app.clone()).await.ok();
+
     // Resolve backend: explicit param → project default → global preference → Claude
     let backend_enum = match backend.as_deref() {
         Some("codex") => Backend::Codex,
         Some("opencode") => Backend::Opencode,
         Some("cursor") => Backend::Cursor,
+        Some("pi") => Backend::Pi,
+        Some("commandcode") => Backend::Commandcode,
         Some("claude") => Backend::Claude,
         _ => {
             // No explicit backend — check project default, then global preference
             let mut resolved = Backend::Claude;
-            if let Ok(prefs) = crate::load_preferences(app.clone()).await {
+            if let Some(prefs) = preferences.as_ref() {
                 if prefs.default_backend == "codex" {
                     resolved = Backend::Codex;
                 } else if prefs.default_backend == "opencode" {
                     resolved = Backend::Opencode;
                 } else if prefs.default_backend == "cursor" {
                     resolved = Backend::Cursor;
+                } else if prefs.default_backend == "pi" {
+                    resolved = Backend::Pi;
+                } else if prefs.default_backend == "commandcode" {
+                    resolved = Backend::Commandcode;
                 }
             }
             // Check project-level override
@@ -566,6 +603,8 @@ pub async fn create_session(
                             "codex" => Backend::Codex,
                             "opencode" => Backend::Opencode,
                             "cursor" => Backend::Cursor,
+                            "pi" => Backend::Pi,
+                            "commandcode" => Backend::Commandcode,
                             "claude" => Backend::Claude,
                             _ => resolved,
                         };
@@ -590,6 +629,11 @@ pub async fn create_session(
         session.terminal_command = terminal_command.clone();
         session.terminal_command_args = terminal_command_args.clone().unwrap_or_default();
         session.terminal_label = terminal_label.clone();
+        if primary_surface.as_deref() != Some("terminal") {
+            session.selected_model = preferences
+                .as_ref()
+                .and_then(|prefs| default_model_for_backend(&backend_enum, prefs));
+        }
         let session_id = session.id.clone();
 
         sessions.sessions.push(session.clone());
@@ -1892,6 +1936,20 @@ pub async fn set_sessions_last_opened_bulk(
 /// 5. Adds the assistant response
 /// 6. Saves the updated session
 /// 7. Returns the assistant message
+/// Persist a salvaged resume/session ID onto the correct backend field.
+/// Used by the thread-error/thread-panic recovery paths so the next send can
+/// resume the conversation instead of starting fresh.
+fn persist_salvaged_resume_id(session: &mut Session, backend: &Backend, sid: &str) {
+    match backend {
+        Backend::Claude => session.claude_session_id = Some(sid.to_string()),
+        Backend::Codex => session.codex_thread_id = Some(sid.to_string()),
+        Backend::Opencode => session.opencode_session_id = Some(sid.to_string()),
+        Backend::Cursor => session.cursor_chat_id = Some(sid.to_string()),
+        Backend::Pi => session.pi_session_id = Some(sid.to_string()),
+        Backend::Commandcode => {}
+    }
+}
+
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn send_chat_message(
@@ -2117,20 +2175,14 @@ pub async fn send_chat_message(
         Some("codex") => Backend::Codex,
         Some("opencode") => Backend::Opencode,
         Some("cursor") => Backend::Cursor,
+        Some("pi") => Backend::Pi,
+        Some("commandcode") => Backend::Commandcode,
         Some("claude") => Backend::Claude,
         _ => session_backend.clone(),
     };
     // Override backend based on model string (safety net: model always wins)
     let effective_backend = if let Some(ref m) = model {
-        if crate::is_cursor_model(m) {
-            Backend::Cursor
-        } else if crate::is_opencode_model(m) {
-            Backend::Opencode
-        } else if crate::is_codex_model(m) {
-            Backend::Codex
-        } else {
-            effective_backend
-        }
+        infer_backend_from_model(m, effective_backend)
     } else {
         effective_backend
     };
@@ -2174,19 +2226,31 @@ pub async fn send_chat_message(
     let cursor_chat_id = sessions
         .find_session(&session_id)
         .and_then(|s| s.cursor_chat_id.clone());
-
+    let pi_session_id = sessions
+        .find_session(&session_id)
+        .and_then(|s| s.pi_session_id.clone());
     // Cursor CLI doesn't support thinking/effort levels
-    let run_thinking_level = if effective_backend == Backend::Cursor {
+    let run_thinking_level = if matches!(
+        effective_backend,
+        Backend::Cursor | Backend::Pi | Backend::Commandcode
+    ) {
         None
     } else {
         thinking_level
             .as_ref()
             .map(|t| format!("{t:?}").to_lowercase())
     };
-    let run_effort_level = if effective_backend == Backend::Cursor {
-        None
-    } else {
-        effort_level.as_ref().and_then(|e| e.effort_value())
+    let run_effort_level = match effective_backend {
+        Backend::Cursor | Backend::Commandcode => None,
+        Backend::Pi => effort_level.as_ref().map(|e| match e {
+            EffortLevel::Off => "off",
+            EffortLevel::Minimal => "minimal",
+            EffortLevel::Low => "low",
+            EffortLevel::Medium => "medium",
+            EffortLevel::High => "high",
+            EffortLevel::Xhigh | EffortLevel::Max | EffortLevel::Ultracode => "xhigh",
+        }),
+        _ => effort_level.as_ref().and_then(|e| e.effort_value()),
     };
 
     // Start NDJSON run log for crash recovery
@@ -2239,6 +2303,8 @@ pub async fn send_chat_message(
                     }
                     Backend::Opencode => {}
                     Backend::Cursor => {}
+                    Backend::Pi => {}
+                    Backend::Commandcode => {}
                 }
             }
         }
@@ -2266,6 +2332,8 @@ pub async fn send_chat_message(
         tool_calls: Vec<super::types::ToolCall>,
         content_blocks: Vec<super::types::ContentBlock>,
         cancelled: bool,
+        /// True when the backend produced an approval-ready plan.
+        waiting_for_plan: bool,
         /// Whether a chat:error event was emitted during execution
         error_emitted: bool,
         usage: Option<super::types::UsageData>,
@@ -2286,6 +2354,7 @@ pub async fn send_chat_message(
     let thread_run_id = run_id.clone();
     let thread_opencode_session_id = opencode_session_id.clone();
     let thread_cursor_chat_id = cursor_chat_id.clone();
+    let thread_pi_session_id = pi_session_id.clone();
     let thread_model = model.clone();
     let thread_execution_mode = execution_mode.clone();
     let thread_thinking_level = thinking_level.clone();
@@ -2416,6 +2485,7 @@ pub async fn send_chat_message(
                                     tool_calls: response.tool_calls,
                                     content_blocks: response.content_blocks,
                                     cancelled: response.cancelled,
+                                    waiting_for_plan: false,
                                     error_emitted: false,
                                     usage: response.usage,
                                     backend: Backend::Claude,
@@ -2473,6 +2543,7 @@ pub async fn send_chat_message(
                 // Codex has no "max" or "ultracode"; cap at xhigh.
                 let codex_reasoning_effort: Option<String> =
                     thread_effort_level.as_ref().and_then(|e| match e {
+                        super::types::EffortLevel::Minimal => Some("low".to_string()),
                         super::types::EffortLevel::Low => Some("low".to_string()),
                         super::types::EffortLevel::Medium => Some("medium".to_string()),
                         super::types::EffortLevel::High => Some("high".to_string()),
@@ -2546,20 +2617,6 @@ pub async fn send_chat_message(
                     use crate::projects::storage::load_projects_data;
 
                     let mut system_prompt_parts: Vec<String> = Vec::new();
-
-                    // Codex plan mode: inject planning-only instructions
-                    if thread_execution_mode.as_deref() == Some("plan") {
-                        system_prompt_parts.push(
-                            "You are in PLANNING MODE (read-only sandbox). Create a detailed implementation plan. \
-                             Do NOT attempt to make any file changes — you are running in a read-only sandbox and writes will fail. \
-                             Describe exactly what changes you WOULD make: which files to create/modify, \
-                             what code to write, and in what order. Every plan-mode response that contains or revises a plan must call update_plan/emit CodexPlan; never provide a plain-text-only plan. \
-                             For unresolved questions, prefer Codex native request_user_input so Jean can render interactive question cards when the tool is available. \
-                             After the user answers request_user_input/open questions, immediately call update_plan/emit CodexPlan again with the revised plan before any implementation. \
-                             Use plain-text Unresolved Questions only for non-actionable notes or if request_user_input is unavailable."
-                                .to_string(),
-                        );
-                    }
 
                     if let Some(mode_instruction) =
                         codex_execution_mode_instruction(thread_execution_mode.as_deref())
@@ -2909,6 +2966,7 @@ pub async fn send_chat_message(
                             tool_calls: response.tool_calls,
                             content_blocks: response.content_blocks,
                             cancelled: response.cancelled,
+                            waiting_for_plan: false,
                             error_emitted: response.error_emitted,
                             usage: response.usage,
                             backend: Backend::Codex,
@@ -2944,6 +3002,7 @@ pub async fn send_chat_message(
 
                 let opencode_reasoning_effort: Option<String> =
                     thread_effort_level.as_ref().and_then(|e| match e {
+                        super::types::EffortLevel::Minimal => Some("low".to_string()),
                         super::types::EffortLevel::Low => Some("low".to_string()),
                         super::types::EffortLevel::Medium => Some("medium".to_string()),
                         super::types::EffortLevel::High => Some("high".to_string()),
@@ -3265,22 +3324,27 @@ pub async fn send_chat_message(
                     system_prompt.as_deref(),
                     cancel_flag,
                 ) {
-                    Ok(response) => Ok((
-                        // OpenCode has no child process PID; use 0 as a sentinel.
-                        // Crash recovery checks run.pid via is_process_alive — None means
-                        // the pid_callback was never called, which is correct for OpenCode.
-                        0,
-                        UnifiedResponse {
-                            content: response.content,
-                            resume_id: response.session_id,
-                            tool_calls: response.tool_calls,
-                            content_blocks: response.content_blocks,
-                            cancelled: response.cancelled,
-                            error_emitted: false,
-                            usage: response.usage,
-                            backend: Backend::Opencode,
-                        },
-                    )),
+                    Ok(response) => {
+                        let waiting_for_plan = thread_execution_mode.as_deref() == Some("plan")
+                            && !response.content.is_empty();
+                        Ok((
+                            // OpenCode has no child process PID; use 0 as a sentinel.
+                            // Crash recovery checks run.pid via is_process_alive — None means
+                            // the pid_callback was never called, which is correct for OpenCode.
+                            0,
+                            UnifiedResponse {
+                                content: response.content,
+                                resume_id: response.session_id,
+                                tool_calls: response.tool_calls,
+                                content_blocks: response.content_blocks,
+                                cancelled: response.cancelled,
+                                waiting_for_plan,
+                                error_emitted: false,
+                                usage: response.usage,
+                                backend: Backend::Opencode,
+                            },
+                        ))
+                    }
                     Err(e) => {
                         log::error!("execute_opencode FAILED: {e}");
                         Err(e)
@@ -3427,6 +3491,7 @@ pub async fn send_chat_message(
                             tool_calls: response.tool_calls,
                             content_blocks: response.content_blocks,
                             cancelled: response.cancelled,
+                            waiting_for_plan: false,
                             error_emitted: false,
                             usage: response.usage,
                             backend: Backend::Cursor,
@@ -3434,6 +3499,186 @@ pub async fn send_chat_message(
                     )),
                     Err(e) => {
                         log::error!("execute_cursor FAILED: {e}");
+                        Err(e)
+                    }
+                }
+            }
+            Backend::Commandcode => {
+                let system_context =
+                    super::context_instructions::build_combined_terminal_context_content(
+                        &thread_app,
+                        &thread_session_id,
+                        &thread_worktree_id,
+                    );
+                match super::commandcode::execute_commandcode_headless(
+                    &thread_app,
+                    &thread_session_id,
+                    &thread_worktree_id,
+                    std::path::Path::new(&thread_working_dir),
+                    thread_execution_mode.as_deref(),
+                    thread_model.as_deref(),
+                    &thread_message,
+                    Some(&system_context),
+                    Some(make_pid_callback()),
+                ) {
+                    Ok((_pid, response)) => Ok((
+                        0,
+                        UnifiedResponse {
+                            content: response.content,
+                            resume_id: response.session_id,
+                            tool_calls: response.tool_calls,
+                            content_blocks: response.content_blocks,
+                            cancelled: response.cancelled,
+                            waiting_for_plan: response.waiting_for_plan,
+                            error_emitted: false,
+                            usage: response.usage,
+                            backend: Backend::Commandcode,
+                        },
+                    )),
+                    Err(e) => {
+                        log::error!("execute_commandcode_headless FAILED: {e}");
+                        Err(e)
+                    }
+                }
+            }
+            Backend::Pi => {
+                let pi_system_prompt: Option<String> = {
+                    use crate::projects::storage::load_projects_data;
+
+                    let mut parts: Vec<String> = Vec::new();
+
+                    if let Some(lang) = &thread_ai_language {
+                        let lang = lang.trim();
+                        if !lang.is_empty() {
+                            parts.push(format!("Respond to the user in {lang}."));
+                        }
+                    }
+
+                    if let Ok(prefs_path) = crate::get_preferences_path(&thread_app) {
+                        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
+                            if let Ok(prefs) =
+                                serde_json::from_str::<crate::AppPreferences>(&contents)
+                            {
+                                if let Some(prompt) = prefs
+                                    .magic_prompts
+                                    .global_system_prompt
+                                    .as_deref()
+                                    .map(|s| s.trim())
+                                    .filter(|s| !s.is_empty())
+                                {
+                                    parts.push(prompt.to_string());
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(prompt) = &thread_parallel_prompt {
+                        let prompt = prompt.trim();
+                        if !prompt.is_empty() {
+                            parts.push(prompt.to_string());
+                        }
+                    }
+
+                    if let Ok(data) = load_projects_data(&thread_app) {
+                        if let Some(worktree) = data.find_worktree(&thread_worktree_id) {
+                            if let Some(project) = data.find_project(&worktree.project_id) {
+                                if let Some(prompt) = &project.custom_system_prompt {
+                                    let prompt = prompt.trim();
+                                    if !prompt.is_empty() {
+                                        parts.push(prompt.to_string());
+                                    }
+                                }
+
+                                let linked_paths = project
+                                    .linked_project_ids
+                                    .iter()
+                                    .filter_map(|id| data.find_project(id))
+                                    .filter(|p| !p.path.trim().is_empty())
+                                    .map(|p| p.path.clone())
+                                    .collect::<Vec<_>>();
+                                if !linked_paths.is_empty() {
+                                    let dirs_list = linked_paths
+                                        .iter()
+                                        .map(|p| format!("- {p}"))
+                                        .collect::<Vec<_>>()
+                                        .join("\n");
+                                    parts.push(format!(
+                                        "This project is linked to other projects for cross-project context. \
+                                         Check the following directories for additional instructions and documentation \
+                                         (e.g., CLAUDE.md, AGENTS.md, docs/):\n{dirs_list}"
+                                    ));
+                                }
+                            }
+                        }
+                    }
+
+                    // Embedded binary path hints — prefer the bundled binaries in
+                    // packaged installs instead of relying on PATH.
+                    let gh_binary = crate::gh_cli::config::resolve_gh_binary(&thread_app);
+                    if gh_binary != std::path::PathBuf::from("gh") {
+                        parts.push(format!(
+                            "When running GitHub CLI commands, use the full path to the embedded binary: {}\n\
+                             Do NOT use bare `gh` — always use the full path above.",
+                            gh_binary.display()
+                        ));
+                    }
+                    if let Ok(claude_binary) = crate::claude_cli::get_cli_binary_path(&thread_app) {
+                        if claude_binary.exists() {
+                            parts.push(format!(
+                                "When running Claude CLI commands, use the full path to the embedded binary: {}\n\
+                                 Do NOT use bare `claude` — always use the full path above.",
+                                claude_binary.display()
+                            ));
+                        }
+                    }
+                    if let Ok(codex_binary) = crate::codex_cli::get_cli_binary_path(&thread_app) {
+                        if codex_binary.exists() {
+                            parts.push(format!(
+                                "When running Codex CLI commands, use the full path to the embedded binary: {}\n\
+                                 Do NOT use bare `codex` — always use the full path above.",
+                                codex_binary.display()
+                            ));
+                        }
+                    }
+
+                    parts.push(super::RECAP_INSTRUCTION.to_string());
+
+                    if parts.is_empty() {
+                        None
+                    } else {
+                        Some(parts.join("\n\n"))
+                    }
+                };
+
+                match super::pi::execute_pi(
+                    &thread_app,
+                    &thread_session_id,
+                    &thread_worktree_id,
+                    std::path::Path::new(&thread_working_dir),
+                    thread_pi_session_id.as_deref(),
+                    thread_model.as_deref(),
+                    thread_execution_mode.as_deref(),
+                    thread_effort_level.as_ref(),
+                    &thread_message,
+                    pi_system_prompt.as_deref(),
+                    Some(make_pid_callback()),
+                ) {
+                    Ok(response) => Ok((
+                        0,
+                        UnifiedResponse {
+                            content: response.content,
+                            resume_id: response.session_id,
+                            tool_calls: response.tool_calls,
+                            content_blocks: response.content_blocks,
+                            cancelled: response.cancelled,
+                            waiting_for_plan: false,
+                            error_emitted: false,
+                            usage: response.usage,
+                            backend: Backend::Pi,
+                        },
+                    )),
+                    Err(e) => {
+                        log::error!("execute_pi FAILED: {e}");
                         Err(e)
                     }
                 }
@@ -3478,7 +3723,7 @@ pub async fn send_chat_message(
                         if let Err(save_err) =
                             with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                                 if let Some(session) = sessions.find_session_mut(&session_id) {
-                                    session.claude_session_id = Some(sid.clone());
+                                    persist_salvaged_resume_id(session, &effective_backend, sid);
                                     session.is_reviewing = true;
                                     session.waiting_for_input = false;
                                 }
@@ -3499,7 +3744,7 @@ pub async fn send_chat_message(
                     if let Some(ref sid) = partial_sid {
                         let _ = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                             if let Some(session) = sessions.find_session_mut(&session_id) {
-                                session.claude_session_id = Some(sid.clone());
+                                persist_salvaged_resume_id(session, &effective_backend, sid);
                             }
                             Ok(())
                         });
@@ -3538,7 +3783,7 @@ pub async fn send_chat_message(
                 if let Some(ref sid) = partial_sid {
                     let _ = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                         if let Some(session) = sessions.find_session_mut(&session_id) {
-                            session.claude_session_id = Some(sid.clone());
+                            persist_salvaged_resume_id(session, &effective_backend, sid);
                         }
                         Ok(())
                     });
@@ -3569,7 +3814,7 @@ pub async fn send_chat_message(
     // cancelled content to the same JSONL file, and writing here would duplicate it.
     if matches!(
         unified_response.backend,
-        Backend::Opencode | Backend::Cursor
+        Backend::Opencode | Backend::Cursor | Backend::Pi | Backend::Commandcode
     ) && !unified_response.cancelled
     {
         if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(&output_file) {
@@ -3726,6 +3971,10 @@ pub async fn send_chat_message(
                         Backend::Cursor => {
                             session.cursor_chat_id = Some(resume_id_for_log.clone());
                         }
+                        Backend::Pi => {
+                            session.pi_session_id = Some(resume_id_for_log.clone());
+                        }
+                        Backend::Commandcode => {}
                     }
                 }
                 // Remove user message (undo send) - allows frontend to restore to input field
@@ -3785,12 +4034,16 @@ pub async fn send_chat_message(
         .tool_calls
         .iter()
         .any(|tc| tc.name == "ExitPlanMode" || tc.name == "CodexPlan");
-    let is_plan_mode_with_content = plan_mode_content_waits_for_approval(
-        &response_backend,
-        execution_mode.as_deref(),
-        has_content,
-        has_plan_tool,
-    );
+    let is_plan_mode_with_content = if response_backend == Backend::Commandcode {
+        unified_response.waiting_for_plan
+    } else {
+        plan_mode_content_waits_for_approval(
+            &response_backend,
+            execution_mode.as_deref(),
+            has_content,
+            has_plan_tool,
+        )
+    };
 
     // Create assistant message with tool calls and content blocks
     let assistant_msg_id = Uuid::new_v4().to_string();
@@ -3862,6 +4115,10 @@ pub async fn send_chat_message(
                     Backend::Cursor => {
                         session.cursor_chat_id = Some(resume_id_for_log.clone());
                     }
+                    Backend::Pi => {
+                        session.pi_session_id = Some(resume_id_for_log.clone());
+                    }
+                    Backend::Commandcode => {}
                 }
             }
 
@@ -3950,6 +4207,8 @@ pub async fn clear_session_history(
             session.codex_thread_id = None;
             session.opencode_session_id = None;
             session.cursor_chat_id = None;
+            session.pi_session_id = None;
+            session.commandcode_session_id = None;
             session.selected_model = selected_model;
             session.selected_thinking_level = selected_thinking_level;
             session.selected_effort_level = selected_effort_level;
@@ -4070,6 +4329,8 @@ pub async fn set_session_backend(
                 "codex" => super::types::Backend::Codex,
                 "opencode" => super::types::Backend::Opencode,
                 "cursor" => super::types::Backend::Cursor,
+                "pi" => super::types::Backend::Pi,
+                "commandcode" => super::types::Backend::Commandcode,
                 _ => super::types::Backend::Claude,
             };
             log::trace!("Backend selection saved");
@@ -6093,6 +6354,7 @@ pub async fn get_session_debug_info(
     let session = sessions.find_session(&session_id);
     let claude_session_id = session.and_then(|s| s.claude_session_id.clone());
     let cursor_chat_id = session.and_then(|s| s.cursor_chat_id.clone());
+    let pi_session_id = session.and_then(|s| s.pi_session_id.clone());
 
     // Try to find Claude CLI's JSONL file
     let claude_jsonl_file = claude_session_id.as_ref().and_then(|sid| {
@@ -6175,6 +6437,8 @@ pub async fn get_session_debug_info(
         manifest_file,
         claude_session_id,
         cursor_chat_id,
+        pi_session_id,
+        commandcode_session_id: None,
         claude_jsonl_file,
         run_log_files,
         total_usage,
@@ -7055,15 +7319,41 @@ mod tests {
     }
 
     #[test]
-    fn test_codex_default_prompt_includes_plan_rules_only_in_plan_mode() {
+    fn commandcode_model_implies_commandcode_backend() {
+        assert_eq!(
+            infer_backend_from_model("commandcode/deepseek/deepseek-v4-flash", Backend::Claude),
+            Backend::Commandcode
+        );
+    }
+
+    #[test]
+    fn default_model_for_commandcode_backend_uses_commandcode_preference() {
+        let mut prefs = crate::AppPreferences::default();
+        prefs.selected_model = "claude-sonnet-4-6[1m]".to_string();
+        prefs.selected_commandcode_model = "commandcode/deepseek/deepseek-v4-flash".to_string();
+
+        assert_eq!(
+            default_model_for_backend(&Backend::Commandcode, &prefs),
+            Some("commandcode/deepseek/deepseek-v4-flash".to_string())
+        );
+    }
+
+    #[test]
+    fn test_codex_default_prompt_does_not_inject_plan_mode_rules() {
         let plan_prompt = codex_default_global_system_prompt(Some("plan"));
-        assert!(plan_prompt.contains("## Plan Mode"));
-        assert!(plan_prompt.contains("update_plan"));
-        assert!(plan_prompt.contains("CodexPlan"));
+        assert!(!plan_prompt.contains("## Plan Mode"));
+        assert!(!plan_prompt.contains("PLANNING MODE"));
+        assert!(!plan_prompt.contains("Do NOT attempt to make any file changes"));
+        assert!(!plan_prompt.contains("update_plan"));
+        assert!(!plan_prompt.contains("CodexPlan"));
         assert!(plan_prompt.contains("## Not Plan Mode"));
+        assert!(plan_prompt.contains("Jean Worktree Policy"));
+        assert!(plan_prompt.contains("VERY IMPORTANT: Keep Code Simple"));
 
         let build_prompt = codex_default_global_system_prompt(Some("build"));
         assert!(!build_prompt.contains("## Plan Mode"));
+        assert!(!build_prompt.contains("PLANNING MODE"));
+        assert!(!build_prompt.contains("Do NOT attempt to make any file changes"));
         assert!(!build_prompt.contains("update_plan"));
         assert!(!build_prompt.contains("CodexPlan"));
         assert!(build_prompt.contains("## Not Plan Mode"));
@@ -7077,6 +7367,8 @@ mod tests {
 
         let yolo_prompt = codex_default_global_system_prompt(Some("yolo"));
         assert!(!yolo_prompt.contains("## Plan Mode"));
+        assert!(!yolo_prompt.contains("PLANNING MODE"));
+        assert!(!yolo_prompt.contains("Do NOT attempt to make any file changes"));
         assert!(!yolo_prompt.contains("update_plan"));
         assert!(!yolo_prompt.contains("CodexPlan"));
         assert!(yolo_prompt.contains("## Not Plan Mode"));
@@ -7126,6 +7418,18 @@ mod tests {
         ));
         assert!(!plan_mode_content_waits_for_approval(
             &Backend::Claude,
+            Some("plan"),
+            true,
+            false
+        ));
+        assert!(!plan_mode_content_waits_for_approval(
+            &Backend::Cursor,
+            Some("plan"),
+            true,
+            false
+        ));
+        assert!(!plan_mode_content_waits_for_approval(
+            &Backend::Commandcode,
             Some("plan"),
             true,
             false

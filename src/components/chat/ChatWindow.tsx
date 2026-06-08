@@ -56,12 +56,7 @@ import {
   useAttachedSavedContexts,
 } from '@/services/github'
 import { useLoadedLinearIssueContexts } from '@/services/linear'
-import {
-  useChatStore,
-  DEFAULT_MODEL,
-  DEFAULT_THINKING_LEVEL,
-  type ClaudeModel,
-} from '@/store/chat-store'
+import { useChatStore, DEFAULT_THINKING_LEVEL } from '@/store/chat-store'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { PREDEFINED_CLI_PROFILES, type CliBackend } from '@/types/preferences'
@@ -126,6 +121,7 @@ import { StreamingStatusBar } from './StreamingStatusBar'
 import { ChatErrorFallback } from './ChatErrorFallback'
 import { logger } from '@/lib/logger'
 import { saveCrashState } from '@/lib/recovery'
+import { resolveDefaultModelForBackend } from '@/lib/session-defaults'
 import { ErrorBanner } from './ErrorBanner'
 import {
   VirtualizedMessageList,
@@ -142,7 +138,10 @@ import { buildMcpConfigJson } from '@/services/mcp'
 import type { McpServerInfo } from '@/types/chat'
 import { useGitStatus } from '@/services/git-status'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
-import { supportsAdaptiveThinking } from '@/lib/model-utils'
+import {
+  getModelImpliedBackend,
+  supportsAdaptiveThinking,
+} from '@/lib/model-utils'
 import { copyToClipboard, copyHtmlToClipboard } from '@/lib/clipboard'
 import { useClaudeCliStatus } from '@/services/claude-cli'
 import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
@@ -603,15 +602,9 @@ export function ChatWindow({
     globalDefaultBackend
   // Model string is definitive backend source (matches Rust safety net in send_chat_message).
   // Prevents race where setSessionModel invalidation refetches before setSessionBackend persists.
-  const modelImpliedBackend: CliBackend | null =
-    session?.selected_model?.startsWith('cursor/')
-      ? 'cursor'
-      : session?.selected_model?.startsWith('opencode/')
-        ? 'opencode'
-        : session?.selected_model?.startsWith('codex') ||
-            session?.selected_model?.includes('codex')
-          ? 'codex'
-          : null
+  const modelImpliedBackend: CliBackend | null = getModelImpliedBackend(
+    session?.selected_model
+  )
   // Clamp to installed backends — prevents showing "Claude" when only Codex is installed
   const selectedBackend: CliBackend =
     modelImpliedBackend ??
@@ -620,17 +613,13 @@ export function ChatWindow({
       ? (installedBackends[0] as CliBackend)
       : resolvedBackend)
   const isCodexBackend = selectedBackend === 'codex'
-  const isOpencodeBackend = selectedBackend === 'opencode'
   const isCursorBackend = selectedBackend === 'cursor'
 
   // Per-session model selection, falls back to preferences default (backend-aware)
-  const defaultModel: string = isCodexBackend
-    ? (preferences?.selected_codex_model ?? 'gpt-5.5')
-    : isOpencodeBackend
-      ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
-      : isCursorBackend
-        ? (preferences?.selected_cursor_model ?? 'cursor/auto')
-        : ((preferences?.selected_model as ClaudeModel) ?? DEFAULT_MODEL)
+  const defaultModel = resolveDefaultModelForBackend(
+    selectedBackend,
+    preferences
+  )
   const selectedModel: string = session?.selected_model ?? defaultModel
 
   // Per-session thinking level, falls back to preferences default
@@ -1167,7 +1156,12 @@ export function ChatWindow({
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
             : yoloBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
-              : selectedModelRef.current)
+              : yoloBackend === 'pi'
+                ? (preferences?.selected_pi_model ?? 'pi/sonnet')
+                : yoloBackend === 'commandcode'
+                  ? (preferences?.selected_commandcode_model ??
+                    'commandcode/default')
+                  : selectedModelRef.current)
       const yoloOverride =
         yoloModelRef.current || yoloBackend
           ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
@@ -1184,7 +1178,12 @@ export function ChatWindow({
       if (yoloBackend) {
         store.setSelectedBackend(
           newSession.id,
-          yoloBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
+          yoloBackend as
+            | 'claude'
+            | 'codex'
+            | 'opencode'
+            | 'cursor'
+            | 'commandcode'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
@@ -1336,7 +1335,12 @@ export function ChatWindow({
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
             : buildBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
-              : selectedModelRef.current)
+              : buildBackend === 'pi'
+                ? (preferences?.selected_pi_model ?? 'pi/sonnet')
+                : buildBackend === 'commandcode'
+                  ? (preferences?.selected_commandcode_model ??
+                    'commandcode/default')
+                  : selectedModelRef.current)
       const buildOverride =
         buildModelRef.current || buildBackend
           ? [buildBackend, buildModel].filter(Boolean).join(' / ')
@@ -1353,7 +1357,12 @@ export function ChatWindow({
       if (buildBackend) {
         store.setSelectedBackend(
           newSession.id,
-          buildBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
+          buildBackend as
+            | 'claude'
+            | 'codex'
+            | 'opencode'
+            | 'cursor'
+            | 'commandcode'
         )
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
@@ -1584,7 +1593,12 @@ export function ChatWindow({
             ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
             : modeBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
-              : selectedModelRef.current)
+              : modeBackend === 'pi'
+                ? (preferences?.selected_pi_model ?? 'pi/sonnet')
+                : modeBackend === 'commandcode'
+                  ? (preferences?.selected_commandcode_model ??
+                    'commandcode/default')
+                  : selectedModelRef.current)
       const modeOverride =
         modeModelRef.current || modeBackend
           ? [modeBackend, modeModel].filter(Boolean).join(' / ')
@@ -1601,7 +1615,12 @@ export function ChatWindow({
       if (modeBackend) {
         store.setSelectedBackend(
           newSession.id,
-          modeBackend as 'claude' | 'codex' | 'opencode' | 'cursor'
+          modeBackend as
+            | 'claude'
+            | 'codex'
+            | 'opencode'
+            | 'cursor'
+            | 'commandcode'
         )
       }
       queryClient.setQueryData<Session>(

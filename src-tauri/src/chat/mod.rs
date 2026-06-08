@@ -1,6 +1,7 @@
 pub(crate) mod claude;
 pub(crate) mod codex;
 pub(crate) mod codex_server;
+pub(crate) mod commandcode;
 mod commands;
 pub(crate) mod context_instructions;
 pub(crate) mod cursor;
@@ -9,6 +10,7 @@ pub mod jean_mcp;
 mod naming;
 mod native_history;
 pub(crate) mod opencode;
+pub(crate) mod pi;
 pub mod registry;
 pub mod run_log;
 pub mod storage;

@@ -1012,11 +1012,13 @@ export interface AppPreferences {
 
   confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
   default_execution_mode: ExecutionMode // Default execution mode for new sessions: 'plan', 'build', or 'yolo'
-  default_backend: CliBackend // Default CLI backend for new sessions: 'claude', 'codex', 'opencode', or 'cursor'
+  default_backend: CliBackend // Default CLI backend for new sessions: 'claude', 'codex', 'opencode', 'cursor', 'pi', or 'commandcode'
   default_new_session_kind: NewSessionKind // Default action for CMD+T: 'chat', 'terminal', or a CLI backend
   selected_codex_model: CodexModel // Default Codex model
   selected_opencode_model: string // Default OpenCode model (provider/model)
   selected_cursor_model: CursorModel // Default Cursor model
+  selected_pi_model: PiModel // Default PI model
+  selected_commandcode_model?: string // Default Command Code model (CLI default)
   default_codex_reasoning_effort: CodexReasoningEffort // Default reasoning effort for Codex: 'low' | 'medium' | 'high' | 'xhigh'
   codex_goal_execution_mode: CodexGoalExecutionMode // Execution mode used when starting a Codex /goal
   codex_multi_agent_enabled: boolean // Enable Codex multi-agent collaboration (experimental)
@@ -1037,6 +1039,8 @@ export interface AppPreferences {
   codex_cli_source: 'jean' | 'path' // Codex CLI source: 'jean' (managed) or 'path' (system PATH)
   opencode_cli_source: 'jean' | 'path' // OpenCode CLI source: 'jean' (managed) or 'path' (system PATH)
   gh_cli_source: 'jean' | 'path' // GitHub CLI source: 'jean' (managed) or 'path' (system PATH)
+  pi_cli_source: 'jean' | 'path' // PI CLI source: 'jean' (managed) or 'path' (system PATH)
+  commandcode_cli_source?: 'jean' | 'path' // Command Code CLI source: 'jean' (managed) or 'path' (system PATH)
   wsl_mode_chosen: boolean // Whether WSL mode selection has been made (prevents re-asking on Windows)
   wsl_enabled: boolean // Route commands through WSL
   wsl_distro: string // WSL distro name, e.g. "Ubuntu"
@@ -1404,11 +1408,15 @@ export type MagicPromptReasoningEffort =
 // =============================================================================
 export type OpenCodeModel = `opencode/${string}`
 export type CursorModel = `cursor/${string}`
+export type PiModel = `pi/${string}`
+export type CommandCodeModel = `commandcode/${string}`
 export type MagicPromptModel =
   | ClaudeModel
   | CodexModel
   | OpenCodeModel
   | CursorModel
+  | PiModel
+  | CommandCodeModel
 
 /** Check if a model string identifies an OpenCode model */
 export function isOpenCodeModel(model: string): model is OpenCodeModel {
@@ -1418,6 +1426,16 @@ export function isOpenCodeModel(model: string): model is OpenCodeModel {
 /** Check if a model string identifies a Cursor model */
 export function isCursorModel(model: string): model is CursorModel {
   return model.startsWith('cursor/')
+}
+
+/** Check if a model string identifies a PI model */
+export function isPiModel(model: string): model is PiModel {
+  return model.startsWith('pi/')
+}
+
+/** Check if a model string identifies a Command Code model */
+export function isCommandCodeModel(model: string): model is CommandCodeModel {
+  return model.startsWith('commandcode/')
 }
 
 /** Check if a model string identifies a Codex model */
@@ -1440,13 +1458,21 @@ export const codexReasoningOptions: {
 // =============================================================================
 // CLI Backend
 // =============================================================================
-export type CliBackend = 'claude' | 'codex' | 'opencode' | 'cursor'
+export type CliBackend =
+  | 'claude'
+  | 'codex'
+  | 'opencode'
+  | 'cursor'
+  | 'pi'
+  | 'commandcode'
 
 export const backendOptions: { value: CliBackend; label: string }[] = [
   { value: 'claude', label: 'Claude' },
   { value: 'codex', label: 'Codex' },
   { value: 'opencode', label: 'OpenCode' },
   { value: 'cursor', label: 'Cursor' },
+  { value: 'pi', label: 'Pi (Beta)' },
+  { value: 'commandcode', label: 'Command Code (Beta)' },
 ]
 
 export type TerminalApp =
@@ -1819,6 +1845,8 @@ export const defaultPreferences: AppPreferences = {
   selected_codex_model: 'gpt-5.5', // Default: latest Codex model
   selected_opencode_model: 'opencode/gpt-5.3-codex', // Default OpenCode model
   selected_cursor_model: 'cursor/auto', // Default Cursor model
+  selected_pi_model: 'pi/sonnet', // Default PI model
+  selected_commandcode_model: 'commandcode/default', // Default Command Code model
   default_codex_reasoning_effort: 'high', // Default: high reasoning
   codex_goal_execution_mode: 'build', // Default: build mode for goals
   codex_multi_agent_enabled: false, // Default: disabled
@@ -1839,6 +1867,8 @@ export const defaultPreferences: AppPreferences = {
   codex_cli_source: 'jean', // Default: Jean-managed
   opencode_cli_source: 'jean', // Default: Jean-managed
   gh_cli_source: 'jean', // Default: Jean-managed
+  pi_cli_source: 'jean', // Default: Jean-managed
+  commandcode_cli_source: 'jean', // Default: Jean-managed
   wsl_mode_chosen: false, // Default: not yet chosen
   wsl_enabled: false, // Default: native Windows
   wsl_distro: '', // Default: empty

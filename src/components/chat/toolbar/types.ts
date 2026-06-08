@@ -84,10 +84,17 @@ export interface ChatToolbarProps {
   onResolveConflicts: () => void
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
-  installedBackends: ('claude' | 'codex' | 'opencode' | 'cursor')[]
+  installedBackends: (
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'pi'
+    | 'commandcode'
+  )[]
   onModelChange: (model: ClaudeModel) => void
   onBackendModelChange: (
-    backend: 'claude' | 'codex' | 'opencode' | 'cursor',
+    backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'commandcode',
     model: string
   ) => void
   onProviderChange: (provider: string | null) => void
