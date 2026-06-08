@@ -161,7 +161,6 @@ const LinkedProjectsModal = lazy(() =>
     default: mod.LinkedProjectsModal,
   }))
 )
-const EMPTY_PINNED_LABELS: LabelData[] = []
 import type { DiffRequest } from '@/types/git-diff'
 import { toast } from 'sonner'
 import {
@@ -194,6 +193,8 @@ import { openCanvasConflictResolution } from './conflict-resolution-navigation'
 interface ProjectCanvasViewProps {
   projectId: string
 }
+
+const EMPTY_PINNED_LABELS: LabelData[] = []
 
 interface WorktreeSection {
   worktree: Worktree
