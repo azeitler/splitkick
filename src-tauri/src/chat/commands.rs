@@ -1617,6 +1617,7 @@ pub async fn restore_session_with_base(
         pr_push_remote: None,
         pr_push_branch: None,
         order: 0,
+        origin: None,
         labels: Vec::new(),
         label: None,
         archived_at: None,
@@ -1936,6 +1937,7 @@ pub async fn set_sessions_last_opened_bulk(
 /// 5. Adds the assistant response
 /// 6. Saves the updated session
 /// 7. Returns the assistant message
+///
 /// Persist a salvaged resume/session ID onto the correct backend field.
 /// Used by the thread-error/thread-panic recovery paths so the next send can
 /// resume the conversation instead of starting fresh.
