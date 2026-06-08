@@ -319,12 +319,12 @@ export function AutoFixPane({ projectId }: { projectId: string }) {
           <div className="rounded-lg border p-4">
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
-              <h4 className="text-sm font-medium text-foreground">
-                Planning
-              </h4>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Plan issues automatically based on the backend model.
-              </p>
+                <h4 className="text-sm font-medium text-foreground">
+                  Planning
+                </h4>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Plan issues automatically based on the backend model.
+                </p>
               </div>
             </div>
 
