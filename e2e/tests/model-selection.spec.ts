@@ -37,8 +37,8 @@ test.describe('Model Selection', () => {
     await modelCombobox.click()
     await mockPage.waitForTimeout(200)
 
-    // Select "Opus 4.6"
-    await mockPage.getByRole('option', { name: 'Opus 4.6' }).click()
+    // Select plain "Opus 4.6" (exact — avoids matching "Opus 4.6 (1M)")
+    await mockPage.getByRole('option', { name: 'Opus 4.6', exact: true }).click()
     await mockPage.waitForTimeout(500)
 
     // Verify the selector now shows Opus 4.6

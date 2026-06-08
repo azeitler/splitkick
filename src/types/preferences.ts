@@ -1179,19 +1179,21 @@ export type ClaudeModel =
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
   { value: 'claude-opus-4-8[1m]', label: 'Claude Opus 4.8 (1M)' },
+  { value: 'claude-opus-4-8', label: 'Claude Opus 4.8' },
   { value: 'claude-opus-4-7[1m]', label: 'Claude Opus 4.7 (1M)' },
+  { value: 'claude-opus-4-7', label: 'Claude Opus 4.7' },
   { value: 'claude-opus-4-6[1m]', label: 'Claude Opus 4.6 (1M)' },
+  { value: 'claude-opus-4-6', label: 'Claude Opus 4.6' },
   { value: 'claude-opus-4-5-20251101', label: 'Claude Opus 4.5' },
   { value: 'claude-sonnet-4-6[1m]', label: 'Claude Sonnet 4.6 (1M)' },
+  { value: 'sonnet', label: 'Claude Sonnet 4.6' },
   { value: 'haiku', label: 'Claude Haiku' },
 ]
 
+// Plain ids are now selectable in modelOptions, so they must NOT be rewritten
+// to 1M here. Only keep migration for the removed standalone fast entry.
 const legacyClaudeDefaultModelMap = {
-  'claude-opus-4-8': 'claude-opus-4-8[1m]',
-  'claude-opus-4-7': 'claude-opus-4-7[1m]',
-  'claude-opus-4-6': 'claude-opus-4-6[1m]',
   'claude-opus-4-6-fast': 'claude-opus-4-6[1m]-fast',
-  sonnet: 'claude-sonnet-4-6[1m]',
 } as const satisfies Partial<Record<ClaudeModel, ClaudeModel>>
 
 const knownClaudeModels = new Set<string>([

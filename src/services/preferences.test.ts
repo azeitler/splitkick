@@ -88,18 +88,27 @@ const createWrapper = (queryClient: QueryClient) => {
 }
 
 describe('model option helpers', () => {
-  it('uses 1M Claude variants where available and keeps no-1M-only models', () => {
+  it('offers both 1M and plain Claude variants and keeps explicit plain selections', () => {
     expect(modelOptions.map(option => option.value)).toEqual([
       'claude-opus-4-8[1m]',
+      'claude-opus-4-8',
       'claude-opus-4-7[1m]',
+      'claude-opus-4-7',
       'claude-opus-4-6[1m]',
+      'claude-opus-4-6',
       'claude-opus-4-5-20251101',
       'claude-sonnet-4-6[1m]',
+      'sonnet',
       'haiku',
     ])
-    expect(normalizeClaudeModel('sonnet')).toBe('claude-sonnet-4-6[1m]')
-    expect(normalizeClaudeModel('claude-opus-4-8')).toBe('claude-opus-4-8[1m]')
-    expect(normalizeClaudeModel('claude-opus-4-7')).toBe('claude-opus-4-7[1m]')
+    // Plain ids are selectable, so they must pass through unchanged (no 1M upgrade).
+    expect(normalizeClaudeModel('sonnet')).toBe('sonnet')
+    expect(normalizeClaudeModel('claude-opus-4-8')).toBe('claude-opus-4-8')
+    expect(normalizeClaudeModel('claude-opus-4-7')).toBe('claude-opus-4-7')
+    // Removed standalone fast entry still migrates to its 1M-fast equivalent.
+    expect(normalizeClaudeModel('claude-opus-4-6-fast')).toBe(
+      'claude-opus-4-6[1m]-fast'
+    )
   })
 
   it('offers Codex fast modes for default selectors', () => {
