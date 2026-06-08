@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  formatPiModelLabel,
+  formatCommandCodeModelLabel,
   getProviderDisplayName,
   getSessionProviderDisplayName,
-  sortModelOptionsByRawModel,
 } from './toolbar-utils'
 
 describe('getProviderDisplayName', () => {
@@ -34,44 +33,16 @@ describe('getSessionProviderDisplayName', () => {
   })
 })
 
-describe('formatPiModelLabel', () => {
-  it('formats active PI provider/model ids', () => {
-    expect(formatPiModelLabel('pi/openai-codex/gpt-5.5')).toBe(
-      'GPT 5.5 (OpenAI Codex)'
+describe('formatCommandCodeModelLabel', () => {
+  it('formats CommandCode provider/model ids as backend-prefixed model names', () => {
+    expect(
+      formatCommandCodeModelLabel('commandcode/deepseek/deepseek-v4-flash')
+    ).toBe('Command Code · Deepseek V4 Flash')
+    expect(formatCommandCodeModelLabel('commandcode/claude-sonnet-4-6')).toBe(
+      'Command Code · Claude Sonnet 4.6'
     )
-  })
-})
-
-describe('sortModelOptionsByRawModel', () => {
-  it('sorts provider model ids by raw model version descending', () => {
-    const sorted = sortModelOptionsByRawModel([
-      { value: 'pi/openai-codex/gpt-5.3-codex-spark', label: 'Spark' },
-      { value: 'pi/openai-codex/gpt-5.4-mini', label: 'Mini' },
-      { value: 'pi/openai-codex/gpt-5.5', label: 'Newest' },
-      { value: 'pi/openai-codex/gpt-5.4', label: 'Older' },
-    ])
-
-    expect(sorted.map(option => option.value)).toEqual([
-      'pi/openai-codex/gpt-5.5',
-      'pi/openai-codex/gpt-5.4',
-      'pi/openai-codex/gpt-5.4-mini',
-      'pi/openai-codex/gpt-5.3-codex-spark',
-    ])
-  })
-
-  it('works across backend and provider-specific raw ids', () => {
-    const sorted = sortModelOptionsByRawModel([
-      { value: 'cursor/gpt-5.4-high-fast', label: 'Cursor 5.4' },
-      { value: 'openrouter/anthropic/claude-4-7-sonnet', label: 'OR 4.7' },
-      { value: 'openai/gpt-5.5:free', label: 'OpenCode 5.5' },
-      { value: 'claude-opus-4-8[1m]', label: 'Claude 4.8' },
-    ])
-
-    expect(sorted.map(option => option.value)).toEqual([
-      'openai/gpt-5.5:free',
-      'cursor/gpt-5.4-high-fast',
-      'claude-opus-4-8[1m]',
-      'openrouter/anthropic/claude-4-7-sonnet',
-    ])
+    expect(
+      formatCommandCodeModelLabel('commandcode/moonshotai/Kimi-K2.5')
+    ).toBe('Command Code · Kimi K2.5')
   })
 })

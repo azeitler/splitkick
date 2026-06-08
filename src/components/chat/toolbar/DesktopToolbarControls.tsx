@@ -54,7 +54,6 @@ import { cn } from '@/lib/utils'
 import {
   CODEX_EFFORT_LEVEL_OPTIONS,
   EFFORT_LEVEL_OPTIONS,
-  PI_EFFORT_LEVEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
 import {
@@ -67,7 +66,7 @@ import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
 
 interface DesktopToolbarControlsProps {
   hasPendingQuestions: boolean
-  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi'
+  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
   selectedModel: string
   selectedProvider: string | null
   selectedThinkingLevel: ThinkingLevel
@@ -112,14 +111,20 @@ interface DesktopToolbarControlsProps {
   onResolvePrConflicts: () => void
   onLoadContext: () => void
   onAttach: () => void
-  installedBackends: ('claude' | 'codex' | 'opencode' | 'cursor' | 'pi')[]
+  installedBackends: (
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'commandcode'
+  )[]
   onSetExecutionMode: (mode: ExecutionMode) => void
   availableExecutionModes: ExecutionMode[]
   onToggleMcpServer: (name: string) => void
 
   handleModelChange: (value: string) => void
   handleBackendModelChange: (
-    backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi',
+    backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode',
     model: string
   ) => void
   handleProviderChange: (value: string) => void
@@ -193,8 +198,6 @@ export function DesktopToolbarControls({
 }: DesktopToolbarControlsProps) {
   const effortLevelOptions = isCodex
     ? CODEX_EFFORT_LEVEL_OPTIONS
-    : selectedBackend === 'pi'
-      ? PI_EFFORT_LEVEL_OPTIONS
     : EFFORT_LEVEL_OPTIONS
   const displayedEffortLevel = isCodex
     ? selectedEffortLevel === 'max'
@@ -202,14 +205,12 @@ export function DesktopToolbarControls({
       : selectedEffortLevel === 'ultracode'
         ? 'xhigh'
         : selectedEffortLevel
-    : selectedBackend === 'pi'
-      ? selectedEffortLevel === 'max' || selectedEffortLevel === 'ultracode'
-        ? 'xhigh'
-        : selectedEffortLevel
     : selectedEffortLevel
   const displayedEffortLabel =
     effortLevelOptions.find(o => o.value === displayedEffortLevel)?.label ??
     displayedEffortLevel
+  const hideReasoningControl =
+    hideThinkingLevel || selectedBackend === 'commandcode'
 
   // Prevent Radix from restoring focus to the trigger button;
   // redirect focus to the chat input instead.
@@ -624,11 +625,11 @@ export function DesktopToolbarControls({
         onBackendModelChange={handleBackendModelChange}
       />
 
-      {!hideThinkingLevel && (
+      {!hideReasoningControl && (
         <div className="hidden @xl:block h-4 w-px bg-border/50" />
       )}
 
-      {hideThinkingLevel ? null : useAdaptiveThinking || isCodex ? (
+      {hideReasoningControl ? null : useAdaptiveThinking || isCodex ? (
         <DropdownMenu
           open={thinkingDropdownOpen}
           onOpenChange={setThinkingDropdownOpen}

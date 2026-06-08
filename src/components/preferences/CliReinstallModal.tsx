@@ -25,8 +25,8 @@ import { useClaudeCliSetup } from '@/services/claude-cli'
 import { useGhCliSetup } from '@/services/gh-cli'
 import { useCodexCliSetup } from '@/services/codex-cli'
 import { useOpenCodeCliSetup } from '@/services/opencode-cli'
-import { usePiCliSetup } from '@/services/pi-cli'
 import { useCodeRabbitCliSetup } from '@/services/coderabbit-cli'
+import { useCommandCodeCliSetup } from '@/services/commandcode-cli'
 import { logger } from '@/lib/logger'
 import {
   SetupState,
@@ -161,23 +161,6 @@ export function CodeRabbitCliReinstallModal({
   )
 }
 
-export function PiCliReinstallModal({ open, onOpenChange }: ModalProps) {
-  if (!open) return null
-  return <PiCliReinstallModalContent open={open} onOpenChange={onOpenChange} />
-}
-
-function PiCliReinstallModalContent({ open, onOpenChange }: ModalProps) {
-  const setup = usePiCliSetup()
-  return (
-    <CliReinstallModalUI
-      setup={setup}
-      cliType="pi"
-      open={open}
-      onOpenChange={onOpenChange}
-    />
-  )
-}
-
 function CodeRabbitCliReinstallModalContent({
   open,
   onOpenChange,
@@ -193,12 +176,40 @@ function CodeRabbitCliReinstallModalContent({
   )
 }
 
+export function CommandCodeCliReinstallModal({
+  open,
+  onOpenChange,
+}: ModalProps) {
+  if (!open) return null
+  return (
+    <CommandCodeCliReinstallModalContent
+      open={open}
+      onOpenChange={onOpenChange}
+    />
+  )
+}
+
+function CommandCodeCliReinstallModalContent({
+  open,
+  onOpenChange,
+}: ModalProps) {
+  const setup = useCommandCodeCliSetup()
+  return (
+    <CliReinstallModalUI
+      setup={setup}
+      cliType="commandcode"
+      open={open}
+      onOpenChange={onOpenChange}
+    />
+  )
+}
+
 /**
  * Shared UI component - receives setup as prop, no hooks here
  */
 interface CliReinstallModalUIProps {
   setup: CliSetupInterface
-  cliType: 'claude' | 'gh' | 'codex' | 'opencode' | 'pi' | 'coderabbit'
+  cliType: 'claude' | 'gh' | 'codex' | 'opencode' | 'coderabbit' | 'commandcode'
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -216,10 +227,10 @@ function CliReinstallModalUI({
         ? 'Codex CLI'
         : cliType === 'opencode'
           ? 'OpenCode CLI'
-          : cliType === 'pi'
-            ? 'PI CLI'
-            : cliType === 'coderabbit'
-              ? 'CodeRabbit CLI'
+          : cliType === 'coderabbit'
+            ? 'CodeRabbit CLI'
+            : cliType === 'commandcode'
+              ? 'Command Code CLI'
               : 'GitHub CLI'
 
   // Store setup in ref for stable callback reference
@@ -339,10 +350,10 @@ function CliReinstallModalUI({
                         ? 'Codex AI sessions'
                         : cliType === 'opencode'
                           ? 'OpenCode AI sessions'
-                          : cliType === 'pi'
-                            ? 'PI AI sessions'
-                            : cliType === 'coderabbit'
-                              ? 'secondary CodeRabbit code reviews'
+                          : cliType === 'coderabbit'
+                            ? 'secondary CodeRabbit code reviews'
+                            : cliType === 'commandcode'
+                              ? 'Command Code AI sessions'
                               : 'GitHub integration'
                   }.`}
           </DialogDescription>

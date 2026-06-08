@@ -49,10 +49,6 @@ function mapCodexReasoningToEffort(
   value: string | null | undefined
 ): EffortLevel | undefined {
   switch (value) {
-    case 'off':
-      return 'off'
-    case 'minimal':
-      return 'minimal'
     case 'low':
       return 'low'
     case 'medium':
@@ -69,14 +65,20 @@ function mapCodexReasoningToEffort(
 }
 
 function getDefaultModelForBackend(
-  backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | undefined,
+  backend:
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'commandcode'
+    | undefined,
   preferences:
     | {
         selected_model?: string | null
         selected_codex_model?: string | null
         selected_opencode_model?: string | null
         selected_cursor_model?: string | null
-        selected_pi_model?: string | null
+        selected_commandcode_model?: string | null
       }
     | undefined
 ): string {
@@ -89,8 +91,8 @@ function getDefaultModelForBackend(
   if (backend === 'cursor') {
     return preferences?.selected_cursor_model ?? 'cursor/auto'
   }
-  if (backend === 'pi') {
-    return preferences?.selected_pi_model ?? 'pi/sonnet'
+  if (backend === 'commandcode') {
+    return preferences?.selected_commandcode_model ?? 'commandcode/default'
   }
   return preferences?.selected_model ?? 'claude-opus-4-8[1m]'
 }
@@ -346,7 +348,6 @@ export function useWorktreeApproval({
         | 'claude'
         | 'codex'
         | 'opencode'
-        | 'pi'
         | undefined
       const modeBackendPref = isYolo
         ? preferences?.yolo_backend
@@ -364,13 +365,11 @@ export function useWorktreeApproval({
         | 'claude'
         | 'codex'
         | 'opencode'
-        | 'pi'
         | null
       const backend = (modeBackendOverride ?? originalBackend ?? undefined) as
         | 'claude'
         | 'codex'
         | 'opencode'
-        | 'pi'
         | undefined
       const model =
         modeModelPref ??
@@ -384,16 +383,13 @@ export function useWorktreeApproval({
           : ''
       let thinkingLevel: ThinkingLevel = 'off'
       let effortLevel: EffortLevel | undefined
-      if (backend === 'codex' || backend === 'pi') {
-        const defaultEffort =
-          backend === 'pi'
-            ? (mapCodexReasoningToEffort(preferences?.default_effort_level) ??
-              'high')
-            : (mapCodexReasoningToEffort(
-                preferences?.default_codex_reasoning_effort
-              ) ?? 'high')
+      if (backend === 'codex') {
+        const defaultCodexEffort =
+          mapCodexReasoningToEffort(
+            preferences?.default_codex_reasoning_effort
+          ) ?? 'high'
         effortLevel =
-          mapCodexReasoningToEffort(modeEffortPref) ?? defaultEffort
+          mapCodexReasoningToEffort(modeEffortPref) ?? defaultCodexEffort
       } else {
         const fallbackThinking = isThinkingLevel(preferences?.thinking_level)
           ? preferences.thinking_level
@@ -449,7 +445,7 @@ export function useWorktreeApproval({
       if (backend) {
         chatStore.setSelectedBackend(
           newSession.id,
-          backend as 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi'
+          backend as 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
         )
       }
 

@@ -82,7 +82,7 @@ pub struct UsageData {
 // Message Types
 // ============================================================================
 
-/// Backend for a chat session (Claude CLI, Codex CLI, OpenCode, Cursor, or PI)
+/// Backend for a chat session (Claude CLI, Codex CLI, OpenCode, Cursor, or Command Code)
 #[derive(Debug, Clone, Serialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Backend {
@@ -91,7 +91,7 @@ pub enum Backend {
     Codex,
     Opencode,
     Cursor,
-    Pi,
+    Commandcode,
 }
 
 impl<'de> Deserialize<'de> for Backend {
@@ -109,7 +109,7 @@ impl<'de> Deserialize<'de> for Backend {
             "codex" => Backend::Codex,
             "opencode" => Backend::Opencode,
             "cursor" => Backend::Cursor,
-            "pi" => Backend::Pi,
+            "commandcode" => Backend::Commandcode,
             "claude" | "" => Backend::Claude,
             other => {
                 log::warn!("Unknown chat backend '{other}', falling back to claude");
@@ -149,7 +149,6 @@ pub enum ThinkingLevel {
 pub enum EffortLevel {
     /// Don't send effort (used when thinking is disabled for mode)
     Off,
-    Minimal,
     Low,
     Medium,
     #[default]
@@ -164,7 +163,6 @@ impl EffortLevel {
     pub fn effort_value(&self) -> Option<&str> {
         match self {
             EffortLevel::Off => None,
-            EffortLevel::Minimal => Some("low"),
             EffortLevel::Low => Some("low"),
             EffortLevel::Medium => Some("medium"),
             EffortLevel::High => Some("high"),
@@ -555,9 +553,9 @@ pub struct Session {
     /// Cursor chat ID for resuming conversations
     #[serde(default)]
     pub cursor_chat_id: Option<String>,
-    /// PI session ID for resuming conversations
-    #[serde(default)]
-    pub pi_session_id: Option<String>,
+    /// Command Code uses standalone headless invocations; this stores no native resume id.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commandcode_session_id: Option<String>,
     /// Selected model for this session
     #[serde(default)]
     pub selected_model: Option<String>,
@@ -760,7 +758,7 @@ impl Session {
             codex_goal: None,
             opencode_session_id: None,
             cursor_chat_id: None,
-            pi_session_id: None,
+            commandcode_session_id: None,
             selected_model: None,
             selected_thinking_level: None,
             selected_effort_level: None,
@@ -974,7 +972,7 @@ impl SessionMetadata {
             codex_goal: self.codex_goal.clone(),
             opencode_session_id: self.opencode_session_id.clone(),
             cursor_chat_id: self.cursor_chat_id.clone(),
-            pi_session_id: self.pi_session_id.clone(),
+            commandcode_session_id: self.commandcode_session_id.clone(),
             selected_model: self.selected_model.clone(),
             selected_thinking_level: self.selected_thinking_level.clone(),
             selected_effort_level: self.selected_effort_level.clone(),
@@ -1035,7 +1033,7 @@ impl SessionMetadata {
         self.codex_goal = session.codex_goal.clone();
         self.opencode_session_id = session.opencode_session_id.clone();
         self.cursor_chat_id = session.cursor_chat_id.clone();
-        self.pi_session_id = session.pi_session_id.clone();
+        self.commandcode_session_id = session.commandcode_session_id.clone();
         self.selected_model = session.selected_model.clone();
         self.selected_thinking_level = session.selected_thinking_level.clone();
         self.selected_effort_level = session.selected_effort_level.clone();
@@ -1297,9 +1295,6 @@ pub struct RunEntry {
     /// Cursor chat ID — persisted per-run so future runs can resume the same chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor_chat_id: Option<String>,
-    /// PI session ID — persisted per-run so future runs can resume the same session.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pi_session_id: Option<String>,
 }
 
 /// Session metadata - single source of truth for session data and run history
@@ -1336,9 +1331,9 @@ pub struct SessionMetadata {
     /// Cursor chat ID for resuming conversations
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor_chat_id: Option<String>,
-    /// PI session ID for resuming conversations
+    /// Command Code uses standalone headless invocations; this stores no native resume id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub pi_session_id: Option<String>,
+    pub commandcode_session_id: Option<String>,
     /// Selected model for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_model: Option<String>,
@@ -1502,8 +1497,8 @@ pub struct SessionDebugInfo {
     pub claude_session_id: Option<String>,
     /// Cursor chat ID (if any)
     pub cursor_chat_id: Option<String>,
-    /// PI session ID (if any)
-    pub pi_session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commandcode_session_id: Option<String>,
     /// Path to Claude CLI's JSONL file (in ~/.claude/projects/)
     pub claude_jsonl_file: Option<String>,
     /// List of JSONL run log files for this session
@@ -1531,7 +1526,7 @@ impl SessionMetadata {
             codex_goal: None,
             opencode_session_id: None,
             cursor_chat_id: None,
-            pi_session_id: None,
+            commandcode_session_id: None,
             selected_model: None,
             selected_thinking_level: None,
             selected_effort_level: None,
@@ -1915,7 +1910,7 @@ mod tests {
             "name": "Legacy Backend",
             "order": 0,
             "created_at": 123,
-            "backend": "commandcode",
+            "backend": "legacybackend",
             "runs": [],
             "version": 1
         });
@@ -1923,6 +1918,13 @@ mod tests {
         let metadata: SessionMetadata = serde_json::from_value(json).unwrap();
 
         assert_eq!(metadata.backend, Backend::Claude);
+    }
+
+    #[test]
+    fn test_deserialize_commandcode_backend() {
+        let backend: Backend = serde_json::from_str("\"commandcode\"").unwrap();
+
+        assert_eq!(backend, Backend::Commandcode);
     }
 
     #[test]
@@ -1987,7 +1989,6 @@ mod tests {
             codex_thread_id: Some("thread-1".to_string()),
             codex_turn_id: None,
             cursor_chat_id: None,
-            pi_session_id: None,
         });
 
         let restored = metadata.to_session();
@@ -2026,7 +2027,6 @@ mod tests {
             codex_thread_id: None,
             codex_turn_id: None,
             cursor_chat_id: None,
-            pi_session_id: None,
         });
 
         assert!(metadata.find_run("run-1").is_some());
@@ -2066,7 +2066,6 @@ mod tests {
             codex_thread_id: None,
             codex_turn_id: None,
             cursor_chat_id: None,
-            pi_session_id: None,
         });
 
         assert!(metadata.latest_claude_session_id().is_none());
@@ -2092,7 +2091,6 @@ mod tests {
             codex_thread_id: None,
             codex_turn_id: None,
             cursor_chat_id: None,
-            pi_session_id: None,
         });
 
         assert_eq!(metadata.latest_claude_session_id(), Some("claude-sess-abc"));

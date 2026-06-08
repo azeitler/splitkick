@@ -58,7 +58,6 @@ import { isNativeApp } from '@/lib/environment'
 import {
   CODEX_EFFORT_LEVEL_OPTIONS,
   EFFORT_LEVEL_OPTIONS,
-  PI_EFFORT_LEVEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
 import {
@@ -85,7 +84,7 @@ import { getResumeCommand } from '@/components/chat/session-card-utils'
 interface MobileSettingsMenuProps {
   isDisabled: boolean
   providerLocked?: boolean
-  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi'
+  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
   selectedProvider: string | null
   backendModelLabel: ReactNode
   backendModelLabelText: string
@@ -169,26 +168,21 @@ export function MobileSettingsMenu({
   worktreeId,
   onAttach,
 }: MobileSettingsMenuProps) {
-  const isPi = selectedBackend === 'pi'
   const effortLevelOptions = isCodex
     ? CODEX_EFFORT_LEVEL_OPTIONS
-    : isPi
-      ? PI_EFFORT_LEVEL_OPTIONS
-      : EFFORT_LEVEL_OPTIONS
+    : EFFORT_LEVEL_OPTIONS
   const displayedEffortLevel = isCodex
     ? selectedEffortLevel === 'max'
       ? 'high'
       : selectedEffortLevel === 'ultracode'
         ? 'xhigh'
         : selectedEffortLevel
-    : isPi
-      ? selectedEffortLevel === 'max' || selectedEffortLevel === 'ultracode'
-        ? 'xhigh'
-        : selectedEffortLevel
     : selectedEffortLevel
   const displayedEffortLabel =
     effortLevelOptions.find(o => o.value === displayedEffortLevel)?.label ??
     displayedEffortLevel
+  const hideReasoningControl =
+    hideThinkingLevel || selectedBackend === 'commandcode'
 
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
@@ -396,7 +390,7 @@ export function MobileSettingsMenu({
           )}
         </DropdownMenuItem>
 
-        {hideThinkingLevel ? null : useAdaptiveThinking || isCodex ? (
+        {hideReasoningControl ? null : useAdaptiveThinking || isCodex ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
               <Brain className="mr-2 h-4 w-4 text-muted-foreground" />

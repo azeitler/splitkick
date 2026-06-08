@@ -7,21 +7,26 @@ import {
 import {
   CODEX_MODEL_OPTIONS,
   CURSOR_MODEL_OPTIONS,
+  COMMANDCODE_MODEL_OPTIONS,
   MODEL_OPTIONS,
   OPENCODE_MODEL_OPTIONS,
-  PI_MODEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
-import { sortModelOptionsByRawModel } from '@/components/chat/toolbar/toolbar-utils'
 
 interface UseToolbarDerivedStateArgs {
-  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi'
+  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
   selectedProvider: string | null
   selectedModel: string
   opencodeModelOptions?: { value: string; label: string }[]
   cursorModelOptions?: { value: string; label: string }[]
-  piModelOptions?: { value: string; label: string }[]
+  commandcodeModelOptions?: { value: string; label: string }[]
   customCliProfiles: CustomCliProfile[]
-  installedBackends?: ('claude' | 'codex' | 'opencode' | 'cursor' | 'pi')[]
+  installedBackends?: (
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'commandcode'
+  )[]
   availableMcpServers?: { name: string; disabled?: boolean }[]
   enabledMcpServers?: string[]
 }
@@ -32,16 +37,16 @@ export function useToolbarDerivedState({
   selectedModel,
   opencodeModelOptions,
   cursorModelOptions,
-  piModelOptions,
+  commandcodeModelOptions,
   customCliProfiles,
-  installedBackends = ['claude', 'codex', 'opencode', 'cursor', 'pi'],
+  installedBackends = ['claude', 'codex', 'opencode', 'cursor', 'commandcode'],
   availableMcpServers = [],
   enabledMcpServers = [],
 }: UseToolbarDerivedStateArgs) {
   const isCodex = selectedBackend === 'codex'
   const isOpencode = selectedBackend === 'opencode'
   const isCursor = selectedBackend === 'cursor'
-  const isPi = selectedBackend === 'pi'
+  const isCommandCode = selectedBackend === 'commandcode'
 
   const activeMcpCount = useMemo(() => {
     const availableNames = new Set(
@@ -82,33 +87,19 @@ export function useToolbarDerivedState({
     ]
   }, [selectedProvider, customCliProfiles])
 
-  const codexModelOptions = useMemo(
-    () =>
-      sortModelOptionsByRawModel(
-        CODEX_MODEL_OPTIONS as { value: string; label: string }[]
-      ),
-    []
-  )
-  const resolvedOpencodeModelOptions = useMemo(
-    () =>
-      sortModelOptionsByRawModel(
-        opencodeModelOptions ?? OPENCODE_MODEL_OPTIONS
-      ),
-    [opencodeModelOptions]
-  )
-  const resolvedCursorModelOptions = useMemo(
-    () =>
-      sortModelOptionsByRawModel(cursorModelOptions ?? CURSOR_MODEL_OPTIONS),
-    [cursorModelOptions]
-  )
-  const resolvedPiModelOptions = useMemo(
-    () => sortModelOptionsByRawModel(piModelOptions ?? PI_MODEL_OPTIONS),
-    [piModelOptions]
-  )
+  const codexModelOptions = CODEX_MODEL_OPTIONS as {
+    value: string
+    label: string
+  }[]
+  const resolvedOpencodeModelOptions =
+    opencodeModelOptions ?? OPENCODE_MODEL_OPTIONS
+  const resolvedCursorModelOptions = cursorModelOptions ?? CURSOR_MODEL_OPTIONS
+  const resolvedCommandCodeModelOptions =
+    commandcodeModelOptions ?? COMMANDCODE_MODEL_OPTIONS
 
   const backendModelSections = useMemo(() => {
     const sections: {
-      backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi'
+      backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
       label: string
       options: { value: string; label: string }[]
     }[] = []
@@ -138,11 +129,11 @@ export function useToolbarDerivedState({
           label: 'Cursor',
           options: resolvedCursorModelOptions,
         })
-      } else if (backend === 'pi') {
+      } else if (backend === 'commandcode') {
         sections.push({
           backend,
-          label: 'PI',
-          options: resolvedPiModelOptions,
+          label: 'Command Code',
+          options: resolvedCommandCodeModelOptions,
         })
       }
     }
@@ -153,26 +144,26 @@ export function useToolbarDerivedState({
     codexModelOptions,
     installedBackends,
     resolvedCursorModelOptions,
+    resolvedCommandCodeModelOptions,
     resolvedOpencodeModelOptions,
-    resolvedPiModelOptions,
   ])
 
   const filteredModelOptions = useMemo(() => {
     if (isCodex) return codexModelOptions
     if (isOpencode) return resolvedOpencodeModelOptions
     if (isCursor) return resolvedCursorModelOptions
-    if (isPi) return resolvedPiModelOptions
+    if (isCommandCode) return resolvedCommandCodeModelOptions
     return claudeModelOptions
   }, [
     claudeModelOptions,
     codexModelOptions,
     isCodex,
     isCursor,
-    isPi,
+    isCommandCode,
     isOpencode,
+    resolvedCommandCodeModelOptions,
     resolvedCursorModelOptions,
     resolvedOpencodeModelOptions,
-    resolvedPiModelOptions,
   ])
 
   // Fast variants share a label with their base model (the Zap indicator
@@ -187,15 +178,15 @@ export function useToolbarDerivedState({
   return {
     isCodex,
     isCursor,
-    isPi,
+    isCommandCode,
     isOpencode,
     activeMcpCount,
     backendModelSections,
     claudeModelOptions,
     cursorModelOptions: resolvedCursorModelOptions,
+    commandcodeModelOptions: resolvedCommandCodeModelOptions,
     filteredModelOptions,
     opencodeModelOptions: resolvedOpencodeModelOptions,
-    piModelOptions: resolvedPiModelOptions,
     selectedModelLabel,
   }
 }

@@ -235,22 +235,6 @@ for block in content {
   - Schema constant: `PR_CONTENT_SCHEMA` in `src-tauri/src/projects/commands.rs`
   - Tauri command: `create_pr_with_ai_content` - creates PR with AI-generated title/body
 
-#### PI CLI JSON Output Format
-
-**CRITICAL:** Jean persists its own session/run JSONL. Do **not** use PI's saved session files as Jean history. PI's documented session format is still the shape emitted by PI JSON mode and must be parsed correctly before Jean writes its own synthetic assistant JSONL. Reference: https://pi.dev/docs/latest/session-format
-
-- PI output entries are JSONL lines with a `type` field and tree links via `id` / `parentId`.
-- Header line: `{"type":"session","version":3,"id":"uuid","timestamp":"...","cwd":"/path"}`. Use `id` as Jean's `pi_session_id` / resume id only.
-- Conversation entries may be final `{"type":"message","id":"...","parentId":"...","message": AgentMessage}` lines, or streaming `message_update` lines.
-- Streaming text deltas use `message_update.assistantMessageEvent.type == "text_delta"` and `assistantMessageEvent.delta`. Final assistant text is nested at `message.content[]` blocks with `type: "text"`; do **not** expect top-level `text` or `delta.text` only.
-- Assistant thinking blocks use `type: "thinking"` with `thinking` text.
-- Tool calls use content blocks `type: "toolCall"`, fields `id`, `name`, `arguments`.
-- Tool results are separate `message.role: "toolResult"` entries with `toolCallId`, `toolName`, `content[]`, `isError`.
-- Usage uses PI keys: `input`, `output`, `cacheRead`, `cacheWrite`, `totalTokens`, `cost`.
-- Other entry types (`model_change`, `thinking_level_change`, `compaction`, `branch_summary`, `custom`, `custom_message`, `label`, `session_info`) may appear. Parsers should ignore unknown entries unless needed.
-
-**Jean parser location:** `src-tauri/src/chat/pi.rs` parses PI JSON mode output into Jean chat events, then `src-tauri/src/chat/commands.rs` writes Jean's own run JSONL.
-
 #### Background Operations with Toast Notifications
 
 **Pattern:** For operations that run in the background (not in chat), use toast notifications instead of inline UI state indicators.
@@ -388,22 +372,30 @@ No Rust changes needed — model is stored as `String` in `AppPreferences` and p
 
 #### Adding a New AI Backend
 
-When adding a backend like Claude, Codex, OpenCode, Cursor, Pi, or a future CLI/API backend, verify the integration is complete across Rust, TypeScript, UI, persistence, and web access.
+When adding a backend like Claude, Codex, OpenCode, Cursor, or a future CLI/API backend, verify the integration is complete across Rust, TypeScript, UI, persistence, and web access.
+
+**Backend capability classification:**
+
+- [ ] Classify transport shape: persistent server/API, streaming CLI, final-output CLI, or non-chat helper
+- [ ] Document capability flags: streaming, structured tool calls, resume/session id, cancellation, interactive approvals, MCP, model listing, usage, images/files
+- [ ] Define MVP fallback behavior for unsupported capabilities before wiring UI affordances
+- [ ] If backend is final-output-only, emit one synthetic final `chat:chunk` and persist Jean-managed transcript/context
+- [ ] If backend has no resume/session id, do not fake resume support; store Jean session id only
+- [ ] If backend has no structured tool events, skip tool-call UI or synthesize only safe high-level placeholders
 
 **Backend identity and preferences:**
 
 - [ ] Add backend enum/type in Rust (`src-tauri/src/chat/types.rs`) and TypeScript (`src/types/chat.ts`, `src/types/preferences.ts`)
-- [ ] Update all duplicated frontend backend unions and picker helper types (e.g. toolbar desktop/mobile types); do not leave hardcoded `'claude' | 'codex' | 'opencode' | 'cursor'` unions behind
 - [ ] Add backend label/icon/model options (`src/components/ui/backend-label.tsx`, `src/components/icons/`, `ChatToolbar.tsx`)
 - [ ] Add persisted preferences for default backend, selected model, reasoning/effort, source (`jean` vs `path`) when applicable
 - [ ] Add project-level `default_backend` support and build/yolo backend/model/effort overrides
-- [ ] Update installed-backend detection, default-backend fallback, onboarding readiness, and app bootstrap logic (`useInstalledBackends`, `App.tsx`, settings panes)
-- [ ] Update plan/approval metadata types such as `PlanToolInput.source` and any backend-specific plan rendering/approval labels
 - [ ] Keep persisted preference fields in `snake_case` and provide serde/default migration safety
 
 **Install, status, auth, and login:**
 
 - [ ] Add CLI module (`src-tauri/src/<backend>_cli/`) with config/status/auth/install/update commands as needed
+- [ ] Avoid binary-name ambiguity; support canonical binary and documented aliases when applicable (e.g. `cmd`, `command-code`)
+- [ ] For npm-distributed CLIs, decide PATH-only vs Jean-managed npm install/update/uninstall before adding Settings controls
 - [ ] Detect whether backend is installed before checking auth
 - [ ] Add auth status command and frontend hook/types (e.g. `check_<backend>_auth`, `use<Backend>CliAuth`, `src/types/<backend>-cli.ts`)
 - [ ] Auth result distinguishes installed+authenticated, installed+unauthenticated, not installed, command failed, and unknown/error
@@ -413,7 +405,6 @@ When adding a backend like Claude, Codex, OpenCode, Cursor, Pi, or a future CLI/
 - [ ] Re-fetch auth status after login/relogin
 - [ ] Include backend auth readiness in onboarding; do not mark backend ready unless installed and authenticated
 - [ ] Support both Jean-managed binary and system PATH binary login flows
-- [ ] If Jean-managed install is supported, implement latest-version fetch, available-version cache/fallback, uninstall, source switching, and auto-update participation
 - [ ] Register every status/auth/login command in both `src-tauri/src/lib.rs` and `src-tauri/src/http_server/dispatch.rs`
 - [ ] Add tests/mocks for authenticated, unauthenticated, not installed, login failure, and `jean` vs `path` source
 
@@ -423,7 +414,6 @@ When adding a backend like Claude, Codex, OpenCode, Cursor, Pi, or a future CLI/
 - [ ] Return the common response shape: content, backend resume id, tool calls, content blocks, cancelled flag, usage, and error state if needed
 - [ ] Route backend in `src-tauri/src/chat/commands.rs` send-message match
 - [ ] Store backend resume id on Rust/TS `Session` and persist/restore it
-- [ ] Ensure queued/pending messages preserve and render the new backend/model/effort correctly
 - [ ] Map backend streaming to common events: `chat:chunk`, `chat:tool-use`, `chat:tool-result`, `chat:tool-block`, `chat:thinking`, `chat:done`, `chat:error`, `chat:cancelled`
 - [ ] Preserve ordered `ContentBlock[]`, normalize tool call IDs/names, and attach outputs to matching tool calls
 - [ ] Add cancellation support in `src-tauri/src/chat/registry.rs` (process kill, interrupt request, or cancel flag)
@@ -444,22 +434,22 @@ When adding a backend like Claude, Codex, OpenCode, Cursor, Pi, or a future CLI/
 
 - [ ] Add permission/user-input approval structs, events, UI, persistence, and approve/deny commands if backend supports them
 - [ ] Add one-shot execution support for all magic prompt operations (session naming, context summary, PR content, commit message, code review, resolve conflicts, release notes, investigations, review comments)
-- [ ] Add robust structured JSON extraction for one-shot outputs; define the backend-specific strategy (native JSON schema/tool call, strict JSON text, repair pass, or unsupported-with-UI-disable)
+- [ ] Add robust structured JSON extraction for one-shot outputs
+- [ ] For non-JSON-capable backends, wrap prompts with strict JSON instructions and implement tolerant extraction/failure messages
 - [ ] Update Magic Prompts UI backend/model/default presets and per-prompt backend/provider/model/effort resolution
 - [ ] Add provider/profile support if backend supports custom routing; respect project/global/per-prompt provider precedence
-- [ ] Add MCP discovery/health/toggle support if backend supports MCP, including settings-pane grouping, chat status dots, and backend-specific auth hints
+- [ ] Add MCP discovery/health/toggle support if backend supports MCP
 - [ ] Update frontend chat/settings/onboarding/usage UI and backend-specific pending request components
 - [ ] Add backend to favorite models and fast-mode model handling if relevant
-- [ ] Update toolbar/model picker behavior for backend tabs, locked sessions, search scoping, keyboard shortcuts, favorites, and fast-mode controls
 
 **Web access, tests, and docs:**
 
 - [ ] Register every new `#[tauri::command]` in both native `generate_handler![]` and WebSocket dispatch
-- [ ] Use dispatch helpers (`field`, `field_opt`, `from_field`, `from_field_opt`, `to_value`) and emit cache invalidation for mutations, especially preferences/auth/backend-status/session changes
+- [ ] Use dispatch helpers (`field`, `field_opt`, `from_field`, `from_field_opt`, `to_value`) and emit cache invalidation for mutations
 - [ ] Use `silent_command()` for background processes to avoid Windows console flashes
 - [ ] Add Rust tests for parsing, default backend resolution, cancellation, one-shot JSON extraction, and auth/login
-- [ ] Add TS/component/E2E tests for preferences, auth/login UI, execution mode normalization, backend selection, model picker behavior, plan approval, cancellation, queued messages, and magic prompt overrides
-- [ ] Update `README.md`, developer docs, user docs, troubleshooting, and all comments that list supported backends
+- [ ] Add TS/component/E2E tests for preferences, auth/login UI, execution mode normalization, backend selection, plan approval, cancellation, and magic prompt overrides
+- [ ] Update developer docs, user docs, troubleshooting, and all comments that list supported backends
 
 #### Per-Project Worktrees Location
 

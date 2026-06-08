@@ -21,16 +21,16 @@ import {
 import { usePatchPreferences, usePreferences } from '@/services/preferences'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { useAvailableCursorModels } from '@/services/cursor-cli'
-import { useAvailablePiModels } from '@/services/pi-cli'
+import { useAvailableCommandCodeModels } from '@/services/commandcode-cli'
 import { cn } from '@/lib/utils'
 import {
   getBackendIcon,
   getBackendPlainLabel,
+  isBetaBackend,
 } from '@/components/ui/backend-label'
 import {
   formatCursorModelLabel,
   formatOpencodeModelLabel,
-  formatPiModelLabel,
   getProviderDisplayName,
 } from '@/components/chat/toolbar/toolbar-utils'
 import { useToolbarDerivedState } from '@/components/chat/toolbar/useToolbarDerivedState'
@@ -130,8 +130,8 @@ export function BackendModelPickerContent({
   const { data: availableCursorModels } = useAvailableCursorModels({
     enabled: installedBackends.includes('cursor'),
   })
-  const { data: availablePiModels } = useAvailablePiModels({
-    enabled: installedBackends.includes('pi'),
+  const { data: availableCommandCodeModels } = useAvailableCommandCodeModels({
+    enabled: installedBackends.includes('commandcode'),
   })
 
   const opencodeModelOptions = useMemo(
@@ -150,13 +150,13 @@ export function BackendModelPickerContent({
       })),
     [availableCursorModels]
   )
-  const piModelOptions = useMemo(
+  const commandcodeModelOptions = useMemo(
     () =>
-      availablePiModels?.map(model => ({
-        value: `pi/${model.id}`,
-        label: model.label || formatPiModelLabel(model.id),
+      availableCommandCodeModels?.map(model => ({
+        value: `commandcode/${model.id}`,
+        label: model.label,
       })),
-    [availablePiModels]
+    [availableCommandCodeModels]
   )
 
   const { backendModelSections } = useToolbarDerivedState({
@@ -165,7 +165,7 @@ export function BackendModelPickerContent({
     selectedModel,
     opencodeModelOptions,
     cursorModelOptions,
-    piModelOptions,
+    commandcodeModelOptions,
     customCliProfiles,
     installedBackends,
   })
@@ -217,7 +217,25 @@ export function BackendModelPickerContent({
       if (favoriteSet.has(favKey(activeBackend, opt.value))) favs.push(opt)
       else rest.push(opt)
     }
-    return [...favs, ...rest]
+    const result = [...favs, ...rest]
+    if (activeBackend === 'commandcode') {
+      const rawQuery = search.trim()
+      if (rawQuery) {
+        const suffix = rawQuery.startsWith('commandcode/')
+          ? rawQuery.slice('commandcode/'.length).trim()
+          : rawQuery
+        if (!suffix) return result
+        const customValue = `commandcode/${suffix}`
+        const customExists = result.some(option => option.value === customValue)
+        if (!customExists) {
+          result.unshift({
+            value: customValue,
+            label: `Use Command Code model "${rawQuery}"`,
+          })
+        }
+      }
+    }
+    return result
   }, [activeBackend, activeSection, favKey, favoriteSet, search])
 
   const getOptionCommandValue = useCallback(
@@ -641,10 +659,9 @@ function SidebarBackends({
                     {index + 1}
                   </span>
                 )}
-                {(backend === 'cursor' || backend === 'pi') && (
+                {isBetaBackend(backend) && (
                   <span
                     aria-hidden
-                    data-testid="backend-beta-dot"
                     className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-yellow-500"
                   />
                 )}

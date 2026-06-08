@@ -13,7 +13,7 @@ import {
 import { getModelFastInfo, type CustomCliProfile } from '@/types/preferences'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { useAvailableCursorModels } from '@/services/cursor-cli'
-import { useAvailablePiModels } from '@/services/pi-cli'
+import { useAvailableCommandCodeModels } from '@/services/commandcode-cli'
 import { cn } from '@/lib/utils'
 import { Kbd } from '@/components/ui/kbd'
 import { BackendLabel } from '@/components/ui/backend-label'
@@ -21,7 +21,6 @@ import { BackendModelPickerContent } from '@/components/chat/toolbar/BackendMode
 import {
   formatCursorModelLabel,
   formatOpencodeModelLabel,
-  formatPiModelLabel,
 } from '@/components/chat/toolbar/toolbar-utils'
 import { useToolbarDerivedState } from '@/components/chat/toolbar/useToolbarDerivedState'
 import { useToolbarDropdownShortcuts } from '@/components/chat/toolbar/useToolbarDropdownShortcuts'
@@ -32,14 +31,20 @@ interface DesktopBackendModelPickerProps {
   sessionHasMessages?: boolean
   providerLocked?: boolean
   triggerClassName?: string
-  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi'
+  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
   selectedModel: string
   selectedProvider: string | null
-  installedBackends: ('claude' | 'codex' | 'opencode' | 'cursor' | 'pi')[]
+  installedBackends: (
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'commandcode'
+  )[]
   customCliProfiles: CustomCliProfile[]
   onModelChange: (model: string) => void
   onBackendModelChange: (
-    backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi',
+    backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode',
     model: string
   ) => void
 }
@@ -71,8 +76,8 @@ export function DesktopBackendModelPicker({
   const { data: availableCursorModels } = useAvailableCursorModels({
     enabled: installedBackends.includes('cursor'),
   })
-  const { data: availablePiModels } = useAvailablePiModels({
-    enabled: installedBackends.includes('pi'),
+  const { data: availableCommandCodeModels } = useAvailableCommandCodeModels({
+    enabled: installedBackends.includes('commandcode'),
   })
 
   const opencodeModelOptions = useMemo(
@@ -91,13 +96,13 @@ export function DesktopBackendModelPicker({
       })),
     [availableCursorModels]
   )
-  const piModelOptions = useMemo(
+  const commandcodeModelOptions = useMemo(
     () =>
-      availablePiModels?.map(model => ({
-        value: `pi/${model.id}`,
-        label: model.label || formatPiModelLabel(model.id),
+      availableCommandCodeModels?.map(model => ({
+        value: `commandcode/${model.id}`,
+        label: model.label,
       })),
-    [availablePiModels]
+    [availableCommandCodeModels]
   )
 
   const { backendModelSections, selectedModelLabel } = useToolbarDerivedState({
@@ -106,7 +111,7 @@ export function DesktopBackendModelPicker({
     selectedModel,
     opencodeModelOptions,
     cursorModelOptions,
-    piModelOptions,
+    commandcodeModelOptions,
     customCliProfiles,
     installedBackends,
   })

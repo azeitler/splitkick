@@ -1,18 +1,25 @@
-import { describe, expect, it } from 'vitest'
 import { render, screen } from '@/test/test-utils'
-import { BackendLabel, getBackendPlainLabel } from './backend-label'
+import { describe, expect, it } from 'vitest'
+import {
+  BackendLabel,
+  getBackendPlainLabel,
+} from '@/components/ui/backend-label'
 
-describe('BackendLabel', () => {
-  it('shows a beta tag for PI', () => {
-    render(<BackendLabel backend="pi" />)
-
-    expect(screen.getByText('Pi')).toBeVisible()
-    expect(screen.getByText('Beta')).toBeVisible()
+describe('backend labels', () => {
+  it('marks Command Code as beta, not Cursor, in plain labels', () => {
+    expect(getBackendPlainLabel('cursor')).toBe('Cursor')
+    expect(getBackendPlainLabel('commandcode')).toBe('Command Code (Beta)')
   })
-})
 
-describe('getBackendPlainLabel', () => {
-  it('marks PI as beta in plain dropdown labels', () => {
-    expect(getBackendPlainLabel('pi')).toBe('Pi (Beta)')
+  it('renders the beta badge on Command Code, not Cursor', () => {
+    const { rerender } = render(<BackendLabel backend="cursor" />)
+
+    expect(screen.getByText('Cursor')).toBeInTheDocument()
+    expect(screen.queryByText('Beta')).toBeNull()
+
+    rerender(<BackendLabel backend="commandcode" />)
+
+    expect(screen.getByText('Command Code')).toBeInTheDocument()
+    expect(screen.getByText('Beta')).toBeInTheDocument()
   })
 })
