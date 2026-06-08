@@ -187,6 +187,7 @@ pub async fn dispatch_command(
             let linear_context = field_opt(&args, "linearContext", "linear_context")?;
             let custom_name = field_opt(&args, "customName", "custom_name")?;
             let auto_open_in_jean = field_opt(&args, "autoOpenInJean", "auto_open_in_jean")?;
+            let origin = field_opt(&args, "origin", "origin")?;
             let result = crate::projects::create_worktree(
                 app.clone(),
                 project_id,
@@ -198,6 +199,7 @@ pub async fn dispatch_command(
                 linear_context,
                 custom_name,
                 auto_open_in_jean,
+                origin,
             )
             .await?;
             // No cache invalidation here — worktree creation uses event-based sync
@@ -239,6 +241,8 @@ pub async fn dispatch_command(
                 field_opt(&args, "linearTeamId", "linear_team_id")?;
             let linked_project_ids: Option<Vec<String>> =
                 field_opt(&args, "linkedProjectIds", "linked_project_ids")?;
+            let auto_fix_settings: Option<Option<crate::projects::types::ProjectAutoFixSettings>> =
+                field_opt(&args, "autoFixSettings", "auto_fix_settings")?;
             let result = crate::projects::update_project_settings(
                 app.clone(),
                 project_id,
@@ -253,6 +257,7 @@ pub async fn dispatch_command(
                 linear_api_key,
                 linear_team_id,
                 linked_project_ids,
+                auto_fix_settings,
             )
             .await?;
             emit_cache_invalidation(app, &["projects"]);
