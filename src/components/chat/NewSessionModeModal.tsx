@@ -41,7 +41,7 @@ const backendCommands: Record<CliBackend, string> = {
   claude: 'claude',
   opencode: 'opencode',
   cursor: 'cursor-agent',
-  commandcode: 'cmd',
+  commandcode: 'commandcode',
 }
 
 const YOLO_ARGS_BY_BACKEND: Partial<Record<CliBackend, string[]>> = {

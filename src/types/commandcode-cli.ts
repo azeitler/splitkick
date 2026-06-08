@@ -9,7 +9,14 @@ export interface CommandCodeCliStatus {
 export interface CommandCodeAuthStatus {
   authenticated: boolean
   error: string | null
-  timed_out?: boolean
+  timedOut?: boolean
+}
+
+export interface CommandCodePathDetection {
+  found: boolean
+  path: string | null
+  version: string | null
+  packageManager: string | null
 }
 
 export interface CommandCodeInstallCommand {

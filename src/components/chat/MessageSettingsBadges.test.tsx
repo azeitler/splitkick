@@ -106,7 +106,7 @@ describe('MessageSettingsBadges', () => {
       />
     )
 
-    expect(screen.getByText('CommandCode · Deepseek V4 Flash')).toBeVisible()
+    expect(screen.getByText('Command Code · Deepseek V4 Flash')).toBeVisible()
     expect(
       screen.queryByText('Deepseek/deepseek V4 Flash (Commandcode)')
     ).toBeNull()

@@ -4,7 +4,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet'
-import type { CustomCliProfile } from '@/types/preferences'
+import type { CliBackend, CustomCliProfile } from '@/types/preferences'
 import { BackendModelPickerContent } from '@/components/chat/toolbar/BackendModelPickerContent'
 import { useToolbarDropdownShortcuts } from '@/components/chat/toolbar/useToolbarDropdownShortcuts'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -14,22 +14,13 @@ interface MobileBackendModelPickerSheetProps {
   onOpenChange: (open: boolean) => void
   sessionHasMessages?: boolean
   providerLocked?: boolean
-  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+  selectedBackend: CliBackend
   selectedProvider: string | null
   selectedModel: string
-  installedBackends: (
-    | 'claude'
-    | 'codex'
-    | 'opencode'
-    | 'cursor'
-    | 'commandcode'
-  )[]
+  installedBackends: CliBackend[]
   customCliProfiles: CustomCliProfile[]
   onModelChange: (model: string) => void
-  onBackendModelChange: (
-    backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode',
-    model: string
-  ) => void
+  onBackendModelChange: (backend: CliBackend, model: string) => void
 }
 
 export function MobileBackendModelPickerSheet({

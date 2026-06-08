@@ -1291,6 +1291,24 @@ mod tests {
     }
 
     #[test]
+    fn injects_synthetic_exit_plan_for_completed_commandcode_plan_runs() {
+        let run = sample_run();
+        let mut msg = sample_assistant_message();
+
+        assert!(should_inject_synthetic_exit_plan(
+            &Backend::Commandcode,
+            &run,
+            &msg,
+        ));
+
+        inject_synthetic_exit_plan(&Backend::Commandcode, &run.run_id, &mut msg);
+
+        assert_eq!(msg.tool_calls.len(), 1);
+        assert_eq!(msg.tool_calls[0].name, "ExitPlanMode");
+        assert_eq!(msg.tool_calls[0].id, "synthetic-exit-plan-run-123");
+    }
+
+    #[test]
     fn does_not_inject_for_codex_backend() {
         // Codex handles plan events via its own schema-based parser,
         // so no synthetic injection is needed.

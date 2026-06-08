@@ -11,6 +11,20 @@ const preferences = {
 } as unknown as AppPreferences
 
 describe('resolveDefaultModelForBackend', () => {
+  it.each([
+    ['claude', 'claude-opus-4-8[1m]'],
+    ['codex', 'gpt-5.5'],
+    ['opencode', 'opencode/gpt-5.3-codex'],
+    ['cursor', 'cursor/auto'],
+  ] as const)(
+    'falls back to the built-in %s default when no preference exists',
+    (backend, expectedModel) => {
+      expect(resolveDefaultModelForBackend(backend, {} as AppPreferences)).toBe(
+        expectedModel
+      )
+    }
+  )
+
   it('uses the Command Code model preference for Command Code sessions', () => {
     expect(resolveDefaultModelForBackend('commandcode', preferences)).toBe(
       'commandcode/deepseek/deepseek-v4-flash'

@@ -178,9 +178,9 @@ export function formatCommandCodeModelLabel(raw: string): string {
   const value = raw.startsWith('commandcode/')
     ? raw.slice('commandcode/'.length)
     : raw
-  if (value === 'default') return 'CommandCode · CLI default'
+  if (value === 'default') return 'Command Code · CLI default'
 
-  return `CommandCode · ${formatModelIdTailLabel(value)}`
+  return `Command Code · ${formatModelIdTailLabel(value)}`
 }
 
 export function formatOpenCodePromptModelLabel(raw: string): string {

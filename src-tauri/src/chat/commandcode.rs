@@ -279,6 +279,41 @@ pub fn execute_commandcode_headless(
         );
     }
 
+    if !output.status.success() && output.status.code() == Some(130) {
+        let waiting_for_plan = false;
+        match app.emit_all(
+            "chat:done",
+            &DoneEvent {
+                session_id: jean_session_id.to_string(),
+                worktree_id: worktree_id.to_string(),
+                waiting_for_plan,
+            },
+        ) {
+            Ok(_) => log::debug!(
+                "Emitted Command Code cancellation chat:done session={} waiting_for_plan={}",
+                jean_session_id,
+                waiting_for_plan
+            ),
+            Err(error) => log::warn!(
+                "Failed to emit Command Code cancellation chat:done session={}: {}",
+                jean_session_id,
+                error
+            ),
+        }
+        return Ok((
+            pid,
+            CommandCodeResponse {
+                content: String::new(),
+                session_id: jean_session_id.to_string(),
+                tool_calls: vec![],
+                content_blocks: vec![],
+                cancelled: true,
+                waiting_for_plan,
+                usage: None,
+            },
+        ));
+    }
+
     if !output.status.success() {
         return Err(commandcode_error_for_status(output.status.code(), &stderr));
     }

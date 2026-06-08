@@ -1087,7 +1087,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                               ? formatOpenCodeLabel(currentModel)
                               : isCursorModel(currentModel)
                                 ? formatCursorModelLabel(currentModel)
-                                : isCommandCodeModel(currentModel)
+                                : currentModel === 'commandcode/default'
                                   ? 'CLI default (no --model)'
                                   : currentModel)
                           )

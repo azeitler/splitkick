@@ -2,6 +2,13 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useUIStore } from './ui-store'
 
 describe('Command Code CLI update modal', () => {
+  beforeEach(() => {
+    useUIStore.setState({
+      cliUpdateModalOpen: false,
+      cliUpdateModalType: null,
+    })
+  })
+
   it('accepts commandcode as a CLI update modal type', () => {
     useUIStore.getState().openCliUpdateModal('commandcode')
 

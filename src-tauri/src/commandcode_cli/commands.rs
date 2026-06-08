@@ -18,6 +18,7 @@ const COMMANDCODE_VERSIONS_CACHE_FILE: &str = "commandcode-versions-cache.json";
 const FALLBACK_COMMANDCODE_VERSION: &str = "latest";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommandCodeCliStatus {
     pub installed: bool,
     pub version: Option<String>,
@@ -25,6 +26,7 @@ pub struct CommandCodeCliStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommandCodeAuthStatus {
     pub authenticated: bool,
     pub error: Option<String>,
@@ -33,6 +35,7 @@ pub struct CommandCodeAuthStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommandCodePathDetection {
     pub found: bool,
     pub path: Option<String>,
@@ -41,6 +44,7 @@ pub struct CommandCodePathDetection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommandCodeInstallCommand {
     pub command: String,
     pub args: Vec<String>,
@@ -48,22 +52,28 @@ pub struct CommandCodeInstallCommand {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommandCodeModelInfo {
     pub id: String,
     pub label: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct CommandCodeReleaseInfo {
     pub version: String,
+    #[serde(alias = "tag_name")]
     pub tag_name: String,
+    #[serde(alias = "published_at")]
     pub published_at: String,
     pub prerelease: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CachedCommandCodeVersions {
     versions: Vec<CommandCodeReleaseInfo>,
+    #[serde(alias = "fetched_at")]
     fetched_at: String,
 }
 
@@ -748,6 +758,50 @@ mod tests {
         assert_eq!(versions[0].tag_name, "command-code@1.2.0");
     }
 
+    #[test]
+    fn commandcode_command_payloads_serialize_as_camel_case() {
+        let auth_json = serde_json::to_value(CommandCodeAuthStatus {
+            authenticated: false,
+            error: None,
+            timed_out: true,
+        })
+        .unwrap();
+        let path_json = serde_json::to_value(CommandCodePathDetection {
+            found: true,
+            path: Some("/usr/bin/commandcode".to_string()),
+            version: Some("1.0.0".to_string()),
+            package_manager: Some("npm".to_string()),
+        })
+        .unwrap();
+        let release_json = serde_json::to_value(CommandCodeReleaseInfo {
+            version: "1.0.0".to_string(),
+            tag_name: "command-code@1.0.0".to_string(),
+            published_at: "2026-06-08".to_string(),
+            prerelease: false,
+        })
+        .unwrap();
+
+        assert_eq!(
+            auth_json.get("timedOut").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert!(auth_json.get("timed_out").is_none());
+        assert_eq!(
+            path_json.get("packageManager").and_then(|v| v.as_str()),
+            Some("npm")
+        );
+        assert!(path_json.get("package_manager").is_none());
+        assert_eq!(
+            release_json.get("tagName").and_then(|v| v.as_str()),
+            Some("command-code@1.0.0")
+        );
+        assert_eq!(
+            release_json.get("publishedAt").and_then(|v| v.as_str()),
+            Some("2026-06-08")
+        );
+    }
+
+    #[test]
     fn parse_models_output_formats_versions_and_skips_help_lines() {
         let models = parse_models_output(
             r#"

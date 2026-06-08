@@ -1921,6 +1921,13 @@ mod tests {
     }
 
     #[test]
+    fn test_deserialize_commandcode_backend() {
+        let backend: Backend = serde_json::from_str("\"commandcode\"").unwrap();
+
+        assert_eq!(backend, Backend::Commandcode);
+    }
+
+    #[test]
     fn test_session_terminal_metadata_roundtrip() {
         let mut session = Session::new("Codex".to_string(), 0, Backend::Codex);
         session.primary_surface = Some("terminal".to_string());

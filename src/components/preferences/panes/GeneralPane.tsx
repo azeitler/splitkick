@@ -864,6 +864,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const cursorAuthMessage = cursorAuth?.timed_out
     ? 'Auth check timed out. Try again or run login manually.'
     : cursorAuth?.error
+  const commandCodeAuthMessage = commandcodeAuth?.timedOut
+    ? 'Auth check timed out. Try again or run login manually.'
+    : commandcodeAuth?.error
 
   const handleCodexMultiAgentToggle = (enabled: boolean) => {
     if (preferences) {
@@ -2257,6 +2260,13 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                   )}
               </div>
             </InlineField>
+            {commandcodeStatus?.installed &&
+              !commandcodeAuth?.authenticated &&
+              commandCodeAuthMessage && (
+                <div className="text-xs text-muted-foreground">
+                  {commandCodeAuthMessage}
+                </div>
+              )}
           </div>
         </SettingsSection>
       )}
@@ -2900,7 +2910,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                         <SelectItem value="default">Default model</SelectItem>
                         {(effectiveBuildBackend === 'codex'
                           ? codexDefaultModelOptions
-                          : modelOptions
+                          : effectiveBuildBackend === 'commandcode'
+                            ? commandCodeModelOptions
+                            : modelOptions
                         ).map(option => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
@@ -3142,7 +3154,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                         <SelectItem value="default">Default model</SelectItem>
                         {(effectiveYoloBackend === 'codex'
                           ? codexDefaultModelOptions
-                          : modelOptions
+                          : effectiveYoloBackend === 'commandcode'
+                            ? commandCodeModelOptions
+                            : modelOptions
                         ).map(option => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
@@ -3878,6 +3892,7 @@ export const WslSettingsSection: FC<{
     void queryClient.invalidateQueries({ queryKey: ['gh-cli'] })
     void queryClient.invalidateQueries({ queryKey: ['cursor-cli'] })
     void queryClient.invalidateQueries({ queryKey: ['coderabbit-cli'] })
+    void queryClient.invalidateQueries({ queryKey: ['commandcode-cli'] })
   }, [queryClient])
 
   // Load available distros

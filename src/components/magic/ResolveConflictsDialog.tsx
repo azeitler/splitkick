@@ -120,7 +120,7 @@ export function ResolveConflictsDialog({
           ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
           : backend === 'cursor'
             ? (preferences?.selected_cursor_model ?? 'cursor/auto')
-            : defaultBackend === 'commandcode'
+            : backend === 'commandcode'
               ? (preferences?.selected_commandcode_model ??
                 'commandcode/default')
               : (preferences?.selected_model ?? 'sonnet'))

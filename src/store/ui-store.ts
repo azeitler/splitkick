@@ -175,14 +175,7 @@ interface UIState {
   openCliUpdateModal: (type: Exclude<CliUpdateModalType, null>) => void
   closeCliUpdateModal: () => void
   openCliLoginModal: (
-    type:
-      | 'claude'
-      | 'gh'
-      | 'codex'
-      | 'opencode'
-      | 'cursor'
-      | 'commandcode'
-      | 'coderabbit',
+    type: Exclude<CliLoginModalType, null>,
     command: string,
     commandArgs?: string[],
     action?: 'login' | 'update' | 'install'

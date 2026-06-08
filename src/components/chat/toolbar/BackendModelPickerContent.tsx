@@ -221,9 +221,11 @@ export function BackendModelPickerContent({
     if (activeBackend === 'commandcode') {
       const rawQuery = search.trim()
       if (rawQuery) {
-        const customValue = rawQuery.startsWith('commandcode/')
-          ? rawQuery
-          : `commandcode/${rawQuery}`
+        const suffix = rawQuery.startsWith('commandcode/')
+          ? rawQuery.slice('commandcode/'.length).trim()
+          : rawQuery
+        if (!suffix) return result
+        const customValue = `commandcode/${suffix}`
         const customExists = result.some(option => option.value === customValue)
         if (!customExists) {
           result.unshift({

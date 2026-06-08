@@ -2214,10 +2214,6 @@ pub async fn send_chat_message(
     let cursor_chat_id = sessions
         .find_session(&session_id)
         .and_then(|s| s.cursor_chat_id.clone());
-    let commandcode_session_id = sessions
-        .find_session(&session_id)
-        .and_then(|s| s.commandcode_session_id.clone());
-
     // Cursor CLI doesn't support thinking/effort levels
     let run_thinking_level = if matches!(effective_backend, Backend::Cursor | Backend::Commandcode)
     {
@@ -2333,7 +2329,6 @@ pub async fn send_chat_message(
     let thread_run_id = run_id.clone();
     let thread_opencode_session_id = opencode_session_id.clone();
     let thread_cursor_chat_id = cursor_chat_id.clone();
-    let _thread_commandcode_session_id = commandcode_session_id.clone();
     let thread_model = model.clone();
     let thread_execution_mode = execution_mode.clone();
     let thread_thinking_level = thinking_level.clone();
@@ -3820,9 +3815,7 @@ pub async fn send_chat_message(
                         Backend::Cursor => {
                             session.cursor_chat_id = Some(resume_id_for_log.clone());
                         }
-                        Backend::Commandcode => {
-                            session.commandcode_session_id = Some(resume_id_for_log.clone());
-                        }
+                        Backend::Commandcode => {}
                     }
                 }
                 // Remove user message (undo send) - allows frontend to restore to input field
@@ -3963,9 +3956,7 @@ pub async fn send_chat_message(
                     Backend::Cursor => {
                         session.cursor_chat_id = Some(resume_id_for_log.clone());
                     }
-                    Backend::Commandcode => {
-                        session.commandcode_session_id = Some(resume_id_for_log.clone());
-                    }
+                    Backend::Commandcode => {}
                 }
             }
 

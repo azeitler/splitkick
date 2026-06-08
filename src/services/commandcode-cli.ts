@@ -10,6 +10,7 @@ import type {
   CommandCodeCliStatus,
   CommandCodeInstallCommand,
   CommandCodeInstallProgress,
+  CommandCodePathDetection,
   CommandCodeModelInfo,
   CommandCodeReleaseInfo,
 } from '@/types/commandcode-cli'
@@ -30,29 +31,26 @@ export const commandcodeCliQueryKeys = {
 export function useCommandCodePathDetection(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: [...commandcodeCliQueryKeys.all, 'path-detection'],
-    queryFn: async (): Promise<{
-      found: boolean
-      path: string | null
-      version: string | null
-      package_manager: string | null
-    }> => {
+    queryFn: async (): Promise<CommandCodePathDetection> => {
       if (!isTauri()) {
         return {
           found: false,
           path: null,
           version: null,
-          package_manager: null,
+          packageManager: null,
         }
       }
       try {
-        return await invoke('detect_commandcode_in_path')
+        return await invoke<CommandCodePathDetection>(
+          'detect_commandcode_in_path'
+        )
       } catch (error) {
         logger.debug('Command Code path detection failed', { error })
         return {
           found: false,
           path: null,
           version: null,
-          package_manager: null,
+          packageManager: null,
         }
       }
     },
@@ -91,7 +89,7 @@ export function useCommandCodeCliAuth(options?: { enabled?: boolean }) {
         return {
           authenticated: false,
           error: 'Not in Tauri context',
-          timed_out: false,
+          timedOut: false,
         }
       }
       try {
@@ -101,7 +99,7 @@ export function useCommandCodeCliAuth(options?: { enabled?: boolean }) {
         return {
           authenticated: false,
           error: error instanceof Error ? error.message : String(error),
-          timed_out: false,
+          timedOut: false,
         }
       }
     },

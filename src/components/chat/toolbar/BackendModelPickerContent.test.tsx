@@ -156,6 +156,31 @@ describe('BackendModelPickerContent', () => {
     expect(commandCodeTab.querySelector('.bg-yellow-500')).not.toBeNull()
   })
 
+  it('does not add an empty custom Command Code model option', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <BackendModelPickerContent
+        open
+        selectedBackend="commandcode"
+        selectedModel="commandcode/default"
+        selectedProvider={null}
+        installedBackends={['commandcode']}
+        customCliProfiles={[]}
+        onModelChange={vi.fn()}
+        onBackendModelChange={vi.fn()}
+        onRequestClose={vi.fn()}
+      />
+    )
+
+    const searchInput = screen.getByPlaceholderText(/search command code/i)
+    await user.type(searchInput, 'commandcode/')
+
+    expect(
+      screen.queryByText('Use Command Code model "commandcode/"')
+    ).toBeNull()
+  })
+
   it('scopes search to active backend and supports same-backend model swap', async () => {
     const user = userEvent.setup()
     const onModelChange = vi.fn()
