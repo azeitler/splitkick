@@ -83,6 +83,13 @@ import {
   useCommandCodePathDetection,
   commandcodeCliQueryKeys,
 } from '@/services/commandcode-cli'
+import {
+  useGrokCliStatus,
+  useGrokCliAuth,
+  useGrokPathDetection,
+  useAvailableGrokModels,
+  grokCliQueryKeys,
+} from '@/services/grok-cli'
 import type { ClaudeAuthStatus } from '@/types/claude-cli'
 import type { GhAuthStatus } from '@/types/gh-cli'
 import type { CodexAuthStatus } from '@/types/codex-cli'
@@ -134,6 +141,7 @@ import {
   type CodexGoalExecutionMode,
   type CodexReasoningEffort,
   type CursorModel,
+  type GrokModel,
   type CliBackend,
   type TerminalApp,
   type EditorApp,
@@ -146,6 +154,7 @@ import {
 import {
   COMMANDCODE_MODEL_OPTIONS,
   CURSOR_MODEL_OPTIONS,
+  GROK_MODEL_OPTIONS,
   OPENCODE_MODEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
 import {
@@ -197,6 +206,7 @@ type PreferencesPaneScope =
   | 'opencode'
   | 'cursor'
   | 'commandcode'
+  | 'grok'
   | 'github'
   | 'coderabbit'
 
@@ -225,6 +235,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const { data: coderabbitPathDetection } = useCodeRabbitPathDetection()
   const { data: cursorPathDetection } = useCursorPathDetection()
   const { data: commandcodePathDetection } = useCommandCodePathDetection()
+  const { data: grokPathDetection } = useGrokPathDetection()
 
   // CLI status hooks
   const { data: cliStatus, isLoading: isCliLoading } = useClaudeCliStatus()
@@ -241,6 +252,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     useCursorCliStatus()
   const { data: commandcodeStatus, isLoading: isCommandCodeLoading } =
     useCommandCodeCliStatus()
+  const { data: grokStatus, isLoading: isGrokLoading } = useGrokCliStatus()
   const isGhPathSource = preferences?.gh_cli_source === 'path'
   const { data: ghVersions, isLoading: isGhVersionsLoading } =
     useAvailableGhVersions({ enabled: isGhPathSource && !!ghStatus?.installed })
@@ -316,6 +328,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     useCommandCodeCliAuth({
       enabled: !!commandcodeStatus?.installed,
     })
+  const { data: grokAuth, isLoading: isGrokAuthLoading } = useGrokCliAuth({
+    enabled: !!grokStatus?.installed,
+  })
   const { data: availableOpencodeModels } = useAvailableOpencodeModels({
     enabled: !!opencodeStatus?.installed,
   })
@@ -325,6 +340,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const { data: availableCommandCodeModels } = useAvailableCommandCodeModels({
     enabled: !!commandcodeStatus?.installed,
   })
+  const { data: availableGrokModels } = useAvailableGrokModels({
+    enabled: !!grokStatus?.installed,
+  })
 
   // Re-check CLI status when the source preference changes (handles initial load
   // with source already set to "path" and any timing issues with onSuccess invalidation)
@@ -333,6 +351,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     gh: preferences?.gh_cli_source,
     codex: preferences?.codex_cli_source,
     opencode: preferences?.opencode_cli_source,
+    grok: preferences?.grok_cli_source,
     coderabbit: preferences?.coderabbit_cli_source,
     commandcode: preferences?.commandcode_cli_source,
   })
@@ -342,6 +361,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
       gh: preferences?.gh_cli_source,
       codex: preferences?.codex_cli_source,
       opencode: preferences?.opencode_cli_source,
+      grok: preferences?.grok_cli_source,
       coderabbit: preferences?.coderabbit_cli_source,
       commandcode: preferences?.commandcode_cli_source,
     }
@@ -356,6 +376,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     }
     if (cur.opencode !== prevSources.current.opencode) {
       queryClient.invalidateQueries({ queryKey: opencodeCliQueryKeys.status() })
+    }
+    if (cur.grok !== prevSources.current.grok) {
+      queryClient.invalidateQueries({ queryKey: grokCliQueryKeys.status() })
     }
     if (cur.coderabbit !== prevSources.current.coderabbit) {
       queryClient.invalidateQueries({
@@ -373,6 +396,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     preferences?.gh_cli_source,
     preferences?.codex_cli_source,
     preferences?.opencode_cli_source,
+    preferences?.grok_cli_source,
     preferences?.coderabbit_cli_source,
     preferences?.commandcode_cli_source,
     queryClient,
@@ -398,6 +422,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const [checkingOpenCodeAuth, setCheckingOpenCodeAuth] = useState(false)
   const [checkingCursorAuth, setCheckingCursorAuth] = useState(false)
   const [checkingCommandCodeAuth, setCheckingCommandCodeAuth] = useState(false)
+  const [checkingGrokAuth] = useState(false)
   const [openCodeModelPopoverOpen, setOpenCodeModelPopoverOpen] =
     useState(false)
   const [cursorModelPopoverOpen, setCursorModelPopoverOpen] = useState(false)
@@ -725,6 +750,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const opencodeInstalled = opencodeStatus?.installed
   const cursorInstalled = cursorStatus?.installed
   const commandcodeInstalled = commandcodeStatus?.installed
+  const grokInstalled = grokStatus?.installed
   const installedBackendOptions = useMemo(
     () =>
       backendOptions.filter(option =>
@@ -736,7 +762,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               ? opencodeStatus?.installed
               : option.value === 'cursor'
                 ? cursorStatus?.installed
-                : commandcodeStatus?.installed
+                : option.value === 'commandcode'
+                  ? commandcodeStatus?.installed
+                  : grokStatus?.installed
       ),
     [
       cliStatus?.installed,
@@ -744,6 +772,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
       opencodeStatus?.installed,
       cursorStatus?.installed,
       commandcodeStatus?.installed,
+      grokStatus?.installed,
     ]
   )
 
@@ -754,6 +783,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
       opencode: opencodeInstalled,
       cursor: cursorInstalled,
       commandcode: commandcodeInstalled,
+      grok: grokInstalled,
     }
     if (installed[stored]) return stored
     const first = installedBackendOptions[0]
@@ -765,6 +795,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     opencodeInstalled,
     cursorInstalled,
     commandcodeInstalled,
+    grokInstalled,
     installedBackendOptions,
   ])
 
@@ -809,6 +840,11 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
       patchPreferences.mutate({ selected_commandcode_model: value })
     }
   }
+  const handleGrokModelChange = (value: GrokModel) => {
+    if (preferences) {
+      patchPreferences.mutate({ selected_grok_model: value })
+    }
+  }
 
   const selectedOpenCodeModel =
     preferences?.selected_opencode_model ?? 'opencode/gpt-5'
@@ -845,6 +881,22 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const selectedCursorModelLabel =
     cursorModelOptions.find(option => option.value === selectedCursorModel)
       ?.label ?? formatCursorModelLabel(selectedCursorModel)
+  const selectedGrokModel =
+    preferences?.selected_grok_model ?? 'grok/grok-composer-2.5-fast'
+  const grokModelOptions: { value: GrokModel; label: string }[] = (
+    availableGrokModels?.length
+      ? availableGrokModels.map(model => ({
+          value: `grok/${model.id}` as GrokModel,
+          label: model.label,
+        }))
+      : (GROK_MODEL_OPTIONS as { value: GrokModel; label: string }[])
+  ).map(option => ({
+    value: option.value,
+    label: option.label,
+  }))
+  const selectedGrokModelLabel =
+    grokModelOptions.find(option => option.value === selectedGrokModel)
+      ?.label ?? selectedGrokModel.replace(/^grok\//, '')
   const buildBackendOptions = backendOptions
   const effectiveBuildBackend = (preferences?.build_backend ??
     effectiveBackend) as CliBackend
@@ -867,6 +919,9 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const commandCodeAuthMessage = commandcodeAuth?.timedOut
     ? 'Auth check timed out. Try again or run login manually.'
     : commandcodeAuth?.error
+  const grokAuthMessage = grokAuth?.timed_out
+    ? 'Auth check timed out. Try again or run `grok login` manually.'
+    : grokAuth?.error
 
   const handleCodexMultiAgentToggle = (enabled: boolean) => {
     if (preferences) {
@@ -2632,6 +2687,84 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                 </SelectTrigger>
                 <SelectContent>
                   {commandCodeModelOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </InlineField>
+          </div>
+        </SettingsSection>
+      )}
+
+      {scope === 'grok' && (
+        <SettingsSection
+          title={
+            <span className="inline-flex items-center gap-2">
+              <BackendLabel backend="grok" />
+              <span>Settings</span>
+            </span>
+          }
+          anchorId="pref-grok-section-settings"
+        >
+          <div className="space-y-4">
+            <InlineField
+              label="Status"
+              description={
+                isGrokLoading
+                  ? 'Checking Grok CLI…'
+                  : grokStatus?.installed
+                    ? `Installed${grokStatus.version ? ` · ${grokStatus.version}` : ''}`
+                    : 'Not installed'
+              }
+            >
+              <Button
+                variant="outline"
+                className="w-full sm:w-40"
+                disabled={checkingGrokAuth || isGrokAuthLoading}
+                onClick={() =>
+                  queryClient.invalidateQueries({
+                    queryKey: grokCliQueryKeys.auth(),
+                  })
+                }
+              >
+                {isGrokAuthLoading ? 'Checking…' : 'Check auth'}
+              </Button>
+            </InlineField>
+            {grokAuthMessage && (
+              <p className="text-xs text-muted-foreground">{grokAuthMessage}</p>
+            )}
+            <InlineField
+              label="Path"
+              description={
+                <button
+                  onClick={() =>
+                    handleCopyPath(grokPathDetection?.path ?? grokStatus?.path)
+                  }
+                  className="text-left hover:underline cursor-pointer"
+                >
+                  {grokPathDetection?.path ?? grokStatus?.path ?? 'System PATH'}
+                </button>
+              }
+            >
+              <span className="text-sm text-muted-foreground">PATH</span>
+            </InlineField>
+            <InlineField
+              label="Model"
+              description="Grok model for AI assistance"
+            >
+              <Select
+                value={selectedGrokModel}
+                onValueChange={value =>
+                  handleGrokModelChange(value as GrokModel)
+                }
+              >
+                <SelectTrigger className="w-80 max-w-full">
+                  <SelectValue>{selectedGrokModelLabel}</SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {grokModelOptions.map(option => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>

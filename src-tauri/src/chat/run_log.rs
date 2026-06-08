@@ -385,6 +385,7 @@ pub fn start_run(
         codex_thread_id: None,
         codex_turn_id: None,
         cursor_chat_id: None,
+        grok_session_id: None,
     };
 
     with_metadata_mut(
@@ -1247,6 +1248,7 @@ mod tests {
             codex_thread_id: None,
             codex_turn_id: None,
             cursor_chat_id: None,
+            grok_session_id: None,
         }
     }
 

@@ -15,6 +15,7 @@ import { useCodexCliStatus } from '@/services/codex-cli'
 import { useOpencodeCliStatus } from '@/services/opencode-cli'
 import { useCursorCliStatus } from '@/services/cursor-cli'
 import { useCommandCodeCliStatus } from '@/services/commandcode-cli'
+import { useGrokCliStatus } from '@/services/grok-cli'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import {
@@ -34,6 +35,7 @@ const BACKEND_ORDER: CliBackend[] = [
   'opencode',
   'cursor',
   'commandcode',
+  'grok',
 ]
 
 const backendCommands: Record<CliBackend, string> = {
@@ -42,12 +44,14 @@ const backendCommands: Record<CliBackend, string> = {
   opencode: 'opencode',
   cursor: 'cursor-agent',
   commandcode: 'commandcode',
+  grok: 'grok',
 }
 
 const YOLO_ARGS_BY_BACKEND: Partial<Record<CliBackend, string[]>> = {
   claude: ['--permission-mode', 'bypassPermissions'],
   codex: ['--dangerously-bypass-approvals-and-sandbox'],
   cursor: ['--yolo', '--sandbox', 'disabled'],
+  grok: ['--always-approve', '--sandbox', 'off'],
 }
 
 export function NewSessionModeModal() {
@@ -61,6 +65,7 @@ export function NewSessionModeModal() {
   const commandcodeStatus = useCommandCodeCliStatus({
     enabled: target !== null,
   })
+  const grokStatus = useGrokCliStatus({ enabled: target !== null })
   const { data: preferences } = usePreferences()
   const [nativePickerKind, setNativePickerKind] =
     useState<NativeCliSessionKind | null>(null)
@@ -81,7 +86,9 @@ export function NewSessionModeModal() {
                 ? opencodeStatus
                 : backend === 'cursor'
                   ? cursorStatus
-                  : commandcodeStatus
+                  : backend === 'commandcode'
+                    ? commandcodeStatus
+                    : grokStatus
         return {
           backend,
           shortcut: String(index + 2),
@@ -98,6 +105,8 @@ export function NewSessionModeModal() {
       cursorStatus.data?.path,
       commandcodeStatus.data?.installed,
       commandcodeStatus.data?.path,
+      grokStatus.data?.installed,
+      grokStatus.data?.path,
       opencodeStatus.data?.installed,
       opencodeStatus.data?.path,
     ]

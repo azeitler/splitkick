@@ -1643,12 +1643,13 @@ export function useSendMessage() {
         model,
         execution_mode: executionMode,
         thinking_level:
-          backend === 'cursor'
+          backend === 'cursor' || backend === 'grok'
             ? undefined
             : effortLevel
               ? undefined
               : thinkingLevel,
-        effort_level: backend === 'cursor' ? undefined : effortLevel,
+        effort_level:
+          backend === 'cursor' || backend === 'grok' ? undefined : effortLevel,
       }
 
       // Batch the optimistic user message AND sending state together so React

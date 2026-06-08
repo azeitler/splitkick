@@ -7,6 +7,7 @@ import { CodexIcon } from '@/components/icons/CodexIcon'
 import { OpenCodeIcon } from '@/components/icons/OpenCodeIcon'
 import { CursorIcon } from '@/components/icons/CursorIcon'
 import { CommandCodeIcon } from '@/components/icons/CommandCodeIcon'
+import { GrokIcon } from '@/components/icons/GrokIcon'
 import type { CliBackend } from '@/types/preferences'
 
 export type BackendIconComponent = ForwardRefExoticComponent<
@@ -25,6 +26,8 @@ export function getBackendIcon(backend: CliBackend): BackendIconComponent {
       return CursorIcon
     case 'commandcode':
       return CommandCodeIcon
+    case 'grok':
+      return GrokIcon
   }
 }
 
@@ -40,6 +43,8 @@ export function getBackendLabel(backend: CliBackend): string {
       return 'Cursor'
     case 'commandcode':
       return 'Command Code'
+    case 'grok':
+      return 'Grok'
   }
 }
 

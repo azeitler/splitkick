@@ -83,6 +83,11 @@ export const CURSOR_MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'cursor/grok-4.3', label: 'Grok 4.3 1M' },
 ]
 
+export const GROK_MODEL_OPTIONS: { value: string; label: string }[] = [
+  { value: 'grok/grok-composer-2.5-fast', label: 'Grok Composer 2.5 Fast' },
+  { value: 'grok/grok-build', label: 'Grok Build' },
+]
+
 export const THINKING_LEVEL_OPTIONS: {
   value: ThinkingLevel
   label: string

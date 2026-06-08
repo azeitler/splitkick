@@ -8,25 +8,22 @@ import {
   CODEX_MODEL_OPTIONS,
   CURSOR_MODEL_OPTIONS,
   COMMANDCODE_MODEL_OPTIONS,
+  GROK_MODEL_OPTIONS,
   MODEL_OPTIONS,
   OPENCODE_MODEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
+import type { CliBackend } from '@/types/preferences'
 
 interface UseToolbarDerivedStateArgs {
-  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+  selectedBackend: CliBackend
   selectedProvider: string | null
   selectedModel: string
   opencodeModelOptions?: { value: string; label: string }[]
   cursorModelOptions?: { value: string; label: string }[]
   commandcodeModelOptions?: { value: string; label: string }[]
+  grokModelOptions?: { value: string; label: string }[]
   customCliProfiles: CustomCliProfile[]
-  installedBackends?: (
-    | 'claude'
-    | 'codex'
-    | 'opencode'
-    | 'cursor'
-    | 'commandcode'
-  )[]
+  installedBackends?: CliBackend[]
   availableMcpServers?: { name: string; disabled?: boolean }[]
   enabledMcpServers?: string[]
 }
@@ -39,7 +36,15 @@ export function useToolbarDerivedState({
   cursorModelOptions,
   commandcodeModelOptions,
   customCliProfiles,
-  installedBackends = ['claude', 'codex', 'opencode', 'cursor', 'commandcode'],
+  grokModelOptions,
+  installedBackends = [
+    'claude',
+    'codex',
+    'opencode',
+    'cursor',
+    'commandcode',
+    'grok',
+  ],
   availableMcpServers = [],
   enabledMcpServers = [],
 }: UseToolbarDerivedStateArgs) {
@@ -47,6 +52,7 @@ export function useToolbarDerivedState({
   const isOpencode = selectedBackend === 'opencode'
   const isCursor = selectedBackend === 'cursor'
   const isCommandCode = selectedBackend === 'commandcode'
+  const isGrok = selectedBackend === 'grok'
 
   const activeMcpCount = useMemo(() => {
     const availableNames = new Set(
@@ -96,10 +102,11 @@ export function useToolbarDerivedState({
   const resolvedCursorModelOptions = cursorModelOptions ?? CURSOR_MODEL_OPTIONS
   const resolvedCommandCodeModelOptions =
     commandcodeModelOptions ?? COMMANDCODE_MODEL_OPTIONS
+  const resolvedGrokModelOptions = grokModelOptions ?? GROK_MODEL_OPTIONS
 
   const backendModelSections = useMemo(() => {
     const sections: {
-      backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+      backend: CliBackend
       label: string
       options: { value: string; label: string }[]
     }[] = []
@@ -135,6 +142,12 @@ export function useToolbarDerivedState({
           label: 'Command Code',
           options: resolvedCommandCodeModelOptions,
         })
+      } else if (backend === 'grok') {
+        sections.push({
+          backend,
+          label: 'Grok',
+          options: resolvedGrokModelOptions,
+        })
       }
     }
 
@@ -145,6 +158,7 @@ export function useToolbarDerivedState({
     installedBackends,
     resolvedCursorModelOptions,
     resolvedCommandCodeModelOptions,
+    resolvedGrokModelOptions,
     resolvedOpencodeModelOptions,
   ])
 
@@ -153,6 +167,7 @@ export function useToolbarDerivedState({
     if (isOpencode) return resolvedOpencodeModelOptions
     if (isCursor) return resolvedCursorModelOptions
     if (isCommandCode) return resolvedCommandCodeModelOptions
+    if (isGrok) return resolvedGrokModelOptions
     return claudeModelOptions
   }, [
     claudeModelOptions,
@@ -160,9 +175,11 @@ export function useToolbarDerivedState({
     isCodex,
     isCursor,
     isCommandCode,
+    isGrok,
     isOpencode,
     resolvedCommandCodeModelOptions,
     resolvedCursorModelOptions,
+    resolvedGrokModelOptions,
     resolvedOpencodeModelOptions,
   ])
 

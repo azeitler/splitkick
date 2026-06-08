@@ -92,6 +92,7 @@ pub enum Backend {
     Opencode,
     Cursor,
     Commandcode,
+    Grok,
 }
 
 impl<'de> Deserialize<'de> for Backend {
@@ -110,6 +111,7 @@ impl<'de> Deserialize<'de> for Backend {
             "opencode" => Backend::Opencode,
             "cursor" => Backend::Cursor,
             "commandcode" => Backend::Commandcode,
+            "grok" => Backend::Grok,
             "claude" | "" => Backend::Claude,
             other => {
                 log::warn!("Unknown chat backend '{other}', falling back to claude");
@@ -117,6 +119,17 @@ impl<'de> Deserialize<'de> for Backend {
             }
         };
         Ok(backend)
+    }
+}
+
+#[cfg(test)]
+mod backend_tests {
+    use super::Backend;
+
+    #[test]
+    fn backend_deserializes_grok() {
+        let backend: Backend = serde_json::from_str("\"grok\"").unwrap();
+        assert_eq!(backend, Backend::Grok);
     }
 }
 
@@ -556,6 +569,9 @@ pub struct Session {
     /// Command Code uses standalone headless invocations; this stores no native resume id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commandcode_session_id: Option<String>,
+    /// Grok headless session ID for resuming conversations
+    #[serde(default)]
+    pub grok_session_id: Option<String>,
     /// Selected model for this session
     #[serde(default)]
     pub selected_model: Option<String>,
@@ -759,6 +775,7 @@ impl Session {
             opencode_session_id: None,
             cursor_chat_id: None,
             commandcode_session_id: None,
+            grok_session_id: None,
             selected_model: None,
             selected_thinking_level: None,
             selected_effort_level: None,
@@ -973,6 +990,7 @@ impl SessionMetadata {
             opencode_session_id: self.opencode_session_id.clone(),
             cursor_chat_id: self.cursor_chat_id.clone(),
             commandcode_session_id: self.commandcode_session_id.clone(),
+            grok_session_id: self.grok_session_id.clone(),
             selected_model: self.selected_model.clone(),
             selected_thinking_level: self.selected_thinking_level.clone(),
             selected_effort_level: self.selected_effort_level.clone(),
@@ -1295,6 +1313,9 @@ pub struct RunEntry {
     /// Cursor chat ID — persisted per-run so future runs can resume the same chat.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cursor_chat_id: Option<String>,
+    /// Grok headless session ID — persisted per-run for conversation continuity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grok_session_id: Option<String>,
 }
 
 /// Session metadata - single source of truth for session data and run history
@@ -1334,6 +1355,9 @@ pub struct SessionMetadata {
     /// Command Code uses standalone headless invocations; this stores no native resume id.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commandcode_session_id: Option<String>,
+    /// Grok headless session ID for resuming conversations
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub grok_session_id: Option<String>,
     /// Selected model for this session
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub selected_model: Option<String>,
@@ -1499,6 +1523,8 @@ pub struct SessionDebugInfo {
     pub cursor_chat_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commandcode_session_id: Option<String>,
+    /// Grok headless session ID (if any)
+    pub grok_session_id: Option<String>,
     /// Path to Claude CLI's JSONL file (in ~/.claude/projects/)
     pub claude_jsonl_file: Option<String>,
     /// List of JSONL run log files for this session
@@ -1527,6 +1553,7 @@ impl SessionMetadata {
             opencode_session_id: None,
             cursor_chat_id: None,
             commandcode_session_id: None,
+            grok_session_id: None,
             selected_model: None,
             selected_thinking_level: None,
             selected_effort_level: None,
@@ -1989,6 +2016,7 @@ mod tests {
             codex_thread_id: Some("thread-1".to_string()),
             codex_turn_id: None,
             cursor_chat_id: None,
+            grok_session_id: None,
         });
 
         let restored = metadata.to_session();
@@ -2027,6 +2055,7 @@ mod tests {
             codex_thread_id: None,
             codex_turn_id: None,
             cursor_chat_id: None,
+            grok_session_id: None,
         });
 
         assert!(metadata.find_run("run-1").is_some());
@@ -2066,6 +2095,7 @@ mod tests {
             codex_thread_id: None,
             codex_turn_id: None,
             cursor_chat_id: None,
+            grok_session_id: None,
         });
 
         assert!(metadata.latest_claude_session_id().is_none());
@@ -2091,6 +2121,7 @@ mod tests {
             codex_thread_id: None,
             codex_turn_id: None,
             cursor_chat_id: None,
+            grok_session_id: None,
         });
 
         assert_eq!(metadata.latest_claude_session_id(), Some("claude-sess-abc"));

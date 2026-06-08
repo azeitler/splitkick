@@ -84,7 +84,7 @@ import { getResumeCommand } from '@/components/chat/session-card-utils'
 interface MobileSettingsMenuProps {
   isDisabled: boolean
   providerLocked?: boolean
-  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+  selectedBackend: CliBackend
   selectedProvider: string | null
   backendModelLabel: ReactNode
   backendModelLabelText: string

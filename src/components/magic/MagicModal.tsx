@@ -48,6 +48,7 @@ import {
 } from '@/services/github'
 import { usePreferences } from '@/services/preferences'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
+import { useAvailableGrokModels } from '@/services/grok-cli'
 import { invoke } from '@/lib/transport'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import { generateId } from '@/lib/uuid'
@@ -92,6 +93,7 @@ import {
   CODEX_MODEL_OPTIONS,
   MODEL_OPTIONS,
   OPENCODE_MODEL_OPTIONS,
+  GROK_MODEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
 import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
 import { ReviewMethodModal } from '@/components/chat/ReviewMethodModal'
@@ -436,6 +438,9 @@ export function MagicModal() {
   const { data: availableOpencodeModels } = useAvailableOpencodeModels({
     enabled: installedBackends.includes('opencode'),
   })
+  const { data: availableGrokModels } = useAvailableGrokModels({
+    enabled: installedBackends.includes('grok'),
+  })
 
   // Build columns dynamically based on PR state
   const magicColumns = useMemo(() => buildMagicColumns(hasOpenPr), [hasOpenPr])
@@ -483,6 +488,16 @@ export function MagicModal() {
     }))
   }, [availableOpencodeModels])
 
+  const grokModelOptions = useMemo(() => {
+    const models = availableGrokModels?.length
+      ? availableGrokModels.map(model => ({
+          value: `grok/${model.id}`,
+          label: model.label || model.id,
+        }))
+      : GROK_MODEL_OPTIONS
+    return models
+  }, [availableGrokModels])
+
   const investigateDefaults = useMemo(() => {
     if (!investigateType) return null
 
@@ -508,7 +523,10 @@ export function MagicModal() {
             : backend === 'commandcode'
               ? (preferences?.selected_commandcode_model ??
                 'commandcode/default')
-              : (preferences?.selected_model ?? 'sonnet'))
+              : backend === 'grok'
+                ? (preferences?.selected_grok_model ??
+                  'grok/grok-composer-2.5-fast')
+                : (preferences?.selected_model ?? 'sonnet'))
     const provider = resolveMagicPromptProvider(
       preferences?.magic_prompt_providers,
       providerKey,
@@ -537,7 +555,10 @@ export function MagicModal() {
             : backend === 'commandcode'
               ? (preferences?.selected_commandcode_model ??
                 'commandcode/default')
-              : (preferences?.selected_model ?? 'sonnet'))
+              : backend === 'grok'
+                ? (preferences?.selected_grok_model ??
+                  'grok/grok-composer-2.5-fast')
+                : (preferences?.selected_model ?? 'sonnet'))
     const provider = resolveMagicPromptProvider(
       preferences?.magic_prompt_providers,
       RESOLVE_CONFLICTS_PROVIDER_KEY,
@@ -609,11 +630,13 @@ export function MagicModal() {
           return CODEX_MODEL_OPTIONS
         case 'opencode':
           return opencodeModelOptions
+        case 'grok':
+          return grokModelOptions
         default:
           return investigateClaudeModelOptions
       }
     },
-    [investigateClaudeModelOptions, opencodeModelOptions]
+    [grokModelOptions, investigateClaudeModelOptions, opencodeModelOptions]
   )
 
   const customInvestigateModelOptions = useMemo(
@@ -637,6 +660,10 @@ export function MagicModal() {
         return 'Codex'
       case 'opencode':
         return 'OpenCode'
+      case 'cursor':
+        return 'Cursor'
+      case 'grok':
+        return 'Grok'
       default:
         return 'Claude'
     }
@@ -680,11 +707,13 @@ export function MagicModal() {
           return CODEX_MODEL_OPTIONS
         case 'opencode':
           return opencodeModelOptions
+        case 'grok':
+          return grokModelOptions
         default:
           return resolveClaudeModelOptions
       }
     },
-    [opencodeModelOptions, resolveClaudeModelOptions]
+    [grokModelOptions, opencodeModelOptions, resolveClaudeModelOptions]
   )
 
   const customResolveModelOptions = useMemo(
@@ -2127,7 +2156,9 @@ ${resolveInstructions}`
                         size="sm"
                         hideIcon={
                           installedBackends.filter(backend =>
-                            ['claude', 'codex', 'opencode'].includes(backend)
+                            ['claude', 'codex', 'opencode', 'grok'].includes(
+                              backend
+                            )
                           ).length <= 1
                         }
                         onClick={() => setInvestigateSelectionMode('custom')}
@@ -2143,6 +2174,9 @@ ${resolveInstructions}`
                         )}
                         {installedBackends.includes('opencode') && (
                           <SelectItem value="opencode">OpenCode</SelectItem>
+                        )}
+                        {installedBackends.includes('grok') && (
+                          <SelectItem value="grok">Grok</SelectItem>
                         )}
                       </SelectContent>
                     </Select>
@@ -2275,7 +2309,9 @@ ${resolveInstructions}`
                         size="sm"
                         hideIcon={
                           installedBackends.filter(backend =>
-                            ['claude', 'codex', 'opencode'].includes(backend)
+                            ['claude', 'codex', 'opencode', 'grok'].includes(
+                              backend
+                            )
                           ).length <= 1
                         }
                         onClick={() => setResolveSelectionMode('custom')}
@@ -2291,6 +2327,9 @@ ${resolveInstructions}`
                         )}
                         {installedBackends.includes('opencode') && (
                           <SelectItem value="opencode">OpenCode</SelectItem>
+                        )}
+                        {installedBackends.includes('grok') && (
+                          <SelectItem value="grok">Grok</SelectItem>
                         )}
                       </SelectContent>
                     </Select>

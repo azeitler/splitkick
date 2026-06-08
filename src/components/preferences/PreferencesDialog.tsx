@@ -56,6 +56,7 @@ import { CodexIcon } from '@/components/icons/CodexIcon'
 import { OpenCodeIcon } from '@/components/icons/OpenCodeIcon'
 import { CursorIcon } from '@/components/icons/CursorIcon'
 import { CommandCodeIcon } from '@/components/icons/CommandCodeIcon'
+import { GrokIcon } from '@/components/icons/GrokIcon'
 import type { MagicPrompts } from '@/types/preferences'
 import { GeneralPane } from './panes/GeneralPane'
 import { ClaudePane } from './panes/ClaudePane'
@@ -63,6 +64,7 @@ import { CodexPane } from './panes/CodexPane'
 import { OpenCodePane } from './panes/OpenCodePane'
 import { CursorPane } from './panes/CursorPane'
 import { CommandCodePane } from './panes/CommandCodePane'
+import { GrokPane } from './panes/GrokPane'
 import { GitHubPane } from './panes/GitHubPane'
 import { CodeRabbitPane } from './panes/CodeRabbitPane'
 import { AppearancePane } from './panes/AppearancePane'
@@ -148,6 +150,12 @@ const navigationEntries: (NavigationItem | NavigationSeparator)[] = [
   },
   {
     type: 'item',
+    id: 'grok',
+    name: 'Grok',
+    icon: GrokIcon,
+  },
+  {
+    type: 'item',
     id: 'github',
     name: 'GitHub CLI',
     icon: Github,
@@ -230,6 +238,7 @@ const paneIconMap: Record<PreferencePane, LucideIcon> = {
   opencode: OpenCodeIcon,
   cursor: CursorIcon,
   commandcode: CommandCodeIcon,
+  grok: GrokIcon,
   github: Github,
   coderabbit: Rabbit,
   opinionated: Sparkles,
@@ -809,6 +818,11 @@ export function PreferencesDialog() {
               {activePane === 'commandcode' && (
                 <div id="pref-pane-commandcode">
                   <CommandCodePane />
+                </div>
+              )}
+              {activePane === 'grok' && (
+                <div id="pref-pane-grok">
+                  <GrokPane />
                 </div>
               )}
               {activePane === 'github' && (

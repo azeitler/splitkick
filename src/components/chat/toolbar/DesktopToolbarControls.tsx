@@ -27,7 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { CustomCliProfile } from '@/types/preferences'
+import type { CliBackend, CustomCliProfile } from '@/types/preferences'
 import type {
   EffortLevel,
   ExecutionMode,
@@ -66,7 +66,7 @@ import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
 
 interface DesktopToolbarControlsProps {
   hasPendingQuestions: boolean
-  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
+  selectedBackend: CliBackend
   selectedModel: string
   selectedProvider: string | null
   selectedThinkingLevel: ThinkingLevel
@@ -111,22 +111,13 @@ interface DesktopToolbarControlsProps {
   onResolvePrConflicts: () => void
   onLoadContext: () => void
   onAttach: () => void
-  installedBackends: (
-    | 'claude'
-    | 'codex'
-    | 'opencode'
-    | 'cursor'
-    | 'commandcode'
-  )[]
+  installedBackends: CliBackend[]
   onSetExecutionMode: (mode: ExecutionMode) => void
   availableExecutionModes: ExecutionMode[]
   onToggleMcpServer: (name: string) => void
 
   handleModelChange: (value: string) => void
-  handleBackendModelChange: (
-    backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode',
-    model: string
-  ) => void
+  handleBackendModelChange: (backend: CliBackend, model: string) => void
   handleProviderChange: (value: string) => void
   handleThinkingLevelChange: (value: string) => void
   handleEffortLevelChange: (value: string) => void

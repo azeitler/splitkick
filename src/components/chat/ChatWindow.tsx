@@ -1186,6 +1186,7 @@ export function ChatWindow({
             | 'cursor'
             | 'commandcode'
         )
+        store.setSelectedBackend(newSession.id, yoloBackend as CliBackend)
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
       queryClient.setQueryData<Session>(
@@ -1363,6 +1364,7 @@ export function ChatWindow({
             | 'cursor'
             | 'commandcode'
         )
+        store.setSelectedBackend(newSession.id, buildBackend as CliBackend)
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
       queryClient.setQueryData<Session>(
@@ -1619,6 +1621,7 @@ export function ChatWindow({
             | 'cursor'
             | 'commandcode'
         )
+        store.setSelectedBackend(newSession.id, modeBackend as CliBackend)
       }
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(newSession.id),

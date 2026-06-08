@@ -13,6 +13,7 @@ import type {
   Session,
 } from '@/types/chat'
 import { normalizeExecutionModeForBackend } from '@/types/chat'
+import type { CliBackend } from '@/types/preferences'
 import { applySessionSettingToSession } from '@/components/chat/hooks/session-setting-sync'
 
 interface UseToolbarHandlersParams {
@@ -23,14 +24,8 @@ interface UseToolbarHandlersParams {
   activeWorktreeIdRef: RefObject<string | null | undefined>
   activeWorktreePathRef: RefObject<string | null | undefined>
   enabledMcpServersRef: RefObject<string[]>
-  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
-  installedBackends: (
-    | 'claude'
-    | 'codex'
-    | 'opencode'
-    | 'cursor'
-    | 'commandcode'
-  )[]
+  selectedBackend: CliBackend
+  installedBackends: CliBackend[]
   session: Session | null | undefined
   preferences:
     | {
@@ -39,6 +34,7 @@ interface UseToolbarHandlersParams {
         selected_opencode_model?: string
         selected_cursor_model?: string
         selected_commandcode_model?: string
+        selected_grok_model?: string
         custom_cli_profiles?: { name: string }[]
         default_execution_mode?: ExecutionMode
       }
@@ -88,10 +84,7 @@ export function useToolbarHandlers({
   setLoadContextModalOpen,
 }: UseToolbarHandlersParams) {
   const persistToolbarBackendAndModel = useCallback(
-    (
-      backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode',
-      model: string
-    ) => {
+    (backend: CliBackend, model: string) => {
       const currentMode =
         (activeSessionId
           ? useChatStore.getState().executionModes[activeSessionId]
@@ -212,7 +205,7 @@ export function useToolbarHandlers({
   )
 
   const handleToolbarBackendChange = useCallback(
-    (backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode') => {
+    (backend: CliBackend) => {
       const model = resolveDefaultModelForBackend(backend, preferences)
 
       persistToolbarBackendAndModel(backend, model)
@@ -222,16 +215,14 @@ export function useToolbarHandlers({
       preferences?.selected_codex_model,
       preferences?.selected_cursor_model,
       preferences?.selected_commandcode_model,
+      preferences?.selected_grok_model,
       preferences?.selected_model,
       preferences?.selected_opencode_model,
     ]
   )
 
   const handleToolbarBackendModelChange = useCallback(
-    (
-      backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode',
-      model: string
-    ) => {
+    (backend: CliBackend, model: string) => {
       persistToolbarBackendAndModel(backend, model)
     },
     [persistToolbarBackendAndModel]

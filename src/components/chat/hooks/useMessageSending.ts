@@ -11,7 +11,10 @@ import {
 import { skillQueryKeys } from '@/services/skills'
 import { buildMcpConfigJson } from '@/services/mcp'
 import { buildMessageWithRefs } from '@/components/chat/message-with-refs'
-import { DEFAULT_PARALLEL_EXECUTION_PROMPT } from '@/types/preferences'
+import {
+  DEFAULT_PARALLEL_EXECUTION_PROMPT,
+  type CliBackend,
+} from '@/types/preferences'
 import type {
   QueuedMessage,
   ExecutionMode,
@@ -37,9 +40,7 @@ interface UseMessageSendingParams {
   isCodexBackendRef: RefObject<boolean>
   mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
   enabledMcpServersRef: RefObject<string[]>
-  selectedBackendRef: RefObject<
-    'claude' | 'codex' | 'opencode' | 'cursor' | 'commandcode'
-  >
+  selectedBackendRef: RefObject<CliBackend>
   preferences:
     | {
         custom_cli_profiles?: { name: string }[]

@@ -8,6 +8,7 @@ export type PreferencePane =
   | 'opencode'
   | 'cursor'
   | 'commandcode'
+  | 'grok'
   | 'github'
   | 'coderabbit'
   | 'appearance'
@@ -52,6 +53,7 @@ export type CliLoginModalType =
   | 'opencode'
   | 'cursor'
   | 'commandcode'
+  | 'grok'
   | 'coderabbit'
   | null
 
