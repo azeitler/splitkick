@@ -84,7 +84,13 @@ import { getResumeCommand } from '@/components/chat/session-card-utils'
 interface MobileSettingsMenuProps {
   isDisabled: boolean
   providerLocked?: boolean
-  selectedBackend: 'claude' | 'codex' | 'opencode' | 'cursor'
+  selectedBackend:
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'pi'
+    | 'commandcode'
   selectedProvider: string | null
   backendModelLabel: ReactNode
   backendModelLabelText: string
@@ -181,6 +187,8 @@ export function MobileSettingsMenu({
   const displayedEffortLabel =
     effortLevelOptions.find(o => o.value === displayedEffortLevel)?.label ??
     displayedEffortLevel
+  const hideReasoningControl =
+    hideThinkingLevel || selectedBackend === 'commandcode'
 
   const isMobile = useIsMobile()
   const queryClient = useQueryClient()
@@ -388,7 +396,7 @@ export function MobileSettingsMenu({
           )}
         </DropdownMenuItem>
 
-        {hideThinkingLevel ? null : useAdaptiveThinking || isCodex ? (
+        {hideReasoningControl ? null : useAdaptiveThinking || isCodex ? (
           <DropdownMenuSub>
             <DropdownMenuSubTrigger className="[&>svg:last-child]:!ml-2">
               <Brain className="mr-2 h-4 w-4 text-muted-foreground" />

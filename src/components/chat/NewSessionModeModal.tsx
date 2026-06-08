@@ -14,6 +14,8 @@ import { useClaudeCliStatus } from '@/services/claude-cli'
 import { useCodexCliStatus } from '@/services/codex-cli'
 import { useOpencodeCliStatus } from '@/services/opencode-cli'
 import { useCursorCliStatus } from '@/services/cursor-cli'
+import { usePiCliStatus } from '@/services/pi-cli'
+import { useCommandCodeCliStatus } from '@/services/commandcode-cli'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import {
@@ -27,13 +29,22 @@ import {
   type NativeCliSessionKind,
 } from './NativeCliSessionsModal'
 
-const BACKEND_ORDER: CliBackend[] = ['codex', 'claude', 'opencode', 'cursor']
+const BACKEND_ORDER: CliBackend[] = [
+  'codex',
+  'claude',
+  'opencode',
+  'cursor',
+  'pi',
+  'commandcode',
+]
 
 const backendCommands: Record<CliBackend, string> = {
   codex: 'codex',
   claude: 'claude',
   opencode: 'opencode',
   cursor: 'cursor-agent',
+  pi: 'pi',
+  commandcode: 'commandcode',
 }
 
 const YOLO_ARGS_BY_BACKEND: Partial<Record<CliBackend, string[]>> = {
@@ -50,6 +61,10 @@ export function NewSessionModeModal() {
   const codexStatus = useCodexCliStatus({ enabled: target !== null })
   const opencodeStatus = useOpencodeCliStatus({ enabled: target !== null })
   const cursorStatus = useCursorCliStatus({ enabled: target !== null })
+  const piStatus = usePiCliStatus({ enabled: target !== null })
+  const commandcodeStatus = useCommandCodeCliStatus({
+    enabled: target !== null,
+  })
   const { data: preferences } = usePreferences()
   const [nativePickerKind, setNativePickerKind] =
     useState<NativeCliSessionKind | null>(null)
@@ -68,7 +83,11 @@ export function NewSessionModeModal() {
               ? claudeStatus
               : backend === 'opencode'
                 ? opencodeStatus
-                : cursorStatus
+                : backend === 'cursor'
+                  ? cursorStatus
+                  : backend === 'pi'
+                    ? piStatus
+                    : commandcodeStatus
         return {
           backend,
           shortcut: String(index + 2),
@@ -83,6 +102,10 @@ export function NewSessionModeModal() {
       codexStatus.data?.path,
       cursorStatus.data?.installed,
       cursorStatus.data?.path,
+      piStatus.data?.installed,
+      piStatus.data?.path,
+      commandcodeStatus.data?.installed,
+      commandcodeStatus.data?.path,
       opencodeStatus.data?.installed,
       opencodeStatus.data?.path,
     ]
@@ -92,7 +115,9 @@ export function NewSessionModeModal() {
     claudeStatus.isLoading ||
     codexStatus.isLoading ||
     opencodeStatus.isLoading ||
-    cursorStatus.isLoading
+    cursorStatus.isLoading ||
+    piStatus.isLoading ||
+    commandcodeStatus.isLoading
 
   const nativePickerCommand = useMemo(() => {
     if (nativePickerKind === null || nativePickerKind === 'terminal') {

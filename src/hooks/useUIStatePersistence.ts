@@ -140,6 +140,8 @@ export function useUIStatePersistence() {
           projectId,
           {
             worktree_sort_mode: settings.worktreeSortMode,
+            pinned_labels: settings.pinnedLabels,
+            labels: settings.labels,
           },
         ])
       ),
@@ -367,6 +369,8 @@ export function useUIStatePersistence() {
             projectId,
             {
               worktreeSortMode: settings.worktree_sort_mode,
+              pinnedLabels: settings.pinned_labels,
+              labels: settings.labels,
             },
           ])
         )
