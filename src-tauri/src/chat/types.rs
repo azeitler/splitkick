@@ -1280,6 +1280,10 @@ pub struct RunEntry {
     /// Effort level for Opus adaptive thinking (low, medium, high, xhigh, max, ultracode)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_level: Option<String>,
+    /// Backend used for this run. Persisted so Jean can detect cross-provider
+    /// switches without relying on provider-owned resume history.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub backend: Option<Backend>,
     /// Unix timestamp when run started
     pub started_at: u64,
     /// Unix timestamp when run ended (None if still running)
@@ -2003,6 +2007,7 @@ mod tests {
             execution_mode: Some("plan".to_string()),
             thinking_level: None,
             effort_level: None,
+            backend: None,
             started_at: 1,
             ended_at: Some(2),
             status: RunStatus::Completed,
@@ -2041,6 +2046,7 @@ mod tests {
             execution_mode: None,
             thinking_level: None,
             effort_level: None,
+            backend: None,
             started_at: 1234567890,
             ended_at: None,
             status: RunStatus::Running,
@@ -2080,6 +2086,7 @@ mod tests {
             execution_mode: None,
             thinking_level: None,
             effort_level: None,
+            backend: None,
             started_at: 1234567890,
             ended_at: None,
             status: RunStatus::Completed,
@@ -2105,6 +2112,7 @@ mod tests {
             execution_mode: None,
             thinking_level: None,
             effort_level: None,
+            backend: None,
             started_at: 1234567891,
             ended_at: None,
             status: RunStatus::Completed,
