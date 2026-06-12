@@ -18,7 +18,8 @@ function isEditTool(
     toolCall.name === 'Edit' &&
     typeof toolCall.input === 'object' &&
     toolCall.input !== null &&
-    'file_path' in toolCall.input
+    'file_path' in toolCall.input &&
+    typeof (toolCall.input as Record<string, unknown>).file_path === 'string'
   )
 }
 
@@ -69,7 +70,10 @@ export const EditedFilesDisplay = memo(function EditedFilesDisplay({
         additions: 0,
         deletions: 0,
       }
-      const delta = computeEditStats(tool.input.old_string, tool.input.new_string)
+      const delta = computeEditStats(
+        tool.input.old_string,
+        tool.input.new_string
+      )
       map.set(tool.input.file_path, {
         additions: prev.additions + delta.additions,
         deletions: prev.deletions + delta.deletions,

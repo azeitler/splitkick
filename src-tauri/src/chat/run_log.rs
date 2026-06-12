@@ -14,8 +14,8 @@ use super::storage::{
     get_session_dir, list_all_session_ids, load_metadata, save_metadata, with_metadata_mut,
 };
 use super::types::{
-    Backend, ChatMessage, ContentBlock, LoadedMessages, MessageRole, RunEntry, RunStatus, ToolCall,
-    UsageData,
+    is_claude_compaction_summary_text, Backend, ChatMessage, ContentBlock, LoadedMessages,
+    MessageRole, RunEntry, RunStatus, ToolCall, UsageData,
 };
 
 // ============================================================================
@@ -255,6 +255,7 @@ impl RunLogWriter {
                     run.codex_thread_id = Some(tid);
                     run.codex_turn_id = tuid;
                 }
+                metadata.codex_thread_id = Some(thread_id.to_string());
                 Ok(())
             },
         )?;
@@ -372,6 +373,7 @@ pub fn start_run(
         execution_mode: execution_mode.map(|s| s.to_string()),
         thinking_level: thinking_level.map(|s| s.to_string()),
         effort_level: effort_level.map(|s| s.to_string()),
+        backend: backend.clone(),
         started_at: now,
         ended_at: None,
         status: RunStatus::Running,
@@ -632,6 +634,13 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
         let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
         match msg_type {
+            "steered_user_message" => {
+                if let Some(text) = msg.get("text").and_then(|v| v.as_str()) {
+                    content_blocks.push(ContentBlock::UserInput {
+                        text: text.to_string(),
+                    });
+                }
+            }
             "assistant" => {
                 // Text-routing gate (mirrors live-stream logic): if ANY armed
                 // Monitor has initial_turn_finished=true, this assistant turn
@@ -649,7 +658,9 @@ pub fn parse_run_to_message(lines: &[String], run: &RunEntry) -> Result<ChatMess
                                     if let Some(text) = block.get("text").and_then(|v| v.as_str()) {
                                         // Skip CLI placeholder text emitted when extended
                                         // thinking starts before any real text content
-                                        if text == "(no content)" {
+                                        if text == "(no content)"
+                                            || is_claude_compaction_summary_text(text)
+                                        {
                                             continue;
                                         }
                                         if !skipped_prompt_echo
@@ -990,7 +1001,7 @@ fn should_inject_synthetic_exit_plan(
             .any(|tc| tc.name == "ExitPlanMode" || tc.name == "CodexPlan");
 
     match backend {
-        Backend::Opencode => base_match,
+        Backend::Opencode | Backend::Pi | Backend::Commandcode => base_match,
         Backend::Cursor => false, // Plan approval only on real createPlanToolCall / interaction_query
         _ => false,
     }
@@ -1089,34 +1100,32 @@ pub fn load_session_messages_window(
     let mut messages = Vec::new();
 
     for run in &metadata.runs[start..end] {
-        // Skip user message for instant-cancelled runs (undo_send)
-        // These have Cancelled status but no assistant_message_id
-        let is_undo_send = run.status == RunStatus::Cancelled && run.assistant_message_id.is_none();
-
-        if !is_undo_send {
-            // Add user message
-            messages.push(ChatMessage {
-                id: run.user_message_id.clone(),
-                session_id: session_id.to_string(),
-                role: MessageRole::User,
-                content: run.user_message.clone(),
-                timestamp: run.started_at,
-                tool_calls: vec![],
-                content_blocks: vec![],
-                cancelled: false,
-                plan_approved: false,
-                model: run.model.clone(),
-                execution_mode: run.execution_mode.clone(),
-                thinking_level: run.thinking_level.clone(),
-                effort_level: run.effort_level.clone(),
-                recovered: false,
-                usage: None, // User messages don't have token usage
-            });
+        if !run.is_renderable_in_chat_history() {
+            continue;
         }
 
-        // Add assistant message for every non-undo run, including Running runs.
+        // Add user message
+        messages.push(ChatMessage {
+            id: run.user_message_id.clone(),
+            session_id: session_id.to_string(),
+            role: MessageRole::User,
+            content: run.user_message.clone(),
+            timestamp: run.started_at,
+            tool_calls: vec![],
+            content_blocks: vec![],
+            cancelled: false,
+            plan_approved: false,
+            model: run.model.clone(),
+            execution_mode: run.execution_mode.clone(),
+            thinking_level: run.thinking_level.clone(),
+            effort_level: run.effort_level.clone(),
+            recovered: false,
+            usage: None, // User messages don't have token usage
+        });
+
+        // Add assistant message for every renderable run, including Running runs.
         // Running logs contain partial JSONL snapshots that we can surface on reload.
-        if !is_undo_send {
+        {
             let lines = read_run_log(app, session_id, &run.run_id)?;
 
             // Parse JSONL content — route by backend.
@@ -1199,17 +1208,6 @@ pub fn load_session_messages_window(
                     "*Response content was not captured for this completed run.*".to_string();
             }
 
-            // Skip cancelled runs with no content (instant cancel race window).
-            // During the brief period between mark_running_run_cancelled() setting
-            // a placeholder assistant_message_id and the command handler setting it
-            // to None, the JSONL may be empty. Don't show an empty message.
-            if run.status == RunStatus::Cancelled
-                && assistant_msg.content.is_empty()
-                && assistant_msg.tool_calls.is_empty()
-            {
-                continue;
-            }
-
             messages.push(assistant_msg);
         }
     }
@@ -1234,6 +1232,7 @@ mod tests {
             execution_mode: Some("plan".to_string()),
             thinking_level: None,
             effort_level: None,
+            backend: Some(Backend::Codex),
             started_at: 1,
             ended_at: Some(2),
             status: RunStatus::Completed,
@@ -1283,6 +1282,38 @@ mod tests {
         ));
 
         inject_synthetic_exit_plan(&Backend::Opencode, &run.run_id, &mut msg);
+
+        assert_eq!(msg.tool_calls.len(), 1);
+        assert_eq!(msg.tool_calls[0].name, "ExitPlanMode");
+        assert_eq!(msg.tool_calls[0].id, "synthetic-exit-plan-run-123");
+    }
+
+    #[test]
+    fn injects_synthetic_exit_plan_for_completed_commandcode_plan_runs() {
+        let run = sample_run();
+        let mut msg = sample_assistant_message();
+
+        assert!(should_inject_synthetic_exit_plan(
+            &Backend::Commandcode,
+            &run,
+            &msg,
+        ));
+
+        inject_synthetic_exit_plan(&Backend::Commandcode, &run.run_id, &mut msg);
+
+        assert_eq!(msg.tool_calls.len(), 1);
+        assert_eq!(msg.tool_calls[0].name, "ExitPlanMode");
+        assert_eq!(msg.tool_calls[0].id, "synthetic-exit-plan-run-123");
+    }
+
+    #[test]
+    fn injects_synthetic_exit_plan_for_completed_pi_plan_runs() {
+        let run = sample_run();
+        let mut msg = sample_assistant_message();
+
+        assert!(should_inject_synthetic_exit_plan(&Backend::Pi, &run, &msg));
+
+        inject_synthetic_exit_plan(&Backend::Pi, &run.run_id, &mut msg);
 
         assert_eq!(msg.tool_calls.len(), 1);
         assert_eq!(msg.tool_calls[0].name, "ExitPlanMode");
@@ -1358,6 +1389,92 @@ mod tests {
 
         assert_eq!(msg.tool_calls.len(), before_tool_count);
     }
+
+    #[test]
+    fn parse_run_preserves_steered_user_messages() {
+        let run = sample_run();
+        let lines = vec![
+            r#"{"_run_meta":true}"#.to_string(),
+            r#"{"type":"steered_user_message","text":"2"}"#.to_string(),
+            r#"{"type":"steered_user_message","text":"3"}"#.to_string(),
+            r#"{"type":"assistant","message":{"content":[{"type":"text","text":"done"}]}}"#
+                .to_string(),
+        ];
+
+        let message = parse_run_to_message(&lines, &run).unwrap();
+
+        assert!(matches!(
+            &message.content_blocks[0],
+            ContentBlock::UserInput { text } if text == "2"
+        ));
+        assert!(matches!(
+            &message.content_blocks[1],
+            ContentBlock::UserInput { text } if text == "3"
+        ));
+        assert!(matches!(
+            &message.content_blocks[2],
+            ContentBlock::Text { text } if text == "done"
+        ));
+    }
+
+    #[test]
+    fn parse_run_skips_claude_compaction_summary_text() {
+        let run = RunEntry {
+            run_id: "run-compact".to_string(),
+            user_message_id: "user-compact".to_string(),
+            user_message: "continue".to_string(),
+            model: Some("claude-sonnet-4-6".to_string()),
+            execution_mode: Some("yolo".to_string()),
+            thinking_level: None,
+            effort_level: None,
+            backend: Some(Backend::Claude),
+            started_at: 1,
+            ended_at: Some(2),
+            status: RunStatus::Cancelled,
+            assistant_message_id: Some("assistant-compact".to_string()),
+            cancelled: true,
+            recovered: false,
+            claude_session_id: None,
+            pid: None,
+            usage: None,
+            codex_thread_id: None,
+            codex_turn_id: None,
+            cursor_chat_id: None,
+        };
+
+        let lines = vec![
+            r#"{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"auto","pre_tokens":170298}}"#.to_string(),
+            serde_json::json!({
+                "type": "assistant",
+                "message": {
+                    "content": [{
+                        "type": "text",
+                        "text": "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.\n\nSummary:\n- old compacted work\n\nContinue the conversation from where it left off without asking the user any further questions."
+                    }]
+                }
+            })
+            .to_string(),
+            serde_json::json!({
+                "type": "assistant",
+                "message": {
+                    "content": [{
+                        "type": "text",
+                        "text": "Actual partial response."
+                    }]
+                }
+            })
+            .to_string(),
+        ];
+
+        let msg = parse_run_to_message(&lines, &run).unwrap();
+
+        assert_eq!(msg.content, "Actual partial response.");
+        assert_eq!(msg.content_blocks.len(), 1);
+        assert!(matches!(
+            &msg.content_blocks[0],
+            ContentBlock::Text { text } if text == "Actual partial response."
+        ));
+    }
 }
 
 /// Mark any running run for this session as cancelled (called by cancel_process)
@@ -1425,15 +1542,73 @@ pub fn persist_partial_cancelled_content(
 
     let path = get_run_log_path(app, session_id, &run.run_id)?;
 
-    // Only write if the file doesn't already have content (avoid double-write
-    // if the command handler already wrote the synthetic line)
+    // Reconcile the frontend's authoritative streaming view with whatever the
+    // backend already managed to flush before the kill. The previous "skip if
+    // any assistant content exists" logic dropped tool calls in web access mode
+    // where the backend's incremental writes lagged behind frontend Zustand state.
+    //
+    // We scan the existing JSONL for tool_use ids, tool_result ids, and whether
+    // any text-bearing assistant block is present. Then we append only the
+    // pieces the disk is missing. parse_run_to_message() accumulates tool_calls
+    // and text across multiple assistant lines, so appending will not duplicate.
     let existing_lines = read_run_log(app, session_id, &run.run_id).unwrap_or_default();
-    let has_assistant_content = existing_lines.iter().any(|line| {
-        line.contains("\"type\":\"assistant\"") || line.contains("\"type\": \"assistant\"")
-    });
-    if has_assistant_content {
+    let mut existing_tool_use_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut existing_tool_result_ids: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+    let mut existing_has_text = false;
+
+    for line in &existing_lines {
+        let msg: serde_json::Value = match serde_json::from_str(line) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        let msg_type = msg.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        let blocks = msg
+            .get("message")
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_array());
+        let Some(blocks) = blocks else { continue };
+        for block in blocks {
+            let block_type = block.get("type").and_then(|v| v.as_str()).unwrap_or("");
+            match (msg_type, block_type) {
+                ("assistant", "tool_use") => {
+                    if let Some(id) = block.get("id").and_then(|v| v.as_str()) {
+                        existing_tool_use_ids.insert(id.to_string());
+                    }
+                }
+                ("assistant", "text") => {
+                    let text = block.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                    if !text.trim().is_empty() && !is_claude_compaction_summary_text(text) {
+                        existing_has_text = true;
+                    }
+                }
+                ("user", "tool_result") => {
+                    if let Some(id) = block.get("tool_use_id").and_then(|v| v.as_str()) {
+                        existing_tool_result_ids.insert(id.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Determine what's missing from disk
+    let missing_tool_calls: Vec<&ToolCall> = tool_calls
+        .iter()
+        .filter(|tc| !existing_tool_use_ids.contains(&tc.id))
+        .collect();
+    let missing_tool_results: Vec<&ToolCall> = tool_calls
+        .iter()
+        .filter(|tc| tc.output.is_some() && !existing_tool_result_ids.contains(&tc.id))
+        .collect();
+    let needs_text = !existing_has_text
+        && !content.trim().is_empty()
+        && !is_claude_compaction_summary_text(content);
+
+    if missing_tool_calls.is_empty() && missing_tool_results.is_empty() && !needs_text {
         log::trace!(
-            "JSONL already has assistant content, skipping persist for session {session_id}"
+            "JSONL already in sync with frontend payload for session {session_id}, skipping persist"
         );
         return Ok(());
     }
@@ -1445,80 +1620,113 @@ pub fn persist_partial_cancelled_content(
         .open(&path)
         .map_err(|e| format!("Failed to open run log for partial content: {e}"))?;
 
-    // Build assistant message with structured content blocks if available,
-    // matching the format parse_run_to_message() expects
+    // Build a single synthetic assistant line containing only the blocks the
+    // disk is missing. We prefer the order from `content_blocks` when present
+    // so text/tool_use interleaving roughly matches the original stream.
+    let mut blocks: Vec<serde_json::Value> = Vec::new();
+    let mut wrote_text = !needs_text;
+
     if !content_blocks.is_empty() {
-        let blocks: Vec<serde_json::Value> = content_blocks
-            .iter()
-            .map(|cb| match cb {
+        for cb in content_blocks {
+            match cb {
                 ContentBlock::Text { text } => {
-                    serde_json::json!({"type": "text", "text": text})
+                    if !wrote_text
+                        && !text.trim().is_empty()
+                        && !is_claude_compaction_summary_text(text)
+                    {
+                        blocks.push(serde_json::json!({"type": "text", "text": text}));
+                        wrote_text = true;
+                    }
                 }
                 ContentBlock::ToolUse { tool_call_id } => {
+                    if existing_tool_use_ids.contains(tool_call_id) {
+                        continue;
+                    }
                     if let Some(tc) = tool_calls.iter().find(|t| t.id == *tool_call_id) {
-                        serde_json::json!({
+                        blocks.push(serde_json::json!({
                             "type": "tool_use",
                             "id": tc.id,
                             "name": tc.name,
                             "input": tc.input
-                        })
+                        }));
                     } else {
-                        serde_json::json!({
+                        blocks.push(serde_json::json!({
                             "type": "tool_use",
                             "id": tool_call_id,
                             "name": "",
                             "input": null
-                        })
+                        }));
                     }
                 }
                 ContentBlock::Thinking { thinking } => {
-                    serde_json::json!({"type": "thinking", "thinking": thinking})
+                    blocks.push(serde_json::json!({"type": "thinking", "thinking": thinking}));
                 }
-            })
-            .collect();
+                ContentBlock::UserInput { text } => {
+                    blocks.push(serde_json::json!({"type": "user_input", "text": text}));
+                }
+            }
+        }
+    }
 
+    // Append any tool_calls that weren't represented in content_blocks (e.g.,
+    // when the frontend payload had tool_calls without matching ToolUse blocks).
+    for tc in &missing_tool_calls {
+        let already_in_blocks = blocks.iter().any(|b| {
+            b.get("type").and_then(|v| v.as_str()) == Some("tool_use")
+                && b.get("id").and_then(|v| v.as_str()) == Some(tc.id.as_str())
+        });
+        if already_in_blocks {
+            continue;
+        }
+        blocks.push(serde_json::json!({
+            "type": "tool_use",
+            "id": tc.id,
+            "name": tc.name,
+            "input": tc.input
+        }));
+    }
+
+    // Fallback: text-only when no structured blocks were supplied.
+    if blocks.is_empty() && !wrote_text && !content.trim().is_empty() {
+        blocks.push(serde_json::json!({"type": "text", "text": content}));
+        wrote_text = true;
+    }
+
+    if !blocks.is_empty() {
         let synthetic = serde_json::json!({
             "type": "assistant",
             "message": { "content": blocks }
         });
         writeln!(file, "{synthetic}")
             .map_err(|e| format!("Failed to write partial content: {e}"))?;
+    }
 
-        // Write tool results as user messages so parse_run_to_message() can
-        // associate outputs with tool calls
-        for tc in tool_calls {
-            if let Some(output) = &tc.output {
-                let tool_result = serde_json::json!({
-                    "type": "user",
-                    "message": {
-                        "content": [{
-                            "type": "tool_result",
-                            "tool_use_id": tc.id,
-                            "content": output
-                        }]
-                    }
-                });
-                writeln!(file, "{tool_result}")
-                    .map_err(|e| format!("Failed to write tool result: {e}"))?;
-            }
-        }
-    } else {
-        // Fallback: text-only (no structured blocks available)
-        let synthetic = serde_json::json!({
-            "type": "assistant",
+    // Write any tool_results the disk is missing as separate user messages so
+    // parse_run_to_message() can associate outputs with their tool calls.
+    for tc in &missing_tool_results {
+        let output = tc.output.as_deref().unwrap_or("");
+        let tool_result = serde_json::json!({
+            "type": "user",
             "message": {
-                "content": [{"type": "text", "text": content}]
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": tc.id,
+                    "content": output
+                }]
             }
         });
-        writeln!(file, "{synthetic}")
-            .map_err(|e| format!("Failed to write partial content: {e}"))?;
+        writeln!(file, "{tool_result}").map_err(|e| format!("Failed to write tool result: {e}"))?;
     }
 
     file.flush()
         .map_err(|e| format!("Failed to flush partial content: {e}"))?;
 
     log::trace!(
-        "Persisted partial cancelled content ({} chars, {} blocks, {} tool calls) for session {session_id}",
+        "Reconciled partial cancelled content for session {session_id} \
+         (added {} tool_uses, {} tool_results, text_added={}; total payload: {} chars, {} blocks, {} tool calls)",
+        missing_tool_calls.len(),
+        missing_tool_results.len(),
+        wrote_text && needs_text,
         content.len(),
         content_blocks.len(),
         tool_calls.len(),

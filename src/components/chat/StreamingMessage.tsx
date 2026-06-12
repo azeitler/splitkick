@@ -11,15 +11,16 @@ import { ToolCallInline, TaskCallInline, StackedGroup } from './ToolCallInline'
 import {
   buildTimeline,
   findPlanFilePath,
+  getIntroTextBeforeDuplicatePlan,
   getPlanTextBlockIndicesToHide,
   isDuplicatePlanTextBlock,
   resolvePlanContent,
-  splitTextAroundPlan,
 } from './tool-call-utils'
 import { ToolCallsDisplay } from './ToolCallsDisplay'
 import { PlanDisplay } from './PlanFileDisplay'
 import { EditedFilesDisplay } from './EditedFilesDisplay'
 import { ThinkingBlock } from './ThinkingBlock'
+import { SteeredPromptGroup } from './SteeredPromptGroup'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { logger } from '@/lib/logger'
 
@@ -78,13 +79,10 @@ export const StreamingMessage = memo(function StreamingMessage({
     contentBlocks,
     resolvedPlan.content
   )
-  const fallbackTextSplit = splitTextAroundPlan(streamingContent)
-  const fallbackPrePlanText = isDuplicatePlanTextBlock(
+  const fallbackPrePlanText = getIntroTextBeforeDuplicatePlan(
     streamingContent,
     resolvedPlan.content
   )
-    ? fallbackTextSplit.beforePlan
-    : null
 
   return (
     <div className="text-foreground/90">
@@ -195,6 +193,10 @@ export const StreamingMessage = memo(function StreamingMessage({
                                     <Markdown streaming>{item.text}</Markdown>
                                   )
                                 }
+                                case 'userInput':
+                                  return (
+                                    <SteeredPromptGroup texts={item.texts} />
+                                  )
                                 case 'task':
                                   return (
                                     <TaskCallInline

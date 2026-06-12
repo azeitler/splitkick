@@ -56,8 +56,62 @@ pub fn spawn_terminal(
     let shell = get_user_shell();
     log::trace!("Using shell: {shell}");
 
+    // Resolve working directory: use requested path if it exists, else temp dir
+    let cwd = if std::path::Path::new(&worktree_path).is_dir() {
+        worktree_path.clone()
+    } else {
+        let fallback = std::env::temp_dir().to_string_lossy().to_string();
+        log::warn!(
+            "Worktree path '{}' does not exist, falling back to '{}'",
+            worktree_path,
+            fallback
+        );
+        fallback
+    };
+
+    // Check if we should route through WSL
+    #[cfg(windows)]
+    let wsl_config = crate::platform::get_wsl_config();
+    #[cfg(not(windows))]
+    let wsl_config = crate::platform::wsl::WslConfig::default();
+
     // Build command - either run a specific command or start interactive shell
-    let mut cmd = if let Some(ref run_command) = command {
+    let mut cmd = if wsl_config.enabled {
+        // WSL mode: route everything through wsl.exe
+        let unix_cwd = crate::platform::win_to_wsl_path(&cwd);
+        if let Some(ref run_command) = command {
+            if run_command.is_empty() {
+                return Err("Command is empty".to_string());
+            }
+            let mut c = CommandBuilder::new("wsl.exe");
+            c.arg("-d");
+            c.arg(&wsl_config.distro);
+            c.arg("--cd");
+            c.arg(&unix_cwd);
+            c.arg("--");
+            if let Some(ref args) = command_args {
+                // Direct binary invocation inside WSL
+                c.arg(run_command);
+                for arg in args {
+                    c.arg(arg);
+                }
+            } else {
+                // Shell-wrapped command inside WSL
+                c.arg("sh");
+                c.arg("-c");
+                c.arg(run_command);
+            }
+            c
+        } else {
+            // Interactive WSL shell
+            let mut c = CommandBuilder::new("wsl.exe");
+            c.arg("-d");
+            c.arg(&wsl_config.distro);
+            c.arg("--cd");
+            c.arg(&unix_cwd);
+            c
+        }
+    } else if let Some(ref run_command) = command {
         if run_command.is_empty() {
             return Err("Command is empty".to_string());
         }
@@ -92,26 +146,17 @@ pub fn spawn_terminal(
     } else {
         CommandBuilder::new(&shell)
     };
-    // Use the requested working directory if it exists, otherwise fall back to
-    // the system temp directory. This is critical on Windows where `/tmp` doesn't
-    // exist — CLI login terminals pass `/tmp` as a placeholder path.
-    let cwd = if std::path::Path::new(&worktree_path).is_dir() {
-        worktree_path.clone()
-    } else {
-        let fallback = std::env::temp_dir().to_string_lossy().to_string();
-        log::warn!(
-            "Worktree path '{}' does not exist, falling back to '{}'",
-            worktree_path,
-            fallback
-        );
-        fallback
-    };
+
     log::debug!(
-        "Terminal {terminal_id}: cwd={cwd}, command={:?}, args={:?}",
+        "Terminal {terminal_id}: cwd={cwd}, command={:?}, args={:?}, wsl={}",
         command,
-        command_args
+        command_args,
+        wsl_config.enabled
     );
-    cmd.cwd(&cwd);
+    // WSL mode handles cwd via --cd flag; native mode uses cwd() on the command
+    if !wsl_config.enabled {
+        cmd.cwd(&cwd);
+    }
     cmd.env("TERM", "xterm-256color");
     cmd.env("COLORTERM", "truecolor");
     cmd.env("JEAN_WORKTREE_PATH", &worktree_path);
@@ -161,21 +206,59 @@ pub fn spawn_terminal(
         log::error!("Failed to emit terminal:started event: {e}");
     }
 
-    // Spawn reader thread
+    // Spawn reader thread.
+    //
+    // Streaming UTF-8 decode: a `read()` can split a multi-byte codepoint at
+    // the buffer boundary. `from_utf8_lossy` would emit `U+FFFD` for the split
+    // bytes — corrupting valid output. Instead we carry up to 3 trailing bytes
+    // of an incomplete codepoint into the next read. Genuine invalid sequences
+    // still produce one `U+FFFD` per bad sequence, matching `from_utf8_lossy`.
     let app_clone = app.clone();
     let terminal_id_clone = terminal_id.clone();
     thread::spawn(move || {
-        let mut buf = [0u8; 4096];
+        const BUF_SIZE: usize = 4096;
+        let mut buf = [0u8; BUF_SIZE];
+        // Bytes carried from previous read (incomplete UTF-8 prefix). Max 3.
+        let mut carry: [u8; 3] = [0; 3];
+        let mut carry_len: usize = 0;
         loop {
-            match reader.read(&mut buf) {
+            // Stage carry at start of buf; read after it. Zero-alloc combine.
+            buf[..carry_len].copy_from_slice(&carry[..carry_len]);
+            let read_n = match reader.read(&mut buf[carry_len..]) {
                 Ok(0) => {
-                    // EOF - terminal closed
                     log::trace!("Terminal EOF for: {terminal_id_clone}");
+                    if carry_len > 0 {
+                        // Drain remaining carry as replacement chars (one per
+                        // dangling byte — matches `from_utf8_lossy` end-of-stream).
+                        let mut s = String::with_capacity(carry_len * 3);
+                        for _ in 0..carry_len {
+                            s.push('\u{FFFD}');
+                        }
+                        let event = TerminalOutputEvent {
+                            terminal_id: terminal_id_clone.clone(),
+                            data: s,
+                        };
+                        let _ = app_clone.emit_all_owned("terminal:output", event);
+                    }
                     break;
                 }
-                Ok(n) => {
-                    // Convert bytes to string (lossy conversion for non-UTF8)
-                    let data = String::from_utf8_lossy(&buf[..n]).to_string();
+                Ok(n) => n,
+                Err(e) => {
+                    log::error!("Error reading from terminal: {e}");
+                    break;
+                }
+            };
+            let total = carry_len + read_n;
+            carry_len = 0;
+
+            // Decode in place. Fast path: whole buf valid UTF-8 → zero-alloc
+            // (we hand the underlying bytes straight to a new String via
+            // copy_from_slice into a Vec sized exactly to total).
+            let bytes = &buf[..total];
+            match std::str::from_utf8(bytes) {
+                Ok(_) => {
+                    // SAFETY: validated above.
+                    let data = unsafe { String::from_utf8_unchecked(bytes.to_vec()) };
                     let event = TerminalOutputEvent {
                         terminal_id: terminal_id_clone.clone(),
                         data,
@@ -184,9 +267,53 @@ pub fn spawn_terminal(
                         log::error!("Failed to emit terminal:output event: {e}");
                     }
                 }
-                Err(e) => {
-                    log::error!("Error reading from terminal: {e}");
-                    break;
+                Err(first_err) => {
+                    // Slow path: contains invalid bytes or incomplete tail.
+                    // Build output with one allocation sized to input.
+                    let mut out = String::with_capacity(total);
+                    let mut cursor = 0usize;
+                    let mut err = first_err;
+                    loop {
+                        let valid_up_to = err.valid_up_to();
+                        // SAFETY: from_utf8 verified [cursor..cursor+valid_up_to].
+                        out.push_str(unsafe {
+                            std::str::from_utf8_unchecked(&bytes[cursor..cursor + valid_up_to])
+                        });
+                        match err.error_len() {
+                            None => {
+                                // Incomplete tail — stash for next read.
+                                let tail_start = cursor + valid_up_to;
+                                let tail_len = total - tail_start;
+                                debug_assert!(tail_len <= 3);
+                                carry[..tail_len].copy_from_slice(&bytes[tail_start..total]);
+                                carry_len = tail_len;
+                                break;
+                            }
+                            Some(bad_len) => {
+                                out.push('\u{FFFD}');
+                                cursor += valid_up_to + bad_len;
+                                if cursor >= total {
+                                    break;
+                                }
+                                match std::str::from_utf8(&bytes[cursor..]) {
+                                    Ok(s) => {
+                                        out.push_str(s);
+                                        break;
+                                    }
+                                    Err(e) => err = e,
+                                }
+                            }
+                        }
+                    }
+                    if !out.is_empty() {
+                        let event = TerminalOutputEvent {
+                            terminal_id: terminal_id_clone.clone(),
+                            data: out,
+                        };
+                        if let Err(e) = app_clone.emit_all_owned("terminal:output", event) {
+                            log::error!("Failed to emit terminal:output event: {e}");
+                        }
+                    }
                 }
             }
         }

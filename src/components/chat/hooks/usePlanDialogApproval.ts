@@ -55,7 +55,9 @@ interface UsePlanDialogApprovalParams {
   isCodexBackendRef: RefObject<boolean>
   mcpServersDataRef: RefObject<McpServerInfo[] | undefined>
   enabledMcpServersRef: RefObject<string[]>
-  selectedBackendRef: RefObject<'claude' | 'codex' | 'opencode' | 'cursor'>
+  selectedBackendRef: RefObject<
+    'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'commandcode'
+  >
   markAtBottom: () => void
 }
 
@@ -274,7 +276,9 @@ export function usePlanDialogApproval({
           : buildEffortLevelRef.current
         : null
       const resolvedEffortLevel: EffortLevel | undefined =
-        useAdaptiveThinkingRef.current || isCodexBackendRef.current
+        useAdaptiveThinkingRef.current ||
+        isCodexBackendRef.current ||
+        selectedBackendRef.current === 'pi'
           ? ((effortOverride as EffortLevel | null) ??
             selectedEffortLevelRef.current)
           : undefined

@@ -87,12 +87,24 @@ Each major system has focused documentation:
 
 Additional systems (no dedicated docs yet):
 
-- **Terminal** - Built-in PTY terminal emulator (`src-tauri/src/terminal/`)
-- **Background Tasks** - Git/PR polling with focus-aware intervals (`src-tauri/src/background_tasks/`)
+- **Terminal** - Built-in PTY terminal emulator (`src-tauri/src/terminal/`).
+  Sessions can use chat or terminal as their primary surface via
+  `useUIStore.sessionPrimarySurface`. Full-screen terminal sessions own exactly
+  one terminal instance via `sessionTerminalIds` and must render through
+  `SingleTerminalView`/`terminal-instances.ts` so the selected experimental
+  terminal renderer is respected; terminal tab bars remain only for side/drawer
+  terminals. Full-screen pure CLI sessions persist their intent on `Session`
+  (`primary_surface`, `terminal_command`, `terminal_label`) and lazily recreate
+  a PTY only when the user reopens that session, so hidden historical CLI
+  sessions do not start background processes. The native CLI picker also merges
+  backend-owned history from local stores where stable (`~/.codex/sessions/**`
+  and `~/.claude/projects/<escaped-cwd>/**`) and imports a chosen history row as
+  a Jean terminal session running the backend's native resume command.
+- **Background Tasks** - Git/PR polling with focus-aware intervals (`src-tauri/src/background_tasks/`); Auto Fix issue polling/planning/yolo handoff and scheduler active-hours window via `chrono` local time with midnight-crossing support (`src-tauri/src/auto_fix/`)
 - **HTTP Server** - Embedded Axum server + WebSocket for headless/web mode (`src-tauri/src/http_server/`)
 - **Diagnostics** - CPU/memory monitoring panel (`src-tauri/src/diagnostics/`)
 - **MCP** - Model Context Protocol server integration with per-project overrides (`src/services/mcp.ts`)
-- **CLI Management** - Claude CLI, Codex CLI, Cursor CLI, OpenCode, and gh CLI installation/versioning (`src-tauri/src/claude_cli/`, `src-tauri/src/codex_cli/`, `src-tauri/src/cursor_cli/`, `src-tauri/src/opencode_cli/`, `src-tauri/src/gh_cli/`)
+- **CLI Management** - Claude CLI, Codex CLI, Cursor CLI, OpenCode, PI, and gh CLI installation/versioning (`src-tauri/src/claude_cli/`, `src-tauri/src/codex_cli/`, `src-tauri/src/cursor_cli/`, `src-tauri/src/opencode_cli/`, `src-tauri/src/pi_cli/`, `src-tauri/src/gh_cli/`)
 
 Cursor-specific notes:
 
@@ -114,6 +126,7 @@ MainWindow (Top-level orchestrator)
 ├── MainWindowContent (Primary content area)
 │   ├── ChatWindow (when worktree selected — always shows chat view)
 │   │   ├── Chat view (VirtualizedMessageList + ChatInput + ChatToolbar)
+│   │   ├── Full-screen terminal surface (optional primary worktree surface)
 │   │   ├── TerminalPanel (integrated PTY terminal)
 │   │   └── ReviewResultsPanel (AI code review findings)
 │   ├── ProjectCanvasView (when project selected, no active worktree)
@@ -213,6 +226,7 @@ src-tauri/src/
 ├── chat/                  # Session lifecycle management
 │   ├── commands.rs        # Tauri commands (send message, create session, image processing)
 │   ├── claude.rs          # Claude CLI process spawning and management
+│   ├── pi.rs              # PI RPC host/stream parsing/steering integration
 │   ├── detached.rs        # Detached process recovery (survives app quit via nohup)
 │   ├── registry.rs        # Active session registry
 │   ├── storage.rs         # Session data on disk

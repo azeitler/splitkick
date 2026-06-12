@@ -1,11 +1,16 @@
-import { useEffect, useRef, useCallback, memo } from 'react'
+import { useEffect, useRef, useCallback, useMemo, memo, useState } from 'react'
 import { Plus, X, Minus, Terminal, ChevronUp } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import { useTerminal } from '@/hooks/useTerminal'
-import { useTerminalStore, type TerminalInstance } from '@/store/terminal-store'
+import { useTerminalBackgroundColor } from '@/hooks/useTerminalThemeSync'
+import {
+  isPanelTerminal,
+  useTerminalStore,
+  type TerminalInstance,
+} from '@/store/terminal-store'
 import {
   disposeTerminal,
-  disposeAllWorktreeTerminals,
+  disposePanelWorktreeTerminals,
 } from '@/lib/terminal-instances'
 import { Kbd } from '@/components/ui/kbd'
 import { formatShortcutDisplay } from '@/types/keybindings'
@@ -42,30 +47,35 @@ const TerminalTabContent = memo(function TerminalTabContent({
   isWorktreeActive?: boolean
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const terminalBg = useTerminalBackgroundColor()
   const { initTerminal, fit, focus } = useTerminal({
     terminalId: terminal.id,
     worktreeId,
     worktreePath,
     command: terminal.command,
+    commandArgs: terminal.commandArgs,
   })
   const initialized = useRef(false)
+  const canAttach = isActive && !isCollapsed && isWorktreeActive
 
   useEffect(() => {
-    if (containerRef.current && !initialized.current && isActive) {
+    if (containerRef.current && !initialized.current && canAttach) {
       initialized.current = true
       initTerminal(containerRef.current)
     }
-  }, [initTerminal, isActive])
+  }, [initTerminal, canAttach])
 
   // Handle resize with debouncing
   useEffect(() => {
+    if (!canAttach) return
+
     let timeoutId: ReturnType<typeof setTimeout> | null = null
 
     const observer = new ResizeObserver(() => {
       // Debounce fit calls to ensure container has settled
       if (timeoutId) clearTimeout(timeoutId)
       timeoutId = setTimeout(() => {
-        if (isActive) fit()
+        if (canAttach) fit()
       }, 50)
     })
 
@@ -77,22 +87,66 @@ const TerminalTabContent = memo(function TerminalTabContent({
       if (timeoutId) clearTimeout(timeoutId)
       observer.disconnect()
     }
-  }, [fit, isActive])
+  }, [fit, canAttach])
 
   // Fit and focus when becoming active, expanding from collapsed, or worktree becomes visible
   useEffect(() => {
-    if (isActive && initialized.current && !isCollapsed && isWorktreeActive) {
+    if (canAttach && initialized.current) {
       // Use requestAnimationFrame to ensure container has proper dimensions after expanding
       requestAnimationFrame(() => {
         fit()
         focus()
       })
     }
-  }, [isActive, isCollapsed, isWorktreeActive, fit, focus])
+  }, [canAttach, fit, focus])
 
   return (
-    <div className={cn('h-full w-full p-2', !isActive && 'hidden')}>
+    <div
+      className={cn('h-full w-full p-2', !isActive && 'hidden')}
+      style={{ backgroundColor: terminalBg }}
+    >
       <div ref={containerRef} className="h-full w-full overflow-hidden" />
+    </div>
+  )
+})
+
+export const SingleTerminalView = memo(function SingleTerminalView({
+  terminalId,
+  worktreeId,
+  worktreePath,
+  isActive = true,
+  isWorktreeActive = true,
+}: {
+  terminalId: string
+  worktreeId: string
+  worktreePath: string
+  isActive?: boolean
+  isWorktreeActive?: boolean
+}) {
+  const terminal = useTerminalStore(state =>
+    (state.terminals[worktreeId] ?? EMPTY_TERMINALS).find(
+      item => item.id === terminalId
+    )
+  )
+
+  if (!terminal) {
+    return (
+      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+        Terminal session not found
+      </div>
+    )
+  }
+
+  return (
+    <div className="h-full min-h-0 w-full overflow-hidden bg-background">
+      <TerminalTabContent
+        key={terminal.id}
+        terminal={terminal}
+        worktreeId={worktreeId}
+        worktreePath={worktreePath}
+        isActive={isActive}
+        isWorktreeActive={isWorktreeActive}
+      />
     </div>
   )
 })
@@ -105,28 +159,41 @@ export function TerminalView({
   onExpand,
   hideControls = false,
 }: TerminalViewProps) {
-  const terminals = useTerminalStore(
+  const allTerminals = useTerminalStore(
     state => state.terminals[worktreeId] ?? EMPTY_TERMINALS
+  )
+  const terminals = useMemo(
+    () => allTerminals.filter(isPanelTerminal),
+    [allTerminals]
   )
   const activeTerminalId = useTerminalStore(
     state => state.activeTerminalIds[worktreeId]
   )
   const runningTerminals = useTerminalStore(state => state.runningTerminals)
+  const hasRunningPanelTerminal = terminals.some(terminal =>
+    runningTerminals.has(terminal.id)
+  )
 
   const {
     addTerminal,
     removeTerminal,
+    reorderPanelTerminals,
     setActiveTerminal,
     setTerminalVisible,
     setTerminalPanelOpen,
   } = useTerminalStore.getState()
+  const [draggedTerminalId, setDraggedTerminalId] = useState<string | null>(
+    null
+  )
 
   // Auto-create a terminal only on initial mount (not when tabs are closed)
   const mountedRef = useRef(false)
   useEffect(() => {
     if (!mountedRef.current) {
       mountedRef.current = true
-      const existing = useTerminalStore.getState().terminals[worktreeId] ?? []
+      const existing = (
+        useTerminalStore.getState().terminals[worktreeId] ?? []
+      ).filter(isPanelTerminal)
       if (existing.length === 0) {
         addTerminal(worktreeId)
       }
@@ -150,7 +217,9 @@ export function TerminalView({
       disposeTerminal(terminalId)
       // Remove from store
       removeTerminal(worktreeId, terminalId)
-      const remaining = useTerminalStore.getState().terminals[worktreeId] ?? []
+      const remaining = (
+        useTerminalStore.getState().terminals[worktreeId] ?? []
+      ).filter(isPanelTerminal)
       if (remaining.length === 0) {
         setTerminalPanelOpen(worktreeId, false)
         setTerminalVisible(false)
@@ -167,13 +236,51 @@ export function TerminalView({
     [worktreeId, setActiveTerminal]
   )
 
+  const handleTerminalDragStart = useCallback(
+    (e: React.DragEvent<HTMLButtonElement>, terminalId: string) => {
+      setDraggedTerminalId(terminalId)
+      e.dataTransfer.effectAllowed = 'move'
+      e.dataTransfer.setData('text/plain', terminalId)
+    },
+    []
+  )
+
+  const handleTerminalDragOver = useCallback(
+    (e: React.DragEvent<HTMLButtonElement>) => {
+      if (!draggedTerminalId) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+    },
+    [draggedTerminalId]
+  )
+
+  const handleTerminalDrop = useCallback(
+    (e: React.DragEvent<HTMLButtonElement>, targetTerminalId: string) => {
+      e.preventDefault()
+      const sourceId =
+        draggedTerminalId || e.dataTransfer.getData('text/plain') || null
+      setDraggedTerminalId(null)
+      if (!sourceId || sourceId === targetTerminalId) return
+
+      const panelIds = terminals.map(terminal => terminal.id)
+      const fromIndex = panelIds.indexOf(sourceId)
+      const toIndex = panelIds.indexOf(targetTerminalId)
+      if (fromIndex === -1 || toIndex === -1) return
+
+      panelIds.splice(fromIndex, 1)
+      panelIds.splice(toIndex, 0, sourceId)
+      reorderPanelTerminals(worktreeId, panelIds)
+    },
+    [draggedTerminalId, reorderPanelTerminals, terminals, worktreeId]
+  )
+
   const handleMinimize = useCallback(() => {
     setTerminalVisible(false)
   }, [setTerminalVisible])
 
   const handleCloseAll = useCallback(() => {
-    // Dispose all xterm instances and stop PTY processes
-    disposeAllWorktreeTerminals(worktreeId)
+    // Dispose side/drawer terminal tabs only; session terminals are independent.
+    disposePanelWorktreeTerminals(worktreeId)
   }, [worktreeId])
 
   // When collapsed, show collapsed bar but keep terminals mounted (hidden) to preserve state
@@ -188,7 +295,7 @@ export function TerminalView({
         >
           <Terminal className="h-3.5 w-3.5" />
           <span>Terminal</span>
-          {runningTerminals.size > 0 && (
+          {hasRunningPanelTerminal && (
             <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
           )}
           <div className="flex-1" />
@@ -232,12 +339,18 @@ export function TerminalView({
               <button
                 key={terminal.id}
                 type="button"
+                draggable
+                onDragStart={e => handleTerminalDragStart(e, terminal.id)}
+                onDragOver={handleTerminalDragOver}
+                onDrop={e => handleTerminalDrop(e, terminal.id)}
+                onDragEnd={() => setDraggedTerminalId(null)}
                 onClick={() => handleSelectTerminal(terminal.id)}
                 className={cn(
                   'group flex shrink-0 items-center gap-1.5 border-r border-border px-3 py-1.5 text-xs transition-colors',
                   isActive
                     ? 'bg-muted text-foreground'
-                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                  draggedTerminalId === terminal.id && 'opacity-60'
                 )}
               >
                 {/* Running indicator */}

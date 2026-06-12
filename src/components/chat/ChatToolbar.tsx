@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { toast } from 'sonner'
+import { Zap } from 'lucide-react'
+import { dismissibleToast } from '@/lib/dismissible-toast'
+import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
 import {
   gitPush,
@@ -10,7 +12,7 @@ import {
 import { useChatStore } from '@/store/chat-store'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
 import { useAllBackendsMcpHealth } from '@/services/mcp'
-import type { ClaudeModel } from '@/types/preferences'
+import { getModelFastInfo, type ClaudeModel } from '@/types/preferences'
 import {
   getSupportedExecutionModes,
   type EffortLevel,
@@ -18,6 +20,7 @@ import {
 } from '@/types/chat'
 import type { ChatToolbarProps } from '@/components/chat/toolbar/types'
 import { MobileToolbarMenu } from '@/components/chat/toolbar/MobileToolbarMenu'
+import { MobileSettingsMenu } from '@/components/chat/toolbar/MobileSettingsMenu'
 import { MobileBackendModelPickerSheet } from '@/components/chat/toolbar/MobileBackendModelPickerSheet'
 import { DesktopToolbarControls } from '@/components/chat/toolbar/DesktopToolbarControls'
 import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
@@ -29,18 +32,25 @@ import {
   EFFORT_LEVEL_OPTIONS,
   MODEL_OPTIONS,
   OPENCODE_MODEL_OPTIONS,
+  PI_EFFORT_LEVEL_OPTIONS,
+  PI_MODEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
 import { useToolbarDropdownShortcuts } from '@/components/chat/toolbar/useToolbarDropdownShortcuts'
 import { useToolbarDerivedState } from '@/components/chat/toolbar/useToolbarDerivedState'
 import { useContextViewer } from '@/components/chat/toolbar/useContextViewer'
-import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
+import {
+  formatOpencodeModelLabel,
+  formatPiModelLabel,
+} from '@/components/chat/toolbar/toolbar-utils'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
+import { useAvailablePiModels } from '@/services/pi-cli'
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
   BackendLabel,
   getBackendPlainLabel,
 } from '@/components/ui/backend-label'
+import type { RevertCommitResponse } from '@/types/projects'
 
 // eslint-disable-next-line react-refresh/only-export-components
 export {
@@ -49,6 +59,7 @@ export {
   OPENCODE_MODEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
   EFFORT_LEVEL_OPTIONS,
+  PI_EFFORT_LEVEL_OPTIONS,
 }
 export type { ChatToolbarProps }
 
@@ -68,10 +79,6 @@ export const ChatToolbar = memo(function ChatToolbar({
   sessionHasMessages,
   providerLocked,
   baseBranch,
-  uncommittedAdded,
-  uncommittedRemoved,
-  branchDiffAdded,
-  branchDiffRemoved,
   prUrl,
   prNumber,
   displayStatus,
@@ -95,10 +102,10 @@ export const ChatToolbar = memo(function ChatToolbar({
   onOpenPr,
   onReview,
   onMerge,
+  onMergePr,
   onResolvePrConflicts,
   onResolveConflicts,
   hasOpenPr,
-  onSetDiffRequest,
   installedBackends,
   onModelChange,
   onBackendModelChange,
@@ -160,18 +167,34 @@ export const ChatToolbar = memo(function ChatToolbar({
       value: model,
       label: formatOpencodeModelLabel(model),
     })) ?? OPENCODE_MODEL_OPTIONS
+  const { data: availablePiModels } = useAvailablePiModels({
+    enabled: selectedBackend === 'pi',
+  })
+  const piModelOptions =
+    availablePiModels?.map(model => ({
+      value: `pi/${model.id}`,
+      label: model.label || formatPiModelLabel(model.id),
+      is_default: model.is_default,
+    })) ?? PI_MODEL_OPTIONS
 
-  const { isCodex, activeMcpCount, selectedModelLabel } =
+  const { isCodex, activeMcpCount, backendModelSections, selectedModelLabel } =
     useToolbarDerivedState({
       selectedBackend,
       selectedProvider,
       selectedModel,
       opencodeModelOptions,
+      piModelOptions,
       customCliProfiles,
+      installedBackends,
       availableMcpServers,
       enabledMcpServers,
     })
   const availableExecutionModes = getSupportedExecutionModes(selectedBackend)
+  const hasMultipleBackendModelChoices =
+    backendModelSections.reduce(
+      (count, section) => count + section.options.length,
+      0
+    ) > 1
 
   const backendModelLabel = useMemo(
     () => (
@@ -181,9 +204,15 @@ export const ChatToolbar = memo(function ChatToolbar({
           badgeClassName="text-[9px] leading-3"
         />
         <span className="truncate">· {selectedModelLabel}</span>
+        {getModelFastInfo(selectedBackend, selectedModel).isFast && (
+          <Zap
+            className="h-3 w-3 shrink-0 fill-current text-yellow-500"
+            aria-label="Fast mode"
+          />
+        )}
       </>
     ),
-    [selectedBackend, selectedModelLabel]
+    [selectedBackend, selectedModel, selectedModelLabel]
   )
 
   const backendModelLabelText = useMemo(
@@ -218,15 +247,19 @@ export const ChatToolbar = memo(function ChatToolbar({
     (value: string) => {
       const provider = value === 'default' ? null : value
       onProviderChange(provider)
-      if (
-        provider &&
-        provider !== '__anthropic__' &&
-        (selectedModel === 'claude-opus-4-6[1m]' ||
+      if (provider && provider !== '__anthropic__') {
+        if (selectedModel === 'claude-opus-4-8[1m]') {
+          onModelChange('claude-opus-4-8' as ClaudeModel)
+        } else if (selectedModel === 'claude-opus-4-7[1m]') {
+          onModelChange('claude-opus-4-7' as ClaudeModel)
+        } else if (
+          selectedModel === 'claude-opus-4-6[1m]' ||
           selectedModel === 'claude-sonnet-4-6[1m]' ||
           selectedModel === 'claude-opus-4-6-fast' ||
-          selectedModel === 'claude-opus-4-6[1m]-fast')
-      ) {
-        onModelChange('claude-opus-4-6' as ClaudeModel)
+          selectedModel === 'claude-opus-4-6[1m]-fast'
+        ) {
+          onModelChange('claude-opus-4-6' as ClaudeModel)
+        }
       }
     },
     [onProviderChange, onModelChange, selectedModel]
@@ -269,42 +302,41 @@ export const ChatToolbar = memo(function ChatToolbar({
       const { setWorktreeLoading, clearWorktreeLoading } =
         useChatStore.getState()
       setWorktreeLoading(worktreeId, 'push')
-      const toastId = toast.loading('Pushing changes...')
+      const opToast = dismissibleToast.loading('Pushing changes...')
       try {
         const result = await gitPush(activeWorktreePath, prNumber, remote)
         triggerImmediateGitPoll()
         if (projectId) fetchWorktreesStatus(projectId)
         if (result.fellBack) {
-          toast.warning(
-            'Could not push to PR branch, pushed to new branch instead',
-            { id: toastId }
+          opToast.warning(
+            'Could not push to PR branch, pushed to new branch instead'
           )
         } else {
-          toast.success('Changes pushed', { id: toastId })
+          opToast.success('Changes pushed')
         }
       } catch (error) {
-        toast.error(`Push failed: ${error}`, { id: toastId })
+        opToast.error(`Push failed: ${error}`)
       } finally {
         clearWorktreeLoading(worktreeId)
       }
     })
   }, [activeWorktreePath, worktreeId, projectId, prNumber, pickRemoteOrRun])
 
-  const handleUncommittedDiffClick = useCallback(() => {
-    onSetDiffRequest({
-      type: 'uncommitted',
-      worktreePath: activeWorktreePath ?? '',
-      baseBranch,
-    })
-  }, [activeWorktreePath, baseBranch, onSetDiffRequest])
-
-  const handleBranchDiffClick = useCallback(() => {
-    onSetDiffRequest({
-      type: 'branch',
-      worktreePath: activeWorktreePath ?? '',
-      baseBranch,
-    })
-  }, [activeWorktreePath, baseBranch, onSetDiffRequest])
+  const handleRevertLastCommit = useCallback(async () => {
+    if (!activeWorktreePath) return
+    const revertToast = dismissibleToast.loading('Reverting last commit...')
+    try {
+      const result = await invoke<RevertCommitResponse>(
+        'revert_last_local_commit',
+        { worktreePath: activeWorktreePath }
+      )
+      triggerImmediateGitPoll()
+      if (projectId) fetchWorktreesStatus(projectId)
+      revertToast.success(`Reverted: ${result.commit_message}`)
+    } catch (error) {
+      revertToast.error(`Failed to revert: ${error}`)
+    }
+  }, [activeWorktreePath, projectId])
 
   const canSend = hasInputValue || hasPendingAttachments
 
@@ -313,46 +345,43 @@ export const ChatToolbar = memo(function ChatToolbar({
       <div className="inline-flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap bg-transparent scrollbar-hide">
         <DockBurgerButton
           activeMcpCount={activeMcpCount}
-          onAttach={onAttach}
           className="flex @xl:hidden"
         />
 
         <MobileToolbarMenu
-          isDisabled={isSending || hasPendingQuestions}
+          isDisabled={false}
           hasOpenPr={hasOpenPr}
+          hasIssueContexts={loadedIssueContexts.length > 0}
+          hasPrContexts={loadedPRContexts.length > 0}
+          onSaveContext={onSaveContext}
+          onLoadContext={onLoadContext}
+          onCommit={onCommit}
+          onCommitAndPush={onCommitAndPush}
+          onRevertLastCommit={handleRevertLastCommit}
+          onOpenPr={onOpenPr}
+          onReview={onReview}
+          onMerge={onMerge}
+          onMergePr={onMergePr}
+          onOpenMagicModal={onOpenMagicModal}
+          handlePullClick={handlePullClick}
+          handlePushClick={handlePushClick}
+        />
+
+        <MobileSettingsMenu
+          isDisabled={false}
           providerLocked={providerLocked}
           selectedBackend={selectedBackend}
           selectedProvider={selectedProvider}
           backendModelLabel={backendModelLabel}
           backendModelLabelText={backendModelLabelText}
+          hasMultipleBackendModelChoices={hasMultipleBackendModelChoices}
           selectedEffortLevel={selectedEffortLevel}
           selectedThinkingLevel={selectedThinkingLevel}
           hideThinkingLevel={hideThinkingLevel}
           useAdaptiveThinking={useAdaptiveThinking}
           isCodex={isCodex}
           customCliProfiles={customCliProfiles}
-          uncommittedAdded={uncommittedAdded}
-          uncommittedRemoved={uncommittedRemoved}
-          branchDiffAdded={branchDiffAdded}
-          branchDiffRemoved={branchDiffRemoved}
-          prUrl={prUrl}
-          prNumber={prNumber}
-          displayStatus={displayStatus}
-          checkStatus={checkStatus}
-          activeWorktreePath={activeWorktreePath}
-          onSaveContext={onSaveContext}
-          onLoadContext={onLoadContext}
-          onCommit={onCommit}
-          onCommitAndPush={onCommitAndPush}
-          onOpenPr={onOpenPr}
-          onReview={onReview}
-          onMerge={onMerge}
-          onResolveConflicts={onResolveConflicts}
           onOpenBackendModelPicker={() => setMobileBackendModelPickerOpen(true)}
-          handlePullClick={handlePullClick}
-          handlePushClick={handlePushClick}
-          handleUncommittedDiffClick={handleUncommittedDiffClick}
-          handleBranchDiffClick={handleBranchDiffClick}
           handleProviderChange={handleProviderChange}
           handleEffortLevelChange={handleEffortLevelChange}
           handleThinkingLevelChange={handleThinkingLevelChange}
@@ -372,6 +401,11 @@ export const ChatToolbar = memo(function ChatToolbar({
           enabledMcpServers={enabledMcpServers}
           activeMcpCount={activeMcpCount}
           onToggleMcpServer={onToggleMcpServer}
+          prUrl={prUrl}
+          prNumber={prNumber}
+          prDisplayStatus={displayStatus}
+          worktreeId={worktreeId}
+          onAttach={onAttach}
         />
 
         {isMobile && (

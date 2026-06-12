@@ -26,11 +26,13 @@ import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { useAvailableCursorModels } from '@/services/cursor-cli'
+import { useAvailableCommandCodeModels } from '@/services/commandcode-cli'
 import {
   formatCursorModelLabel,
   formatOpencodeModelLabel,
 } from '@/components/chat/toolbar/toolbar-utils'
 import {
+  COMMANDCODE_MODEL_OPTIONS as COMMANDCODE_FALLBACK_OPTIONS,
   CURSOR_MODEL_OPTIONS as CURSOR_FALLBACK_OPTIONS,
   OPENCODE_MODEL_OPTIONS as OPENCODE_FALLBACK_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
@@ -49,9 +51,9 @@ import {
   DEFAULT_RELEASE_NOTES_PROMPT,
   DEFAULT_REVIEW_COMMENTS_PROMPT,
   DEFAULT_SESSION_NAMING_PROMPT,
-  DEFAULT_SESSION_RECAP_PROMPT,
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   DEFAULT_GLOBAL_SYSTEM_PROMPT,
+  DEFAULT_PROVIDER_SWITCH_HANDOFF_PROMPT,
   DEFAULT_MAGIC_PROMPTS,
   DEFAULT_MAGIC_PROMPT_MODELS,
   DEFAULT_MAGIC_PROMPT_PROVIDERS,
@@ -60,8 +62,10 @@ import {
   CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
   OPENCODE_DEFAULT_MAGIC_PROMPT_BACKENDS,
   CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
+  CODEX_FAST_DEFAULT_MAGIC_PROMPT_MODELS,
   OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS,
   codexModelOptions,
+  isCommandCodeModel,
   isCodexModel,
   isCursorModel,
   type MagicPrompts,
@@ -118,7 +122,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ISSUE_PROMPT,
-        defaultModel: 'claude-opus-4-7',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_pr',
@@ -139,7 +143,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_PR_PROMPT,
-        defaultModel: 'claude-opus-4-7',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_workflow_run',
@@ -166,7 +170,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_WORKFLOW_RUN_PROMPT,
-        defaultModel: 'claude-opus-4-7',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_security_alert',
@@ -188,7 +192,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_SECURITY_ALERT_PROMPT,
-        defaultModel: 'claude-opus-4-7',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_advisory',
@@ -208,7 +212,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_ADVISORY_PROMPT,
-        defaultModel: 'claude-opus-4-7',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'investigate_linear_issue',
@@ -233,7 +237,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_INVESTIGATE_LINEAR_ISSUE_PROMPT,
-        defaultModel: 'claude-opus-4-7',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
     ],
   },
@@ -260,7 +264,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_CODE_REVIEW_PROMPT,
-        defaultModel: 'claude-opus-4-7',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'review_comments',
@@ -282,7 +286,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
           },
         ],
         defaultValue: DEFAULT_REVIEW_COMMENTS_PROMPT,
-        defaultModel: 'claude-opus-4-7',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'commit_message',
@@ -352,7 +356,7 @@ const PROMPT_SECTIONS: PromptSection[] = [
         description: 'Instructions appended to conflict resolution prompts.',
         variables: [],
         defaultValue: DEFAULT_RESOLVE_CONFLICTS_PROMPT,
-        defaultModel: 'claude-opus-4-7',
+        defaultModel: 'claude-opus-4-8[1m]',
       },
       {
         key: 'release_notes',
@@ -374,6 +378,16 @@ const PROMPT_SECTIONS: PromptSection[] = [
           {
             name: '{commits}',
             description: 'Commit messages since the selected release',
+          },
+          {
+            name: '{pull_requests}',
+            description:
+              'Matched merged pull requests and detected issue references',
+          },
+          {
+            name: '{related_pull_requests}',
+            description:
+              'Exact PR/issue reference formats detected from closing keywords',
           },
         ],
         defaultValue: DEFAULT_RELEASE_NOTES_PROMPT,
@@ -423,43 +437,47 @@ const PROMPT_SECTIONS: PromptSection[] = [
         defaultValue: DEFAULT_SESSION_NAMING_PROMPT,
         defaultModel: 'sonnet',
       },
-      {
-        key: 'session_recap',
-        modelKey: 'session_recap_model',
-        providerKey: 'session_recap_provider',
-        backendKey: 'session_recap_backend',
-        label: 'Session Recap',
-        description:
-          'Prompt for generating session recaps (digests) when returning to unfocused sessions.',
-        variables: [
-          {
-            name: '{conversation}',
-            description: 'Full conversation transcript',
-          },
-        ],
-        defaultValue: DEFAULT_SESSION_RECAP_PROMPT,
-        defaultModel: 'sonnet',
-      },
     ],
   },
   {
     label: 'System Prompts',
     configs: [
       {
+        key: 'parallel_execution',
+        label: 'Parallel Execution',
+        description:
+          'System prompt appended to every chat session when enabled in General defaults. Encourages sub-agent parallelization.',
+        variables: [],
+        defaultValue: DEFAULT_PARALLEL_EXECUTION_PROMPT,
+      },
+      {
         key: 'global_system_prompt',
         label: 'Global System Prompt',
         description:
-          'Appended to every chat session. Works like ~/.claude/CLAUDE.md but managed in settings.',
+          'Global system prompt appended to every chat session (like ~/.claude/CLAUDE.md).',
         variables: [],
         defaultValue: DEFAULT_GLOBAL_SYSTEM_PROMPT,
       },
       {
-        key: 'parallel_execution',
-        label: 'Parallel Execution',
+        key: 'provider_switch_handoff',
+        label: 'Provider Switch Handoff',
         description:
-          'System prompt appended to every chat session when enabled in Experimental settings. Encourages sub-agent parallelization.',
-        variables: [],
-        defaultValue: DEFAULT_PARALLEL_EXECUTION_PROMPT,
+          'Hidden prompt prepended when a session switches between AI backends so the new provider uses Jean-local history as context.',
+        variables: [
+          {
+            name: '{previous_backend}',
+            description: 'Backend used by the previous run',
+          },
+          {
+            name: '{current_backend}',
+            description: 'Backend used by the current run',
+          },
+          {
+            name: '{history}',
+            description: 'Bounded Jean-local conversation history',
+          },
+        ],
+        defaultValue: DEFAULT_PROVIDER_SWITCH_HANDOFF_PROMPT,
       },
     ],
   },
@@ -475,14 +493,26 @@ export function getMagicPromptItemId(key: keyof MagicPrompts): string {
 }
 
 const CLAUDE_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
-  { value: 'claude-opus-4-7', label: 'Opus 4.7' },
-  { value: 'claude-opus-4-6', label: 'Opus 4.6' },
+  { value: 'claude-opus-4-8[1m]', label: 'Opus 4.8 (1M)' },
+  { value: 'claude-opus-4-7[1m]', label: 'Opus 4.7 (1M)' },
+  { value: 'claude-opus-4-6[1m]', label: 'Opus 4.6 (1M)' },
   { value: 'sonnet', label: 'Sonnet 4.6' },
   { value: 'haiku', label: 'Haiku' },
 ]
 
-const CODEX_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] =
-  codexModelOptions.map(o => ({ value: o.value, label: o.label }))
+const CODEX_MODEL_OPTIONS: { value: MagicPromptModel; label: string }[] = [
+  { value: 'gpt-5.5', label: 'GPT 5.5' },
+  { value: 'gpt-5.5-fast', label: 'GPT 5.5 Fast' },
+  { value: 'gpt-5.4', label: 'GPT 5.4' },
+  { value: 'gpt-5.4-fast', label: 'GPT 5.4 Fast' },
+  { value: 'gpt-5.4-mini', label: 'GPT 5.4 Mini' },
+  { value: 'gpt-5.4-mini-fast', label: 'GPT 5.4 Mini Fast' },
+  ...codexModelOptions
+    .filter(
+      o => !['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'].includes(o.value) // Already listed above
+    )
+    .map(o => ({ value: o.value as MagicPromptModel, label: o.label })),
+]
 
 interface MagicPromptsPaneProps {
   searchTargetPromptKey?: keyof MagicPrompts | null
@@ -505,6 +535,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
 
   const { data: availableOpencodeModels } = useAvailableOpencodeModels()
   const { data: availableCursorModels } = useAvailableCursorModels()
+  const { data: availableCommandCodeModels } = useAvailableCommandCodeModels()
   const { installedBackends } = useInstalledBackends()
 
   const formatOpenCodeLabel = (value: string) => {
@@ -535,6 +566,21 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
       label: option.label || formatCursorModelLabel(option.value),
     }))
   }, [availableCursorModels])
+  const commandCodeModelOptions = useMemo(() => {
+    const options = availableCommandCodeModels?.length
+      ? [
+          { value: 'commandcode/default', label: 'CLI default (no --model)' },
+          ...availableCommandCodeModels.map(model => ({
+            value: `commandcode/${model.id}`,
+            label: model.label,
+          })),
+        ]
+      : COMMANDCODE_FALLBACK_OPTIONS
+    return options.map(option => ({
+      value: option.value as MagicPromptModel,
+      label: option.label,
+    }))
+  }, [availableCommandCodeModels])
 
   const currentPrompts = preferences?.magic_prompts ?? DEFAULT_MAGIC_PROMPTS
   const currentModels =
@@ -570,12 +616,16 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
   const currentModelIsCursor = currentModel
     ? isCursorModel(currentModel)
     : false
+  const currentModelIsCommandCode = currentModel
+    ? isCommandCodeModel(currentModel)
+    : false
   const filteredClaudeOptions = useMemo(() => {
     if (
       !currentProvider ||
       currentModelIsCodex ||
       currentModelIsOpenCode ||
-      currentModelIsCursor
+      currentModelIsCursor ||
+      currentModelIsCommandCode
     ) {
       return CLAUDE_MODEL_OPTIONS
     }
@@ -607,6 +657,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
     currentProvider,
     currentModelIsCodex,
     currentModelIsCursor,
+    currentModelIsCommandCode,
     currentModelIsOpenCode,
     profiles,
   ])
@@ -771,6 +822,8 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
           defaultModel = opencodeModelOptions[0]?.value
         } else if (backend === 'cursor') {
           defaultModel = cursorModelOptions[0]?.value
+        } else if (backend === 'commandcode') {
+          defaultModel = commandCodeModelOptions[0]?.value
         }
       }
       patchPreferences.mutate({
@@ -797,6 +850,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
       selectedConfig.modelKey,
       selectedConfig.defaultModel,
       cursorModelOptions,
+      commandCodeModelOptions,
       opencodeModelOptions,
     ]
   )
@@ -814,6 +868,14 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
     if (!preferences) return
     patchPreferences.mutate({
       magic_prompt_models: CODEX_DEFAULT_MAGIC_PROMPT_MODELS,
+      magic_prompt_backends: CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
+    })
+  }, [preferences, patchPreferences])
+
+  const handleApplyCodexFastDefaults = useCallback(() => {
+    if (!preferences) return
+    patchPreferences.mutate({
+      magic_prompt_models: CODEX_FAST_DEFAULT_MAGIC_PROMPT_MODELS,
       magic_prompt_backends: CODEX_DEFAULT_MAGIC_PROMPT_BACKENDS,
     })
   }, [preferences, patchPreferences])
@@ -876,6 +938,15 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
           className="h-7 text-xs"
         >
           Codex Defaults
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleApplyCodexFastDefaults}
+          disabled={!installedBackends.includes('codex')}
+          className="h-7 text-xs"
+        >
+          Codex (Fast) Defaults
         </Button>
         <Button
           variant="outline"
@@ -945,7 +1016,11 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                   value={effectiveBackend}
                   onValueChange={handleBackendChange}
                 >
-                  <SelectTrigger size="sm" className="w-[120px] text-xs">
+                  <SelectTrigger
+                    size="sm"
+                    className="w-[120px] text-xs"
+                    hideIcon={installedBackends.length <= 1}
+                  >
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -960,6 +1035,11 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                         <BackendLabel backend="cursor" />
                       </SelectItem>
                     )}
+                    {installedBackends.includes('commandcode') && (
+                      <SelectItem value="commandcode">
+                        <BackendLabel backend="commandcode" />
+                      </SelectItem>
+                    )}
                     {installedBackends.includes('codex') && (
                       <SelectItem value="codex">Codex</SelectItem>
                     )}
@@ -971,9 +1051,11 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
               profiles.length > 0 &&
               !currentModelIsCodex &&
               !currentModelIsCursor &&
+              !currentModelIsCommandCode &&
               !currentModelIsOpenCode &&
               effectiveBackend !== 'opencode' &&
               effectiveBackend !== 'cursor' &&
+              effectiveBackend !== 'commandcode' &&
               effectiveBackend !== 'codex' && (
                 <>
                   <span className="text-xs text-muted-foreground">
@@ -1018,6 +1100,7 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                             ...CODEX_MODEL_OPTIONS,
                             ...opencodeModelOptions,
                             ...cursorModelOptions,
+                            ...commandCodeModelOptions,
                           ]
                           return (
                             allOptions.find(o => o.value === currentModel)
@@ -1026,11 +1109,24 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                               ? formatOpenCodeLabel(currentModel)
                               : isCursorModel(currentModel)
                                 ? formatCursorModelLabel(currentModel)
-                                : currentModel)
+                                : currentModel === 'commandcode/default'
+                                  ? 'CLI default (no --model)'
+                                  : currentModel)
                           )
                         })()}
                       </span>
-                      <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+                      {(effectiveBackend === 'claude'
+                        ? filteredClaudeOptions
+                        : effectiveBackend === 'codex'
+                          ? CODEX_MODEL_OPTIONS
+                          : effectiveBackend === 'cursor'
+                            ? cursorModelOptions
+                            : effectiveBackend === 'commandcode'
+                              ? commandCodeModelOptions
+                              : opencodeModelOptions
+                      ).length > 1 && (
+                        <ChevronsUpDown className="h-3 w-3 shrink-0 opacity-50" />
+                      )}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent
@@ -1121,6 +1217,32 @@ export const MagicPromptsPane: React.FC<MagicPromptsPaneProps> = ({
                             heading={<BackendLabel backend="cursor" />}
                           >
                             {cursorModelOptions.map(opt => (
+                              <CommandItem
+                                key={opt.value}
+                                value={`${opt.label} ${opt.value}`}
+                                onSelect={() => {
+                                  handleModelChange(opt.value)
+                                  setModelPopoverOpen(false)
+                                }}
+                              >
+                                <span className="text-xs">{opt.label}</span>
+                                <Check
+                                  className={cn(
+                                    'ml-auto h-3 w-3',
+                                    currentModel === opt.value
+                                      ? 'opacity-100'
+                                      : 'opacity-0'
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        )}
+                        {effectiveBackend === 'commandcode' && (
+                          <CommandGroup
+                            heading={<BackendLabel backend="commandcode" />}
+                          >
+                            {commandCodeModelOptions.map(opt => (
                               <CommandItem
                                 key={opt.value}
                                 value={`${opt.label} ${opt.value}`}

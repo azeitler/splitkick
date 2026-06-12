@@ -11,9 +11,9 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import {
-  DropdownMenuItem,
-  DropdownMenuShortcut,
-} from '@/components/ui/dropdown-menu'
+  ApprovalActionGroup,
+  type ApprovalModelOverride,
+} from './ApprovalModelSubmenu'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 
 interface ExitPlanModeButtonProps {
@@ -23,10 +23,10 @@ interface ExitPlanModeButtonProps {
   hasFollowUpMessage?: boolean
   onPlanApproval?: () => void
   onPlanApprovalYolo?: () => void
-  onClearContextApproval?: () => void
-  onClearContextBuildApproval?: () => void
-  onWorktreeBuildApproval?: () => void
-  onWorktreeYoloApproval?: () => void
+  onClearContextApproval?: (override?: ApprovalModelOverride) => void
+  onClearContextBuildApproval?: (override?: ApprovalModelOverride) => void
+  onWorktreeBuildApproval?: (override?: ApprovalModelOverride) => void
+  onWorktreeYoloApproval?: (override?: ApprovalModelOverride) => void
   buttonRef?: React.RefObject<HTMLButtonElement | null>
   shortcut?: string
   shortcutYolo?: string
@@ -57,8 +57,18 @@ export function ExitPlanModeButton({
   const sessionBackend = useChatStore(state =>
     sessionId ? (state.selectedBackends[sessionId] ?? null) : null
   )
-  const buildLabel = resolveApprovalLabel('build', preferences, sessionBackend)
-  const yoloLabel = resolveApprovalLabel('yolo', preferences, sessionBackend)
+  const buildNewContextLabel = resolveApprovalLabel(
+    'build',
+    preferences,
+    sessionBackend,
+    { forceModeOverride: true }
+  )
+  const yoloNewContextLabel = resolveApprovalLabel(
+    'yolo',
+    preferences,
+    sessionBackend,
+    { forceModeOverride: true }
+  )
 
   if (!toolCalls) return null
 
@@ -98,37 +108,28 @@ export function ExitPlanModeButton({
           tooltip={approveTooltip}
           onClick={() => onPlanApproval?.()}
         >
-          <DropdownMenuItem onClick={() => onClearContextBuildApproval?.()}>
-            <span className="flex flex-col">
-              <span>New Session</span>
-              {buildLabel && (
-                <span className="text-[10px] text-muted-foreground">
-                  {buildLabel}
-                </span>
-              )}
-            </span>
-            <DropdownMenuShortcut>
-              {formatShortcutDisplay(
+          {onClearContextBuildApproval && (
+            <ApprovalActionGroup
+              title="New Session"
+              defaultModelLabel={buildNewContextLabel}
+              shortcut={formatShortcutDisplay(
                 DEFAULT_KEYBINDINGS.approve_plan_clear_context_build
               )}
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
+              onDefaultSelect={() => onClearContextBuildApproval()}
+              onModelSelect={override => onClearContextBuildApproval(override)}
+            />
+          )}
           {onWorktreeBuildApproval && (
-            <DropdownMenuItem onClick={() => onWorktreeBuildApproval()}>
-              <span className="flex flex-col">
-                <span>New Worktree</span>
-                {buildLabel && (
-                  <span className="text-[10px] text-muted-foreground">
-                    {buildLabel}
-                  </span>
-                )}
-              </span>
-              <DropdownMenuShortcut>
-                {formatShortcutDisplay(
-                  DEFAULT_KEYBINDINGS.approve_plan_worktree_build
-                )}
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+            <ApprovalActionGroup
+              title="New Worktree"
+              defaultModelLabel={buildNewContextLabel}
+              separatorBefore
+              shortcut={formatShortcutDisplay(
+                DEFAULT_KEYBINDINGS.approve_plan_worktree_build
+              )}
+              onDefaultSelect={() => onWorktreeBuildApproval()}
+              onModelSelect={override => onWorktreeBuildApproval(override)}
+            />
           )}
         </SplitButton>
       ) : (
@@ -154,37 +155,28 @@ export function ExitPlanModeButton({
           variant="outline"
           onClick={() => onPlanApprovalYolo?.()}
         >
-          <DropdownMenuItem onClick={() => onClearContextApproval?.()}>
-            <span className="flex flex-col">
-              <span>New Session (YOLO)</span>
-              {yoloLabel && (
-                <span className="text-[10px] text-muted-foreground">
-                  {yoloLabel}
-                </span>
-              )}
-            </span>
-            <DropdownMenuShortcut>
-              {formatShortcutDisplay(
+          {onClearContextApproval && (
+            <ApprovalActionGroup
+              title="New Session (YOLO)"
+              defaultModelLabel={yoloNewContextLabel}
+              shortcut={formatShortcutDisplay(
                 DEFAULT_KEYBINDINGS.approve_plan_clear_context
               )}
-            </DropdownMenuShortcut>
-          </DropdownMenuItem>
+              onDefaultSelect={() => onClearContextApproval()}
+              onModelSelect={override => onClearContextApproval(override)}
+            />
+          )}
           {onWorktreeYoloApproval && (
-            <DropdownMenuItem onClick={() => onWorktreeYoloApproval()}>
-              <span className="flex flex-col">
-                <span>New Worktree (YOLO)</span>
-                {yoloLabel && (
-                  <span className="text-[10px] text-muted-foreground">
-                    {yoloLabel}
-                  </span>
-                )}
-              </span>
-              <DropdownMenuShortcut>
-                {formatShortcutDisplay(
-                  DEFAULT_KEYBINDINGS.approve_plan_worktree_yolo
-                )}
-              </DropdownMenuShortcut>
-            </DropdownMenuItem>
+            <ApprovalActionGroup
+              title="New Worktree (YOLO)"
+              defaultModelLabel={yoloNewContextLabel}
+              separatorBefore
+              shortcut={formatShortcutDisplay(
+                DEFAULT_KEYBINDINGS.approve_plan_worktree_yolo
+              )}
+              onDefaultSelect={() => onWorktreeYoloApproval()}
+              onModelSelect={override => onWorktreeYoloApproval(override)}
+            />
           )}
         </SplitButton>
       ) : (

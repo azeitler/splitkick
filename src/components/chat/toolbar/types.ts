@@ -79,14 +79,22 @@ export interface ChatToolbarProps {
   onOpenPr: () => void
   onReview: () => void
   onMerge: () => void
+  onMergePr: () => void
   onResolvePrConflicts: () => void
   onResolveConflicts: () => void
   hasOpenPr: boolean
   onSetDiffRequest: (request: DiffRequest) => void
-  installedBackends: ('claude' | 'codex' | 'opencode' | 'cursor')[]
+  installedBackends: (
+    | 'claude'
+    | 'codex'
+    | 'opencode'
+    | 'cursor'
+    | 'pi'
+    | 'commandcode'
+  )[]
   onModelChange: (model: ClaudeModel) => void
   onBackendModelChange: (
-    backend: 'claude' | 'codex' | 'opencode' | 'cursor',
+    backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'commandcode',
     model: string
   ) => void
   onProviderChange: (provider: string | null) => void

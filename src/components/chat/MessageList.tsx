@@ -6,6 +6,7 @@ import type {
   ReviewFinding,
 } from '@/types/chat'
 import { MessageItem } from './MessageItem'
+import { getAssistantDurationMs } from './time-utils'
 
 interface MessageListProps {
   messages: ChatMessage[]
@@ -104,27 +105,17 @@ export const MessageList = memo(function MessageList({
         const hasFollowUpMessage =
           message.role === 'assistant' && (hasFollowUpMap.get(index) ?? false)
 
-        // Show completed duration on the last assistant message (from store),
-        // or fall back to timestamp-based computation for persisted messages (after reload)
-        let durationMs: number | null = null
-        if (
-          message.role === 'assistant' &&
-          index === messages.length - 1 &&
+        const durationMs = getAssistantDurationMs(
+          messages,
+          index,
           completedDurationMs
-        ) {
-          durationMs = completedDurationMs
-        } else if (message.role === 'assistant' && index > 0) {
-          const prevMessage = messages[index - 1]
-          if (prevMessage?.role === 'user') {
-            const deltaSecs = message.timestamp - prevMessage.timestamp
-            if (deltaSecs > 0 && deltaSecs < 3600) durationMs = deltaSecs * 1000
-          }
-        }
+        )
 
         return (
           <div key={message.id}>
             <MessageItem
               message={message}
+              allMessages={messages}
               messageIndex={index}
               totalMessages={totalMessages}
               lastPlanMessageIndex={lastPlanMessageIndex}

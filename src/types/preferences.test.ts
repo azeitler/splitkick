@@ -1,10 +1,19 @@
 import { describe, expect, it } from 'vitest'
 import {
+  defaultPreferences,
   resolveMagicPromptBackend,
   resolveMagicPromptProvider,
 } from './preferences'
 
 describe('magic prompt preference resolvers', () => {
+  it('enables web access sounds by default for backwards compatibility', () => {
+    expect(defaultPreferences.web_access_sounds_enabled).toBe(true)
+  })
+
+  it('uses Jean-managed Command Code CLI by default', () => {
+    expect(defaultPreferences.commandcode_cli_source).toBe('jean')
+  })
+
   it('prefers explicit backend overrides', () => {
     expect(
       resolveMagicPromptBackend(

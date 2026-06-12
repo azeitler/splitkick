@@ -1,12 +1,13 @@
 use tauri::Manager;
 
 use super::types::{
-    CompactMetadata, ContentBlock, EffortLevel, PermissionDenial, PermissionDeniedEvent,
-    ThinkingLevel, ToolCall, UsageData,
+    is_claude_compaction_summary_text, CompactMetadata, ContentBlock, EffortLevel,
+    PermissionDenial, PermissionDeniedEvent, ThinkingLevel, ToolCall, UsageData,
 };
 use crate::http_server::EmitExt;
 use crate::projects::github_issues::{
-    get_github_contexts_dir, get_session_issue_refs, get_session_pr_refs,
+    get_github_contexts_dir, get_session_advisory_refs, get_session_issue_refs,
+    get_session_pr_refs, get_session_security_refs,
 };
 use crate::projects::linear_issues::get_session_linear_refs;
 use crate::projects::storage::load_projects_data;
@@ -17,38 +18,49 @@ use crate::projects::storage::load_projects_data;
 
 /// Default global system prompt (must match DEFAULT_GLOBAL_SYSTEM_PROMPT in preferences.ts)
 const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
-### 1. Plan Mode Default\n\
-- Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions)\n\
+### 1. Planning Guidance\n\
+- For non-trivial tasks (3+ steps or architectural decisions), prefer planning before implementation when the current execution mode has not already authorized execution.\n\
 - If something goes sideways, STOP and re-plan immediately - don't keep pushing\n\
-- Use plan mode for verification steps, not just building\n\
+- Use plan mode for verification steps when the current execution mode is plan; in build/yolo, verify directly after implementing.\n\
 - Write detailed specs upfront to reduce ambiguity\n\
 - Make the plan extremely concise. Sacrifice grammar for the sake of concision.\n\
-- At the end of each plan, give me a list of unresolved questions to answer, if any.\n\
+- When the current execution mode is plan, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex update_plan/CodexPlan, Cursor/OpenCode equivalent), not plain text only.\n\
+- For unresolved questions while planning, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question.\n\
+- For Codex specifically, when the current execution mode is plan: after the user answers native `request_user_input`/open questions, immediately call `update_plan`/emit `CodexPlan` again with the revised plan before any implementation.\n\
+- Every Codex response that contains or revises a plan while the current execution mode is plan must use `update_plan`/`CodexPlan`; do not provide plain-text-only plans.\n\
+- Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.\n\
 \n\
-### 2. Subagent Strategy to keep main context window clean\n\
+### 2. Documentation First\n\
+- Before designing or coding against any external library/framework/SDK/API/CLI, run WebSearch for current docs.\n\
+- Verify version, API shape, and breaking changes — training data may be stale.\n\
+- Cite the source URL in your plan or commit reasoning when behavior is non-obvious.\n\
+- Skip only for trivial edits to code already read this session.\n\
+- Do NOT use Context7 — WebSearch only.\n\
+\n\
+### 3. Subagent Strategy to keep main context window clean\n\
 - Offload research, exploration, and parallel analysis to subagents\n\
 - For complex problems, throw more compute at it via subagents\n\
 - One task per subagent for focused execution\n\
 \n\
-### 3. Self-Improvement Loop\n\
+### 4. Self-Improvement Loop\n\
 - After ANY correction from the user: update '.ai/lessons.md' with the pattern\n\
 - Write rules for yourself that prevent the same mistake\n\
 - Ruthlessly iterate on these lessons until mistake rate drops\n\
 - Review lessons at session start for relevant project\n\
 \n\
-### 4. Verification Before Done\n\
+### 5. Verification Before Done\n\
 - Never mark a task complete without proving it works\n\
 - Diff behavior between main and your changes when relevant\n\
 - Ask yourself: \"Would a staff engineer approve this?\"\n\
 - Run tests, check logs, demonstrate correctness\n\
 \n\
-### 5. Demand Elegance (Balanced)\n\
+### 6. Demand Elegance (Balanced)\n\
 - For non-trivial changes: pause and ask \"is there a more elegant way?\"\n\
 - If a fix feels hacky: \"Knowing everything I know now, implement the elegant solution\"\n\
 - Skip this for simple, obvious fixes - don't over-engineer\n\
 - Challenge your own work before presenting it\n\
 \n\
-### 6. Autonomous Bug Fixing\n\
+### 7. Autonomous Bug Fixing\n\
 - When given a bug report: just fix it. Don't ask for hand-holding\n\
 - Point at logs, errors, failing tests -> then resolve them\n\
 - Zero context switching required from the user\n\
@@ -64,8 +76,15 @@ const DEFAULT_GLOBAL_SYSTEM_PROMPT: &str = "\
 \n\
 ## Core Principles\n\
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.\n\
+- **VERY IMPORTANT: Keep Code Simple**: Do not over-engineer. Always implement the simplest maintainable solution. Avoid extra abstractions, frameworks, configuration, or future-proofing unless clearly required.\n\
+- **Clickable References**: When output mentions issues, PRs, security advisories/alerts, Linear issues, or other external resources, include clickable links when available so users can open them directly.\n\
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.\n\
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.\n\
+\n\
+## Jean Worktree Policy\n\
+- Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.\n\
+- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.\n\
+- If already in a Jean worktree or base/main workspace, continue in the current workspace.\n\
 \n\
 ## Important!\n\
 \n\
@@ -115,6 +134,8 @@ struct ChunkEvent {
     session_id: String,
     worktree_id: String, // Kept for backward compatibility
     content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    run_id: Option<String>,
 }
 
 /// Payload for tool use events sent to frontend
@@ -154,6 +175,8 @@ pub struct CancelledEvent {
     pub worktree_id: String, // Kept for backward compatibility
     pub undo_send: bool, // True if user message should be restored to input (instant cancellation)
     pub emitted_at_ms: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub run_id: Option<String>,
 }
 
 /// Payload for tool block position events sent to frontend
@@ -213,6 +236,14 @@ struct CompactedEvent {
     session_id: String,
     worktree_id: String,
     metadata: CompactMetadata,
+}
+
+fn compact_metadata_from_system_message(msg: &serde_json::Value) -> Option<CompactMetadata> {
+    msg.get("compact_metadata")
+        .or_else(|| msg.get("compactMetadata"))
+        .and_then(|metadata_val| {
+            serde_json::from_value::<CompactMetadata>(metadata_val.clone()).ok()
+        })
 }
 
 // =============================================================================
@@ -340,13 +371,13 @@ fn build_claude_args(
     }
 
     // Model (strip "-fast" suffix: "opus-fast" → model="opus" + fastMode setting)
-    let is_fast = if let Some(m) = model {
+    let (is_fast, fast_base_model) = if let Some(m) = model {
         let (actual_model, fast) = split_fast_model(m);
         args.push("--model".to_string());
         args.push(actual_model.to_string());
-        fast
+        (fast, fast.then(|| actual_model.to_string()))
     } else {
-        false
+        (false, None)
     };
 
     // Permission mode
@@ -357,6 +388,13 @@ fn build_claude_args(
     };
     args.push("--permission-mode".to_string());
     args.push(perm_mode.to_string());
+
+    // In build/yolo, remove ExitPlanMode entirely so Claude can't loop back
+    // into plan-approval after the user already approved one.
+    if matches!(execution_mode.unwrap_or("plan"), "build" | "yolo") {
+        args.push("--disallowedTools".to_string());
+        args.push("ExitPlanMode".to_string());
+    }
 
     // Custom profile settings: resolve name → file path, pass to --settings (secrets stay in file, not in ps)
     if let Some(name) = custom_profile_name {
@@ -415,6 +453,16 @@ fn build_claude_args(
         }
     }
 
+    // Fast mode picks the CLI's default fast Opus version (4.8 in Claude Code
+    // v2.1.154+), ignoring --model for the Opus version. Pin to 4.6 when the
+    // user explicitly selected the 4.6 fast variant.
+    if fast_base_model.as_deref() == Some("claude-opus-4-6[1m]") {
+        env_vars.push((
+            "CLAUDE_CODE_OPUS_4_6_FAST_MODE_OVERRIDE".to_string(),
+            "1".to_string(),
+        ));
+    }
+
     // Emit --settings if we have any settings to pass
     if let Some(settings) = &settings_json {
         args.push("--settings".to_string());
@@ -443,25 +491,7 @@ fn build_claude_args(
     args.push("--allowedTools".to_string());
     args.push("Bash(*claude-cli/claude*)".to_string());
 
-    // MCP server configuration
-    if let Some(config) = mcp_config {
-        if !config.is_empty() {
-            args.push("--mcp-config".to_string());
-            args.push(config.to_string());
-            args.push("--strict-mcp-config".to_string());
-
-            // Auto-allow all tools from configured MCP servers
-            // Pattern "mcp__<name>" matches all tools from that server
-            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
-                if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
-                    for server_name in servers.keys() {
-                        args.push("--allowedTools".to_string());
-                        args.push(format!("mcp__{server_name}"));
-                    }
-                }
-            }
-        }
-    }
+    append_mcp_config_args(&mut args, mcp_config);
 
     // Chrome browser integration (beta)
     if chrome_enabled {
@@ -497,8 +527,6 @@ fn build_claude_args(
         }
     }
 
-    // Explicit mode override for Claude so build/yolo do not fall back into plan mode
-    // due to the default global prompt.
     if let Some(mode_instruction) = execution_mode_instruction(execution_mode) {
         system_prompt_parts.push(mode_instruction.to_string());
     }
@@ -571,6 +599,9 @@ fn build_claude_args(
         }
     }
 
+    // End-of-turn recap instruction (compact view surfaces this block)
+    system_prompt_parts.push(super::RECAP_INSTRUCTION.to_string());
+
     // Collect all context files (issues and PRs) and concatenate into a single file
     let mut all_context_paths: Vec<std::path::PathBuf> = Vec::new();
 
@@ -627,6 +658,55 @@ fn build_claude_args(
                     let file_path = contexts_dir.join(format!("{repo_key}-pr-{number}.md"));
                     if file_path.exists() {
                         log::trace!("Adding PR context file: {:?}", file_path);
+                        all_context_paths.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check for security alert context files (shared storage)
+    let mut security_keys = get_session_security_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_security_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !security_keys.contains(&key) {
+                security_keys.push(key);
+            }
+        }
+    }
+    if !security_keys.is_empty() {
+        if let Ok(contexts_dir) = get_github_contexts_dir(app) {
+            for key in security_keys {
+                let parts: Vec<&str> = key.rsplitn(2, '-').collect();
+                if parts.len() == 2 {
+                    let number = parts[0];
+                    let repo_key = parts[1];
+                    let file_path = contexts_dir.join(format!("{repo_key}-security-{number}.md"));
+                    if file_path.exists() {
+                        log::trace!("Adding security context file: {:?}", file_path);
+                        all_context_paths.push(file_path);
+                    }
+                }
+            }
+        }
+    }
+
+    // Check repository advisory context files (shared storage)
+    let mut advisory_keys = get_session_advisory_refs(app, session_id).unwrap_or_default();
+    if let Ok(wt_keys) = get_session_advisory_refs(app, worktree_id) {
+        for key in wt_keys {
+            if !advisory_keys.contains(&key) {
+                advisory_keys.push(key);
+            }
+        }
+    }
+    if !advisory_keys.is_empty() {
+        if let Ok(contexts_dir) = get_github_contexts_dir(app) {
+            for key in advisory_keys {
+                if let Some((repo_key, ghsa_id)) = key.split_once("::") {
+                    let file_path = contexts_dir.join(format!("{repo_key}-advisory-{ghsa_id}.md"));
+                    if file_path.exists() {
+                        log::trace!("Adding advisory context file: {:?}", file_path);
                         all_context_paths.push(file_path);
                     }
                 }
@@ -717,6 +797,20 @@ fn build_claude_args(
                     s.contains("git-context") && s.contains("-pr-")
                 })
                 .count();
+            let security_count = all_context_paths
+                .iter()
+                .filter(|p| {
+                    let s = p.to_string_lossy();
+                    s.contains("git-context") && s.contains("-security-")
+                })
+                .count();
+            let advisory_count = all_context_paths
+                .iter()
+                .filter(|p| {
+                    let s = p.to_string_lossy();
+                    s.contains("git-context") && s.contains("-advisory-")
+                })
+                .count();
             let linear_count = all_context_paths
                 .iter()
                 .filter(|p| {
@@ -752,7 +846,13 @@ fn build_claude_args(
                 combined_content
                     .push_str("You should be aware of this when working on this task.\n\n");
 
-                if issue_count > 0 || pr_count > 0 || linear_count > 0 || saved_context_count > 0 {
+                if issue_count > 0
+                    || pr_count > 0
+                    || security_count > 0
+                    || advisory_count > 0
+                    || linear_count > 0
+                    || saved_context_count > 0
+                {
                     combined_content.push_str("**Summary:**\n");
                     if issue_count > 0 {
                         combined_content.push_str(&format!("- {} GitHub Issue(s)\n", issue_count));
@@ -760,6 +860,14 @@ fn build_claude_args(
                     if pr_count > 0 {
                         combined_content
                             .push_str(&format!("- {} GitHub Pull Request(s)\n", pr_count));
+                    }
+                    if security_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} Security Alert(s)\n", security_count));
+                    }
+                    if advisory_count > 0 {
+                        combined_content
+                            .push_str(&format!("- {} Security Advisory(s)\n", advisory_count));
                     }
                     if linear_count > 0 {
                         combined_content.push_str(&format!("- {} Linear Issue(s)\n", linear_count));
@@ -812,6 +920,10 @@ fn build_claude_args(
     // Debug env vars
     env_vars.push(("JEAN_SESSION_ID".to_string(), session_id.to_string()));
     env_vars.push(("JEAN_WORKTREE_ID".to_string(), worktree_id.to_string()));
+    // Jean MCP recursion-depth chain. Always set so a Claude spawned by another
+    // Jean-spawned Claude can be capped at the configured depth.
+    let (depth_key, depth_val) = super::jean_mcp::child_depth_env();
+    env_vars.push((depth_key, depth_val));
     env_vars.push((
         "JEAN_MODEL".to_string(),
         model.unwrap_or("default").to_string(),
@@ -825,6 +937,34 @@ fn build_claude_args(
     }
 
     (args, env_vars)
+}
+
+fn append_mcp_config_args(args: &mut Vec<String>, mcp_config: Option<&str>) {
+    let Some(config) = mcp_config else {
+        return;
+    };
+    if config.is_empty() {
+        return;
+    }
+
+    args.push("--mcp-config".to_string());
+    args.push(config.to_string());
+    args.push("--strict-mcp-config".to_string());
+
+    // Auto-allow all tools from configured MCP servers. Claude CLI has accepted
+    // both the server-level form and the wildcard form across releases; include
+    // both so non-interactive `--print` runs can actually execute MCP calls
+    // instead of stopping after emitting a tool_use that Jean cannot approve.
+    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
+        if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
+            for server_name in servers.keys() {
+                args.push("--allowedTools".to_string());
+                args.push(format!("mcp__{server_name}"));
+                args.push("--allowedTools".to_string());
+                args.push(format!("mcp__{server_name}__*"));
+            }
+        }
+    }
 }
 
 /// Execute Claude CLI in detached mode.
@@ -946,7 +1086,7 @@ pub fn execute_claude_detached(
     }
 
     // Register the process for cancellation (returns false if pending cancel exists)
-    if !super::registry::register_process(session_id.to_string(), pid) {
+    if !super::registry::register_detached_process(session_id.to_string(), pid) {
         // Process was killed by pending cancel — return cancelled response
         return Ok((
             pid,
@@ -1006,6 +1146,10 @@ pub fn tail_claude_output(
 
     log::trace!("Starting to tail NDJSON output for session: {session_id}");
     log::trace!("Output file: {output_file:?}, PID: {pid}");
+    let run_id = output_file
+        .file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(|stem| stem.to_string());
 
     // Create tailer starting from beginning (we want all content)
     let mut tailer = NdjsonTailer::new_from_start(output_file)?;
@@ -1160,7 +1304,9 @@ pub fn tail_claude_output(
                                         {
                                             // Skip CLI placeholder text emitted when extended
                                             // thinking starts before any real text content
-                                            if text == "(no content)" {
+                                            if text == "(no content)"
+                                                || is_claude_compaction_summary_text(text)
+                                            {
                                                 continue;
                                             }
 
@@ -1202,6 +1348,7 @@ pub fn tail_claude_output(
                                                             session_id: session_id.to_string(),
                                                             worktree_id: worktree_id.to_string(),
                                                             content: chat_buf.clone(),
+                                                            run_id: run_id.clone(),
                                                         };
                                                         if let Err(e) =
                                                             app.emit_all("chat:chunk", &chunk)
@@ -1249,6 +1396,7 @@ pub fn tail_claude_output(
                                                     session_id: session_id.to_string(),
                                                     worktree_id: worktree_id.to_string(),
                                                     content: chat_buf,
+                                                    run_id: run_id.clone(),
                                                 };
                                                 if let Err(e) = app.emit_all("chat:chunk", &chunk) {
                                                     log::error!("Failed to emit chunk: {e}");
@@ -1765,18 +1913,14 @@ pub fn tail_claude_output(
                         }
 
                         // Emit compacted event with metadata if available
-                        if let Some(metadata_val) = msg.get("compactMetadata") {
-                            if let Ok(metadata) =
-                                serde_json::from_value::<CompactMetadata>(metadata_val.clone())
-                            {
-                                let compacted_event = CompactedEvent {
-                                    session_id: session_id.to_string(),
-                                    worktree_id: worktree_id.to_string(),
-                                    metadata,
-                                };
-                                if let Err(e) = app.emit_all("chat:compacted", &compacted_event) {
-                                    log::error!("Failed to emit compacted: {e}");
-                                }
+                        if let Some(metadata) = compact_metadata_from_system_message(&msg) {
+                            let compacted_event = CompactedEvent {
+                                session_id: session_id.to_string(),
+                                worktree_id: worktree_id.to_string(),
+                                metadata,
+                            };
+                            if let Err(e) = app.emit_all("chat:compacted", &compacted_event) {
+                                log::error!("Failed to emit compacted: {e}");
                             }
                         }
                     }
@@ -2022,6 +2166,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn compact_metadata_accepts_snake_case_from_claude_cli() {
+        let msg = serde_json::json!({
+            "type": "system",
+            "subtype": "compact_boundary",
+            "compact_metadata": {
+                "trigger": "auto",
+                "pre_tokens": 170298
+            }
+        });
+
+        let metadata = compact_metadata_from_system_message(&msg).unwrap();
+
+        assert_eq!(metadata.trigger, "auto");
+        assert_eq!(metadata.pre_tokens, 170298);
+    }
+
+    #[test]
     fn split_fast_model_strips_suffix() {
         assert_eq!(split_fast_model("opus-fast"), ("opus", true));
         assert_eq!(
@@ -2039,5 +2200,48 @@ mod tests {
         );
         assert_eq!(split_fast_model("sonnet"), ("sonnet", false));
         assert_eq!(split_fast_model("haiku"), ("haiku", false));
+        assert_eq!(
+            split_fast_model("claude-fable-5"),
+            ("claude-fable-5", false)
+        );
+    }
+
+    #[test]
+    fn default_global_system_prompt_prefers_interactive_plan_questions() {
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("backend-native interactive question UI"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Claude AskUserQuestion"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Codex request_user_input"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("when the current execution mode is plan: after the user answers native `request_user_input`"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Every Codex response that contains or revises a plan while the current execution mode is plan"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("OpenCode question"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean Worktree Policy"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Do NOT create git worktrees manually"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean MCP/tools"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("VERY IMPORTANT: Keep Code Simple"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("Always implement the simplest maintainable solution"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Clickable References"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("include clickable links when available"));
+    }
+
+    #[test]
+    fn mcp_config_auto_allows_server_and_wildcard_tools() {
+        let config = r#"{
+            "mcpServers": {
+                "jean-dev": { "type": "stdio", "command": "jean" },
+                "github": { "type": "stdio", "command": "github-mcp" }
+            }
+        }"#;
+        let mut args = Vec::new();
+
+        append_mcp_config_args(&mut args, Some(config));
+
+        assert!(args.contains(&"--mcp-config".to_string()));
+        assert!(args.contains(&"--strict-mcp-config".to_string()));
+        assert!(args.contains(&"mcp__jean-dev".to_string()));
+        assert!(args.contains(&"mcp__jean-dev__*".to_string()));
+        assert!(args.contains(&"mcp__github".to_string()));
+        assert!(args.contains(&"mcp__github__*".to_string()));
     }
 }

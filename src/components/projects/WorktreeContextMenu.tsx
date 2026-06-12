@@ -1,10 +1,8 @@
 import {
   Archive,
   Code,
-  FileJson,
   FolderOpen,
   Play,
-  Sparkles,
   Terminal,
   Trash2,
   X,
@@ -52,7 +50,6 @@ export function WorktreeContextMenu({
     showDeleteConfirm,
     setShowDeleteConfirm,
     isBase,
-    hasMessages,
     runScripts,
     preferences,
     handleRun,
@@ -62,8 +59,6 @@ export function WorktreeContextMenu({
     handleOpenInEditor,
     handleArchiveOrClose,
     handleDelete,
-    handleOpenJeanConfig,
-    handleGenerateRecap,
   } = useWorktreeMenuActions({ worktree, projectId })
 
   // Suppress unused variable warning
@@ -97,18 +92,6 @@ export function WorktreeContextMenu({
               ))}
             </ContextMenuSubContent>
           </ContextMenuSub>
-        )}
-
-        <ContextMenuItem onClick={handleOpenJeanConfig}>
-          <FileJson className="mr-2 h-4 w-4" />
-          Edit jean.json
-        </ContextMenuItem>
-
-        {hasMessages && (
-          <ContextMenuItem onClick={handleGenerateRecap}>
-            <Sparkles className="mr-2 h-4 w-4" />
-            Generate Recap
-          </ContextMenuItem>
         )}
 
         {isNativeApp() && <ContextMenuSeparator />}
@@ -181,7 +164,7 @@ export function WorktreeContextMenu({
             <AlertDialogAction
               autoFocus
               onClick={handleDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-white hover:bg-destructive/90"
             >
               Delete
               <kbd className="ml-1.5 text-xs opacity-70">↵</kbd>
