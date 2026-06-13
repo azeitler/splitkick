@@ -40,7 +40,6 @@ import {
   TOOL_CALL_DETAIL_PILL_CLASS,
 } from './ToolCallInline'
 import type { VirtualizedMessageListHandle } from './VirtualizedMessageList'
-import type { FileEdit } from './FileEditsDiffModal'
 
 const SCROLL_THRESHOLD = 300
 
@@ -70,7 +69,6 @@ interface CompactMessageListProps {
   ) => void
   onQuestionSkip: (toolCallId: string) => void
   onFileClick: (path: string) => void
-  onEditedFileClick: (path: string, edits: FileEdit[]) => void
   onFixFinding: (finding: ReviewFinding, suggestion?: string) => Promise<void>
   onFixAllFindings: (
     findings: { finding: ReviewFinding; suggestion?: string }[]
@@ -707,7 +705,6 @@ export const CompactMessageList = memo(
         onQuestionAnswer,
         onQuestionSkip,
         onFileClick,
-        onEditedFileClick,
         onFixFinding,
         onFixAllFindings,
         isQuestionAnswered,
@@ -731,6 +728,15 @@ export const CompactMessageList = memo(
       const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
       const pendingPrependScrollHeightRef = useRef<number | null>(null)
       const pendingPrependMessagesLengthRef = useRef<number | null>(null)
+
+      // Stable accessor for the full message list. Kept in a ref so the
+      // identity handed to memoized rows never changes — "subsequent edits"
+      // stays lazy without busting per-row memoization.
+      const messagesRef = useRef(messages)
+      useEffect(() => {
+        messagesRef.current = messages
+      }, [messages])
+      const getMessages = useCallback(() => messagesRef.current, [])
 
       const lastIndex = messages.length - 1
       const hasHiddenPrompts = hiddenPromptCount > 0 && !!onShowHiddenPrompts
@@ -873,6 +879,7 @@ export const CompactMessageList = memo(
         ) => (
           <MessageItem
             message={item.message}
+            getMessages={getMessages}
             messageIndex={item.globalIndex}
             totalMessages={totalMessages}
             lastPlanMessageIndex={lastPlanMessageIndex}
@@ -898,7 +905,6 @@ export const CompactMessageList = memo(
             onQuestionAnswer={onQuestionAnswer}
             onQuestionSkip={onQuestionSkip}
             onFileClick={onFileClick}
-            onEditedFileClick={onEditedFileClick}
             onFixFinding={onFixFinding}
             onFixAllFindings={onFixAllFindings}
             isQuestionAnswered={isQuestionAnswered}
@@ -911,6 +917,7 @@ export const CompactMessageList = memo(
           />
         ),
         [
+          messages,
           totalMessages,
           lastPlanMessageIndex,
           sessionId,
@@ -930,7 +937,6 @@ export const CompactMessageList = memo(
           onQuestionAnswer,
           onQuestionSkip,
           onFileClick,
-          onEditedFileClick,
           onFixFinding,
           onFixAllFindings,
           isQuestionAnswered,

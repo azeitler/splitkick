@@ -98,7 +98,6 @@ import { ImagePreview } from './ImagePreview'
 import { TextFilePreview } from './TextFilePreview'
 import { SkillBadge } from './SkillBadge'
 import { FileContentModal } from './FileContentModal'
-import { FileEditsDiffModal, type FileEdit } from './FileEditsDiffModal'
 import { FilePreview } from './FilePreview'
 import { ContextPreview } from './ContextPreview'
 import { ChatInput } from './ChatInput'
@@ -152,7 +151,6 @@ import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
 import type { QueuedMessage, Session, WorktreeSessions } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
-import { FileDiffModal } from './FileDiffModal'
 import { getEffectiveSessionWaiting } from './session-card-utils'
 
 // Lazy-loaded heavy modals (code splitting)
@@ -1030,18 +1028,6 @@ export function ChatWindow({
   // State for file content modal (opened by clicking filenames in tool calls)
   const [viewingFilePath, setViewingFilePath] = useState<string | null>(null)
 
-  // State for edited-file diff modal (opened by clicking edited file pills)
-  const [viewingFileEdits, setViewingFileEdits] = useState<{
-    filePath: string
-    edits: FileEdit[]
-  } | null>(null)
-  const handleEditedFileClick = useCallback(
-    (filePath: string, edits: FileEdit[]) => {
-      setViewingFileEdits({ filePath, edits })
-    },
-    []
-  )
-
   // State for git diff modal (opened by clicking diff stats)
   const [diffRequest, setDiffRequest] = useState<DiffRequest | null>(null)
 
@@ -1050,9 +1036,6 @@ export function ChatWindow({
     useUIStore.getState().setGitDiffModalOpen(!!diffRequest)
     return () => useUIStore.getState().setGitDiffModalOpen(false)
   }, [diffRequest])
-
-  // State for single file diff modal (opened by clicking edited file badges)
-  const [editedFilePath, setEditedFilePath] = useState<string | null>(null)
 
   // Active todos and agents from streaming/persisted tool calls (with dismissal tracking)
   const {
@@ -2599,7 +2582,6 @@ export function ChatWindow({
                                     onQuestionAnswer={handleQuestionAnswer}
                                     onQuestionSkip={handleSkipQuestion}
                                     onFileClick={setViewingFilePath}
-                                    onEditedFileClick={handleEditedFileClick}
                                     onFixFinding={handleFixFinding}
                                     onFixAllFindings={handleFixAllFindings}
                                     isQuestionAnswered={isQuestionAnswered}
@@ -2673,7 +2655,6 @@ export function ChatWindow({
                                     onQuestionAnswer={handleQuestionAnswer}
                                     onQuestionSkip={handleSkipQuestion}
                                     onFileClick={setViewingFilePath}
-                                    onEditedFileClick={handleEditedFileClick}
                                     onFixFinding={handleFixFinding}
                                     onFixAllFindings={handleFixAllFindings}
                                     isQuestionAnswered={isQuestionAnswered}
@@ -2711,7 +2692,6 @@ export function ChatWindow({
                                       onQuestionAnswer={handleQuestionAnswer}
                                       onQuestionSkip={handleSkipQuestion}
                                       onFileClick={setViewingFilePath}
-                                      onEditedFileClick={handleEditedFileClick}
                                       isQuestionAnswered={isQuestionAnswered}
                                       getSubmittedAnswers={getSubmittedAnswers}
                                       areQuestionsSkipped={areQuestionsSkipped}
@@ -2727,7 +2707,6 @@ export function ChatWindow({
                                       onQuestionAnswer={handleQuestionAnswer}
                                       onQuestionSkip={handleSkipQuestion}
                                       onFileClick={setViewingFilePath}
-                                      onEditedFileClick={handleEditedFileClick}
                                       isQuestionAnswered={isQuestionAnswered}
                                       getSubmittedAnswers={getSubmittedAnswers}
                                       areQuestionsSkipped={areQuestionsSkipped}
@@ -3287,13 +3266,6 @@ export function ChatWindow({
           onClose={() => setViewingFilePath(null)}
         />
 
-        {/* Edited-file diff modal for viewing diffs of edited files */}
-        <FileEditsDiffModal
-          filePath={viewingFileEdits?.filePath ?? null}
-          edits={viewingFileEdits?.edits ?? []}
-          onClose={() => setViewingFileEdits(null)}
-        />
-
         {/* Git diff modal for viewing diffs */}
         <Suspense fallback={null}>
           <GitDiffModal
@@ -3307,13 +3279,6 @@ export function ChatWindow({
             branchStats={{ added: branchDiffAdded, removed: branchDiffRemoved }}
           />
         </Suspense>
-
-        {/* Single file diff modal for viewing edited file changes */}
-        <FileDiffModal
-          filePath={editedFilePath}
-          worktreePath={activeWorktreePath ?? ''}
-          onClose={() => setEditedFilePath(null)}
-        />
 
         {/* Load Context modal for selecting saved contexts */}
         <Suspense fallback={null}>
