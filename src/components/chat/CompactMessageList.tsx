@@ -541,9 +541,7 @@ function CompactActivityRow({
             </span>
           )}
           {hasCancelledMessage && (
-            <span className="italic text-muted-foreground/50">
-              (cancelled)
-            </span>
+            <span className="italic text-muted-foreground/50">(cancelled)</span>
           )}
         </div>
       )}

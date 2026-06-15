@@ -568,9 +568,7 @@ describe('useStreamingEvents cancellation sanitization', () => {
       'old-user',
       'old-assistant',
     ])
-    expect(useChatStore.getState().inputDrafts['session-1']).toBe(
-      'cancel this'
-    )
+    expect(useChatStore.getState().inputDrafts['session-1']).toBe('cancel this')
     expect(useChatStore.getState().lastSentMessages['session-1']).toBe(
       undefined
     )
