@@ -10835,7 +10835,7 @@ fn opencode_config_dir(home: &std::path::Path) -> std::path::PathBuf {
         if let Ok(app_data) = std::env::var("APPDATA") {
             return std::path::PathBuf::from(app_data).join("opencode");
         }
-        return home.join("AppData").join("Roaming").join("opencode");
+        home.join("AppData").join("Roaming").join("opencode")
     }
 
     #[cfg(not(windows))]

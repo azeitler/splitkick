@@ -4,14 +4,21 @@ use super::types::{ContentBlock, ToolCall, UsageData};
 use crate::http_server::EmitExt;
 use crate::platform::silent_command;
 use serde_json::Value;
+#[cfg(unix)]
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 use std::process::Stdio;
+#[cfg(unix)]
 use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(unix)]
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
+#[cfg(unix)]
+use tauri::Manager;
 
 pub const PI_RPC_HOST_ARG: &str = "--jean-pi-rpc-host";
 

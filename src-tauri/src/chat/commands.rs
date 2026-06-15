@@ -8478,9 +8478,11 @@ mod tests {
 
     #[test]
     fn default_model_for_commandcode_backend_uses_commandcode_preference() {
-        let mut prefs = crate::AppPreferences::default();
-        prefs.selected_model = "claude-sonnet-4-6[1m]".to_string();
-        prefs.selected_commandcode_model = "commandcode/deepseek/deepseek-v4-flash".to_string();
+        let prefs = crate::AppPreferences {
+            selected_model: "claude-sonnet-4-6[1m]".to_string(),
+            selected_commandcode_model: "commandcode/deepseek/deepseek-v4-flash".to_string(),
+            ..Default::default()
+        };
 
         assert_eq!(
             default_model_for_backend(&Backend::Commandcode, &prefs),
@@ -8533,7 +8535,7 @@ mod tests {
         assert!(!yolo_prompt.contains("CodexPlan"));
         assert!(yolo_prompt.contains("## Not Plan Mode"));
 
-        let plan_prompt = resolve_codex_global_system_prompt(Some(&legacy_default), Some("plan"));
+        let plan_prompt = resolve_codex_global_system_prompt(Some(legacy_default), Some("plan"));
         assert!(plan_prompt.contains("## Plan Mode"));
         assert!(plan_prompt.contains("CodexPlan"));
     }
