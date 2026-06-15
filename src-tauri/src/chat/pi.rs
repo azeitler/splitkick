@@ -6,7 +6,9 @@ use crate::platform::silent_command;
 use serde_json::Value;
 #[cfg(unix)]
 use std::fs::OpenOptions;
-use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
+use std::io::Write;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 #[cfg(unix)]
 use std::path::PathBuf;
