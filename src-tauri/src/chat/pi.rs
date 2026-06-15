@@ -1168,6 +1168,7 @@ pub fn execute_pi(
     {
         use std::io::Read as _;
 
+        let run_id = run_id_from_output_file(output_file);
         let mut args = vec!["--mode".to_string(), "json".to_string()];
         let resume_pi_session_id = usable_pi_session_id(existing_pi_session_id, session_id);
         if let Some(id) = resume_pi_session_id {
