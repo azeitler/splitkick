@@ -26,6 +26,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -405,6 +415,7 @@ export function MagicModal() {
   const [customResolveBackend, setCustomResolveBackend] =
     useState<CliBackend>('claude')
   const [customResolveModel, setCustomResolveModel] = useState<string>('sonnet')
+  const [revertConfirmOpen, setRevertConfirmOpen] = useState(false)
 
   const hasOpenPr = Boolean(worktree?.pr_url)
 
@@ -1126,9 +1137,13 @@ export function MagicModal() {
             const {
               registerWorktreePath,
               setActiveSession,
-              setInputDraft,
               copySessionSettings,
               activeSessionIds,
+              setExecutionMode,
+              setExecutingMode,
+              setLastSentMessage,
+              setError,
+              clearInputDraft,
             } = useChatStore.getState()
             const currentSessionId = activeSessionIds[selectedWorktreeId]
 
@@ -1253,7 +1268,35 @@ Conflicts in these files:
 
 ${resolveInstructions}`
 
-            setInputDraft(newSession.id, conflictPrompt)
+            setLastSentMessage(newSession.id, conflictPrompt)
+            setError(newSession.id, null)
+            setExecutionMode(newSession.id, 'yolo')
+            setExecutingMode(newSession.id, 'yolo')
+            clearInputDraft(newSession.id)
+            invoke('update_session_state', {
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              sessionId: newSession.id,
+              selectedExecutionMode: 'yolo',
+            }).catch(() => undefined)
+
+            await invoke('send_chat_message', {
+              sessionId: newSession.id,
+              worktreeId: selectedWorktreeId,
+              worktreePath: worktree.path,
+              message: conflictPrompt,
+              model: resolvedModel,
+              executionMode: 'yolo',
+              backend:
+                resolvedBackend !== 'claude' ? resolvedBackend : undefined,
+              customProfileName:
+                resolvedSessionProvider &&
+                resolvedSessionProvider !== '__anthropic__'
+                  ? resolvedSessionProvider
+                  : undefined,
+              chromeEnabled: preferences?.chrome_enabled ?? false,
+              aiLanguage: preferences?.ai_language,
+            })
 
             queryClient.invalidateQueries({
               queryKey: chatQueryKeys.sessions(selectedWorktreeId),
@@ -1628,6 +1671,31 @@ ${resolveInstructions}`
     worktree?.project_id,
   ])
 
+  const confirmRevertLastCommit = useCallback(() => {
+    setRevertConfirmOpen(false)
+    setMagicModalOpen(false)
+
+    if (!selectedWorktreeId) {
+      notify('No worktree selected', undefined, { type: 'error' })
+      return
+    }
+
+    if (
+      CANVAS_ALLOWED_OPTIONS.has('revert-last-commit') &&
+      !CANVAS_NAVIGATE_AND_DISPATCH_OPTIONS.has('revert-last-commit') &&
+      !useChatStore.getState().activeWorktreePath
+    ) {
+      executeGitDirectly('revert-last-commit')
+      return
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('magic-command', {
+        detail: { command: 'revert-last-commit' },
+      })
+    )
+  }, [executeGitDirectly, selectedWorktreeId, setMagicModalOpen])
+
   const executeAction = useCallback(
     async (option: MagicOption) => {
       // Block disabled options on canvas
@@ -1673,6 +1741,16 @@ ${resolveInstructions}`
       if (!selectedWorktreeId) {
         notify('No worktree selected', undefined, { type: 'error' })
         setMagicModalOpen(false)
+        return
+      }
+
+      if (option === 'revert-last-commit') {
+        if (!worktree?.path) {
+          notify('No worktree selected', undefined, { type: 'error' })
+          setMagicModalOpen(false)
+          return
+        }
+        setRevertConfirmOpen(true)
         return
       }
 
@@ -1901,6 +1979,27 @@ ${resolveInstructions}`
         }
         codeRabbitPrAvailable={Boolean(worktree?.pr_number)}
       />
+      <AlertDialog open={revertConfirmOpen} onOpenChange={setRevertConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Revert last commit?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will undo the latest local commit on{' '}
+              <span className="font-medium text-foreground">
+                {worktree?.branch ?? worktree?.name ?? 'this worktree'}
+              </span>
+              . Your working tree changes from that commit will be restored, but
+              this action can be disruptive.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmRevertLastCommit}>
+              Revert last commit
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <Dialog open={magicModalOpen} onOpenChange={handleOpenChange}>
         <DialogContent
           ref={contentRef}

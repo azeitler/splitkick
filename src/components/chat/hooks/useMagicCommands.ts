@@ -25,6 +25,7 @@ interface MagicCommandHandlers {
   handleCommitAndPush: () => void
   handlePull: () => void
   handlePush: () => void
+  handleRevertLastCommit: () => void
   handleOpenPr: () => void
   handleReview: () => void
   handleMerge: () => void
@@ -65,6 +66,7 @@ export function useMagicCommands({
   handleCommitAndPush,
   handlePull,
   handlePush,
+  handleRevertLastCommit,
   handleOpenPr,
   handleReview,
   handleMerge,
@@ -85,6 +87,7 @@ export function useMagicCommands({
     handleCommitAndPush,
     handlePull,
     handlePush,
+    handleRevertLastCommit,
     handleOpenPr,
     handleReview,
     handleMerge,
@@ -106,6 +109,7 @@ export function useMagicCommands({
       handleCommitAndPush,
       handlePull,
       handlePush,
+      handleRevertLastCommit,
       handleOpenPr,
       handleReview,
       handleMerge,
@@ -158,6 +162,9 @@ export function useMagicCommands({
           break
         case 'push':
           handlers.handlePush()
+          break
+        case 'revert-last-commit':
+          handlers.handleRevertLastCommit()
           break
         case 'open-pr':
           handlers.handleOpenPr()
