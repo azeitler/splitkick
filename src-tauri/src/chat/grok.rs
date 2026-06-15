@@ -87,11 +87,27 @@ fn strip_ansi(input: &str) -> String {
     out
 }
 
+/// Default Grok model used when no Grok-specific model is supplied.
+pub const GROK_DEFAULT_MODEL: &str = "grok-composer-2.5-fast";
+
 fn raw_grok_model(model: Option<&str>) -> Option<&str> {
     match model.map(|value| value.strip_prefix("grok/").unwrap_or(value)) {
         Some("grok-build-0.1") => Some("grok-composer-2.5-fast"),
         Some("grok-composer-2.5-fast") => Some("grok-composer-2.5-fast"),
         value => value,
+    }
+}
+
+/// Resolve a one-shot Grok model. Magic-prompt callers share a global model
+/// string that defaults to a Claude model when none is set; coerce any
+/// non-Grok model to the Grok default so the Grok executor never receives a
+/// Claude/other-backend model id.
+fn resolve_one_shot_grok_model(model: &str) -> &str {
+    let stripped = model.strip_prefix("grok/").unwrap_or(model);
+    if stripped.starts_with("grok") {
+        model
+    } else {
+        GROK_DEFAULT_MODEL
     }
 }
 
@@ -628,26 +644,29 @@ fn inject_synthetic_plan(response: &mut GrokResponse) -> bool {
 }
 
 /// Render the resolved Grok CLI invocation as a copy-pasteable shell command for debug logs.
-/// Long prompt args are truncated so the line stays readable.
+/// The prompt value (after `-p`/`--prompt`) is redacted so user prompt text / PII never
+/// reaches persistent logs.
 fn format_grok_command(cli_path: &Path, args: &[String]) -> String {
     fn quote(arg: &str) -> String {
-        let shown = if arg.len() > 200 {
-            format!(
-                "{}…[{} chars]",
-                &arg[..arg.char_indices().nth(200).map_or(arg.len(), |(i, _)| i)],
-                arg.len()
-            )
+        if arg.is_empty() || arg.contains([' ', '"', '\'', '\n', '\t']) {
+            format!("'{}'", arg.replace('\'', "'\\''"))
         } else {
             arg.to_string()
-        };
-        if shown.is_empty() || shown.contains([' ', '"', '\'', '\n', '\t']) {
-            format!("'{}'", shown.replace('\'', "'\\''"))
-        } else {
-            shown
         }
     }
     let mut parts = vec![quote(&cli_path.to_string_lossy())];
-    parts.extend(args.iter().map(|a| quote(a)));
+    let mut redact_next = false;
+    for arg in args {
+        if redact_next {
+            parts.push("<REDACTED_PROMPT>".to_string());
+            redact_next = false;
+            continue;
+        }
+        if arg == "-p" || arg == "--prompt" {
+            redact_next = true;
+        }
+        parts.push(quote(arg));
+    }
     parts.join(" ")
 }
 
@@ -895,12 +914,14 @@ pub fn execute_one_shot_grok(
     prompt: &str,
     model: &str,
     working_dir: Option<&Path>,
+    effort_level: Option<&str>,
 ) -> Result<String, String> {
     let cli_path = crate::grok_cli::resolve_cli_binary(app);
     if !crate::grok_cli::binary_exists(&cli_path) {
         return Err("Grok CLI not installed".to_string());
     }
     let dir = working_dir.unwrap_or_else(|| Path::new("."));
+    let model = resolve_one_shot_grok_model(model);
     let json_prompt =
         format!("{prompt}\n\nReturn only a single valid JSON object. Do not wrap it in markdown.");
     let mut cmd = silent_command(&cli_path);
@@ -918,10 +939,13 @@ pub fn execute_one_shot_grok(
         "read-only",
         "--model",
         raw_grok_model(Some(model)).unwrap_or(model),
-    ])
-    .current_dir(dir)
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped());
+    ]);
+    if let Some(effort) = effort_level.filter(|effort| !effort.is_empty()) {
+        cmd.args(["--effort", effort]);
+    }
+    cmd.current_dir(dir)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
 
     let output = cmd
         .output()
@@ -938,6 +962,25 @@ pub fn execute_one_shot_grok(
 mod tests {
     use super::*;
     use std::io::BufReader;
+
+    #[test]
+    fn resolve_one_shot_grok_model_coerces_non_grok_to_default() {
+        // Claude/other-backend defaults must collapse to the Grok default.
+        assert_eq!(
+            resolve_one_shot_grok_model("claude-opus-4-8[1m]"),
+            GROK_DEFAULT_MODEL
+        );
+        assert_eq!(resolve_one_shot_grok_model("sonnet"), GROK_DEFAULT_MODEL);
+        // Grok models pass through unchanged.
+        assert_eq!(
+            resolve_one_shot_grok_model("grok-build"),
+            "grok-build"
+        );
+        assert_eq!(
+            resolve_one_shot_grok_model("grok/grok-composer-2.5-fast"),
+            "grok/grok-composer-2.5-fast"
+        );
+    }
 
     #[test]
     fn parse_grok_streaming_json_text_chunks_and_session_id() {

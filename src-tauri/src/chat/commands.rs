@@ -6482,7 +6482,13 @@ fn execute_summarization_claude(
 
     if backend == super::types::Backend::Grok {
         log::trace!("Executing one-shot Grok summarization");
-        let json_str = super::grok::execute_one_shot_grok(app, prompt, model_str, working_dir)?;
+        let json_str = super::grok::execute_one_shot_grok(
+            app,
+            prompt,
+            model_str,
+            working_dir,
+            reasoning_effort,
+        )?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Grok summarization JSON: {e}, content: {json_str}");
             format!("Failed to parse summarization response: {e}")

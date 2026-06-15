@@ -6816,6 +6816,7 @@ fn generate_pr_content_from_inputs(
             &prompt,
             model_str,
             Some(std::path::Path::new(repo_path)),
+            reasoning_effort,
         )?;
         let json_str = extract_json_object_from_text(&json_str)?;
         let mut response: PrContentResponse = serde_json::from_str(&json_str).map_err(|e| {
@@ -7434,8 +7435,13 @@ fn generate_commit_message_once(
 
     if backend == crate::chat::types::Backend::Grok {
         log::trace!("Generating commit message with Grok");
-        let json_str =
-            crate::chat::grok::execute_one_shot_grok(app, prompt, model_str, working_dir)?;
+        let json_str = crate::chat::grok::execute_one_shot_grok(
+            app,
+            prompt,
+            model_str,
+            working_dir,
+            reasoning_effort,
+        )?;
         let json_str = extract_json_object_from_text(&json_str)?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Grok commit message JSON: {e}, content: {json_str}");
@@ -7966,8 +7972,13 @@ fn generate_review(
 
     if backend == crate::chat::types::Backend::Grok {
         log::trace!("Running code review with Grok");
-        let json_str =
-            crate::chat::grok::execute_one_shot_grok(app, prompt, model_str, working_dir)?;
+        let json_str = crate::chat::grok::execute_one_shot_grok(
+            app,
+            prompt,
+            model_str,
+            working_dir,
+            reasoning_effort,
+        )?;
         let json_str = extract_json_object_from_text(&json_str)?;
         return serde_json::from_str(&json_str).map_err(|e| {
             log::error!("Failed to parse Grok review JSON: {e}, content: {json_str}");
@@ -9077,6 +9088,7 @@ fn generate_release_notes_content(
             &prompt,
             model_str,
             Some(std::path::Path::new(project_path)),
+            reasoning_effort,
         )?;
         let json_str = extract_json_object_from_text(&json_str)?;
         let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {

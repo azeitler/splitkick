@@ -1029,7 +1029,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const commandCodeAuthMessage = commandcodeAuth?.timedOut
     ? 'Auth check timed out. Try again or run login manually.'
     : commandcodeAuth?.error
-  const grokAuthMessage = grokAuth?.timed_out
+  const grokAuthMessage = grokAuth?.timedOut
     ? 'Auth check timed out. Try again or run `grok login` manually.'
     : grokAuth?.error
 

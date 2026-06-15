@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Command, Output, Stdio};
+use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
 
@@ -21,6 +22,7 @@ pub struct GrokCliStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GrokAuthStatus {
     pub authenticated: bool,
     pub error: Option<String>,
@@ -29,6 +31,7 @@ pub struct GrokAuthStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GrokPathDetection {
     pub found: bool,
     pub path: Option<String>,
@@ -37,6 +40,7 @@ pub struct GrokPathDetection {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct GrokModelInfo {
     pub id: String,
     pub label: String,
@@ -270,7 +274,24 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
             };
         }
     };
-    let mut reader = BufReader::new(stdout);
+    // Blocking read_line() can hang past the deadline if Grok ACP stalls without
+    // emitting a newline. Move the blocking reads to a dedicated thread that streams
+    // lines over a channel, so the loops below honor the deadline via recv_timeout().
+    let reader = BufReader::new(stdout);
+    let (tx, rx) = mpsc::channel::<String>();
+    std::thread::spawn(move || {
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    if tx.send(line).is_err() {
+                        break;
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+        // Dropping tx on EOF/error disconnects the channel, unblocking recv_timeout().
+    });
     let deadline = Instant::now() + AUTH_CHECK_TIMEOUT;
 
     let initialize = serde_json::json!({
@@ -295,25 +316,24 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
     }
 
     let init_result = loop {
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            return GrokAuthStatus {
-                authenticated: false,
-                error: Some("Grok auth check timed out".to_string()),
-                timed_out: true,
-            };
-        }
-        let mut line = String::new();
-        match reader.read_line(&mut line) {
-            Ok(0) => break None,
-            Ok(_) => {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(remaining) {
+            Ok(line) => {
                 if let Ok(value) = serde_json::from_str::<Value>(line.trim()) {
                     if value.get("id").and_then(Value::as_i64) == Some(1) {
                         break value.get("result").cloned();
                     }
                 }
             }
-            Err(_) => break None,
+            Err(RecvTimeoutError::Timeout) => {
+                let _ = child.kill();
+                return GrokAuthStatus {
+                    authenticated: false,
+                    error: Some("Grok auth check timed out".to_string()),
+                    timed_out: true,
+                };
+            }
+            Err(RecvTimeoutError::Disconnected) => break None,
         }
     };
 
@@ -350,18 +370,9 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
     }
 
     loop {
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            return GrokAuthStatus {
-                authenticated: false,
-                error: Some("Grok auth check timed out".to_string()),
-                timed_out: true,
-            };
-        }
-        let mut line = String::new();
-        match reader.read_line(&mut line) {
-            Ok(0) => break,
-            Ok(_) => {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        match rx.recv_timeout(remaining) {
+            Ok(line) => {
                 if let Ok(value) = serde_json::from_str::<Value>(line.trim()) {
                     if value.get("id").and_then(Value::as_i64) == Some(2) {
                         let _ = child.kill();
@@ -380,7 +391,15 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
                     }
                 }
             }
-            Err(_) => break,
+            Err(RecvTimeoutError::Timeout) => {
+                let _ = child.kill();
+                return GrokAuthStatus {
+                    authenticated: false,
+                    error: Some("Grok auth check timed out".to_string()),
+                    timed_out: true,
+                };
+            }
+            Err(RecvTimeoutError::Disconnected) => break,
         }
     }
 
@@ -527,22 +546,29 @@ pub async fn login_grok_cli_device(app: AppHandle) -> Result<(), String> {
     if !binary_exists(&binary_path) {
         return Err("Grok CLI not installed".to_string());
     }
-    let mut command = silent_command(&binary_path);
-    command.args(["login", "--device-auth"]);
-    let result = run_command_with_timeout(command, AUTH_CHECK_TIMEOUT)?;
-    match result {
-        TimedCommandResult::Output(output) if output.status.success() => Ok(()),
-        TimedCommandResult::Output(output) => {
-            let stderr = strip_ansi(&String::from_utf8_lossy(&output.stderr));
-            Err(if stderr.trim().is_empty() {
-                "Grok login failed".to_string()
-            } else {
-                stderr.trim().to_string()
-            })
-        }
-        TimedCommandResult::TimedOut => {
-            Err("Grok device login is waiting for browser confirmation.".to_string())
-        }
+    // Device-auth waits for the user to confirm in a browser, which can take far
+    // longer than AUTH_CHECK_TIMEOUT. Run it to completion without an artificial
+    // kill timeout (the CLI enforces its own) so we never report success/pending
+    // for a process we already terminated. Use spawn_blocking to avoid stalling
+    // the async runtime while the child waits on user input.
+    let output = tokio::task::spawn_blocking(move || {
+        silent_command(&binary_path)
+            .args(["login", "--device-auth"])
+            .output()
+    })
+    .await
+    .map_err(|error| format!("Failed to join Grok login task: {error}"))?
+    .map_err(|error| format!("Failed to spawn Grok login: {error}"))?;
+
+    if output.status.success() {
+        Ok(())
+    } else {
+        let stderr = strip_ansi(&String::from_utf8_lossy(&output.stderr));
+        Err(if stderr.trim().is_empty() {
+            "Grok login failed".to_string()
+        } else {
+            stderr.trim().to_string()
+        })
     }
 }
 

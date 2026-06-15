@@ -2132,6 +2132,7 @@ mod tests {
             codex_thread_id: Some("thread-1".to_string()),
             codex_turn_id: None,
             cursor_chat_id: None,
+            grok_session_id: None,
         };
 
         assert!(!run.is_renderable_in_chat_history());
@@ -2173,6 +2174,7 @@ mod tests {
             codex_thread_id: Some("thread-1".to_string()),
             codex_turn_id: None,
             cursor_chat_id: None,
+            grok_session_id: None,
         });
         metadata.runs.push(RunEntry {
             run_id: "run-completed".to_string(),
@@ -2195,6 +2197,7 @@ mod tests {
             codex_thread_id: Some("thread-1".to_string()),
             codex_turn_id: None,
             cursor_chat_id: None,
+            grok_session_id: None,
         });
 
         assert_eq!(metadata.to_index_entry().message_count, 2);

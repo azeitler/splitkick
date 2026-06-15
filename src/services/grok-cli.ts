@@ -30,14 +30,14 @@ export function useGrokPathDetection(options?: { enabled?: boolean }) {
       found: boolean
       path: string | null
       version: string | null
-      package_manager: string | null
+      packageManager: string | null
     }> => {
       if (!isTauri()) {
         return {
           found: false,
           path: null,
           version: null,
-          package_manager: null,
+          packageManager: null,
         }
       }
       try {
@@ -48,7 +48,7 @@ export function useGrokPathDetection(options?: { enabled?: boolean }) {
           found: false,
           path: null,
           version: null,
-          package_manager: null,
+          packageManager: null,
         }
       }
     },
@@ -85,7 +85,7 @@ export function useGrokCliAuth(options?: { enabled?: boolean }) {
         return {
           authenticated: false,
           error: 'Not in Tauri context',
-          timed_out: false,
+          timedOut: false,
         }
       }
       try {
@@ -95,7 +95,7 @@ export function useGrokCliAuth(options?: { enabled?: boolean }) {
         return {
           authenticated: false,
           error: error instanceof Error ? error.message : String(error),
-          timed_out: false,
+          timedOut: false,
         }
       }
     },
@@ -114,9 +114,9 @@ export function useAvailableGrokModels(options?: { enabled?: boolean }) {
           {
             id: 'grok-composer-2.5-fast',
             label: 'Grok Composer 2.5 Fast',
-            is_default: true,
+            isDefault: true,
           },
-          { id: 'grok-build', label: 'Grok Build', is_default: false },
+          { id: 'grok-build', label: 'Grok Build', isDefault: false },
         ]
       }
       try {
@@ -127,9 +127,9 @@ export function useAvailableGrokModels(options?: { enabled?: boolean }) {
           {
             id: 'grok-composer-2.5-fast',
             label: 'Grok Composer 2.5 Fast',
-            is_default: true,
+            isDefault: true,
           },
-          { id: 'grok-build', label: 'Grok Build', is_default: false },
+          { id: 'grok-build', label: 'Grok Build', isDefault: false },
         ]
       }
     },

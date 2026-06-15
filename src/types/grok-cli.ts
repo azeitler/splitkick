@@ -11,13 +11,13 @@ export interface GrokCliStatus {
 export interface GrokAuthStatus {
   authenticated: boolean
   error: string | null
-  timed_out?: boolean
+  timedOut?: boolean
 }
 
 export interface GrokModelInfo {
   id: string
   label: string
-  is_default?: boolean
+  isDefault?: boolean
 }
 
 export interface GrokInstallCommand {
