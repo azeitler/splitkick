@@ -18,7 +18,10 @@ const SESSION_BUFFER_CAP: usize = 2000;
 
 /// Maximum events buffered per terminal for replay on reconnect.
 /// Terminals can stream high-volume output; cap protects memory.
-const TERMINAL_BUFFER_CAP: usize = 4000;
+/// At ~256 bytes/event, 12000 ≈ 3MB per terminal — fine for the typical
+/// worktree (≤ a handful of concurrent shells). Tune down on memory-constrained
+/// hosts.
+const TERMINAL_BUFFER_CAP: usize = 12000;
 
 /// Events that are worth buffering for replay on reconnect.
 const REPLAYABLE_EVENTS: &[&str] = &[
@@ -253,5 +256,82 @@ impl EmitExt for AppHandle {
             .map_err(|e| format!("Tauri emit failed: {e}"))?;
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    fn parse_event(json: &Arc<str>) -> Value {
+        serde_json::from_str(json).expect("event json should parse")
+    }
+
+    #[test]
+    fn terminal_replay_buffers_only_matching_terminal_events() {
+        let (broadcaster, _tx) = WsBroadcaster::new();
+
+        broadcaster.broadcast(
+            "terminal:started",
+            &json!({ "terminal_id": "term-1", "cols": 80, "rows": 24 }),
+        );
+        broadcaster.broadcast(
+            "terminal:output",
+            &json!({ "terminal_id": "term-2", "data": "other" }),
+        );
+        broadcaster.broadcast(
+            "terminal:output",
+            &json!({ "terminal_id": "term-1", "data": "hello" }),
+        );
+        broadcaster.broadcast("terminal:output", &json!({ "data": "missing id" }));
+
+        let events = broadcaster.replay_terminal_events("term-1", 0);
+        assert_eq!(events.len(), 2);
+        assert!(events
+            .iter()
+            .all(|(_, event)| { parse_event(event)["payload"]["terminal_id"] == json!("term-1") }));
+        assert_eq!(
+            parse_event(&events[0].1)["event"],
+            json!("terminal:started")
+        );
+        assert_eq!(parse_event(&events[1].1)["event"], json!("terminal:output"));
+    }
+
+    #[test]
+    fn terminal_replay_respects_after_sequence() {
+        let (broadcaster, _tx) = WsBroadcaster::new();
+
+        broadcaster.broadcast(
+            "terminal:output",
+            &json!({ "terminal_id": "term-1", "data": "one" }),
+        );
+        let first_seq = broadcaster.replay_terminal_events("term-1", 0)[0].0;
+        broadcaster.broadcast(
+            "terminal:output",
+            &json!({ "terminal_id": "term-1", "data": "two" }),
+        );
+
+        let events = broadcaster.replay_terminal_events("term-1", first_seq);
+        assert_eq!(events.len(), 1);
+        assert_eq!(parse_event(&events[0].1)["payload"]["data"], json!("two"));
+    }
+
+    #[test]
+    fn terminal_stopped_drops_terminal_replay_buffer() {
+        let (broadcaster, _tx) = WsBroadcaster::new();
+
+        broadcaster.broadcast(
+            "terminal:output",
+            &json!({ "terminal_id": "term-1", "data": "live" }),
+        );
+        assert_eq!(broadcaster.replay_terminal_events("term-1", 0).len(), 1);
+
+        broadcaster.broadcast(
+            "terminal:stopped",
+            &json!({ "terminal_id": "term-1", "exit_code": 0, "signal": null }),
+        );
+
+        assert!(broadcaster.replay_terminal_events("term-1", 0).is_empty());
     }
 }

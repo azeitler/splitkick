@@ -208,6 +208,24 @@ describe('transport bootstrap', () => {
     vi.useRealTimers()
   })
 
+  it('can explicitly request terminal replay from seq zero after full page reload', async () => {
+    const transport = await loadTransportModule()
+
+    transport.connectTransport()
+    await flushAsync()
+
+    const ws = getWs(0)
+    transport.requestTerminalReplay('term-restored', 0)
+
+    expect(ws.send).toHaveBeenCalledWith(
+      JSON.stringify({
+        type: 'terminal_replay',
+        terminal_id: 'term-restored',
+        last_seq: 0,
+      })
+    )
+  })
+
   it('requests terminal_replay for active terminals after websocket reconnect', async () => {
     const transport = await loadTransportModule()
 
