@@ -945,6 +945,8 @@ pub async fn dispatch_command(
                 "parallelExecutionPrompt",
                 "parallel_execution_prompt",
             )?;
+            let execution_mode: Option<String> =
+                field_opt(&args, "executionMode", "execution_mode")?;
             let result = crate::jean_mcp_core::start_background_investigation(
                 app.clone(),
                 worktree_id,
@@ -958,6 +960,7 @@ pub async fn dispatch_command(
                 chrome_enabled,
                 ai_language,
                 parallel_execution_prompt,
+                execution_mode,
             )
             .await?;
             to_value(result)
@@ -1083,8 +1086,6 @@ pub async fn dispatch_command(
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let message: String = from_field(&args, "message")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
-            let execution_mode: Option<String> =
-                field_opt(&args, "executionMode", "execution_mode")?;
             let thinking_level_raw: Option<String> =
                 field_opt(&args, "thinkingLevel", "thinking_level")?;
             let parallel_execution_prompt: Option<String> = field_opt(
@@ -1092,6 +1093,8 @@ pub async fn dispatch_command(
                 "parallelExecutionPrompt",
                 "parallel_execution_prompt",
             )?;
+            let execution_mode: Option<String> =
+                field_opt(&args, "executionMode", "execution_mode")?;
             let ai_language: Option<String> = field_opt(&args, "aiLanguage", "ai_language")?;
             let allowed_tools: Option<Vec<String>> =
                 field_opt(&args, "allowedTools", "allowed_tools")?;
