@@ -55,8 +55,9 @@ import type {
   PendingWakeupEntry,
   QueuedMessage,
   ContentBlock,
+  ChatMessage,
 } from '@/types/chat'
-import { persistEnqueue } from '@/services/chat'
+import { persistEnqueue, saveCancelledMessage } from '@/services/chat'
 import {
   applySessionSettingToSession,
   type SessionSettingKey,
@@ -120,13 +121,13 @@ async function hydrateCompletedSessionFromBackend(
   queryClient: QueryClient,
   sessionId: string,
   worktreeId: string
-): Promise<void> {
+): Promise<Session | null> {
   const worktreePath = useChatStore.getState().worktreePaths[worktreeId]
   if (!worktreePath) {
     queryClient.invalidateQueries({
       queryKey: chatQueryKeys.session(sessionId),
     })
-    return
+    return null
   }
 
   try {
@@ -136,11 +137,13 @@ async function hydrateCompletedSessionFromBackend(
       worktreePath,
     })
     queryClient.setQueryData(chatQueryKeys.session(sessionId), session)
+    return session
   } catch (error) {
     console.error(
       '[useStreamingEvents] Failed to hydrate completed session from backend:',
       error
     )
+    return null
   } finally {
     queryClient.invalidateQueries({
       queryKey: chatQueryKeys.session(sessionId),
@@ -1686,6 +1689,7 @@ export default function useStreamingEvents({
           hasToolCalls || hasText || hasThinking || hasContentBlocks
         const hasQueuedMessages =
           (useChatStore.getState().messageQueues[session_id] ?? []).length > 0
+        const shouldHydrateCancelledFromBackend = !undo_send && !hasContent
         const shouldRestoreMessage =
           !hasQueuedMessages && (undo_send || !hasContent)
 
@@ -1761,13 +1765,61 @@ export default function useStreamingEvents({
             removeLatestUserMessageFromCache()
           }
         } else {
-          // Partial response exists — attachments were consumed, don't restore.
-          // Clear lastSentMessage so a later chat:error (e.g., codex turn.failed
-          // emitted after interrupt) can't fall back to restoring the prompt
-          // once streamingContents has been wiped by cancelSession().
+          // Partial response exists — keep the prompt + streamed partial output
+          // (text and tool calls) visible in history, marked cancelled. Attachments
+          // were consumed, don't restore. Clear lastSentMessage so a later
+          // chat:error (e.g., codex turn.failed emitted after interrupt) can't fall
+          // back to restoring the prompt once streamingContents has been wiped by
+          // cancelSession().
           useChatStore.getState().clearLastSentAttachments(session_id)
           useChatStore.getState().clearLastSentMessage(session_id)
-          removeLatestUserMessageFromCache()
+
+          // Keep the partial assistant output (text + tool calls) visible in
+          // history, marked cancelled. Append it optimistically to the cache so it
+          // survives StreamingMessage unmounting, and persist it to the run JSONL
+          // so it also survives an app reload.
+          const cancelledAssistant: ChatMessage = {
+            id: `cancelled-${session_id}-${emitted_at_ms}`,
+            session_id,
+            role: 'assistant',
+            content: sanitizedContent,
+            timestamp: emitted_at_ms,
+            tool_calls: toolCalls ?? [],
+            content_blocks: sanitizedContentBlocks ?? [],
+            cancelled: true,
+          }
+          queryClient.setQueryData<Session>(
+            chatQueryKeys.session(session_id),
+            old => {
+              if (!old) return old
+              // Avoid duplicate appends if the event fires twice.
+              if (old.messages.some(m => m.id === cancelledAssistant.id)) {
+                return old
+              }
+              return { ...old, messages: [...old.messages, cancelledAssistant] }
+            }
+          )
+
+          const persistWorktreeId = sessionWorktreeId || eventWorktreeId
+          const persistPath = persistWorktreeId
+            ? useChatStore.getState().worktreePaths[persistWorktreeId]
+            : undefined
+          if (persistWorktreeId && persistPath) {
+            void saveCancelledMessage(
+              persistWorktreeId,
+              persistPath,
+              session_id,
+              sanitizedContent,
+              (toolCalls ?? []).map(tc => ({
+                id: tc.id,
+                name: tc.name,
+                input: tc.input,
+              })),
+              (sanitizedContentBlocks ?? []) as Parameters<
+                typeof saveCancelledMessage
+              >[5]
+            )
+          }
         }
 
         // NOW batch-clear all streaming state in a single Zustand set()
@@ -1814,6 +1866,21 @@ export default function useStreamingEvents({
             queryClient.invalidateQueries({
               queryKey: chatQueryKeys.sessions(resolvedWorktreeId),
             })
+            if (shouldHydrateCancelledFromBackend) {
+              void hydrateCompletedSessionFromBackend(
+                queryClient,
+                session_id,
+                resolvedWorktreeId
+              ).then(session => {
+                const lastHydratedMessage = session?.messages.at(-1)
+                const hydratedCancelledAssistant =
+                  lastHydratedMessage?.role === 'assistant' &&
+                  lastHydratedMessage.cancelled === true
+                if (hydratedCancelledAssistant) {
+                  useChatStore.getState().clearInputDraft(session_id)
+                }
+              })
+            }
           }
           queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
         }

@@ -100,6 +100,21 @@ impl Drop for SendClaim {
     }
 }
 
+fn should_forward_cancel_request(session_id: &str) -> bool {
+    ACTIVE_SENDS.lock().unwrap().contains(session_id)
+        || super::registry::is_session_actively_managed(session_id)
+}
+
+fn clear_stale_pending_cancel_before_send(session_id: &str) {
+    let has_active_send = ACTIVE_SENDS.lock().unwrap().contains(session_id);
+    if !has_active_send
+        && !super::registry::is_session_actively_managed(session_id)
+        && super::registry::clear_pending_cancel(session_id)
+    {
+        log::warn!("Cleared stale pending cancel before fresh send: {session_id}");
+    }
+}
+
 fn codex_execution_mode_instruction(execution_mode: Option<&str>) -> Option<&'static str> {
     match execution_mode.unwrap_or("plan") {
         "build" => Some(
@@ -2118,6 +2133,8 @@ pub async fn send_chat_message(
     if worktree_path.is_empty() {
         return Err("Worktree path cannot be empty".to_string());
     }
+
+    clear_stale_pending_cancel_before_send(&session_id);
 
     // Guard: atomically claim the session's send slot for the duration of this
     // call. Closes the race window where two concurrent sends (queue processor
@@ -4289,6 +4306,18 @@ pub async fn send_chat_message(
         !unified_response.content.is_empty() || has_tool_calls || has_content_blocks;
     let resume_id_for_log = unified_response.resume_id.clone();
     let response_backend = unified_response.backend.clone();
+    let has_persisted_visible_codex_artifacts = unified_response.cancelled
+        && response_backend == Backend::Codex
+        && !has_assistant_payload
+        && run_log::read_run_log(&app, &session_id, &run_id)
+            .map(|lines| {
+                super::codex::codex_run_log_has_visible_assistant_artifacts(
+                    &lines,
+                    execution_mode.as_deref() == Some("plan"),
+                )
+            })
+            .unwrap_or(false);
+    let has_resume_worthy_payload = has_assistant_payload || has_persisted_visible_codex_artifacts;
 
     // Handle error_emitted: backend emitted chat:error during execution (e.g., Codex usage limit).
     // Treat like undo_send so the user message doesn't persist in history.
@@ -4326,12 +4355,13 @@ pub async fn send_chat_message(
         && !has_meaningful_content
         && !has_tool_calls
         && !has_content_blocks
+        && !has_persisted_visible_codex_artifacts
     {
         // Instant cancellation with no content
         let resume_sid = resume_id_for_persisted_claude_run(
             &response_backend,
             &resume_id_for_log,
-            has_assistant_payload,
+            has_resume_worthy_payload,
         );
         // Cancel the run log, persisting session ID if available so next run can --resume
         if let Err(e) = run_log_writer.cancel(None, resume_sid) {
@@ -4462,7 +4492,7 @@ pub async fn send_chat_message(
         let cancel_resume_sid = resume_id_for_persisted_claude_run(
             &response_backend,
             &resume_id_for_log,
-            has_assistant_payload,
+            has_resume_worthy_payload,
         );
         if let Err(e) = run_log_writer.cancel(Some(&assistant_msg_id), cancel_resume_sid) {
             log::warn!("Failed to cancel run log: {e}");
@@ -4471,7 +4501,7 @@ pub async fn send_chat_message(
         let resume_sid = resume_id_for_persisted_claude_run(
             &response_backend,
             &resume_id_for_log,
-            has_assistant_payload,
+            has_resume_worthy_payload,
         );
         if let Err(e) =
             run_log_writer.complete(&assistant_msg_id, resume_sid, unified_response.usage)
@@ -4490,7 +4520,7 @@ pub async fn send_chat_message(
     // back the conversation cache even though the CLI ran successfully (#209).
     if let Err(e) = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         if let Some(session) = sessions.find_session_mut(&session_id) {
-            if !resume_id_for_log.is_empty() && has_assistant_payload {
+            if !resume_id_for_log.is_empty() && has_resume_worthy_payload {
                 match response_backend {
                     Backend::Claude => {
                         session.claude_session_id = Some(resume_id_for_log.clone());
@@ -4941,6 +4971,13 @@ pub async fn cancel_chat_message(
     worktree_id: String,
 ) -> Result<bool, String> {
     log::trace!("Cancel chat message requested for session: {session_id}");
+    if !should_forward_cancel_request(&session_id) {
+        log::warn!(
+            "Ignoring cancel request for idle session: {session_id} (no active send/process)"
+        );
+        super::registry::cleanup_session_registrations(&session_id);
+        return Ok(false);
+    }
     cancel_process(&app, &session_id, &worktree_id)
 }
 
@@ -6038,7 +6075,7 @@ pub async fn list_saved_contexts(app: AppHandle) -> Result<SavedContextsResponse
     }
 
     // Sort by created_at descending (newest first)
-    contexts.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+    contexts.sort_by_key(|context| std::cmp::Reverse(context.created_at));
 
     log::trace!("Found {} saved contexts", contexts.len());
     Ok(SavedContextsResponse { contexts })
@@ -8637,10 +8674,25 @@ mod tests {
     }
 
     #[test]
+    fn idle_sessions_should_not_forward_cancel_requests() {
+        assert!(!should_forward_cancel_request("idle-session"));
+    }
+
+    #[test]
+    fn active_send_should_forward_cancel_requests_before_process_registration() {
+        let _claim =
+            SendClaim::try_acquire("pre-register-session").expect("send claim should acquire");
+
+        assert!(should_forward_cancel_request("pre-register-session"));
+    }
+
+    #[test]
     fn default_model_for_commandcode_backend_uses_commandcode_preference() {
-        let mut prefs = crate::AppPreferences::default();
-        prefs.selected_model = "claude-sonnet-4-6[1m]".to_string();
-        prefs.selected_commandcode_model = "commandcode/deepseek/deepseek-v4-flash".to_string();
+        let prefs = crate::AppPreferences {
+            selected_model: "claude-sonnet-4-6[1m]".to_string(),
+            selected_commandcode_model: "commandcode/deepseek/deepseek-v4-flash".to_string(),
+            ..Default::default()
+        };
 
         assert_eq!(
             default_model_for_backend(&Backend::Commandcode, &prefs),
@@ -8693,7 +8745,7 @@ mod tests {
         assert!(!yolo_prompt.contains("CodexPlan"));
         assert!(yolo_prompt.contains("## Not Plan Mode"));
 
-        let plan_prompt = resolve_codex_global_system_prompt(Some(&legacy_default), Some("plan"));
+        let plan_prompt = resolve_codex_global_system_prompt(Some(legacy_default), Some("plan"));
         assert!(plan_prompt.contains("## Plan Mode"));
         assert!(plan_prompt.contains("CodexPlan"));
     }

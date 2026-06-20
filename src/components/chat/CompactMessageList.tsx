@@ -9,7 +9,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import { flushSync } from 'react-dom'
 import { ChevronRight, Loader2, Activity, Brain } from 'lucide-react'
 import { Markdown } from '@/components/ui/markdown'
 import {
@@ -40,6 +39,11 @@ import {
   TOOL_CALL_DETAIL_PILL_CLASS,
 } from './ToolCallInline'
 import type { VirtualizedMessageListHandle } from './VirtualizedMessageList'
+import {
+  capturePrependScrollAnchor,
+  restorePrependScrollAnchor,
+  type PrependScrollAnchor,
+} from './message-scroll-anchor'
 
 const SCROLL_THRESHOLD = 300
 
@@ -102,7 +106,13 @@ type RenderItem =
       latestText: string | null
     }
   | { kind: 'question'; message: ChatMessage; globalIndex: number }
-  | { kind: 'steered'; texts: string[]; key: string }
+  | {
+      kind: 'steered'
+      texts: string[]
+      key: string
+      messageId: string
+      globalIndex: number
+    }
 
 /**
  * Returns true if an assistant message should always render in full
@@ -246,7 +256,9 @@ function findLatestAssistantText(
 
     const combined = texts.join('\n\n')
     if (!combined.trim()) continue
-    return extractRecapSection(combined) ?? combined
+    const recap = extractRecapSection(combined)
+    if (recap) return recap
+    return texts[texts.length - 1] ?? null
   }
   return null
 }
@@ -425,7 +437,11 @@ interface CompactActivityRowProps {
   total: number
   renderMessage: (
     item: { message: ChatMessage; globalIndex: number },
-    extra: { hasFollowUpMessage: boolean; durationMs: number | null }
+    extra: {
+      hasFollowUpMessage: boolean
+      durationMs: number | null
+      hideCancelledIndicator?: boolean
+    }
   ) => React.ReactNode
   hasFollowUpFor: (globalIndex: number) => boolean
   durationFor: (globalIndex: number, message: ChatMessage) => number | null
@@ -447,6 +463,10 @@ function CompactActivityRow({
   const summary = useMemo(() => summarizeGroup(group), [group])
   const stepCount = useMemo(() => countSteps(group), [group])
   const messageCount = group.length
+  const hasCancelledMessage = useMemo(
+    () => group.some(item => item.message.cancelled),
+    [group]
+  )
   const groupDurationMs = useMemo(() => {
     for (let i = group.length - 1; i >= 0; i--) {
       const item = group[i]
@@ -518,16 +538,24 @@ function CompactActivityRow({
                 {renderMessage(item, {
                   hasFollowUpMessage: hasFollowUpFor(item.globalIndex),
                   durationMs: durationFor(item.globalIndex, item.message),
+                  hideCancelledIndicator: hasCancelledMessage,
                 })}
               </div>
             ))}
           </div>
         </CollapsibleContent>
       </div>
-      {groupDurationMs != null && (
-        <span className="mt-1 block min-h-4 text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono">
-          {formatDuration(groupDurationMs)}
-        </span>
+      {(groupDurationMs != null || hasCancelledMessage) && (
+        <div className="mt-1 flex min-h-4 items-center gap-2 text-xs leading-4 text-muted-foreground/40">
+          {groupDurationMs != null && (
+            <span className="tabular-nums font-mono">
+              {formatDuration(groupDurationMs)}
+            </span>
+          )}
+          {hasCancelledMessage && (
+            <span className="italic text-muted-foreground/50">(cancelled)</span>
+          )}
+        </div>
       )}
       <span aria-hidden className="sr-only">
         Total: {total}
@@ -557,7 +585,11 @@ interface CompactQuestionMessageProps {
   areQuestionsSkipped: (sessionId: string) => boolean
   renderMessage: (
     item: { message: ChatMessage; globalIndex: number },
-    extra: { hasFollowUpMessage: boolean; durationMs: number | null }
+    extra: {
+      hasFollowUpMessage: boolean
+      durationMs: number | null
+      hideCancelledIndicator?: boolean
+    }
   ) => React.ReactNode
   hasFollowUpFor: (globalIndex: number) => boolean
   durationFor: (globalIndex: number, message: ChatMessage) => number | null
@@ -726,7 +758,7 @@ export const CompactMessageList = memo(
       ref
     ) {
       const messageRefs = useRef<Map<number, HTMLDivElement>>(new Map())
-      const pendingPrependScrollHeightRef = useRef<number | null>(null)
+      const pendingPrependAnchorRef = useRef<PrependScrollAnchor | null>(null)
       const pendingPrependMessagesLengthRef = useRef<number | null>(null)
 
       // Stable accessor for the full message list. Kept in a ref so the
@@ -828,6 +860,8 @@ export const CompactMessageList = memo(
                   kind: 'steered',
                   texts: segment.texts,
                   key: segment.key,
+                  messageId: message.id,
+                  globalIndex,
                 })
               }
             } else {
@@ -875,6 +909,7 @@ export const CompactMessageList = memo(
           extra: {
             hasFollowUpMessage: boolean
             durationMs: number | null
+            hideCancelledIndicator?: boolean
           }
         ) => (
           <MessageItem
@@ -913,6 +948,7 @@ export const CompactMessageList = memo(
             isFindingFixed={isFindingFixed}
             onCopyToInput={onCopyToInput}
             hideApproveButtons={hideApproveButtons}
+            hideCancelledIndicator={extra.hideCancelledIndicator}
             durationMs={extra.durationMs}
           />
         ),
@@ -955,11 +991,11 @@ export const CompactMessageList = memo(
           !hasOlderOnDisk ||
           isLoadingOlder ||
           !onLoadOlderRuns ||
-          pendingPrependScrollHeightRef.current !== null
+          pendingPrependMessagesLengthRef.current !== null
         ) {
           return
         }
-        pendingPrependScrollHeightRef.current = container.scrollHeight
+        pendingPrependAnchorRef.current = capturePrependScrollAnchor(container)
         pendingPrependMessagesLengthRef.current = messages.length
         onLoadOlderRuns()
       }, [
@@ -973,21 +1009,17 @@ export const CompactMessageList = memo(
       // Restore scroll position after older messages prepend.
       useLayoutEffect(() => {
         const container = scrollContainerRef.current
-        const before = pendingPrependScrollHeightRef.current
+        const anchor = pendingPrependAnchorRef.current
         const prevLen = pendingPrependMessagesLengthRef.current
-        if (!container || before === null || prevLen === null) return
+        if (!container || prevLen === null) return
         if (isLoadingOlder) return
 
-        pendingPrependScrollHeightRef.current = null
+        pendingPrependAnchorRef.current = null
         pendingPrependMessagesLengthRef.current = null
 
         if (messages.length === prevLen) return
 
-        flushSync(() => {
-          /* trigger paint */
-        })
-        const delta = container.scrollHeight - before
-        if (delta > 0) container.scrollTop += delta
+        restorePrependScrollAnchor(container, anchor)
       }, [scrollContainerRef, isLoadingOlder, messages.length])
 
       // Scroll-to-top auto-load.
@@ -1006,6 +1038,7 @@ export const CompactMessageList = memo(
       useEffect(() => {
         if (
           shouldScrollToBottom &&
+          pendingPrependMessagesLengthRef.current === null &&
           messages.length > prevMessageCountRef.current
         ) {
           const lastEl = messageRefs.current.get(lastIndex)
@@ -1080,6 +1113,7 @@ export const CompactMessageList = memo(
               return (
                 <div
                   key={item.message.id}
+                  data-message-anchor-id={item.message.id}
                   ref={el => {
                     if (el) messageRefs.current.set(item.globalIndex, el)
                     else messageRefs.current.delete(item.globalIndex)
@@ -1104,6 +1138,7 @@ export const CompactMessageList = memo(
               return (
                 <div
                   key={item.message.id}
+                  data-message-anchor-id={item.message.id}
                   ref={el => {
                     if (el) messageRefs.current.set(item.globalIndex, el)
                     else messageRefs.current.delete(item.globalIndex)
@@ -1133,7 +1168,27 @@ export const CompactMessageList = memo(
             if (item.kind === 'steered') {
               return (
                 <div key={item.key} className="pb-4">
-                  <SteeredPromptGroup texts={item.texts} />
+                  <SteeredPromptGroup
+                    texts={item.texts}
+                    onCopyText={
+                      onCopyToInput
+                        ? text =>
+                            onCopyToInput({
+                              id: `${item.messageId}-steered-copy`,
+                              session_id:
+                                messages[item.globalIndex]?.session_id ??
+                                sessionId,
+                              role: 'user',
+                              content: text,
+                              timestamp:
+                                messages[item.globalIndex]?.timestamp ??
+                                Date.now(),
+                              content_blocks: [],
+                              tool_calls: [],
+                            })
+                        : undefined
+                    }
+                  />
                 </div>
               )
             }
@@ -1178,8 +1233,12 @@ export const CompactMessageList = memo(
             const latestTextIsRecap =
               Boolean(item.latestText) &&
               RECAP_HEADING_RE.test(item.latestText ?? '')
+            const hasCancelledMessage = item.messages.some(
+              ({ message }) => message.cancelled
+            )
             const showLatestText =
               isLatestCompact &&
+              !hasCancelledMessage &&
               Boolean(item.latestText) &&
               !(latestTextIsRecap && latestRunHasPlan)
             const surfaceRecap = latestTextIsRecap && showLatestText

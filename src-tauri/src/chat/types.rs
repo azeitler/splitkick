@@ -1354,10 +1354,12 @@ pub struct RunEntry {
 impl RunEntry {
     /// Whether this run should appear as user/assistant messages in the visible chat timeline.
     ///
-    /// Cancelled runs remain in metadata and JSONL for diagnostics, but the chat UI treats
-    /// cancellation as removing the prompt/partial response from history.
+    /// Cancelled runs remain in metadata and JSONL for diagnostics. Instant
+    /// cancellations with no assistant id are hidden; cancellations after the
+    /// backend started are shown as the user prompt plus whatever partial
+    /// assistant/tool output had already streamed, marked as cancelled.
     pub fn is_renderable_in_chat_history(&self) -> bool {
-        self.status != RunStatus::Cancelled && !self.cancelled
+        self.status != RunStatus::Cancelled || self.assistant_message_id.is_some()
     }
 
     /// Number of visible chat messages contributed by this run.
@@ -1365,9 +1367,18 @@ impl RunEntry {
         if !self.is_renderable_in_chat_history() {
             0
         } else if self.assistant_message_id.is_some() {
-            2 // user + assistant
+            2 // user + assistant (incl. cancelled partial output)
         } else {
             1 // user only (running/resumable/crashed before response)
+        }
+    }
+
+    pub fn renders_assistant_message(&self) -> bool {
+        if !self.is_renderable_in_chat_history() {
+            false
+        } else {
+            self.assistant_message_id.is_some()
+                || matches!(self.status, RunStatus::Running | RunStatus::Crashed)
         }
     }
 }
@@ -2110,7 +2121,7 @@ mod tests {
     }
 
     #[test]
-    fn cancelled_runs_are_not_renderable_or_counted_even_with_assistant_content() {
+    fn cancelled_runs_with_assistant_id_render_partial_assistant() {
         let mut run = RunEntry {
             run_id: "run-cancelled".to_string(),
             user_message_id: "user-cancelled".to_string(),
@@ -2135,9 +2146,18 @@ mod tests {
             grok_session_id: None,
         };
 
+        // Cancelled-with-content now renders user + partial assistant (incl tool calls).
+        assert!(run.is_renderable_in_chat_history());
+        assert!(run.renders_assistant_message());
+        assert_eq!(run.rendered_message_count(), 2);
+
+        // Instant cancel (no assistant id) stays fully hidden.
+        run.assistant_message_id = None;
         assert!(!run.is_renderable_in_chat_history());
+        assert!(!run.renders_assistant_message());
         assert_eq!(run.rendered_message_count(), 0);
 
+        run.assistant_message_id = Some("assistant-cancelled".to_string());
         run.status = RunStatus::Completed;
         run.cancelled = false;
 
@@ -2146,7 +2166,7 @@ mod tests {
     }
 
     #[test]
-    fn session_index_message_count_excludes_cancelled_runs() {
+    fn session_index_message_count_includes_cancelled_partial_turn() {
         let mut metadata = SessionMetadata::new(
             "sess-123".to_string(),
             "wt-456".to_string(),
@@ -2200,7 +2220,8 @@ mod tests {
             grok_session_id: None,
         });
 
-        assert_eq!(metadata.to_index_entry().message_count, 2);
+        // Cancelled partial turn (user + assistant) + completed turn (user + assistant) = 4.
+        assert_eq!(metadata.to_index_entry().message_count, 4);
     }
 
     #[test]
