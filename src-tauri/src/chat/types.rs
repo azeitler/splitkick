@@ -1293,6 +1293,10 @@ pub struct RunEntry {
     /// switches without relying on provider-owned resume history.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backend: Option<Backend>,
+    /// Claude CLI custom provider profile used for this run. None means
+    /// Anthropic/default Claude.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_profile_name: Option<String>,
     /// Unix timestamp when run started
     pub started_at: u64,
     /// Unix timestamp when run ended (None if still running)
@@ -2034,6 +2038,7 @@ mod tests {
             thinking_level: None,
             effort_level: None,
             backend: None,
+            custom_profile_name: None,
             started_at: 1,
             ended_at: Some(2),
             status: RunStatus::Completed,
@@ -2073,6 +2078,7 @@ mod tests {
             thinking_level: None,
             effort_level: None,
             backend: None,
+            custom_profile_name: None,
             started_at: 1234567890,
             ended_at: None,
             status: RunStatus::Running,
@@ -2102,6 +2108,7 @@ mod tests {
             thinking_level: None,
             effort_level: None,
             backend: Some(Backend::Codex),
+            custom_profile_name: None,
             started_at: 1,
             ended_at: Some(2),
             status: RunStatus::Cancelled,
@@ -2152,6 +2159,7 @@ mod tests {
             thinking_level: None,
             effort_level: None,
             backend: Some(Backend::Codex),
+            custom_profile_name: None,
             started_at: 1,
             ended_at: Some(2),
             status: RunStatus::Cancelled,
@@ -2174,6 +2182,7 @@ mod tests {
             thinking_level: None,
             effort_level: None,
             backend: Some(Backend::Codex),
+            custom_profile_name: None,
             started_at: 3,
             ended_at: Some(4),
             status: RunStatus::Completed,
@@ -2214,6 +2223,7 @@ mod tests {
             thinking_level: None,
             effort_level: None,
             backend: None,
+            custom_profile_name: None,
             started_at: 1234567890,
             ended_at: None,
             status: RunStatus::Completed,
@@ -2240,6 +2250,7 @@ mod tests {
             thinking_level: None,
             effort_level: None,
             backend: None,
+            custom_profile_name: None,
             started_at: 1234567891,
             ended_at: None,
             status: RunStatus::Completed,

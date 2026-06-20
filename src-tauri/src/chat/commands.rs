@@ -2396,14 +2396,25 @@ pub async fn send_chat_message(
         });
     }
 
-    let previous_backend = load_metadata(&app, &session_id)
-        .ok()
-        .flatten()
-        .and_then(|metadata| super::handoff::latest_completed_backend(&metadata));
-    let message_for_backend = if super::handoff::should_inject_handoff(
-        previous_backend.as_ref(),
+    let previous_metadata = load_metadata(&app, &session_id).ok().flatten();
+    let previous_backend = previous_metadata
+        .as_ref()
+        .and_then(super::handoff::latest_completed_backend);
+    let previous_custom_profile = previous_metadata
+        .as_ref()
+        .and_then(super::handoff::latest_completed_custom_profile);
+    let backend_handoff =
+        super::handoff::should_inject_handoff(previous_backend.as_ref(), &effective_backend);
+    let claude_profile_changed = effective_backend == Backend::Claude
+        && claude_session_id.is_some()
+        && previous_custom_profile.as_deref() != custom_profile_name.as_deref();
+    let profile_handoff = super::handoff::should_inject_claude_profile_handoff(
         &effective_backend,
-    ) {
+        previous_backend.as_ref(),
+        previous_custom_profile.as_deref(),
+        custom_profile_name.as_deref(),
+    );
+    let message_for_backend = if backend_handoff || profile_handoff {
         let history = run_log::load_session_messages_window(&app, &session_id, Some(20), None)
             .map(|loaded| super::handoff::format_handoff_history(&loaded.messages, 30_000))
             .unwrap_or_default();
@@ -2415,12 +2426,21 @@ pub async fn send_chat_message(
                 .and_then(|prefs| prefs.magic_prompts.provider_switch_handoff)
                 .filter(|prompt| !prompt.trim().is_empty())
                 .unwrap_or_else(crate::default_provider_switch_handoff_prompt);
-            let handoff_prompt = super::handoff::build_handoff_prompt(
-                &template,
-                previous_backend,
-                &effective_backend,
-                &history,
-            );
+            let handoff_prompt = if profile_handoff {
+                super::handoff::build_claude_profile_handoff_prompt(
+                    &template,
+                    previous_custom_profile.as_deref(),
+                    custom_profile_name.as_deref(),
+                    &history,
+                )
+            } else {
+                super::handoff::build_handoff_prompt(
+                    &template,
+                    previous_backend,
+                    &effective_backend,
+                    &history,
+                )
+            };
             log::info!(
                     "[SendChat] injecting hidden provider-switch handoff session={session_id} previous={previous_backend:?} current={effective_backend:?}"
                 );
@@ -2430,6 +2450,11 @@ pub async fn send_chat_message(
         }
     } else {
         message.clone()
+    };
+    let claude_session_id = if claude_profile_changed {
+        None
+    } else {
+        claude_session_id
     };
 
     // Cursor CLI doesn't support thinking/effort levels
@@ -2470,6 +2495,7 @@ pub async fn send_chat_message(
         run_thinking_level.as_deref(),
         run_effort_level,
         Some(effective_backend.clone()),
+        custom_profile_name.as_deref(),
     )?;
 
     // Get file paths for detached execution
