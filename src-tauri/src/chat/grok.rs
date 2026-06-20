@@ -690,7 +690,7 @@ fn build_grok_args(
     ];
 
     if let Some(id) = grok_session_id.filter(|id| !id.is_empty()) {
-        args.push("--session-id".to_string());
+        args.push("--resume".to_string());
         args.push(id.to_string());
     }
     if let Some(model) = raw_grok_model(model).filter(|model| !model.is_empty()) {
@@ -771,23 +771,21 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
         return Err("Grok CLI not installed".to_string());
     }
 
-    let grok_session_id = existing_grok_session_id
-        .filter(|id| !id.is_empty())
-        .unwrap_or(jean_session_id);
+    let existing_grok_session_id = existing_grok_session_id.filter(|id| !id.is_empty());
     let prepared_message = build_grok_message(message, system_prompt);
     let args = build_grok_args(
         &prepared_message,
         model,
         execution_mode,
         effort_level,
-        Some(grok_session_id),
+        existing_grok_session_id,
         &working_dir.to_string_lossy(),
     );
 
     log::info!(
         "[Grok] execute session={jean_session_id} worktree={worktree_id} \
          model={model:?} execution_mode={execution_mode:?} \
-         grok_session_id={grok_session_id} cwd={}",
+         existing_grok_session_id={existing_grok_session_id:?} cwd={}",
         working_dir.display()
     );
     log::info!("[Grok] cli_path={}", cli_path.display());
@@ -815,7 +813,7 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
     if !super::registry::register_process(jean_session_id.to_string(), pid) {
         return Ok(GrokResponse {
             content: String::new(),
-            session_id: grok_session_id.to_string(),
+            session_id: existing_grok_session_id.unwrap_or_default().to_string(),
             tool_calls: vec![],
             content_blocks: vec![],
             cancelled: true,
@@ -840,7 +838,7 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
         jean_session_id,
         worktree_id,
         BufReader::new(stdout),
-        Some(grok_session_id),
+        existing_grok_session_id,
     )?;
     log::info!("[Grok] stdout stream closed (EOF) for session={jean_session_id}, waiting for exit");
     let output = child
@@ -894,7 +892,17 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
 
 fn extract_json_object(text: &str) -> Result<String, String> {
     let trimmed = text.trim();
-    if serde_json::from_str::<Value>(trimmed).is_ok() {
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        let is_grok_wrapper = value.get("text").and_then(Value::as_str).is_some()
+            && (value.get("stopReason").is_some()
+                || value.get("sessionId").is_some()
+                || value.get("requestId").is_some()
+                || value.get("thought").is_some());
+        if is_grok_wrapper {
+            if let Some(inner) = value.get("text").and_then(Value::as_str) {
+                return extract_json_object(inner);
+            }
+        }
         return Ok(trimmed.to_string());
     }
     let start = trimmed
@@ -972,10 +980,7 @@ mod tests {
         );
         assert_eq!(resolve_one_shot_grok_model("sonnet"), GROK_DEFAULT_MODEL);
         // Grok models pass through unchanged.
-        assert_eq!(
-            resolve_one_shot_grok_model("grok-build"),
-            "grok-build"
-        );
+        assert_eq!(resolve_one_shot_grok_model("grok-build"), "grok-build");
         assert_eq!(
             resolve_one_shot_grok_model("grok/grok-composer-2.5-fast"),
             "grok/grok-composer-2.5-fast"
@@ -1026,6 +1031,39 @@ mod tests {
             "/tmp/worktree",
         );
         assert!(!args.contains(&"--no-alt-screen".to_string()));
+    }
+
+    #[test]
+    fn build_grok_args_uses_resume_flag_for_existing_session() {
+        let args = build_grok_args(
+            "hello",
+            Some("grok-composer-2.5-fast"),
+            Some("plan"),
+            None,
+            Some("grok-session-1"),
+            "/tmp/worktree",
+        );
+
+        assert!(!args.contains(&"--session-id".to_string()));
+        let idx = args
+            .iter()
+            .position(|arg| arg == "--resume")
+            .expect("--resume flag present");
+        assert_eq!(args.get(idx + 1), Some(&"grok-session-1".to_string()));
+    }
+
+    #[test]
+    fn extract_json_object_reads_grok_json_output_text_wrapper() {
+        let stdout = r#"{
+  "text": "{\"summary\":\"Done\",\"slug\":\"done\"}",
+  "stopReason": "EndTurn",
+  "sessionId": "grok-session-1"
+}"#;
+
+        assert_eq!(
+            extract_json_object(stdout).unwrap(),
+            r#"{"summary":"Done","slug":"done"}"#
+        );
     }
 
     #[test]

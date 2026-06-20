@@ -91,6 +91,7 @@ import {
   commandcodeCliQueryKeys,
 } from '@/services/commandcode-cli'
 import {
+  getGrokInstallCommand,
   useGrokCliStatus,
   useGrokCliAuth,
   useGrokPathDetection,
@@ -105,6 +106,7 @@ import type { OpenCodeAuthStatus } from '@/types/opencode-cli'
 import type { CursorAuthStatus } from '@/types/cursor-cli'
 import type { PiAuthStatus } from '@/types/pi-cli'
 import type { CommandCodeAuthStatus } from '@/types/commandcode-cli'
+import type { GrokAuthStatus } from '@/types/grok-cli'
 import {
   Select,
   SelectContent,
@@ -469,7 +471,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const [checkingCursorAuth, setCheckingCursorAuth] = useState(false)
   const [checkingPiAuth, setCheckingPiAuth] = useState(false)
   const [checkingCommandCodeAuth, setCheckingCommandCodeAuth] = useState(false)
-  const [checkingGrokAuth] = useState(false)
+  const [checkingGrokAuth, setCheckingGrokAuth] = useState(false)
   const [openCodeModelPopoverOpen, setOpenCodeModelPopoverOpen] =
     useState(false)
   const [cursorModelPopoverOpen, setCursorModelPopoverOpen] = useState(false)
@@ -1431,6 +1433,47 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     patchPreferences,
     preferences?.commandcode_cli_source,
   ])
+
+  const handleGrokLogin = useCallback(async () => {
+    if (!grokStatus?.path) return
+    setCheckingGrokAuth(true)
+    try {
+      await queryClient.invalidateQueries({
+        queryKey: grokCliQueryKeys.auth(),
+      })
+      const result = await queryClient.fetchQuery<GrokAuthStatus>({
+        queryKey: grokCliQueryKeys.auth(),
+      })
+      if (result?.authenticated) {
+        toast.success('Grok CLI is already authenticated')
+        return
+      }
+    } finally {
+      setCheckingGrokAuth(false)
+    }
+    openCliLoginModal('grok', grokStatus.path, ['login'])
+  }, [grokStatus?.path, openCliLoginModal, queryClient])
+
+  const handleGrokRelogin = useCallback(() => {
+    if (!grokStatus?.path) return
+    openCliLoginModal('grok', grokStatus.path, ['login'])
+  }, [grokStatus?.path, openCliLoginModal])
+
+  const handleGrokInstall = useCallback(async () => {
+    try {
+      const installCommand = await getGrokInstallCommand()
+      openCliLoginModal(
+        'grok',
+        installCommand.command,
+        installCommand.args,
+        'install'
+      )
+    } catch (error) {
+      toast.error('Failed to prepare Grok install command', {
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [openCliLoginModal])
 
   const handleCopyPath = useCallback((path: string | null | undefined) => {
     if (!path) return
@@ -3110,6 +3153,35 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
             </span>
           }
           anchorId="pref-grok-section-settings"
+          actions={
+            grokStatus?.installed ? (
+              checkingGrokAuth || isGrokAuthLoading ? (
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  <Loader2 className="size-3 animate-spin" />
+                  Checking...
+                </span>
+              ) : grokAuth?.authenticated ? (
+                <span className="text-sm text-muted-foreground flex items-center gap-2">
+                  Logged in
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleGrokRelogin}
+                  >
+                    Relogin
+                  </Button>
+                </span>
+              ) : (
+                <Button variant="outline" size="sm" onClick={handleGrokLogin}>
+                  Login
+                </Button>
+              )
+            ) : (
+              <Button variant="outline" size="sm" onClick={handleGrokInstall}>
+                Install
+              </Button>
+            )
+          }
         >
           <div className="space-y-4">
             <InlineField
