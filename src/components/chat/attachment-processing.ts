@@ -21,11 +21,13 @@ function getExtension(filename: string): string {
 }
 
 async function fileToBase64(file: File): Promise<string> {
-  const dataBuffer = await file.arrayBuffer()
-  const bytes = new Uint8Array(dataBuffer)
+  const bytes = new Uint8Array(await file.arrayBuffer())
+  // Concatenate in chunks: `binary += fromCharCode(byte)` per byte is O(n²) and
+  // janks on multi-MB images; apply() over ~32KB slices keeps it linear.
   let binary = ''
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte)
+  const CHUNK = 0x8000
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK))
   }
   return btoa(binary)
 }

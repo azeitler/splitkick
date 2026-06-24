@@ -1,17 +1,16 @@
 import { useEffect } from 'react'
-import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { isNativeApp } from '@/lib/environment'
 import { useChatStore } from '@/store/chat-store'
 import {
+  classifyAttachmentFile,
+  type AttachmentFileKind,
+} from '@/components/chat/attachment-processing'
+import {
   processDroppedImage,
   processDroppedSvg,
 } from '@/components/chat/hooks/useDragAndDropImages'
-import { formatPathForPty } from '@/components/chat/hooks/useTerminalImageDrop'
-import {
-  ALLOWED_IMAGE_EXTENSIONS,
-  SVG_EXTENSION,
-} from '@/components/chat/image-constants'
+import { writePathsToTerminal } from '@/components/chat/hooks/useTerminalImageDrop'
 
 interface LinuxFileDropPayload {
   paths: string[]
@@ -20,8 +19,9 @@ interface LinuxFileDropPayload {
   y: number
 }
 
-function getExtension(path: string): string {
-  return path.split('.').pop()?.toLowerCase() ?? ''
+/** Classify a dropped path by extension (reusing the chat attachment rules). */
+function classifyPath(path: string): AttachmentFileKind {
+  return classifyAttachmentFile({ name: path, type: '' })
 }
 
 interface DropTarget {
@@ -51,22 +51,6 @@ function activeSessionId(): string | undefined {
   return activeWorktreeId ? activeSessionIds[activeWorktreeId] : undefined
 }
 
-/** Write dropped file paths into a terminal's pty (Claude Code attaches them). */
-async function routeToTerminal(
-  terminalId: string,
-  paths: string[]
-): Promise<void> {
-  const data = paths.map(formatPathForPty).join('')
-  try {
-    await invoke('terminal_write', { terminalId, data })
-  } catch (error) {
-    console.error('Failed to write dropped path to terminal:', error)
-    toast.error('Failed to insert image into terminal', {
-      description: String(error),
-    })
-  }
-}
-
 /** Attach dropped images to a chat session. */
 function routeToChat(paths: string[], sessionId: string | undefined): void {
   if (!sessionId) {
@@ -78,11 +62,11 @@ function routeToChat(paths: string[], sessionId: string | undefined): void {
 
   let handled = false
   for (const path of paths) {
-    const ext = getExtension(path)
-    if (ALLOWED_IMAGE_EXTENSIONS.includes(ext)) {
+    const kind = classifyPath(path)
+    if (kind === 'raster') {
       processDroppedImage(path, sessionId)
       handled = true
-    } else if (ext === SVG_EXTENSION) {
+    } else if (kind === 'svg') {
       processDroppedSvg(path, sessionId)
       handled = true
     }
@@ -118,7 +102,7 @@ export function useLinuxFileDrop(): void {
 
         const { terminalId, sessionId } = dropTargetAtPoint(x, y)
         if (terminalId) {
-          routeToTerminal(terminalId, paths)
+          writePathsToTerminal(terminalId, paths)
         } else {
           routeToChat(paths, sessionId ?? activeSessionId())
         }

@@ -9,6 +9,7 @@ import {
   SVG_EXTENSION,
 } from '../image-constants'
 import { isNativeApp } from '@/lib/environment'
+import { dragHasFiles } from '@/lib/drag-drop-utils'
 import { processAttachmentFiles } from '../attachment-processing'
 
 /** Tracks image paths currently being processed to prevent duplicates */
@@ -43,10 +44,7 @@ export function useDragAndDropImages(
 
     let browserLastDropTime = 0
 
-    const hasFiles = (event: DragEvent) => {
-      const types = Array.from(event.dataTransfer?.types ?? [])
-      return types.includes('Files')
-    }
+    const hasFiles = (event: DragEvent) => dragHasFiles(event.dataTransfer)
 
     const handleBrowserDragEnter = (event: DragEvent) => {
       if (!hasFiles(event)) return

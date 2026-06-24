@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { dragHasFiles } from '@/lib/drag-drop-utils'
 
 /**
  * Global safety net for file drops.
@@ -16,21 +17,15 @@ import { useEffect } from 'react'
  */
 export function usePreventFileDropNavigation(): void {
   useEffect(() => {
-    const hasFiles = (event: DragEvent) =>
-      Array.from(event.dataTransfer?.types ?? []).includes('Files')
-
-    const handleDragOver = (event: DragEvent) => {
-      if (hasFiles(event)) event.preventDefault()
-    }
-    const handleDrop = (event: DragEvent) => {
-      if (hasFiles(event)) event.preventDefault()
+    const preventFileDrop = (event: DragEvent) => {
+      if (dragHasFiles(event.dataTransfer)) event.preventDefault()
     }
 
-    window.addEventListener('dragover', handleDragOver)
-    window.addEventListener('drop', handleDrop)
+    window.addEventListener('dragover', preventFileDrop)
+    window.addEventListener('drop', preventFileDrop)
     return () => {
-      window.removeEventListener('dragover', handleDragOver)
-      window.removeEventListener('drop', handleDrop)
+      window.removeEventListener('dragover', preventFileDrop)
+      window.removeEventListener('drop', preventFileDrop)
     }
   }, [])
 }

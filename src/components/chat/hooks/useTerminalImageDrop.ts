@@ -2,16 +2,11 @@ import { useCallback, useState } from 'react'
 import type { DragEvent as ReactDragEvent } from 'react'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
+import { dragHasFiles } from '@/lib/drag-drop-utils'
 import {
   classifyAttachmentFile,
   saveImageFileToDisk,
 } from '../attachment-processing'
-
-const FILES_TYPE = 'Files'
-
-function dragHasFiles(dataTransfer: DataTransfer | null): boolean {
-  return Array.from(dataTransfer?.types ?? []).includes(FILES_TYPE)
-}
 
 /**
  * Quote a path the way a native terminal does on file-drop, so Claude Code's
@@ -23,6 +18,23 @@ function dragHasFiles(dataTransfer: DataTransfer | null): boolean {
 export function formatPathForPty(path: string): string {
   if (!/\s/.test(path)) return `${path} `
   return `'${path.replace(/'/g, `'\\''`)}' `
+}
+
+/** Write dropped file paths into a terminal's pty (Claude Code attaches them). */
+export async function writePathsToTerminal(
+  terminalId: string,
+  paths: string[]
+): Promise<void> {
+  if (paths.length === 0) return
+  const data = paths.map(formatPathForPty).join('')
+  try {
+    await invoke('terminal_write', { terminalId, data })
+  } catch (error) {
+    console.error('Failed to write image path to terminal:', error)
+    toast.error('Failed to insert image into terminal', {
+      description: String(error),
+    })
+  }
 }
 
 interface TerminalImageDropHandlers {
@@ -85,22 +97,8 @@ export function useTerminalImageDrop(
         return
       }
 
-      const paths: string[] = []
-      for (const file of imageFiles) {
-        const path = await saveImageFileToDisk(file)
-        if (path) paths.push(path)
-      }
-      if (paths.length === 0) return
-
-      const data = paths.map(formatPathForPty).join('')
-      try {
-        await invoke('terminal_write', { terminalId, data })
-      } catch (error) {
-        console.error('Failed to write image path to terminal:', error)
-        toast.error('Failed to insert image into terminal', {
-          description: String(error),
-        })
-      }
+      const saved = await Promise.all(imageFiles.map(saveImageFileToDisk))
+      await writePathsToTerminal(terminalId, saved.filter(Boolean) as string[])
     },
     [terminalId]
   )
