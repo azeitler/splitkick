@@ -2437,7 +2437,10 @@ export function ChatWindow({
         />
       )}
     >
-      <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
+      <div
+        data-chat-session-id={activeSessionId}
+        className="flex h-full w-full min-w-0 flex-col overflow-hidden"
+      >
         <ReviewMethodModal
           open={reviewMethodModalOpen}
           onOpenChange={setReviewMethodModalOpen}
