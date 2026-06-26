@@ -1384,6 +1384,63 @@ pub fn gh_pr_checkout(
     Ok(branch_name)
 }
 
+/// Number of attempts when removing a worktree directory tree.
+const WORKTREE_RM_ATTEMPTS: u32 = 5;
+
+/// Whether a directory-removal error is a transient race worth retrying.
+///
+/// A dev server, file watcher, or backend process can keep writing into the
+/// tree while `remove_dir_all` walks it, so the final `rmdir` fails even though
+/// no handle stays open.
+fn is_transient_dir_removal_error(e: &std::io::Error) -> bool {
+    use std::io::ErrorKind;
+    // `ENOTEMPTY` (39 on Linux, 66 on macOS/BSD) and Windows `ERROR_DIR_NOT_EMPTY`
+    // both surface as `DirectoryNotEmpty`; `EACCES` / Windows `ERROR_ACCESS_DENIED`
+    // as `PermissionDenied`. Using `ErrorKind` keeps the mapping correct across
+    // platforms without hard-coded errno values.
+    if matches!(e.kind(), ErrorKind::DirectoryNotEmpty | ErrorKind::PermissionDenied) {
+        return true;
+    }
+    // Windows `ERROR_SHARING_VIOLATION` (a lingering file lock) has no dedicated
+    // `ErrorKind`, so match its raw code explicitly.
+    #[cfg(windows)]
+    {
+        const ERROR_SHARING_VIOLATION: i32 = 32;
+        if e.raw_os_error() == Some(ERROR_SHARING_VIOLATION) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Recursively remove a directory, retrying briefly on transient races.
+///
+/// Removing a worktree can race with a process still writing inside it (e.g.
+/// `node_modules`, `elm-stuff`), making removal fail with `ENOTEMPTY`
+/// (os error 39) even though nothing holds an open handle. A few short retries
+/// let the writer settle so the removal can finish. Treats an already-absent
+/// path as success.
+fn remove_dir_all_with_retry(path: &Path) -> std::io::Result<()> {
+    let mut attempt = 1;
+    loop {
+        match std::fs::remove_dir_all(path) {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) => {
+                if attempt >= WORKTREE_RM_ATTEMPTS || !is_transient_dir_removal_error(&e) {
+                    return Err(e);
+                }
+                log::debug!(
+                    "Retrying directory removal of {} after transient error (attempt {attempt}/{WORKTREE_RM_ATTEMPTS}): {e}",
+                    path.display()
+                );
+                std::thread::sleep(Duration::from_millis(150 * attempt as u64));
+                attempt += 1;
+            }
+        }
+    }
+}
+
 /// Remove a git worktree
 ///
 /// # Arguments
@@ -1452,7 +1509,7 @@ pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), Strin
                 log::warn!(
                     "git worktree remove failed ({stderr}), attempting manual directory removal"
                 );
-                if let Err(rm_err) = std::fs::remove_dir_all(worktree_path) {
+                if let Err(rm_err) = remove_dir_all_with_retry(Path::new(worktree_path)) {
                     return Err(format!("Failed to remove worktree: {stderr} (manual cleanup also failed: {rm_err})"));
                 }
                 log::info!("Manually removed worktree directory at {worktree_path}");
@@ -1477,7 +1534,12 @@ pub fn remove_worktree(repo_path: &str, worktree_path: &str) -> Result<(), Strin
         log::warn!(
             "Worktree directory still exists after git worktree remove, cleaning up manually"
         );
-        let _ = std::fs::remove_dir_all(worktree_path);
+        // Best-effort: `git worktree remove` already reported success, so a
+        // leftover directory is unexpected. Log the final outcome rather than
+        // swallowing it silently.
+        if let Err(e) = remove_dir_all_with_retry(Path::new(worktree_path)) {
+            log::warn!("Best-effort cleanup of {worktree_path} failed: {e}");
+        }
     }
 
     log::trace!("Successfully removed worktree at {worktree_path}");
@@ -2483,6 +2545,44 @@ fn handle_merge_failure(repo_path: &str, stdout: &[u8], stderr: &[u8]) -> MergeR
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ========================================================================
+    // remove_dir_all_with_retry tests
+    // ========================================================================
+
+    #[test]
+    fn test_remove_dir_all_with_retry_removes_populated_tree() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("worktree");
+        std::fs::create_dir_all(root.join("nested/deeper")).unwrap();
+        std::fs::write(root.join("nested/file.txt"), b"data").unwrap();
+
+        remove_dir_all_with_retry(&root).unwrap();
+        assert!(!root.exists());
+    }
+
+    #[test]
+    fn test_remove_dir_all_with_retry_absent_path_is_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let missing = dir.path().join("does-not-exist");
+        // An already-absent path must be treated as success, not an error.
+        remove_dir_all_with_retry(&missing).unwrap();
+    }
+
+    #[test]
+    fn test_is_transient_dir_removal_error_classifies_transient_kinds() {
+        use std::io::ErrorKind;
+        // The "directory not empty" race (ENOTEMPTY / ERROR_DIR_NOT_EMPTY) and a
+        // lingering lock surfacing as PermissionDenied are what we retry on.
+        let dir_not_empty = std::io::Error::from(ErrorKind::DirectoryNotEmpty);
+        assert!(is_transient_dir_removal_error(&dir_not_empty));
+        let permission = std::io::Error::from(ErrorKind::PermissionDenied);
+        assert!(is_transient_dir_removal_error(&permission));
+
+        // A non-transient error (e.g. ENOENT/NotFound) must not be retried here.
+        let not_found = std::io::Error::from(ErrorKind::NotFound);
+        assert!(!is_transient_dir_removal_error(&not_found));
+    }
 
     // ========================================================================
     // get_repo_name tests
