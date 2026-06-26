@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
+  COMMANDCODE_DEFAULT_MAGIC_PROMPT_BACKENDS,
+  COMMANDCODE_DEFAULT_MAGIC_PROMPT_MODELS,
   defaultPreferences,
+  GROK_DEFAULT_MAGIC_PROMPT_BACKENDS,
+  PI_DEFAULT_MAGIC_PROMPT_BACKENDS,
+  PI_DEFAULT_MAGIC_PROMPT_MODELS,
   resolveMagicPromptBackend,
   resolveMagicPromptProvider,
 } from './preferences'
@@ -16,6 +21,30 @@ describe('magic prompt preference resolvers', () => {
 
   it('uses Jean-managed Grok CLI by default', () => {
     expect(defaultPreferences.grok_cli_source).toBe('jean')
+  })
+
+  it('provides magic prompt defaults for Pi', () => {
+    expect(PI_DEFAULT_MAGIC_PROMPT_BACKENDS.investigate_issue_backend).toBe(
+      'pi'
+    )
+    expect(PI_DEFAULT_MAGIC_PROMPT_MODELS.investigate_issue_model).toBe(
+      'pi/sonnet'
+    )
+  })
+
+  it('provides magic prompt defaults for Command Code', () => {
+    expect(
+      COMMANDCODE_DEFAULT_MAGIC_PROMPT_BACKENDS.investigate_issue_backend
+    ).toBe('commandcode')
+    expect(
+      COMMANDCODE_DEFAULT_MAGIC_PROMPT_MODELS.investigate_issue_model
+    ).toBe('commandcode/default')
+  })
+
+  it('provides magic prompt defaults for Grok', () => {
+    expect(GROK_DEFAULT_MAGIC_PROMPT_BACKENDS.investigate_issue_backend).toBe(
+      'grok'
+    )
   })
 
   it('keeps automatic recaps on by default', () => {
