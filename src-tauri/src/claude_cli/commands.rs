@@ -16,6 +16,7 @@ use super::config::{
     resolve_cli_binary,
 };
 use crate::http_server::EmitExt;
+#[cfg(target_os = "macos")]
 use crate::platform::silent_command;
 
 /// Extract semver version number from a version string

@@ -2,6 +2,7 @@
 
 use super::types::{ContentBlock, ToolCall, UsageData};
 use crate::http_server::EmitExt;
+#[cfg(unix)]
 use crate::platform::silent_command;
 use serde_json::Value;
 #[cfg(unix)]
