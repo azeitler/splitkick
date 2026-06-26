@@ -548,7 +548,7 @@ fn default_parallel_execution_prompt_enabled() -> bool {
 }
 
 fn default_compact_chat_view_enabled() -> bool {
-    false // Disabled by default (experimental)
+    true // Enabled by default
 }
 
 fn default_auto_recaps_enabled() -> bool {
@@ -3489,6 +3489,11 @@ fn parse_cli_args() -> CliArgs {
 #[cfg(test)]
 mod magic_prompt_tests {
     use super::*;
+
+    #[test]
+    fn app_preferences_enables_compact_chat_view_by_default() {
+        assert!(AppPreferences::default().compact_chat_view_enabled);
+    }
 
     #[test]
     fn migrate_defaults_clears_legacy_commit_message_prompt() {

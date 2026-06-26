@@ -1888,7 +1888,7 @@ export const defaultPreferences: AppPreferences = {
   syntax_theme_dark: 'vitesse-black',
   syntax_theme_light: 'github-light',
   parallel_execution_prompt_enabled: true, // Default: enabled
-  compact_chat_view_enabled: false, // Default: disabled (experimental)
+  compact_chat_view_enabled: true, // Default: enabled
   auto_recaps_enabled: true, // Default: enabled
   magic_prompts: DEFAULT_MAGIC_PROMPTS,
   magic_prompt_models: DEFAULT_MAGIC_PROMPT_MODELS,

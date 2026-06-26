@@ -89,6 +89,10 @@ const createWrapper = (queryClient: QueryClient) => {
 }
 
 describe('model option helpers', () => {
+  it('enables compact chat view by default', () => {
+    expect(defaultPreferences.compact_chat_view_enabled).toBe(true)
+  })
+
   it('offers Claude 1M variants alongside standard context models', () => {
     expect(modelOptions.map(option => option.value)).toEqual([
       'claude-fable-5',
