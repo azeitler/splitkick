@@ -192,7 +192,7 @@ import {
   triggerImmediateGitPoll,
   performGitPull,
 } from '@/services/git-status'
-import { useRemotePicker } from '@/hooks/useRemotePicker'
+import { pushNeedsRemotePicker, useRemotePicker } from '@/hooks/useRemotePicker'
 import {
   DRAG_SCOPE_CANVAS_WORKTREE_LIST,
   isWorktreeDragData,
@@ -514,7 +514,8 @@ function WorktreeSectionHeader({
   const handlePush = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
-      pickRemoteOrRun(async remote => {
+
+      const runPush = async (remote?: string) => {
         const opToast = dismissibleToast.loading('Pushing changes...')
         try {
           const result = await gitPush(
@@ -534,9 +535,15 @@ function WorktreeSectionHeader({
         } catch (error) {
           opToast.error(`Push failed: ${error}`)
         }
-      })
+      }
+
+      if (pushNeedsRemotePicker(worktree.pr_number)) {
+        pickRemoteOrRun(runPush)
+      } else {
+        runPush()
+      }
     },
-    [worktree.path, worktree.pr_number, projectId, pickRemoteOrRun]
+    [pickRemoteOrRun, worktree.path, worktree.pr_number, projectId]
   )
 
   const handleDiffClick = useCallback(() => {
@@ -3517,6 +3524,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         />
       ) : null}
 
+
+
       {/* Worktree Label Modal */}
       <LabelModal
         key={worktreeLabelTarget?.worktreeId ?? 'wt-label'}
@@ -3559,7 +3568,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-white hover:bg-destructive/90"
               onClick={handleConfirmDeleteLabel}
             >
               Delete label

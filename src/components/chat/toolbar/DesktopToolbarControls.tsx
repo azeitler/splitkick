@@ -27,7 +27,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { CustomCliProfile } from '@/types/preferences'
+import type { CliBackend, CustomCliProfile } from '@/types/preferences'
 import type {
   EffortLevel,
   ExecutionMode,
@@ -54,6 +54,8 @@ import { cn } from '@/lib/utils'
 import {
   CODEX_EFFORT_LEVEL_OPTIONS,
   EFFORT_LEVEL_OPTIONS,
+  GROK_EFFORT_LEVEL_OPTIONS,
+  PI_EFFORT_LEVEL_OPTIONS,
   THINKING_LEVEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
 import {
@@ -66,13 +68,7 @@ import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
 
 interface DesktopToolbarControlsProps {
   hasPendingQuestions: boolean
-  selectedBackend:
-    | 'claude'
-    | 'codex'
-    | 'opencode'
-    | 'cursor'
-    | 'pi'
-    | 'commandcode'
+  selectedBackend: CliBackend
   selectedModel: string
   selectedProvider: string | null
   selectedThinkingLevel: ThinkingLevel
@@ -117,23 +113,13 @@ interface DesktopToolbarControlsProps {
   onResolvePrConflicts: () => void
   onLoadContext: () => void
   onAttach: () => void
-  installedBackends: (
-    | 'claude'
-    | 'codex'
-    | 'opencode'
-    | 'cursor'
-    | 'pi'
-    | 'commandcode'
-  )[]
+  installedBackends: CliBackend[]
   onSetExecutionMode: (mode: ExecutionMode) => void
   availableExecutionModes: ExecutionMode[]
   onToggleMcpServer: (name: string) => void
 
   handleModelChange: (value: string) => void
-  handleBackendModelChange: (
-    backend: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'commandcode',
-    model: string
-  ) => void
+  handleBackendModelChange: (backend: CliBackend, model: string) => void
   handleProviderChange: (value: string) => void
   handleThinkingLevelChange: (value: string) => void
   handleEffortLevelChange: (value: string) => void
@@ -203,16 +189,26 @@ export function DesktopToolbarControls({
   handleViewLinear,
   handleViewSavedContext,
 }: DesktopToolbarControlsProps) {
-  const effortLevelOptions = isCodex
-    ? CODEX_EFFORT_LEVEL_OPTIONS
-    : EFFORT_LEVEL_OPTIONS
-  const displayedEffortLevel = isCodex
-    ? selectedEffortLevel === 'max'
-      ? 'high'
-      : selectedEffortLevel === 'ultracode'
-        ? 'xhigh'
+  const isPi = selectedBackend === 'pi'
+  const isGrok = selectedBackend === 'grok'
+  const usesEffortControl = useAdaptiveThinking || isCodex || isPi || isGrok
+  const effortLevelOptions = isPi
+    ? PI_EFFORT_LEVEL_OPTIONS
+    : isCodex
+      ? CODEX_EFFORT_LEVEL_OPTIONS
+      : isGrok
+        ? GROK_EFFORT_LEVEL_OPTIONS
+        : EFFORT_LEVEL_OPTIONS
+  const displayedEffortLevel =
+    isCodex || isPi
+      ? selectedEffortLevel === 'max'
+        ? 'high'
+        : selectedEffortLevel === 'ultracode'
+          ? 'xhigh'
+          : selectedEffortLevel
+      : isGrok && selectedEffortLevel === 'ultracode'
+        ? 'max'
         : selectedEffortLevel
-    : selectedEffortLevel
   const displayedEffortLabel =
     effortLevelOptions.find(o => o.value === displayedEffortLevel)?.label ??
     displayedEffortLevel
@@ -552,9 +548,7 @@ export function DesktopToolbarControls({
         </>
       )}
 
-      {customCliProfiles.length > 0 &&
-        !providerLocked &&
-        selectedBackend === 'claude' && (
+      {customCliProfiles.length > 0 && selectedBackend === 'claude' && (
           <>
             <div className="hidden @xl:block h-4 w-px bg-border/50" />
             <DropdownMenu
@@ -634,7 +628,7 @@ export function DesktopToolbarControls({
         <div className="hidden @xl:block h-4 w-px bg-border/50" />
       )}
 
-      {hideReasoningControl ? null : useAdaptiveThinking || isCodex ? (
+      {hideReasoningControl ? null : usesEffortControl ? (
         <DropdownMenu
           open={thinkingDropdownOpen}
           onOpenChange={setThinkingDropdownOpen}

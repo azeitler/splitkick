@@ -1455,6 +1455,10 @@ export function useDeleteWorktree() {
         }
       )
 
+      // Drop the worktree's sessions from the finished-session bell, which
+      // reads from ['all-sessions'].
+      queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
+
       // Cleanup terminal instances for this worktree
       disposeAllWorktreeTerminals(worktreeId)
 
@@ -2096,6 +2100,7 @@ export function useOpenWorktreeInEditor() {
 export interface PortEntry {
   port: number
   label: string
+  host?: string | null
 }
 
 /**

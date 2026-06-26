@@ -7,6 +7,7 @@ import type {
 import {
   CURSOR_MODEL_OPTIONS,
   COMMANDCODE_MODEL_OPTIONS,
+  GROK_MODEL_OPTIONS,
   OPENCODE_MODEL_OPTIONS,
   PI_MODEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
@@ -16,6 +17,7 @@ import {
   getCatalogModelOptions,
   useModelCatalog,
 } from '@/services/model-catalog'
+import { resolvePiDefaultModel } from '@/lib/session-defaults'
 
 interface UseToolbarDerivedStateArgs {
   selectedBackend: CliBackend
@@ -25,6 +27,7 @@ interface UseToolbarDerivedStateArgs {
   cursorModelOptions?: { value: string; label: string }[]
   piModelOptions?: { value: string; label: string }[]
   commandcodeModelOptions?: { value: string; label: string }[]
+  grokModelOptions?: { value: string; label: string }[]
   customCliProfiles: CustomCliProfile[]
   installedBackends?: CliBackend[]
   availableMcpServers?: { name: string; backend?: string; disabled?: boolean }[]
@@ -45,6 +48,7 @@ export function buildBackendModelSections({
   cursorModelOptions,
   piModelOptions,
   commandcodeModelOptions,
+  grokModelOptions,
 }: {
   installedBackends: CliBackend[]
   claudeModelOptions: { value: string; label: string }[]
@@ -53,6 +57,7 @@ export function buildBackendModelSections({
   cursorModelOptions: { value: string; label: string }[]
   piModelOptions?: { value: string; label: string }[]
   commandcodeModelOptions?: { value: string; label: string }[]
+  grokModelOptions?: { value: string; label: string }[]
 }): BackendModelSection[] {
   const sections: BackendModelSection[] = []
 
@@ -81,6 +86,12 @@ export function buildBackendModelSections({
         label: 'Command Code',
         options: commandcodeModelOptions ?? COMMANDCODE_MODEL_OPTIONS,
       })
+    } else if (backend === 'grok') {
+      sections.push({
+        backend,
+        label: 'Grok (Beta)',
+        options: grokModelOptions ?? GROK_MODEL_OPTIONS,
+      })
     }
   }
 
@@ -96,6 +107,7 @@ export function useToolbarDerivedState({
   piModelOptions,
   commandcodeModelOptions,
   customCliProfiles,
+  grokModelOptions,
   installedBackends = [
     'claude',
     'codex',
@@ -103,6 +115,7 @@ export function useToolbarDerivedState({
     'cursor',
     'pi',
     'commandcode',
+    'grok',
   ],
   availableMcpServers = [],
   enabledMcpServers = [],
@@ -112,6 +125,7 @@ export function useToolbarDerivedState({
   const isCursor = selectedBackend === 'cursor'
   const isPi = selectedBackend === 'pi'
   const isCommandCode = selectedBackend === 'commandcode'
+  const isGrok = selectedBackend === 'grok'
 
   const { data: modelCatalog } = useModelCatalog()
 
@@ -174,6 +188,7 @@ export function useToolbarDerivedState({
   )
   const resolvedCommandCodeModelOptions =
     commandcodeModelOptions ?? COMMANDCODE_MODEL_OPTIONS
+  const resolvedGrokModelOptions = grokModelOptions ?? GROK_MODEL_OPTIONS
 
   const backendModelSections = useMemo(
     () =>
@@ -185,6 +200,7 @@ export function useToolbarDerivedState({
         cursorModelOptions: resolvedCursorModelOptions,
         piModelOptions: resolvedPiModelOptions,
         commandcodeModelOptions: resolvedCommandCodeModelOptions,
+        grokModelOptions: resolvedGrokModelOptions,
       }),
     [
       claudeModelOptions,
@@ -192,10 +208,12 @@ export function useToolbarDerivedState({
       installedBackends,
       resolvedCursorModelOptions,
       resolvedCommandCodeModelOptions,
+      resolvedGrokModelOptions,
       resolvedOpencodeModelOptions,
       resolvedPiModelOptions,
     ]
   )
+
 
   const filteredModelOptions = useMemo(() => {
     if (isCodex) return codexModelOptions
@@ -203,6 +221,7 @@ export function useToolbarDerivedState({
     if (isCursor) return resolvedCursorModelOptions
     if (isPi) return resolvedPiModelOptions
     if (isCommandCode) return resolvedCommandCodeModelOptions
+    if (isGrok) return resolvedGrokModelOptions
     return claudeModelOptions
   }, [
     claudeModelOptions,
@@ -211,21 +230,29 @@ export function useToolbarDerivedState({
     isCursor,
     isPi,
     isCommandCode,
+    isGrok,
     isOpencode,
     resolvedCommandCodeModelOptions,
     resolvedCursorModelOptions,
+    resolvedGrokModelOptions,
     resolvedOpencodeModelOptions,
     resolvedPiModelOptions,
   ])
 
   // Fast variants share a label with their base model (the Zap indicator
   // distinguishes them visually). Applies to both Codex and Claude.
+  const effectiveSelectedModel = isPi
+    ? resolvePiDefaultModel(selectedModel, resolvedPiModelOptions)
+    : selectedModel
+
   const fastInfo = getCatalogModelFastInfo(
     modelCatalog,
     selectedBackend,
-    selectedModel
+    effectiveSelectedModel
   )
-  const labelLookupKey = fastInfo.isFast ? fastInfo.baseModel : selectedModel
+  const labelLookupKey = fastInfo.isFast
+    ? fastInfo.baseModel
+    : effectiveSelectedModel
 
   const selectedModelLabel =
     filteredModelOptions.find(o => o.value === labelLookupKey)?.label ??
@@ -245,6 +272,8 @@ export function useToolbarDerivedState({
     filteredModelOptions,
     opencodeModelOptions: resolvedOpencodeModelOptions,
     piModelOptions: resolvedPiModelOptions,
+    grokModelOptions: resolvedGrokModelOptions,
+    isGrok,
     selectedModelLabel,
   }
 }

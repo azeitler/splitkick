@@ -170,6 +170,22 @@ describe('DesktopToolbarControls', () => {
     expect(screen.getByRole('button', { name: /^plan$/i })).toBeEnabled()
   })
 
+  it('keeps Claude provider switcher available after messages exist', () => {
+    renderDesktopToolbarControls({
+      selectedBackend: 'claude',
+      selectedModel: 'sonnet',
+      selectedProvider: null,
+      customCliProfiles: [{ name: 'OpenRouter', settings_json: '{}' }],
+      providerLocked: true,
+      sessionHasMessages: true,
+      isCodex: false,
+    })
+
+    expect(
+      screen.getByRole('button', { name: /anthropic/i })
+    ).toBeInTheDocument()
+  })
+
   it('hides reasoning control for Command Code on desktop', () => {
     renderDesktopToolbarControls({
       selectedBackend: 'commandcode',
@@ -195,6 +211,28 @@ describe('DesktopToolbarControls', () => {
     })
 
     expect(screen.getByText('xHigh')).toBeInTheDocument()
+    expect(screen.queryByText('Max')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ultracode')).not.toBeInTheDocument()
+  })
+
+  it('shows PI effort options instead of Claude thinking on desktop', () => {
+    renderDesktopToolbarControls({
+      isCodex: false,
+      selectedBackend: 'pi',
+      selectedModel: 'pi/openai-codex/gpt-5.5',
+      selectedEffortLevel: 'xhigh',
+      useAdaptiveThinking: false,
+      selectedThinkingLevel: 'megathink',
+      thinkingDropdownOpen: true,
+    })
+
+    expect(
+      screen.getByRole('menuitemradio', { name: /xhigh/i })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitemradio', { name: /minimal/i })
+    ).toBeInTheDocument()
+    expect(screen.queryByText('Megathink')).not.toBeInTheDocument()
     expect(screen.queryByText('Max')).not.toBeInTheDocument()
     expect(screen.queryByText('Ultracode')).not.toBeInTheDocument()
   })

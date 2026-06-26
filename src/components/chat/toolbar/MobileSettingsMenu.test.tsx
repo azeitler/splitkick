@@ -110,6 +110,23 @@ describe('MobileSettingsMenu', () => {
     expect(onOpenBackendModelPicker).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps Claude provider switcher available after messages exist', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MobileSettingsMenu
+        {...baseProps}
+        customCliProfiles={[{ name: 'OpenRouter', settings_json: '{}' }]}
+        providerLocked
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: /settings/i }))
+
+    expect(screen.getByText('Provider')).toBeInTheDocument()
+    expect(screen.getByText('Anthropic')).toBeInTheDocument()
+  })
+
   it('keeps model settings usable while a session is running', async () => {
     const user = userEvent.setup()
     const onOpenBackendModelPicker = vi.fn()
@@ -230,6 +247,38 @@ describe('MobileSettingsMenu', () => {
     await user.click(screen.getByText('Effort'))
 
     expect(screen.getByText('xHigh')).toBeInTheDocument()
+    expect(screen.queryByText('Max')).not.toBeInTheDocument()
+    expect(screen.queryByText('Ultracode')).not.toBeInTheDocument()
+  })
+
+  it('shows PI effort options instead of Claude thinking in mobile settings', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MobileSettingsMenu
+        {...baseProps}
+        selectedBackend="pi"
+        backendModelLabel="PI · GPT 5.5 (OpenAI Codex)"
+        backendModelLabelText="PI · GPT 5.5 (OpenAI Codex)"
+        selectedEffortLevel="xhigh"
+        selectedThinkingLevel="megathink"
+        useAdaptiveThinking={false}
+        isCodex={false}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: /settings/i }))
+
+    expect(screen.getByText('Effort')).toBeInTheDocument()
+    expect(screen.getByText('xHigh')).toBeInTheDocument()
+    expect(screen.queryByText('Thinking')).not.toBeInTheDocument()
+    expect(screen.queryByText('Megathink')).not.toBeInTheDocument()
+
+    await user.click(screen.getByText('Effort'))
+
+    expect(
+      screen.getByRole('menuitemradio', { name: /minimal/i })
+    ).toBeInTheDocument()
     expect(screen.queryByText('Max')).not.toBeInTheDocument()
     expect(screen.queryByText('Ultracode')).not.toBeInTheDocument()
   })

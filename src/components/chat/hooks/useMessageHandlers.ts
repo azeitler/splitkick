@@ -36,7 +36,7 @@ import { generateId } from '@/lib/uuid'
 import { preferencesQueryKeys } from '@/services/preferences'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
-import type { AppPreferences } from '@/types/preferences'
+import type { AppPreferences, CliBackend } from '@/types/preferences'
 import type {
   Worktree,
   WorktreeCreatedEvent,
@@ -98,9 +98,7 @@ interface UseMessageHandlersParams {
   yoloBackendRef: RefObject<string | null>
   yoloThinkingLevelRef: RefObject<string | null>
   yoloEffortLevelRef: RefObject<string | null>
-  selectedBackendRef: RefObject<
-    'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'commandcode'
-  >
+  selectedBackendRef: RefObject<CliBackend>
   getCustomProfileName: () => string | undefined
   executionModeRef: RefObject<ExecutionMode>
   selectedThinkingLevelRef: RefObject<ThinkingLevel>
@@ -249,6 +247,9 @@ function getDefaultModelForBackend(
   if (backend === 'commandcode') {
     return preferences?.selected_commandcode_model ?? 'commandcode/default'
   }
+  if (backend === 'grok') {
+    return preferences?.selected_grok_model ?? 'grok/grok-composer-2.5-fast'
+  }
   return preferences?.selected_model ?? 'claude-opus-4-8[1m]'
 }
 
@@ -258,6 +259,7 @@ const SESSION_BACKENDS = new Set<Session['backend']>([
   'opencode',
   'cursor',
   'commandcode',
+  'grok',
 ])
 
 function asSessionBackend(
@@ -1269,6 +1271,7 @@ export function useMessageHandlers({
       store.setExecutingMode(newSession.id, mode)
       if (resolvedBackend) {
         store.setSelectedBackend(newSession.id, resolvedBackend)
+        store.setSelectedBackend(newSession.id, resolvedBackend as CliBackend)
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model
       // immediately. Without this, session?.backend (from query cache) defaults to 'claude'
@@ -1313,10 +1316,14 @@ export function useMessageHandlers({
       if (isThinkingLevel(modeThinkingRef.current)) {
         resolvedThinkingLevel = modeThinkingRef.current
       }
-      if (effectiveBackend === 'codex') {
+      if (effectiveBackend === 'codex' || effectiveBackend === 'pi') {
         resolvedThinkingLevel = 'off'
       }
-      if (effectiveBackend === 'codex' || useAdaptiveThinkingRef.current) {
+      if (
+        effectiveBackend === 'codex' ||
+        effectiveBackend === 'pi' ||
+        useAdaptiveThinkingRef.current
+      ) {
         resolvedEffortLevel =
           mapCodexReasoningToEffort(modeEffortRef.current) ??
           selectedEffortLevelRef.current
@@ -1506,6 +1513,7 @@ export function useMessageHandlers({
       store.setExecutingMode(newSession.id, mode)
       if (resolvedBackend) {
         store.setSelectedBackend(newSession.id, resolvedBackend)
+        store.setSelectedBackend(newSession.id, resolvedBackend as CliBackend)
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
       queryClient.setQueryData<Session>(
@@ -1551,10 +1559,14 @@ export function useMessageHandlers({
       if (isThinkingLevel(modeThinkingRef.current)) {
         resolvedThinkingLevel = modeThinkingRef.current
       }
-      if (effectiveBackend === 'codex') {
+      if (effectiveBackend === 'codex' || effectiveBackend === 'pi') {
         resolvedThinkingLevel = 'off'
       }
-      if (effectiveBackend === 'codex' || useAdaptiveThinkingRef.current) {
+      if (
+        effectiveBackend === 'codex' ||
+        effectiveBackend === 'pi' ||
+        useAdaptiveThinkingRef.current
+      ) {
         resolvedEffortLevel =
           mapCodexReasoningToEffort(modeEffortRef.current) ??
           selectedEffortLevelRef.current
@@ -1858,6 +1870,7 @@ export function useMessageHandlers({
       store.setExecutingMode(newSession.id, mode)
       if (resolvedBackend) {
         store.setSelectedBackend(newSession.id, resolvedBackend)
+        store.setSelectedBackend(newSession.id, resolvedBackend as CliBackend)
       }
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(newSession.id),
@@ -1897,10 +1910,14 @@ export function useMessageHandlers({
       if (isThinkingLevel(modeThinkingRef.current)) {
         resolvedThinkingLevel = modeThinkingRef.current
       }
-      if (effectiveBackend === 'codex') {
+      if (effectiveBackend === 'codex' || effectiveBackend === 'pi') {
         resolvedThinkingLevel = 'off'
       }
-      if (effectiveBackend === 'codex' || useAdaptiveThinkingRef.current) {
+      if (
+        effectiveBackend === 'codex' ||
+        effectiveBackend === 'pi' ||
+        useAdaptiveThinkingRef.current
+      ) {
         resolvedEffortLevel =
           mapCodexReasoningToEffort(modeEffortRef.current) ??
           selectedEffortLevelRef.current
@@ -2161,6 +2178,7 @@ export function useMessageHandlers({
       store.setExecutingMode(newSession.id, mode)
       if (resolvedBackend) {
         store.setSelectedBackend(newSession.id, resolvedBackend)
+        store.setSelectedBackend(newSession.id, resolvedBackend as CliBackend)
       }
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(newSession.id),
@@ -2206,10 +2224,14 @@ export function useMessageHandlers({
       if (isThinkingLevel(modeThinkingRef.current)) {
         resolvedThinkingLevel = modeThinkingRef.current
       }
-      if (effectiveBackend === 'codex') {
+      if (effectiveBackend === 'codex' || effectiveBackend === 'pi') {
         resolvedThinkingLevel = 'off'
       }
-      if (effectiveBackend === 'codex' || useAdaptiveThinkingRef.current) {
+      if (
+        effectiveBackend === 'codex' ||
+        effectiveBackend === 'pi' ||
+        useAdaptiveThinkingRef.current
+      ) {
         resolvedEffortLevel =
           mapCodexReasoningToEffort(modeEffortRef.current) ??
           selectedEffortLevelRef.current
