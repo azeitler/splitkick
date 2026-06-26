@@ -13,6 +13,7 @@ let nativeSessionsData: unknown[]
 let cursorInstalled: boolean
 let commandCodeInstalled: boolean
 let grokInstalled: boolean
+let isMobile: boolean
 
 vi.mock('@/services/chat', () => ({
   useCreateSession: () => ({
@@ -31,6 +32,10 @@ vi.mock('@/services/chat', () => ({
 
 vi.mock('@/lib/transport', () => ({
   invoke: (...args: unknown[]) => invoke(...args),
+}))
+
+vi.mock('@/hooks/use-mobile', () => ({
+  useIsMobile: () => isMobile,
 }))
 
 vi.mock('@/services/claude-cli', () => ({
@@ -94,6 +99,7 @@ describe('NewSessionModeModal', () => {
     cursorInstalled = false
     commandCodeInstalled = false
     grokInstalled = false
+    isMobile = false
     invoke.mockResolvedValue({
       commandArgs: ['--context-arg', 'context-value'],
     })
@@ -197,6 +203,46 @@ describe('NewSessionModeModal', () => {
     expect(
       screen.getByText('Open native Grok (Beta) in a terminal session')
     ).toBeInTheDocument()
+  })
+
+  it('uses compact backend choices and a normal/yolo step on mobile', () => {
+    cursorInstalled = true
+    commandCodeInstalled = true
+    grokInstalled = true
+    isMobile = true
+    useUIStore.getState().openNewSessionModeModal({
+      worktreeId: 'worktree-1',
+      worktreePath: '/tmp/worktree-1',
+      origin: 'chat',
+    })
+
+    render(<NewSessionModeModal />)
+
+    expect(screen.getByText('AI backends')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Claude' })).toBeInTheDocument()
+    expect(
+      screen.queryByText('Open native Claude in a terminal session')
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Start Claude in yolo mode' })
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Claude' }))
+
+    expect(screen.getByText('Claude')).toBeInTheDocument()
+    expect(
+      screen.getByText('Choose how to start Claude for this worktree.')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Start normal' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: 'Start yolo' })
+    ).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start yolo' }))
+
+    expect(screen.getByText('Claude sessions')).toBeInTheDocument()
   })
 
   it('opens an installed backend picker and starts a new terminal session', async () => {
