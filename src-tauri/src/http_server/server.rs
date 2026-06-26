@@ -417,8 +417,9 @@ async fn reconnect_init_response(params: WsAuth, state: AppState) -> Response {
         response["appDataDir"] = Value::String(app_data_dir.to_string_lossy().to_string());
     }
 
-    let (projects_result, ui_state_result) = tokio::join!(
+    let (projects_result, preferences_result, ui_state_result) = tokio::join!(
         crate::projects::list_projects(state.app.clone()),
+        crate::load_preferences(state.app.clone()),
         crate::load_ui_state(state.app.clone()),
     );
 
@@ -443,6 +444,17 @@ async fn reconnect_init_response(params: WsAuth, state: AppState) -> Response {
     if let Some(ref ui) = ui_state {
         if let Ok(val) = serde_json::to_value(ui) {
             response["uiState"] = val;
+        }
+    }
+    match preferences_result {
+        Ok(preferences) => {
+            if let Ok(val) = serde_json::to_value(&preferences) {
+                response["preferences"] = val;
+            }
+        }
+        Err(e) => {
+            log::error!("Failed to load preferences for reconnect /api/init: {e}");
+            response["preferences"] = Value::Null;
         }
     }
 
@@ -1372,6 +1384,22 @@ mod tests {
 
         let empty_error = parse_bind_ip("").unwrap_err();
         assert!(empty_error.contains("cannot be empty"));
+    }
+
+    #[test]
+    fn reconnect_init_response_includes_preferences() {
+        let source = include_str!("server.rs");
+        let start = source
+            .find("async fn reconnect_init_response")
+            .expect("reconnect_init_response should exist");
+        let rest = &source[start..];
+        let end = rest
+            .find("async fn init_handler")
+            .expect("init_handler should follow reconnect_init_response");
+        let body = &rest[..end];
+
+        assert!(body.contains("crate::load_preferences"));
+        assert!(body.contains("response[\"preferences\"]"));
     }
 
     #[test]

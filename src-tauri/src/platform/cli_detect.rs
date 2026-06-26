@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use super::{detect_package_manager, silent_command};
+use super::{cli_command, detect_package_manager, silent_command};
 
 /// Generic CLI detection result. Per-CLI Tauri commands map this into their
 /// typed wrapper structs to keep the wire protocol stable.
@@ -75,7 +75,10 @@ pub fn detect_cli_in_path(
         return CliDetection::not_found();
     };
 
-    let version = match silent_command(&found_path).arg("--version").output() {
+    let version = match cli_command(&found_path.to_string_lossy(), None)
+        .arg("--version")
+        .output()
+    {
         Ok(ver_output) if ver_output.status.success() => Some(
             String::from_utf8_lossy(&ver_output.stdout)
                 .trim()
@@ -90,6 +93,28 @@ pub fn detect_cli_in_path(
         version,
         package_manager: detect_package_manager(&found_path),
     }
+}
+
+/// Find the best host-side PATH candidate for a CLI tool.
+///
+/// On Windows this avoids extensionless npm shims that `where` may list before
+/// the executable `.cmd`/`.exe` shim. WSL callers should use `wsl_which`
+/// instead so Windows paths are not returned for Linux execution.
+pub fn find_cli_in_host_path(tool: &str, jean_managed: Option<&Path>) -> Option<PathBuf> {
+    let which_cmd = if cfg!(target_os = "windows") {
+        "where"
+    } else {
+        "which"
+    };
+
+    let output = silent_command(which_cmd).arg(tool).output().ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    select_cli_candidate(&stdout, cfg!(target_os = "windows"), jean_managed)
+        .filter(|path| path.exists())
 }
 
 /// Select the path Jean should use from `where`/`which` output.
@@ -121,6 +146,10 @@ fn is_jean_managed_candidate(path: &Path, jean_managed: Option<&Path>) -> bool {
     let Some(jean_path) = jean_managed else {
         return false;
     };
+
+    if path == jean_path {
+        return true;
+    }
 
     std::fs::canonicalize(path).is_ok_and(|canonical_found| canonical_found == jean_path)
 }
@@ -174,12 +203,42 @@ C:\tools\opencode.exe";
     }
 
     #[test]
+    fn windows_path_detection_prefers_batch_over_extensionless_and_ps1() {
+        let output = r"C:\Users\u\AppData\Roaming\npm\codex
+C:\Users\u\AppData\Roaming\npm\codex.ps1
+C:\Users\u\AppData\Roaming\npm\codex.bat";
+
+        assert_eq!(
+            select_cli_candidate(output, true, None),
+            Some(PathBuf::from(r"C:\Users\u\AppData\Roaming\npm\codex.bat"))
+        );
+    }
+
+    #[test]
     fn unix_path_detection_keeps_first_candidate() {
         let output = "/usr/local/bin/opencode\n/opt/bin/opencode";
 
         assert_eq!(
             select_cli_candidate(output, false, None),
             Some(PathBuf::from("/usr/local/bin/opencode"))
+        );
+    }
+
+    #[test]
+    fn path_detection_skips_jean_managed_candidate_before_ranking() {
+        let output = r"C:\Users\u\AppData\Roaming\jean\codex-cli\codex.exe
+C:\Users\u\AppData\Roaming\npm\codex
+C:\Users\u\AppData\Roaming\npm\codex.cmd";
+
+        assert_eq!(
+            select_cli_candidate(
+                output,
+                true,
+                Some(std::path::Path::new(
+                    r"C:\Users\u\AppData\Roaming\jean\codex-cli\codex.exe"
+                ))
+            ),
+            Some(PathBuf::from(r"C:\Users\u\AppData\Roaming\npm\codex.cmd"))
         );
     }
 

@@ -113,7 +113,6 @@ import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { SecurityAlertsBadge } from '@/components/shared/SecurityAlertsBadge'
 import { PlanDialog } from '@/components/chat/PlanDialog'
-import { RecapDialog } from '@/components/chat/RecapDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
 
 import { LabelModal } from '@/components/chat/LabelModal'
@@ -2189,8 +2188,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     planApprovalContext,
     planDialogCard,
     closePlanDialog,
-    recapDialogContent,
-    closeRecapDialog,
   } = useCanvasShortcutEvents({
     selectedCard,
     enabled: !selectedWorktreeModal && selectedIndex !== null,
@@ -2594,7 +2591,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     !!selectedWorktreeModal ||
     !!planDialogPath ||
     !!planDialogContent ||
-    !!recapDialogContent ||
     worktreeLabelModalOpen ||
     !!labelDeleteTarget
   const { cardRefs } = useCanvasKeyboardNav({
@@ -3528,13 +3524,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         />
       ) : null}
 
-      {recapDialogContent ? (
-        <RecapDialog
-          content={recapDialogContent}
-          isOpen={true}
-          onClose={closeRecapDialog}
-        />
-      ) : null}
+
 
       {/* Worktree Label Modal */}
       <LabelModal

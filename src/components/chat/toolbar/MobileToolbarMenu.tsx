@@ -15,7 +15,6 @@ import {
   MessageSquare,
   Megaphone,
   RefreshCw,
-  Sparkles,
   Undo2,
   Wand2,
 } from 'lucide-react'
@@ -45,8 +44,6 @@ interface MobileToolbarMenuProps {
   onReview: () => void
   onMerge: () => void
   onMergePr: () => void
-  onOpenMagicModal: () => void
-
   handlePullClick: () => void
   handlePushClick: () => void
 }
@@ -65,7 +62,6 @@ export function MobileToolbarMenu({
   onReview,
   onMerge,
   onMergePr,
-  onOpenMagicModal,
   handlePullClick,
   handlePushClick,
 }: MobileToolbarMenuProps) {
@@ -85,26 +81,6 @@ export function MobileToolbarMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align={isMobile ? 'end' : 'start'} className="w-56">
-        <DropdownMenuItem
-          onClick={() => {
-            setMenuOpen(false)
-            onOpenMagicModal()
-          }}
-        >
-          <Wand2 className="h-4 w-4" />
-          Magic
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            ⌘M
-          </span>
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-
         <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Context
         </div>
@@ -149,23 +125,7 @@ export function MobileToolbarMenu({
             K
           </span>
         </DropdownMenuItem>
-        <DropdownMenuItem
-          onClick={() => {
-            setMenuOpen(false)
-            window.dispatchEvent(new CustomEvent('open-recap'))
-          }}
-        >
-          <Sparkles className="h-4 w-4" />
-          Create Recap
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            T
-          </span>
-        </DropdownMenuItem>
+
 
         <DropdownMenuSeparator />
 

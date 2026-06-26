@@ -453,3 +453,15 @@ When adding entirely new systems:
 5. **Event-driven bridges** - Keep Rust and React loosely coupled
 6. **Test everything** - Use quality gates to maintain code health
 7. **Document patterns** - Keep docs current as patterns evolve
+
+### Cross-platform CLI resolution and launch
+
+When resolving external CLIs from PATH, use `crate::platform::detect_cli_in_path()` or
+`crate::platform::find_cli_in_host_path()` instead of parsing `where`/`which` output manually.
+On Windows, npm installs can return an extensionless Unix shim before the runnable `.cmd`/`.exe`
+shim; the shared selector ranks `.exe`, `.cmd`, `.bat`, extensionless, then `.ps1`.
+
+When launching a resolved CLI path, use `crate::platform::cli_command()` instead of
+`silent_command()` directly. It keeps `CREATE_NO_WINDOW`, wraps Windows `.cmd`/`.bat` shims with
+`cmd.exe /C`, and routes commands through WSL when WSL mode is enabled. Pass the working directory
+as the `cwd` argument so WSL launches receive `wsl.exe --cd ...` rather than a host-only cwd.

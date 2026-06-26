@@ -24,7 +24,6 @@ use super::types::{
 };
 use crate::claude_cli::resolve_cli_binary;
 use crate::http_server::EmitExt;
-use crate::platform::silent_command;
 use crate::projects::github_issues::{
     add_issue_reference, add_pr_reference, get_session_issue_refs, get_session_pr_refs,
 };
@@ -6725,7 +6724,7 @@ fn execute_summarization_claude(
 
     log::trace!("Executing one-shot Claude summarization with JSON schema");
 
-    let mut cmd = silent_command(&cli_path);
+    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args([
         "--print",
@@ -7685,7 +7684,7 @@ fn check_mcp_health_claude(app: &AppHandle) -> Result<McpHealthResult, String> {
 
     log::debug!("Running: claude mcp list");
 
-    let output = silent_command(&cli_path)
+    let output = crate::platform::cli_command(&cli_path.to_string_lossy(), None)
         .args(["mcp", "list"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -7711,7 +7710,7 @@ fn check_mcp_health_codex(app: &AppHandle) -> Result<McpHealthResult, String> {
 
     log::debug!("Running: codex mcp list --json");
 
-    let output = silent_command(&cli_path)
+    let output = crate::platform::cli_command(&cli_path.to_string_lossy(), None)
         .args(["mcp", "list", "--json"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -7737,7 +7736,7 @@ fn check_mcp_health_opencode(app: &AppHandle) -> Result<McpHealthResult, String>
 
     log::debug!("Running: opencode mcp list");
 
-    let output = silent_command(&cli_path)
+    let output = crate::platform::cli_command(&cli_path.to_string_lossy(), None)
         .args(["mcp", "list"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

@@ -6919,7 +6919,7 @@ fn generate_pr_content_from_inputs(
         return Err("Claude CLI not installed".to_string());
     }
 
-    let mut cmd = silent_command(&cli_path);
+    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args(build_claude_structured_output_args(
         model_str,
@@ -7560,7 +7560,7 @@ fn generate_commit_message_once(
         return Err("Claude CLI not installed".to_string());
     }
 
-    let mut cmd = silent_command(&cli_path);
+    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args(build_claude_structured_output_args(
         model_str,
@@ -7933,16 +7933,13 @@ fn execute_codex_review(
         working_dir
     );
 
-    let mut cmd = crate::platform::silent_command(&cli_path);
+    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), working_dir);
     cmd.args(build_codex_review_args(
         actual_model,
         is_fast,
         &schema_file,
         working_dir,
     ));
-    if let Some(dir) = working_dir {
-        cmd.current_dir(dir);
-    }
     cmd.stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
@@ -8093,7 +8090,7 @@ fn generate_review(
 
     log::trace!("Running code review with Claude CLI (JSON schema)");
 
-    let mut cmd = silent_command(&cli_path);
+    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args(build_claude_structured_output_args(
         model_str,
@@ -8587,7 +8584,10 @@ pub async fn run_coderabbit_review(
         return Err("CodeRabbit CLI not installed".to_string());
     }
 
-    let mut cmd = silent_command(&binary_path);
+    let mut cmd = crate::platform::cli_command(
+        &binary_path.to_string_lossy(),
+        Some(std::path::Path::new(&worktree_path)),
+    );
     cmd.args(["review", "--agent", "--dir", &worktree_path]);
     if let Some(review_type) = review_type
         .as_deref()
@@ -8595,9 +8595,7 @@ pub async fn run_coderabbit_review(
     {
         cmd.args(["--type", review_type]);
     }
-    cmd.current_dir(&worktree_path)
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
 
     let child = cmd
         .spawn()
@@ -9252,7 +9250,7 @@ fn generate_release_notes_content(
 
     log::trace!("Generating release notes with Claude CLI (JSON schema)");
 
-    let mut cmd = silent_command(&cli_path);
+    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
     cmd.args(build_claude_structured_output_args(
         model_str,
@@ -9630,7 +9628,7 @@ fn generate_release_post_content(
             return Err("Claude CLI not installed".to_string());
         }
 
-        let mut cmd = silent_command(&cli_path);
+        let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
         crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
         cmd.args(build_claude_structured_output_args(
             model_str,

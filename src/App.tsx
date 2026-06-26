@@ -64,7 +64,10 @@ import {
 import { scheduleIdleWork } from './lib/idle'
 import { isWindows } from './lib/platform'
 import { checkWebClientVersion } from './lib/web-client-version'
-import { collectWorktreePaths } from './lib/initial-data-cache'
+import {
+  collectExecutionModes,
+  collectWorktreePaths,
+} from './lib/initial-data-cache'
 import { useExternalLinkInterceptor } from './hooks/useExternalLinkInterceptor'
 
 interface AutoFixStoppedEvent {
@@ -264,6 +267,23 @@ function App() {
             ...worktreePaths,
           },
         })
+      }
+      const executionModeUpdates = collectExecutionModes({
+        sessionsByWorktree: data.sessionsByWorktree,
+        activeSessions: data.activeSessions,
+      })
+      if (Object.keys(executionModeUpdates).length > 0) {
+        beginSessionStateHydration()
+        try {
+          useChatStore.setState(state => ({
+            executionModes: {
+              ...state.executionModes,
+              ...executionModeUpdates,
+            },
+          }))
+        } finally {
+          endSessionStateHydration()
+        }
       }
 
       // Seed sessions for each worktree (WorktreeSessions struct)

@@ -552,7 +552,7 @@ fn default_compact_chat_view_enabled() -> bool {
 }
 
 fn default_auto_recaps_enabled() -> bool {
-    false // Disabled by default
+    true // Enabled by default
 }
 
 fn default_chrome_enabled() -> bool {

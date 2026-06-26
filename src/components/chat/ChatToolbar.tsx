@@ -405,7 +405,6 @@ export const ChatToolbar = memo(function ChatToolbar({
             onReview={onReview}
             onMerge={onMerge}
             onMergePr={onMergePr}
-            onOpenMagicModal={onOpenMagicModal}
             handlePullClick={handlePullClick}
             handlePushClick={handlePushClick}
           />

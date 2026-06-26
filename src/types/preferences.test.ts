@@ -18,8 +18,8 @@ describe('magic prompt preference resolvers', () => {
     expect(defaultPreferences.grok_cli_source).toBe('jean')
   })
 
-  it('keeps automatic recaps off by default', () => {
-    expect(defaultPreferences.auto_recaps_enabled).toBe(false)
+  it('keeps automatic recaps on by default', () => {
+    expect(defaultPreferences.auto_recaps_enabled).toBe(true)
   })
 
   it('prefers explicit backend overrides', () => {

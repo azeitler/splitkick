@@ -266,7 +266,7 @@ fn choose_auth_method_with_api_key(init: &Value, has_api_key: bool) -> Option<St
 }
 
 fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
-    let mut child = match silent_command(binary)
+    let mut child = match crate::platform::cli_command(&binary.to_string_lossy(), None)
         .args(["agent", "stdio"])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -452,7 +452,10 @@ pub async fn check_grok_cli_installed(app: AppHandle) -> Result<GrokCliStatus, S
             path: None,
         });
     }
-    let version = match silent_command(&binary_path).arg("--version").output() {
+    let version = match crate::platform::cli_command(&binary_path.to_string_lossy(), None)
+        .arg("--version")
+        .output()
+    {
         Ok(output) if output.status.success() => parse_version(&output.stdout),
         _ => None,
     };
@@ -473,7 +476,7 @@ pub async fn detect_grok_in_path(app: AppHandle) -> Result<GrokPathDetection, St
             package_manager: None,
         });
     };
-    let version = silent_command(&path)
+    let version = crate::platform::cli_command(&path.to_string_lossy(), None)
         .arg("--version")
         .output()
         .ok()
@@ -506,7 +509,7 @@ pub async fn list_grok_models(app: AppHandle) -> Result<Vec<GrokModelInfo>, Stri
         return Ok(fallback_models());
     }
 
-    let mut command = silent_command(&binary_path);
+    let mut command = crate::platform::cli_command(&binary_path.to_string_lossy(), None);
     command.arg("models");
     let result = run_command_with_timeout(command, MODELS_CHECK_TIMEOUT)?;
     match result {
@@ -610,7 +613,7 @@ pub async fn install_grok_cli(app: AppHandle, version: Option<String>) -> Result
         ));
     }
 
-    let verify = silent_command(&binary_path)
+    let verify = crate::platform::cli_command(&binary_path.to_string_lossy(), None)
         .arg("--version")
         .output()
         .map_err(|e| format!("Failed to verify Grok CLI: {e}"))?;
@@ -648,7 +651,7 @@ pub async fn login_grok_cli_device(app: AppHandle) -> Result<(), String> {
     // for a process we already terminated. Use spawn_blocking to avoid stalling
     // the async runtime while the child waits on user input.
     let output = tokio::task::spawn_blocking(move || {
-        silent_command(&binary_path)
+        crate::platform::cli_command(&binary_path.to_string_lossy(), None)
             .args(["login", "--device-auth"])
             .output()
     })

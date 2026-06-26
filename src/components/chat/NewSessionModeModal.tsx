@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/dialog'
 import { Kbd } from '@/components/ui/kbd'
 import { cn } from '@/lib/utils'
+import { invoke } from '@/lib/transport'
 import { useCreateSession } from '@/services/chat'
 import { useClaudeCliStatus } from '@/services/claude-cli'
 import { useCodexCliStatus } from '@/services/codex-cli'
@@ -177,13 +178,24 @@ export function NewSessionModeModal() {
       { worktreeId, worktreePath },
       {
         onSuccess: session => {
+          const defaultExecutionMode =
+            preferences?.default_execution_mode ?? 'plan'
+          useChatStore
+            .getState()
+            .setExecutionMode(session.id, defaultExecutionMode)
+          invoke('update_session_state', {
+            worktreeId,
+            worktreePath,
+            sessionId: session.id,
+            selectedExecutionMode: defaultExecutionMode,
+          }).catch(() => undefined)
           useChatStore.getState().setActiveSession(worktreeId, session.id)
           useUIStore.getState().setSessionPrimarySurface(session.id, 'chat')
           openSessionModal(session.id, worktreeId, worktreePath)
         },
       }
     )
-  }, [close, createSession, openSessionModal, target])
+  }, [close, createSession, openSessionModal, preferences, target])
 
   const choosePlainTerminal = useCallback(() => {
     setNativePickerInitialCommandArgs([])

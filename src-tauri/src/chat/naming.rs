@@ -4,7 +4,6 @@
 //! based on the first message in a session.
 
 use crate::claude_cli::resolve_cli_binary;
-use crate::platform::silent_command;
 use crate::projects::git;
 use crate::projects::storage::{load_projects_data, save_projects_data};
 
@@ -376,7 +375,7 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
         "Generating names with Claude CLI using model {model_alias}, has_images: {has_images}, has_text_files: {has_text_files}, has_file_mentions: {has_file_mentions}"
     );
 
-    let mut cmd = silent_command(&cli_path);
+    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(
         &mut cmd,
         request.custom_profile_name.as_deref(),

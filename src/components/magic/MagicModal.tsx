@@ -14,7 +14,6 @@ import {
   FolderOpen,
   Bug,
   RefreshCw,
-  Sparkles,
   Undo2,
   Link2,
   ShieldAlert,
@@ -113,7 +112,6 @@ type MagicOption =
   | 'save-context'
   | 'load-context'
   | 'linked-projects'
-  | 'create-recap'
   | 'commit'
   | 'commit-and-push'
   | 'pull'
@@ -141,7 +139,6 @@ interface TriggerCodeRabbitPrReviewResponse {
 
 /** Options that work on canvas without an open session (git-only operations) */
 const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
-  'create-recap',
   'commit',
   'commit-and-push',
   'revert-last-commit',
@@ -236,12 +233,6 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           label: 'Linked Projects',
           icon: Link2,
           key: 'K',
-        },
-        {
-          id: 'create-recap',
-          label: 'Create Recap',
-          icon: Sparkles,
-          key: 'T',
         },
       ],
     },
@@ -361,7 +352,6 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   s: 'save-context',
   l: 'load-context',
   k: 'linked-projects',
-  t: 'create-recap',
   c: 'commit',
   p: 'commit-and-push',
   d: 'pull',
@@ -1958,17 +1948,7 @@ ${resolveInstructions}`
         return
       }
 
-      // Create recap: dispatch open-recap event (handled by ChatWindow or canvas hooks)
-      if (option === 'create-recap') {
-        if (!activeSessionId) {
-          toast.info('No active session to create a recap for')
-          setMagicModalOpen(false)
-          return
-        }
-        setMagicModalOpen(false)
-        window.dispatchEvent(new CustomEvent('open-recap'))
-        return
-      }
+
 
       // Investigate options: guard against missing contexts
       if (
@@ -2224,7 +2204,6 @@ ${resolveInstructions}`
                         const isDisabled =
                           (isOnCanvas &&
                             !CANVAS_ALLOWED_OPTIONS.has(option.id)) ||
-                          (option.id === 'create-recap' && !activeSessionId) ||
                           (option.id === 'investigate-issue' &&
                             !hasIssueContexts) ||
                           (option.id === 'investigate-pr' && !hasPrContexts) ||

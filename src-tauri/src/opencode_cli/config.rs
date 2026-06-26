@@ -1,6 +1,6 @@
 //! Configuration and path management for the OpenCode CLI
 
-use crate::platform::{get_wsl_config, get_wsl_home_dir, silent_command};
+use crate::platform::{get_wsl_config, get_wsl_home_dir};
 use std::path::PathBuf;
 use tauri::{AppHandle, Manager};
 
@@ -72,27 +72,8 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
             ) {
                 return PathBuf::from(unix_path);
             }
-        } else {
-            let which_cmd = if cfg!(target_os = "windows") {
-                "where"
-            } else {
-                "which"
-            };
-
-            if let Ok(output) = silent_command(which_cmd).arg("opencode").output() {
-                if output.status.success() {
-                    let stdout = String::from_utf8_lossy(&output.stdout);
-                    if let Some(path) = crate::platform::select_cli_candidate(
-                        &stdout,
-                        cfg!(target_os = "windows"),
-                        None,
-                    ) {
-                        if path.exists() {
-                            return path;
-                        }
-                    }
-                }
-            }
+        } else if let Some(path) = crate::platform::find_cli_in_host_path("opencode", None) {
+            return path;
         }
         log::warn!("opencode_cli_source is 'path' but could not find opencode in PATH, falling back to Jean-managed binary");
     }

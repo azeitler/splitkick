@@ -2,7 +2,6 @@
 
 use super::types::{ContentBlock, ToolCall, UsageData};
 use crate::http_server::EmitExt;
-use crate::platform::silent_command;
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read};
 use std::path::Path;
@@ -791,9 +790,8 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
     log::info!("[Grok] cli_path={}", cli_path.display());
     log::info!("[Grok] command: {}", format_grok_command(&cli_path, &args));
 
-    let mut cmd = silent_command(&cli_path);
+    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), Some(working_dir));
     cmd.args(&args)
-        .current_dir(working_dir)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -932,7 +930,7 @@ pub fn execute_one_shot_grok(
     let model = resolve_one_shot_grok_model(model);
     let json_prompt =
         format!("{prompt}\n\nReturn only a single valid JSON object. Do not wrap it in markdown.");
-    let mut cmd = silent_command(&cli_path);
+    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     cmd.args([
         "--no-auto-update",
         "-p",

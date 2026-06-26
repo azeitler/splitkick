@@ -14,6 +14,16 @@ let cursorInstalled: boolean
 let commandCodeInstalled: boolean
 let grokInstalled: boolean
 let isMobile: boolean
+let defaultExecutionMode: 'plan' | 'build' | 'yolo'
+
+vi.mock('@/services/preferences', () => ({
+  usePreferences: () => ({
+    data: {
+      default_new_session_kind: 'chat',
+      default_execution_mode: defaultExecutionMode,
+    },
+  }),
+}))
 
 vi.mock('@/services/chat', () => ({
   useCreateSession: () => ({
@@ -100,6 +110,7 @@ describe('NewSessionModeModal', () => {
     commandCodeInstalled = false
     grokInstalled = false
     isMobile = false
+    defaultExecutionMode = 'plan'
     invoke.mockResolvedValue({
       commandArgs: ['--context-arg', 'context-value'],
     })
@@ -829,6 +840,35 @@ describe('NewSessionModeModal', () => {
     expect(useUIStore.getState().sessionPrimarySurface['session-chat-1']).toBe(
       'chat'
     )
+  })
+
+  it('applies the default execution mode to new Jean chat sessions', () => {
+    defaultExecutionMode = 'yolo'
+    mutate.mockImplementation(
+      (
+        _args: unknown,
+        opts?: { onSuccess?: (session: { id: string }) => void }
+      ) => {
+        opts?.onSuccess?.({ id: 'session-yolo' })
+      }
+    )
+    useUIStore.getState().openNewSessionModeModal({
+      worktreeId: 'worktree-1',
+      worktreePath: '/tmp/worktree-1',
+      origin: 'chat',
+    })
+
+    render(<NewSessionModeModal />)
+
+    fireEvent.keyDown(window, { key: 'Enter' })
+
+    expect(useChatStore.getState().executionModes['session-yolo']).toBe('yolo')
+    expect(invoke).toHaveBeenCalledWith('update_session_state', {
+      worktreeId: 'worktree-1',
+      worktreePath: '/tmp/worktree-1',
+      sessionId: 'session-yolo',
+      selectedExecutionMode: 'yolo',
+    })
   })
 
   it('shows fixed option descriptions without truncation', () => {
