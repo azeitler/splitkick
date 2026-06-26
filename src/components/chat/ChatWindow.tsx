@@ -2720,6 +2720,7 @@ export function ChatWindow({
                                       onQuestionAnswer={handleQuestionAnswer}
                                       onQuestionSkip={handleSkipQuestion}
                                       onFileClick={setViewingFilePath}
+                                      worktreePath={activeWorktreePath}
                                       isQuestionAnswered={isQuestionAnswered}
                                       getSubmittedAnswers={getSubmittedAnswers}
                                       areQuestionsSkipped={areQuestionsSkipped}
@@ -2736,6 +2737,7 @@ export function ChatWindow({
                                       onQuestionAnswer={handleQuestionAnswer}
                                       onQuestionSkip={handleSkipQuestion}
                                       onFileClick={setViewingFilePath}
+                                      worktreePath={activeWorktreePath}
                                       isQuestionAnswered={isQuestionAnswered}
                                       getSubmittedAnswers={getSubmittedAnswers}
                                       areQuestionsSkipped={areQuestionsSkipped}
