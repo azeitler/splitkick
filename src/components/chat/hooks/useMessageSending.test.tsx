@@ -437,7 +437,7 @@ describe('useMessageSending Codex auto-steer', () => {
     vi.mocked(steerOpencodeTurn).mockResolvedValue(undefined)
     const { result, sendMessage } = renderUseMessageSending({
       selectedBackend: 'opencode',
-      selectedModel: 'opencode/gpt-5.3-codex',
+      selectedModel: 'opencode/gpt-5.5',
       inputValue: 'also inspect opencode',
     })
 
@@ -535,7 +535,7 @@ describe('useMessageSending Codex auto-steer', () => {
   it('queues opencode prompts instead of steering when opencode auto-steer is disabled', async () => {
     const { result } = renderUseMessageSending({
       selectedBackend: 'opencode',
-      selectedModel: 'opencode/gpt-5.3-codex',
+      selectedModel: 'opencode/gpt-5.5',
       opencodeAutoSteer: false,
       inputValue: 'also inspect opencode',
     })

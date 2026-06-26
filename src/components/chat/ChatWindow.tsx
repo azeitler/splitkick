@@ -1211,7 +1211,7 @@ export function ChatWindow({
         (yoloBackend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.5')
           : yoloBackend === 'opencode'
-            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
             : yoloBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : yoloBackend === 'pi'
@@ -1397,7 +1397,7 @@ export function ChatWindow({
         (buildBackend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.5')
           : buildBackend === 'opencode'
-            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
             : buildBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : buildBackend === 'pi'
@@ -1666,7 +1666,7 @@ export function ChatWindow({
         (modeBackend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.5')
           : modeBackend === 'opencode'
-            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
             : modeBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : modeBackend === 'pi'

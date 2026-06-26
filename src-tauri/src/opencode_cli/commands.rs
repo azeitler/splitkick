@@ -873,7 +873,7 @@ mod tests {
 
     #[test]
     fn parses_model_lines_from_plain_output() {
-        let output = "\u{1b}[1mModels cache refreshed\u{1b}[0m\nopencode/gpt-5.3-codex\nanthropic/claude-sonnet-4-6\nopenrouter/anthropic/claude-3.5-haiku:free\n";
+        let output = "\u{1b}[1mModels cache refreshed\u{1b}[0m\nopencode/gpt-5.5\nanthropic/claude-sonnet-4-6\nopenrouter/anthropic/claude-3.5-haiku:free\n";
 
         let models = parse_opencode_models_output(output);
 
@@ -881,7 +881,7 @@ mod tests {
             models,
             vec![
                 "anthropic/claude-sonnet-4-6".to_string(),
-                "opencode/gpt-5.3-codex".to_string(),
+                "opencode/gpt-5.5".to_string(),
                 "openrouter/anthropic/claude-3.5-haiku:free".to_string(),
             ]
         );
@@ -890,7 +890,7 @@ mod tests {
     #[test]
     fn ignores_verbose_json_metadata_and_deduplicates_models() {
         let output = r#"
-opencode/gpt-5.3-codex
+opencode/gpt-5.5
 {
   "id": "gpt-5.3-codex",
   "name": "GPT-5.3 Codex",
@@ -899,7 +899,7 @@ opencode/gpt-5.3-codex
   },
   "url": "https://opencode.ai/zen/v1"
 }
-opencode/gpt-5.3-codex
+opencode/gpt-5.5
 moonshotai/kimi-k2.5
 "#;
 
@@ -909,7 +909,7 @@ moonshotai/kimi-k2.5
             models,
             vec![
                 "moonshotai/kimi-k2.5".to_string(),
-                "opencode/gpt-5.3-codex".to_string(),
+                "opencode/gpt-5.5".to_string(),
             ]
         );
     }

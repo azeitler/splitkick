@@ -518,7 +518,7 @@ export function MagicModal() {
       (backend === 'codex'
         ? (preferences?.selected_codex_model ?? 'gpt-5.5')
         : backend === 'opencode'
-          ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+          ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
           : backend === 'cursor'
             ? (preferences?.selected_cursor_model ?? 'cursor/auto')
             : backend === 'commandcode'
@@ -550,7 +550,7 @@ export function MagicModal() {
       (backend === 'codex'
         ? (preferences?.selected_codex_model ?? 'gpt-5.5')
         : backend === 'opencode'
-          ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+          ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
           : backend === 'cursor'
             ? (preferences?.selected_cursor_model ?? 'cursor/auto')
             : backend === 'commandcode'
@@ -1182,7 +1182,7 @@ export function MagicModal() {
                   ? (preferences?.selected_codex_model ?? 'gpt-5.5')
                   : resolvedBackend === 'opencode'
                     ? (preferences?.selected_opencode_model ??
-                      'opencode/gpt-5.3-codex')
+                      'opencode/gpt-5.5')
                     : resolvedBackend === 'cursor'
                       ? (preferences?.selected_cursor_model ?? 'cursor/auto')
                       : (preferences?.selected_model ?? 'sonnet'))
@@ -1341,7 +1341,7 @@ ${resolveInstructions}`
                 ? (preferences?.selected_codex_model ?? 'gpt-5.5')
                 : resolvedBackend === 'opencode'
                   ? (preferences?.selected_opencode_model ??
-                    'opencode/gpt-5.3-codex')
+                    'opencode/gpt-5.5')
                   : resolvedBackend === 'cursor'
                     ? (preferences?.selected_cursor_model ?? 'cursor/auto')
                     : (preferences?.selected_model ?? 'sonnet'))

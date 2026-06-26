@@ -949,7 +949,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   }
 
   const selectedOpenCodeModel =
-    preferences?.selected_opencode_model ?? 'opencode/gpt-5'
+    preferences?.selected_opencode_model ?? 'opencode/gpt-5.5'
   const formatOpenCodeModelLabelForSettings = (value: string) => {
     const formatted = formatOpencodeModelLabel(value)
     return value.startsWith('opencode/')

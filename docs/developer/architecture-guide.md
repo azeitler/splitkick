@@ -152,6 +152,13 @@ Cursor-specific notes:
 - Cursor `plan` runs synthesize an `EnterPlanMode` timeline item from Jean so the native plan banner/instructions survive streaming + JSONL reload
 - Cursor history repair should prefer complete message snapshots / repeated-prefix cleanup; avoid destructive suffix trimming during reload
 
+Grok-specific notes:
+
+- Grok chat uses ACP over stdio (`grok --no-auto-update agent --no-leader stdio`) instead of `grok -p`, because headless `-p` streaming JSON does not expose reliable tool-call events.
+- Grok ACP processes are kept warm per Jean session and reused for follow-up prompts, then idle-stopped after five minutes. If the process is gone (app restart, crash, cancellation, model/mode flag change), Jean spawns a new ACP process and reloads via persisted `grok_session_id`.
+- ACP `session/update` chunks are mapped to Jean's common chat stream events (`chat:chunk`, `chat:tool_use`, `chat:tool_result`, `chat:done`), and ACP session ids are persisted as `grok_session_id` for later `session/load`.
+- Jean implements the minimal ACP client surface Grok needs for headless tool execution: `session/request_permission`, `terminal/*`, and text-file read/write requests. Plan mode denies terminal and write requests; build/yolo can auto-approve via ACP/CLI flags.
+
 ### Component Hierarchy
 
 ```

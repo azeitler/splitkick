@@ -776,20 +776,20 @@ export const CODEX_FAST_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels =
 
 /** OpenCode preset for all magic prompts */
 export const OPENCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels = {
-  investigate_issue_model: 'opencode/gpt-5.3-codex',
-  investigate_pr_model: 'opencode/gpt-5.3-codex',
-  investigate_workflow_run_model: 'opencode/gpt-5.3-codex',
-  pr_content_model: 'opencode/gpt-5.3-codex',
-  commit_message_model: 'opencode/gpt-5.3-codex',
-  code_review_model: 'opencode/gpt-5.3-codex',
-  context_summary_model: 'opencode/gpt-5.3-codex',
-  resolve_conflicts_model: 'opencode/gpt-5.3-codex',
-  release_notes_model: 'opencode/gpt-5.3-codex',
-  session_naming_model: 'opencode/gpt-5.3-codex',
-  investigate_security_alert_model: 'opencode/gpt-5.3-codex',
-  investigate_advisory_model: 'opencode/gpt-5.3-codex',
-  investigate_linear_issue_model: 'opencode/gpt-5.3-codex',
-  review_comments_model: 'opencode/gpt-5.3-codex',
+  investigate_issue_model: 'opencode/gpt-5.5',
+  investigate_pr_model: 'opencode/gpt-5.5',
+  investigate_workflow_run_model: 'opencode/gpt-5.5',
+  pr_content_model: 'opencode/gpt-5.5',
+  commit_message_model: 'opencode/gpt-5.5',
+  code_review_model: 'opencode/gpt-5.5',
+  context_summary_model: 'opencode/gpt-5.5',
+  resolve_conflicts_model: 'opencode/gpt-5.5',
+  release_notes_model: 'opencode/gpt-5.5',
+  session_naming_model: 'opencode/gpt-5.5',
+  investigate_security_alert_model: 'opencode/gpt-5.5',
+  investigate_advisory_model: 'opencode/gpt-5.5',
+  investigate_linear_issue_model: 'opencode/gpt-5.5',
+  review_comments_model: 'opencode/gpt-5.5',
 }
 
 /** Grok preset for all magic prompts */
@@ -1930,7 +1930,7 @@ export const defaultPreferences: AppPreferences = {
   default_backend: 'claude', // Default: Claude
   default_new_session_kind: 'chat', // Default: Jean Chat for CMD+T
   selected_codex_model: 'gpt-5.5', // Default: latest Codex model
-  selected_opencode_model: 'opencode/gpt-5.3-codex', // Default OpenCode model
+  selected_opencode_model: 'opencode/gpt-5.5', // Default OpenCode model
   selected_cursor_model: 'cursor/auto', // Default Cursor model
   selected_pi_model: 'pi/sonnet', // Default PI model
   selected_commandcode_model: 'commandcode/default', // Default Command Code model

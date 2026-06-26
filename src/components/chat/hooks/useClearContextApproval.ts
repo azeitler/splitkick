@@ -76,7 +76,7 @@ function getDefaultModelForBackend(
     return preferences?.selected_codex_model ?? 'gpt-5.5'
   }
   if (backend === 'opencode') {
-    return preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex'
+    return preferences?.selected_opencode_model ?? 'opencode/gpt-5.5'
   }
   if (backend === 'cursor') {
     return preferences?.selected_cursor_model ?? 'cursor/auto'

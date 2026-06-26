@@ -1230,6 +1230,10 @@ fn resolve_investigation_selection(
     let execution_mode = match kind {
         InvestigationKind::Issue => prefs.magic_prompt_modes.investigate_issue_mode.clone(),
         InvestigationKind::Pr => prefs.magic_prompt_modes.investigate_pr_mode.clone(),
+        InvestigationKind::Linear => prefs
+            .magic_prompt_modes
+            .investigate_linear_issue_mode
+            .clone(),
     };
 
     let worktree_id = worktree.get("id").and_then(|v| v.as_str());

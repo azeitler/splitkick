@@ -17,7 +17,7 @@ export const CODEX_MODEL_OPTIONS = codexModelOptions as {
 }[]
 
 export const OPENCODE_MODEL_OPTIONS: { value: string; label: string }[] = [
-  { value: 'opencode/gpt-5.3-codex', label: 'GPT-5.3 Codex (OpenCode)' },
+  { value: 'opencode/gpt-5.5', label: 'GPT 5.5 (OpenCode)' },
 ]
 
 export const COMMANDCODE_MODEL_OPTIONS: { value: string; label: string }[] = [
