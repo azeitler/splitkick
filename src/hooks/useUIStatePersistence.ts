@@ -383,8 +383,8 @@ export function useUIStatePersistence() {
       })
     }
 
-    const restoreTerminalRuntimeState = async () => {
-      if (isNativeApp()) return
+    const restoreTerminalRuntimeState = async (shouldCancel: () => boolean) => {
+      if (isNativeApp() || shouldCancel()) return
 
       // PHASE 1: Always restore the *user-intent* UI flags for terminal
       // surfaces. These are independent of whether any PTYs survived the
@@ -394,6 +394,7 @@ export function useUIStatePersistence() {
       // terminal instances still restores panel position.
       const persistedPanelOpen = uiState.terminal_panel_open ?? {}
       const persistedModalOpen = uiState.modal_terminal_open ?? {}
+      if (shouldCancel()) return
       useTerminalStore.setState(state => ({
         terminalPanelOpen: {
           ...state.terminalPanelOpen,
@@ -425,14 +426,16 @@ export function useUIStatePersistence() {
         liveTerminalIds = new Set(
           await invoke<string[]>('get_active_terminals')
         )
+        if (shouldCancel()) return
       } catch (error) {
+        if (shouldCancel()) return
         logger.warn('Failed to query active terminals during UI hydrate', {
           error,
         })
         const fallbackTerminalIds = Object.values(persistedTerminals)
           .flat()
           .map(terminal => terminal.id)
-        if (fallbackTerminalIds.length === 0) return
+        if (fallbackTerminalIds.length === 0 || shouldCancel()) return
 
         // If the liveness query fails transiently, keep persisted terminal
         // metadata in the store instead of presenting an empty terminal list.
@@ -442,7 +445,10 @@ export function useUIStatePersistence() {
         liveTerminalIds = new Set(fallbackTerminalIds)
       }
 
+      if (shouldCancel()) return
+
       if (liveTerminalIds.size === 0) {
+        if (shouldCancel()) return
         logger.debug('No live terminals to restore after web refresh', {
           persistedTerminalCount: Object.values(persistedTerminals).reduce(
             (sum, list) => sum + list.length,
@@ -455,12 +461,14 @@ export function useUIStatePersistence() {
         // Snapshot any xterm instances the frontend may have already created
         // before hydrate completed (e.g. a phantom shell from TerminalView's
         // auto-create mount effect) so we can dispose them below.
+        if (shouldCancel()) return
         const staleInstanceIds: string[] = []
         for (const list of Object.values(
           useTerminalStore.getState().terminals
         )) {
           for (const t of list) staleInstanceIds.push(t.id)
         }
+        if (shouldCancel()) return
         useTerminalStore.setState({
           terminals: {},
           activeTerminalIds: {},
@@ -477,6 +485,7 @@ export function useUIStatePersistence() {
           const deadSessionIds = new Set(
             Object.keys(persistedSessionTerminalIds)
           )
+          if (shouldCancel()) return
           useUIStore.setState(state => {
             const nextSessionTerminalIds: Record<string, string> = {}
             for (const [sid, tid] of Object.entries(state.sessionTerminalIds)) {
@@ -501,13 +510,17 @@ export function useUIStatePersistence() {
         }
         // Dispose frontend xterm instances + drop their buffered input/output.
         // Dynamic import to avoid a circular dep with terminal-instances.ts.
-        void import('@/lib/terminal-instances').then(({ disposeTerminal }) => {
-          for (const id of staleInstanceIds) {
-            void disposeTerminal(id).catch(() => undefined)
-          }
-        })
+        if (shouldCancel()) return
+        const { disposeTerminal } = await import('@/lib/terminal-instances')
+        if (shouldCancel()) return
+        for (const id of staleInstanceIds) {
+          if (shouldCancel()) return
+          await disposeTerminal(id).catch(() => undefined)
+        }
         return
       }
+
+      if (shouldCancel()) return
 
       const restoredTerminals: Record<string, TerminalInstance[]> = {}
       const restoredActiveIds: Record<string, string> = {}
@@ -572,6 +585,7 @@ export function useUIStatePersistence() {
       }
 
       if (Object.keys(restoredTerminals).length === 0) {
+        if (shouldCancel()) return
         useTerminalStore.setState({
           modalTerminalOpen: restoredModalOpen,
           terminalPanelOpen: {},
@@ -579,11 +593,14 @@ export function useUIStatePersistence() {
         return
       }
 
+      if (shouldCancel()) return
+
       logger.info('Restoring live terminal metadata after web refresh', {
         worktreeCount: Object.keys(restoredTerminals).length,
         terminalCount: restoredTerminalIds.size,
       })
 
+      if (shouldCancel()) return
       useTerminalStore.setState(state => ({
         terminals: restoredTerminals,
         activeTerminalIds: restoredActiveIds,
@@ -595,6 +612,7 @@ export function useUIStatePersistence() {
       }))
 
       if (Object.keys(restoredSessionTerminalIds).length > 0) {
+        if (shouldCancel()) return
         useUIStore.setState(state => ({
           sessionTerminalIds: {
             ...state.sessionTerminalIds,
@@ -776,7 +794,7 @@ export function useUIStatePersistence() {
     }
 
     let cancelled = false
-    void restoreTerminalRuntimeState().finally(() => {
+    void restoreTerminalRuntimeState(() => cancelled).finally(() => {
       if (cancelled) return
       queueMicrotask(() => {
         if (cancelled) return
