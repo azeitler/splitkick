@@ -1230,6 +1230,13 @@ export function SessionChatModal({
                             {sessionLabel ? 'Remove Label' : 'Add Label'}
                           </ContextMenuItem>
                           <ContextMenuItem
+                            // "Mark as Idle" only clears the manual reviewing
+                            // flag. When review is driven by AI review_results,
+                            // clearing the flag leaves the session in review —
+                            // no effect — so disable it there.
+                            disabled={
+                              status === 'review' && !!session.review_results
+                            }
                             onSelect={() => {
                               const { reviewingSessions, setSessionReviewing } =
                                 useChatStore.getState()
