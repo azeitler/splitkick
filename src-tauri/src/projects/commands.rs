@@ -7028,6 +7028,7 @@ fn generate_pr_content_from_inputs(
 
     let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
+    crate::chat::claude::apply_custom_profile_env(&mut cmd, custom_profile_name);
     cmd.args(build_claude_structured_output_args(
         model_str,
         "",
@@ -7669,6 +7670,7 @@ fn generate_commit_message_once(
 
     let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
+    crate::chat::claude::apply_custom_profile_env(&mut cmd, custom_profile_name);
     cmd.args(build_claude_structured_output_args(
         model_str,
         "",
@@ -8199,6 +8201,7 @@ fn generate_review(
 
     let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
+    crate::chat::claude::apply_custom_profile_env(&mut cmd, custom_profile_name);
     cmd.args(build_claude_structured_output_args(
         model_str,
         "none",
@@ -9309,6 +9312,7 @@ fn generate_release_notes_content(
 
     let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     crate::chat::claude::apply_custom_profile_settings(&mut cmd, custom_profile_name);
+    crate::chat::claude::apply_custom_profile_env(&mut cmd, custom_profile_name);
     cmd.args(build_claude_structured_output_args(
         model_str,
         "",
