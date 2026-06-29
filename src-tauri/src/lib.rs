@@ -562,7 +562,8 @@ fn default_chrome_enabled() -> bool {
 }
 
 fn default_auto_update_ai_backends() -> bool {
-    true // Enabled by default — auto-install CLI updates in background
+    false // Disabled by default — surface updates via toast instead of silently
+          // rolling the managed CLI past a working/pinned version
 }
 
 fn default_canvas_layout() -> String {

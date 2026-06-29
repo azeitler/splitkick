@@ -1992,7 +1992,7 @@ export const defaultPreferences: AppPreferences = {
   window_vibrancy: false, // Default: disabled (high GPU cost)
   terminal_background: 'auto',
   terminal_background_custom: null,
-  auto_update_ai_backends: true, // Default: auto-update AI backends in the background
+  auto_update_ai_backends: false, // Default: surface CLI updates via toast instead of silent background install
   jean_mcp_enabled: true, // Default: enabled
   jean_mcp_max_depth: 3,
   jean_mcp_rate_limit_per_minute: 20,

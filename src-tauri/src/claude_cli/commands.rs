@@ -293,8 +293,10 @@ pub async fn get_available_cli_versions() -> Result<Vec<ReleaseInfo>, String> {
         b_parts.cmp(&a_parts)
     });
 
-    // Take only the 5 most recent versions
-    versions.truncate(5);
+    // Take only the 12 most recent versions. Keeps enough history that users
+    // can pin a slightly older release (e.g. one that still exposes the
+    // AskUserQuestion tool) instead of being forced onto the very latest.
+    versions.truncate(12);
 
     log::trace!("Found {} Claude CLI versions", versions.len());
     Ok(versions)
