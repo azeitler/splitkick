@@ -40,6 +40,8 @@ import {
   useLoadOlderMessages,
   markPlanApproved as markPlanApprovedService,
   chatQueryKeys,
+  reconnectNativeCliSession,
+  canReconnectSession,
 } from '@/services/chat'
 import { useWorktree, useProjects, useRunScripts } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
@@ -448,6 +450,47 @@ export function ChatWindow({
       .getState()
       .setCodexGoal(deferredSessionId, session?.codex_goal ?? null)
   }, [deferredSessionId, session?.codex_goal])
+
+  // Auto-restore a native CLI terminal session after an app restart. On startup
+  // prefetchSessions restores the persisted `primary_surface: 'terminal'`, but
+  // the live PTY is gone so `sessionTerminalId` is unset — without this the
+  // terminal guard fails and ChatWindow falls back to an empty chat. Relaunch
+  // the terminal (e.g. `claude --resume <id>`) lazily for the active session so
+  // the conversation reappears in its terminal surface. The ref guards against
+  // a duplicate spawn while the async relaunch is in flight.
+  const autoReconnectingRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    if (!deferredSessionId || !session || !activeWorktreeId) return
+    // `primarySurface`/`sessionTerminalId` are keyed on `activeSessionId`, while
+    // `session`/`deferredSessionId` lag behind during a switch. Acting on that
+    // mismatch could relaunch the previous session's terminal (and yank the user
+    // back to it). Wait until the deferred value has caught up to the active one.
+    if (isSessionSwitching) return
+    if (primarySurface !== 'terminal' || sessionTerminalId) return
+    if (!canReconnectSession(session)) return
+    if (autoReconnectingRef.current.has(deferredSessionId)) return
+
+    const sessionId = deferredSessionId
+    autoReconnectingRef.current.add(sessionId)
+    void reconnectNativeCliSession(session, activeWorktreeId, {
+      openModal: false,
+      showToast: false,
+      markOpened: false,
+    })
+      .catch(error => {
+        logger.error('Auto-reconnect of terminal session failed', { error })
+      })
+      .finally(() => {
+        autoReconnectingRef.current.delete(sessionId)
+      })
+  }, [
+    deferredSessionId,
+    session,
+    activeWorktreeId,
+    primarySurface,
+    sessionTerminalId,
+    isSessionSwitching,
+  ])
 
   const loadOlderMessages = useLoadOlderMessages()
   const loadedRunStartIndex = session?.loaded_run_start_index ?? 0
@@ -1168,7 +1211,7 @@ export function ChatWindow({
         (yoloBackend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.5')
           : yoloBackend === 'opencode'
-            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
             : yoloBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : yoloBackend === 'pi'
@@ -1200,6 +1243,7 @@ export function ChatWindow({
             | 'cursor'
             | 'commandcode'
         )
+        store.setSelectedBackend(newSession.id, yoloBackend as CliBackend)
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
       queryClient.setQueryData<Session>(
@@ -1353,7 +1397,7 @@ export function ChatWindow({
         (buildBackend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.5')
           : buildBackend === 'opencode'
-            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
             : buildBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : buildBackend === 'pi'
@@ -1385,6 +1429,7 @@ export function ChatWindow({
             | 'cursor'
             | 'commandcode'
         )
+        store.setSelectedBackend(newSession.id, buildBackend as CliBackend)
       }
       // Optimistically update TanStack Query cache so UI shows correct backend/model immediately.
       queryClient.setQueryData<Session>(
@@ -1621,7 +1666,7 @@ export function ChatWindow({
         (modeBackend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.5')
           : modeBackend === 'opencode'
-            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
             : modeBackend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : modeBackend === 'pi'
@@ -1653,6 +1698,7 @@ export function ChatWindow({
             | 'cursor'
             | 'commandcode'
         )
+        store.setSelectedBackend(newSession.id, modeBackend as CliBackend)
       }
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(newSession.id),
@@ -2434,7 +2480,10 @@ export function ChatWindow({
         />
       )}
     >
-      <div className="flex h-full w-full min-w-0 flex-col overflow-hidden">
+      <div
+        data-chat-session-id={activeSessionId}
+        className="flex h-full w-full min-w-0 flex-col overflow-hidden"
+      >
         <ReviewMethodModal
           open={reviewMethodModalOpen}
           onOpenChange={setReviewMethodModalOpen}
@@ -2714,6 +2763,7 @@ export function ChatWindow({
                                       onQuestionAnswer={handleQuestionAnswer}
                                       onQuestionSkip={handleSkipQuestion}
                                       onFileClick={setViewingFilePath}
+                                      worktreePath={activeWorktreePath}
                                       isQuestionAnswered={isQuestionAnswered}
                                       getSubmittedAnswers={getSubmittedAnswers}
                                       areQuestionsSkipped={areQuestionsSkipped}
@@ -2730,6 +2780,7 @@ export function ChatWindow({
                                       onQuestionAnswer={handleQuestionAnswer}
                                       onQuestionSkip={handleSkipQuestion}
                                       onFileClick={setViewingFilePath}
+                                      worktreePath={activeWorktreePath}
                                       isQuestionAnswered={isQuestionAnswered}
                                       getSubmittedAnswers={getSubmittedAnswers}
                                       areQuestionsSkipped={areQuestionsSkipped}

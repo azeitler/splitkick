@@ -186,7 +186,7 @@ export function useGitOperations({
         (backend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.5')
           : backend === 'opencode'
-            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
             : backend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : (preferences?.selected_model ?? 'sonnet'))
@@ -356,7 +356,7 @@ export function useGitOperations({
         (backend === 'codex'
           ? (preferences?.selected_codex_model ?? 'gpt-5.5')
           : backend === 'opencode'
-            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+            ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
             : backend === 'cursor'
               ? (preferences?.selected_cursor_model ?? 'cursor/auto')
               : (preferences?.selected_model ?? 'sonnet'))

@@ -2206,6 +2206,47 @@ pub async fn dispatch_command(
             let result = crate::cursor_cli::get_cursor_install_command(app.clone()).await?;
             to_value(result)
         }
+        "check_grok_cli_installed" => {
+            let result = crate::grok_cli::check_grok_cli_installed(app.clone()).await?;
+            to_value(result)
+        }
+        "detect_grok_in_path" => {
+            let result = crate::grok_cli::detect_grok_in_path(app.clone()).await?;
+            to_value(result)
+        }
+        "check_grok_cli_auth" => {
+            let result = crate::grok_cli::check_grok_cli_auth(app.clone()).await?;
+            to_value(result)
+        }
+        "list_grok_models" => {
+            let result = crate::grok_cli::list_grok_models(app.clone()).await?;
+            to_value(result)
+        }
+        "get_available_grok_versions" => {
+            let result = crate::grok_cli::get_available_grok_versions(app.clone()).await?;
+            to_value(result)
+        }
+        "get_grok_install_command" => {
+            let result = crate::grok_cli::get_grok_install_command(app.clone()).await?;
+            to_value(result)
+        }
+        "install_grok_cli" => {
+            let version: Option<String> = from_field_opt(&args, "version")?;
+            crate::grok_cli::install_grok_cli(app.clone(), version).await?;
+            Ok(Value::Null)
+        }
+        "uninstall_grok_cli" => {
+            crate::grok_cli::uninstall_grok_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
+        "update_grok_cli" => {
+            crate::grok_cli::update_grok_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
+        "login_grok_cli_device" => {
+            crate::grok_cli::login_grok_cli_device(app.clone()).await?;
+            Ok(Value::Null)
+        }
         "check_pi_cli_installed" => {
             let result = crate::pi_cli::check_pi_cli_installed(app.clone()).await?;
             to_value(result)
@@ -2654,6 +2695,11 @@ pub async fn dispatch_command(
             let result = crate::chat::read_clipboard_image(app.clone()).await?;
             to_value(result)
         }
+        "write_clipboard_text" => {
+            let text: String = from_field(&args, "text")?;
+            crate::chat::write_clipboard_text(text).await?;
+            Ok(Value::Null)
+        }
         "regenerate_session_name" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
@@ -2825,30 +2871,6 @@ pub async fn dispatch_command(
             .await?;
             to_value(result)
         }
-        "generate_release_post" => {
-            let project_path: String = field(&args, "projectPath", "project_path")?;
-            let tag: String = from_field(&args, "tag")?;
-            let release_name: String = field(&args, "releaseName", "release_name")?;
-            let custom_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
-            let model: Option<String> = from_field_opt(&args, "model")?;
-            let custom_profile_name: Option<String> =
-                field_opt(&args, "customProfileName", "custom_profile_name")?;
-            let reasoning_effort: Option<String> =
-                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
-            let result = crate::projects::generate_release_post(
-                app.clone(),
-                project_path,
-                tag,
-                release_name,
-                custom_prompt,
-                model,
-                custom_profile_name,
-                reasoning_effort,
-            )
-            .await?;
-            to_value(result)
-        }
-
         // =====================================================================
         // GitHub Issues (additional)
         // =====================================================================

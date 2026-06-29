@@ -14,12 +14,10 @@ import {
   FolderOpen,
   Bug,
   RefreshCw,
-  Sparkles,
   Undo2,
   Link2,
   ShieldAlert,
   Loader2,
-  Megaphone,
 } from 'lucide-react'
 import {
   Dialog,
@@ -59,6 +57,7 @@ import {
 } from '@/services/github'
 import { usePreferences } from '@/services/preferences'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
+import { useAvailableGrokModels } from '@/services/grok-cli'
 import { invoke } from '@/lib/transport'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import { generateId } from '@/lib/uuid'
@@ -103,6 +102,7 @@ import {
   CODEX_MODEL_OPTIONS,
   MODEL_OPTIONS,
   OPENCODE_MODEL_OPTIONS,
+  GROK_MODEL_OPTIONS,
 } from '@/components/chat/toolbar/toolbar-options'
 import { formatOpencodeModelLabel } from '@/components/chat/toolbar/toolbar-utils'
 import { ReviewMethodModal } from '@/components/chat/ReviewMethodModal'
@@ -111,7 +111,6 @@ type MagicOption =
   | 'save-context'
   | 'load-context'
   | 'linked-projects'
-  | 'create-recap'
   | 'commit'
   | 'commit-and-push'
   | 'pull'
@@ -123,7 +122,6 @@ type MagicOption =
   | 'merge'
   | 'resolve-conflicts'
   | 'release-notes'
-  | 'release-post'
   | 'investigate-issue'
   | 'investigate-pr'
   | 'investigate-advisory'
@@ -139,7 +137,6 @@ interface TriggerCodeRabbitPrReviewResponse {
 
 /** Options that work on canvas without an open session (git-only operations) */
 const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
-  'create-recap',
   'commit',
   'commit-and-push',
   'revert-last-commit',
@@ -151,7 +148,6 @@ const CANVAS_ALLOWED_OPTIONS = new Set<MagicOption>([
   'review',
   'review-comments',
   'release-notes',
-  'release-post',
   'merge',
   'merge-pr',
   'resolve-conflicts',
@@ -235,12 +231,6 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           icon: Link2,
           key: 'K',
         },
-        {
-          id: 'create-recap',
-          label: 'Create Recap',
-          icon: Sparkles,
-          key: 'T',
-        },
       ],
     },
     {
@@ -306,12 +296,6 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           key: 'G',
         },
         {
-          id: 'release-post',
-          label: 'Generate Release Post',
-          icon: Megaphone,
-          key: 'X',
-        },
-        {
           id: 'update-pr',
           label: 'Generate PR Description',
           icon: RefreshCw,
@@ -359,7 +343,6 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   s: 'save-context',
   l: 'load-context',
   k: 'linked-projects',
-  t: 'create-recap',
   c: 'commit',
   p: 'commit-and-push',
   d: 'pull',
@@ -372,7 +355,6 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   m: 'merge',
   f: 'resolve-conflicts',
   g: 'release-notes',
-  x: 'release-post',
   i: 'investigate-issue',
   a: 'investigate-pr',
   y: 'investigate-advisory',
@@ -457,6 +439,9 @@ export function MagicModal() {
   const { data: availableOpencodeModels } = useAvailableOpencodeModels({
     enabled: installedBackends.includes('opencode'),
   })
+  const { data: availableGrokModels } = useAvailableGrokModels({
+    enabled: installedBackends.includes('grok'),
+  })
 
   // Build columns dynamically based on PR state
   const magicColumns = useMemo(() => buildMagicColumns(hasOpenPr), [hasOpenPr])
@@ -504,6 +489,16 @@ export function MagicModal() {
     }))
   }, [availableOpencodeModels])
 
+  const grokModelOptions = useMemo(() => {
+    const models = availableGrokModels?.length
+      ? availableGrokModels.map(model => ({
+          value: `grok/${model.id}`,
+          label: model.label || model.id,
+        }))
+      : GROK_MODEL_OPTIONS
+    return models
+  }, [availableGrokModels])
+
   const investigateDefaults = useMemo(() => {
     if (!investigateType) return null
 
@@ -523,13 +518,16 @@ export function MagicModal() {
       (backend === 'codex'
         ? (preferences?.selected_codex_model ?? 'gpt-5.5')
         : backend === 'opencode'
-          ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+          ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
           : backend === 'cursor'
             ? (preferences?.selected_cursor_model ?? 'cursor/auto')
             : backend === 'commandcode'
               ? (preferences?.selected_commandcode_model ??
                 'commandcode/default')
-              : (preferences?.selected_model ?? 'sonnet'))
+              : backend === 'grok'
+                ? (preferences?.selected_grok_model ??
+                  'grok/grok-composer-2.5-fast')
+                : (preferences?.selected_model ?? 'sonnet'))
     const provider = resolveMagicPromptProvider(
       preferences?.magic_prompt_providers,
       providerKey,
@@ -552,13 +550,16 @@ export function MagicModal() {
       (backend === 'codex'
         ? (preferences?.selected_codex_model ?? 'gpt-5.5')
         : backend === 'opencode'
-          ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.3-codex')
+          ? (preferences?.selected_opencode_model ?? 'opencode/gpt-5.5')
           : backend === 'cursor'
             ? (preferences?.selected_cursor_model ?? 'cursor/auto')
             : backend === 'commandcode'
               ? (preferences?.selected_commandcode_model ??
                 'commandcode/default')
-              : (preferences?.selected_model ?? 'sonnet'))
+              : backend === 'grok'
+                ? (preferences?.selected_grok_model ??
+                  'grok/grok-composer-2.5-fast')
+                : (preferences?.selected_model ?? 'sonnet'))
     const provider = resolveMagicPromptProvider(
       preferences?.magic_prompt_providers,
       RESOLVE_CONFLICTS_PROVIDER_KEY,
@@ -630,11 +631,13 @@ export function MagicModal() {
           return CODEX_MODEL_OPTIONS
         case 'opencode':
           return opencodeModelOptions
+        case 'grok':
+          return grokModelOptions
         default:
           return investigateClaudeModelOptions
       }
     },
-    [investigateClaudeModelOptions, opencodeModelOptions]
+    [grokModelOptions, investigateClaudeModelOptions, opencodeModelOptions]
   )
 
   const customInvestigateModelOptions = useMemo(
@@ -658,6 +661,10 @@ export function MagicModal() {
         return 'Codex'
       case 'opencode':
         return 'OpenCode'
+      case 'cursor':
+        return 'Cursor'
+      case 'grok':
+        return 'Grok (Beta)'
       default:
         return 'Claude'
     }
@@ -701,11 +708,13 @@ export function MagicModal() {
           return CODEX_MODEL_OPTIONS
         case 'opencode':
           return opencodeModelOptions
+        case 'grok':
+          return grokModelOptions
         default:
           return resolveClaudeModelOptions
       }
     },
-    [opencodeModelOptions, resolveClaudeModelOptions]
+    [grokModelOptions, opencodeModelOptions, resolveClaudeModelOptions]
   )
 
   const customResolveModelOptions = useMemo(
@@ -1173,7 +1182,7 @@ export function MagicModal() {
                   ? (preferences?.selected_codex_model ?? 'gpt-5.5')
                   : resolvedBackend === 'opencode'
                     ? (preferences?.selected_opencode_model ??
-                      'opencode/gpt-5.3-codex')
+                      'opencode/gpt-5.5')
                     : resolvedBackend === 'cursor'
                       ? (preferences?.selected_cursor_model ?? 'cursor/auto')
                       : (preferences?.selected_model ?? 'sonnet'))
@@ -1332,7 +1341,7 @@ ${resolveInstructions}`
                 ? (preferences?.selected_codex_model ?? 'gpt-5.5')
                 : resolvedBackend === 'opencode'
                   ? (preferences?.selected_opencode_model ??
-                    'opencode/gpt-5.3-codex')
+                    'opencode/gpt-5.5')
                   : resolvedBackend === 'cursor'
                     ? (preferences?.selected_cursor_model ?? 'cursor/auto')
                     : (preferences?.selected_model ?? 'sonnet'))
@@ -1868,17 +1877,12 @@ ${resolveInstructions}`
       }
 
       // Release generation only needs a project selected, not a worktree
-      if (option === 'release-notes' || option === 'release-post') {
+      if (option === 'release-notes') {
         if (!selectedProjectId) {
           notify('No project selected', undefined, { type: 'error' })
           setMagicModalOpen(false)
           return
         }
-        useUIStore
-          .getState()
-          .setReleaseNotesModalMode(
-            option === 'release-post' ? 'post' : 'notes'
-          )
         useUIStore.getState().setReleaseNotesModalOpen(true)
         setMagicModalOpen(false)
         return
@@ -1926,18 +1930,6 @@ ${resolveInstructions}`
         if (!worktree.pr_number) {
           void detectLinkPrForCurrentBranch()
         }
-        return
-      }
-
-      // Create recap: dispatch open-recap event (handled by ChatWindow or canvas hooks)
-      if (option === 'create-recap') {
-        if (!activeSessionId) {
-          toast.info('No active session to create a recap for')
-          setMagicModalOpen(false)
-          return
-        }
-        setMagicModalOpen(false)
-        window.dispatchEvent(new CustomEvent('open-recap'))
         return
       }
 
@@ -2195,7 +2187,6 @@ ${resolveInstructions}`
                         const isDisabled =
                           (isOnCanvas &&
                             !CANVAS_ALLOWED_OPTIONS.has(option.id)) ||
-                          (option.id === 'create-recap' && !activeSessionId) ||
                           (option.id === 'investigate-issue' &&
                             !hasIssueContexts) ||
                           (option.id === 'investigate-pr' && !hasPrContexts) ||
@@ -2413,7 +2404,9 @@ ${resolveInstructions}`
                         size="sm"
                         hideIcon={
                           installedBackends.filter(backend =>
-                            ['claude', 'codex', 'opencode'].includes(backend)
+                            ['claude', 'codex', 'opencode', 'grok'].includes(
+                              backend
+                            )
                           ).length <= 1
                         }
                         onClick={() => setInvestigateSelectionMode('custom')}
@@ -2429,6 +2422,9 @@ ${resolveInstructions}`
                         )}
                         {installedBackends.includes('opencode') && (
                           <SelectItem value="opencode">OpenCode</SelectItem>
+                        )}
+                        {installedBackends.includes('grok') && (
+                          <SelectItem value="grok">Grok (Beta)</SelectItem>
                         )}
                       </SelectContent>
                     </Select>
@@ -2561,7 +2557,9 @@ ${resolveInstructions}`
                         size="sm"
                         hideIcon={
                           installedBackends.filter(backend =>
-                            ['claude', 'codex', 'opencode'].includes(backend)
+                            ['claude', 'codex', 'opencode', 'grok'].includes(
+                              backend
+                            )
                           ).length <= 1
                         }
                         onClick={() => setResolveSelectionMode('custom')}
@@ -2577,6 +2575,9 @@ ${resolveInstructions}`
                         )}
                         {installedBackends.includes('opencode') && (
                           <SelectItem value="opencode">OpenCode</SelectItem>
+                        )}
+                        {installedBackends.includes('grok') && (
+                          <SelectItem value="grok">Grok (Beta)</SelectItem>
                         )}
                       </SelectContent>
                     </Select>
