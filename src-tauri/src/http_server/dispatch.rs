@@ -1722,6 +1722,18 @@ pub async fn dispatch_command(
             let result = crate::projects::list_cursor_skills().await?;
             to_value(result)
         }
+        "list_pi_skills" => {
+            let result = crate::projects::list_pi_skills().await?;
+            to_value(result)
+        }
+        "list_commandcode_skills" => {
+            let result = crate::projects::list_commandcode_skills().await?;
+            to_value(result)
+        }
+        "list_grok_skills" => {
+            let result = crate::projects::list_grok_skills().await?;
+            to_value(result)
+        }
         "list_plugin_skills" => {
             let result = crate::projects::list_plugin_skills().await?;
             to_value(result)

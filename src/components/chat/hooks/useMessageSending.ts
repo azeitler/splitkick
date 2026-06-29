@@ -381,11 +381,26 @@ export function useMessageSending({
           queryClient.getQueryData<{ name: string }[]>(
             skillQueryKeys.cursorSkills()
           ) ?? []
+        const piSkills =
+          queryClient.getQueryData<{ name: string }[]>(
+            skillQueryKeys.piSkills()
+          ) ?? []
+        const commandcodeSkills =
+          queryClient.getQueryData<{ name: string }[]>(
+            skillQueryKeys.commandcodeSkills()
+          ) ?? []
+        const grokSkills =
+          queryClient.getQueryData<{ name: string }[]>(
+            skillQueryKeys.grokSkills()
+          ) ?? []
         const isSkill =
           claudeSkills.some(s => s.name === slashName) ||
           codexSkills.some(s => s.name === slashName) ||
           opencodeSkills.some(s => s.name === slashName) ||
-          cursorSkills.some(s => s.name === slashName)
+          cursorSkills.some(s => s.name === slashName) ||
+          piSkills.some(s => s.name === slashName) ||
+          commandcodeSkills.some(s => s.name === slashName) ||
+          grokSkills.some(s => s.name === slashName)
         if (!isSkill) {
           const claudeCommands =
             queryClient.getQueryData<{ name: string; path: string }[]>(

@@ -1152,6 +1152,16 @@ fn run_uses_codex_history_parser(metadata_backend: &Backend, run: &RunEntry) -> 
     }
 }
 
+fn run_uses_pi_history_parser(metadata_backend: &Backend, run: &RunEntry) -> bool {
+    run.backend.as_ref() == Some(&Backend::Pi)
+        || run
+            .model
+            .as_deref()
+            .map(crate::is_pi_model)
+            .unwrap_or(false)
+        || (run.model.is_none() && metadata_backend == &Backend::Pi)
+}
+
 fn cancelled_codex_run_has_visible_artifacts(
     app: &tauri::AppHandle,
     session_id: &str,
@@ -1260,6 +1270,8 @@ pub fn load_session_messages_window(
             let use_codex_parser = run_uses_codex_history_parser(&metadata.backend, run);
             let mut assistant_msg = if use_codex_parser {
                 super::codex::parse_codex_run_to_message(&lines, run)?
+            } else if run_uses_pi_history_parser(&metadata.backend, run) {
+                super::pi::parse_pi_run_to_message(&lines, run)?
             } else {
                 parse_run_to_message(&lines, run)?
             };

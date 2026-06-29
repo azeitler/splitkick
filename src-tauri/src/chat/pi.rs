@@ -1,6 +1,6 @@
 //! PI Coding Agent execution engine.
 
-use super::types::{ContentBlock, ToolCall, UsageData};
+use super::types::{ChatMessage, ContentBlock, MessageRole, RunEntry, ToolCall, UsageData};
 use crate::http_server::EmitExt;
 #[cfg(unix)]
 use crate::platform::silent_command;
@@ -171,6 +171,21 @@ fn text_delta_from_value(value: &Value) -> Option<&str> {
         .or_else(|| value.get("text").and_then(Value::as_str))
 }
 
+fn push_text_block(content_blocks: &mut Vec<ContentBlock>, text: &str) {
+    if text.is_empty() {
+        return;
+    }
+
+    if let Some(ContentBlock::Text { text: existing }) = content_blocks.last_mut() {
+        existing.push_str(text);
+        return;
+    }
+
+    content_blocks.push(ContentBlock::Text {
+        text: text.to_string(),
+    });
+}
+
 fn message_usage_from_value(value: &Value) -> Option<UsageData> {
     value.get("message").and_then(usage_from_value)
 }
@@ -181,9 +196,7 @@ fn merge_assistant_message(response: &mut PiResponse, message: &Value) {
             Some("text") => {
                 if let Some(text) = block.get("text").and_then(Value::as_str) {
                     response.content.push_str(text);
-                    response.content_blocks.push(ContentBlock::Text {
-                        text: text.to_string(),
-                    });
+                    push_text_block(&mut response.content_blocks, text);
                 }
             }
             Some("thinking") => {
@@ -255,6 +268,70 @@ fn pi_session_id_from_value(value: &Value) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn pi_tool_call_id(value: &Value) -> Option<&str> {
+    value
+        .get("toolCallId")
+        .or_else(|| value.get("tool_call_id"))
+        .or_else(|| value.get("id"))
+        .or_else(|| value.get("tool_use_id"))
+        .and_then(Value::as_str)
+        .filter(|id| !id.is_empty())
+}
+
+fn pi_tool_name(value: &Value) -> Option<&str> {
+    value
+        .get("toolName")
+        .or_else(|| value.get("tool_name"))
+        .or_else(|| value.get("name"))
+        .and_then(Value::as_str)
+        .filter(|name| !name.is_empty())
+}
+
+fn pi_tool_input(value: &Value) -> Value {
+    value
+        .get("args")
+        .or_else(|| value.get("input"))
+        .cloned()
+        .unwrap_or(Value::Null)
+}
+
+fn pi_tool_output(value: &Value) -> String {
+    let Some(output) = value
+        .get("result")
+        .or_else(|| value.get("partialResult"))
+        .or_else(|| value.get("output"))
+        .or_else(|| value.get("content"))
+    else {
+        return String::new();
+    };
+
+    if let Some(text) = output.as_str() {
+        return text.to_string();
+    }
+
+    if let Some(text) = output
+        .get("content")
+        .and_then(Value::as_array)
+        .map(|blocks| {
+            blocks
+                .iter()
+                .filter(|block| block.get("type").and_then(Value::as_str) == Some("text"))
+                .filter_map(|block| block.get("text").and_then(Value::as_str))
+                .collect::<Vec<_>>()
+                .join("")
+        })
+        .filter(|text| !text.is_empty())
+    {
+        return text;
+    }
+
+    if let Some(text) = output.get("text").and_then(Value::as_str) {
+        return text.to_string();
+    }
+
+    output.to_string()
+}
+
 /// Merge a single already-parsed PI JSON line into the accumulating response.
 ///
 /// This is the per-line core of PI stream parsing. Both the batch parser
@@ -294,9 +371,7 @@ fn merge_pi_line(response: &mut PiResponse, value: &Value) {
             if value.get("role").and_then(Value::as_str) != Some("user") {
                 if let Some(text) = text_delta_from_value(value) {
                     response.content.push_str(text);
-                    response.content_blocks.push(ContentBlock::Text {
-                        text: text.to_string(),
-                    });
+                    push_text_block(&mut response.content_blocks, text);
                 }
             }
         }
@@ -305,31 +380,15 @@ fn merge_pi_line(response: &mut PiResponse, value: &Value) {
                 merge_assistant_message(response, message);
             } else if let Some(text) = text_delta_from_value(value) {
                 response.content.push_str(text);
-                response.content_blocks.push(ContentBlock::Text {
-                    text: text.to_string(),
-                });
+                push_text_block(&mut response.content_blocks, text);
             }
         }
         "tool_execution_start" | "tool_call" => {
-            let id = value
-                .get("id")
-                .or_else(|| value.get("tool_use_id"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            if id.is_empty() {
+            let Some(id) = pi_tool_call_id(value).map(ToOwned::to_owned) else {
                 return;
-            }
-            let raw_name = value
-                .get("name")
-                .or_else(|| value.get("tool_name"))
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let input = value
-                .get("input")
-                .or_else(|| value.get("args"))
-                .cloned()
-                .unwrap_or(Value::Null);
+            };
+            let raw_name = pi_tool_name(value).unwrap_or("");
+            let input = pi_tool_input(value);
             response.tool_calls.push(ToolCall {
                 id: id.clone(),
                 name: normalize_tool_name(raw_name),
@@ -341,22 +400,11 @@ fn merge_pi_line(response: &mut PiResponse, value: &Value) {
                 .content_blocks
                 .push(ContentBlock::ToolUse { tool_call_id: id });
         }
-        "tool_execution_end" | "tool_result" => {
-            let id = value
-                .get("id")
-                .or_else(|| value.get("tool_use_id"))
-                .and_then(Value::as_str)
-                .unwrap_or("");
-            let output = value
-                .get("output")
-                .or_else(|| value.get("result"))
-                .or_else(|| value.get("content"))
-                .map(|v| {
-                    v.as_str()
-                        .map(ToOwned::to_owned)
-                        .unwrap_or_else(|| v.to_string())
-                })
-                .unwrap_or_default();
+        "tool_execution_update" | "tool_execution_end" | "tool_result" => {
+            let Some(id) = pi_tool_call_id(value) else {
+                return;
+            };
+            let output = pi_tool_output(value);
             if let Some(tool) = response.tool_calls.iter_mut().find(|tool| tool.id == id) {
                 tool.output = Some(output);
             }
@@ -396,6 +444,33 @@ fn parse_pi_json_stream_inner(input: &str) -> PiResponse {
     response
 }
 
+pub(crate) fn parse_pi_run_to_message(
+    lines: &[String],
+    run: &RunEntry,
+) -> Result<ChatMessage, String> {
+    let response = parse_pi_json_stream_inner(&lines.join("\n"));
+    Ok(ChatMessage {
+        id: run
+            .assistant_message_id
+            .clone()
+            .unwrap_or_else(|| format!("assistant-{}", run.run_id)),
+        session_id: String::new(),
+        role: MessageRole::Assistant,
+        content: response.content,
+        timestamp: run.ended_at.unwrap_or(run.started_at),
+        tool_calls: response.tool_calls,
+        content_blocks: response.content_blocks,
+        cancelled: run.cancelled || response.cancelled,
+        plan_approved: false,
+        model: run.model.clone(),
+        execution_mode: run.execution_mode.clone(),
+        thinking_level: run.thinking_level.clone(),
+        effort_level: run.effort_level.clone(),
+        recovered: run.recovered,
+        usage: response.usage.or_else(|| run.usage.clone()),
+    })
+}
+
 fn raw_pi_model(model: Option<&str>) -> Option<&str> {
     model.map(|m| m.strip_prefix("pi/").unwrap_or(m))
 }
@@ -417,8 +492,7 @@ fn pi_thinking_level(effort: Option<&super::types::EffortLevel>) -> Option<&'sta
 fn pi_tools_for_mode(mode: &str) -> &'static str {
     match mode {
         "plan" => "read,grep,find,ls",
-        "build" => "read,grep,find,ls,edit,write",
-        _ => "all",
+        _ => "read,grep,find,ls,bash,edit,write",
     }
 }
 
@@ -859,11 +933,7 @@ fn parse_pi_stream<R: BufRead>(
                 value.get("type").and_then(Value::as_str),
                 Some("tool_execution_end" | "tool_result")
             ) {
-                if let Some(tool_id) = value
-                    .get("id")
-                    .or_else(|| value.get("tool_use_id"))
-                    .and_then(Value::as_str)
-                {
+                if let Some(tool_id) = pi_tool_call_id(&value) {
                     if let Some(tool) = response.tool_calls.iter().find(|tool| tool.id == tool_id) {
                         if let Some(output) = &tool.output {
                             let _ = app.emit_all(
@@ -954,11 +1024,7 @@ fn emit_pi_delta_events(
         value.get("type").and_then(Value::as_str),
         Some("tool_execution_end" | "tool_result")
     ) {
-        if let Some(tool_id) = value
-            .get("id")
-            .or_else(|| value.get("tool_use_id"))
-            .and_then(Value::as_str)
-        {
+        if let Some(tool_id) = pi_tool_call_id(value) {
             if let Some(tool) = response.tool_calls.iter().find(|tool| tool.id == tool_id) {
                 if let Some(output) = &tool.output {
                     let _ = app.emit_all(
@@ -1358,14 +1424,10 @@ mod tests {
 
         assert_eq!(response.session_id, "pi-json-mode-session");
         assert_eq!(response.content, "Hello!");
-        assert_eq!(response.content_blocks.len(), 2);
+        assert_eq!(response.content_blocks.len(), 1);
         assert!(matches!(
             &response.content_blocks[0],
-            ContentBlock::Text { text } if text == "Hello"
-        ));
-        assert!(matches!(
-            &response.content_blocks[1],
-            ContentBlock::Text { text } if text == "!"
+            ContentBlock::Text { text } if text == "Hello!"
         ));
         let usage = response.usage.unwrap();
         assert_eq!(usage.input_tokens, 2531);
@@ -1500,6 +1562,129 @@ mod tests {
     }
 
     #[test]
+    fn coalesces_pi_text_deltas_around_inline_code() {
+        let stream = r#"
+{"type":"session","session_id":"pi-session-inline-code"}
+{"type":"tool_execution_start","toolCallId":"write-1","toolName":"write","args":{"file_path":"tmp/test.txt"}}
+{"type":"tool_execution_end","toolCallId":"write-1","toolName":"write","result":{"content":[{"type":"text","text":"ok"}]}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"Created `"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"tmp/test.txt"}}
+{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"`."}}
+"#;
+
+        let response = parse_pi_json_stream_inner(stream);
+
+        assert_eq!(response.content, "Created `tmp/test.txt`.");
+        assert_eq!(response.content_blocks.len(), 2);
+        assert!(matches!(
+            &response.content_blocks[0],
+            ContentBlock::ToolUse { tool_call_id } if tool_call_id == "write-1"
+        ));
+        assert!(matches!(
+            &response.content_blocks[1],
+            ContentBlock::Text { text } if text == "Created `tmp/test.txt`."
+        ));
+    }
+
+    #[test]
+    fn parses_pi_documented_tool_execution_events() {
+        let stream = r#"
+{"type":"session","session_id":"pi-session-docs"}
+{"type":"tool_execution_start","toolCallId":"call_abc123","toolName":"bash","args":{"command":"ls"}}
+{"type":"tool_execution_end","toolCallId":"call_abc123","toolName":"bash","result":{"stdout":"README.md\n","stderr":"","exitCode":0},"isError":false}
+"#;
+
+        let response = parse_pi_json_stream_inner(stream);
+
+        assert_eq!(response.tool_calls.len(), 1);
+        assert_eq!(response.tool_calls[0].id, "call_abc123");
+        assert_eq!(response.tool_calls[0].name, "Bash");
+        assert_eq!(
+            response.tool_calls[0].input,
+            serde_json::json!({"command":"ls"})
+        );
+        let output: Value =
+            serde_json::from_str(response.tool_calls[0].output.as_deref().unwrap()).unwrap();
+        assert_eq!(
+            output,
+            serde_json::json!({"stdout":"README.md\n","stderr":"","exitCode":0})
+        );
+        assert_eq!(response.content_blocks.len(), 1);
+        assert!(matches!(
+            &response.content_blocks[0],
+            ContentBlock::ToolUse { tool_call_id } if tool_call_id == "call_abc123"
+        ));
+    }
+
+    #[test]
+    fn parses_pi_tool_result_content_blocks_as_plain_output() {
+        let stream = r#"
+{"type":"tool_execution_start","toolCallId":"call_write","toolName":"write","args":{"path":"tmp/a.txt","content":"hi"}}
+{"type":"tool_execution_end","toolCallId":"call_write","toolName":"write","result":{"content":[{"type":"text","text":"Successfully wrote 2 bytes to tmp/a.txt"}]},"isError":false}
+"#;
+
+        let response = parse_pi_json_stream_inner(stream);
+
+        assert_eq!(response.tool_calls.len(), 1);
+        assert_eq!(response.tool_calls[0].name, "Write");
+        assert_eq!(
+            response.tool_calls[0].output.as_deref(),
+            Some("Successfully wrote 2 bytes to tmp/a.txt")
+        );
+    }
+
+    #[test]
+    fn parses_pi_run_log_to_chat_message_with_tool_calls() {
+        let run = RunEntry {
+            run_id: "run-pi".to_string(),
+            user_message_id: "user-pi".to_string(),
+            user_message: "list files".to_string(),
+            model: Some("pi/sonnet".to_string()),
+            execution_mode: Some("build".to_string()),
+            thinking_level: None,
+            effort_level: None,
+            backend: Some(super::super::types::Backend::Pi),
+            custom_profile_name: None,
+            started_at: 1,
+            ended_at: Some(2),
+            status: super::super::types::RunStatus::Completed,
+            assistant_message_id: Some("assistant-pi".to_string()),
+            cancelled: false,
+            recovered: false,
+            claude_session_id: None,
+            pid: None,
+            usage: None,
+            codex_thread_id: None,
+            codex_turn_id: None,
+            cursor_chat_id: None,
+            grok_session_id: None,
+        };
+
+        let lines = vec![
+            r#"{"type":"session","session_id":"pi-session-docs"}"#.to_string(),
+            r#"{"type":"tool_execution_start","toolCallId":"call_abc123","toolName":"bash","args":{"command":"ls"}}"#.to_string(),
+            r#"{"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"Done"}}"#.to_string(),
+            r#"{"type":"tool_execution_end","toolCallId":"call_abc123","toolName":"bash","result":"README.md\n","isError":false}"#.to_string(),
+        ];
+
+        let message = parse_pi_run_to_message(&lines, &run).unwrap();
+
+        assert_eq!(message.id, "assistant-pi");
+        assert_eq!(message.content, "Done");
+        assert_eq!(message.tool_calls.len(), 1);
+        assert_eq!(message.tool_calls[0].name, "Bash");
+        assert_eq!(message.content_blocks.len(), 2);
+        assert!(matches!(
+            &message.content_blocks[0],
+            ContentBlock::ToolUse { tool_call_id } if tool_call_id == "call_abc123"
+        ));
+        assert!(matches!(
+            &message.content_blocks[1],
+            ContentBlock::Text { text } if text == "Done"
+        ));
+    }
+
+    #[test]
     fn parses_pi_session_id_from_rpc_get_state_response() {
         let stream = r#"
 {"id":"jean-get-state","type":"response","command":"get_state","success":true,"data":{"sessionId":"pi-rpc-session-123","messageCount":0}}
@@ -1579,12 +1764,25 @@ mod tests {
             .any(|w| w == ["--model", "openai-codex/gpt-5.4"]));
         assert!(args
             .windows(2)
-            .any(|w| w == ["--tools", "read,grep,find,ls,edit,write"]));
+            .any(|w| w == ["--tools", "read,grep,find,ls,bash,edit,write"]));
         assert!(args
             .windows(2)
             .any(|w| w == ["--append-system-prompt", "System instructions"]));
         assert_eq!(args.first().map(String::as_str), Some("--mode"));
         assert_eq!(args.get(1).map(String::as_str), Some("rpc"));
+    }
+
+    #[test]
+    fn pi_tools_for_modes_match_pi_builtin_tool_names() {
+        assert_eq!(pi_tools_for_mode("plan"), "read,grep,find,ls");
+        assert_eq!(
+            pi_tools_for_mode("build"),
+            "read,grep,find,ls,bash,edit,write"
+        );
+        assert_eq!(
+            pi_tools_for_mode("yolo"),
+            "read,grep,find,ls,bash,edit,write"
+        );
     }
 
     #[test]

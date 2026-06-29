@@ -609,9 +609,10 @@ describe('NewSessionModeModal', () => {
 
     const prepareCallOrder = invoke.mock.invocationCallOrder[prepareCallIndex]
     const trackCallOrder = invoke.mock.invocationCallOrder[trackCallIndex]
-    expect(prepareCallOrder).toBeDefined()
-    expect(trackCallOrder).toBeDefined()
-    expect(prepareCallOrder!).toBeLessThan(trackCallOrder!)
+    if (prepareCallOrder === undefined || trackCallOrder === undefined) {
+      throw new Error('Expected both invoke calls to be recorded')
+    }
+    expect(prepareCallOrder).toBeLessThan(trackCallOrder)
     expect(useTerminalStore.getState().terminals['worktree-1']).toHaveLength(1)
   })
 

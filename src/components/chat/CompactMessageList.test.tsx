@@ -267,6 +267,49 @@ describe('CompactMessageList', () => {
     expect(screen.queryByText('Polling VM.')).not.toBeInTheDocument()
   })
 
+  it('summarizes fragmented PI text deltas as one meaningful line', () => {
+    renderCompact([
+      message('user-1', 'user', 100, 'create and edit a file'),
+      message(
+        'assistant-1',
+        'assistant',
+        104,
+        'Yes — created and edited `tmp/test.txt`.',
+        {
+          tool_calls: [
+            {
+              id: 'tool-1',
+              name: 'Write',
+              input: { file_path: 'tmp/test.txt' },
+              output: 'wrote file',
+            },
+            {
+              id: 'tool-2',
+              name: 'Edit',
+              input: { file_path: 'tmp/test.txt' },
+              output: 'edited file',
+            },
+          ],
+          content_blocks: [
+            { type: 'tool_use', tool_call_id: 'tool-1' },
+            { type: 'tool_use', tool_call_id: 'tool-2' },
+            { type: 'text', text: 'Yes — created and edited `' },
+            { type: 'text', text: 'tmp/test.txt' },
+            { type: 'text', text: '`.' },
+          ],
+        }
+      ),
+    ])
+
+    expect(
+      screen.getByRole('button', {
+        name: /Yes — created and edited `tmp\/test\.txt`\./,
+      })
+    ).toBeVisible()
+    expect(screen.queryByRole('button', { name: /^`\./ })).not.toBeInTheDocument()
+    expect(screen.queryByText('`.')).not.toBeInTheDocument()
+  })
+
   it('surfaces steered user prompts as separate visible rows', () => {
     renderCompact([
       message('user-1', 'user', 100, 'do the work'),

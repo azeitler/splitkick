@@ -10,6 +10,15 @@ use tauri::{AppHandle, Manager};
 pub struct PluginStatus {
     pub installed: bool,
     pub version: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backends: Option<Vec<BackendPluginStatus>>,
+}
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub struct BackendPluginStatus {
+    pub id: String,
+    pub label: String,
+    pub installed: bool,
 }
 
 const SUPERPOWERS_GIT_WORKTREE_SKILL: &str = "using-git-worktrees";
@@ -96,28 +105,25 @@ async fn check_rtk_status(app: &AppHandle) -> Result<PluginStatus, String> {
             Ok(PluginStatus {
                 installed: true,
                 version,
+                backends: None,
             })
         }
         _ => Ok(PluginStatus {
             installed: false,
             version: None,
+            backends: None,
         }),
     }
 }
 
 async fn check_caveman_status(app: &AppHandle) -> Result<PluginStatus, String> {
     let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
-    let installed_backends = detected_jean_backends(app);
-
-    let home_for_check = home.clone();
-    let covered_backends = tokio::task::spawn_blocking(move || {
-        installed_backends
-            .into_iter()
-            .filter(|backend| caveman_installed_for_backend(&home_for_check, backend))
-            .collect::<Vec<_>>()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    let statuses = opinionated_backend_statuses(&home, "caveman");
+    let covered_backends = statuses
+        .iter()
+        .filter(|backend| backend.installed)
+        .map(|backend| backend.id.as_str())
+        .collect::<Vec<_>>();
 
     let installed = caveman_status_installed(&covered_backends, &detected_jean_backends(app));
 
@@ -127,7 +133,11 @@ async fn check_caveman_status(app: &AppHandle) -> Result<PluginStatus, String> {
         Some(covered_backends.join(", "))
     };
 
-    Ok(PluginStatus { installed, version })
+    Ok(PluginStatus {
+        installed,
+        version,
+        backends: Some(statuses),
+    })
 }
 
 async fn install_rtk(app: &AppHandle) -> Result<String, String> {
@@ -481,60 +491,111 @@ fn command_output_detail(output: &std::process::Output) -> String {
 }
 
 async fn install_caveman(app: &AppHandle) -> Result<String, String> {
-    let backends = detected_jean_backends(app);
-    if backends.is_empty() {
-        return Err("Install at least one Jean AI backend before installing Caveman".to_string());
-    }
+    let detected_backends = detected_jean_backends(app);
+    let backends = installable_jean_backends()
+        .iter()
+        .map(|(id, _)| *id)
+        .collect::<Vec<_>>();
+    let native_backends = detected_backends
+        .iter()
+        .copied()
+        .filter(|backend| matches!(*backend, "claude" | "codex" | "opencode" | "cursor"))
+        .collect::<Vec<_>>();
 
-    let mut args = vec![
-        "-y".to_string(),
-        "github:JuliusBrussee/caveman".to_string(),
-        "--".to_string(),
-        "--non-interactive".to_string(),
-        "--with-init".to_string(),
-    ];
+    let install_result = if native_backends.is_empty() {
+        None
+    } else {
+        let mut args = vec![
+            "-y".to_string(),
+            "github:JuliusBrussee/caveman".to_string(),
+            "--".to_string(),
+            "--non-interactive".to_string(),
+            "--with-init".to_string(),
+        ];
 
-    for backend in &backends {
-        args.push("--only".to_string());
-        args.push((*backend).to_string());
-    }
+        for backend in &native_backends {
+            args.push("--only".to_string());
+            args.push((*backend).to_string());
+        }
 
-    let install_result = tokio::task::spawn_blocking(move || {
-        let mut command = silent_command("npx");
-        command.args(args);
-        command.output()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+        Some(
+            tokio::task::spawn_blocking(move || {
+                let mut command = silent_command("npx");
+                command.args(args);
+                command.output()
+            })
+            .await
+            .map_err(|e| e.to_string())?,
+        )
+    };
 
     match install_result {
-        Ok(output) if output.status.success() => Ok(format!(
-            "Caveman installed for Jean backends: {}",
-            backends.join(", ")
-        )),
-        Ok(output) => {
+        Some(Ok(output)) if !output.status.success() => {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
             let detail = if stderr.is_empty() { stdout } else { stderr };
             Err(format!("Failed to install Caveman: {detail}"))
         }
-        Err(e) => Err(format!("Failed to run Caveman installer with npx: {e}")),
+        Some(Err(e)) => Err(format!("Failed to run Caveman installer with npx: {e}")),
+        _ => {
+            let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
+            let backends_for_global = backends.clone();
+            let global_result = tokio::task::spawn_blocking(move || {
+                mirror_caveman_to_jean_global_backends(&home, &backends_for_global)
+            })
+            .await
+            .map_err(|e| e.to_string())?;
+
+            let mut warnings = Vec::new();
+            if let Err(e) = global_result {
+                warnings.push(e);
+            }
+
+            let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
+            let statuses = opinionated_backend_statuses(&home, "caveman");
+            let missing = statuses
+                .iter()
+                .filter(|status| backends.contains(&status.id.as_str()) && !status.installed)
+                .map(|status| status.label.clone())
+                .collect::<Vec<_>>();
+            let installed = statuses
+                .iter()
+                .filter(|status| backends.contains(&status.id.as_str()) && status.installed)
+                .map(|status| status.label.clone())
+                .collect::<Vec<_>>();
+
+            if missing.is_empty() {
+                Ok(format!(
+                    "Caveman installed for Jean backends: {}",
+                    installed.join(", ")
+                ))
+            } else {
+                let mut message = format!(
+                    "Caveman partially installed. Installed: {}. Missing: {}",
+                    if installed.is_empty() {
+                        "none".to_string()
+                    } else {
+                        installed.join(", ")
+                    },
+                    missing.join(", ")
+                );
+                if !warnings.is_empty() {
+                    message.push_str(&format!(". Warnings: {}", warnings.join("; ")));
+                }
+                Ok(message)
+            }
+        }
     }
 }
 
 async fn check_superpowers_status(app: &AppHandle) -> Result<PluginStatus, String> {
     let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
-    let installed_backends = detected_jean_backends(app);
-
-    let home_for_check = home.clone();
-    let covered_backends = tokio::task::spawn_blocking(move || {
-        installed_backends
-            .into_iter()
-            .filter(|backend| superpowers_installed_for_backend(&home_for_check, backend))
-            .collect::<Vec<_>>()
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    let statuses = opinionated_backend_statuses(&home, "superpowers");
+    let covered_backends = statuses
+        .iter()
+        .filter(|backend| backend.installed)
+        .map(|backend| backend.id.as_str())
+        .collect::<Vec<_>>();
 
     let version = if covered_backends.is_empty() {
         None
@@ -545,6 +606,7 @@ async fn check_superpowers_status(app: &AppHandle) -> Result<PluginStatus, Strin
     Ok(PluginStatus {
         installed: superpowers_status_installed(&covered_backends, &detected_jean_backends(app)),
         version,
+        backends: Some(statuses),
     })
 }
 
@@ -854,6 +916,21 @@ fn uninstall_caveman_from_home(home: &Path) -> Result<Vec<String>, String> {
         &home.join(".cursor").join("rules").join("caveman.mdc"),
         &mut removed,
     )?;
+    for backend in [
+        "claude",
+        "codex",
+        "opencode",
+        "cursor",
+        "pi",
+        "commandcode",
+        "grok",
+    ] {
+        remove_matching_skill_dirs(
+            &jean_global_backend_skills_dir(home, backend),
+            "caveman",
+            &mut removed,
+        )?;
+    }
 
     Ok(removed)
 }
@@ -880,6 +957,21 @@ fn uninstall_superpowers_from_home(home: &Path) -> Result<Vec<String>, String> {
         "superpowers",
         &mut removed,
     )?;
+    for backend in [
+        "claude",
+        "codex",
+        "opencode",
+        "cursor",
+        "pi",
+        "commandcode",
+        "grok",
+    ] {
+        remove_matching_skill_dirs(
+            &jean_global_backend_skills_dir(home, backend),
+            "superpowers",
+            &mut removed,
+        )?;
+    }
 
     Ok(removed)
 }
@@ -927,6 +1019,12 @@ fn detected_jean_backends(app: &AppHandle) -> Vec<&'static str> {
             Some(crate::opencode_cli::resolve_cli_binary(app)),
         ),
         ("cursor", Some(crate::cursor_cli::resolve_cli_binary(app))),
+        ("pi", Some(crate::pi_cli::resolve_cli_binary(app))),
+        (
+            "commandcode",
+            Some(crate::commandcode_cli::resolve_cli_binary(app)),
+        ),
+        ("grok", Some(crate::grok_cli::resolve_cli_binary(app))),
     ];
 
     candidates
@@ -935,18 +1033,61 @@ fn detected_jean_backends(app: &AppHandle) -> Vec<&'static str> {
         .collect()
 }
 
-fn caveman_status_installed(covered_backends: &[&str], _detected_backends: &[&str]) -> bool {
-    !covered_backends.is_empty()
+fn installable_jean_backends() -> [(&'static str, &'static str); 7] {
+    [
+        ("claude", "Claude"),
+        ("codex", "Codex"),
+        ("opencode", "OpenCode"),
+        ("cursor", "Cursor"),
+        ("pi", "Pi"),
+        ("commandcode", "Command Code"),
+        ("grok", "Grok"),
+    ]
 }
 
-fn superpowers_status_installed(covered_backends: &[&str], _detected_backends: &[&str]) -> bool {
-    !covered_backends.is_empty()
+fn status_installed(covered_backends: &[&str], detected_backends: &[&str]) -> bool {
+    !detected_backends.is_empty()
+        && detected_backends
+            .iter()
+            .all(|backend| covered_backends.contains(backend))
+}
+
+fn caveman_status_installed(covered_backends: &[&str], detected_backends: &[&str]) -> bool {
+    status_installed(covered_backends, detected_backends)
+}
+
+fn superpowers_status_installed(covered_backends: &[&str], detected_backends: &[&str]) -> bool {
+    status_installed(covered_backends, detected_backends)
+}
+
+fn opinionated_backend_statuses(home: &Path, plugin_id: &str) -> Vec<BackendPluginStatus> {
+    installable_jean_backends()
+        .into_iter()
+        .map(|(id, label)| {
+            let installed = match plugin_id {
+                "caveman" => caveman_installed_for_backend(home, id),
+                "superpowers" => superpowers_installed_for_backend(home, id),
+                _ => false,
+            };
+
+            BackendPluginStatus {
+                id: id.to_string(),
+                label: label.to_string(),
+                installed,
+            }
+        })
+        .collect()
 }
 
 fn caveman_installed_for_backend(home: &Path, backend: &str) -> bool {
+    let global_installed =
+        skill_installed_marker(&jean_global_backend_skills_dir(home, backend), "caveman");
     match backend {
-        "claude" => plugin_installed_marker(home, "caveman"),
-        "codex" => skill_installed_marker(&home.join(".codex").join("skills"), "caveman"),
+        "claude" => plugin_installed_marker(home, "caveman") || global_installed,
+        "codex" => {
+            skill_installed_marker(&home.join(".codex").join("skills"), "caveman")
+                || global_installed
+        }
         "opencode" => {
             let config_dir = opencode_config_dir(home);
             config_dir
@@ -956,6 +1097,7 @@ fn caveman_installed_for_backend(home: &Path, backend: &str) -> bool {
                 .exists()
                 || skill_installed_marker(&config_dir.join("skills"), "caveman")
                 || config_dir.join("commands").join("caveman.md").exists()
+                || global_installed
         }
         "cursor" => {
             skill_installed_marker(&home.join(".cursor").join("skills-cursor"), "caveman")
@@ -964,14 +1106,20 @@ fn caveman_installed_for_backend(home: &Path, backend: &str) -> bool {
                     .join("rules")
                     .join("caveman.mdc")
                     .exists()
+                || global_installed
         }
+        "pi" | "commandcode" | "grok" => global_installed,
         _ => false,
     }
 }
 
 fn superpowers_installed_for_backend(home: &Path, backend: &str) -> bool {
+    let global_installed = skill_installed_marker(
+        &jean_global_backend_skills_dir(home, backend),
+        "superpowers",
+    );
     match backend {
-        "claude" => plugin_installed_marker(home, "superpowers"),
+        "claude" => plugin_installed_marker(home, "superpowers") || global_installed,
         "codex" => {
             skill_installed_marker(&home.join(".codex").join("skills"), "superpowers")
                 || codex_plugin_registered(home, "superpowers")
@@ -982,15 +1130,23 @@ fn superpowers_installed_for_backend(home: &Path, backend: &str) -> bool {
                     .join("openai-curated")
                     .join("superpowers")
                     .exists()
+                || global_installed
         }
         "opencode" => {
             skill_installed_marker(&opencode_config_dir(home).join("skills"), "superpowers")
+                || global_installed
         }
         "cursor" => {
             skill_installed_marker(&home.join(".cursor").join("skills-cursor"), "superpowers")
+                || global_installed
         }
+        "pi" | "commandcode" | "grok" => global_installed,
         _ => false,
     }
+}
+
+fn jean_global_backend_skills_dir(home: &Path, backend: &str) -> PathBuf {
+    home.join(".jean").join("skills").join(backend)
 }
 
 fn backend_skills_dir(home: &Path, backend: &str) -> Option<PathBuf> {
@@ -998,6 +1154,7 @@ fn backend_skills_dir(home: &Path, backend: &str) -> Option<PathBuf> {
         "codex" => Some(home.join(".codex").join("skills")),
         "opencode" => Some(opencode_config_dir(home).join("skills")),
         "cursor" => Some(home.join(".cursor").join("skills-cursor")),
+        "pi" | "commandcode" | "grok" => Some(jean_global_backend_skills_dir(home, backend)),
         _ => None,
     }
 }
@@ -1109,6 +1266,49 @@ fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+fn find_caveman_skill_dir(home: &Path) -> Option<PathBuf> {
+    for skills_dir in [
+        home.join(".claude").join("skills"),
+        home.join(".codex").join("skills"),
+        opencode_config_dir(home).join("skills"),
+        home.join(".cursor").join("skills-cursor"),
+        jean_global_backend_skills_dir(home, "pi"),
+        jean_global_backend_skills_dir(home, "commandcode"),
+        jean_global_backend_skills_dir(home, "grok"),
+    ] {
+        let Ok(entries) = std::fs::read_dir(skills_dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            if path.is_dir() && path.join("SKILL.md").exists() && name.contains("caveman") {
+                return Some(path);
+            }
+        }
+    }
+
+    None
+}
+
+fn mirror_caveman_to_jean_global_backends(
+    home: &Path,
+    backends: &[&'static str],
+) -> Result<usize, String> {
+    let Some(source) = find_caveman_skill_dir(home) else {
+        return Err("No installed Caveman skill directory found to mirror globally".to_string());
+    };
+
+    let mut copied = 0;
+    for backend in backends {
+        let target = jean_global_backend_skills_dir(home, backend).join("caveman");
+        copy_dir_replace(&source, &target)?;
+        copied += 1;
+    }
+
+    Ok(copied)
 }
 
 fn clone_superpowers_skills_dir() -> Result<PathBuf, String> {
@@ -1284,6 +1484,13 @@ fn remove_superpowers_git_worktree_skill(
         home.join(".codex").join("skills"),
         opencode_config_dir(home).join("skills"),
         home.join(".cursor").join("skills-cursor"),
+        jean_global_backend_skills_dir(home, "claude"),
+        jean_global_backend_skills_dir(home, "codex"),
+        jean_global_backend_skills_dir(home, "opencode"),
+        jean_global_backend_skills_dir(home, "cursor"),
+        jean_global_backend_skills_dir(home, "pi"),
+        jean_global_backend_skills_dir(home, "commandcode"),
+        jean_global_backend_skills_dir(home, "grok"),
     ] {
         for name in &blocked_names {
             remove_path_if_exists(&skills_dir.join(name), removed)?;
@@ -1351,18 +1558,17 @@ fn remove_named_skill_dirs_under(
 }
 
 async fn install_superpowers(app: &AppHandle) -> Result<String, String> {
-    let backends = detected_jean_backends(app);
-    if backends.is_empty() {
-        return Err(
-            "Install at least one Jean AI backend before installing Superpowers".to_string(),
-        );
-    }
+    let detected_backends = detected_jean_backends(app);
+    let backends = installable_jean_backends()
+        .iter()
+        .map(|(id, _)| *id)
+        .collect::<Vec<_>>();
 
     let home = dirs::home_dir().ok_or("Cannot determine home directory")?;
     let mut installed = Vec::new();
     let mut warnings = Vec::new();
 
-    if backends.contains(&"claude") {
+    if detected_backends.contains(&"claude") {
         let binary_path = crate::claude_cli::resolve_cli_binary(app);
         let bin = binary_path.clone();
         let add_result = tokio::task::spawn_blocking(move || {
@@ -1442,6 +1648,26 @@ async fn install_superpowers(app: &AppHandle) -> Result<String, String> {
                 "No Superpowers skills found to install for {backend}"
             )),
             Err(e) => warnings.push(format!("Failed to install Superpowers for {backend}: {e}")),
+        }
+    }
+
+    for backend in &backends {
+        let target_dir = jean_global_backend_skills_dir(&home, backend);
+        let source = source_skills_dir.clone();
+        let backend_name = *backend;
+        let result =
+            tokio::task::spawn_blocking(move || copy_superpowers_skills(&source, &target_dir))
+                .await
+                .map_err(|e| e.to_string())?;
+
+        match result {
+            Ok(count) if count > 0 && !installed.contains(&backend_name) => {
+                installed.push(backend_name)
+            }
+            Ok(_) => {}
+            Err(e) => warnings.push(format!(
+                "Failed to install global Superpowers skills for {backend_name}: {e}"
+            )),
         }
     }
 
@@ -1532,15 +1758,23 @@ mod tests {
     }
 
     #[test]
-    fn caveman_status_is_installed_when_any_backend_is_covered() {
-        assert!(caveman_status_installed(&["claude"], &["claude", "codex"]));
+    fn caveman_status_requires_every_detected_backend_covered() {
+        assert!(!caveman_status_installed(&["claude"], &["claude", "codex"]));
+        assert!(caveman_status_installed(
+            &["claude", "codex"],
+            &["claude", "codex"]
+        ));
         assert!(!caveman_status_installed(&[], &["claude"]));
     }
 
     #[test]
-    fn superpowers_status_is_installed_when_any_backend_is_covered() {
-        assert!(superpowers_status_installed(
+    fn superpowers_status_requires_every_detected_backend_covered() {
+        assert!(!superpowers_status_installed(
             &["codex"],
+            &["claude", "codex"]
+        ));
+        assert!(superpowers_status_installed(
+            &["claude", "codex"],
             &["claude", "codex"]
         ));
         assert!(!superpowers_status_installed(&[], &["claude"]));
@@ -1687,5 +1921,38 @@ def456  rtk-x86_64-pc-windows-msvc.zip\n";
         std::fs::write(skill_dir.join("SKILL.md"), "# Caveman").expect("write skill");
 
         assert!(caveman_installed_for_backend(temp.path(), "cursor"));
+    }
+
+    #[test]
+    fn opinionated_status_lists_each_installable_backend() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let skill_dir = temp.path().join(".codex").join("skills").join("caveman");
+        std::fs::create_dir_all(&skill_dir).expect("create codex skill dir");
+        std::fs::write(skill_dir.join("SKILL.md"), "# Caveman").expect("write skill");
+
+        let statuses = opinionated_backend_statuses(temp.path(), "caveman");
+
+        assert_eq!(
+            statuses
+                .iter()
+                .map(|status| status.id.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                "claude",
+                "codex",
+                "opencode",
+                "cursor",
+                "pi",
+                "commandcode",
+                "grok"
+            ]
+        );
+        assert!(!statuses[0].installed);
+        assert!(statuses[1].installed);
+        assert!(!statuses[2].installed);
+        assert!(!statuses[3].installed);
+        assert!(!statuses[4].installed);
+        assert!(!statuses[5].installed);
+        assert!(!statuses[6].installed);
     }
 }

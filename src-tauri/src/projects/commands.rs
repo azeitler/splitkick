@@ -11052,6 +11052,10 @@ pub async fn list_codex_skills() -> Result<Vec<ClaudeSkill>, String> {
 
     if let Some(home) = get_home_dir() {
         collect_skills_from_dir(&home.join(".codex").join("skills"), &mut skills_map);
+        collect_skills_from_dir(
+            &jean_global_backend_skills_dir(&home, "codex"),
+            &mut skills_map,
+        );
     }
 
     let mut skills: Vec<ClaudeSkill> = skills_map.into_values().collect();
@@ -11069,6 +11073,10 @@ pub async fn list_opencode_skills() -> Result<Vec<ClaudeSkill>, String> {
 
     if let Some(home) = get_home_dir() {
         collect_skills_from_dir(&opencode_config_dir(&home).join("skills"), &mut skills_map);
+        collect_skills_from_dir(
+            &jean_global_backend_skills_dir(&home, "opencode"),
+            &mut skills_map,
+        );
     }
 
     let mut skills: Vec<ClaudeSkill> = skills_map.into_values().collect();
@@ -11086,12 +11094,53 @@ pub async fn list_cursor_skills() -> Result<Vec<ClaudeSkill>, String> {
 
     if let Some(home) = get_home_dir() {
         collect_skills_from_dir(&home.join(".cursor").join("skills-cursor"), &mut skills_map);
+        collect_skills_from_dir(
+            &jean_global_backend_skills_dir(&home, "cursor"),
+            &mut skills_map,
+        );
     }
 
     let mut skills: Vec<ClaudeSkill> = skills_map.into_values().collect();
     skills.sort_by(|a, b| a.name.cmp(&b.name));
     log::trace!("Found {} Cursor skills", skills.len());
     Ok(skills)
+}
+
+/// List Jean-global Pi skills.
+#[tauri::command]
+pub async fn list_pi_skills() -> Result<Vec<ClaudeSkill>, String> {
+    list_jean_global_backend_skills("pi").await
+}
+
+/// List Jean-global Command Code skills.
+#[tauri::command]
+pub async fn list_commandcode_skills() -> Result<Vec<ClaudeSkill>, String> {
+    list_jean_global_backend_skills("commandcode").await
+}
+
+/// List Jean-global Grok skills.
+#[tauri::command]
+pub async fn list_grok_skills() -> Result<Vec<ClaudeSkill>, String> {
+    list_jean_global_backend_skills("grok").await
+}
+
+async fn list_jean_global_backend_skills(backend: &str) -> Result<Vec<ClaudeSkill>, String> {
+    let mut skills_map = std::collections::HashMap::new();
+
+    if let Some(home) = get_home_dir() {
+        collect_skills_from_dir(
+            &jean_global_backend_skills_dir(&home, backend),
+            &mut skills_map,
+        );
+    }
+
+    let mut skills: Vec<ClaudeSkill> = skills_map.into_values().collect();
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(skills)
+}
+
+fn jean_global_backend_skills_dir(home: &std::path::Path, backend: &str) -> std::path::PathBuf {
+    home.join(".jean").join("skills").join(backend)
 }
 
 fn opencode_config_dir(home: &std::path::Path) -> std::path::PathBuf {

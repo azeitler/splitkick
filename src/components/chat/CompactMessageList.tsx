@@ -34,7 +34,7 @@ import {
 import { MessageItem } from './MessageItem'
 import { AskUserQuestion } from './AskUserQuestion'
 import { SteeredPromptGroup } from './SteeredPromptGroup'
-import { buildTimeline } from './tool-call-utils'
+import { buildTimeline, coalesceContentBlocks } from './tool-call-utils'
 import { formatDuration, getAssistantDurationMs } from './time-utils'
 import {
   TOOL_CALL_ROW_CLASS,
@@ -229,7 +229,7 @@ function findLatestAssistantText(
     const message = group[g]?.message
     if (!message || message.role !== 'assistant') continue
 
-    const blocks = message.content_blocks ?? []
+    const blocks = coalesceContentBlocks(message.content_blocks ?? [])
     const texts: string[] = []
     for (const block of blocks) {
       if (block?.type === 'text' && block.text.trim()) {
@@ -320,7 +320,7 @@ function summarizeGroup(
   for (let g = group.length - 1; g >= 0; g--) {
     const message = group[g]?.message
     if (!message) continue
-    const blocks: ContentBlock[] = message.content_blocks ?? []
+    const blocks = coalesceContentBlocks(message.content_blocks ?? [])
     for (let i = blocks.length - 1; i >= 0; i--) {
       const block = blocks[i]
       if (!block) continue

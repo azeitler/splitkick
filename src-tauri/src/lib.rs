@@ -4551,6 +4551,9 @@ pub fn run() {
             projects::list_codex_skills,
             projects::list_opencode_skills,
             projects::list_cursor_skills,
+            projects::list_pi_skills,
+            projects::list_commandcode_skills,
+            projects::list_grok_skills,
             projects::list_plugin_skills,
             // GitHub issues commands
             projects::list_github_labels,

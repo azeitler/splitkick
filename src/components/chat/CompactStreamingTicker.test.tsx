@@ -97,4 +97,29 @@ describe('CompactStreamingTicker', () => {
     // Ticker still summarizes the latest activity, not the steered text
     expect(screen.getByText('Bash')).toBeVisible()
   })
+
+  it('summarizes fragmented PI text deltas as one meaningful line while streaming', () => {
+    render(
+      <CompactStreamingTicker
+        {...baseProps}
+        contentBlocks={[
+          { type: 'tool_use', tool_call_id: 'write-1' },
+          { type: 'text', text: 'Created `' },
+          { type: 'text', text: 'tmp/test.txt' },
+          { type: 'text', text: '`.' },
+        ]}
+        toolCalls={[
+          {
+            id: 'write-1',
+            name: 'Write',
+            input: { file_path: 'tmp/test.txt' },
+            output: 'ok',
+          },
+        ]}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /Created `tmp\/test\.txt`\./ })).toBeVisible()
+    expect(screen.queryByRole('button', { name: /^`\./ })).not.toBeInTheDocument()
+  })
 })

@@ -13,7 +13,11 @@ import {
 } from './ToolCallInline'
 import { StreamingMessage } from './StreamingMessage'
 import { SteeredPromptGroup } from './SteeredPromptGroup'
-import { isDuplicatePlanTextBlock, resolvePlanContent } from './tool-call-utils'
+import {
+  coalesceContentBlocks,
+  isDuplicatePlanTextBlock,
+  resolvePlanContent,
+} from './tool-call-utils'
 import type { ComponentProps } from 'react'
 
 type StreamingMessageProps = ComponentProps<typeof StreamingMessage>
@@ -28,8 +32,9 @@ function summarizeLatest(
   streamingContent: string
 ): { label: string; detail?: string } {
   // Prefer the most recent content block (preserves order of text + tools).
-  for (let i = contentBlocks.length - 1; i >= 0; i--) {
-    const block = contentBlocks[i]
+  const normalizedBlocks = coalesceContentBlocks(contentBlocks)
+  for (let i = normalizedBlocks.length - 1; i >= 0; i--) {
+    const block = normalizedBlocks[i]
     if (!block) continue
     if (block.type === 'tool_use') {
       const tc = toolCalls.find(t => t.id === block.tool_call_id)
