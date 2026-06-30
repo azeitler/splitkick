@@ -32,6 +32,7 @@ import {
   normalizeQuestionMultipleField,
 } from '@/types/chat'
 import { MessageItem } from './MessageItem'
+import { EditedFilesDisplay } from './EditedFilesDisplay'
 import { AskUserQuestion } from './AskUserQuestion'
 import { SteeredPromptGroup } from './SteeredPromptGroup'
 import { buildTimeline, coalesceContentBlocks } from './tool-call-utils'
@@ -1173,6 +1174,9 @@ export const CompactMessageList = memo(
               Boolean(item.latestText) &&
               !(latestTextIsRecap && latestRunHasPlan)
             const surfaceRecap = latestTextIsRecap && showLatestText
+            const surfacedLatestToolCalls = showLatestText
+              ? item.messages.flatMap(({ message }) => message.tool_calls ?? [])
+              : []
             return (
               <div key={item.key}>
                 <CompactActivityRow
@@ -1192,6 +1196,12 @@ export const CompactMessageList = memo(
                     >
                       {item.latestText ?? ''}
                     </Markdown>
+                    {surfacedLatestToolCalls.length > 0 && (
+                      <EditedFilesDisplay
+                        toolCalls={surfacedLatestToolCalls}
+                        worktreePath={worktreePath}
+                      />
+                    )}
                   </div>
                 )}
               </div>

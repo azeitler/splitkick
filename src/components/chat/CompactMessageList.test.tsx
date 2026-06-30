@@ -267,6 +267,78 @@ describe('CompactMessageList', () => {
     expect(screen.queryByText('Polling VM.')).not.toBeInTheDocument()
   })
 
+  it('shows edited files after an externally surfaced recap', () => {
+    renderCompact([
+      message('user-1', 'user', 100, 'make the change'),
+      message(
+        'assistant-1',
+        'assistant',
+        104,
+        'Done.\n\n## Recap\n\nChanged chat UI.',
+        {
+          tool_calls: [
+            {
+              id: 'tool-1',
+              name: 'FileChange',
+              input: [
+                {
+                  path: 'src/components/chat/CompactMessageList.tsx',
+                  diff: '@@ -1 +1 @@\n-old\n+new\n',
+                },
+              ],
+            },
+          ],
+          content_blocks: [
+            { type: 'tool_use', tool_call_id: 'tool-1' },
+            { type: 'text', text: 'Done.\n\n## Recap\n\nChanged chat UI.' },
+          ],
+        }
+      ),
+    ])
+
+    const recapHeading = screen.getByText('Recap')
+    const editedFiles = screen.getByText('Edited 1 file:')
+
+    expect(editedFiles).toBeVisible()
+    expect(
+      recapHeading.compareDocumentPosition(editedFiles) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  it('shows edited files after surfaced latest text when recap is absent', () => {
+    renderCompact([
+      message('user-1', 'user', 100, 'make the change'),
+      message('assistant-1', 'assistant', 104, 'Changed chat UI.', {
+        tool_calls: [
+          {
+            id: 'tool-1',
+            name: 'FileChange',
+            input: [
+              {
+                path: 'src/components/chat/CompactMessageList.tsx',
+                diff: '@@ -1 +1 @@\n-old\n+new\n',
+              },
+            ],
+          },
+        ],
+        content_blocks: [
+          { type: 'tool_use', tool_call_id: 'tool-1' },
+          { type: 'text', text: 'Changed chat UI.' },
+        ],
+      }),
+    ])
+
+    const latestText = screen.getAllByText('Changed chat UI.').at(-1)
+    const editedFiles = screen.getByText('Edited 1 file:')
+
+    expect(editedFiles).toBeVisible()
+    expect(
+      latestText!.compareDocumentPosition(editedFiles) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
   it('summarizes fragmented PI text deltas as one meaningful line', () => {
     renderCompact([
       message('user-1', 'user', 100, 'create and edit a file'),
@@ -306,7 +378,9 @@ describe('CompactMessageList', () => {
         name: /Yes — created and edited `tmp\/test\.txt`\./,
       })
     ).toBeVisible()
-    expect(screen.queryByRole('button', { name: /^`\./ })).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^`\./ })
+    ).not.toBeInTheDocument()
     expect(screen.queryByText('`.')).not.toBeInTheDocument()
   })
 
