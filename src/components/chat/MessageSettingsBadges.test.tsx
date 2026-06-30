@@ -80,6 +80,22 @@ describe('MessageSettingsBadges', () => {
     expect(screen.queryByText('claude-opus-4-6[1m]-fast')).toBeNull()
   })
 
+  it('prefixes future Claude model ids with Claude in prompt badges', () => {
+    render(
+      <MessageSettingsBadges
+        model="claude-sonnet-5-1"
+        executionMode="yolo"
+        thinkingLevel="megathink"
+        effortLevel={undefined}
+        isCursor={false}
+      />
+    )
+
+    expect(screen.getByText('Claude · claude-sonnet-5-1')).toBeVisible()
+    expect(screen.getByText('· Yolo')).toBeVisible()
+    expect(screen.getByText('· Megathink')).toBeVisible()
+  })
+
   it('formats OpenCode slash models with backend prefix', () => {
     render(
       <MessageSettingsBadges

@@ -58,6 +58,7 @@ export function getMessageModelLabel(model: string): string {
 
 function isClaudeMessageModel(model: string): boolean {
   if (MODEL_OPTIONS.some(option => option.value === model)) return true
+  if (model.startsWith('claude-')) return true
 
   const claudeFastInfo = getClaudeFastInfo(model)
   return (
