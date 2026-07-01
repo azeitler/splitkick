@@ -110,6 +110,25 @@ describe('MobileSettingsMenu', () => {
     expect(onOpenBackendModelPicker).toHaveBeenCalledTimes(1)
   })
 
+  it('shows and starts the jean.json run command from the settings menu', async () => {
+    const user = userEvent.setup()
+    const onRunCommand = vi.fn()
+
+    render(
+      <MobileSettingsMenu
+        {...baseProps}
+        worktreeId="worktree-1"
+        runScripts={['bun run dev']}
+        onRunCommand={onRunCommand}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: /settings/i }))
+    await user.click(await screen.findByRole('menuitem', { name: /run/i }))
+
+    expect(onRunCommand).toHaveBeenCalledWith('bun run dev')
+  })
+
   it('keeps Claude provider switcher available after messages exist', async () => {
     const user = userEvent.setup()
 

@@ -2919,6 +2919,8 @@ export const useChatStore = create<ChatUIState>()(
               state.sendingSessionIds
             const { [sessionId]: _wi, ...waitingForInputSessionIds } =
               state.waitingForInputSessionIds
+            const { [sessionId]: _reviewing, ...reviewingSessions } =
+              state.reviewingSessions
             const { [sessionId]: _sp, ...streamingPlanApprovals } =
               state.streamingPlanApprovals
             const { [sessionId]: _em, ...executingModes } = state.executingModes
@@ -2938,10 +2940,7 @@ export const useChatStore = create<ChatUIState>()(
                 sendStarted > 0
                   ? { ...state.completedDurations, [sessionId]: elapsed }
                   : state.completedDurations,
-              reviewingSessions: {
-                ...state.reviewingSessions,
-                [sessionId]: true,
-              },
+              reviewingSessions,
             }
           },
           undefined,

@@ -428,7 +428,7 @@ pub async fn dispatch_command(
         "create_pr_with_ai_content" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let session_id: Option<String> = field_opt(&args, "sessionId", "session_id")?;
-            let magic_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
+            let magic_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
@@ -516,7 +516,7 @@ pub async fn dispatch_command(
         }
         "run_review_with_ai" => {
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
-            let magic_prompt: Option<String> = field_opt(&args, "magicPrompt", "magic_prompt")?;
+            let magic_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
             let model: Option<String> = from_field_opt(&args, "model")?;
             let custom_profile_name: Option<String> =
                 field_opt(&args, "customProfileName", "custom_profile_name")?;
@@ -533,6 +533,48 @@ pub async fn dispatch_command(
                 reasoning_effort,
             )
             .await?;
+            to_value(result)
+        }
+        "start_review_job" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let source: String = from_field(&args, "source")?;
+            let magic_prompt: Option<String> = field_opt(&args, "customPrompt", "custom_prompt")?;
+            let model: Option<String> = from_field_opt(&args, "model")?;
+            let custom_profile_name: Option<String> =
+                field_opt(&args, "customProfileName", "custom_profile_name")?;
+            let review_run_id: Option<String> = field_opt(&args, "reviewRunId", "review_run_id")?;
+            let reasoning_effort: Option<String> =
+                field_opt(&args, "reasoningEffort", "reasoning_effort")?;
+            let review_type: Option<String> = field_opt(&args, "reviewType", "review_type")?;
+            let result = crate::projects::start_review_job(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                source,
+                magic_prompt,
+                model,
+                custom_profile_name,
+                review_run_id,
+                reasoning_effort,
+                review_type,
+            )
+            .await?;
+            to_value(result)
+        }
+        "get_review_job" => {
+            let job_id: String = field(&args, "jobId", "job_id")?;
+            let result = crate::projects::get_review_job(job_id).await?;
+            to_value(result)
+        }
+        "list_review_jobs" => {
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
+            let result = crate::projects::list_review_jobs(worktree_id).await?;
+            to_value(result)
+        }
+        "cancel_review_job" => {
+            let job_id: String = field(&args, "jobId", "job_id")?;
+            let result = crate::projects::cancel_review_job(job_id).await?;
             to_value(result)
         }
         "cancel_review_with_ai" => {

@@ -158,7 +158,10 @@ import { usePrStatus, usePrStatusEvents } from '@/services/pr-status'
 import type { PrDisplayStatus, CheckStatus } from '@/types/pr-status'
 import type { QueuedMessage, Session, WorktreeSessions } from '@/types/chat'
 import type { DiffRequest } from '@/types/git-diff'
-import { getEffectiveSessionWaiting } from './session-card-utils'
+import {
+  getEffectiveSessionWaiting,
+  shouldShowCodeReviewLoadingPanel,
+} from './session-card-utils'
 
 interface ForkSessionToWorktreeResponse {
   worktree: Worktree
@@ -303,16 +306,6 @@ export function ChatWindow({
   )
   // Review sidebar state
   const reviewSidebarVisible = useChatStore(state => state.reviewSidebarVisible)
-  const hasReviewResults = useChatStore(state =>
-    activeSessionId ? !!state.reviewResults[activeSessionId] : false
-  )
-  const showReviewFullWidth = hasReviewResults && reviewSidebarVisible
-  // Whether session is in review state (used to hide "restored session" indicator after prompt finishes)
-  const isSessionReviewing = useChatStore(state =>
-    activeSessionId
-      ? (state.reviewingSessions[activeSessionId] ?? false)
-      : false
-  )
   // Terminal panel visibility (per-worktree)
   const terminalVisible = useTerminalStore(state => state.terminalVisible)
   const terminalPanelOpen = useTerminalStore(state =>
@@ -350,18 +343,6 @@ export function ChatWindow({
   const handleTerminalExpand = useCallback(() => {
     setTerminalVisible(true)
   }, [setTerminalVisible])
-
-  // Sync review sidebar panel with reviewSidebarVisible state
-  useEffect(() => {
-    const panel = reviewPanelRef.current
-    if (!panel) return
-
-    if (reviewSidebarVisible) {
-      panel.expand()
-    } else {
-      panel.collapse()
-    }
-  }, [reviewSidebarVisible])
 
   // Review sidebar collapse/expand handlers
   const handleReviewSidebarCollapse = useCallback(() => {
@@ -436,6 +417,41 @@ export function ChatWindow({
     activeWorktreeId,
     activeWorktreePath
   )
+
+  const hasReviewResults = useChatStore(state =>
+    deferredSessionId ? !!state.reviewResults[deferredSessionId] : false
+  )
+  // Whether session is in review state (used to hide "restored session" indicator after prompt finishes)
+  const isSessionReviewing = useChatStore(state =>
+    deferredSessionId
+      ? (state.reviewingSessions[deferredSessionId] ?? false)
+      : false
+  )
+  const isCodeReviewLoadingPanel = shouldShowCodeReviewLoadingPanel({
+    session,
+    isSessionReviewing,
+    hasReviewResults,
+  })
+  const hasReviewPanel = hasReviewResults || isCodeReviewLoadingPanel
+  const showReviewFullWidth = hasReviewPanel && reviewSidebarVisible
+
+  // Sync review sidebar panel with reviewSidebarVisible state
+  useEffect(() => {
+    if (hasReviewPanel && !reviewSidebarVisible) {
+      useChatStore.getState().setReviewSidebarVisible(true)
+    }
+  }, [hasReviewPanel, reviewSidebarVisible])
+
+  useEffect(() => {
+    const panel = reviewPanelRef.current
+    if (!panel) return
+
+    if (reviewSidebarVisible) {
+      panel.expand()
+    } else {
+      panel.collapse()
+    }
+  }, [reviewSidebarVisible])
 
   // Rebuild streamingContentBlocks from snapshot when opening a session whose
   // last message is still running. Covers web-access click-to-open, sidebar
@@ -636,6 +652,15 @@ export function ChatWindow({
 
   // Run scripts for this worktree (used by CMD+R keybinding)
   const { data: runScripts = [] } = useRunScripts(activeWorktreePath ?? null)
+  const handleRunCommand = useCallback(
+    (command: string) => {
+      if (!activeWorktreeId) return
+      useTerminalStore.getState().startRun(activeWorktreeId, command)
+      useUIStore.getState().setSessionChatModalOpen(true, activeWorktreeId)
+      useTerminalStore.getState().setModalTerminalOpen(activeWorktreeId, true)
+    },
+    [activeWorktreeId]
+  )
 
   // Per-session provider selection: persisted session → zustand → project default → global default
   const projectDefaultProvider = project?.default_provider ?? null
@@ -2650,6 +2675,7 @@ export function ChatWindow({
           <div className="flex-1 min-h-0">
             <ReviewResultsPanel
               sessionId={activeSessionId}
+              isReviewing={isCodeReviewLoadingPanel}
               onSendFix={handleReviewFix}
             />
           </div>
@@ -3326,6 +3352,7 @@ export function ChatWindow({
                                 worktreeId={activeWorktreeId ?? null}
                                 activeSessionId={activeSessionId}
                                 projectId={worktree?.project_id}
+                                runScripts={runScripts}
                                 loadedIssueContexts={loadedIssueContexts ?? []}
                                 loadedPRContexts={loadedPRContexts ?? []}
                                 loadedSecurityContexts={
@@ -3384,6 +3411,7 @@ export function ChatWindow({
                                 onOpenProjectSettings={
                                   handleOpenProjectSettings
                                 }
+                                onRunCommand={handleRunCommand}
                               />
                             </div>
                           </form>
@@ -3459,7 +3487,7 @@ export function ChatWindow({
             </ResizablePanel>
 
             {/* Review sidebar - shown when active session has review results */}
-            {hasReviewResults && (
+            {hasReviewPanel && (
               <>
                 <ResizableHandle withHandle />
                 <ResizablePanel
@@ -3474,6 +3502,7 @@ export function ChatWindow({
                   {activeSessionId && (
                     <ReviewResultsPanel
                       sessionId={activeSessionId}
+                      isReviewing={isCodeReviewLoadingPanel}
                       onSendFix={handleReviewFix}
                     />
                   )}

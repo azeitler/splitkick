@@ -1545,6 +1545,12 @@ fn queued_prompt_skips_plan_wait(
     has_queued_messages && has_plan_wait && !has_question_tool
 }
 
+fn apply_non_waiting_completion_state(session: &mut Session) {
+    session.waiting_for_input = false;
+    session.is_reviewing = false;
+    session.waiting_for_input_type = None;
+}
+
 fn is_unavailable_tool_error(output: Option<&str>) -> bool {
     output.is_some_and(|text| {
         text.contains("No such tool available") || text.contains("not enabled in this context")
@@ -4314,8 +4320,7 @@ pub async fn send_chat_message(
                             with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
                                 if let Some(session) = sessions.find_session_mut(&session_id) {
                                     persist_salvaged_resume_id(session, &effective_backend, sid);
-                                    session.is_reviewing = true;
-                                    session.waiting_for_input = false;
+                                    apply_non_waiting_completion_state(session);
                                 }
                                 Ok(())
                             })
@@ -4772,9 +4777,7 @@ pub async fn send_chat_message(
                 // A queued prompt is an explicit "continue now"; don't park on
                 // plan approval because the backend queue drain runs right after
                 // this write and should be allowed to dequeue it.
-                session.waiting_for_input = false;
-                session.is_reviewing = true;
-                session.waiting_for_input_type = None;
+                apply_non_waiting_completion_state(session);
             } else if has_blocking_tool {
                 session.waiting_for_input = true;
                 session.is_reviewing = false;
@@ -4793,9 +4796,7 @@ pub async fn send_chat_message(
                 session.waiting_for_input_type = Some("plan".to_string());
             } else {
                 // Normal completion
-                session.waiting_for_input = false;
-                session.is_reviewing = true;
-                session.waiting_for_input_type = None;
+                apply_non_waiting_completion_state(session);
             }
         }
         Ok(())
@@ -8822,6 +8823,20 @@ mod tests {
         };
 
         assert!(!is_pending_blocking_tool_call(&tool));
+    }
+
+    #[test]
+    fn normal_completion_state_does_not_mark_session_reviewing() {
+        let mut session = Session::new("Normal turn".to_string(), 0, Backend::Claude);
+        session.waiting_for_input = true;
+        session.waiting_for_input_type = Some("plan".to_string());
+        session.is_reviewing = true;
+
+        apply_non_waiting_completion_state(&mut session);
+
+        assert!(!session.waiting_for_input);
+        assert!(session.waiting_for_input_type.is_none());
+        assert!(!session.is_reviewing);
     }
 
     #[test]

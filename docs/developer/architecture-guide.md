@@ -56,6 +56,20 @@ Rust and React communicate through three patterns:
    (Used by git status polling, PR status updates, worktree events)
 ```
 
+### Backend-Owned Long-Running Jobs
+
+Long-running operations that must survive web/mobile WebSocket disconnects
+should be owned by Rust, not by a pending frontend `invoke()` response. The
+frontend should start the job and receive an immediate job id; Rust
+should run the process, persist the final state, and emit best-effort progress
+events. On reconnect, the frontend recovers from persisted session/project data
+or job query commands instead of relying on the original WebSocket response.
+
+Current example: review magic uses `start_review_job`, which creates a Code
+Review session with a running indicator, starts the AI/CodeRabbit review in a
+Rust background task, prevents a second concurrent review for the same worktree,
+persists `review_results` into that session, and emits `review-job:updated`.
+
 ### Command-Centric Design
 
 All user actions flow through a centralized command system:

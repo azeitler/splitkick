@@ -253,7 +253,7 @@ describe('ChatStore', () => {
       expect(state.sendingSessionIds['session-1']).toBeUndefined()
       expect(state.sendStartedAt['session-1']).toBeUndefined()
       expect(state.completedDurations['session-1']).toBeGreaterThanOrEqual(0)
-      expect(state.reviewingSessions['session-1']).toBe(true)
+      expect(state.reviewingSessions['session-1']).toBeUndefined()
     })
 
     it('stores completed duration when a session completes', () => {

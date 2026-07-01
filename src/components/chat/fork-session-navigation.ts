@@ -1,7 +1,13 @@
 import type { Worktree } from '@/types/projects'
 
-type ForkedWorktree = Pick<Worktree, 'id' | 'path' | 'project_id'>
-type ForkedSession = { id: string }
+interface ForkedWorktree {
+  id: Worktree['id']
+  path: Worktree['path']
+  project_id: Worktree['project_id']
+}
+interface ForkedSession {
+  id: string
+}
 
 interface ForkSessionNavigationContext {
   activeWorktreePath: string | null

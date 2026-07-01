@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   computeSessionCardData,
   getEffectiveSessionWaiting,
+  shouldShowCodeReviewLoadingPanel,
   type ChatStoreState,
 } from './session-card-utils'
 import type { Session } from '@/types/chat'
@@ -161,6 +162,39 @@ describe('computeSessionCardData', () => {
     expect(getEffectiveSessionWaiting(session, storeState)).toBe(false)
     expect(card.isWaiting).toBe(false)
     expect(card.status).toBe('completed')
+  })
+
+  it('does not treat a normal reviewed session as a code review loading panel', () => {
+    const session: Session = {
+      ...createBaseSession(),
+      is_reviewing: true,
+      last_run_status: 'completed',
+    }
+
+    expect(
+      shouldShowCodeReviewLoadingPanel({
+        session,
+        isSessionReviewing: true,
+        hasReviewResults: false,
+      })
+    ).toBe(false)
+  })
+
+  it('shows the code review loading panel for an empty backend-created review session', () => {
+    const session: Session = {
+      ...createBaseSession({
+        name: 'Code Review',
+        is_reviewing: true,
+      }),
+    }
+
+    expect(
+      shouldShowCodeReviewLoadingPanel({
+        session,
+        isSessionReviewing: true,
+        hasReviewResults: false,
+      })
+    ).toBe(true)
   })
 
   it('ignores stale persisted waiting_for_input on completed non-plan run', () => {

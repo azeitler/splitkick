@@ -165,6 +165,19 @@ export function getEffectiveSessionWaiting(
   return storeState.waitingForInputSessionIds[session.id] ?? false
 }
 
+export function shouldShowCodeReviewLoadingPanel({
+  session,
+  isSessionReviewing,
+  hasReviewResults,
+}: {
+  session: Session | null | undefined
+  isSessionReviewing: boolean
+  hasReviewResults: boolean
+}): boolean {
+  if (!session || !isSessionReviewing || hasReviewResults) return false
+  return session.name === 'Code Review' && session.messages.length === 0
+}
+
 export function computeSessionCardData(
   session: Session,
   storeState: ChatStoreState

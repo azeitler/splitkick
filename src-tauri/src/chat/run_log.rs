@@ -2055,7 +2055,7 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
 
                     if completed {
                         run.status = RunStatus::Completed;
-                        metadata.is_reviewing = true;
+                        metadata.is_reviewing = false;
 
                         // Recover claude_session_id from JSONL so the session can
                         // resume with full context (#209). This handles the case

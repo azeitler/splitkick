@@ -508,6 +508,26 @@ export interface ReviewResponse {
   approval_status: 'approved' | 'changes_requested' | 'needs_discussion'
 }
 
+export type ReviewJobStatus = 'running' | 'completed' | 'failed' | 'cancelled'
+
+export interface ReviewJob {
+  id: string
+  reviewRunId: string
+  worktreeId: string
+  worktreePath: string
+  sessionId?: string
+  source: 'ai' | 'coderabbit-cli' | string
+  status: ReviewJobStatus
+  findingCount?: number
+  error?: string
+  createdAt: number
+  updatedAt: number
+}
+
+export interface StartReviewJobResponse {
+  job: ReviewJob
+}
+
 // =============================================================================
 // Release Notes
 // =============================================================================

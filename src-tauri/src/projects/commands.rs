@@ -11,7 +11,7 @@ use std::sync::mpsc;
 use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
 use uuid::Uuid;
 
@@ -304,6 +304,153 @@ fn take_review_process_pid(review_run_id: &str) -> Option<u32> {
         .unwrap()
         .remove(review_run_id)
 }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReviewJobStatus {
+    Running,
+    Completed,
+    Failed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewJob {
+    pub id: String,
+    pub review_run_id: String,
+    pub worktree_id: String,
+    pub worktree_path: String,
+    pub session_id: Option<String>,
+    pub source: String,
+    pub status: ReviewJobStatus,
+    pub finding_count: Option<usize>,
+    pub error: Option<String>,
+    pub created_at: u64,
+    pub updated_at: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ReviewJobStart {
+    pub id: String,
+    pub review_run_id: String,
+    pub worktree_id: String,
+    pub worktree_path: String,
+    pub session_id: Option<String>,
+    pub source: String,
+}
+
+#[derive(Default)]
+pub struct ReviewJobRegistry {
+    jobs: Mutex<HashMap<String, ReviewJob>>,
+}
+
+impl ReviewJobRegistry {
+    pub fn insert_running(&self, start: ReviewJobStart) -> ReviewJob {
+        let now = now();
+        let job = Self::build_running_job(start, now);
+        self.jobs
+            .lock()
+            .unwrap()
+            .insert(job.id.clone(), job.clone());
+        job
+    }
+
+    pub fn try_insert_running(&self, start: ReviewJobStart) -> Result<ReviewJob, String> {
+        let mut jobs = self.jobs.lock().unwrap();
+        if jobs.values().any(|job| {
+            job.worktree_id == start.worktree_id && job.status == ReviewJobStatus::Running
+        }) {
+            return Err("A review is already running for this worktree".to_string());
+        }
+
+        let job = Self::build_running_job(start, now());
+        jobs.insert(job.id.clone(), job.clone());
+        Ok(job)
+    }
+
+    fn build_running_job(start: ReviewJobStart, now: u64) -> ReviewJob {
+        ReviewJob {
+            id: start.id,
+            review_run_id: start.review_run_id,
+            worktree_id: start.worktree_id,
+            worktree_path: start.worktree_path,
+            session_id: start.session_id,
+            source: start.source,
+            status: ReviewJobStatus::Running,
+            finding_count: None,
+            error: None,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    pub fn get(&self, job_id: &str) -> Option<ReviewJob> {
+        self.jobs.lock().unwrap().get(job_id).cloned()
+    }
+
+    pub fn has_running_for_worktree(&self, worktree_id: &str) -> bool {
+        self.jobs
+            .lock()
+            .unwrap()
+            .values()
+            .any(|job| job.worktree_id == worktree_id && job.status == ReviewJobStatus::Running)
+    }
+
+    pub fn list(&self) -> Vec<ReviewJob> {
+        let mut jobs: Vec<_> = self.jobs.lock().unwrap().values().cloned().collect();
+        jobs.sort_by_key(|job| std::cmp::Reverse(job.created_at));
+        jobs
+    }
+
+    pub fn mark_completed(
+        &self,
+        job_id: &str,
+        session_id: String,
+        response: &ReviewResponse,
+    ) -> Option<ReviewJob> {
+        self.update(job_id, |job| {
+            job.status = ReviewJobStatus::Completed;
+            job.session_id = Some(session_id);
+            job.finding_count = Some(response.findings.len());
+            job.error = None;
+        })
+    }
+
+    pub fn mark_failed(&self, job_id: &str, error: String) -> Option<ReviewJob> {
+        self.update(job_id, |job| {
+            job.status = ReviewJobStatus::Failed;
+            job.error = Some(error);
+        })
+    }
+
+    pub fn mark_cancelled(&self, job_id: &str) -> Option<ReviewJob> {
+        self.update(job_id, |job| {
+            job.status = ReviewJobStatus::Cancelled;
+            job.error = Some("Review cancelled".to_string());
+        })
+    }
+
+    pub fn attach_session(&self, job_id: &str, session_id: String) -> Option<ReviewJob> {
+        self.update(job_id, |job| {
+            job.session_id = Some(session_id);
+        })
+    }
+
+    pub fn remove(&self, job_id: &str) -> Option<ReviewJob> {
+        self.jobs.lock().unwrap().remove(job_id)
+    }
+
+    fn update(&self, job_id: &str, update: impl FnOnce(&mut ReviewJob)) -> Option<ReviewJob> {
+        let mut jobs = self.jobs.lock().unwrap();
+        let job = jobs.get_mut(job_id)?;
+        update(job);
+        job.updated_at = now();
+        Some(job.clone())
+    }
+}
+
+static REVIEW_JOB_REGISTRY: Lazy<ReviewJobRegistry> = Lazy::new(ReviewJobRegistry::default);
 
 /// List all projects
 /// Check if git global user identity is configured
@@ -8840,6 +8987,227 @@ pub async fn run_review_with_ai(
     Ok(response)
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StartReviewJobResponse {
+    pub job: ReviewJob,
+}
+
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn start_review_job(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    source: String,
+    custom_prompt: Option<String>,
+    model: Option<String>,
+    custom_profile_name: Option<String>,
+    review_run_id: Option<String>,
+    reasoning_effort: Option<String>,
+    review_type: Option<String>,
+) -> Result<StartReviewJobResponse, String> {
+    let review_run_id = review_run_id.unwrap_or_else(|| Uuid::new_v4().to_string());
+    let job_id = Uuid::new_v4().to_string();
+    REVIEW_JOB_REGISTRY.try_insert_running(ReviewJobStart {
+        id: job_id.clone(),
+        review_run_id: review_run_id.clone(),
+        worktree_id: worktree_id.clone(),
+        worktree_path: worktree_path.clone(),
+        session_id: None,
+        source: source.clone(),
+    })?;
+
+    let session = crate::chat::create_session(
+        app.clone(),
+        worktree_id.clone(),
+        worktree_path.clone(),
+        Some("Code Review".to_string()),
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+    )
+    .await
+    .inspect_err(|_| {
+        REVIEW_JOB_REGISTRY.remove(&job_id);
+    })?;
+
+    if let Err(error) = update_review_session_state(
+        app.clone(),
+        worktree_id.clone(),
+        worktree_path.clone(),
+        session.id.clone(),
+        Some(true),
+        None,
+    )
+    .await
+    {
+        REVIEW_JOB_REGISTRY.remove(&job_id);
+        return Err(error);
+    }
+
+    let job = REVIEW_JOB_REGISTRY
+        .attach_session(&job_id, session.id.clone())
+        .ok_or_else(|| "Review job reservation disappeared".to_string())?;
+    emit_review_job_update(&app, &job);
+
+    let task_app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let review_app = task_app.clone();
+        let review_worktree_path = worktree_path.clone();
+        let review_source = source.clone();
+        let review_run_id_for_task = review_run_id.clone();
+
+        let result = tokio::task::spawn_blocking(move || {
+            tauri::async_runtime::block_on(async move {
+                if review_source == "coderabbit-cli" {
+                    run_coderabbit_review(
+                        review_app,
+                        review_worktree_path,
+                        Some(review_run_id_for_task),
+                        review_type,
+                    )
+                    .await
+                } else {
+                    run_review_with_ai(
+                        review_app,
+                        review_worktree_path,
+                        custom_prompt,
+                        model,
+                        custom_profile_name,
+                        Some(review_run_id_for_task),
+                        reasoning_effort,
+                    )
+                    .await
+                }
+            })
+        })
+        .await
+        .map_err(|e| format!("Review task failed: {e}"))
+        .and_then(|result| result);
+
+        match result {
+            Ok(response) => {
+                let review_results = serde_json::to_value(&response).ok();
+                let _ = update_review_session_state(
+                    task_app.clone(),
+                    worktree_id.clone(),
+                    worktree_path.clone(),
+                    session.id.clone(),
+                    Some(false),
+                    review_results.map(Some),
+                )
+                .await;
+                if let Some(job) =
+                    REVIEW_JOB_REGISTRY.mark_completed(&job_id, session.id, &response)
+                {
+                    emit_review_job_update(&task_app, &job);
+                }
+            }
+            Err(error) => {
+                let cancelled = error.to_lowercase().contains("cancelled")
+                    || error.to_lowercase().contains("canceled");
+                let _ = update_review_session_state(
+                    task_app.clone(),
+                    worktree_id.clone(),
+                    worktree_path.clone(),
+                    session.id.clone(),
+                    Some(false),
+                    None,
+                )
+                .await;
+                let updated = if cancelled {
+                    REVIEW_JOB_REGISTRY.mark_cancelled(&job_id)
+                } else {
+                    REVIEW_JOB_REGISTRY.mark_failed(&job_id, error)
+                };
+                if let Some(job) = updated {
+                    emit_review_job_update(&task_app, &job);
+                }
+            }
+        }
+    });
+
+    Ok(StartReviewJobResponse { job })
+}
+
+#[tauri::command]
+pub async fn get_review_job(job_id: String) -> Result<Option<ReviewJob>, String> {
+    Ok(REVIEW_JOB_REGISTRY.get(&job_id))
+}
+
+#[tauri::command]
+pub async fn list_review_jobs(worktree_id: Option<String>) -> Result<Vec<ReviewJob>, String> {
+    let jobs = REVIEW_JOB_REGISTRY
+        .list()
+        .into_iter()
+        .filter(|job| {
+            worktree_id
+                .as_ref()
+                .map(|id| job.worktree_id == *id)
+                .unwrap_or(true)
+        })
+        .collect();
+    Ok(jobs)
+}
+
+#[tauri::command]
+pub async fn cancel_review_job(job_id: String) -> Result<bool, String> {
+    let Some(job) = REVIEW_JOB_REGISTRY.get(&job_id) else {
+        return Ok(false);
+    };
+    let cancelled = cancel_review_with_ai(job.review_run_id.clone()).await?;
+    if cancelled {
+        REVIEW_JOB_REGISTRY.mark_cancelled(&job_id);
+    }
+    Ok(cancelled)
+}
+
+fn emit_review_job_update(app: &AppHandle, job: &ReviewJob) {
+    let _ = app.emit("review-job:updated", job);
+}
+
+async fn update_review_session_state(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    session_id: String,
+    is_reviewing: Option<bool>,
+    review_results: Option<Option<serde_json::Value>>,
+) -> Result<(), String> {
+    crate::chat::update_session_state(
+        app,
+        worktree_id,
+        worktree_path,
+        session_id,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        is_reviewing,
+        None,
+        None,
+        None,
+        None,
+        None,
+        None,
+        review_results,
+        None,
+        None,
+        None,
+    )
+    .await
+}
+
 fn map_coderabbit_severity(severity: &str) -> String {
     match severity {
         "critical" => "critical".to_string(),
@@ -12031,6 +12399,125 @@ mod tests {
         assert!(extract_json_object_from_text("").is_err());
         // Unbalanced — never closes the top-level object.
         assert!(extract_json_object_from_text(r#"{"a":1"#).is_err());
+    }
+
+    #[test]
+    fn review_job_registry_starts_with_session_and_records_completion() {
+        let registry = ReviewJobRegistry::default();
+        let job = registry.insert_running(ReviewJobStart {
+            id: "job-1".to_string(),
+            review_run_id: "run-1".to_string(),
+            worktree_id: "wt-1".to_string(),
+            worktree_path: "/tmp/wt".to_string(),
+            session_id: Some("session-1".to_string()),
+            source: "ai".to_string(),
+        });
+
+        assert_eq!(job.status, ReviewJobStatus::Running);
+        assert_eq!(
+            registry.get("job-1").unwrap().session_id.as_deref(),
+            Some("session-1")
+        );
+
+        let response = ReviewResponse {
+            summary: "ok".to_string(),
+            findings: vec![],
+            approval_status: "approved".to_string(),
+        };
+        let completed = registry
+            .mark_completed("job-1", "session-1".to_string(), &response)
+            .unwrap();
+
+        assert_eq!(completed.status, ReviewJobStatus::Completed);
+        assert_eq!(completed.session_id.as_deref(), Some("session-1"));
+        assert_eq!(completed.finding_count, Some(0));
+        assert!(completed.error.is_none());
+    }
+
+    #[test]
+    fn review_job_registry_records_cancelled_state() {
+        let registry = ReviewJobRegistry::default();
+        registry.insert_running(ReviewJobStart {
+            id: "job-2".to_string(),
+            review_run_id: "run-2".to_string(),
+            worktree_id: "wt-1".to_string(),
+            worktree_path: "/tmp/wt".to_string(),
+            session_id: Some("session-1".to_string()),
+            source: "coderabbit-cli".to_string(),
+        });
+
+        let cancelled = registry.mark_cancelled("job-2").unwrap();
+
+        assert_eq!(cancelled.status, ReviewJobStatus::Cancelled);
+        assert_eq!(cancelled.error.as_deref(), Some("Review cancelled"));
+    }
+
+    #[test]
+    fn review_job_registry_detects_running_job_for_worktree() {
+        let registry = ReviewJobRegistry::default();
+        registry.insert_running(ReviewJobStart {
+            id: "job-3".to_string(),
+            review_run_id: "run-3".to_string(),
+            worktree_id: "wt-1".to_string(),
+            worktree_path: "/tmp/wt".to_string(),
+            session_id: Some("session-1".to_string()),
+            source: "ai".to_string(),
+        });
+
+        assert!(registry.has_running_for_worktree("wt-1"));
+        assert!(!registry.has_running_for_worktree("wt-2"));
+    }
+
+    #[test]
+    fn review_job_registry_try_insert_running_reserves_worktree_atomically() {
+        let registry = ReviewJobRegistry::default();
+        let first = registry
+            .try_insert_running(ReviewJobStart {
+                id: "job-4".to_string(),
+                review_run_id: "run-4".to_string(),
+                worktree_id: "wt-1".to_string(),
+                worktree_path: "/tmp/wt".to_string(),
+                session_id: None,
+                source: "ai".to_string(),
+            })
+            .unwrap();
+
+        assert_eq!(first.status, ReviewJobStatus::Running);
+        assert!(first.session_id.is_none());
+        assert!(registry
+            .try_insert_running(ReviewJobStart {
+                id: "job-5".to_string(),
+                review_run_id: "run-5".to_string(),
+                worktree_id: "wt-1".to_string(),
+                worktree_path: "/tmp/wt".to_string(),
+                session_id: None,
+                source: "ai".to_string(),
+            })
+            .is_err());
+    }
+
+    #[test]
+    fn review_job_registry_can_attach_session_or_remove_reservation() {
+        let registry = ReviewJobRegistry::default();
+        registry
+            .try_insert_running(ReviewJobStart {
+                id: "job-6".to_string(),
+                review_run_id: "run-6".to_string(),
+                worktree_id: "wt-1".to_string(),
+                worktree_path: "/tmp/wt".to_string(),
+                session_id: None,
+                source: "ai".to_string(),
+            })
+            .unwrap();
+
+        let updated = registry
+            .attach_session("job-6", "session-6".to_string())
+            .unwrap();
+        assert_eq!(updated.session_id.as_deref(), Some("session-6"));
+
+        registry.remove("job-6");
+        assert!(registry.get("job-6").is_none());
+        assert!(!registry.has_running_for_worktree("wt-1"));
     }
 
     #[test]

@@ -75,7 +75,7 @@ describe('WorktreeDropdownMenu', () => {
     actionMocks.handleRunCommand.mockClear()
   })
 
-  it('shows and starts the jean.json run command in mobile web access', async () => {
+  it('hides the jean.json run command in mobile web access', async () => {
     const user = userEvent.setup()
 
     render(
@@ -87,8 +87,8 @@ describe('WorktreeDropdownMenu', () => {
     )
 
     await user.click(screen.getByRole('button'))
-    await user.click(await screen.findByRole('menuitem', { name: /run/i }))
 
-    expect(actionMocks.handleRun).toHaveBeenCalledTimes(1)
+    expect(screen.queryByRole('menuitem', { name: /run/i })).toBeNull()
+    expect(actionMocks.handleRun).not.toHaveBeenCalled()
   })
 })

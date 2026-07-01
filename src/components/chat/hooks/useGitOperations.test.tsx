@@ -15,20 +15,25 @@ import type { Project, Worktree } from '@/types/projects'
 
 const mocks = vi.hoisted(() => ({
   invoke: vi.fn(),
+  listen: vi.fn(),
   toastLoading: vi.fn(() => 'toast-1'),
+  toastSuccess: vi.fn(),
   toastInfo: vi.fn(),
   toastWarning: vi.fn(),
   toastError: vi.fn(),
 }))
 
-vi.mock('@/lib/transport', () => ({ invoke: mocks.invoke }))
+vi.mock('@/lib/transport', () => ({
+  invoke: mocks.invoke,
+  listen: mocks.listen,
+}))
 vi.mock('sonner', () => ({
   toast: {
     loading: mocks.toastLoading,
     info: mocks.toastInfo,
     warning: mocks.toastWarning,
     error: mocks.toastError,
-    success: vi.fn(),
+    success: mocks.toastSuccess,
   },
 }))
 vi.mock('@/services/git-status', () => ({
@@ -148,6 +153,7 @@ describe('useGitOperations conflict resolution', () => {
       }
       return Promise.resolve(undefined)
     })
+    mocks.listen.mockResolvedValue(vi.fn())
   })
 
   it('sends detected conflicts immediately in yolo mode instead of drafting them', async () => {
@@ -233,6 +239,59 @@ describe('useGitOperations conflict resolution', () => {
     const sentArgs = sendMessage.mutate.mock.calls[0]?.[0]
     expect(sentArgs?.message).toContain(
       'I merged `origin/main` into this branch to resolve PR conflicts'
+    )
+  })
+
+  it('reconciles a review job that finished before the listener is active', async () => {
+    mocks.invoke.mockImplementation((command: string) => {
+      if (command === 'start_review_job') {
+        return Promise.resolve({
+          job: {
+            id: 'job-1',
+            reviewRunId: 'run-1',
+            worktreeId: 'wt-1',
+            worktreePath: '/repo/worktree',
+            sessionId: 'review-session',
+            source: 'ai',
+            status: 'running',
+            createdAt: 1,
+            updatedAt: 1,
+          },
+        })
+      }
+      if (command === 'get_review_job') {
+        return Promise.resolve({
+          id: 'job-1',
+          reviewRunId: 'run-1',
+          worktreeId: 'wt-1',
+          worktreePath: '/repo/worktree',
+          sessionId: 'review-session',
+          source: 'ai',
+          status: 'completed',
+          findingCount: 2,
+          createdAt: 1,
+          updatedAt: 2,
+        })
+      }
+      return Promise.resolve(undefined)
+    })
+
+    const { result } = renderGitOperations()
+
+    await act(async () => {
+      await result.current.handleReview()
+    })
+
+    expect(mocks.listen).toHaveBeenCalledWith(
+      'review-job:updated',
+      expect.any(Function)
+    )
+    expect(mocks.invoke).toHaveBeenCalledWith('get_review_job', {
+      jobId: 'job-1',
+    })
+    expect(mocks.toastSuccess).toHaveBeenCalledWith(
+      'Review done on Project/feature (2 findings)',
+      expect.objectContaining({ id: 'toast-1' })
     )
   })
 })

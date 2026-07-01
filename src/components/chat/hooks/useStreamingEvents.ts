@@ -1088,7 +1088,7 @@ export default function useStreamingEvents({
                     last_run_status: 'completed',
                     waiting_for_input: false,
                     waiting_for_input_type: undefined,
-                    is_reviewing: true,
+                    is_reviewing: false,
                   }
                 : old
           )
@@ -1105,7 +1105,7 @@ export default function useStreamingEvents({
                         last_run_status: 'completed' as const,
                         waiting_for_input: false,
                         waiting_for_input_type: undefined,
-                        is_reviewing: true,
+                        is_reviewing: false,
                       }
                     : s
                 ),
@@ -1304,8 +1304,11 @@ export default function useStreamingEvents({
           notifySession(sessionId, 'Needs your input')
         } else {
           // 2. Update last_run_status + session state in caches so UI reflects immediately.
-          // CRITICAL: Include waiting_for_input/is_reviewing so useSessionStatePersistence's
-          // load effect doesn't overwrite Zustand with stale cache values.
+          // CRITICAL: Include waiting_for_input/is_reviewing so
+          // useSessionStatePersistence's load effect doesn't overwrite Zustand
+          // with stale cache values. A normal completed chat turn is not a code
+          // review; only the backend-created review session should carry
+          // is_reviewing=true while its review job is running.
           queryClient.setQueryData<Session>(
             chatQueryKeys.session(sessionId),
             old =>
@@ -1314,7 +1317,7 @@ export default function useStreamingEvents({
                     ...old,
                     last_run_status: 'completed',
                     waiting_for_input: false,
-                    is_reviewing: true,
+                    is_reviewing: false,
                   }
                 : old
           )
@@ -1330,7 +1333,7 @@ export default function useStreamingEvents({
                         ...s,
                         last_run_status: 'completed' as const,
                         waiting_for_input: false,
-                        is_reviewing: true,
+                        is_reviewing: false,
                       }
                     : s
                 ),

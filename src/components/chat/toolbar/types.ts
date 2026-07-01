@@ -67,6 +67,7 @@ export interface ChatToolbarProps {
   worktreeId: string | null
   activeSessionId: string | null | undefined
   projectId: string | undefined
+  runScripts?: string[]
 
   loadedIssueContexts: LoadedIssueContext[]
   loadedPRContexts: LoadedPullRequestContext[]
@@ -104,4 +105,5 @@ export interface ChatToolbarProps {
   enabledMcpServers: string[]
   onToggleMcpServer: (serverName: string) => void
   onOpenProjectSettings?: () => void
+  onRunCommand?: (command: string) => void
 }

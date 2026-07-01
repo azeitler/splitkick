@@ -1072,7 +1072,7 @@ fn persist_codex_recovered_completion_state(
     } else {
         metadata.waiting_for_input = false;
         metadata.waiting_for_input_type = None;
-        metadata.is_reviewing = true;
+        metadata.is_reviewing = false;
     }
 
     super::storage::save_metadata(app, &metadata)

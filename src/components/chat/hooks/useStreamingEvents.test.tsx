@@ -302,6 +302,103 @@ describe('useStreamingEvents cancellation sanitization', () => {
     ).not.toBe(true)
   })
 
+  it('does not turn a normal completed session into review loading when a finished review session exists', async () => {
+    const queryClient = createQueryClient()
+    const wrapper = createWrapper(queryClient)
+
+    queryClient.setQueryData(['chat', 'session', 'normal-session'], {
+      id: 'normal-session',
+      name: 'Normal session',
+      order: 0,
+      created_at: 1,
+      updated_at: 1,
+      messages: [
+        {
+          id: 'user-1',
+          session_id: 'normal-session',
+          role: 'user',
+          content: 'finish this task',
+          timestamp: 1,
+          tool_calls: [],
+        },
+      ],
+    })
+    queryClient.setQueryData(['chat', 'sessions', 'worktree-1'], {
+      worktree_id: 'worktree-1',
+      sessions: [
+        {
+          id: 'normal-session',
+          name: 'Normal session',
+          order: 0,
+          created_at: 1,
+          updated_at: 1,
+          messages: [],
+          is_reviewing: false,
+        },
+        {
+          id: 'review-session',
+          name: 'Code Review',
+          order: 1,
+          created_at: 2,
+          updated_at: 2,
+          messages: [],
+          is_reviewing: false,
+          review_results: {
+            summary: 'Review finished.',
+            approval_status: 'approved',
+            findings: [],
+          },
+        },
+      ],
+    })
+
+    useChatStore.setState({
+      streamingContents: { 'normal-session': 'Done.' },
+      streamingContentBlocks: {
+        'normal-session': [{ type: 'text', text: 'Done.' }],
+      },
+      sendingSessionIds: { 'normal-session': true },
+      sendStartedAt: { 'normal-session': 1000 },
+      sessionWorktreeMap: {
+        'normal-session': 'worktree-1',
+        'review-session': 'worktree-1',
+      },
+      worktreePaths: { 'worktree-1': '/tmp/worktree' },
+      reviewingSessions: {},
+    })
+
+    renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+
+    await waitFor(() => expect(registeredListeners.has('chat:done')).toBe(true))
+
+    registeredListeners.get('chat:done')?.({
+      payload: {
+        session_id: 'normal-session',
+        worktree_id: 'worktree-1',
+      },
+    })
+
+    expect(
+      queryClient.getQueryData<{ is_reviewing?: boolean }>([
+        'chat',
+        'session',
+        'normal-session',
+      ])?.is_reviewing
+    ).toBe(false)
+    const sessionsCache = queryClient.getQueryData<{
+      sessions: { id: string; is_reviewing?: boolean }[]
+    }>(['chat', 'sessions', 'worktree-1'])
+    expect(
+      sessionsCache?.sessions.find(s => s.id === 'normal-session')?.is_reviewing
+    ).toBe(false)
+    expect(
+      sessionsCache?.sessions.find(s => s.id === 'review-session')?.is_reviewing
+    ).toBe(false)
+    expect(
+      useChatStore.getState().reviewingSessions['normal-session']
+    ).toBeUndefined()
+  })
+
   it('keeps the prompt and the partial assistant output (incl tool calls) when cancelling a partial response', async () => {
     const queryClient = createQueryClient()
     const wrapper = createWrapper(queryClient)
