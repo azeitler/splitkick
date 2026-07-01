@@ -78,7 +78,9 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          workspaces: |
+            ./src-tauri -> target
+            ./src-server -> target
           shared-key: server-${{ matrix.arch }}
 
       - name: Install frontend dependencies
@@ -88,7 +90,7 @@ jobs:
         run: bun run build
 
       - name: Build jean-server
-        run: cd src-tauri && cargo build --release --bin jean-server
+        run: cd src-server && cargo build --release
 
       - name: Package binary
         env:
@@ -96,7 +98,7 @@ jobs:
           ASSET: ${{ matrix.asset }}
         run: |
           mkdir -p artifacts
-          cp src-tauri/target/release/jean-server "artifacts/${ASSET}"
+          cp src-server/target/release/jean-server "artifacts/${ASSET}"
           tar -C artifacts -czf "artifacts/${ASSET}-${VERSION}.tar.gz" "${ASSET}"
           shasum -a 256 "artifacts/${ASSET}-${VERSION}.tar.gz" > "artifacts/${ASSET}-${VERSION}.tar.gz.sha256"
 
