@@ -211,6 +211,11 @@ export function DesktopBackendModelPicker({
       <PopoverContent
         align="end"
         className="w-[min(36rem,calc(100vw-4rem))] p-0"
+        onKeyDown={event => {
+          if (event.key === 'Escape') {
+            event.stopPropagation()
+          }
+        }}
       >
         <BackendModelPickerContent
           open={open}
