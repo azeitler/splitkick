@@ -12,7 +12,9 @@ use super::{WsBroadcaster, WsEvent};
 fn command_should_run_on_blocking_pool(command: &str) -> bool {
     matches!(
         command,
-        "create_commit_with_ai"
+        "get_sessions"
+            | "list_native_cli_sessions"
+            | "create_commit_with_ai"
             | "create_pr_with_ai_content"
             | "run_review_with_ai"
             | "generate_release_notes"
@@ -91,6 +93,14 @@ mod tests {
     #[test]
     fn commit_generation_runs_on_blocking_pool() {
         assert!(command_should_run_on_blocking_pool("create_commit_with_ai"));
+    }
+
+    #[test]
+    fn session_history_loading_runs_on_blocking_pool() {
+        assert!(command_should_run_on_blocking_pool("get_sessions"));
+        assert!(command_should_run_on_blocking_pool(
+            "list_native_cli_sessions"
+        ));
     }
 
     #[test]
