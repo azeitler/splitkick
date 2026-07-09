@@ -247,9 +247,10 @@ describe('useGitOperations conflict resolution', () => {
     if (!resolveCreatePr) {
       throw new Error('Expected create_pr_with_ai_content to be invoked')
     }
+    const completeCreatePr = resolveCreatePr
 
     await act(async () => {
-      resolveCreatePr({
+      completeCreatePr({
         pr_number: 32,
         pr_url: 'https://github.com/o/r/pull/32',
         title: 'Feature',
