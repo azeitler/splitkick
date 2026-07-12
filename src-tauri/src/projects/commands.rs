@@ -522,11 +522,17 @@ fn merge_review_entry(
     if let Some(error) = error {
         entry["error"] = serde_json::Value::String(error.to_string());
     }
-    reviews.retain(|entry| {
-        entry.get("backend").and_then(|value| value.as_str()) != Some(backend)
-            || entry.get("model").and_then(|value| value.as_str()) != Some(model)
-    });
-    reviews.push(entry);
+    if let Some(existing_entry) = reviews.iter_mut().find(|existing_entry| {
+        existing_entry
+            .get("backend")
+            .and_then(|value| value.as_str())
+            == Some(backend)
+            && existing_entry.get("model").and_then(|value| value.as_str()) == Some(model)
+    }) {
+        *existing_entry = entry;
+    } else {
+        reviews.push(entry);
+    }
     Ok(serde_json::json!({ "reviews": reviews }))
 }
 
