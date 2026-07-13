@@ -82,6 +82,7 @@ Add these secrets to your GitHub repository (Settings → Secrets and variables 
    - Ask if you want to commit and push automatically
 
 3. **GitHub Actions will:**
+   - Verify that the release tag's exact commit has a successful CI Build run
    - Build the app for all platforms
    - Create a draft release
    - Generate `latest.json` for auto-updates
