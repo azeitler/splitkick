@@ -46,6 +46,22 @@ describe('ScriptsButton', () => {
     expect(onRun).toHaveBeenCalledWith(mocks.scripts[1])
   })
 
+  it('uses the same muted styling as the neighboring toolbar buttons', () => {
+    render(
+      <ScriptsButton
+        projectId="project-1"
+        worktreePath="/repo"
+        onRun={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: 'Scripts' })).toHaveClass(
+      'border-border/50',
+      'bg-muted/50',
+      'text-muted-foreground'
+    )
+  })
+
   it('is hidden when package.json has no scripts', () => {
     mocks.scripts = []
     render(
