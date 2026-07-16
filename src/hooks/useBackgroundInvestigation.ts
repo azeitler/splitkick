@@ -148,7 +148,9 @@ export function useBackgroundInvestigation(): void {
     for (const { worktreeId, type } of candidates) {
       processingRef.current.add(worktreeId)
 
-      // Consume the flag immediately so we don't re-process
+      // Keep the flag until the backend has durably accepted the prompt. If
+      // prompt construction or the start command fails, the retry below can
+      // try again instead of silently leaving an empty session behind.
       const uiStore = useUIStore.getState()
       const consumeByType = {
         issue: uiStore.consumeAutoInvestigate,
@@ -158,7 +160,6 @@ export function useBackgroundInvestigation(): void {
         'linear-issue': uiStore.consumeAutoInvestigateLinearIssue,
         'sentry-issue': uiStore.consumeAutoInvestigateSentryIssue,
       } satisfies Record<InvestigationType, (worktreeId: string) => void>
-      consumeByType[type](worktreeId)
 
       processBackgroundInvestigation(
         worktreeId,
@@ -167,8 +168,17 @@ export function useBackgroundInvestigation(): void {
         null,
         queryClient
       )
+        .then(() => {
+          consumeByType[type](worktreeId)
+        })
         .catch(err => {
           logger.error('Background investigation failed', { worktreeId, err })
+          if (!retryTimerRef.current) {
+            retryTimerRef.current = setTimeout(() => {
+              retryTimerRef.current = null
+              setRetryTick(t => t + 1)
+            }, 2000)
+          }
         })
         .finally(() => {
           processingRef.current.delete(worktreeId)

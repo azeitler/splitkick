@@ -1002,31 +1002,40 @@ async fn queued_message_to_send_request(
     };
 
     let prefs = crate::load_preferences(app.clone()).await.ok();
-    let custom_profile_name = provider.filter(|provider| {
-        provider != "__anthropic__"
-            && prefs.as_ref().is_some_and(|p| {
-                p.custom_cli_profiles
-                    .iter()
-                    .any(|profile| profile.name == *provider)
-            })
+    let custom_profile_name = json_string(queued, "customProfileName").or_else(|| {
+        provider.filter(|provider| {
+            provider != "__anthropic__"
+                && prefs.as_ref().is_some_and(|p| {
+                    p.custom_cli_profiles
+                        .iter()
+                        .any(|profile| profile.name == *provider)
+                })
+        })
     });
-    let parallel_execution_prompt = prefs.as_ref().and_then(|p| {
-        if p.parallel_execution_prompt_enabled {
-            Some(
-                p.magic_prompts
-                    .parallel_execution
-                    .clone()
-                    .unwrap_or_else(|| DEFAULT_PARALLEL_EXECUTION_PROMPT.to_string()),
-            )
-        } else {
-            None
-        }
+    let parallel_execution_prompt = json_string(queued, "parallelExecutionPrompt").or_else(|| {
+        prefs.as_ref().and_then(|p| {
+            if p.parallel_execution_prompt_enabled {
+                Some(
+                    p.magic_prompts
+                        .parallel_execution
+                        .clone()
+                        .unwrap_or_else(|| DEFAULT_PARALLEL_EXECUTION_PROMPT.to_string()),
+                )
+            } else {
+                None
+            }
+        })
     });
-    let ai_language = prefs
-        .as_ref()
-        .map(|p| p.ai_language.trim().to_string())
-        .filter(|s| !s.is_empty());
-    let chrome_enabled = prefs.as_ref().map(|p| p.chrome_enabled);
+    let ai_language = json_string(queued, "aiLanguage").or_else(|| {
+        prefs
+            .as_ref()
+            .map(|p| p.ai_language.trim().to_string())
+            .filter(|s| !s.is_empty())
+    });
+    let chrome_enabled = queued
+        .get("chromeEnabled")
+        .and_then(Value::as_bool)
+        .or_else(|| prefs.as_ref().map(|p| p.chrome_enabled));
 
     let mut allowed_tools: Vec<String> = QUEUE_DEFAULT_ALLOWED_TOOLS
         .iter()
@@ -1039,6 +1048,11 @@ async fn queued_message_to_send_request(
             }
         }
     }
+    let allowed_tools = if queued.get("allowAllTools").and_then(Value::as_bool) == Some(true) {
+        None
+    } else {
+        Some(allowed_tools)
+    };
 
     Ok(QueuedSendRequest {
         message,
@@ -1048,7 +1062,7 @@ async fn queued_message_to_send_request(
         effort_level,
         parallel_execution_prompt,
         ai_language,
-        allowed_tools: Some(allowed_tools),
+        allowed_tools,
         mcp_config: json_string(queued, "mcpConfig"),
         chrome_enabled,
         custom_profile_name,

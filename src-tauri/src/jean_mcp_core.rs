@@ -1013,6 +1013,44 @@ pub struct BackgroundInvestigationResult {
 }
 
 #[allow(clippy::too_many_arguments)]
+fn build_background_investigation_queue_message(
+    message: String,
+    model: String,
+    backend: String,
+    provider: Option<String>,
+    effort_level: Option<String>,
+    execution_mode: String,
+    custom_profile_name: Option<String>,
+    chrome_enabled: Option<bool>,
+    ai_language: Option<String>,
+    parallel_execution_prompt: Option<String>,
+) -> Value {
+    json!({
+        "id": uuid::Uuid::new_v4().to_string(),
+        "message": message,
+        "pendingImages": [],
+        "pendingFiles": [],
+        "pendingSkills": [],
+        "pendingTextFiles": [],
+        "model": model,
+        "provider": provider,
+        "executionMode": execution_mode,
+        "thinkingLevel": "think",
+        "effortLevel": effort_level,
+        "backend": backend,
+        "allowAllTools": true,
+        "customProfileName": custom_profile_name,
+        "chromeEnabled": chrome_enabled,
+        "aiLanguage": ai_language,
+        "parallelExecutionPrompt": parallel_execution_prompt,
+        "queuedAt": std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64,
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn start_background_investigation_impl(
     app: &AppHandle,
     worktree_id: String,
@@ -1070,45 +1108,35 @@ pub async fn start_background_investigation_impl(
     )
     .await?;
 
-    let thinking_level = Some(crate::chat::types::ThinkingLevel::Think);
-    let effort_level = effort_level.and_then(|effort| {
-        serde_json::from_value::<crate::chat::types::EffortLevel>(Value::String(effort)).ok()
-    });
-
-    let app_clone = app.clone();
-    let source_clone = source.unwrap_or_else(|| "ui".to_string());
+    let source = source.unwrap_or_else(|| "ui".to_string());
     let execution_mode = execution_mode
         .filter(|mode| matches!(mode.as_str(), "plan" | "yolo"))
         .unwrap_or_else(|| "plan".to_string());
-    let session_id_for_send = session_id.clone();
-    let worktree_id_for_send = worktree_id.clone();
-    let worktree_path_for_send = worktree_path.clone();
-    tauri::async_runtime::spawn(async move {
-        if let Err(e) = crate::chat::send_chat_message(
-            app_clone,
-            session_id_for_send,
-            worktree_id_for_send,
-            worktree_path_for_send,
-            message,
-            Some(model),
-            Some(execution_mode),
-            thinking_level,
-            effort_level,
-            parallel_execution_prompt,
-            ai_language,
-            None,
-            None,
-            chrome_enabled,
-            custom_profile_name,
-            Some(backend),
-        )
-        .await
-        {
-            log::warn!(
-                "Background investigation send_chat_message (source={source_clone}) failed: {e}"
-            );
-        }
-    });
+    let queued_message = build_background_investigation_queue_message(
+        message,
+        model,
+        backend,
+        provider,
+        effort_level,
+        execution_mode,
+        custom_profile_name,
+        chrome_enabled,
+        ai_language,
+        parallel_execution_prompt,
+    );
+
+    // Persist before returning so a transient send race or app reload cannot
+    // leave the newly-created session without its investigation prompt. The
+    // backend queue drain starts immediately and requeues lost send races.
+    crate::chat::enqueue_message(
+        app.clone(),
+        worktree_id.clone(),
+        worktree_path,
+        session_id.clone(),
+        queued_message,
+    )
+    .await?;
+    log::info!("Background investigation prompt queued (source={source}) session={session_id}");
 
     Ok(BackgroundInvestigationResult {
         session_id,
@@ -1758,5 +1786,32 @@ mod tests {
         assert!(list_linear_issues["inputSchema"]["properties"]
             .get("projectId")
             .is_some());
+    }
+
+    #[test]
+    fn background_investigation_prompt_is_queued_with_send_settings() {
+        let queued = build_background_investigation_queue_message(
+            "Investigate issue #42".to_string(),
+            "gpt-5.6-sol".to_string(),
+            "codex".to_string(),
+            Some("profile-a".to_string()),
+            Some("high".to_string()),
+            "yolo".to_string(),
+            None,
+            None,
+            None,
+            None,
+        );
+
+        assert_eq!(queued["message"], "Investigate issue #42");
+        assert_eq!(queued["model"], "gpt-5.6-sol");
+        assert_eq!(queued["backend"], "codex");
+        assert_eq!(queued["provider"], "profile-a");
+        assert_eq!(queued["effortLevel"], "high");
+        assert_eq!(queued["executionMode"], "yolo");
+        assert_eq!(queued["thinkingLevel"], "think");
+        assert_eq!(queued["allowAllTools"], true);
+        assert!(queued["id"].as_str().is_some_and(|id| !id.is_empty()));
+        assert!(queued["queuedAt"].as_u64().is_some());
     }
 }
