@@ -7801,6 +7801,7 @@ fn generate_pr_content_from_inputs(
             app,
             &prompt,
             model_str,
+            Some(PR_CONTENT_SCHEMA),
             Some(std::path::Path::new(repo_path)),
             reasoning_effort,
         )?;
@@ -8543,6 +8544,7 @@ fn generate_commit_message_once(
             app,
             prompt,
             model_str,
+            Some(COMMIT_MESSAGE_SCHEMA),
             working_dir,
             reasoning_effort,
         )?;
@@ -9157,6 +9159,7 @@ fn generate_review(
             app,
             prompt,
             model_str,
+            Some(REVIEW_SCHEMA),
             working_dir,
             reasoning_effort,
         )?;
@@ -10423,6 +10426,57 @@ const RELEASE_NOTES_SCHEMA: &str = r#"{
     "additionalProperties": false
 }"#;
 
+#[derive(Debug, Deserialize)]
+struct CategorizedReleaseNotesResponse {
+    title: String,
+    #[serde(default)]
+    features: Vec<String>,
+    #[serde(default)]
+    fixes: Vec<String>,
+    #[serde(default)]
+    improvements: Vec<String>,
+    #[serde(default, alias = "breakingChanges")]
+    breaking_changes: Vec<String>,
+}
+
+fn append_release_notes_section(sections: &mut Vec<String>, heading: &str, items: &[String]) {
+    let bullets = items
+        .iter()
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+        .map(|item| format!("- {item}"))
+        .collect::<Vec<_>>();
+    if !bullets.is_empty() {
+        sections.push(format!("## {heading}\n\n{}", bullets.join("\n")));
+    }
+}
+
+fn parse_grok_release_notes_response(json: &str) -> Result<ReleaseNotesResponse, String> {
+    match serde_json::from_str::<ReleaseNotesResponse>(json) {
+        Ok(response) => Ok(response),
+        Err(direct_error) => {
+            let categorized: CategorizedReleaseNotesResponse =
+                serde_json::from_str(json).map_err(|_| direct_error.to_string())?;
+            let mut sections = Vec::new();
+            append_release_notes_section(&mut sections, "Features", &categorized.features);
+            append_release_notes_section(&mut sections, "Fixes", &categorized.fixes);
+            append_release_notes_section(&mut sections, "Improvements", &categorized.improvements);
+            append_release_notes_section(
+                &mut sections,
+                "Breaking Changes",
+                &categorized.breaking_changes,
+            );
+            if sections.is_empty() {
+                return Err(direct_error.to_string());
+            }
+            Ok(ReleaseNotesResponse {
+                title: categorized.title,
+                body: sections.join("\n\n"),
+            })
+        }
+    }
+}
+
 const RELEASE_NOTES_PROMPT: &str = r#"Generate release notes for changes since the `{tag}` release ({previous_release_name}).
 
 ## Merged pull requests and detected issue references
@@ -10612,11 +10666,12 @@ fn generate_release_notes_content(
             app,
             &prompt,
             model_str,
+            Some(RELEASE_NOTES_SCHEMA),
             Some(std::path::Path::new(project_path)),
             reasoning_effort,
         )?;
         let json_str = extract_json_object_from_text(&json_str)?;
-        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str).map_err(|e| {
+        let mut response = parse_grok_release_notes_response(&json_str).map_err(|e| {
             log::error!("Failed to parse Grok release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
         })?;
@@ -10755,7 +10810,10 @@ fn format_related_pull_requests(pr_issue_refs: &PrIssueRefsMap) -> String {
 
 #[cfg(test)]
 mod release_notes_body_tests {
-    use super::{augment_pr_references_in_body, format_related_pull_requests};
+    use super::{
+        augment_pr_references_in_body, format_related_pull_requests,
+        parse_grok_release_notes_response,
+    };
     use std::collections::{BTreeMap, BTreeSet};
 
     fn issue_map(
@@ -10823,6 +10881,35 @@ Related issue references:
             result,
             "- PR #9503: use exact reference `(#9503, fixes #9501, #9504)`"
         );
+    }
+
+    #[test]
+    fn parses_grok_categorized_release_notes_as_markdown_body() {
+        let json = r#"{
+            "title": "v0.1.67 — Grok improvements",
+            "features": ["Added Grok image attachments."],
+            "fixes": ["Fixed the Grok model picker."],
+            "improvements": ["Improved release generation."]
+        }"#;
+
+        let response = parse_grok_release_notes_response(json).unwrap();
+
+        assert_eq!(response.title, "v0.1.67 — Grok improvements");
+        assert_eq!(
+            response.body,
+            "## Features\n\n- Added Grok image attachments.\n\n## Fixes\n\n- Fixed the Grok model picker.\n\n## Improvements\n\n- Improved release generation."
+        );
+    }
+
+    #[test]
+    fn parses_grok_release_notes_in_required_shape_unchanged() {
+        let response = parse_grok_release_notes_response(
+            r###"{"title":"v0.1.67","body":"## Fixes\n\n- Fixed release generation."}"###,
+        )
+        .unwrap();
+
+        assert_eq!(response.title, "v0.1.67");
+        assert_eq!(response.body, "## Fixes\n\n- Fixed release generation.");
     }
 }
 

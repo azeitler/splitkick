@@ -110,6 +110,9 @@ describe('CompactStreamingTicker', () => {
       steeredPrompt.compareDocumentPosition(afterSteer) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
+
+    expect(beforeSteer.querySelector('.animate-spin')).not.toBeInTheDocument()
+    expect(afterSteer.querySelector('.animate-spin')).toBeInTheDocument()
   })
 
   it('summarizes fragmented PI text deltas as one meaningful line while streaming', () => {

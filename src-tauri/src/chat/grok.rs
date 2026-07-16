@@ -1,18 +1,32 @@
 //! Grok Build CLI execution engine.
+//!
+//! On Unix, interactive Grok turns run through a detached ACP host process
+//! (`--jean-grok-acp-host`) so the turn survives Jean restart — same pattern as
+//! PI's RPC host. Jean tails the run JSONL and reattaches via `resume_session`.
+//! Windows keeps the in-process ACP child path (non-survivable).
 
-use super::types::{ContentBlock, ToolCall, UsageData};
+use super::types::{ChatMessage, ContentBlock, MessageRole, RunEntry, ToolCall, UsageData};
 use crate::http_server::EmitExt;
 use base64::{engine::general_purpose::STANDARD, Engine};
 use once_cell::sync::Lazy;
 use serde_json::Value;
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Read};
+#[cfg(unix)]
+use std::fs::OpenOptions;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::Path;
+#[cfg(unix)]
+use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tauri::AppHandle;
+#[cfg(unix)]
+use tauri::Manager;
+
+/// Jean self-relaunch flag for the detached Grok ACP host (Unix).
+pub const GROK_ACP_HOST_ARG: &str = "--jean-grok-acp-host";
 
 #[derive(serde::Serialize, Clone)]
 struct ChunkEvent {
@@ -71,6 +85,377 @@ struct ParsedToolCall {
 }
 
 const GROK_SYNTHETIC_PLAN_TOOL_NAME: &str = "ExitPlanMode";
+
+/// Map a Grok tool variant / ACP title / kind onto Jean's display tool names.
+///
+/// Grok ACP frequently sets `title` to a human summary (grep pattern, `Read \`path\``,
+/// `Execute \`cmd\``) and puts the real tool type in `rawInput.variant` (or message-block
+/// `input.variant`). Without normalization the UI shows the title as the tool name and
+/// cannot render Read/Bash/Grep/etc. affordances.
+fn map_grok_tool_name(raw: &str) -> Option<&'static str> {
+    match raw.trim() {
+        // Shell
+        "Bash"
+        | "bash"
+        | "Shell"
+        | "shell"
+        | "CursorShell"
+        | "run_terminal_cmd"
+        | "run_terminal_command"
+        | "shell_command"
+        | "Execute" => Some("Bash"),
+        // Search
+        "Grep" | "grep" | "CursorGrep" => Some("Grep"),
+        "Glob" | "glob" | "CursorGlob" => Some("Glob"),
+        // Filesystem
+        "Read" | "ReadFile" | "CursorRead" | "read_file" | "readFile" => Some("Read"),
+        "Write" | "write" | "WriteFile" | "CursorWrite" | "write_file" | "writeFile" => {
+            Some("Write")
+        }
+        "Edit" | "EditFile" | "edit_file" | "SearchReplace" | "search_replace" | "StrReplace"
+        | "str_replace" | "CursorStrReplace" => Some("Edit"),
+        "Delete" | "DeleteFile" | "delete_file" => Some("Delete"),
+        "List" | "ListDir" | "list_dir" | "LS" | "ls" | "read_directory" => Some("List"),
+        // Web
+        "WebFetch" | "web_fetch" | "WebFetchTool" | "Fetch" => Some("WebFetch"),
+        "WebSearch" | "web_search" | "WebSearchTool" | "Web search" => Some("WebSearch"),
+        // Agents
+        "Task" | "task" | "spawn_subagent" => Some("Task"),
+        "TaskOutput" | "get_command_or_subagent_output" => Some("WaitForAgents"),
+        "Agent" | "agent" | "SubAgent" | "subagent" => Some("Agent"),
+        // Todos (Grok ACP uses TodoWrite / todo_write; titles like "Updating plan")
+        "TodoWrite" | "CursorTodoWrite" | "todo_write" | "todowrite" | "Todo" | "Todos"
+        | "todo" => Some("TodoWrite"),
+        // Plan
+        "EnterPlanMode" | "enter_plan_mode" => Some("EnterPlanMode"),
+        "ExitPlanMode" | "exit_plan_mode" => Some(GROK_SYNTHETIC_PLAN_TOOL_NAME),
+        _ => None,
+    }
+}
+
+fn normalize_todo_status(raw: &str) -> &'static str {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "completed" | "complete" | "done" | "finished" => "completed",
+        "in_progress" | "in-progress" | "inprogress" | "running" | "active" => "in_progress",
+        "cancelled" | "canceled" | "skipped" => "cancelled",
+        _ => "pending",
+    }
+}
+
+/// Normalize Grok/Claude-style todo items to Jean's Todo shape:
+/// `{ content, activeForm, status }` (status is pending|in_progress|completed|cancelled).
+fn normalize_todos_array(todos: &Value) -> Value {
+    let Some(items) = todos.as_array() else {
+        return todos.clone();
+    };
+    let normalized: Vec<Value> = items
+        .iter()
+        .filter_map(|item| {
+            let map = item.as_object()?;
+            let content = map
+                .get("content")
+                .or_else(|| map.get("text"))
+                .or_else(|| map.get("title"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())?
+                .to_string();
+            let active_form = map
+                .get("activeForm")
+                .or_else(|| map.get("active_form"))
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or(content.as_str())
+                .to_string();
+            let status = map
+                .get("status")
+                .and_then(Value::as_str)
+                .map(normalize_todo_status)
+                .unwrap_or("pending");
+
+            let mut out = serde_json::Map::new();
+            // Preserve id when present (Grok includes it; Claude usually does not).
+            if let Some(id) = map.get("id").cloned().filter(|v| !v.is_null()) {
+                out.insert("id".to_string(), id);
+            }
+            out.insert("content".to_string(), Value::String(content));
+            out.insert("activeForm".to_string(), Value::String(active_form));
+            out.insert("status".to_string(), Value::String(status.to_string()));
+            Some(Value::Object(out))
+        })
+        .collect();
+    Value::Array(normalized)
+}
+
+fn input_as_object_mut(input: &mut Value) -> &mut serde_json::Map<String, Value> {
+    if !input.is_object() {
+        *input = Value::Object(serde_json::Map::new());
+    }
+    input.as_object_mut().expect("object just ensured")
+}
+
+fn take_string_field(map: &mut serde_json::Map<String, Value>, keys: &[&str]) -> Option<String> {
+    for key in keys {
+        if let Some(value) = map.remove(*key) {
+            match value {
+                Value::String(s) if !s.is_empty() => return Some(s),
+                Value::Number(n) => return Some(n.to_string()),
+                Value::Bool(b) => return Some(b.to_string()),
+                other if !other.is_null() => {
+                    // Put non-string values back under the first key so we don't drop data.
+                    map.insert((*key).to_string(), other);
+                    return None;
+                }
+                _ => {}
+            }
+        }
+    }
+    None
+}
+
+fn ensure_string_field(map: &mut serde_json::Map<String, Value>, target: &str, sources: &[&str]) {
+    if map
+        .get(target)
+        .and_then(Value::as_str)
+        .is_some_and(|s| !s.is_empty())
+    {
+        return;
+    }
+    if let Some(value) = take_string_field(map, sources) {
+        map.insert(target.to_string(), Value::String(value));
+    }
+}
+
+fn strip_variant_fields(map: &mut serde_json::Map<String, Value>) {
+    map.remove("variant");
+    // ACP sometimes mirrors the tool type as `type` inside rawInput; drop only when it
+    // looks like a tool variant, not a content-type string.
+    if let Some(Value::String(t)) = map.get("type").cloned() {
+        if map_grok_tool_name(&t).is_some() {
+            map.remove("type");
+        }
+    }
+}
+
+/// Infer a tool name from Grok ACP display titles when variant is missing.
+fn infer_name_from_title(title: &str) -> Option<&'static str> {
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if let Some(mapped) = map_grok_tool_name(trimmed) {
+        return Some(mapped);
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("web search") {
+        return Some("WebSearch");
+    }
+    if lower.starts_with("fetch:") || lower.starts_with("fetch ") {
+        return Some("WebFetch");
+    }
+    if lower.starts_with("execute ") || lower.starts_with("execute`") || lower.starts_with("run ") {
+        return Some("Bash");
+    }
+    if lower.starts_with("read ") || lower.starts_with("read`") {
+        return Some("Read");
+    }
+    if lower.starts_with("write ") || lower.starts_with("write`") {
+        return Some("Write");
+    }
+    if lower.starts_with("edit ") || lower.starts_with("edit`") {
+        return Some("Edit");
+    }
+    if lower.starts_with("list ") || lower.starts_with("list`") {
+        return Some("List");
+    }
+    if lower.starts_with("grep ") || lower.starts_with("search ") {
+        return Some("Grep");
+    }
+    // Grok often titles todo updates "Updating plan" / "Updated todos" / similar.
+    if lower.contains("todo")
+        || lower == "updating plan"
+        || lower.starts_with("update plan")
+        || lower.starts_with("updating tasks")
+        || lower.starts_with("update tasks")
+    {
+        return Some("TodoWrite");
+    }
+    None
+}
+
+fn query_from_web_search_title(title: &str) -> Option<String> {
+    let trimmed = title.trim();
+    for prefix in ["Web search:", "Web search", "WebSearch:", "web_search:"] {
+        if let Some(rest) = trimmed
+            .strip_prefix(prefix)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            return Some(rest.to_string());
+        }
+    }
+    None
+}
+
+fn url_from_fetch_title(title: &str) -> Option<String> {
+    let trimmed = title.trim();
+    for prefix in ["Fetch:", "Fetch", "WebFetch:"] {
+        if let Some(rest) = trimmed
+            .strip_prefix(prefix)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            return Some(rest.to_string());
+        }
+    }
+    None
+}
+
+/// Normalize a parsed Grok tool call so Jean's UI can render it like Claude/Codex tools.
+fn normalize_grok_tool_call(mut tool: ParsedToolCall) -> ParsedToolCall {
+    let original_name = tool.name.clone();
+    let mut input = tool.input;
+
+    // Prefer explicit variant / type inside input (ACP rawInput / message blocks).
+    let variant_from_input = input.as_object().and_then(|map| {
+        map.get("variant")
+            .or_else(|| map.get("type"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+    });
+
+    let mapped_from_variant = variant_from_input.as_deref().and_then(map_grok_tool_name);
+    let mapped_from_name = map_grok_tool_name(&original_name);
+    let mapped_from_title = infer_name_from_title(&original_name);
+
+    let name = mapped_from_variant
+        .or(mapped_from_name)
+        .or(mapped_from_title)
+        .unwrap_or(original_name.as_str())
+        .to_string();
+
+    {
+        let map = input_as_object_mut(&mut input);
+        strip_variant_fields(map);
+
+        match name.as_str() {
+            "Read" => {
+                ensure_string_field(
+                    map,
+                    "file_path",
+                    &[
+                        "file_path",
+                        "target_file",
+                        "path",
+                        "filePath",
+                        "absolutePath",
+                    ],
+                );
+            }
+            "Write" | "Edit" | "Delete" => {
+                ensure_string_field(
+                    map,
+                    "file_path",
+                    &[
+                        "file_path",
+                        "target_file",
+                        "path",
+                        "filePath",
+                        "absolutePath",
+                    ],
+                );
+                // ACP Diff-style keys → Claude Edit keys
+                ensure_string_field(map, "old_string", &["old_string", "oldText", "old_text"]);
+                ensure_string_field(map, "new_string", &["new_string", "newText", "new_text"]);
+                if name == "Write" {
+                    ensure_string_field(map, "content", &["content", "contents"]);
+                }
+            }
+            "List" => {
+                ensure_string_field(
+                    map,
+                    "path",
+                    &["path", "target_directory", "targetDirectory", "directory"],
+                );
+            }
+            "Bash" => {
+                ensure_string_field(map, "command", &["command", "cmd", "shell"]);
+                // Prefer Jean's description field; drop background flag noise if present.
+                if let Some(Value::Bool(_)) = map.get("is_background") {
+                    // Keep for completeness but ensure boolean stays; no rename needed.
+                }
+            }
+            "Grep" => {
+                ensure_string_field(map, "pattern", &["pattern", "query", "regex"]);
+                ensure_string_field(map, "path", &["path", "target_directory", "directory"]);
+                ensure_string_field(map, "glob", &["glob", "include"]);
+                // Grok emits case-insensitive as JSON key "-i" (bool/null).
+                if !map.contains_key("case_insensitive") {
+                    if let Some(Value::Bool(true)) = map.get("-i") {
+                        map.insert("case_insensitive".to_string(), Value::Bool(true));
+                    }
+                }
+            }
+            "Glob" => {
+                ensure_string_field(map, "pattern", &["pattern", "glob_pattern", "glob"]);
+                ensure_string_field(
+                    map,
+                    "path",
+                    &["path", "target_directory", "targetDirectory", "directory"],
+                );
+            }
+            "WebSearch" => {
+                if map
+                    .get("query")
+                    .and_then(Value::as_str)
+                    .is_none_or(|s| s.is_empty())
+                {
+                    if let Some(query) = query_from_web_search_title(&original_name) {
+                        map.insert("query".to_string(), Value::String(query));
+                    }
+                }
+            }
+            "WebFetch" => {
+                ensure_string_field(map, "url", &["url", "uri", "href"]);
+                if map
+                    .get("url")
+                    .and_then(Value::as_str)
+                    .is_none_or(|s| s.is_empty())
+                {
+                    if let Some(url) = url_from_fetch_title(&original_name) {
+                        map.insert("url".to_string(), Value::String(url));
+                    }
+                }
+            }
+            "TodoWrite" => {
+                // Grok sends `{ merge, todos: [{id, content, status}], variant }`.
+                // Jean TodoWidget expects `{ todos: [{content, activeForm, status}] }`.
+                if let Some(todos) = map.get("todos").cloned() {
+                    map.insert("todos".to_string(), normalize_todos_array(&todos));
+                } else if let Some(todos) = map.get("items").cloned() {
+                    map.insert("todos".to_string(), normalize_todos_array(&todos));
+                    map.remove("items");
+                }
+                // merge is Grok-specific; keep it for potential future merge logic but
+                // strip nulls. Frontend currently replaces with latest TodoWrite snapshot.
+            }
+            "WaitForAgents" => {
+                if !map.contains_key("receiver_thread_ids") {
+                    if let Some(task_ids) = map.remove("task_ids") {
+                        map.insert("receiver_thread_ids".to_string(), task_ids);
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // If input ended up empty object and original was null, keep empty object (UI-friendly).
+    tool.name = name;
+    tool.input = input;
+    tool
+}
 
 fn strip_ansi(input: &str) -> String {
     let mut out = String::with_capacity(input.len());
@@ -258,7 +643,7 @@ fn extract_tool_call_from_block(block: &Value) -> Option<ParsedToolCall> {
         &[&["input"], &["args"], &["arguments"], &["parameters"]],
     )
     .unwrap_or(Value::Null);
-    Some(ParsedToolCall { id, name, input })
+    Some(normalize_grok_tool_call(ParsedToolCall { id, name, input }))
 }
 
 fn extract_tool_call_event(value: &Value) -> Option<ParsedToolCall> {
@@ -295,7 +680,7 @@ fn extract_tool_call_event(value: &Value) -> Option<ParsedToolCall> {
         ],
     )
     .unwrap_or(Value::Null);
-    Some(ParsedToolCall { id, name, input })
+    Some(normalize_grok_tool_call(ParsedToolCall { id, name, input }))
 }
 
 fn extract_tool_result_event(value: &Value) -> Option<(String, String)> {
@@ -470,14 +855,21 @@ fn extract_acp_tool_call(update: &Value) -> Option<ParsedToolCall> {
     let id = first_string(update, &[&["toolCallId"], &["tool_call_id"]])?;
     if update.get("title").is_none()
         && update.get("kind").is_none()
+        && update.get("name").is_none()
         && update.get("rawInput").is_none()
     {
         return None;
     }
-    let name = first_string(update, &[&["title"], &["kind"], &["name"]])
+    // Prefer structured name/kind when present; title is often a human summary
+    // (grep pattern, `Read \`path\``) and is only used as a fallback by normalizer.
+    let name = first_string(update, &[&["name"], &["kind"], &["title"]])
         .unwrap_or_else(|| "Tool".to_string());
-    let input = update.get("rawInput").cloned().unwrap_or(Value::Null);
-    Some(ParsedToolCall { id, name, input })
+    let input = update
+        .get("rawInput")
+        .cloned()
+        .or_else(|| update.get("input").cloned())
+        .unwrap_or(Value::Null);
+    Some(normalize_grok_tool_call(ParsedToolCall { id, name, input }))
 }
 
 fn acp_tool_output(update: &Value) -> Option<String> {
@@ -641,7 +1033,6 @@ fn parse_grok_stream(
     )
 }
 
-#[cfg(test)]
 fn parse_grok_stream_inner(
     reader: impl BufRead,
     initial_session_id: Option<&str>,
@@ -916,11 +1307,12 @@ fn build_grok_agent_args(
     execution_mode: Option<&str>,
     effort_level: Option<&str>,
 ) -> Vec<String> {
-    let mut args = vec![
-        "--no-auto-update".to_string(),
-        "agent".to_string(),
-        "--no-leader".to_string(),
-    ];
+    let mut args = vec!["--no-auto-update".to_string()];
+    if matches!(execution_mode, Some("build") | Some("yolo")) {
+        args.push("--no-plan".to_string());
+    }
+    args.push("agent".to_string());
+    args.push("--no-leader".to_string());
     if matches!(execution_mode, Some("build") | Some("yolo")) {
         args.push("--always-approve".to_string());
     }
@@ -943,24 +1335,968 @@ struct AcpTerminal {
     output_limit: usize,
 }
 
+/// Stdin + request-id counter shared so mid-turn `x.ai/interject` can write
+/// while the prompt loop holds the connection mutex for reading stdout.
+struct GrokAcpWriter {
+    stdin: ChildStdin,
+    next_request_id: i64,
+}
+
 struct GrokAcpConnection {
     child: Child,
-    stdin: ChildStdin,
+    writer: Arc<Mutex<GrokAcpWriter>>,
     reader: BufReader<ChildStdout>,
     stderr: Arc<Mutex<String>>,
     terminals: HashMap<String, AcpTerminal>,
-    acp_session_id: String,
+    /// Shared with the steer handle so injectors do not need the connection lock.
+    acp_session_id: Arc<Mutex<String>>,
     args: Vec<String>,
-    next_request_id: i64,
     pid: u32,
     in_use: bool,
     last_used: Instant,
 }
 
+/// Writer + session id for mid-turn steering without contending on the
+/// exclusive connection lock held by `send_grok_acp_prompt`.
+#[derive(Clone)]
+struct GrokSteerHandle {
+    writer: Arc<Mutex<GrokAcpWriter>>,
+    acp_session_id: Arc<Mutex<String>>,
+}
+
 static GROK_ACP_CONNECTIONS: Lazy<Mutex<HashMap<String, Arc<Mutex<GrokAcpConnection>>>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
+static GROK_ACP_STEER_HANDLES: Lazy<Mutex<HashMap<String, GrokSteerHandle>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
 const GROK_ACP_IDLE_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+
+fn register_grok_steer_handle(jean_session_id: &str, handle: GrokSteerHandle) {
+    if let Ok(mut map) = GROK_ACP_STEER_HANDLES.lock() {
+        map.insert(jean_session_id.to_string(), handle);
+    }
+}
+
+fn unregister_grok_steer_handle(jean_session_id: &str) {
+    if let Ok(mut map) = GROK_ACP_STEER_HANDLES.lock() {
+        map.remove(jean_session_id);
+    }
+}
+
+fn grok_acp_session_id(connection: &GrokAcpConnection) -> String {
+    connection
+        .acp_session_id
+        .lock()
+        .map(|id| id.clone())
+        .unwrap_or_default()
+}
+
+fn set_grok_acp_session_id(connection: &GrokAcpConnection, session_id: String) {
+    if let Ok(mut id) = connection.acp_session_id.lock() {
+        *id = session_id;
+    }
+}
+
+fn send_acp_request_on_writer(
+    writer: &Arc<Mutex<GrokAcpWriter>>,
+    method: &str,
+    params: Value,
+) -> Result<i64, String> {
+    let mut writer = writer
+        .lock()
+        .map_err(|_| "Failed to lock Grok ACP writer".to_string())?;
+    let request_id = writer.next_request_id;
+    writer.next_request_id += 1;
+    send_acp_request(&mut writer.stdin, request_id, method, params)?;
+    writer
+        .stdin
+        .flush()
+        .map_err(|e| format!("Failed to flush Grok ACP stdin: {e}"))?;
+    Ok(request_id)
+}
+
+/// Build params for Grok's mid-turn interjection ACP extension.
+pub(crate) fn build_grok_interject_params(
+    acp_session_id: &str,
+    text: &str,
+    interjection_id: &str,
+) -> Value {
+    serde_json::json!({
+        "sessionId": acp_session_id,
+        "text": text,
+        "interjectionId": interjection_id,
+    })
+}
+
+/// Inject a text-only user message into a running Grok ACP turn via
+/// `x.ai/interject` (in-process) or the detached host socket (Unix).
+/// Fire-and-forget on the wire: the prompt loop ignores non-matching JSON-RPC
+/// response ids, and Grok drains interjections at the next safe point.
+pub fn inject_grok_interjection(
+    app: &AppHandle,
+    jean_session_id: &str,
+    run_id: &str,
+    text: &str,
+) -> Result<(), String> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err("Cannot steer empty message into Grok turn".to_string());
+    }
+    if !super::registry::is_process_running(jean_session_id) {
+        return Err(format!(
+            "No active Grok turn for session: {jean_session_id}"
+        ));
+    }
+
+    // Prefer detached host socket (Unix survivable path).
+    #[cfg(unix)]
+    {
+        if let Ok(app_data) = app.path().app_data_dir() {
+            let socket_path = grok_acp_socket_path(&app_data, jean_session_id, run_id);
+            if socket_path.exists() {
+                let line = serialize_grok_host_command(
+                    "interject",
+                    Some(text),
+                    Some(&format!("interject-{run_id}")),
+                );
+                send_grok_acp_host_command(&socket_path, &line)?;
+                log::info!(
+                    "[GrokSteer] host interject session={jean_session_id} run={run_id} text_len={}",
+                    text.len()
+                );
+                return Ok(());
+            }
+        }
+    }
+
+    // In-process ACP connection (Windows / non-host fallback).
+    let handle = GROK_ACP_STEER_HANDLES
+        .lock()
+        .map_err(|_| "Failed to lock Grok ACP steer registry".to_string())?
+        .get(jean_session_id)
+        .cloned()
+        .ok_or_else(|| format!("No Grok ACP connection for session: {jean_session_id}"))?;
+
+    let acp_session_id = handle
+        .acp_session_id
+        .lock()
+        .map_err(|_| "Failed to lock Grok ACP session id".to_string())?
+        .clone();
+    if acp_session_id.is_empty() {
+        return Err(format!(
+            "Grok ACP session id not ready for session: {jean_session_id}"
+        ));
+    }
+
+    let interjection_id = format!(
+        "jean-steer-{}-{}",
+        jean_session_id,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    );
+    let params = build_grok_interject_params(&acp_session_id, text, &interjection_id);
+    let request_id = send_acp_request_on_writer(&handle.writer, "x.ai/interject", params)?;
+    log::info!(
+        "[GrokSteer] interject session={jean_session_id} acp_session={acp_session_id} \
+         request_id={request_id} text_len={}",
+        text.len()
+    );
+    Ok(())
+}
+
+pub(crate) fn serialize_grok_host_command(
+    command_type: &str,
+    message: Option<&str>,
+    id: Option<&str>,
+) -> String {
+    let mut value = serde_json::Map::new();
+    if let Some(id) = id {
+        value.insert("id".to_string(), Value::String(id.to_string()));
+    }
+    value.insert("type".to_string(), Value::String(command_type.to_string()));
+    if let Some(message) = message {
+        value.insert("message".to_string(), Value::String(message.to_string()));
+    }
+    format!("{}\n", Value::Object(value))
+}
+
+fn grok_line_is_completion_result(line: &str) -> bool {
+    serde_json::from_str::<Value>(line)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("type")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+        .is_some_and(|event_type| event_type == "result" || event_type == "complete")
+}
+
+#[cfg(unix)]
+pub(crate) fn grok_acp_socket_path(app_data_dir: &Path, session_id: &str, run_id: &str) -> PathBuf {
+    fn short_id(value: &str) -> String {
+        let short = value
+            .chars()
+            .filter(|c| c.is_ascii_alphanumeric())
+            .take(8)
+            .collect::<String>();
+        if short.is_empty() {
+            "x".to_string()
+        } else {
+            short
+        }
+    }
+    // Keep under macOS Unix socket path limits (~104 bytes).
+    app_data_dir.join("grok-acp").join(format!(
+        "s{}-r{}.sock",
+        short_id(session_id),
+        short_id(run_id)
+    ))
+}
+
+#[cfg(unix)]
+fn wait_for_grok_acp_socket(socket_path: &Path, pid: u32) -> Result<(), String> {
+    use crate::platform::is_process_alive;
+
+    let started = Instant::now();
+    let timeout = Duration::from_secs(60);
+    loop {
+        if socket_path.exists() {
+            return Ok(());
+        }
+        if !is_process_alive(pid) {
+            return Err(format!(
+                "Grok ACP host exited before socket appeared at {}",
+                socket_path.display()
+            ));
+        }
+        if started.elapsed() > timeout {
+            return Err(format!(
+                "Timed out waiting for Grok ACP host socket at {}",
+                socket_path.display()
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[cfg(unix)]
+pub(crate) fn send_grok_acp_host_command(socket_path: &Path, line: &str) -> Result<(), String> {
+    use std::os::unix::net::UnixStream;
+
+    let mut stream = UnixStream::connect(socket_path)
+        .map_err(|e| format!("Failed to connect to Grok ACP host: {e}"))?;
+    stream
+        .write_all(line.as_bytes())
+        .map_err(|e| format!("Failed to write Grok ACP host command: {e}"))?;
+    stream
+        .flush()
+        .map_err(|e| format!("Failed to flush Grok ACP host command: {e}"))?;
+    Ok(())
+}
+
+#[cfg(unix)]
+#[allow(clippy::too_many_arguments)]
+fn spawn_grok_acp_host(
+    app: &AppHandle,
+    session_id: &str,
+    run_id: &str,
+    output_file: &Path,
+    working_dir: &Path,
+    cli_path: &Path,
+    grok_args: &[String],
+    existing_grok_session_id: Option<&str>,
+    execution_mode: Option<&str>,
+) -> Result<(u32, PathBuf), String> {
+    let app_data = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to resolve app data dir: {e}"))?;
+    let socket_path = grok_acp_socket_path(&app_data, session_id, run_id);
+    if let Some(socket_dir) = socket_path.parent() {
+        std::fs::create_dir_all(socket_dir)
+            .map_err(|e| format!("Failed to create Grok ACP socket dir: {e}"))?;
+    }
+    let _ = std::fs::remove_file(&socket_path);
+
+    let log_dir = app_data.join("grok-acp-hosts");
+    std::fs::create_dir_all(&log_dir)
+        .map_err(|e| format!("Failed to create Grok ACP host log dir: {e}"))?;
+    let log_file = log_dir.join(format!("{session_id}-{run_id}.log"));
+    let exe = std::env::current_exe().map_err(|e| format!("Failed to get Jean executable: {e}"))?;
+
+    let mut args = vec![
+        GROK_ACP_HOST_ARG.to_string(),
+        "--socket".to_string(),
+        socket_path.to_string_lossy().to_string(),
+        "--output".to_string(),
+        output_file.to_string_lossy().to_string(),
+        "--cwd".to_string(),
+        working_dir.to_string_lossy().to_string(),
+        "--grok-cli".to_string(),
+        cli_path.to_string_lossy().to_string(),
+    ];
+    if let Some(session) = existing_grok_session_id.filter(|id| !id.is_empty()) {
+        args.push("--existing-session".to_string());
+        args.push(session.to_string());
+    }
+    if let Some(mode) = execution_mode.filter(|m| !m.is_empty()) {
+        args.push("--execution-mode".to_string());
+        args.push(mode.to_string());
+    }
+    for arg in grok_args {
+        args.push("--grok-arg".to_string());
+        args.push(arg.clone());
+    }
+
+    let pid = super::detached::spawn_detached_process(&exe, &args, &log_file, &app_data)?;
+    wait_for_grok_acp_socket(&socket_path, pid)?;
+    Ok((pid, socket_path))
+}
+
+/// Detached Grok ACP host entrypoint (Unix). Owns the Grok CLI ACP child,
+/// writes stream JSONL for Jean to tail, and accepts prompt/interject/abort
+/// over a local Unix socket so Jean can quit mid-turn and reattach.
+#[cfg(unix)]
+pub fn run_grok_acp_host_from_args() -> Result<(), String> {
+    use crate::platform::silent_command;
+    use std::os::unix::net::{UnixListener, UnixStream};
+
+    let mut socket_path: Option<PathBuf> = None;
+    let mut output_file: Option<PathBuf> = None;
+    let mut cwd: Option<PathBuf> = None;
+    let mut grok_cli: Option<PathBuf> = None;
+    let mut existing_session: Option<String> = None;
+    let mut execution_mode: Option<String> = None;
+    let mut grok_args: Vec<String> = Vec::new();
+
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        match arg.as_str() {
+            "--socket" => socket_path = args.next().map(PathBuf::from),
+            "--output" => output_file = args.next().map(PathBuf::from),
+            "--cwd" => cwd = args.next().map(PathBuf::from),
+            "--grok-cli" => grok_cli = args.next().map(PathBuf::from),
+            "--existing-session" => existing_session = args.next(),
+            "--execution-mode" => execution_mode = args.next(),
+            "--grok-arg" => {
+                if let Some(value) = args.next() {
+                    grok_args.push(value);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let socket_path = socket_path.ok_or("--socket is required")?;
+    let output_file = output_file.ok_or("--output is required")?;
+    let cwd = cwd.ok_or("--cwd is required")?;
+    let grok_cli = grok_cli.ok_or("--grok-cli is required")?;
+    let execution_mode = execution_mode.as_deref();
+
+    if let Some(parent) = socket_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create Grok ACP socket directory: {e}"))?;
+    }
+    if let Some(parent) = output_file.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create Grok output directory: {e}"))?;
+    }
+    let output = Arc::new(Mutex::new(
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&output_file)
+            .map_err(|e| format!("Failed to open Grok output file: {e}"))?,
+    ));
+
+    let mut child = silent_command(&grok_cli)
+        .args(&grok_args)
+        .current_dir(&cwd)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to spawn Grok ACP child: {e}"))?;
+
+    let child_stdin = child
+        .stdin
+        .take()
+        .ok_or_else(|| "Failed to capture Grok ACP stdin".to_string())?;
+    let writer = Arc::new(Mutex::new(GrokAcpWriter {
+        stdin: child_stdin,
+        next_request_id: 1,
+    }));
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "Failed to capture Grok ACP stdout".to_string())?;
+
+    if let Some(stderr) = child.stderr.take() {
+        std::thread::spawn(move || {
+            let reader = BufReader::new(stderr);
+            for line in reader.lines().map_while(Result::ok) {
+                eprintln!("[grok-acp] {line}");
+            }
+        });
+    }
+
+    // Initialize + authenticate + open/load session before advertising the socket.
+    let mut reader = BufReader::new(stdout);
+    let mut terminals: HashMap<String, AcpTerminal> = HashMap::new();
+    let mut acp_session_id = existing_session.clone().unwrap_or_default();
+
+    let initialize_id = send_acp_request_on_writer(
+        &writer,
+        "initialize",
+        serde_json::json!({
+            "protocolVersion": 1,
+            "clientCapabilities": grok_client_capabilities(),
+        }),
+    )?;
+    let init_value = host_read_acp_response(
+        &writer,
+        &mut reader,
+        &mut terminals,
+        execution_mode,
+        initialize_id,
+        "initialize",
+        &output,
+    )?;
+    let init = init_value
+        .get("result")
+        .cloned()
+        .ok_or("Grok ACP did not return initialize result".to_string())?;
+    let method_id =
+        acp_auth_method(&init).ok_or("Run `grok login` first, or set XAI_API_KEY.".to_string())?;
+
+    let auth_id = send_acp_request_on_writer(
+        &writer,
+        "authenticate",
+        serde_json::json!({ "methodId": method_id, "_meta": { "headless": true } }),
+    )?;
+    let _ = host_read_acp_response(
+        &writer,
+        &mut reader,
+        &mut terminals,
+        execution_mode,
+        auth_id,
+        "authenticate",
+        &output,
+    )?;
+
+    let (session_method, session_params) =
+        match existing_session.as_deref().filter(|s| !s.is_empty()) {
+            Some(session_id) => (
+                "session/load",
+                serde_json::json!({
+                    "sessionId": session_id,
+                    "cwd": cwd.to_string_lossy(),
+                    "mcpServers": [],
+                }),
+            ),
+            None => (
+                "session/new",
+                serde_json::json!({
+                    "cwd": cwd.to_string_lossy(),
+                    "mcpServers": [],
+                }),
+            ),
+        };
+    let session_req_id = send_acp_request_on_writer(&writer, session_method, session_params)?;
+    let session_value = host_read_acp_response(
+        &writer,
+        &mut reader,
+        &mut terminals,
+        execution_mode,
+        session_req_id,
+        "session",
+        &output,
+    )?;
+    if let Some(session_id) =
+        extract_session_id(&session_value).or_else(|| extract_acp_session_id(&session_value))
+    {
+        acp_session_id = session_id;
+    }
+    if acp_session_id.is_empty() {
+        return Err("Grok ACP did not return a session id".to_string());
+    }
+    // Persist session id early so crash recovery can resume conversation continuity.
+    {
+        let marker = serde_json::json!({
+            "type": "session",
+            "session_id": acp_session_id,
+        });
+        host_write_output_line(&output, &marker.to_string())?;
+    }
+
+    let _ = std::fs::remove_file(&socket_path);
+    let listener = UnixListener::bind(&socket_path)
+        .map_err(|e| format!("Failed to bind Grok ACP host socket: {e}"))?;
+
+    let stop = Arc::new(AtomicBool::new(false));
+    let abort = Arc::new(AtomicBool::new(false));
+    let pending_prompt: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let pending_interject: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+
+    let listener_stop = stop.clone();
+    let listener_abort = abort.clone();
+    let listener_prompt = pending_prompt.clone();
+    let listener_interject = pending_interject.clone();
+    let listener_writer = writer.clone();
+    let listener_session = acp_session_id.clone();
+    std::thread::spawn(move || {
+        fn handle_client(
+            stream: UnixStream,
+            abort: Arc<AtomicBool>,
+            pending_prompt: Arc<Mutex<Option<String>>>,
+            pending_interject: Arc<Mutex<Vec<String>>>,
+            writer: Arc<Mutex<GrokAcpWriter>>,
+            acp_session_id: String,
+        ) {
+            let reader = BufReader::new(stream);
+            for line in reader.lines().map_while(Result::ok) {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+                    continue;
+                };
+                match value.get("type").and_then(Value::as_str) {
+                    Some("prompt") => {
+                        if let Some(message) = value.get("message").and_then(Value::as_str) {
+                            if let Ok(mut slot) = pending_prompt.lock() {
+                                *slot = Some(message.to_string());
+                            }
+                        }
+                    }
+                    Some("interject") | Some("steer") => {
+                        if let Some(message) =
+                            value.get("message").and_then(Value::as_str).map(str::trim)
+                        {
+                            if message.is_empty() {
+                                continue;
+                            }
+                            // Best-effort immediate interject when prompt is already active.
+                            let interjection_id = format!(
+                                "jean-steer-host-{}",
+                                std::time::SystemTime::now()
+                                    .duration_since(std::time::UNIX_EPOCH)
+                                    .map(|d| d.as_nanos())
+                                    .unwrap_or(0)
+                            );
+                            let params = build_grok_interject_params(
+                                &acp_session_id,
+                                message,
+                                &interjection_id,
+                            );
+                            if send_acp_request_on_writer(&writer, "x.ai/interject", params)
+                                .is_err()
+                            {
+                                if let Ok(mut queue) = pending_interject.lock() {
+                                    queue.push(message.to_string());
+                                }
+                            }
+                        }
+                    }
+                    Some("abort") => {
+                        abort.store(true, Ordering::SeqCst);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        while !listener_stop.load(Ordering::SeqCst) {
+            match listener.accept() {
+                Ok((stream, _)) => {
+                    if listener_stop.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    let abort = listener_abort.clone();
+                    let pending_prompt = listener_prompt.clone();
+                    let pending_interject = listener_interject.clone();
+                    let writer = listener_writer.clone();
+                    let session = listener_session.clone();
+                    std::thread::spawn(move || {
+                        handle_client(
+                            stream,
+                            abort,
+                            pending_prompt,
+                            pending_interject,
+                            writer,
+                            session,
+                        )
+                    });
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                Err(e) => {
+                    eprintln!("[grok-acp-host] listener error: {e}");
+                    std::thread::sleep(Duration::from_millis(100));
+                }
+            }
+        }
+    });
+
+    // Wait for the first prompt command from Jean.
+    let prompt_message = loop {
+        if abort.load(Ordering::SeqCst) {
+            break None;
+        }
+        if let Ok(mut slot) = pending_prompt.lock() {
+            if let Some(message) = slot.take() {
+                break Some(message);
+            }
+        }
+        // If Grok died during idle wait, fail fast.
+        if child.try_wait().ok().flatten().is_some() {
+            return Err("Grok ACP exited before receiving prompt".to_string());
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    };
+
+    let Some(prompt_message) = prompt_message else {
+        stop.store(true, Ordering::SeqCst);
+        let _ = UnixStream::connect(&socket_path);
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = std::fs::remove_file(&socket_path);
+        return Ok(());
+    };
+
+    // Drain any interjections queued before prompt started.
+    if let Ok(mut queue) = pending_interject.lock() {
+        for message in queue.drain(..) {
+            let interjection_id = format!(
+                "jean-steer-host-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0)
+            );
+            let params = build_grok_interject_params(&acp_session_id, &message, &interjection_id);
+            let _ = send_acp_request_on_writer(&writer, "x.ai/interject", params);
+        }
+    }
+
+    let prompt = build_grok_acp_prompt(&prompt_message)?;
+    let prompt_request_id = send_acp_request_on_writer(
+        &writer,
+        "session/prompt",
+        serde_json::json!({
+            "sessionId": acp_session_id,
+            "prompt": prompt,
+        }),
+    )?;
+
+    let mut line = String::new();
+    let mut completed = false;
+    loop {
+        if abort.load(Ordering::SeqCst) {
+            break;
+        }
+        line.clear();
+        match reader.read_line(&mut line) {
+            Ok(0) => break,
+            Ok(_) => {}
+            Err(e) => return Err(format!("Failed to read Grok ACP prompt stream: {e}")),
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+            continue;
+        };
+        if let Some(session_id) = extract_acp_session_id(&value) {
+            acp_session_id = session_id;
+        }
+        if value.get("method").is_some() && value.get("id").is_some() {
+            // Client requests (fs/terminal/permission) — handle, don't persist.
+            let mut writer_guard = writer
+                .lock()
+                .map_err(|_| "Failed to lock Grok ACP writer".to_string())?;
+            handle_acp_client_request(
+                &mut writer_guard.stdin,
+                &value,
+                &mut terminals,
+                execution_mode,
+            )?;
+            continue;
+        }
+        if grok_host_line_should_persist(trimmed) {
+            host_write_output_line(&output, trimmed)?;
+        }
+        if value.get("id").and_then(Value::as_i64) == Some(prompt_request_id) {
+            if let Some(error) = value.get("error") {
+                let err_line = serde_json::json!({
+                    "type": "error",
+                    "error": error,
+                    "session_id": acp_session_id,
+                });
+                host_write_output_line(&output, &err_line.to_string())?;
+            }
+            completed = true;
+            break;
+        }
+    }
+
+    if completed {
+        let result = serde_json::json!({
+            "type": "result",
+            "session_id": acp_session_id,
+        });
+        host_write_output_line(&output, &result.to_string())?;
+    }
+
+    stop.store(true, Ordering::SeqCst);
+    let _ = UnixStream::connect(&socket_path);
+    for (_, terminal) in terminals.drain() {
+        if let Ok(mut child) = terminal.child.lock() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+    let _ = std::fs::remove_file(&socket_path);
+    Ok(())
+}
+
+#[cfg(not(unix))]
+pub fn run_grok_acp_host_from_args() -> Result<(), String> {
+    Err("Grok ACP host is only supported on Unix-like systems".to_string())
+}
+
+#[cfg(unix)]
+fn host_write_output_line(output: &Arc<Mutex<std::fs::File>>, line: &str) -> Result<(), String> {
+    let mut out = output
+        .lock()
+        .map_err(|_| "Grok output file lock poisoned".to_string())?;
+    writeln!(out, "{line}").map_err(|e| format!("Failed to write Grok output: {e}"))?;
+    out.flush()
+        .map_err(|e| format!("Failed to flush Grok output: {e}"))?;
+    Ok(())
+}
+
+/// Whether an ACP stdout line is useful for Jean's run log / history.
+/// Skip JSON-RPC request/response chatter (numeric ids can be mistaken for session ids).
+#[cfg(unix)]
+fn grok_host_line_should_persist(line: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(line) else {
+        return false;
+    };
+    match value.get("type").and_then(Value::as_str) {
+        Some("session" | "result" | "error") => return true,
+        _ => {}
+    }
+    // session/update notifications (streaming text + tools)
+    value.get("method").and_then(Value::as_str) == Some("session/update")
+}
+
+#[cfg(unix)]
+fn host_read_acp_response(
+    writer: &Arc<Mutex<GrokAcpWriter>>,
+    reader: &mut BufReader<ChildStdout>,
+    terminals: &mut HashMap<String, AcpTerminal>,
+    execution_mode: Option<&str>,
+    request_id: i64,
+    context: &str,
+    _output: &Arc<Mutex<std::fs::File>>,
+) -> Result<Value, String> {
+    let mut line = String::new();
+    loop {
+        line.clear();
+        if reader
+            .read_line(&mut line)
+            .map_err(|e| format!("Failed to read Grok ACP {context} response: {e}"))?
+            == 0
+        {
+            return Err(format!("Grok ACP exited before {context} completed"));
+        }
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Do not persist init/auth JSON-RPC chatter — only the explicit session
+        // marker written after session/new|load, plus stream updates during prompt.
+        let Ok(value) = serde_json::from_str::<Value>(trimmed) else {
+            continue;
+        };
+        if value.get("method").is_some()
+            && value.get("id").is_some()
+            && value.get("id").and_then(Value::as_i64) != Some(request_id)
+        {
+            let mut writer_guard = writer
+                .lock()
+                .map_err(|_| "Failed to lock Grok ACP writer".to_string())?;
+            handle_acp_client_request(&mut writer_guard.stdin, &value, terminals, execution_mode)?;
+            continue;
+        }
+        if value.get("id").and_then(Value::as_i64) == Some(request_id) {
+            if let Some(error) = value.get("error") {
+                return Err(format!("Grok ACP {context} failed: {error}"));
+            }
+            return Ok(value);
+        }
+    }
+}
+
+/// Tail a detached Grok ACP host JSONL run log and emit live chat events.
+pub fn tail_grok_output(
+    app: &AppHandle,
+    session_id: &str,
+    worktree_id: &str,
+    output_file: &Path,
+    pid: u32,
+) -> Result<GrokResponse, String> {
+    use super::tail::{next_poll_interval, NdjsonTailer};
+    use crate::platform::is_process_alive;
+
+    let mut tailer = NdjsonTailer::new_from_start(output_file)?;
+    let mut response = GrokResponse {
+        content: String::new(),
+        session_id: String::new(),
+        tool_calls: Vec::new(),
+        content_blocks: Vec::new(),
+        cancelled: false,
+        usage: None,
+    };
+    let started_at = Instant::now();
+    let startup_timeout = Duration::from_secs(120);
+    let dead_process_timeout = Duration::from_secs(2);
+    let mut last_output_at = Instant::now();
+    let mut received_output = false;
+    let mut completed = false;
+    let mut cancelled = false;
+    let mut known_tool_outputs: HashMap<String, Option<String>> = HashMap::new();
+
+    loop {
+        let lines = tailer.poll()?;
+        let got_lines = !lines.is_empty();
+        for line in lines {
+            if line.trim().is_empty() {
+                continue;
+            }
+            if grok_line_is_completion_result(&line) {
+                completed = true;
+            }
+
+            // Each host line is independent ACP JSON. Parse one line so we only
+            // emit that line's deltas (no full-buffer reparse).
+            let line_reader = BufReader::new(line.as_bytes());
+            let session_hint = if response.session_id.is_empty() {
+                None
+            } else {
+                Some(response.session_id.as_str())
+            };
+            match parse_grok_stream_inner(line_reader, session_hint) {
+                Ok(partial) => {
+                    if !partial.session_id.is_empty() {
+                        response.session_id = partial.session_id;
+                    }
+                    if let Some(usage) = partial.usage {
+                        response.usage = Some(usage);
+                    }
+                    if !partial.content.is_empty() {
+                        response.content.push_str(&partial.content);
+                        push_text_block(&mut response.content_blocks, &partial.content);
+                        emit_chunk(app, session_id, worktree_id, &partial.content);
+                    }
+                    for tool in partial.tool_calls {
+                        let parsed = ParsedToolCall {
+                            id: tool.id.clone(),
+                            name: tool.name.clone(),
+                            input: tool.input.clone(),
+                        };
+                        let is_new = !known_tool_outputs.contains_key(&tool.id);
+                        let previous = known_tool_outputs.get(&tool.id).cloned().flatten();
+                        let output_changed = tool.output != previous;
+                        if is_new || output_changed {
+                            upsert_tool_call(&mut response.tool_calls, &parsed);
+                            ensure_tool_use(&mut response.content_blocks, &tool.id);
+                            if is_new {
+                                emit_tool_use(app, session_id, worktree_id, &parsed);
+                            } else if tool.output.is_none() {
+                                // Updated input without result — refresh tool use UI.
+                                emit_tool_use(app, session_id, worktree_id, &parsed);
+                            }
+                            if let Some(output) = &tool.output {
+                                set_tool_result(&mut response.tool_calls, &tool.id, output);
+                                emit_tool_result(app, session_id, worktree_id, &tool.id, output);
+                            }
+                            known_tool_outputs.insert(tool.id, tool.output);
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::debug!("[Grok tail] skipped line parse error: {e}");
+                }
+            }
+            received_output = true;
+            last_output_at = Instant::now();
+        }
+
+        if completed {
+            break;
+        }
+
+        let process_alive = is_process_alive(pid);
+        if !process_alive {
+            if !received_output && started_at.elapsed() > startup_timeout {
+                cancelled = true;
+                break;
+            }
+            if received_output && last_output_at.elapsed() > dead_process_timeout {
+                cancelled = true;
+                break;
+            }
+        }
+
+        std::thread::sleep(next_poll_interval(got_lines, last_output_at.elapsed()));
+    }
+
+    response.cancelled = cancelled && !completed;
+    response.content = response.content.trim().to_string();
+    if !response.cancelled {
+        // Plan-mode synthetic tool injection happens in execute_grok after tail.
+        emit_done(app, session_id, worktree_id, false);
+    }
+    Ok(response)
+}
+
+pub(crate) fn parse_grok_run_to_message(
+    lines: &[String],
+    run: &RunEntry,
+) -> Result<ChatMessage, String> {
+    let joined = lines.join("\n");
+    let response = parse_grok_stream_inner(BufReader::new(joined.as_bytes()), None)?;
+    Ok(ChatMessage {
+        id: run
+            .assistant_message_id
+            .clone()
+            .unwrap_or_else(|| format!("assistant-{}", run.run_id)),
+        session_id: String::new(),
+        role: MessageRole::Assistant,
+        content: response.content,
+        timestamp: run.ended_at.unwrap_or(run.started_at),
+        tool_calls: response.tool_calls,
+        content_blocks: response.content_blocks,
+        cancelled: run.cancelled || response.cancelled,
+        plan_approved: false,
+        model: run.model.clone(),
+        execution_mode: run.execution_mode.clone(),
+        thinking_level: run.thinking_level.clone(),
+        effort_level: run.effort_level.clone(),
+        recovered: run.recovered,
+        usage: response.usage.or_else(|| run.usage.clone()),
+    })
+}
 
 fn should_keep_grok_acp_connection_alive(
     last_used: Instant,
@@ -1318,15 +2654,46 @@ fn handle_acp_client_request(
     }
 }
 
-fn build_grok_message(message: &str, system_prompt: Option<&str>) -> String {
-    match system_prompt
+fn grok_execution_mode_instruction(execution_mode: Option<&str>) -> Option<&'static str> {
+    match execution_mode.unwrap_or("plan") {
+        "build" => Some(
+            "You are in BUILD MODE. Start implementing immediately. \
+             This instruction supersedes any earlier plan-mode state or instructions. \
+             Do not call enter_plan_mode or exit_plan_mode unless the user explicitly asks \
+             for a new plan. Ask the user directly if a required decision is missing.",
+        ),
+        "yolo" => Some(
+            "You are in YOLO EXECUTION MODE. Start implementing immediately. \
+             This instruction supersedes any earlier plan-mode state or instructions. \
+             Do not call enter_plan_mode or exit_plan_mode unless the user explicitly asks \
+             for a new plan. Do not ask for confirmation before routine implementation steps. \
+             Ask the user directly if a required decision is missing.",
+        ),
+        _ => None,
+    }
+}
+
+fn build_grok_message(
+    message: &str,
+    system_prompt: Option<&str>,
+    execution_mode: Option<&str>,
+) -> String {
+    let mut instructions = system_prompt
         .map(str::trim)
         .filter(|prompt| !prompt.is_empty())
-    {
-        Some(prompt) => {
-            format!("<system_instructions>\n{prompt}\n</system_instructions>\n\n{message}")
-        }
-        None => message.to_string(),
+        .map(|prompt| vec![prompt.to_string()])
+        .unwrap_or_default();
+    if let Some(mode_instruction) = grok_execution_mode_instruction(execution_mode) {
+        instructions.push(mode_instruction.to_string());
+    }
+
+    if instructions.is_empty() {
+        message.to_string()
+    } else {
+        format!(
+            "<system_instructions>\n{}\n</system_instructions>\n\n{message}",
+            instructions.join("\n\n")
+        )
     }
 }
 
@@ -1335,6 +2702,8 @@ pub struct GrokExecutionOptions<'a> {
     pub jean_session_id: &'a str,
     pub worktree_id: &'a str,
     pub working_dir: &'a Path,
+    /// Run log path the detached host writes ACP JSONL into (Unix host path).
+    pub output_file: &'a Path,
     pub existing_grok_session_id: Option<&'a str>,
     pub model: Option<&'a str>,
     pub execution_mode: Option<&'a str>,
@@ -1372,8 +2741,12 @@ fn read_acp_response(
             && value.get("id").is_some()
             && value.get("id").and_then(Value::as_i64) != Some(request_id)
         {
+            let mut writer = connection
+                .writer
+                .lock()
+                .map_err(|_| "Failed to lock Grok ACP writer".to_string())?;
             handle_acp_client_request(
-                &mut connection.stdin,
+                &mut writer.stdin,
                 &value,
                 &mut connection.terminals,
                 execution_mode,
@@ -1433,25 +2806,28 @@ fn spawn_grok_acp_connection(
         });
     }
 
+    let writer = Arc::new(Mutex::new(GrokAcpWriter {
+        stdin,
+        next_request_id: 1,
+    }));
+    let acp_session_id = Arc::new(Mutex::new(
+        existing_grok_session_id.unwrap_or_default().to_string(),
+    ));
     let mut connection = GrokAcpConnection {
         child,
-        stdin,
+        writer: writer.clone(),
         reader: BufReader::new(stdout),
         stderr,
         terminals: HashMap::new(),
-        acp_session_id: existing_grok_session_id.unwrap_or_default().to_string(),
+        acp_session_id: acp_session_id.clone(),
         args,
-        next_request_id: 1,
         pid,
         in_use: true,
         last_used: Instant::now(),
     };
 
-    let initialize_id = connection.next_request_id;
-    connection.next_request_id += 1;
-    send_acp_request(
-        &mut connection.stdin,
-        initialize_id,
+    let initialize_id = send_acp_request_on_writer(
+        &connection.writer,
         "initialize",
         serde_json::json!({
             "protocolVersion": 1,
@@ -1467,11 +2843,8 @@ fn spawn_grok_acp_connection(
     let method_id =
         acp_auth_method(&init).ok_or("Run `grok login` first, or set XAI_API_KEY.".to_string())?;
 
-    let auth_id = connection.next_request_id;
-    connection.next_request_id += 1;
-    send_acp_request(
-        &mut connection.stdin,
-        auth_id,
+    let auth_id = send_acp_request_on_writer(
+        &connection.writer,
         "authenticate",
         serde_json::json!({ "methodId": method_id, "_meta": { "headless": true } }),
     )?;
@@ -1494,21 +2867,25 @@ fn spawn_grok_acp_connection(
             }),
         ),
     };
-    let session_id = connection.next_request_id;
-    connection.next_request_id += 1;
-    send_acp_request(
-        &mut connection.stdin,
-        session_id,
-        session_method,
-        session_params,
-    )?;
-    let session_value = read_acp_response(&mut connection, session_id, execution_mode, "session")?;
-    if let Some(acp_session_id) = extract_session_id(&session_value) {
-        connection.acp_session_id = acp_session_id;
+    let session_req_id =
+        send_acp_request_on_writer(&connection.writer, session_method, session_params)?;
+    let session_value =
+        read_acp_response(&mut connection, session_req_id, execution_mode, "session")?;
+    if let Some(session_id) = extract_session_id(&session_value) {
+        set_grok_acp_session_id(&connection, session_id);
     }
-    if connection.acp_session_id.is_empty() {
+    if grok_acp_session_id(&connection).is_empty() {
         return Err("Grok ACP did not return a session id".to_string());
     }
+
+    // Publish steer handle only after the ACP session is ready.
+    register_grok_steer_handle(
+        jean_session_id,
+        GrokSteerHandle {
+            writer,
+            acp_session_id,
+        },
+    );
 
     Ok(connection)
 }
@@ -1558,6 +2935,7 @@ fn schedule_grok_acp_idle_cleanup(key: String, connection: Arc<Mutex<GrokAcpConn
             return;
         }
         if let Some(connection) = registry.remove(&key) {
+            unregister_grok_steer_handle(&key);
             if let Ok(mut connection) = connection.lock() {
                 log::info!(
                     "[Grok ACP] idle timeout reached; shutting down pid={}",
@@ -1592,9 +2970,20 @@ fn get_or_spawn_grok_acp_connection(
             }
         }
         if keep_existing {
+            // Re-publish steer handle in case a partial cleanup removed it.
+            if let Ok(conn) = existing.lock() {
+                register_grok_steer_handle(
+                    jean_session_id,
+                    GrokSteerHandle {
+                        writer: conn.writer.clone(),
+                        acp_session_id: conn.acp_session_id.clone(),
+                    },
+                );
+            }
             return Ok(existing);
         }
         registry.remove(&key);
+        unregister_grok_steer_handle(jean_session_id);
     }
 
     let connection = spawn_grok_acp_connection(
@@ -1620,21 +3009,27 @@ fn send_grok_acp_prompt(
     prepared_message: &str,
 ) -> Result<GrokResponse, String> {
     let prompt = build_grok_acp_prompt(prepared_message)?;
-    let prompt_request_id = connection.next_request_id;
-    connection.next_request_id += 1;
-    send_acp_request(
-        &mut connection.stdin,
-        prompt_request_id,
+    let session_id = grok_acp_session_id(connection);
+    let prompt_request_id = send_acp_request_on_writer(
+        &connection.writer,
         "session/prompt",
         serde_json::json!({
-            "sessionId": connection.acp_session_id,
+            "sessionId": session_id,
             "prompt": prompt,
         }),
     )?;
 
+    // Steer any text-only prompts that were queued before the ACP session /
+    // process registration made mid-turn inject available (auto-steer, default on).
+    super::commands::trigger_grok_queue_steer(
+        app.clone(),
+        worktree_id.to_string(),
+        jean_session_id.to_string(),
+    );
+
     let mut response = GrokResponse {
         content: String::new(),
-        session_id: connection.acp_session_id.clone(),
+        session_id,
         tool_calls: Vec::new(),
         content_blocks: Vec::new(),
         cancelled: false,
@@ -1660,8 +3055,12 @@ fn send_grok_acp_prompt(
             continue;
         };
         if value.get("method").is_some() && value.get("id").is_some() {
+            let mut writer = connection
+                .writer
+                .lock()
+                .map_err(|_| "Failed to lock Grok ACP writer".to_string())?;
             handle_acp_client_request(
-                &mut connection.stdin,
+                &mut writer.stdin,
                 &value,
                 &mut connection.terminals,
                 execution_mode,
@@ -1732,7 +3131,7 @@ fn send_grok_acp_prompt(
         }
     }
     response.content = response.content.trim().to_string();
-    connection.acp_session_id = response.session_id.clone();
+    set_grok_acp_session_id(connection, response.session_id.clone());
     Ok(response)
 }
 
@@ -1780,6 +3179,7 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
         jean_session_id,
         worktree_id,
         working_dir,
+        output_file,
         existing_grok_session_id,
         model,
         execution_mode,
@@ -1794,7 +3194,7 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
     }
 
     let existing_grok_session_id = existing_grok_session_id.filter(|id| !id.is_empty());
-    let prepared_message = build_grok_message(message, system_prompt);
+    let prepared_message = build_grok_message(message, system_prompt, execution_mode);
     let args = build_grok_agent_args(model, execution_mode, effort_level);
 
     log::info!(
@@ -1806,122 +3206,223 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
     log::info!("[Grok] cli_path={}", cli_path.display());
     log::info!("[Grok] command: {}", format_grok_command(&cli_path, &args));
 
-    let connection = get_or_spawn_grok_acp_connection(
-        &cli_path,
-        args,
-        jean_session_id,
-        worktree_id,
-        working_dir,
-        existing_grok_session_id,
-        execution_mode,
-    )?;
+    // Unix: detached ACP host so the turn survives Jean restart (mirrors PI).
+    #[cfg(unix)]
+    {
+        let run_id = super::pi::run_id_from_output_file(output_file);
+        let (pid, socket_path) = spawn_grok_acp_host(
+            app,
+            jean_session_id,
+            &run_id,
+            output_file,
+            working_dir,
+            &cli_path,
+            &args,
+            existing_grok_session_id,
+            execution_mode,
+        )?;
+        if let Some(cb) = pid_callback {
+            cb(pid);
+        }
+        if !super::registry::register_detached_process(jean_session_id.to_string(), pid) {
+            let _ = crate::platform::kill_process_tree(pid);
+            let _ = crate::platform::kill_process(pid);
+            return Ok(GrokResponse {
+                content: String::new(),
+                session_id: existing_grok_session_id.unwrap_or_default().to_string(),
+                tool_calls: vec![],
+                content_blocks: vec![],
+                cancelled: true,
+                usage: None,
+            });
+        }
 
-    let key = jean_session_id.to_string();
-    let mut connection_guard = connection
-        .lock()
-        .map_err(|_| "Failed to lock Grok ACP connection".to_string())?;
-    connection_guard.in_use = true;
-    let pid = connection_guard.pid;
-    if let Some(cb) = pid_callback {
-        cb(pid);
+        let prompt_line = serialize_grok_host_command(
+            "prompt",
+            Some(&prepared_message),
+            Some(&format!("prompt-{run_id}")),
+        );
+        if let Err(e) = send_grok_acp_host_command(&socket_path, &prompt_line) {
+            super::registry::unregister_process(jean_session_id);
+            let _ = crate::platform::kill_process_tree(pid);
+            let _ = crate::platform::kill_process(pid);
+            return Err(e);
+        }
+
+        // Drain steerable queue once the host is ready for interjections.
+        super::commands::trigger_grok_queue_steer(
+            app.clone(),
+            worktree_id.to_string(),
+            jean_session_id.to_string(),
+        );
+
+        super::increment_tailer_count();
+        let mut response =
+            match tail_grok_output(app, jean_session_id, worktree_id, output_file, pid) {
+                Ok(response) => response,
+                Err(e) => {
+                    super::decrement_tailer_count();
+                    super::registry::unregister_process(jean_session_id);
+                    let _ = app.emit_all(
+                        "chat:error",
+                        &ErrorEvent {
+                            session_id: jean_session_id.to_string(),
+                            worktree_id: worktree_id.to_string(),
+                            error: e.clone(),
+                        },
+                    );
+                    return Err(e);
+                }
+            };
+        super::decrement_tailer_count();
+        super::registry::unregister_process(jean_session_id);
+
+        if response.session_id.is_empty() {
+            response.session_id = existing_grok_session_id.unwrap_or_default().to_string();
+        }
+
+        let waiting_for_plan =
+            execution_mode == Some("plan") && inject_synthetic_plan(&mut response);
+        // tail_grok_output already emitted chat:done when not cancelled; re-emit
+        // only when plan-mode waiting state differs from the generic done event.
+        if !response.cancelled && waiting_for_plan {
+            emit_done(app, jean_session_id, worktree_id, true);
+        }
+
+        log::info!(
+            "[Grok ACP host] turn finished session={jean_session_id} pid={pid} cancelled={} \
+             content_len={} tool_calls={}",
+            response.cancelled,
+            response.content.len(),
+            response.tool_calls.len(),
+        );
+        return Ok(response);
     }
-    if !super::registry::register_process(jean_session_id.to_string(), pid) {
+
+    // Windows / non-Unix: in-process ACP child (does not survive Jean quit).
+    #[cfg(not(unix))]
+    {
+        let _ = output_file;
+        let connection = get_or_spawn_grok_acp_connection(
+            &cli_path,
+            args,
+            jean_session_id,
+            worktree_id,
+            working_dir,
+            existing_grok_session_id,
+            execution_mode,
+        )?;
+
+        let key = jean_session_id.to_string();
+        let mut connection_guard = connection
+            .lock()
+            .map_err(|_| "Failed to lock Grok ACP connection".to_string())?;
+        connection_guard.in_use = true;
+        let pid = connection_guard.pid;
+        if let Some(cb) = pid_callback {
+            cb(pid);
+        }
+        if !super::registry::register_process(jean_session_id.to_string(), pid) {
+            connection_guard.in_use = false;
+            connection_guard.last_used = Instant::now();
+            return Ok(GrokResponse {
+                content: String::new(),
+                session_id: grok_acp_session_id(&connection_guard),
+                tool_calls: vec![],
+                content_blocks: vec![],
+                cancelled: true,
+                usage: None,
+            });
+        }
+
+        let mut response = match send_grok_acp_prompt(
+            app,
+            &mut connection_guard,
+            jean_session_id,
+            worktree_id,
+            execution_mode,
+            &prepared_message,
+        ) {
+            Ok(response) => response,
+            Err(error) => {
+                let cancelled = !super::registry::is_process_running(jean_session_id);
+                super::registry::unregister_process(jean_session_id);
+                connection_guard.in_use = false;
+                if cancelled || connection_guard.child.try_wait().ok().flatten().is_some() {
+                    kill_grok_acp_connection(&mut connection_guard);
+                    drop(connection_guard);
+                    if let Ok(mut registry) = GROK_ACP_CONNECTIONS.lock() {
+                        registry.remove(&key);
+                    }
+                    unregister_grok_steer_handle(&key);
+                }
+                if cancelled {
+                    return Ok(GrokResponse {
+                        content: String::new(),
+                        session_id: existing_grok_session_id.unwrap_or_default().to_string(),
+                        tool_calls: vec![],
+                        content_blocks: vec![],
+                        cancelled: true,
+                        usage: None,
+                    });
+                }
+                let _ = app.emit_all(
+                    "chat:error",
+                    &ErrorEvent {
+                        session_id: jean_session_id.to_string(),
+                        worktree_id: worktree_id.to_string(),
+                        error: error.clone(),
+                    },
+                );
+                return Err(error);
+            }
+        };
+
+        let cancelled = !super::registry::is_process_running(jean_session_id);
+        super::registry::unregister_process(jean_session_id);
+        response.cancelled = cancelled;
+        let exited = connection_guard.child.try_wait().ok().flatten().is_some();
+        let stderr = connection_guard
+            .stderr
+            .lock()
+            .map(|stderr| stderr.clone())
+            .unwrap_or_default();
+        log::info!(
+            "[Grok ACP] turn finished session={jean_session_id} pid={} cancelled={} exited={} \
+             content_len={} tool_calls={} stderr_len={}",
+            connection_guard.pid,
+            cancelled,
+            exited,
+            response.content.len(),
+            response.tool_calls.len(),
+            stderr.len()
+        );
+        if !stderr.trim().is_empty() {
+            log::warn!("[Grok ACP] stderr: {}", strip_ansi(&stderr).trim());
+        }
+
+        let waiting_for_plan =
+            execution_mode == Some("plan") && inject_synthetic_plan(&mut response);
+        if !response.cancelled {
+            emit_done(app, jean_session_id, worktree_id, waiting_for_plan);
+        }
+
         connection_guard.in_use = false;
         connection_guard.last_used = Instant::now();
-        return Ok(GrokResponse {
-            content: String::new(),
-            session_id: connection_guard.acp_session_id.clone(),
-            tool_calls: vec![],
-            content_blocks: vec![],
-            cancelled: true,
-            usage: None,
-        });
-    }
-
-    let mut response = match send_grok_acp_prompt(
-        app,
-        &mut connection_guard,
-        jean_session_id,
-        worktree_id,
-        execution_mode,
-        &prepared_message,
-    ) {
-        Ok(response) => response,
-        Err(error) => {
-            let cancelled = !super::registry::is_process_running(jean_session_id);
-            super::registry::unregister_process(jean_session_id);
-            connection_guard.in_use = false;
-            if cancelled || connection_guard.child.try_wait().ok().flatten().is_some() {
-                kill_grok_acp_connection(&mut connection_guard);
-                drop(connection_guard);
-                if let Ok(mut registry) = GROK_ACP_CONNECTIONS.lock() {
-                    registry.remove(&key);
-                }
+        if cancelled || exited {
+            kill_grok_acp_connection(&mut connection_guard);
+            drop(connection_guard);
+            if let Ok(mut registry) = GROK_ACP_CONNECTIONS.lock() {
+                registry.remove(&key);
             }
-            if cancelled {
-                return Ok(GrokResponse {
-                    content: String::new(),
-                    session_id: existing_grok_session_id.unwrap_or_default().to_string(),
-                    tool_calls: vec![],
-                    content_blocks: vec![],
-                    cancelled: true,
-                    usage: None,
-                });
-            }
-            let _ = app.emit_all(
-                "chat:error",
-                &ErrorEvent {
-                    session_id: jean_session_id.to_string(),
-                    worktree_id: worktree_id.to_string(),
-                    error: error.clone(),
-                },
-            );
-            return Err(error);
+            unregister_grok_steer_handle(&key);
+        } else {
+            drop(connection_guard);
+            schedule_grok_acp_idle_cleanup(key, connection.clone());
         }
-    };
 
-    let cancelled = !super::registry::is_process_running(jean_session_id);
-    super::registry::unregister_process(jean_session_id);
-    response.cancelled = cancelled;
-    let exited = connection_guard.child.try_wait().ok().flatten().is_some();
-    let stderr = connection_guard
-        .stderr
-        .lock()
-        .map(|stderr| stderr.clone())
-        .unwrap_or_default();
-    log::info!(
-        "[Grok ACP] turn finished session={jean_session_id} pid={} cancelled={} exited={} \
-         content_len={} tool_calls={} stderr_len={}",
-        connection_guard.pid,
-        cancelled,
-        exited,
-        response.content.len(),
-        response.tool_calls.len(),
-        stderr.len()
-    );
-    if !stderr.trim().is_empty() {
-        log::warn!("[Grok ACP] stderr: {}", strip_ansi(&stderr).trim());
+        Ok(response)
     }
-
-    let waiting_for_plan = execution_mode == Some("plan") && inject_synthetic_plan(&mut response);
-    if !response.cancelled {
-        emit_done(app, jean_session_id, worktree_id, waiting_for_plan);
-    }
-
-    connection_guard.in_use = false;
-    connection_guard.last_used = Instant::now();
-    if cancelled || exited {
-        kill_grok_acp_connection(&mut connection_guard);
-        drop(connection_guard);
-        if let Ok(mut registry) = GROK_ACP_CONNECTIONS.lock() {
-            registry.remove(&key);
-        }
-    } else {
-        drop(connection_guard);
-        schedule_grok_acp_idle_cleanup(key, connection.clone());
-    }
-
-    Ok(response)
 }
 
 fn extract_json_object(text: &str) -> Result<String, String> {
@@ -1951,10 +3452,22 @@ fn extract_json_object(text: &str) -> Result<String, String> {
     Ok(candidate.to_string())
 }
 
+fn build_one_shot_json_prompt(prompt: &str, json_schema: Option<&str>) -> String {
+    match json_schema {
+        Some(schema) => format!(
+            "{prompt}\n\nReturn only a single valid JSON object. Do not wrap it in markdown. The object must match this JSON Schema exactly:\n{schema}"
+        ),
+        None => {
+            format!("{prompt}\n\nReturn only a single valid JSON object. Do not wrap it in markdown.")
+        }
+    }
+}
+
 pub fn execute_one_shot_grok(
     app: &AppHandle,
     prompt: &str,
     model: &str,
+    json_schema: Option<&str>,
     working_dir: Option<&Path>,
     effort_level: Option<&str>,
 ) -> Result<String, String> {
@@ -1964,8 +3477,7 @@ pub fn execute_one_shot_grok(
     }
     let dir = working_dir.unwrap_or_else(|| Path::new("."));
     let model = resolve_one_shot_grok_model(model);
-    let json_prompt =
-        format!("{prompt}\n\nReturn only a single valid JSON object. Do not wrap it in markdown.");
+    let json_prompt = build_one_shot_json_prompt(prompt, json_schema);
     let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
     cmd.args([
         "--no-auto-update",
@@ -2004,6 +3516,17 @@ pub fn execute_one_shot_grok(
 mod tests {
     use super::*;
     use std::io::BufReader;
+
+    #[test]
+    fn one_shot_json_prompt_includes_requested_schema() {
+        let schema = r#"{"type":"object","required":["summary","slug"]}"#;
+
+        let prompt = build_one_shot_json_prompt("Summarize this session", Some(schema));
+
+        assert!(prompt.contains("Summarize this session"));
+        assert!(prompt.contains(schema));
+        assert!(prompt.contains("must match this JSON Schema exactly"));
+    }
 
     #[test]
     fn resolve_one_shot_grok_model_coerces_non_grok_to_default() {
@@ -2165,6 +3688,23 @@ mod tests {
     }
 
     #[test]
+    fn build_grok_interject_params_shape() {
+        let params = build_grok_interject_params("acp-sess-1", "also fix tests", "jean-steer-1");
+        assert_eq!(
+            params.get("sessionId").and_then(Value::as_str),
+            Some("acp-sess-1")
+        );
+        assert_eq!(
+            params.get("text").and_then(Value::as_str),
+            Some("also fix tests")
+        );
+        assert_eq!(
+            params.get("interjectionId").and_then(Value::as_str),
+            Some("jean-steer-1")
+        );
+    }
+
+    #[test]
     fn build_grok_args_map_execution_modes() {
         let plan = build_grok_args(
             "hello",
@@ -2251,7 +3791,8 @@ mod tests {
         assert_eq!(response.session_id, "grok-acp-2");
         assert_eq!(response.tool_calls.len(), 1);
         assert_eq!(response.tool_calls[0].id, "tool-1");
-        assert_eq!(response.tool_calls[0].name, "Shell");
+        // "Shell" title normalizes to Jean's Bash tool name.
+        assert_eq!(response.tool_calls[0].name, "Bash");
         assert_eq!(response.tool_calls[0].input["command"], "ls -la");
         assert_eq!(response.tool_calls[0].output.as_deref(), Some("file list"));
         assert_eq!(response.content_blocks.len(), 1);
@@ -2264,7 +3805,7 @@ mod tests {
     #[test]
     fn parse_grok_stream_attaches_message_content_tool_results() {
         let input = r#"
-{"type":"assistant","message":{"content":[{"type":"tool_use","id":"call-1","name":"Read `src/main.ts`","input":{"target_file":"src/main.ts"}},{"type":"text","text":"Done"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"call-1","name":"Read `src/main.ts`","input":{"target_file":"src/main.ts","variant":"ReadFile"}},{"type":"text","text":"Done"}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"call-1","content":"file contents"}]}}
 "#;
 
@@ -2273,6 +3814,8 @@ mod tests {
         assert_eq!(response.content, "Done");
         assert_eq!(response.tool_calls.len(), 1);
         assert_eq!(response.tool_calls[0].id, "call-1");
+        assert_eq!(response.tool_calls[0].name, "Read");
+        assert_eq!(response.tool_calls[0].input["file_path"], "src/main.ts");
         assert_eq!(
             response.tool_calls[0].output.as_deref(),
             Some("file contents")
@@ -2286,6 +3829,275 @@ mod tests {
             &response.content_blocks[1],
             ContentBlock::Text { text } if text == "Done"
         ));
+    }
+
+    #[test]
+    fn normalize_grok_tool_call_maps_variants_and_title_summaries() {
+        // Grep: title is the pattern; real type is input.variant
+        let grep = normalize_grok_tool_call(ParsedToolCall {
+            id: "g1".into(),
+            name: "steer|steering".into(),
+            input: serde_json::json!({
+                "pattern": "steer|steering",
+                "path": "/tmp",
+                "glob": "**/*.rs",
+                "-i": true,
+                "variant": "Grep"
+            }),
+        });
+        assert_eq!(grep.name, "Grep");
+        assert_eq!(grep.input["pattern"], "steer|steering");
+        assert_eq!(grep.input["case_insensitive"], true);
+        assert!(grep.input.get("variant").is_none());
+
+        // Bash from Execute title + variant
+        let bash = normalize_grok_tool_call(ParsedToolCall {
+            id: "b1".into(),
+            name: "Execute `ls -la`".into(),
+            input: serde_json::json!({
+                "command": "ls -la",
+                "description": "list files",
+                "variant": "Bash"
+            }),
+        });
+        assert_eq!(bash.name, "Bash");
+        assert_eq!(bash.input["command"], "ls -la");
+
+        // ListDir → List with path
+        let list = normalize_grok_tool_call(ParsedToolCall {
+            id: "l1".into(),
+            name: "List `/tmp`".into(),
+            input: serde_json::json!({
+                "target_directory": "/tmp",
+                "variant": "ListDir"
+            }),
+        });
+        assert_eq!(list.name, "List");
+        assert_eq!(list.input["path"], "/tmp");
+
+        // WebFetch from title when input lacks url
+        let fetch = normalize_grok_tool_call(ParsedToolCall {
+            id: "f1".into(),
+            name: "Fetch: https://docs.x.ai/build".into(),
+            input: serde_json::json!({ "variant": "WebFetch" }),
+        });
+        assert_eq!(fetch.name, "WebFetch");
+        assert_eq!(fetch.input["url"], "https://docs.x.ai/build");
+
+        // WebSearch title with null/empty input
+        let search = normalize_grok_tool_call(ParsedToolCall {
+            id: "w1".into(),
+            name: "Web search:".into(),
+            input: Value::Null,
+        });
+        assert_eq!(search.name, "WebSearch");
+
+        // Edit from SearchReplace + oldText/newText
+        let edit = normalize_grok_tool_call(ParsedToolCall {
+            id: "e1".into(),
+            name: "Edit `src/a.ts`".into(),
+            input: serde_json::json!({
+                "path": "src/a.ts",
+                "oldText": "foo",
+                "newText": "bar",
+                "variant": "SearchReplace"
+            }),
+        });
+        assert_eq!(edit.name, "Edit");
+        assert_eq!(edit.input["file_path"], "src/a.ts");
+        assert_eq!(edit.input["old_string"], "foo");
+        assert_eq!(edit.input["new_string"], "bar");
+
+        // TodoWrite: title summary + Grok-shaped items without activeForm
+        let todos = normalize_grok_tool_call(ParsedToolCall {
+            id: "t1".into(),
+            name: "Updating plan".into(),
+            input: serde_json::json!({
+                "merge": false,
+                "todos": [
+                    {"id": "1", "content": "Investigate steering", "status": "in_progress"},
+                    {"id": "2", "content": "Fix tool calls", "status": "pending"}
+                ],
+                "variant": "TodoWrite"
+            }),
+        });
+        assert_eq!(todos.name, "TodoWrite");
+        assert_eq!(todos.input["todos"][0]["content"], "Investigate steering");
+        assert_eq!(
+            todos.input["todos"][0]["activeForm"],
+            "Investigate steering"
+        );
+        assert_eq!(todos.input["todos"][0]["status"], "in_progress");
+        assert_eq!(todos.input["todos"][1]["status"], "pending");
+        assert!(todos.input.get("variant").is_none());
+
+        // todo_write snake_case name
+        let todos2 = normalize_grok_tool_call(ParsedToolCall {
+            id: "t2".into(),
+            name: "todo_write".into(),
+            input: serde_json::json!({
+                "todos": [{"content": "A", "status": "completed"}]
+            }),
+        });
+        assert_eq!(todos2.name, "TodoWrite");
+        assert_eq!(todos2.input["todos"][0]["activeForm"], "A");
+    }
+
+    #[test]
+    fn normalize_grok_tool_call_maps_all_observed_acp_variants() {
+        let cases = [
+            (
+                "CursorRead",
+                serde_json::json!({"variant": "CursorRead", "path": "/tmp/a.rs"}),
+                "Read",
+                "file_path",
+                serde_json::json!("/tmp/a.rs"),
+            ),
+            (
+                "CursorGrep",
+                serde_json::json!({"variant": "CursorGrep", "pattern": "needle"}),
+                "Grep",
+                "pattern",
+                serde_json::json!("needle"),
+            ),
+            (
+                "CursorGlob",
+                serde_json::json!({
+                    "variant": "CursorGlob",
+                    "target_directory": "/tmp",
+                    "glob_pattern": "**/*.rs"
+                }),
+                "Glob",
+                "pattern",
+                serde_json::json!("**/*.rs"),
+            ),
+            (
+                "CursorShell",
+                serde_json::json!({"variant": "CursorShell", "command": "pwd"}),
+                "Bash",
+                "command",
+                serde_json::json!("pwd"),
+            ),
+            (
+                "CursorStrReplace",
+                serde_json::json!({
+                    "variant": "CursorStrReplace",
+                    "path": "/tmp/a.rs",
+                    "old_string": "old",
+                    "new_string": "new"
+                }),
+                "Edit",
+                "file_path",
+                serde_json::json!("/tmp/a.rs"),
+            ),
+            (
+                "CursorWrite",
+                serde_json::json!({
+                    "variant": "CursorWrite",
+                    "path": "/tmp/a.rs",
+                    "contents": "hello"
+                }),
+                "Write",
+                "content",
+                serde_json::json!("hello"),
+            ),
+            (
+                "CursorTodoWrite",
+                serde_json::json!({
+                    "variant": "CursorTodoWrite",
+                    "todos": [{"content": "Test", "status": "pending"}]
+                }),
+                "TodoWrite",
+                "todos",
+                serde_json::json!([{
+                    "content": "Test",
+                    "activeForm": "Test",
+                    "status": "pending"
+                }]),
+            ),
+            (
+                "TaskOutput",
+                serde_json::json!({
+                    "variant": "TaskOutput",
+                    "task_ids": ["task-1", "task-2"],
+                    "timeout_ms": 120000
+                }),
+                "WaitForAgents",
+                "receiver_thread_ids",
+                serde_json::json!(["task-1", "task-2"]),
+            ),
+        ];
+
+        for (variant, input, expected_name, expected_key, expected_value) in cases {
+            let tool = normalize_grok_tool_call(ParsedToolCall {
+                id: variant.to_string(),
+                name: "other".to_string(),
+                input,
+            });
+            assert_eq!(tool.name, expected_name, "variant {variant}");
+            assert_eq!(
+                tool.input[expected_key], expected_value,
+                "variant {variant} input"
+            );
+            assert!(tool.input.get("variant").is_none(), "variant {variant}");
+        }
+
+        let enter_plan = normalize_grok_tool_call(ParsedToolCall {
+            id: "plan".to_string(),
+            name: "Plan: Enter".to_string(),
+            input: serde_json::json!({"variant": "EnterPlanMode"}),
+        });
+        assert_eq!(enter_plan.name, "EnterPlanMode");
+    }
+
+    #[test]
+    fn normalize_grok_tool_call_maps_initial_native_tool_names() {
+        let cases = [
+            ("write", "Write"),
+            ("spawn_subagent", "Task"),
+            ("get_command_or_subagent_output", "WaitForAgents"),
+            ("enter_plan_mode", "EnterPlanMode"),
+            ("exit_plan_mode", "ExitPlanMode"),
+        ];
+
+        for (native_name, expected_name) in cases {
+            let tool = normalize_grok_tool_call(ParsedToolCall {
+                id: native_name.to_string(),
+                name: native_name.to_string(),
+                input: Value::Null,
+            });
+            assert_eq!(tool.name, expected_name, "native tool {native_name}");
+        }
+    }
+
+    #[test]
+    fn parse_grok_stream_normalizes_mixed_acp_tool_kinds() {
+        let input = r#"
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"t-read","title":"Read `/a.rs`","rawInput":{"target_file":"/a.rs","limit":10,"variant":"ReadFile"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"t-grep","title":"foo|bar","rawInput":{"pattern":"foo|bar","path":".","variant":"Grep"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"t-bash","title":"Execute `echo hi`","rawInput":{"command":"echo hi","variant":"Bash"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"t-web","title":"Web search: grok steering","rawInput":null}}}
+"#;
+
+        let response = parse_grok_stream_inner(BufReader::new(input.as_bytes()), None).unwrap();
+        assert_eq!(response.tool_calls.len(), 4);
+
+        let by_id = |id: &str| {
+            response
+                .tool_calls
+                .iter()
+                .find(|t| t.id == id)
+                .unwrap_or_else(|| panic!("missing tool {id}"))
+        };
+
+        assert_eq!(by_id("t-read").name, "Read");
+        assert_eq!(by_id("t-read").input["file_path"], "/a.rs");
+        assert_eq!(by_id("t-grep").name, "Grep");
+        assert_eq!(by_id("t-grep").input["pattern"], "foo|bar");
+        assert_eq!(by_id("t-bash").name, "Bash");
+        assert_eq!(by_id("t-bash").input["command"], "echo hi");
+        assert_eq!(by_id("t-web").name, "WebSearch");
+        assert_eq!(by_id("t-web").input["query"], "grok steering");
     }
 
     #[test]
@@ -2328,9 +4140,103 @@ mod tests {
         assert!(args.contains(&"--reasoning-effort".to_string()));
         assert!(args.contains(&"high".to_string()));
         assert!(args.contains(&"--always-approve".to_string()));
+        assert_eq!(args[1], "--no-plan");
+        assert_eq!(args[2], "agent");
     }
 
     #[test]
+    fn build_grok_agent_args_only_allow_native_plan_mode_in_plan() {
+        let plan = build_grok_agent_args(None, Some("plan"), None);
+        let build = build_grok_agent_args(None, Some("build"), None);
+
+        assert!(!plan.contains(&"--no-plan".to_string()));
+        assert!(build.contains(&"--no-plan".to_string()));
+    }
+
+    #[test]
+    fn build_grok_message_makes_yolo_mode_authoritative() {
+        let message =
+            build_grok_message("fix it", Some("Custom project instructions"), Some("yolo"));
+
+        let custom_instructions = message
+            .find("Custom project instructions")
+            .expect("custom instructions are included");
+        let mode_override = message
+            .find("YOLO EXECUTION MODE")
+            .expect("yolo mode override is included");
+        assert!(mode_override > custom_instructions);
+        assert!(message.contains("Do not call enter_plan_mode or exit_plan_mode"));
+        assert!(message.ends_with("fix it"));
+    }
+
+    #[test]
+    fn serialize_grok_host_command_is_lf_jsonl() {
+        let line = serialize_grok_host_command("prompt", Some("hello"), Some("req-1"));
+        assert!(line.ends_with('\n'));
+        let value: Value = serde_json::from_str(line.trim()).unwrap();
+        assert_eq!(value.get("type").and_then(Value::as_str), Some("prompt"));
+        assert_eq!(value.get("message").and_then(Value::as_str), Some("hello"));
+        assert_eq!(value.get("id").and_then(Value::as_str), Some("req-1"));
+    }
+
+    #[test]
+    fn grok_line_is_completion_result_detects_result_marker() {
+        assert!(grok_line_is_completion_result(
+            r#"{"type":"result","session_id":"abc"}"#
+        ));
+        assert!(!grok_line_is_completion_result(
+            r#"{"jsonrpc":"2.0","method":"session/update"}"#
+        ));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn grok_acp_socket_path_is_short_under_app_data() {
+        let path = grok_acp_socket_path(
+            Path::new("/tmp/jean-app-data"),
+            "session-abcdefghijklmnop",
+            "run-1234567890",
+        );
+        assert!(path.starts_with("/tmp/jean-app-data/grok-acp"));
+        assert!(path.to_string_lossy().len() < 100);
+    }
+
+    #[test]
+    fn parse_grok_run_to_message_reads_acp_stream() {
+        let lines = vec![
+            r#"{"type":"session","session_id":"grok-hist-1"}"#.to_string(),
+            r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"grok-hist-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Survived restart"}}}}"#.to_string(),
+            r#"{"type":"result","session_id":"grok-hist-1"}"#.to_string(),
+        ];
+        let run = RunEntry {
+            run_id: "run-1".to_string(),
+            user_message_id: "u1".to_string(),
+            user_message: "hi".to_string(),
+            model: Some("grok-build".to_string()),
+            execution_mode: Some("build".to_string()),
+            thinking_level: None,
+            effort_level: None,
+            backend: Some(super::super::types::Backend::Grok),
+            custom_profile_name: None,
+            started_at: 1,
+            ended_at: Some(2),
+            status: super::super::types::RunStatus::Completed,
+            assistant_message_id: Some("a1".to_string()),
+            cancelled: false,
+            recovered: false,
+            claude_session_id: None,
+            pid: Some(42),
+            usage: None,
+            codex_thread_id: None,
+            codex_turn_id: None,
+            cursor_chat_id: None,
+            grok_session_id: Some("grok-hist-1".to_string()),
+        };
+        let message = parse_grok_run_to_message(&lines, &run).unwrap();
+        assert_eq!(message.content, "Survived restart");
+        assert_eq!(message.id, "a1");
+    }
+
     fn grok_acp_idle_lifecycle_keeps_recent_idle_connections_alive() {
         let last_used = std::time::Instant::now();
         let timeout = std::time::Duration::from_secs(300);

@@ -8,6 +8,7 @@ import {
   persistRemoveQueued,
   persistUpdateQueued,
   steerCodexTurn,
+  steerGrokTurn,
   steerOpencodeTurn,
   steerPiTurn,
 } from '@/services/chat'
@@ -19,6 +20,7 @@ vi.mock('@/services/chat', () => ({
   persistRemoveQueued: vi.fn(),
   persistUpdateQueued: vi.fn().mockResolvedValue(true),
   steerCodexTurn: vi.fn().mockResolvedValue(undefined),
+  steerGrokTurn: vi.fn().mockResolvedValue(undefined),
   steerOpencodeTurn: vi.fn().mockResolvedValue(undefined),
   steerPiTurn: vi.fn().mockResolvedValue(undefined),
 }))
@@ -51,6 +53,7 @@ describe('useQueuedPromptActions', () => {
     vi.mocked(persistMoveQueuedFront).mockResolvedValue(true)
     vi.mocked(persistUpdateQueued).mockResolvedValue(true)
     vi.mocked(steerCodexTurn).mockResolvedValue(undefined)
+    vi.mocked(steerGrokTurn).mockResolvedValue(undefined)
     vi.mocked(steerOpencodeTurn).mockResolvedValue(undefined)
     vi.mocked(steerPiTurn).mockResolvedValue(undefined)
     useChatStore.setState({
@@ -272,6 +275,47 @@ describe('useQueuedPromptActions', () => {
     expect(cancelChatMessage).not.toHaveBeenCalled()
   })
 
+  it('busy grok session: steers the running turn and removes the message', async () => {
+    useChatStore.setState({
+      sendingSessionIds: { 'session-1': true },
+      selectedBackends: { 'session-1': 'grok' },
+    })
+    const { result } = renderHook(() => useQueuedPromptActions())
+
+    await act(async () => {
+      await result.current.handleSendQueuedNow('session-1', 'msg-2')
+    })
+
+    expect(steerGrokTurn).toHaveBeenCalledWith(
+      'worktree-1',
+      'session-1',
+      'prompt msg-2'
+    )
+    expect(
+      useChatStore.getState().messageQueues['session-1']?.map(m => m.id)
+    ).toEqual(['msg-1', 'msg-3'])
+    expect(cancelChatMessage).not.toHaveBeenCalled()
+  })
+
+  it('busy grok session: falls back to cancel+send when steering fails', async () => {
+    vi.mocked(steerGrokTurn).mockRejectedValue(new Error('no active turn'))
+    useChatStore.setState({
+      sendingSessionIds: { 'session-1': true },
+      selectedBackends: { 'session-1': 'grok' },
+    })
+    const { result } = renderHook(() => useQueuedPromptActions())
+
+    await act(async () => {
+      await result.current.handleSendQueuedNow('session-1', 'msg-2')
+    })
+
+    expect(persistMoveQueuedFront).toHaveBeenCalled()
+    expect(
+      useChatStore.getState().messageQueues['session-1']?.map(m => m.id)
+    ).toEqual(['msg-2', 'msg-1', 'msg-3'])
+    expect(cancelChatMessage).toHaveBeenCalledWith('session-1', 'worktree-1')
+  })
+
   it('busy pi session: falls back to cancel+send when steering fails', async () => {
     vi.mocked(steerPiTurn).mockRejectedValue(new Error('host unavailable'))
     useChatStore.setState({
@@ -376,6 +420,30 @@ describe('useQueuedPromptActions', () => {
     })
 
     expect(steerPiTurn).not.toHaveBeenCalled()
+    expect(cancelChatMessage).toHaveBeenCalledWith('session-1', 'worktree-1')
+  })
+
+  it('busy grok session with attachments: skips steer, cancels instead', async () => {
+    useChatStore.setState({
+      messageQueues: {
+        'session-1': [
+          createMessage('msg-1', {
+            pendingImages: [
+              { id: 'img-1', path: '/tmp/a.png', filename: 'a.png' },
+            ] as never,
+          }),
+        ],
+      },
+      sendingSessionIds: { 'session-1': true },
+      selectedBackends: { 'session-1': 'grok' },
+    })
+    const { result } = renderHook(() => useQueuedPromptActions())
+
+    await act(async () => {
+      await result.current.handleSendQueuedNow('session-1', 'msg-1')
+    })
+
+    expect(steerGrokTurn).not.toHaveBeenCalled()
     expect(cancelChatMessage).toHaveBeenCalledWith('session-1', 'worktree-1')
   })
 

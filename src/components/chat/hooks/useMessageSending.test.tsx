@@ -6,6 +6,7 @@ import { useMessageSending } from './useMessageSending'
 import {
   persistEnqueue,
   steerCodexTurn,
+  steerGrokTurn,
   steerOpencodeTurn,
   steerPiTurn,
 } from '@/services/chat'
@@ -34,6 +35,7 @@ vi.mock('@/services/chat', async importOriginal => {
     cancelChatMessage: vi.fn(),
     persistEnqueue: vi.fn(),
     steerCodexTurn: vi.fn(),
+    steerGrokTurn: vi.fn(),
     steerOpencodeTurn: vi.fn(),
     steerPiTurn: vi.fn(),
   }
@@ -44,6 +46,7 @@ function renderUseMessageSending({
   autoSteer,
   opencodeAutoSteer,
   piAutoSteer,
+  grokAutoSteer,
   inputValue = '/goal Ship the feature',
   selectedBackend = 'codex',
   selectedModel = 'gpt-5.5',
@@ -66,6 +69,7 @@ function renderUseMessageSending({
   autoSteer?: boolean
   opencodeAutoSteer?: boolean
   piAutoSteer?: boolean
+  grokAutoSteer?: boolean
   inputValue?: string
   selectedBackend?: 'claude' | 'codex' | 'opencode' | 'cursor' | 'pi' | 'grok'
   selectedModel?: string
@@ -107,6 +111,7 @@ function renderUseMessageSending({
         codex_auto_steer_enabled: autoSteer,
         opencode_auto_steer_enabled: opencodeAutoSteer,
         pi_auto_steer_enabled: piAutoSteer,
+        grok_auto_steer_enabled: grokAutoSteer,
       },
       sendMessage,
       createSession,
@@ -433,6 +438,32 @@ describe('useMessageSending Codex auto-steer', () => {
     expect(sendMessage.mutate).not.toHaveBeenCalled()
   })
 
+  it('steers the running grok turn instead of queueing when auto-steer is enabled', async () => {
+    vi.mocked(steerGrokTurn).mockResolvedValue(undefined)
+    const { result, sendMessage } = renderUseMessageSending({
+      selectedBackend: 'grok',
+      selectedModel: 'grok/grok-composer-2.5-fast',
+      inputValue: 'also inspect grok',
+    })
+
+    await act(async () => {
+      await result.current.handleSubmit({
+        preventDefault: vi.fn(),
+      } as unknown as React.FormEvent)
+    })
+
+    expect(steerGrokTurn).toHaveBeenCalledWith(
+      'worktree-1',
+      'session-1',
+      'also inspect grok'
+    )
+    expect(persistEnqueue).not.toHaveBeenCalled()
+    expect(
+      useChatStore.getState().messageQueues['session-1'] ?? []
+    ).toHaveLength(0)
+    expect(sendMessage.mutate).not.toHaveBeenCalled()
+  })
+
   it('steers the running opencode turn instead of queueing by default', async () => {
     vi.mocked(steerOpencodeTurn).mockResolvedValue(undefined)
     const { result, sendMessage } = renderUseMessageSending({
@@ -528,6 +559,54 @@ describe('useMessageSending Codex auto-steer', () => {
     expect(steerPiTurn).not.toHaveBeenCalled()
     expect(persistEnqueue).toHaveBeenCalled()
     expect(useChatStore.getState().messageQueues['session-1']).toHaveLength(1)
+  })
+
+  it('queues grok prompts instead of steering when grok auto-steer is disabled', async () => {
+    const { result } = renderUseMessageSending({
+      selectedBackend: 'grok',
+      selectedModel: 'grok/grok-composer-2.5-fast',
+      grokAutoSteer: false,
+      inputValue: 'also inspect grok',
+    })
+
+    await act(async () => {
+      await result.current.handleSubmit({
+        preventDefault: vi.fn(),
+      } as unknown as React.FormEvent)
+    })
+
+    expect(steerGrokTurn).not.toHaveBeenCalled()
+    expect(persistEnqueue).toHaveBeenCalled()
+    expect(useChatStore.getState().messageQueues['session-1']).toHaveLength(1)
+  })
+
+  it('queues grok prompts with attachments instead of steering', async () => {
+    const { toast } = await import('sonner')
+    const { result } = renderUseMessageSending({
+      selectedBackend: 'grok',
+      selectedModel: 'grok/grok-composer-2.5-fast',
+      inputValue: 'also inspect grok',
+    })
+    useChatStore.setState({
+      pendingImages: {
+        'session-1': [
+          { id: 'img-1', path: '/tmp/img.png', filename: 'img.png' },
+        ],
+      },
+    })
+
+    await act(async () => {
+      await result.current.handleSubmit({
+        preventDefault: vi.fn(),
+      } as unknown as React.FormEvent)
+    })
+
+    expect(steerGrokTurn).not.toHaveBeenCalled()
+    expect(persistEnqueue).toHaveBeenCalled()
+    expect(useChatStore.getState().messageQueues['session-1']).toHaveLength(1)
+    expect(toast.message).toHaveBeenCalledWith(
+      'Attachments can’t be steered mid-turn — queued for after this turn'
+    )
   })
 
   it('queues opencode prompts instead of steering when opencode auto-steer is disabled', async () => {

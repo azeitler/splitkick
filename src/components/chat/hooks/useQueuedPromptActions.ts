@@ -5,6 +5,7 @@ import {
   persistRemoveQueued,
   persistUpdateQueued,
   steerCodexTurn,
+  steerGrokTurn,
   steerOpencodeTurn,
   steerPiTurn,
 } from '@/services/chat'
@@ -31,7 +32,10 @@ function hasAttachments(msg: QueuedMessage): boolean {
 function supportsSteering(msg: QueuedMessage): boolean {
   const backend = msg.backend ?? 'claude'
   if (backend === 'codex') return true
-  return (backend === 'opencode' || backend === 'pi') && !hasAttachments(msg)
+  return (
+    (backend === 'opencode' || backend === 'pi' || backend === 'grok') &&
+    !hasAttachments(msg)
+  )
 }
 
 /**
@@ -128,17 +132,22 @@ export function useQueuedPromptActions() {
         return
       }
 
-      // Busy Codex/OpenCode/Pi session: steer the running turn. Codex accepts
-      // structured attachment input; other backends still use text-only steer.
+      // Busy Codex/OpenCode/Pi/Grok session: steer the running turn. Codex
+      // accepts structured attachment input; other backends use text-only steer.
       const backend = store.selectedBackends[sessionId] ?? 'claude'
       if (
-        (backend === 'codex' || backend === 'opencode' || backend === 'pi') &&
+        (backend === 'codex' ||
+          backend === 'opencode' ||
+          backend === 'pi' ||
+          backend === 'grok') &&
         isSending &&
         (backend === 'codex' || !hasAttachments(msg))
       ) {
         try {
           if (backend === 'pi') {
             await steerPiTurn(worktreeId, sessionId, msg.message)
+          } else if (backend === 'grok') {
+            await steerGrokTurn(worktreeId, sessionId, msg.message)
           } else if (backend === 'opencode') {
             await steerOpencodeTurn(
               worktreeId,

@@ -15,6 +15,10 @@ import {
   normalizeCodexQuestions,
 } from '@/types/chat'
 
+function isTodoWriteLike(toolCall: ToolCall): boolean {
+  return isTodoWrite(toolCall)
+}
+
 /** Check if a tool is a task/agent container (Claude CLI uses both names) */
 function isAgentTool(name: string): boolean {
   return name === 'Task' || name === 'Agent'
@@ -60,7 +64,7 @@ export type GroupedToolCall =
 /**
  * Check if a tool call is a special tool that should not render in the timeline.
  * AskUserQuestion and ExitPlanMode have dedicated inline render paths.
- * TodoWrite and CodexTodoList are shown via dedicated todo UI.
+ * TodoWrite (incl. Grok todo_write) and CodexTodoList are shown via dedicated todo UI.
  */
 function isSpecialTool(toolCall: ToolCall): boolean {
   return (
@@ -68,7 +72,7 @@ function isSpecialTool(toolCall: ToolCall): boolean {
     toolCall.name === 'ExitPlanMode' ||
     toolCall.name === 'CodexPlan' ||
     toolCall.name === 'EnterPlanMode' ||
-    toolCall.name === 'TodoWrite' ||
+    isTodoWriteLike(toolCall) ||
     toolCall.name === 'CodexTodoList'
   )
 }

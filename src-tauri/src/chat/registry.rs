@@ -42,7 +42,7 @@ static CODEX_TURN_REGISTRY: Lazy<Mutex<HashMap<String, (String, String)>>> =
     Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Sessions in PROCESS_REGISTRY whose process is fully detached (survives Jean
-/// quitting). Claude CLI runs are detached; Pi/Cursor are piped children.
+/// quitting). Claude CLI, host-backed Pi, and host-backed Grok runs are detached.
 static DETACHED_SESSIONS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
 
 fn lock_recover<'a, T>(mutex: &'a Mutex<T>, name: &str) -> std::sync::MutexGuard<'a, T> {
@@ -107,6 +107,38 @@ fn try_abort_pi_rpc_host(app: &AppHandle, session_id: &str) {
 
 #[cfg(not(unix))]
 fn try_abort_pi_rpc_host(_app: &AppHandle, _session_id: &str) {}
+
+#[cfg(unix)]
+fn try_abort_grok_acp_host(app: &AppHandle, session_id: &str) {
+    let run_id = super::storage::load_metadata(app, session_id)
+        .ok()
+        .flatten()
+        .and_then(|metadata| {
+            metadata
+                .runs
+                .iter()
+                .rev()
+                .find(|run| {
+                    run.status == super::types::RunStatus::Running
+                        && run.backend == Some(super::types::Backend::Grok)
+                })
+                .map(|run| run.run_id.clone())
+        });
+    let Some(run_id) = run_id else { return };
+    let Ok(app_data) = app.path().app_data_dir() else {
+        log::warn!("Failed to resolve app data dir for Grok ACP abort");
+        return;
+    };
+    let socket_path = super::grok::grok_acp_socket_path(&app_data, session_id, &run_id);
+    let line =
+        super::grok::serialize_grok_host_command("abort", None, Some(&format!("abort-{run_id}")));
+    if let Err(e) = super::grok::send_grok_acp_host_command(&socket_path, &line) {
+        log::warn!("Failed to send Grok ACP abort before kill for session {session_id}: {e}");
+    }
+}
+
+#[cfg(not(unix))]
+fn try_abort_grok_acp_host(_app: &AppHandle, _session_id: &str) {}
 
 /// Register a running Claude process PID for a session.
 /// Returns `false` if the session was cancelled before registration (process is killed immediately).
@@ -335,10 +367,10 @@ pub fn get_actively_managed_sessions() -> HashSet<String> {
 
 /// Check if any running session would NOT survive Jean quitting.
 ///
-/// Survivable: detached Claude CLI processes, and Codex app-server turns on
-/// Unix (the server is detached and runs turns independently of Jean).
+/// Survivable: detached Claude CLI processes, host-backed Pi/Grok ACP hosts,
+/// and Codex app-server turns on Unix (server/host runs independently of Jean).
 /// Non-survivable: OpenCode sessions (managed server dies with Jean), piped
-/// CLI children (Pi, Cursor), and Codex turns on Windows (stdio transport).
+/// CLI children (Cursor, Windows Grok/Pi), and Codex turns on Windows.
 pub fn has_nonsurvivable_running_sessions() -> bool {
     if !lock_recover(&CANCEL_FLAGS, "CANCEL_FLAGS").is_empty() {
         return true;
@@ -516,6 +548,7 @@ pub fn cancel_process(
         }
 
         try_abort_pi_rpc_host(app, session_id);
+        try_abort_grok_acp_host(app, session_id);
         log::trace!("Cancelling Claude process group {pid} for session: {session_id}");
 
         // Kill the entire process tree to ensure child processes are also terminated
@@ -650,6 +683,7 @@ pub fn cancel_process_if_running(
         }
 
         try_abort_pi_rpc_host(app, session_id);
+        try_abort_grok_acp_host(app, session_id);
         log::trace!("Cancelling Claude process group {pid} for session: {session_id}");
 
         use crate::platform::{is_process_alive, kill_process, kill_process_tree};

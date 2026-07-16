@@ -1147,6 +1147,7 @@ impl SessionMetadata {
         self.cursor_chat_id = session.cursor_chat_id.clone();
         self.pi_session_id = session.pi_session_id.clone();
         self.commandcode_session_id = session.commandcode_session_id.clone();
+        self.grok_session_id = session.grok_session_id.clone();
         self.selected_model = session.selected_model.clone();
         self.selected_thinking_level = session.selected_thinking_level.clone();
         self.selected_effort_level = session.selected_effort_level.clone();
@@ -2123,6 +2124,29 @@ mod tests {
             session.terminal_command_args
         );
         assert_eq!(restored.terminal_label.as_deref(), Some("Codex"));
+    }
+
+    #[test]
+    fn test_grok_session_id_roundtrip_via_update_from_session() {
+        let mut session = Session::new("Grok tool call support".to_string(), 0, Backend::Grok);
+        session.grok_session_id = Some("grok-acp-1".to_string());
+
+        let mut metadata = SessionMetadata::new(
+            session.id.clone(),
+            "wt-grok".to_string(),
+            session.name.clone(),
+            session.order,
+        );
+        metadata.update_from_session(&session);
+
+        assert_eq!(
+            metadata.grok_session_id.as_deref(),
+            Some("grok-acp-1"),
+            "update_from_session must persist grok_session_id (native resume menu depends on it)"
+        );
+        let restored = metadata.to_session();
+        assert_eq!(restored.grok_session_id.as_deref(), Some("grok-acp-1"));
+        assert_eq!(restored.backend, Backend::Grok);
     }
 
     #[test]

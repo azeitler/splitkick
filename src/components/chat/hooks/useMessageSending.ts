@@ -8,6 +8,7 @@ import {
   cancelChatMessage,
   persistEnqueue,
   steerCodexTurn,
+  steerGrokTurn,
   steerOpencodeTurn,
   steerPiTurn,
 } from '@/services/chat'
@@ -55,6 +56,7 @@ interface UseMessageSendingParams {
         codex_auto_steer_enabled?: boolean
         opencode_auto_steer_enabled?: boolean
         pi_auto_steer_enabled?: boolean
+        grok_auto_steer_enabled?: boolean
       }
     | undefined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -493,10 +495,17 @@ export function useMessageSending({
             ? (preferences?.opencode_auto_steer_enabled ?? true)
             : backend === 'pi'
               ? (preferences?.pi_auto_steer_enabled ?? true)
-              : (preferences?.codex_auto_steer_enabled ?? true)
+              : backend === 'grok'
+                ? (preferences?.grok_auto_steer_enabled ?? true)
+                : (preferences?.codex_auto_steer_enabled ?? true)
         const canSteerWithAttachments = backend === 'codex'
+        const isSteerBackend =
+          backend === 'codex' ||
+          backend === 'opencode' ||
+          backend === 'pi' ||
+          backend === 'grok'
         if (
-          (backend === 'codex' || backend === 'opencode' || backend === 'pi') &&
+          isSteerBackend &&
           autoSteerEnabled &&
           (!hasAttachments || canSteerWithAttachments)
         ) {
@@ -504,6 +513,12 @@ export function useMessageSending({
             const steerMessage = buildMessageWithRefs(queuedMessage)
             if (backend === 'pi') {
               await steerPiTurn(activeWorktreeId, activeSessionId, steerMessage)
+            } else if (backend === 'grok') {
+              await steerGrokTurn(
+                activeWorktreeId,
+                activeSessionId,
+                steerMessage
+              )
             } else if (backend === 'opencode') {
               await steerOpencodeTurn(
                 activeWorktreeId,
@@ -536,6 +551,17 @@ export function useMessageSending({
               `[Send] handleSubmit steer failed, falling back to queue: ${err}`
             )
           }
+        } else if (
+          isSteerBackend &&
+          autoSteerEnabled &&
+          hasAttachments &&
+          !canSteerWithAttachments
+        ) {
+          // Mid-turn inject is text-only for Grok/PI/OpenCode — attachments
+          // must wait until the current turn finishes.
+          toast.message(
+            'Attachments can’t be steered mid-turn — queued for after this turn'
+          )
         }
         console.log(`[Send] handleSubmit ENQUEUING (session is sending)`)
         enqueueMessage(activeSessionId, queuedMessage)

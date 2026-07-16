@@ -213,6 +213,18 @@ export function useInvestigateHandlers({
                 : type === 'sentry-issue'
                   ? 'investigate_sentry_issue_mode'
                   : ('investigate_advisory_mode' as const)
+      const effortKey =
+        type === 'issue'
+          ? 'investigate_issue_effort'
+          : type === 'pr'
+            ? 'investigate_pr_effort'
+            : type === 'security-alert'
+              ? 'investigate_security_alert_effort'
+              : type === 'linear-issue'
+                ? 'investigate_linear_issue_effort'
+                : type === 'sentry-issue'
+                  ? 'investigate_sentry_issue_effort'
+                  : ('investigate_advisory_effort' as const)
       const investigateMode =
         preferences?.magic_prompt_modes?.[modeKey] ??
         DEFAULT_MAGIC_PROMPT_MODES[modeKey]
@@ -451,6 +463,25 @@ export function useInvestigateHandlers({
         ) ??
         resolveBackend(investigateModel)
 
+      // Prefer Magic Prompt effort override; fall back to session effort only for
+      // Claude adaptive thinking. Effort-based backends (Grok/Codex/Pi/OpenCode)
+      // must not inherit Claude thinking levels like "think".
+      const investigateEffort =
+        (preferences?.magic_prompt_efforts?.[effortKey] as
+          | EffortLevel
+          | null
+          | undefined) ??
+        (investigateUseAdaptive ? selectedEffortLevelRef.current : undefined)
+      const usesEffortBackend =
+        investigateBackend === 'codex' ||
+        investigateBackend === 'opencode' ||
+        investigateBackend === 'pi' ||
+        investigateBackend === 'grok' ||
+        investigateUseAdaptive
+      const investigateThinkingLevel = usesEffortBackend
+        ? undefined
+        : selectedThinkingLevelRef.current
+
       setSessionBackend.mutate({
         sessionId: activeSessionId,
         worktreeId: activeWorktreeId,
@@ -468,9 +499,13 @@ export function useInvestigateHandlers({
         const {
           setSelectedBackend: setZustandBackend,
           setSelectedModel: setZustandModel,
+          setEffortLevel,
         } = useChatStore.getState()
         setZustandBackend(activeSessionId, investigateBackend)
         setZustandModel(activeSessionId, investigateModel)
+        if (investigateEffort) {
+          setEffortLevel(activeSessionId, investigateEffort)
+        }
       }
       primeSessionSelection(
         activeSessionId,
@@ -487,10 +522,8 @@ export function useInvestigateHandlers({
           message: prompt,
           model: investigateModel,
           executionMode: investigateMode,
-          thinkingLevel: selectedThinkingLevelRef.current,
-          effortLevel: investigateUseAdaptive
-            ? selectedEffortLevelRef.current
-            : undefined,
+          thinkingLevel: investigateThinkingLevel,
+          effortLevel: investigateEffort,
           mcpConfig: buildMcpConfigJson(
             mcpServersDataRef.current ?? [],
             enabledMcpServersRef.current,
@@ -528,6 +561,7 @@ export function useInvestigateHandlers({
       preferences?.magic_prompt_providers,
       preferences?.magic_prompt_backends,
       preferences?.magic_prompt_modes,
+      preferences?.magic_prompt_efforts,
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,
@@ -681,6 +715,22 @@ export function useInvestigateHandlers({
           projectForBackend?.default_backend ?? defaultBackend
         ) ?? resolveBackend(investigateModel)
 
+      // Prefer Magic Prompt effort override (e.g. Medium for Grok). Never fall
+      // through to Claude thinking levels for effort-based backends.
+      const investigateEffort =
+        (preferences?.magic_prompt_efforts
+          ?.investigate_workflow_run_effort as EffortLevel | null | undefined) ??
+        (investigateUseAdaptive ? selectedEffortLevelRef.current : undefined)
+      const usesEffortBackend =
+        investigateBackend === 'codex' ||
+        investigateBackend === 'opencode' ||
+        investigateBackend === 'pi' ||
+        investigateBackend === 'grok' ||
+        investigateUseAdaptive
+      const investigateThinkingLevel = usesEffortBackend
+        ? undefined
+        : selectedThinkingLevelRef.current
+
       const sendInvestigateMessage = (targetSessionId: string) => {
         const {
           addSendingSession,
@@ -689,6 +739,7 @@ export function useInvestigateHandlers({
           setSelectedModel,
           setSelectedProvider,
           setExecutingMode,
+          setEffortLevel,
         } = useChatStore.getState()
 
         setLastSentMessage(targetSessionId, prompt)
@@ -697,6 +748,9 @@ export function useInvestigateHandlers({
         setSelectedModel(targetSessionId, investigateModel)
         setSelectedProvider(targetSessionId, investigateProvider)
         setExecutingMode(targetSessionId, investigateMode)
+        if (investigateEffort) {
+          setEffortLevel(targetSessionId, investigateEffort)
+        }
 
         setSessionBackend.mutate({
           sessionId: targetSessionId,
@@ -739,10 +793,8 @@ export function useInvestigateHandlers({
             message: prompt,
             model: investigateModel,
             executionMode: investigateMode,
-            thinkingLevel: selectedThinkingLevelRef.current,
-            effortLevel: investigateUseAdaptive
-              ? selectedEffortLevelRef.current
-              : undefined,
+            thinkingLevel: investigateThinkingLevel,
+            effortLevel: investigateEffort,
             mcpConfig: buildMcpConfigJson(
               mcpServersDataRef.current ?? [],
               enabledMcpServersRef.current,
@@ -815,6 +867,7 @@ export function useInvestigateHandlers({
       preferences?.magic_prompt_providers,
       preferences?.magic_prompt_backends,
       preferences?.magic_prompt_modes,
+      preferences?.magic_prompt_efforts,
       preferences?.chrome_enabled,
       preferences?.ai_language,
       setSessionProvider,

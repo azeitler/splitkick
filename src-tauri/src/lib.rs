@@ -320,6 +320,8 @@ pub struct AppPreferences {
     pub opencode_auto_steer_enabled: bool, // Steer prompts into a running OpenCode session instead of queueing (default: true)
     #[serde(default = "default_pi_auto_steer")]
     pub pi_auto_steer_enabled: bool, // Steer prompts into a running PI turn instead of queueing (default: true)
+    #[serde(default = "default_grok_auto_steer")]
+    pub grok_auto_steer_enabled: bool, // Steer prompts into a running Grok turn instead of queueing (default: true)
     #[serde(default = "default_codex_max_agent_threads")]
     pub codex_max_agent_threads: u32, // Max concurrent agent threads (1-8)
     #[serde(default = "default_restore_last_session")]
@@ -415,6 +417,10 @@ fn default_opencode_auto_steer() -> bool {
 }
 
 fn default_pi_auto_steer() -> bool {
+    true
+}
+
+fn default_grok_auto_steer() -> bool {
     true
 }
 
@@ -1113,7 +1119,7 @@ mod tests {
             prefs.magic_prompt_models.final_review_model,
             default_model()
         );
-        assert_eq!(prefs.magic_prompt_modes.final_review_mode, "plan");
+        assert_eq!(prefs.magic_prompt_modes.final_review_mode, "yolo");
     }
 }
 
@@ -2113,7 +2119,7 @@ pub struct MagicPromptModes {
     pub investigate_sentry_issue_mode: String,
     #[serde(default = "default_magic_prompt_plan_mode")]
     pub review_comments_mode: String,
-    #[serde(default = "default_magic_prompt_plan_mode")]
+    #[serde(default = "default_magic_prompt_yolo_mode")]
     pub final_review_mode: String,
     #[serde(default = "default_magic_prompt_yolo_mode")]
     pub resolve_conflicts_mode: String,
@@ -2130,10 +2136,60 @@ impl Default for MagicPromptModes {
             investigate_linear_issue_mode: default_magic_prompt_plan_mode(),
             investigate_sentry_issue_mode: default_magic_prompt_plan_mode(),
             review_comments_mode: default_magic_prompt_plan_mode(),
-            final_review_mode: default_magic_prompt_plan_mode(),
+            final_review_mode: default_magic_prompt_yolo_mode(),
             resolve_conflicts_mode: default_magic_prompt_yolo_mode(),
         }
     }
+}
+
+fn migrate_final_review_preferences(
+    preferences: &mut AppPreferences,
+    raw_preferences: &Value,
+) -> bool {
+    let model_missing = raw_preferences
+        .get("magic_prompt_models")
+        .and_then(Value::as_object)
+        .is_none_or(|models| !models.contains_key("final_review_model"));
+    let backend = preferences
+        .magic_prompt_backends
+        .final_review_backend
+        .as_deref()
+        .unwrap_or(&preferences.default_backend);
+    let model_matches_backend = match backend {
+        "codex" => is_codex_model(&preferences.magic_prompt_models.final_review_model),
+        "opencode" => is_opencode_model(&preferences.magic_prompt_models.final_review_model),
+        "cursor" => is_cursor_model(&preferences.magic_prompt_models.final_review_model),
+        "pi" => is_pi_model(&preferences.magic_prompt_models.final_review_model),
+        "commandcode" => preferences
+            .magic_prompt_models
+            .final_review_model
+            .starts_with("commandcode/"),
+        "grok" => is_grok_model(&preferences.magic_prompt_models.final_review_model),
+        "claude" => {
+            let model = &preferences.magic_prompt_models.final_review_model;
+            !is_codex_model(model)
+                && !is_opencode_model(model)
+                && !is_cursor_model(model)
+                && !is_pi_model(model)
+                && !is_grok_model(model)
+                && !model.starts_with("commandcode/")
+        }
+        _ => true,
+    };
+    if !model_missing && model_matches_backend {
+        return false;
+    }
+
+    preferences.magic_prompt_models.final_review_model = match backend {
+        "codex" => preferences.selected_codex_model.clone(),
+        "opencode" => preferences.selected_opencode_model.clone(),
+        "cursor" => preferences.selected_cursor_model.clone(),
+        "pi" => preferences.selected_pi_model.clone(),
+        "commandcode" => preferences.selected_commandcode_model.clone(),
+        "grok" => preferences.selected_grok_model.clone(),
+        _ => preferences.selected_model.clone(),
+    };
+    true
 }
 
 impl MagicPrompts {
@@ -2296,6 +2352,7 @@ impl Default for AppPreferences {
             codex_auto_steer_enabled: default_codex_auto_steer(),
             opencode_auto_steer_enabled: default_opencode_auto_steer(),
             pi_auto_steer_enabled: default_pi_auto_steer(),
+            grok_auto_steer_enabled: default_grok_auto_steer(),
             codex_max_agent_threads: default_codex_max_agent_threads(),
             restore_last_session: true,
             close_original_on_clear_context: true,
@@ -2607,6 +2664,7 @@ pub fn load_preferences_sync(app: &AppHandle) -> Result<AppPreferences, String> 
         serde_json::from_str(&contents).map_err(|e| format!("Failed to parse preferences: {e}"))?;
     let mut preferences: AppPreferences = serde_json::from_value(raw_preferences.clone())
         .map_err(|e| format!("Failed to parse preferences: {e}"))?;
+    migrate_final_review_preferences(&mut preferences, &raw_preferences);
     normalize_parallel_execution_preferences(&mut preferences);
     maybe_auto_select_system_coderabbit(app, &mut preferences, Some(&raw_preferences));
     Ok(preferences)
@@ -2650,7 +2708,7 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
 
     // Migrate legacy default Claude model names to the 1M variants where
     // available so hidden non-1M defaults do not render blank in settings.
-    let mut needs_resave = false;
+    let mut needs_resave = migrate_final_review_preferences(&mut preferences, &raw_preferences);
     if let Some(new_model) = migrate_default_claude_model(&preferences.selected_model) {
         preferences.selected_model = new_model.to_string();
         needs_resave = true;
@@ -3962,7 +4020,56 @@ mod magic_prompt_tests {
             preferences.magic_prompt_models.final_review_model,
             default_model()
         );
-        assert_eq!(preferences.magic_prompt_modes.final_review_mode, "plan");
+        assert_eq!(preferences.magic_prompt_modes.final_review_mode, "yolo");
+    }
+
+    #[test]
+    fn existing_preferences_inherit_final_review_model_from_default_backend() {
+        let mut raw = serde_json::to_value(AppPreferences::default()).unwrap();
+        raw["default_backend"] = serde_json::json!("codex");
+        raw["selected_codex_model"] = serde_json::json!("gpt-5.6-sol-fast");
+        raw["magic_prompt_models"] = serde_json::json!({
+            "code_review_model": "gpt-5.5-fast",
+        });
+        raw["magic_prompt_backends"] = serde_json::json!({
+            "code_review_backend": "codex",
+        });
+        raw["magic_prompt_providers"] = serde_json::json!({
+            "code_review_provider": "custom-provider",
+        });
+        raw["magic_prompt_efforts"] = serde_json::json!({
+            "code_review_effort": "high",
+        });
+        let mut preferences: AppPreferences = serde_json::from_value(raw.clone()).unwrap();
+
+        assert!(migrate_final_review_preferences(&mut preferences, &raw));
+        assert_eq!(
+            preferences.magic_prompt_models.final_review_model,
+            "gpt-5.6-sol-fast"
+        );
+        assert_eq!(preferences.magic_prompt_backends.final_review_backend, None);
+        assert_eq!(
+            preferences.magic_prompt_providers.final_review_provider,
+            None
+        );
+        assert_eq!(preferences.magic_prompt_efforts.final_review_effort, None);
+        assert_eq!(preferences.magic_prompt_modes.final_review_mode, "yolo");
+    }
+
+    #[test]
+    fn existing_preferences_repair_codex_with_claude_final_review_model() {
+        let mut raw = serde_json::to_value(AppPreferences::default()).unwrap();
+        raw["default_backend"] = serde_json::json!("codex");
+        raw["selected_codex_model"] = serde_json::json!("gpt-5.6-sol-fast");
+        raw["magic_prompt_models"]["final_review_model"] = serde_json::json!("claude-opus-4-8[1m]");
+        raw["magic_prompt_backends"]["final_review_backend"] = serde_json::Value::Null;
+        let mut preferences: AppPreferences = serde_json::from_value(raw.clone()).unwrap();
+
+        assert!(migrate_final_review_preferences(&mut preferences, &raw));
+        assert_eq!(
+            preferences.magic_prompt_models.final_review_model,
+            "gpt-5.6-sol-fast"
+        );
     }
 
     #[test]
@@ -4035,6 +4142,13 @@ pub fn run() {
     if std::env::args().any(|arg| arg == chat::pi::PI_RPC_HOST_ARG) {
         if let Err(e) = chat::pi::run_pi_rpc_host_from_args() {
             eprintln!("Jean PI RPC host failed: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
+    if std::env::args().any(|arg| arg == chat::grok::GROK_ACP_HOST_ARG) {
+        if let Err(e) = chat::grok::run_grok_acp_host_from_args() {
+            eprintln!("Jean Grok ACP host failed: {e}");
             std::process::exit(1);
         }
         return;
@@ -4972,6 +5086,7 @@ pub fn run() {
             chat::steer_codex_turn,
             chat::steer_opencode_turn,
             chat::steer_pi_turn,
+            chat::steer_grok_turn,
             chat::answer_opencode_question,
             // Chat commands - ScheduleWakeup support
             chat::cancel_session_wakeup,

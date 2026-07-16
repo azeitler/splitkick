@@ -449,7 +449,7 @@ export function getResumeCommand(session: Session): string | null {
     return `pi --session ${session.pi_session_id}`
   }
   if (session.backend === 'grok' && session.grok_session_id) {
-    return `grok -s ${session.grok_session_id}`
+    return `grok --resume ${session.grok_session_id}`
   }
   return null
 }
@@ -501,7 +501,7 @@ export function getResumeArgs(
   if (session.backend === 'grok' && session.grok_session_id) {
     return {
       command: cmd || 'grok',
-      args: ['-s', session.grok_session_id],
+      args: ['--resume', session.grok_session_id],
     }
   }
   return null

@@ -966,7 +966,7 @@ export const DEFAULT_MAGIC_PROMPT_MODES: MagicPromptModes = {
   investigate_linear_issue_mode: 'plan',
   investigate_sentry_issue_mode: 'plan',
   review_comments_mode: 'plan',
-  final_review_mode: 'plan',
+  final_review_mode: 'yolo',
   resolve_conflicts_mode: 'yolo',
 }
 
@@ -1241,6 +1241,7 @@ export interface AppPreferences {
   codex_auto_steer_enabled: boolean // Steer prompts into a running Codex turn instead of queueing (default: true)
   opencode_auto_steer_enabled: boolean // Steer prompts into a running OpenCode turn instead of queueing (default: true)
   pi_auto_steer_enabled: boolean // Steer prompts into a running PI turn instead of queueing (default: true)
+  grok_auto_steer_enabled: boolean // Steer prompts into a running Grok turn instead of queueing (default: true)
   restore_last_session: boolean // Restore last session when switching projects (default: true)
   close_original_on_clear_context: boolean // Close original session when using Clear Context and yolo (default: true)
   build_model: string | null // Model override for plan approval (build mode), null = use session model
@@ -2137,6 +2138,7 @@ export const defaultPreferences: AppPreferences = {
   codex_auto_steer_enabled: true, // Default: steer Codex running turn instead of queueing
   opencode_auto_steer_enabled: true, // Default: steer OpenCode running turn instead of queueing
   pi_auto_steer_enabled: true, // Default: steer PI running turn instead of queueing
+  grok_auto_steer_enabled: true, // Default: steer Grok running turn instead of queueing
   restore_last_session: true, // Default: enabled
   close_original_on_clear_context: true, // Default: enabled
   build_model: null, // Default: use session model

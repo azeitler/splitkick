@@ -24,7 +24,7 @@ vi.mock('@/services/preferences', () => ({
         investigate_linear_issue_mode: 'plan',
         investigate_sentry_issue_mode: 'plan',
         review_comments_mode: 'plan',
-        final_review_mode: 'plan',
+        final_review_mode: 'yolo',
         resolve_conflicts_mode: 'yolo',
       },
     },
@@ -162,7 +162,7 @@ describe('MagicPromptsPane', () => {
     expect(screen.getByRole('combobox', { name: 'Model' })).toBeInTheDocument()
     expect(
       screen.getByRole('combobox', { name: 'Default mode' })
-    ).toHaveTextContent('Plan')
+    ).toHaveTextContent('Yolo')
     expect(
       screen.getByDisplayValue(/final pre-merge audit/i)
     ).toBeInTheDocument()
@@ -217,7 +217,9 @@ describe('MagicPromptsPane', () => {
 
     await user.click(screen.getByRole('combobox', { name: 'Model' }))
 
-    expect(screen.getByRole('option', { name: /Grok 4\.5/ })).toBeInTheDocument()
+    expect(
+      screen.getByRole('option', { name: /Grok 4\.5/ })
+    ).toBeInTheDocument()
     expect(
       screen.getByRole('option', { name: /Grok Composer 2\.5 Fast/ })
     ).toBeInTheDocument()

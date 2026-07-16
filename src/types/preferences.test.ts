@@ -19,7 +19,7 @@ describe('magic prompt preference resolvers', () => {
     expect(DEFAULT_FINAL_REVIEW_PROMPT).toContain('consolidat')
     expect(DEFAULT_FINAL_REVIEW_PROMPT).toContain('Fixes #')
     expect(DEFAULT_FINAL_REVIEW_PROMPT).toContain('Markdown table')
-    expect(defaultPreferences.magic_prompt_modes.final_review_mode).toBe('plan')
+    expect(defaultPreferences.magic_prompt_modes.final_review_mode).toBe('yolo')
   })
 
   it('enables web access sounds by default for backwards compatibility', () => {

@@ -48,6 +48,36 @@ describe('MessageSettingsBadges', () => {
     expect(screen.queryByText('· Megathink')).toBeNull()
   })
 
+  it('does not show Claude thinking labels for Grok models', () => {
+    render(
+      <MessageSettingsBadges
+        model="grok/grok-4.5"
+        executionMode="yolo"
+        thinkingLevel="think"
+        effortLevel={undefined}
+        isCursor={false}
+      />
+    )
+
+    expect(screen.getByText(/Grok/)).toBeVisible()
+    expect(screen.queryByText('· Think')).toBeNull()
+  })
+
+  it('shows effort labels for Grok models', () => {
+    render(
+      <MessageSettingsBadges
+        model="grok/grok-4.5"
+        executionMode="yolo"
+        thinkingLevel={undefined}
+        effortLevel="medium"
+        isCursor={false}
+      />
+    )
+
+    expect(screen.getByText('· Yolo')).toBeVisible()
+    expect(screen.getByText('· Medium')).toBeVisible()
+  })
+
   it('keeps Claude model labels working', () => {
     render(
       <MessageSettingsBadges

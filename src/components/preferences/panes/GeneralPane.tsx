@@ -1142,6 +1142,14 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     }
   }
 
+  const handleGrokAutoSteerToggle = (enabled: boolean) => {
+    if (preferences) {
+      patchPreferences.mutate({
+        grok_auto_steer_enabled: enabled,
+      })
+    }
+  }
+
   const handleCodexMaxThreadsChange = (value: string) => {
     if (preferences) {
       const num = Math.max(1, Math.min(8, parseInt(value, 10) || 3))
@@ -3015,7 +3023,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
             </InlineField>
             <InlineField
               label="Steer running turn"
-              description="Prompts sent while OpenCode is working are sent to the running session instead of queued"
+              description="Text-only prompts sent while OpenCode is working are injected into the current turn instead of queued (attachments always queue)"
             >
               <Switch
                 checked={preferences?.opencode_auto_steer_enabled ?? true}
@@ -3182,7 +3190,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
             </InlineField>
             <InlineField
               label="Steer running turn"
-              description="Prompts sent while PI is working are injected into the current turn instead of queued"
+              description="Text-only prompts sent while PI is working are injected into the current turn instead of queued (attachments always queue)"
             >
               <Switch
                 checked={preferences?.pi_auto_steer_enabled ?? true}
@@ -3381,6 +3389,15 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                   ))}
                 </SelectContent>
               </Select>
+            </InlineField>
+            <InlineField
+              label="Steer running turn"
+              description="Text-only prompts sent while Grok is working are injected into the current turn instead of queued (attachments always queue)"
+            >
+              <Switch
+                checked={preferences?.grok_auto_steer_enabled ?? true}
+                onCheckedChange={handleGrokAutoSteerToggle}
+              />
             </InlineField>
           </div>
         </SettingsSection>

@@ -626,6 +626,7 @@ fn generate_names_grok(
         app,
         prompt,
         model,
+        None,
         Some(&request.worktree_path),
         request.reasoning_effort.as_deref(),
     )?;

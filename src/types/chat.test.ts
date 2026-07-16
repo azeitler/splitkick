@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest'
 import {
   buildCodexUserInputAnswerMap,
   getAskUserQuestions,
+  getTodoWriteTodos,
   hasQuestionAnswerOutput,
   isAskUserQuestion,
+  isTodoWrite,
   normalizeCodexQuestions,
+  normalizeTodoItem,
 } from './chat'
 
 describe('hasQuestionAnswerOutput', () => {
@@ -76,6 +79,62 @@ describe('isAskUserQuestion', () => {
         },
       })
     ).toBe(true)
+  })
+})
+
+describe('TodoWrite (Grok + Claude)', () => {
+  it('recognizes Grok todo_write with variant and missing activeForm', () => {
+    const tool = {
+      id: 'call-1',
+      name: 'todo_write',
+      input: {
+        merge: false,
+        variant: 'TodoWrite',
+        todos: [
+          {
+            id: '1',
+            content: 'Investigate steering',
+            status: 'in_progress',
+          },
+          { id: '2', content: 'Fix tools', status: 'pending' },
+        ],
+      },
+    }
+    expect(isTodoWrite(tool)).toBe(true)
+    expect(getTodoWriteTodos(tool)).toEqual([
+      {
+        content: 'Investigate steering',
+        activeForm: 'Investigate steering',
+        status: 'in_progress',
+      },
+      {
+        content: 'Fix tools',
+        activeForm: 'Fix tools',
+        status: 'pending',
+      },
+    ])
+  })
+
+  it('recognizes ACP title "Updating plan" when input has todos', () => {
+    const tool = {
+      id: 'call-2',
+      name: 'Updating plan',
+      input: {
+        todos: [{ content: 'A', status: 'completed' }],
+        variant: 'TodoWrite',
+      },
+    }
+    expect(isTodoWrite(tool)).toBe(true)
+    expect(getTodoWriteTodos(tool)[0]?.status).toBe('completed')
+  })
+
+  it('normalizes alternate status strings on todo items', () => {
+    expect(normalizeTodoItem({ content: 'x', status: 'done' })?.status).toBe(
+      'completed'
+    )
+    expect(
+      normalizeTodoItem({ content: 'y', status: 'in-progress' })?.status
+    ).toBe('in_progress')
   })
 })
 

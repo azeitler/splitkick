@@ -849,6 +849,7 @@ async fn drain_backend_queue(
             drain_queue_into_codex_turn(&app, &worktree_id, &session_id).await;
             drain_queue_into_opencode_turn(&app, &worktree_id, &worktree_path, &session_id).await;
             drain_queue_into_pi_turn(&app, &worktree_id, &session_id).await;
+            drain_queue_into_grok_turn(&app, &worktree_id, &session_id).await;
             log::trace!("[QueueDrain] session active, stop session={session_id}");
             return;
         }
@@ -4267,6 +4268,7 @@ pub async fn send_chat_message(
                     jean_session_id: &thread_session_id,
                     worktree_id: &thread_worktree_id,
                     working_dir: std::path::Path::new(&thread_working_dir),
+                    output_file: &thread_output_file,
                     existing_grok_session_id: thread_grok_session_id.as_deref(),
                     model: thread_model.as_deref(),
                     execution_mode: thread_execution_mode.as_deref(),
@@ -4432,10 +4434,14 @@ pub async fn send_chat_message(
     // reconstruct content after the live stream completes.
     // Skip when cancelled: cancelled turns stay in run metadata/logs for diagnostics
     // but are intentionally excluded from visible chat history on reload.
+    // Unix Grok host already writes ACP stream JSONL + a result marker — synthetic
+    // assistant lines would double content when parse_grok_run_to_message reloads.
+    let skip_synthetic_history = cfg!(unix) && matches!(unified_response.backend, Backend::Grok);
     if matches!(
         unified_response.backend,
         Backend::Opencode | Backend::Cursor | Backend::Pi | Backend::Commandcode | Backend::Grok
     ) && !unified_response.cancelled
+        && !skip_synthetic_history
     {
         if let Ok(mut file) = std::fs::OpenOptions::new().append(true).open(&output_file) {
             if !unified_response.content_blocks.is_empty() {
@@ -6822,6 +6828,7 @@ fn execute_summarization_claude(
             app,
             prompt,
             model_str,
+            Some(CONTEXT_SUMMARY_SCHEMA),
             working_dir,
             reasoning_effort,
         )?;
@@ -7466,6 +7473,101 @@ pub async fn resume_session(
                         })
                     {
                         log::warn!("Failed to persist recovered Pi session id: {e}");
+                    }
+                }
+            });
+            continue;
+        }
+
+        // === Grok detached ACP-host resume path ===
+        if run.backend == Some(Backend::Grok) {
+            let pid = match run.pid {
+                Some(p) => p,
+                None => continue,
+            };
+            let output_file = session_dir.join(format!("{run_id}.jsonl"));
+
+            log::trace!(
+                "Resuming Grok ACP host run: {run_id}, PID: {pid}, output: {:?}",
+                output_file
+            );
+
+            if let Some(metadata_run) = metadata.find_run_mut(&run_id) {
+                metadata_run.status = RunStatus::Running;
+            }
+            save_metadata(&app, &metadata)?;
+
+            if !super::registry::register_detached_process(session_id.clone(), pid) {
+                log::warn!("Resume Grok session {session_id} was cancelled before tailing started");
+                return Ok(ResumeSessionResponse {
+                    resumed: false,
+                    run_count: 0,
+                });
+            }
+
+            let app_clone = app.clone();
+            let session_id_clone = session_id.clone();
+            let worktree_id_clone = worktree_id.clone();
+            let run_id_clone = run_id.clone();
+
+            tauri::async_runtime::spawn(async move {
+                let emit_done = |app: &tauri::AppHandle, sid: &str, wid: &str| {
+                    let _ = app.emit_all(
+                        "chat:done",
+                        &serde_json::json!({ "session_id": sid, "worktree_id": wid, "waiting_for_plan": false }),
+                    );
+                };
+
+                let (grok_session_id, usage, cancelled) = match super::grok::tail_grok_output(
+                    &app_clone,
+                    &session_id_clone,
+                    &worktree_id_clone,
+                    &output_file,
+                    pid,
+                ) {
+                    Ok(response) => (response.session_id, response.usage, response.cancelled),
+                    Err(e) => {
+                        log::error!("Resume Grok tail failed for run: {run_id_clone}, error: {e}");
+                        super::registry::unregister_process(&session_id_clone);
+                        if let Ok(mut writer) =
+                            RunLogWriter::resume(&app_clone, &session_id_clone, &run_id_clone)
+                        {
+                            if let Err(e) = writer.crash() {
+                                log::error!("Failed to mark Grok run as crashed: {e}");
+                            }
+                        }
+                        emit_done(&app_clone, &session_id_clone, &worktree_id_clone);
+                        return;
+                    }
+                };
+
+                super::registry::unregister_process(&session_id_clone);
+                if cancelled {
+                    emit_done(&app_clone, &session_id_clone, &worktree_id_clone);
+                }
+
+                if let Ok(mut writer) =
+                    RunLogWriter::resume(&app_clone, &session_id_clone, &run_id_clone)
+                {
+                    let assistant_message_id = uuid::Uuid::new_v4().to_string();
+                    // Do not pass grok id as claude_session_id — complete() only
+                    // knows Claude's resume field. Persist grok_session_id below.
+                    if let Err(e) = writer.complete(&assistant_message_id, None, usage.clone()) {
+                        log::error!("Failed to mark resumed Grok run completed: {e}");
+                    }
+                }
+
+                if !grok_session_id.is_empty() {
+                    if let Err(e) =
+                        with_existing_metadata_mut(&app_clone, &session_id_clone, |metadata| {
+                            metadata.grok_session_id = Some(grok_session_id.clone());
+                            if let Some(run) = metadata.find_run_mut(&run_id_clone) {
+                                run.grok_session_id = Some(grok_session_id.clone());
+                                run.usage = usage.clone();
+                            }
+                        })
+                    {
+                        log::warn!("Failed to persist recovered Grok session id: {e}");
                     }
                 }
             });
@@ -8464,6 +8566,7 @@ fn queued_message_supports_any_steering(msg: &serde_json::Value) -> bool {
     queued_message_is_steerable_for_backend(msg, "codex")
         || queued_message_is_steerable_for_backend(msg, "opencode")
         || queued_message_is_steerable_for_backend(msg, "pi")
+        || queued_message_is_steerable_for_backend(msg, "grok")
 }
 
 /// Inject a user message into a running Pi RPC turn via the detached PI host.
@@ -8475,6 +8578,76 @@ pub async fn steer_pi_turn(
     message: String,
 ) -> Result<(), String> {
     steer_text_into_pi_turn(&app, &worktree_id, &session_id, &message).await
+}
+
+/// Inject a text-only user message into a running Grok ACP turn via
+/// `x.ai/interject`. Throws when no active Grok process/connection is
+/// available — callers fall back to queue/cancel+send.
+#[tauri::command]
+pub async fn steer_grok_turn(
+    app: AppHandle,
+    worktree_id: String,
+    session_id: String,
+    message: String,
+) -> Result<(), String> {
+    steer_text_into_grok_turn(&app, &worktree_id, &session_id, &message).await
+}
+
+async fn steer_text_into_grok_turn(
+    app: &AppHandle,
+    worktree_id: &str,
+    session_id: &str,
+    message: &str,
+) -> Result<(), String> {
+    let metadata = load_metadata(app, session_id)?
+        .ok_or_else(|| format!("No metadata found for session: {session_id}"))?;
+    let run_id = metadata
+        .runs
+        .iter()
+        .rev()
+        .find(|r| r.status == RunStatus::Running && r.backend == Some(Backend::Grok))
+        .map(|r| r.run_id.clone())
+        .ok_or_else(|| format!("No running Grok run for session: {session_id}"))?;
+
+    let text = message.to_string();
+    let jean_session_id = session_id.to_string();
+    let run_id_for_steer = run_id.clone();
+    let app_for_steer = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        super::grok::inject_grok_interjection(
+            &app_for_steer,
+            &jean_session_id,
+            &run_id_for_steer,
+            &text,
+        )
+    })
+    .await
+    .map_err(|e| format!("Grok steer task failed: {e}"))??;
+
+    match run_log::RunLogWriter::resume(app, session_id, &run_id) {
+        Ok(mut writer) => {
+            let line = serde_json::json!({
+                "type": "steered_user_message",
+                "text": message,
+            });
+            if let Err(e) = writer.write_line(&line.to_string()) {
+                log::warn!("Failed to persist Grok steered message for session {session_id}: {e}");
+            }
+        }
+        Err(e) => log::warn!("Failed to open run log for Grok steered message: {e}"),
+    }
+
+    app.emit_all(
+        "chat:steered",
+        &serde_json::json!({
+            "session_id": session_id,
+            "worktree_id": worktree_id,
+            "text": message,
+        }),
+    )
+    .ok();
+
+    Ok(())
 }
 
 async fn steer_text_into_pi_turn(
@@ -8830,6 +9003,97 @@ async fn drain_queue_into_pi_turn(app: &AppHandle, worktree_id: &str, session_id
     }
 }
 
+/// Drain steerable queued messages into a running Grok ACP turn via
+/// `x.ai/interject` (when `grok_auto_steer_enabled` is on, default true).
+async fn drain_queue_into_grok_turn(app: &AppHandle, worktree_id: &str, session_id: &str) {
+    let auto_steer = crate::load_preferences_sync(app)
+        .map(|p| p.grok_auto_steer_enabled)
+        .unwrap_or(true);
+    if !auto_steer {
+        return;
+    }
+
+    loop {
+        let has_running_grok = load_metadata(app, session_id)
+            .ok()
+            .flatten()
+            .and_then(|metadata| {
+                metadata
+                    .runs
+                    .iter()
+                    .rev()
+                    .find(|r| r.status == RunStatus::Running && r.backend == Some(Backend::Grok))
+                    .map(|r| r.run_id.clone())
+            })
+            .is_some();
+        if !has_running_grok {
+            return;
+        }
+
+        let popped = match with_existing_metadata_mut(app, session_id, |metadata| {
+            match metadata.queued_messages.first() {
+                Some(front) if queued_message_is_steerable_for_backend(front, "grok") => {
+                    let msg = metadata.queued_messages.remove(0);
+                    (Some(msg), metadata.queued_messages.clone())
+                }
+                _ => (None, metadata.queued_messages.clone()),
+            }
+        }) {
+            Ok((popped, queue)) => {
+                if popped.is_some() {
+                    app.emit_all(
+                        "queue:updated",
+                        &serde_json::json!({ "sessionId": session_id, "queue": queue }),
+                    )
+                    .ok();
+                }
+                popped
+            }
+            Err(e) => {
+                log::warn!("[GrokSteer] failed to read queue session={session_id}: {e}");
+                return;
+            }
+        };
+
+        let Some(msg) = popped else { return };
+        let text = msg
+            .get("message")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        if text.is_empty() {
+            continue;
+        }
+
+        log::info!("[GrokSteer] steering queued message into running Grok session={session_id}");
+        if let Err(e) = steer_text_into_grok_turn(app, worktree_id, session_id, &text).await {
+            log::warn!("[GrokSteer] steer failed, requeueing at front session={session_id}: {e}");
+            let requeued = with_existing_metadata_mut(app, session_id, |metadata| {
+                metadata.queued_messages.insert(0, msg.clone());
+                metadata.queued_messages.clone()
+            });
+            if let Ok(queue) = requeued {
+                app.emit_all(
+                    "queue:updated",
+                    &serde_json::json!({ "sessionId": session_id, "queue": queue }),
+                )
+                .ok();
+            }
+            return;
+        }
+    }
+}
+
+/// Fire-and-forget Grok steer drain — called once the ACP session is ready
+/// and a prompt is in flight, so text-only prompts queued before the turn
+/// became steerable get injected via `x.ai/interject`.
+pub(crate) fn trigger_grok_queue_steer(app: AppHandle, worktree_id: String, session_id: String) {
+    tauri::async_runtime::spawn(async move {
+        drain_queue_into_grok_turn(&app, &worktree_id, &session_id).await;
+    });
+}
+
 /// Cancel the pending ScheduleWakeup for a session (user-initiated).
 #[tauri::command]
 pub async fn cancel_session_wakeup(app: AppHandle, session_id: String) -> Result<bool, String> {
@@ -9024,6 +9288,32 @@ mod tests {
         assert!(!queued_message_is_steerable_for_backend(
             &opencode_with_file,
             "opencode"
+        ));
+    }
+
+    #[test]
+    fn queued_message_steerable_for_backend_accepts_grok_text_only() {
+        let grok_plain = serde_json::json!({
+            "id": "m1",
+            "message": "hello",
+            "backend": "grok",
+            "pendingImages": [],
+            "pendingFiles": [],
+            "pendingSkills": [],
+            "pendingTextFiles": [],
+        });
+        assert!(queued_message_is_steerable_for_backend(&grok_plain, "grok"));
+        assert!(queued_message_supports_any_steering(&grok_plain));
+
+        let grok_with_image = serde_json::json!({
+            "id": "m2",
+            "message": "hello",
+            "backend": "grok",
+            "pendingImages": [{ "id": "img-1", "path": "/tmp/a.png" }],
+        });
+        assert!(!queued_message_is_steerable_for_backend(
+            &grok_with_image,
+            "grok"
         ));
     }
 

@@ -201,6 +201,9 @@ describe('QueuedPromptsPanel', () => {
         createMessage('msg-2', 'OpenCode prompt', {
           backend: 'opencode',
         } as Partial<QueuedMessage>),
+        createMessage('msg-3', 'Grok prompt', {
+          backend: 'grok',
+        } as Partial<QueuedMessage>),
       ],
     })
 
