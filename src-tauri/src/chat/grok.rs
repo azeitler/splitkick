@@ -440,11 +440,9 @@ fn normalize_grok_tool_call(mut tool: ParsedToolCall) -> ParsedToolCall {
                 // merge is Grok-specific; keep it for potential future merge logic but
                 // strip nulls. Frontend currently replaces with latest TodoWrite snapshot.
             }
-            "WaitForAgents" => {
-                if !map.contains_key("receiver_thread_ids") {
-                    if let Some(task_ids) = map.remove("task_ids") {
-                        map.insert("receiver_thread_ids".to_string(), task_ids);
-                    }
+            "WaitForAgents" if !map.contains_key("receiver_thread_ids") => {
+                if let Some(task_ids) = map.remove("task_ids") {
+                    map.insert("receiver_thread_ids".to_string(), task_ids);
                 }
             }
             _ => {}
@@ -3296,7 +3294,7 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
             response.content.len(),
             response.tool_calls.len(),
         );
-        return Ok(response);
+        Ok(response)
     }
 
     // Windows / non-Unix: in-process ACP child (does not survive Jean quit).
