@@ -369,6 +369,9 @@ fn generate_names(app: &AppHandle, request: &NamingRequest) -> Result<NamingOutp
     if backend == super::types::Backend::Grok {
         return generate_names_grok(app, &prompt, &request.model, request);
     }
+    if backend == super::types::Backend::Kimi {
+        return generate_names_kimi(app, &prompt, &request.model, request);
+    }
 
     let cli_path = resolve_cli_binary(app);
     if !cli_path.exists() {
@@ -631,6 +634,19 @@ fn generate_names_grok(
         request.reasoning_effort.as_deref(),
     )?;
     parse_grok_naming_output(&text)
+}
+
+fn generate_names_kimi(
+    app: &AppHandle,
+    prompt: &str,
+    model: &str,
+    request: &NamingRequest,
+) -> Result<NamingOutput, String> {
+    let text =
+        super::kimi::execute_one_shot_kimi(app, prompt, model, None, Some(&request.worktree_path))?;
+    let json = extract_json_object(&text)
+        .ok_or_else(|| "No JSON object found in Kimi naming response".to_string())?;
+    serde_json::from_str(json).map_err(|error| format!("Failed to parse Kimi naming JSON: {error}"))
 }
 
 fn choose_opencode_model(all_providers: &serde_json::Value) -> Option<(String, String)> {

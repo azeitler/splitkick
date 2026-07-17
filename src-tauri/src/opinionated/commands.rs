@@ -1108,7 +1108,7 @@ fn caveman_installed_for_backend(home: &Path, backend: &str) -> bool {
                     .exists()
                 || global_installed
         }
-        "pi" | "commandcode" | "grok" => global_installed,
+        "pi" | "commandcode" | "grok" | "kimi" => global_installed,
         _ => false,
     }
 }
@@ -1140,7 +1140,7 @@ fn superpowers_installed_for_backend(home: &Path, backend: &str) -> bool {
             skill_installed_marker(&home.join(".cursor").join("skills-cursor"), "superpowers")
                 || global_installed
         }
-        "pi" | "commandcode" | "grok" => global_installed,
+        "pi" | "commandcode" | "grok" | "kimi" => global_installed,
         _ => false,
     }
 }
@@ -1154,7 +1154,9 @@ fn backend_skills_dir(home: &Path, backend: &str) -> Option<PathBuf> {
         "codex" => Some(home.join(".codex").join("skills")),
         "opencode" => Some(opencode_config_dir(home).join("skills")),
         "cursor" => Some(home.join(".cursor").join("skills-cursor")),
-        "pi" | "commandcode" | "grok" => Some(jean_global_backend_skills_dir(home, backend)),
+        "pi" | "commandcode" | "grok" | "kimi" => {
+            Some(jean_global_backend_skills_dir(home, backend))
+        }
         _ => None,
     }
 }

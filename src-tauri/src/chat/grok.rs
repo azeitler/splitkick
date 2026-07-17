@@ -5,6 +5,7 @@
 //! PI's RPC host. Jean tails the run JSONL and reattaches via `resume_session`.
 //! Windows keeps the in-process ACP child path (non-survivable).
 
+use super::coalesce::ChunkCoalescer;
 use super::types::{ChatMessage, ContentBlock, MessageRole, RunEntry, ToolCall, UsageData};
 use crate::http_server::EmitExt;
 use base64::{engine::general_purpose::STANDARD, Engine};
@@ -840,6 +841,12 @@ fn extract_acp_session_id(value: &Value) -> Option<String> {
 }
 
 fn extract_text_from_acp_content(content: &Value) -> Option<String> {
+    // Grok usually sends `{ "type": "text", "text": "..." }`. Accept a bare
+    // string too (same as Kimi) so we never drop a space-only or leading-space
+    // delta just because the wrapper shape differed.
+    if let Some(text) = content.as_str() {
+        return Some(text.to_string());
+    }
     if content.get("type").and_then(Value::as_str) != Some("text") {
         return None;
     }
@@ -950,7 +957,7 @@ fn usage_from_acp_meta(meta: &Value) -> Option<UsageData> {
     })
 }
 
-fn emit_chunk(app: &AppHandle, session_id: &str, worktree_id: &str, chunk: &str) {
+fn emit_chunk_raw(app: &AppHandle, session_id: &str, worktree_id: &str, chunk: &str) {
     if chunk.is_empty() {
         return;
     }
@@ -962,6 +969,39 @@ fn emit_chunk(app: &AppHandle, session_id: &str, worktree_id: &str, chunk: &str)
             content: chunk.to_string(),
         },
     );
+}
+
+/// Buffer tiny Grok token deltas and release them as larger batches.
+///
+/// Grok ACP emits word fragments (often with a leading space) at high rate.
+/// Emitting every fragment forces a full streaming-markdown reparse per token
+/// and has been observed to paint without spaces until the turn settles.
+fn push_coalesced_chunk(
+    app: &AppHandle,
+    session_id: &str,
+    worktree_id: &str,
+    coalescer: &mut ChunkCoalescer,
+    chunk: &str,
+) {
+    if let Some(batch) = coalescer.push(chunk) {
+        emit_chunk_raw(app, session_id, worktree_id, &batch);
+    }
+}
+
+fn flush_coalesced_chunks(
+    app: &AppHandle,
+    session_id: &str,
+    worktree_id: &str,
+    coalescer: &mut ChunkCoalescer,
+) {
+    if let Some(batch) = coalescer.flush() {
+        emit_chunk_raw(app, session_id, worktree_id, &batch);
+    }
+}
+
+/// Immediate emit (no coalesce). Prefer [`push_coalesced_chunk`] on hot paths.
+fn emit_chunk(app: &AppHandle, session_id: &str, worktree_id: &str, chunk: &str) {
+    emit_chunk_raw(app, session_id, worktree_id, chunk);
 }
 
 fn emit_tool_use(app: &AppHandle, session_id: &str, worktree_id: &str, tool_call: &ParsedToolCall) {
@@ -1004,13 +1044,23 @@ fn emit_tool_result(
     );
 }
 
-fn emit_done(app: &AppHandle, session_id: &str, worktree_id: &str, waiting_for_plan: bool) {
+/// Emit `chat:done`. `final_content` is the authoritative assistant text
+/// (spaces preserved). Frontend prefers it over streamed accumulation so
+/// Grok word-fragment deltas cannot leave a permanently glued message.
+fn emit_done(
+    app: &AppHandle,
+    session_id: &str,
+    worktree_id: &str,
+    waiting_for_plan: bool,
+    final_content: Option<&str>,
+) {
     let _ = app.emit_all(
         "chat:done",
         &serde_json::json!({
             "session_id": session_id,
             "worktree_id": worktree_id,
             "waiting_for_plan": waiting_for_plan,
+            "content": final_content,
         }),
     );
 }
@@ -1182,7 +1232,7 @@ where
     }
 
     Ok(GrokResponse {
-        content: content.trim().to_string(),
+        content,
         session_id,
         tool_calls,
         content_blocks,
@@ -1608,6 +1658,7 @@ fn spawn_grok_acp_host(
     grok_args: &[String],
     existing_grok_session_id: Option<&str>,
     execution_mode: Option<&str>,
+    mcp_servers: &[Value],
 ) -> Result<(u32, PathBuf), String> {
     let app_data = app
         .path()
@@ -1624,6 +1675,12 @@ fn spawn_grok_acp_host(
     std::fs::create_dir_all(&log_dir)
         .map_err(|e| format!("Failed to create Grok ACP host log dir: {e}"))?;
     let log_file = log_dir.join(format!("{session_id}-{run_id}.log"));
+    let mcp_file = log_dir.join(format!("{session_id}-{run_id}.mcp.json"));
+    std::fs::write(
+        &mcp_file,
+        serde_json::to_string(mcp_servers).unwrap_or_else(|_| "[]".to_string()),
+    )
+    .map_err(|e| format!("Failed to write Grok MCP servers file: {e}"))?;
     let exe = std::env::current_exe().map_err(|e| format!("Failed to get Jean executable: {e}"))?;
 
     let mut args = vec![
@@ -1636,6 +1693,8 @@ fn spawn_grok_acp_host(
         working_dir.to_string_lossy().to_string(),
         "--grok-cli".to_string(),
         cli_path.to_string_lossy().to_string(),
+        "--mcp-servers-file".to_string(),
+        mcp_file.to_string_lossy().to_string(),
     ];
     if let Some(session) = existing_grok_session_id.filter(|id| !id.is_empty()) {
         args.push("--existing-session".to_string());
@@ -1669,6 +1728,7 @@ pub fn run_grok_acp_host_from_args() -> Result<(), String> {
     let mut grok_cli: Option<PathBuf> = None;
     let mut existing_session: Option<String> = None;
     let mut execution_mode: Option<String> = None;
+    let mut mcp_servers_file: Option<PathBuf> = None;
     let mut grok_args: Vec<String> = Vec::new();
 
     let mut args = std::env::args().skip(1);
@@ -1680,6 +1740,7 @@ pub fn run_grok_acp_host_from_args() -> Result<(), String> {
             "--grok-cli" => grok_cli = args.next().map(PathBuf::from),
             "--existing-session" => existing_session = args.next(),
             "--execution-mode" => execution_mode = args.next(),
+            "--mcp-servers-file" => mcp_servers_file = args.next().map(PathBuf::from),
             "--grok-arg" => {
                 if let Some(value) = args.next() {
                     grok_args.push(value);
@@ -1694,6 +1755,11 @@ pub fn run_grok_acp_host_from_args() -> Result<(), String> {
     let cwd = cwd.ok_or("--cwd is required")?;
     let grok_cli = grok_cli.ok_or("--grok-cli is required")?;
     let execution_mode = execution_mode.as_deref();
+    let mcp_servers: Vec<Value> = mcp_servers_file
+        .as_ref()
+        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|content| serde_json::from_str(&content).ok())
+        .unwrap_or_default();
 
     if let Some(parent) = socket_path.parent() {
         std::fs::create_dir_all(parent)
@@ -1793,14 +1859,14 @@ pub fn run_grok_acp_host_from_args() -> Result<(), String> {
                 serde_json::json!({
                     "sessionId": session_id,
                     "cwd": cwd.to_string_lossy(),
-                    "mcpServers": [],
+                    "mcpServers": mcp_servers,
                 }),
             ),
             None => (
                 "session/new",
                 serde_json::json!({
                     "cwd": cwd.to_string_lossy(),
-                    "mcpServers": [],
+                    "mcpServers": mcp_servers,
                 }),
             ),
         };
@@ -1829,6 +1895,9 @@ pub fn run_grok_acp_host_from_args() -> Result<(), String> {
             "session_id": acp_session_id,
         });
         host_write_output_line(&output, &marker.to_string())?;
+    }
+    if let Some(path) = mcp_servers_file.as_ref() {
+        let _ = std::fs::remove_file(path);
     }
 
     let _ = std::fs::remove_file(&socket_path);
@@ -2173,6 +2242,9 @@ pub fn tail_grok_output(
     let mut completed = false;
     let mut cancelled = false;
     let mut known_tool_outputs: HashMap<String, Option<String>> = HashMap::new();
+    // Batch tiny token deltas (~30ms) so streaming markdown re-parses less often
+    // and leading spaces between word fragments stay mid-string in each batch.
+    let mut chunk_coalescer = ChunkCoalescer::new();
 
     loop {
         let lines = tailer.poll()?;
@@ -2204,7 +2276,13 @@ pub fn tail_grok_output(
                     if !partial.content.is_empty() {
                         response.content.push_str(&partial.content);
                         push_text_block(&mut response.content_blocks, &partial.content);
-                        emit_chunk(app, session_id, worktree_id, &partial.content);
+                        push_coalesced_chunk(
+                            app,
+                            session_id,
+                            worktree_id,
+                            &mut chunk_coalescer,
+                            &partial.content,
+                        );
                     }
                     for tool in partial.tool_calls {
                         let parsed = ParsedToolCall {
@@ -2216,6 +2294,13 @@ pub fn tail_grok_output(
                         let previous = known_tool_outputs.get(&tool.id).cloned().flatten();
                         let output_changed = tool.output != previous;
                         if is_new || output_changed {
+                            // Flush text before tool events so UI order is stable.
+                            flush_coalesced_chunks(
+                                app,
+                                session_id,
+                                worktree_id,
+                                &mut chunk_coalescer,
+                            );
                             upsert_tool_call(&mut response.tool_calls, &parsed);
                             ensure_tool_use(&mut response.content_blocks, &tool.id);
                             if is_new {
@@ -2240,6 +2325,14 @@ pub fn tail_grok_output(
             last_output_at = Instant::now();
         }
 
+        // Release buffered text when the coalesce window elapses, even if no
+        // new lines arrived (idle mid-sentence).
+        if let Some(deadline) = chunk_coalescer.deadline() {
+            if Instant::now() >= deadline {
+                flush_coalesced_chunks(app, session_id, worktree_id, &mut chunk_coalescer);
+            }
+        }
+
         if completed {
             break;
         }
@@ -2256,14 +2349,26 @@ pub fn tail_grok_output(
             }
         }
 
-        std::thread::sleep(next_poll_interval(got_lines, last_output_at.elapsed()));
+        let quiet_for = last_output_at.elapsed();
+        let mut sleep_for = next_poll_interval(got_lines, quiet_for);
+        if let Some(deadline) = chunk_coalescer.deadline() {
+            let until_flush = deadline.saturating_duration_since(Instant::now());
+            if until_flush < sleep_for {
+                sleep_for = until_flush;
+            }
+        }
+        std::thread::sleep(sleep_for);
     }
 
+    flush_coalesced_chunks(app, session_id, worktree_id, &mut chunk_coalescer);
     response.cancelled = cancelled && !completed;
     response.content = response.content.trim().to_string();
     if !response.cancelled {
         // Plan-mode synthetic tool injection happens in execute_grok after tail.
-        emit_done(app, session_id, worktree_id, false);
+        // Pass authoritative content so the UI can replace any space-glued
+        // streaming accumulation (Grok emits leading-space word fragments).
+        let final_content = (!response.content.is_empty()).then_some(response.content.as_str());
+        emit_done(app, session_id, worktree_id, false, final_content);
     }
     Ok(response)
 }
@@ -2273,7 +2378,8 @@ pub(crate) fn parse_grok_run_to_message(
     run: &RunEntry,
 ) -> Result<ChatMessage, String> {
     let joined = lines.join("\n");
-    let response = parse_grok_stream_inner(BufReader::new(joined.as_bytes()), None)?;
+    let mut response = parse_grok_stream_inner(BufReader::new(joined.as_bytes()), None)?;
+    response.content = response.content.trim().to_string();
     Ok(ChatMessage {
         id: run
             .assistant_message_id
@@ -2708,7 +2814,26 @@ pub struct GrokExecutionOptions<'a> {
     pub effort_level: Option<&'a str>,
     pub message: &'a str,
     pub system_prompt: Option<&'a str>,
+    /// Jean `{ "mcpServers": { name: config } }` JSON — converted to ACP `mcpServers`.
+    pub mcp_config: Option<&'a str>,
     pub pid_callback: Option<Box<dyn FnOnce(u32) + Send>>,
+}
+
+/// Restores `~/.grok/config.toml` `disabled_mcp_servers` after a Jean Grok turn.
+struct GrokDisabledRestoreGuard {
+    /// `None` means sync never succeeded — do not touch the user's config on drop.
+    previous: Option<Option<Vec<String>>>,
+}
+
+impl Drop for GrokDisabledRestoreGuard {
+    fn drop(&mut self) {
+        let Some(previous) = self.previous.take() else {
+            return;
+        };
+        if let Err(e) = crate::grok_cli::mcp::restore_disabled_list(previous) {
+            log::warn!("[Grok MCP] failed to restore disabled_mcp_servers: {e}");
+        }
+    }
 }
 
 fn read_acp_response(
@@ -2768,6 +2893,7 @@ fn spawn_grok_acp_connection(
     working_dir: &Path,
     existing_grok_session_id: Option<&str>,
     execution_mode: Option<&str>,
+    mcp_servers: &[Value],
 ) -> Result<GrokAcpConnection, String> {
     let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), Some(working_dir));
     cmd.args(&args)
@@ -2854,14 +2980,14 @@ fn spawn_grok_acp_connection(
             serde_json::json!({
                 "sessionId": session_id,
                 "cwd": working_dir.to_string_lossy(),
-                "mcpServers": [],
+                "mcpServers": mcp_servers,
             }),
         ),
         None => (
             "session/new",
             serde_json::json!({
                 "cwd": working_dir.to_string_lossy(),
-                "mcpServers": [],
+                "mcpServers": mcp_servers,
             }),
         ),
     };
@@ -2953,8 +3079,15 @@ fn get_or_spawn_grok_acp_connection(
     working_dir: &Path,
     existing_grok_session_id: Option<&str>,
     execution_mode: Option<&str>,
+    mcp_servers: &[Value],
 ) -> Result<Arc<Mutex<GrokAcpConnection>>, String> {
     let key = jean_session_id.to_string();
+    // Include MCP set in reuse key so enabling/disabling between prompts
+    // restarts ACP with the new server list.
+    let mcp_fingerprint = serde_json::to_string(mcp_servers).unwrap_or_default();
+    let mut effective_args = args.clone();
+    effective_args.push(format!("__jean_mcp__={mcp_fingerprint}"));
+
     let mut registry = GROK_ACP_CONNECTIONS
         .lock()
         .map_err(|_| "Failed to lock Grok ACP registry".to_string())?;
@@ -2962,7 +3095,7 @@ fn get_or_spawn_grok_acp_connection(
         let mut keep_existing = false;
         if let Ok(mut connection) = existing.lock() {
             let alive = connection.child.try_wait().ok().flatten().is_none();
-            keep_existing = alive && connection.args == args;
+            keep_existing = alive && connection.args == effective_args;
             if !keep_existing {
                 kill_grok_acp_connection(&mut connection);
             }
@@ -2984,7 +3117,7 @@ fn get_or_spawn_grok_acp_connection(
         unregister_grok_steer_handle(jean_session_id);
     }
 
-    let connection = spawn_grok_acp_connection(
+    let mut connection = spawn_grok_acp_connection(
         cli_path,
         args,
         jean_session_id,
@@ -2992,7 +3125,10 @@ fn get_or_spawn_grok_acp_connection(
         working_dir,
         existing_grok_session_id,
         execution_mode,
+        mcp_servers,
     )?;
+    // Store fingerprint so reuse comparisons work across prompts.
+    connection.args = effective_args;
     let connection = Arc::new(Mutex::new(connection));
     registry.insert(key, connection.clone());
     Ok(connection)
@@ -3033,6 +3169,7 @@ fn send_grok_acp_prompt(
         cancelled: false,
         usage: None,
     };
+    let mut chunk_coalescer = ChunkCoalescer::new();
     let mut line = String::new();
     loop {
         line.clear();
@@ -3042,6 +3179,7 @@ fn send_grok_acp_prompt(
             .map_err(|e| format!("Failed to read Grok ACP prompt stream: {e}"))?
             == 0
         {
+            flush_coalesced_chunks(app, jean_session_id, worktree_id, &mut chunk_coalescer);
             return Err("Grok ACP exited before prompt completed".to_string());
         }
         let trimmed = line.trim();
@@ -3078,11 +3216,23 @@ fn send_grok_acp_prompt(
                     {
                         response.content.push_str(&text);
                         push_text_block(&mut response.content_blocks, &text);
-                        emit_chunk(app, jean_session_id, worktree_id, &text);
+                        push_coalesced_chunk(
+                            app,
+                            jean_session_id,
+                            worktree_id,
+                            &mut chunk_coalescer,
+                            &text,
+                        );
                     }
                 }
                 Some("tool_call") => {
                     if let Some(tool_call) = extract_acp_tool_call(update) {
+                        flush_coalesced_chunks(
+                            app,
+                            jean_session_id,
+                            worktree_id,
+                            &mut chunk_coalescer,
+                        );
                         upsert_tool_call(&mut response.tool_calls, &tool_call);
                         ensure_tool_use(&mut response.content_blocks, &tool_call.id);
                         emit_tool_use(app, jean_session_id, worktree_id, &tool_call);
@@ -3090,6 +3240,12 @@ fn send_grok_acp_prompt(
                 }
                 Some("tool_call_update") => {
                     if let Some(tool_call) = extract_acp_tool_call(update) {
+                        flush_coalesced_chunks(
+                            app,
+                            jean_session_id,
+                            worktree_id,
+                            &mut chunk_coalescer,
+                        );
                         upsert_tool_call(&mut response.tool_calls, &tool_call);
                         ensure_tool_use(&mut response.content_blocks, &tool_call.id);
                         emit_tool_use(app, jean_session_id, worktree_id, &tool_call);
@@ -3098,6 +3254,12 @@ fn send_grok_acp_prompt(
                         first_string(update, &[&["toolCallId"], &["tool_call_id"]]),
                         acp_tool_output(update),
                     ) {
+                        flush_coalesced_chunks(
+                            app,
+                            jean_session_id,
+                            worktree_id,
+                            &mut chunk_coalescer,
+                        );
                         set_tool_result(&mut response.tool_calls, &tool_use_id, &output);
                         emit_tool_result(app, jean_session_id, worktree_id, &tool_use_id, &output);
                     }
@@ -3105,12 +3267,15 @@ fn send_grok_acp_prompt(
                 _ => {}
             }
         } else if let Some(blocks) = extract_message_blocks(&value) {
+            // Rare non-ACP path: flush any coalesced text first, then emit
+            // immediately (avoids overlapping &mut borrows on the coalescer).
+            flush_coalesced_chunks(app, jean_session_id, worktree_id, &mut chunk_coalescer);
             process_message_blocks(
                 blocks,
                 &mut response.content,
                 &mut response.content_blocks,
                 &mut response.tool_calls,
-                &mut |text| emit_chunk(app, jean_session_id, worktree_id, text),
+                &mut |text| emit_chunk_raw(app, jean_session_id, worktree_id, text),
                 &mut |tool_call| emit_tool_use(app, jean_session_id, worktree_id, tool_call),
                 &mut |tool_use_id, output| {
                     emit_tool_result(app, jean_session_id, worktree_id, tool_use_id, output)
@@ -3119,6 +3284,7 @@ fn send_grok_acp_prompt(
         }
         if value.get("id").and_then(Value::as_i64) == Some(prompt_request_id) {
             if let Some(error) = value.get("error") {
+                flush_coalesced_chunks(app, jean_session_id, worktree_id, &mut chunk_coalescer);
                 return Err(format!("Grok ACP prompt failed: {error}"));
             }
             if response.usage.is_none() {
@@ -3128,6 +3294,7 @@ fn send_grok_acp_prompt(
             break;
         }
     }
+    flush_coalesced_chunks(app, jean_session_id, worktree_id, &mut chunk_coalescer);
     response.content = response.content.trim().to_string();
     set_grok_acp_session_id(connection, response.session_id.clone());
     Ok(response)
@@ -3184,6 +3351,7 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
         effort_level,
         message,
         system_prompt,
+        mcp_config,
         pid_callback,
     } = options;
     let cli_path = crate::grok_cli::resolve_cli_binary(app);
@@ -3194,11 +3362,29 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
     let existing_grok_session_id = existing_grok_session_id.filter(|id| !id.is_empty());
     let prepared_message = build_grok_message(message, system_prompt, execution_mode);
     let args = build_grok_agent_args(model, execution_mode, effort_level);
+    let acp_mcp_servers = crate::grok_cli::mcp::mcp_config_to_acp_servers(mcp_config);
+    let desired_enabled = crate::grok_cli::mcp::enabled_names_from_mcp_config(mcp_config);
+    let worktree_str = working_dir.to_str();
+    let previous_disabled =
+        match crate::grok_cli::mcp::sync_disabled_for_enabled_set(worktree_str, &desired_enabled) {
+            Ok(prev) => Some(prev),
+            Err(e) => {
+                log::warn!("[Grok MCP] failed to sync disabled_mcp_servers: {e}");
+                None
+            }
+        };
+    // Restore Grok's previous disabled list after this turn (even on error),
+    // but only if we successfully rewrote it.
+    let _disabled_guard = GrokDisabledRestoreGuard {
+        previous: previous_disabled,
+    };
 
     log::info!(
         "[Grok] execute session={jean_session_id} worktree={worktree_id} \
          model={model:?} execution_mode={execution_mode:?} \
-         existing_grok_session_id={existing_grok_session_id:?} cwd={}",
+         existing_grok_session_id={existing_grok_session_id:?} \
+         mcp_servers={} cwd={}",
+        acp_mcp_servers.len(),
         working_dir.display()
     );
     log::info!("[Grok] cli_path={}", cli_path.display());
@@ -3218,6 +3404,7 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
             &args,
             existing_grok_session_id,
             execution_mode,
+            &acp_mcp_servers,
         )?;
         if let Some(cb) = pid_callback {
             cb(pid);
@@ -3284,7 +3471,8 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
         // tail_grok_output already emitted chat:done when not cancelled; re-emit
         // only when plan-mode waiting state differs from the generic done event.
         if !response.cancelled && waiting_for_plan {
-            emit_done(app, jean_session_id, worktree_id, true);
+            let final_content = (!response.content.is_empty()).then_some(response.content.as_str());
+            emit_done(app, jean_session_id, worktree_id, true, final_content);
         }
 
         log::info!(
@@ -3309,6 +3497,7 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
             working_dir,
             existing_grok_session_id,
             execution_mode,
+            &acp_mcp_servers,
         )?;
 
         let key = jean_session_id.to_string();
@@ -3402,7 +3591,15 @@ pub fn execute_grok(options: GrokExecutionOptions<'_>) -> Result<GrokResponse, S
         let waiting_for_plan =
             execution_mode == Some("plan") && inject_synthetic_plan(&mut response);
         if !response.cancelled {
-            emit_done(app, jean_session_id, worktree_id, waiting_for_plan);
+            response.content = response.content.trim().to_string();
+            let final_content = (!response.content.is_empty()).then_some(response.content.as_str());
+            emit_done(
+                app,
+                jean_session_id,
+                worktree_id,
+                waiting_for_plan,
+                final_content,
+            );
         }
 
         connection_guard.in_use = false;
@@ -4229,6 +4426,7 @@ mod tests {
             codex_turn_id: None,
             cursor_chat_id: None,
             grok_session_id: Some("grok-hist-1".to_string()),
+            kimi_session_id: None,
         };
         let message = parse_grok_run_to_message(&lines, &run).unwrap();
         assert_eq!(message.content, "Survived restart");
@@ -4257,5 +4455,133 @@ mod tests {
             last_used + std::time::Duration::from_secs(301),
             timeout,
         ));
+    }
+}
+
+#[cfg(test)]
+mod space_regression_tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn line_by_line_tail_parsing_preserves_leading_spaces() {
+        let input = r#"
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"I'll"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" check"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" how"}}}}
+"#;
+        let mut content = String::new();
+
+        for line in input.lines().filter(|line| !line.is_empty()) {
+            let partial = parse_grok_stream_inner(Cursor::new(line.as_bytes()), None).unwrap();
+            content.push_str(&partial.content);
+        }
+
+        assert_eq!(content, "I'll check how");
+    }
+
+    #[test]
+    fn grok_agent_message_chunks_preserve_leading_spaces() {
+        let input = r#"
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"I'll"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" add"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" SQ"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Lite"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" backup"}}}}
+"#;
+        let mut emitted = String::new();
+        let response = parse_grok_stream_inner_with_callbacks(
+            Cursor::new(input.as_bytes()),
+            None,
+            |chunk| emitted.push_str(chunk),
+            |_| {},
+            |_, _| {},
+        )
+        .unwrap();
+
+        assert_eq!(response.content, "I'll add SQLite backup");
+        assert_eq!(emitted, "I'll add SQLite backup");
+        assert!(
+            !emitted.contains("I'lladd"),
+            "emitted stream must keep spaces between tokens: {emitted:?}"
+        );
+        assert!(
+            !response.content.contains("I'lladd"),
+            "content must keep spaces between tokens: {:?}",
+            response.content
+        );
+    }
+
+    #[test]
+    fn real_style_invoice_chunks_preserve_spaces_through_parser() {
+        // Mirrors production Grok ACP fragments from a real invoice reply.
+        let input = r#"
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"```"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"bash"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"\n"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"bun"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" run"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" process"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":":"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"in"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"voices"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"\n"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"```"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"\n\n"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"**"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Test"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":" first"}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"**"}}}}
+"#;
+        let mut emitted = String::new();
+        let response = parse_grok_stream_inner_with_callbacks(
+            Cursor::new(input.as_bytes()),
+            None,
+            |chunk| emitted.push_str(chunk),
+            |_| {},
+            |_, _| {},
+        )
+        .unwrap();
+        assert!(
+            response.content.contains("bun run process:invoices"),
+            "content missing spaced command: {:?}",
+            response.content
+        );
+        assert!(
+            !response.content.contains("bunrunprocess"),
+            "content glued: {:?}",
+            response.content
+        );
+        assert!(
+            !emitted.contains("bunrunprocess"),
+            "emitted glued: {:?}",
+            emitted
+        );
+        assert!(
+            response.content.contains("Test first"),
+            "missing Test first: {:?}",
+            response.content
+        );
+        assert!(
+            !response.content.contains("Testfirst"),
+            "Testfirst glued: {:?}",
+            response.content
+        );
+    }
+
+    #[test]
+    fn chunk_event_json_preserves_leading_space() {
+        let event = ChunkEvent {
+            session_id: "s".into(),
+            worktree_id: "w".into(),
+            content: " add".into(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(
+            json.contains("\"content\":\" add\""),
+            "JSON must preserve leading space in content: {json}"
+        );
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["content"].as_str(), Some(" add"));
     }
 }

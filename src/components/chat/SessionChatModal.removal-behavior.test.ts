@@ -60,6 +60,14 @@ describe('SessionChatModal removal behavior', () => {
     expect(source).not.toContain('group/tab flex rounded items-center')
   })
 
+  it('keeps the new session button after the tabs until they overflow on desktop', () => {
+    const source = readSource('src/components/chat/SessionChatModal.tsx')
+
+    expect(source).toContain(
+      '<ScrollArea\n                className="min-w-0 flex-1 sm:flex-initial"'
+    )
+  })
+
   it('falls back to a real session when restored active session state is stale', () => {
     const source = readSource('src/components/chat/SessionChatModal.tsx')
 

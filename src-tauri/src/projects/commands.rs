@@ -1377,6 +1377,7 @@ fn clear_session_runtime_state(session: &mut Session) {
     session.pi_session_id = None;
     session.commandcode_session_id = None;
     session.grok_session_id = None;
+    session.kimi_session_id = None;
     session.is_reviewing = false;
     session.waiting_for_input = false;
     session.waiting_for_input_type = None;
@@ -1440,6 +1441,7 @@ fn prepare_forked_metadata(
     metadata.pi_session_id = None;
     metadata.commandcode_session_id = None;
     metadata.grok_session_id = None;
+    metadata.kimi_session_id = None;
     metadata.session_naming_completed = false;
     metadata.archived_at = None;
     metadata.archived_by_base_close = None;
@@ -7845,6 +7847,20 @@ fn generate_pr_content_from_inputs(
         return Ok(response);
     }
 
+    if backend == crate::chat::types::Backend::Kimi {
+        let json_str = crate::chat::kimi::execute_one_shot_kimi(
+            app,
+            &prompt,
+            model_str,
+            Some(PR_CONTENT_SCHEMA),
+            Some(std::path::Path::new(repo_path)),
+        )?;
+        let mut response: PrContentResponse = serde_json::from_str(&json_str)
+            .map_err(|error| format!("Failed to parse Kimi PR content: {error}"))?;
+        response.body = augment_pr_references_in_body(&response.body, related_pr_issue_refs);
+        return Ok(response);
+    }
+
     log::trace!("Generating PR content with Claude CLI (JSON schema)");
 
     let cli_path = resolve_cli_binary(app);
@@ -8586,6 +8602,18 @@ fn generate_commit_message_once(
         });
     }
 
+    if backend == crate::chat::types::Backend::Kimi {
+        let json_str = crate::chat::kimi::execute_one_shot_kimi(
+            app,
+            prompt,
+            model_str,
+            Some(COMMIT_MESSAGE_SCHEMA),
+            working_dir,
+        )?;
+        return serde_json::from_str(&json_str)
+            .map_err(|error| format!("Failed to parse Kimi commit message: {error}"));
+    }
+
     log::trace!("Generating commit message with Claude CLI (JSON schema)");
 
     let cli_path = resolve_cli_binary(app);
@@ -9199,6 +9227,18 @@ fn generate_review(
             log::error!("Failed to parse Grok review JSON: {e}, content: {json_str}");
             format!("Failed to parse review: {e}")
         });
+    }
+
+    if backend == crate::chat::types::Backend::Kimi {
+        let json_str = crate::chat::kimi::execute_one_shot_kimi(
+            app,
+            prompt,
+            model_str,
+            Some(REVIEW_SCHEMA),
+            working_dir,
+        )?;
+        return serde_json::from_str(&json_str)
+            .map_err(|error| format!("Failed to parse Kimi review: {error}"));
     }
 
     let cli_path = resolve_cli_binary(app);
@@ -10706,6 +10746,21 @@ fn generate_release_notes_content(
             log::error!("Failed to parse Grok release notes JSON: {e}, content: {json_str}");
             format!("Failed to parse release notes: {e}")
         })?;
+        response.body =
+            augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
+        return Ok(response);
+    }
+
+    if backend == crate::chat::types::Backend::Kimi {
+        let json_str = crate::chat::kimi::execute_one_shot_kimi(
+            app,
+            &prompt,
+            model_str,
+            Some(RELEASE_NOTES_SCHEMA),
+            Some(std::path::Path::new(project_path)),
+        )?;
+        let mut response: ReleaseNotesResponse = serde_json::from_str(&json_str)
+            .map_err(|error| format!("Failed to parse Kimi release notes: {error}"))?;
         response.body =
             augment_pr_references_in_body(&response.body, &release_notes_context.pr_issue_refs);
         return Ok(response);
@@ -13871,6 +13926,7 @@ Body
         source.pi_session_id = Some("pi-1".to_string());
         source.commandcode_session_id = Some("command-1".to_string());
         source.grok_session_id = Some("grok-1".to_string());
+        source.kimi_session_id = Some("kimi-1".to_string());
         source.waiting_for_input = true;
         source.is_reviewing = true;
 
@@ -13890,6 +13946,7 @@ Body
         assert_eq!(forked.pi_session_id, None);
         assert_eq!(forked.commandcode_session_id, None);
         assert_eq!(forked.grok_session_id, None);
+        assert_eq!(forked.kimi_session_id, None);
         assert!(!forked.waiting_for_input);
         assert!(!forked.is_reviewing);
         assert!(forked.pending_codex_permission_requests.is_empty());

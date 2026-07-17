@@ -1192,7 +1192,7 @@ export function SessionChatModal({
                 />
               )}
               <ScrollArea
-                className="min-w-0 flex-1"
+                className="min-w-0 flex-1 sm:flex-initial"
                 viewportClassName="overflow-x-auto overflow-y-hidden overscroll-x-contain overscroll-y-none touch-pan-x scrollbar-hide [-webkit-overflow-scrolling:touch]"
                 viewportRef={modalTabScrollRef}
               >

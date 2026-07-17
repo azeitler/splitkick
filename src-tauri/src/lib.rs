@@ -51,6 +51,7 @@ pub mod jean_mcp_config;
 pub mod jean_mcp_core;
 pub mod jean_mcp_socket;
 pub mod jean_mcp_stdio;
+mod kimi_cli;
 mod opencode_cli;
 mod opencode_server;
 mod opinionated;
@@ -308,6 +309,8 @@ pub struct AppPreferences {
     pub selected_commandcode_model: String, // Default Command Code model
     #[serde(default = "default_grok_model")]
     pub selected_grok_model: String, // Default Grok model
+    #[serde(default = "default_kimi_model")]
+    pub selected_kimi_model: String, // Default Kimi Code model
     #[serde(default = "default_codex_reasoning_effort")]
     pub default_codex_reasoning_effort: String, // Codex reasoning effort: low, medium, high, xhigh
     #[serde(default = "default_codex_goal_execution_mode")]
@@ -322,6 +325,8 @@ pub struct AppPreferences {
     pub pi_auto_steer_enabled: bool, // Steer prompts into a running PI turn instead of queueing (default: true)
     #[serde(default = "default_grok_auto_steer")]
     pub grok_auto_steer_enabled: bool, // Steer prompts into a running Grok turn instead of queueing (default: true)
+    #[serde(default)]
+    pub kimi_auto_steer_enabled: bool,
     #[serde(default = "default_codex_max_agent_threads")]
     pub codex_max_agent_threads: u32, // Max concurrent agent threads (1-8)
     #[serde(default = "default_restore_last_session")]
@@ -356,6 +361,8 @@ pub struct AppPreferences {
     pub opencode_cli_source: String, // OpenCode CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default = "default_grok_cli_source")]
     pub grok_cli_source: String, // Grok CLI source: "jean" (managed) or "path" (system PATH)
+    #[serde(default = "default_cli_source")]
+    pub kimi_cli_source: String, // Kimi Code CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default = "default_cli_source")]
     pub gh_cli_source: String, // GitHub CLI source: "jean" (managed) or "path" (system PATH)
     #[serde(default)]
@@ -669,6 +676,10 @@ fn default_commandcode_model() -> String {
 
 fn default_grok_model() -> String {
     "grok/grok-composer-2.5-fast".to_string()
+}
+
+fn default_kimi_model() -> String {
+    "kimi/default".to_string()
 }
 
 fn default_grok_cli_source() -> String {
@@ -1971,6 +1982,10 @@ pub fn is_grok_model(model: &str) -> bool {
     model.starts_with("grok/")
 }
 
+pub fn is_kimi_model(model: &str) -> bool {
+    model.starts_with("kimi/")
+}
+
 /// Returns true if the given model string identifies a Codex model.
 /// Codex model IDs contain "codex" or start with "gpt-", but NOT OpenCode models.
 pub fn is_codex_model(model: &str) -> bool {
@@ -2165,6 +2180,7 @@ fn migrate_final_review_preferences(
             .final_review_model
             .starts_with("commandcode/"),
         "grok" => is_grok_model(&preferences.magic_prompt_models.final_review_model),
+        "kimi" => is_kimi_model(&preferences.magic_prompt_models.final_review_model),
         "claude" => {
             let model = &preferences.magic_prompt_models.final_review_model;
             !is_codex_model(model)
@@ -2172,6 +2188,7 @@ fn migrate_final_review_preferences(
                 && !is_cursor_model(model)
                 && !is_pi_model(model)
                 && !is_grok_model(model)
+                && !is_kimi_model(model)
                 && !model.starts_with("commandcode/")
         }
         _ => true,
@@ -2187,6 +2204,7 @@ fn migrate_final_review_preferences(
         "pi" => preferences.selected_pi_model.clone(),
         "commandcode" => preferences.selected_commandcode_model.clone(),
         "grok" => preferences.selected_grok_model.clone(),
+        "kimi" => preferences.selected_kimi_model.clone(),
         _ => preferences.selected_model.clone(),
     };
     true
@@ -2346,6 +2364,7 @@ impl Default for AppPreferences {
             selected_pi_model: default_pi_model(),
             selected_commandcode_model: default_commandcode_model(),
             selected_grok_model: default_grok_model(),
+            selected_kimi_model: default_kimi_model(),
             default_codex_reasoning_effort: default_codex_reasoning_effort(),
             codex_goal_execution_mode: default_codex_goal_execution_mode(),
             codex_multi_agent_enabled: default_codex_multi_agent_enabled(),
@@ -2353,6 +2372,7 @@ impl Default for AppPreferences {
             opencode_auto_steer_enabled: default_opencode_auto_steer(),
             pi_auto_steer_enabled: default_pi_auto_steer(),
             grok_auto_steer_enabled: default_grok_auto_steer(),
+            kimi_auto_steer_enabled: false,
             codex_max_agent_threads: default_codex_max_agent_threads(),
             restore_last_session: true,
             close_original_on_clear_context: true,
@@ -2370,6 +2390,7 @@ impl Default for AppPreferences {
             codex_cli_source: default_cli_source(),
             opencode_cli_source: default_cli_source(),
             grok_cli_source: default_grok_cli_source(),
+            kimi_cli_source: default_cli_source(),
             gh_cli_source: default_cli_source(),
             wsl_mode_chosen: false,
             wsl_enabled: false,
@@ -4158,6 +4179,13 @@ pub fn run() {
         }
         return;
     }
+    if std::env::args().any(|arg| arg == chat::kimi::KIMI_ACP_HOST_ARG) {
+        if let Err(e) = chat::kimi::run_kimi_acp_host_from_args() {
+            eprintln!("Jean Kimi ACP host failed: {e}");
+            std::process::exit(1);
+        }
+        return;
+    }
 
     // Raise the open-file-descriptor soft limit to the hard limit. macOS GUI apps
     // start with a low default (often 256); bulk git-status refresh across many
@@ -5193,6 +5221,17 @@ pub fn run() {
             grok_cli::uninstall_grok_cli,
             grok_cli::update_grok_cli,
             grok_cli::login_grok_cli_device,
+            kimi_cli::check_kimi_cli_installed,
+            kimi_cli::detect_kimi_in_path,
+            kimi_cli::check_kimi_cli_auth,
+            kimi_cli::list_kimi_models,
+            kimi_cli::get_available_kimi_versions,
+            kimi_cli::check_kimi_cli_version_exists,
+            kimi_cli::get_kimi_install_command,
+            kimi_cli::install_kimi_cli,
+            kimi_cli::uninstall_kimi_cli,
+            kimi_cli::update_kimi_cli,
+            kimi_cli::login_kimi_cli_device,
             // OpenCode CLI management commands
             opencode_cli::check_opencode_cli_installed,
             opencode_cli::detect_opencode_in_path,

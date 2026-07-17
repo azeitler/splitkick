@@ -23,6 +23,7 @@ import { useWorktree, useProjects } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { useAvailableGrokModels } from '@/services/grok-cli'
+import { useAvailableKimiModels } from '@/services/kimi-cli'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import {
   type CliBackend,
@@ -95,6 +96,9 @@ export function ResolveConflictsDialog({
   const { data: availableGrokModels } = useAvailableGrokModels({
     enabled: installedBackends.includes('grok'),
   })
+  const { data: availableKimiModels } = useAvailableKimiModels({
+    enabled: installedBackends.includes('kimi'),
+  })
   const { data: modelCatalog } = useModelCatalog()
 
   const [resolveSelectionMode, setResolveSelectionMode] =
@@ -122,6 +126,15 @@ export function ResolveConflictsDialog({
       : GROK_MODEL_OPTIONS
     return models
   }, [availableGrokModels])
+  const kimiModelOptions = useMemo(() => {
+    if (!availableKimiModels?.length) {
+      return [{ value: 'kimi/default', label: 'Configured default' }]
+    }
+    return availableKimiModels.map(model => ({
+      value: `kimi/${model.id}`,
+      label: model.label,
+    }))
+  }, [availableKimiModels])
 
   const claudeModelOptions = useMemo(
     () =>
@@ -152,10 +165,12 @@ export function ResolveConflictsDialog({
             : backend === 'commandcode'
               ? (preferences?.selected_commandcode_model ??
                 'commandcode/default')
-              : backend === 'grok'
-                ? (preferences?.selected_grok_model ??
-                  'grok/grok-composer-2.5-fast')
-                : (preferences?.selected_model ?? 'sonnet'))
+              : backend === 'kimi'
+                ? (preferences?.selected_kimi_model ?? 'kimi/default')
+                : backend === 'grok'
+                  ? (preferences?.selected_grok_model ??
+                    'grok/grok-composer-2.5-fast')
+                  : (preferences?.selected_model ?? 'sonnet'))
     const provider = resolveMagicPromptProvider(
       preferences?.magic_prompt_providers,
       RESOLVE_CONFLICTS_PROVIDER_KEY,
@@ -220,11 +235,18 @@ export function ResolveConflictsDialog({
           return opencodeModelOptions
         case 'grok':
           return grokModelOptions
+        case 'kimi':
+          return kimiModelOptions
         default:
           return resolveClaudeModelOptions
       }
     },
-    [grokModelOptions, opencodeModelOptions, resolveClaudeModelOptions]
+    [
+      grokModelOptions,
+      kimiModelOptions,
+      opencodeModelOptions,
+      resolveClaudeModelOptions,
+    ]
   )
 
   const customResolveModelOptions = useMemo(
@@ -252,6 +274,8 @@ export function ResolveConflictsDialog({
         return 'Cursor'
       case 'grok':
         return 'Grok'
+      case 'kimi':
+        return 'Kimi Code'
       default:
         return 'Claude'
     }
@@ -433,9 +457,13 @@ export function ResolveConflictsDialog({
                       size="sm"
                       hideIcon={
                         installedBackends.filter(backend =>
-                          ['claude', 'codex', 'opencode', 'grok'].includes(
-                            backend
-                          )
+                          [
+                            'claude',
+                            'codex',
+                            'opencode',
+                            'grok',
+                            'kimi',
+                          ].includes(backend)
                         ).length <= 1
                       }
                       onClick={() => setResolveSelectionMode('custom')}
@@ -455,6 +483,11 @@ export function ResolveConflictsDialog({
                       {installedBackends.includes('grok') && (
                         <SelectItem value="grok">
                           <BackendLabel backend="grok" />
+                        </SelectItem>
+                      )}
+                      {installedBackends.includes('kimi') && (
+                        <SelectItem value="kimi">
+                          <BackendLabel backend="kimi" />
                         </SelectItem>
                       )}
                     </SelectContent>

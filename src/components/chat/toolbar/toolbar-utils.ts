@@ -40,6 +40,7 @@ export function getSessionProviderDisplayName(
   if (selectedBackend === 'pi') return 'PI'
   if (selectedBackend === 'commandcode') return 'Command Code'
   if (selectedBackend === 'grok') return 'xAI'
+  if (selectedBackend === 'kimi') return 'Kimi Code'
   return getProviderDisplayName(selectedProvider ?? null)
 }
 

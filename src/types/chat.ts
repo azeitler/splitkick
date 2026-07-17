@@ -55,6 +55,7 @@ export type Backend =
   | 'pi'
   | 'commandcode'
   | 'grok'
+  | 'kimi'
 
 /**
  * Execution mode for Claude CLI permission handling
@@ -132,7 +133,7 @@ export interface PlanToolInput {
   plan_preview?: string
   explanation?: string
   steps?: PlanStep[]
-  source?: 'claude' | 'codex' | 'grok'
+  source?: 'claude' | 'codex' | 'grok' | 'kimi'
 }
 
 /**
@@ -214,7 +215,7 @@ export interface Session {
   messages: ChatMessage[]
   /** Message count (populated separately for efficiency when full messages not needed) */
   message_count?: number
-  /** Backend for this session (claude, codex, opencode, cursor, or grok) */
+  /** Backend used for this session. */
   backend?: Backend
   /** Claude CLI session ID for resuming conversations */
   claude_session_id?: string
@@ -232,6 +233,8 @@ export interface Session {
   commandcode_session_id?: string
   /** Grok headless session ID for resuming conversations */
   grok_session_id?: string
+  /** Kimi Code ACP session ID for resuming conversations */
+  kimi_session_id?: string
   /** Selected model for this session */
   selected_model?: string
   /** Selected thinking level for this session */
@@ -484,6 +487,12 @@ export interface DoneEvent {
   worktree_id: string // Kept for backward compatibility
   /** True when a Codex/Opencode plan-mode run completed with content */
   waiting_for_plan?: boolean
+  /**
+   * Authoritative final assistant text from the backend (e.g. Grok).
+   * When present, prefer this over streamed chunk accumulation so
+   * leading-space word fragments cannot leave a glued optimistic message.
+   */
+  content?: string | null
 }
 
 /**
@@ -1012,9 +1021,7 @@ const TODO_WRITE_TOOL_NAMES = new Set([
   'Todos',
 ])
 
-function isTodoStatus(
-  value: unknown
-): value is Todo['status'] {
+function isTodoStatus(value: unknown): value is Todo['status'] {
   return (
     value === 'pending' ||
     value === 'in_progress' ||
@@ -1045,7 +1052,12 @@ export function normalizeTodoItem(raw: unknown): Todo | null {
   let status: Todo['status'] = 'pending'
   if (typeof item.status === 'string') {
     const s = item.status.toLowerCase().replace(/-/g, '_')
-    if (s === 'completed' || s === 'complete' || s === 'done' || s === 'finished') {
+    if (
+      s === 'completed' ||
+      s === 'complete' ||
+      s === 'done' ||
+      s === 'finished'
+    ) {
       status = 'completed'
     } else if (
       s === 'in_progress' ||
@@ -1084,10 +1096,7 @@ export function isTodoWrite(
   // Grok ACP titles like "Updating plan" still carry variant TodoWrite in input
   // (or after backend normalization only the todos array remains).
   const variant = input.variant
-  if (
-    typeof variant === 'string' &&
-    TODO_WRITE_TOOL_NAMES.has(variant)
-  ) {
+  if (typeof variant === 'string' && TODO_WRITE_TOOL_NAMES.has(variant)) {
     return true
   }
 

@@ -183,7 +183,7 @@ Additional systems (no dedicated docs yet):
 - **Diagnostics** - CPU/memory monitoring panel (`src-tauri/src/diagnostics/`)
 - **MCP** - Model Context Protocol server integration with per-project overrides (`src/services/mcp.ts`)
 - **Model Catalog** - CDN-driven model lists and reasoning capabilities with bundled offline fallback ([model-catalog.md](./model-catalog.md))
-- **CLI Management** - Claude CLI, Codex CLI, Cursor CLI, OpenCode, PI, and gh CLI installation/versioning (`src-tauri/src/claude_cli/`, `src-tauri/src/codex_cli/`, `src-tauri/src/cursor_cli/`, `src-tauri/src/opencode_cli/`, `src-tauri/src/pi_cli/`, `src-tauri/src/gh_cli/`)
+- **CLI Management** - Claude CLI, Codex CLI, Cursor CLI, OpenCode, PI, Command Code, Grok, Kimi Code, and gh CLI installation/versioning (backend-specific modules under `src-tauri/src/`)
 
 Cursor-specific notes:
 
@@ -201,6 +201,16 @@ Grok-specific notes:
 - Jean implements the minimal ACP client surface Grok needs for headless tool execution: `session/request_permission`, `terminal/*`, and text-file read/write requests. Plan mode denies terminal and write requests; build/yolo can auto-approve via ACP/CLI flags.
 - Build/yolo launch Grok ACP with `--no-plan` as well as `--always-approve`. Grok's native plan state is persisted and still blocks edits under always-approve, while its `exit_plan_mode` approval requires the native TUI surface that ACP stdio cannot show.
 - Grok CLI currently advertises `promptCapabilities.image: false`. Jean rejects raster image attachments before saving or sending them, preserves already-pending images so the user can switch backends, and also validates Grok messages in Rust to prevent binary files from reaching ACP text-file reads. SVG attachments remain supported as text files.
+- **MCP:** Jean discovers Grok-visible servers from `~/.grok/config.toml` / project `.grok/config.toml`, plus Claude/Cursor/`.mcp.json` compat sources (same merge set as grok-build). Health uses `grok mcp doctor --json`. On each turn Jean (1) temporarily syncs `disabled_mcp_servers` so only session-enabled servers auto-load, (2) passes enabled configs as ACP `mcpServers` on `session/new`/`session/load`, then (3) restores the previous disabled list when the turn ends. Unix detached hosts receive MCP via `--mcp-servers-file`.
+
+Kimi Code-specific notes:
+
+- Jean manages the official `@moonshot-ai/kimi-code` npm package or uses a `kimi` binary from `PATH`.
+- Interactive chat uses the official `kimi acp` stdio protocol. Jean maps ACP text, thinking, tool, image, session-resume, cancellation, and permission-mode behavior into the shared chat event model.
+- Jean maps execution modes to Kimi's native modes: `plan` → `plan`, `build` → `auto`, and `yolo` → `yolo`. Final plan text is exposed through Jean's standard plan-approval tool shape.
+- Kimi session IDs are persisted as `kimi_session_id`; each follow-up starts a fresh ACP process and uses `session/resume` for conversation continuity. On Unix, interactive turns run through a detached Jean ACP host (`--jean-kimi-acp-host`) that owns Kimi's stdio, appends ACP updates to the run JSONL, accepts cancellation over a short local socket, and can be reattached through `resume_session` after Jean restarts. Windows retains the attached, non-survivable fallback.
+- Configured models are discovered with `kimi provider list --json`. Magic-prompt operations use `kimi -p` with strict JSON instructions and validation because Kimi Code does not expose a native JSON Schema output flag.
+- MCP entries are discovered from `~/.kimi-code/mcp.json` and project-local `.kimi-code/mcp.json`; Kimi Code loads those servers when the ACP session starts.
 
 ### Component Hierarchy
 

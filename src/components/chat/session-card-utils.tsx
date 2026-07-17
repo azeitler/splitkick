@@ -451,6 +451,9 @@ export function getResumeCommand(session: Session): string | null {
   if (session.backend === 'grok' && session.grok_session_id) {
     return `grok --resume ${session.grok_session_id}`
   }
+  if (session.backend === 'kimi' && session.kimi_session_id) {
+    return `kimi --session ${session.kimi_session_id}`
+  }
   return null
 }
 
@@ -461,6 +464,7 @@ export function getResumeSessionId(session: Session): string | null {
   if (session.backend === 'cursor') return session.cursor_chat_id ?? null
   if (session.backend === 'pi') return session.pi_session_id ?? null
   if (session.backend === 'grok') return session.grok_session_id ?? null
+  if (session.backend === 'kimi') return session.kimi_session_id ?? null
   return null
 }
 
@@ -502,6 +506,12 @@ export function getResumeArgs(
     return {
       command: cmd || 'grok',
       args: ['--resume', session.grok_session_id],
+    }
+  }
+  if (session.backend === 'kimi' && session.kimi_session_id) {
+    return {
+      command: cmd || 'kimi',
+      args: ['--session', session.kimi_session_id],
     }
   }
   return null

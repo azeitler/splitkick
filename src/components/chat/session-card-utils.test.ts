@@ -31,11 +31,7 @@ describe('native client resume sessions', () => {
 
   it('builds a separate Jean terminal session for the native client', () => {
     expect(
-      buildNativeClientSessionInput(
-        session,
-        'worktree-1',
-        '/tmp/worktree-1'
-      )
+      buildNativeClientSessionInput(session, 'worktree-1', '/tmp/worktree-1')
     ).toEqual({
       worktreeId: 'worktree-1',
       worktreePath: '/tmp/worktree-1',
@@ -78,6 +74,38 @@ describe('native client resume sessions', () => {
       terminalCommandArgs: ['--resume', 'grok-acp-1'],
       terminalLabel: 'Grok tool call support (Native)',
       nativeSessionId: 'grok-acp-1',
+    })
+  })
+
+  it('builds a Kimi Code resume launch with --session', () => {
+    const kimiSession: Session = {
+      ...session,
+      name: 'Kimi ACP support',
+      backend: 'kimi',
+      codex_thread_id: undefined,
+      kimi_session_id: 'kimi-acp-1',
+    }
+
+    expect(getResumeArgs(kimiSession)).toEqual({
+      command: 'kimi',
+      args: ['--session', 'kimi-acp-1'],
+    })
+    expect(
+      buildNativeClientSessionInput(
+        kimiSession,
+        'worktree-1',
+        '/tmp/worktree-1'
+      )
+    ).toEqual({
+      worktreeId: 'worktree-1',
+      worktreePath: '/tmp/worktree-1',
+      name: 'Kimi ACP support (Native)',
+      backend: 'kimi',
+      primarySurface: 'terminal',
+      terminalCommand: 'kimi',
+      terminalCommandArgs: ['--session', 'kimi-acp-1'],
+      terminalLabel: 'Kimi ACP support (Native)',
+      nativeSessionId: 'kimi-acp-1',
     })
   })
 })

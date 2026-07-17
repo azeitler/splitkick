@@ -46,6 +46,7 @@ const BACKEND_ORDER: CliBackend[] = [
   'pi',
   'commandcode',
   'grok',
+  'kimi',
 ]
 
 const backendCommands: Record<CliBackend, string> = {
@@ -56,6 +57,7 @@ const backendCommands: Record<CliBackend, string> = {
   pi: 'pi',
   commandcode: 'commandcode',
   grok: 'grok',
+  kimi: 'kimi',
 }
 
 const YOLO_ARGS_BY_BACKEND: Partial<Record<CliBackend, string[]>> = {
@@ -63,6 +65,7 @@ const YOLO_ARGS_BY_BACKEND: Partial<Record<CliBackend, string[]>> = {
   codex: ['--dangerously-bypass-approvals-and-sandbox'],
   cursor: ['--yolo', '--sandbox', 'disabled'],
   grok: ['--always-approve', '--sandbox', 'off'],
+  kimi: ['--yolo'],
 }
 
 export function NewSessionModeModal() {

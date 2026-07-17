@@ -863,20 +863,41 @@ export default function useStreamingEvents({
       )
 
       // Capture streaming state to local variables BEFORE clearing
-      // This ensures we have the data for the optimistic message
-      const rawContent = streamingContents[sessionId]
+      // This ensures we have the data for the optimistic message.
+      // Prefer backend-authoritative final text when present (Grok sends this
+      // so leading-space word fragments cannot stick as a glued message).
+      const authoritativeContent =
+        typeof event.payload.content === 'string' &&
+        event.payload.content.length > 0
+          ? event.payload.content
+          : null
+      const streamedContent = streamingContents[sessionId]
       const toolCalls = activeToolCalls[sessionId]
-      const contentBlocks = streamingContentBlocks[sessionId]
+      const streamedBlocks = streamingContentBlocks[sessionId]
+      const rawContent = authoritativeContent ?? streamedContent
+      const hasNonTextBlocks = (streamedBlocks ?? []).some(
+        b => b.type === 'tool_use' || b.type === 'thinking'
+      )
+      // Text-only turns: replace blocks with authoritative string (spaces intact).
+      // Tool/thinking turns: keep streamed block order; Grok hydration repairs text.
+      const contentBlocks =
+        authoritativeContent != null && !hasNonTextBlocks
+          ? [{ type: 'text' as const, text: authoritativeContent }]
+          : streamedBlocks
       const content = rawContent || getTextContentFromBlocks(contentBlocks)
       const hasMeaningfulPayload = hasMeaningfulAssistantPayload(
         content ?? '',
         contentBlocks ?? [],
         toolCalls ?? []
       )
+      const sessionBackend = queryClient.getQueryData<Session>(
+        chatQueryKeys.session(sessionId)
+      )?.backend
       const needsBackendHydration = shouldHydrateCompletedSessionFromBackend(
         content ?? '',
         contentBlocks ?? [],
-        toolCalls ?? []
+        toolCalls ?? [],
+        { backend: sessionBackend }
       )
 
       if (needsBackendHydration) {

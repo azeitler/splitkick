@@ -1343,7 +1343,12 @@ export function ChatWindow({
                 : yoloBackend === 'commandcode'
                   ? (preferences?.selected_commandcode_model ??
                     'commandcode/default')
-                  : selectedModelRef.current)
+                  : yoloBackend === 'grok'
+                    ? (preferences?.selected_grok_model ??
+                      'grok/grok-composer-2.5-fast')
+                    : yoloBackend === 'kimi'
+                      ? (preferences?.selected_kimi_model ?? 'kimi/default')
+                      : selectedModelRef.current)
       const yoloOverride =
         override || yoloModelRef.current || yoloBackend
           ? [yoloBackend, yoloModel].filter(Boolean).join(' / ')
@@ -1529,7 +1534,12 @@ export function ChatWindow({
                 : buildBackend === 'commandcode'
                   ? (preferences?.selected_commandcode_model ??
                     'commandcode/default')
-                  : selectedModelRef.current)
+                  : buildBackend === 'grok'
+                    ? (preferences?.selected_grok_model ??
+                      'grok/grok-composer-2.5-fast')
+                    : buildBackend === 'kimi'
+                      ? (preferences?.selected_kimi_model ?? 'kimi/default')
+                      : selectedModelRef.current)
       const buildOverride =
         override || buildModelRef.current || buildBackend
           ? [buildBackend, buildModel].filter(Boolean).join(' / ')
@@ -1798,7 +1808,12 @@ export function ChatWindow({
                 : modeBackend === 'commandcode'
                   ? (preferences?.selected_commandcode_model ??
                     'commandcode/default')
-                  : selectedModelRef.current)
+                  : modeBackend === 'grok'
+                    ? (preferences?.selected_grok_model ??
+                      'grok/grok-composer-2.5-fast')
+                    : modeBackend === 'kimi'
+                      ? (preferences?.selected_kimi_model ?? 'kimi/default')
+                      : selectedModelRef.current)
       const modeOverride =
         override || modeModelRef.current || modeBackend
           ? [modeBackend, modeModel].filter(Boolean).join(' / ')

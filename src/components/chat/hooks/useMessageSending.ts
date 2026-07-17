@@ -450,7 +450,8 @@ export function useMessageSending({
         useAdaptiveThinkingRef.current ||
         isCodexBackendRef.current ||
         selectedBackend === 'pi' ||
-        selectedBackend === 'grok'
+        selectedBackend === 'grok' ||
+        selectedBackend === 'kimi'
       const queuedMessage: QueuedMessage = {
         id: generateId(),
         message,

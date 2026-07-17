@@ -917,6 +917,9 @@ export const COMMANDCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels =
 export const GROK_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels =
   makeMagicPromptModelsPreset('grok/grok-composer-2.5-fast')
 
+export const KIMI_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels =
+  makeMagicPromptModelsPreset('kimi/default')
+
 /** Default reasoning efforts for Claude backend (null = use model default) */
 export const DEFAULT_MAGIC_PROMPT_EFFORTS: MagicPromptReasoningEfforts = {
   investigate_issue_effort: null,
@@ -1112,6 +1115,7 @@ export const PI_DEFAULT_MAGIC_PROMPT_BACKENDS = makeBackendsPreset('pi')
 export const COMMANDCODE_DEFAULT_MAGIC_PROMPT_BACKENDS =
   makeBackendsPreset('commandcode')
 export const GROK_DEFAULT_MAGIC_PROMPT_BACKENDS = makeBackendsPreset('grok')
+export const KIMI_DEFAULT_MAGIC_PROMPT_BACKENDS = makeBackendsPreset('kimi')
 
 /**
  * Resolve a magic prompt provider for a given key.
@@ -1226,7 +1230,7 @@ export interface AppPreferences {
 
   confirm_session_close: boolean // Show confirmation dialog before closing sessions/worktrees
   default_execution_mode: ExecutionMode // Default execution mode for new sessions: 'plan', 'build', or 'yolo'
-  default_backend: CliBackend // Default CLI backend for new sessions: 'claude', 'codex', 'opencode', 'cursor', 'pi', or 'commandcode'
+  default_backend: CliBackend // Default CLI backend for new sessions
   default_new_session_kind: NewSessionKind // Default action for CMD+T: 'chat', 'terminal', or a CLI backend
   selected_codex_model: CodexModel // Default Codex model
   selected_opencode_model: string // Default OpenCode model (provider/model)
@@ -1234,6 +1238,7 @@ export interface AppPreferences {
   selected_pi_model: PiModel // Default PI model
   selected_commandcode_model?: string // Default Command Code model (CLI default)
   selected_grok_model: GrokModel // Default Grok model
+  selected_kimi_model?: KimiModel // Default Kimi Code model
   default_codex_reasoning_effort: CodexReasoningEffort // Default reasoning effort for Codex: 'low' | 'medium' | 'high' | 'xhigh'
   codex_goal_execution_mode: CodexGoalExecutionMode // Execution mode used when starting a Codex /goal
   codex_multi_agent_enabled: boolean // Enable Codex multi-agent collaboration (experimental)
@@ -1242,6 +1247,7 @@ export interface AppPreferences {
   opencode_auto_steer_enabled: boolean // Steer prompts into a running OpenCode turn instead of queueing (default: true)
   pi_auto_steer_enabled: boolean // Steer prompts into a running PI turn instead of queueing (default: true)
   grok_auto_steer_enabled: boolean // Steer prompts into a running Grok turn instead of queueing (default: true)
+  kimi_auto_steer_enabled?: boolean // Reserved for Kimi Code steering support
   restore_last_session: boolean // Restore last session when switching projects (default: true)
   close_original_on_clear_context: boolean // Close original session when using Clear Context and yolo (default: true)
   build_model: string | null // Model override for plan approval (build mode), null = use session model
@@ -1259,6 +1265,7 @@ export interface AppPreferences {
   codex_cli_source: 'jean' | 'path' // Codex CLI source: 'jean' (managed) or 'path' (system PATH)
   opencode_cli_source: 'jean' | 'path' // OpenCode CLI source: 'jean' (managed) or 'path' (system PATH)
   grok_cli_source: 'jean' | 'path' // Grok CLI source: 'jean' (managed) or 'path' (system PATH)
+  kimi_cli_source?: 'jean' | 'path' // Kimi Code CLI source: 'jean' (managed) or 'path' (system PATH)
   gh_cli_source: 'jean' | 'path' // GitHub CLI source: 'jean' (managed) or 'path' (system PATH)
   pi_cli_source: 'jean' | 'path' // PI CLI source: 'jean' (managed) or 'path' (system PATH)
   commandcode_cli_source?: 'jean' | 'path' // Command Code CLI source: 'jean' (managed) or 'path' (system PATH)
@@ -1668,6 +1675,7 @@ export type CursorModel = `cursor/${string}`
 export type PiModel = `pi/${string}`
 export type CommandCodeModel = `commandcode/${string}`
 export type GrokModel = `grok/${string}`
+export type KimiModel = `kimi/${string}`
 export type MagicPromptModel =
   | ClaudeModel
   | CodexModel
@@ -1676,6 +1684,7 @@ export type MagicPromptModel =
   | PiModel
   | CommandCodeModel
   | GrokModel
+  | KimiModel
 
 /** Check if a model string identifies an OpenCode model */
 export function isOpenCodeModel(model: string): model is OpenCodeModel {
@@ -1699,6 +1708,10 @@ export function isCommandCodeModel(model: string): model is CommandCodeModel {
 /** Check if a model string identifies a Grok model */
 export function isGrokModel(model: string): model is GrokModel {
   return model.startsWith('grok/')
+}
+/** Check if a model string identifies a Kimi Code model */
+export function isKimiModel(model: string): model is KimiModel {
+  return model.startsWith('kimi/')
 }
 
 /** Check if a model string identifies a Codex model */
@@ -1729,6 +1742,7 @@ export type CliBackend =
   | 'pi'
   | 'commandcode'
   | 'grok'
+  | 'kimi'
 
 export const backendOptions: { value: CliBackend; label: string }[] = [
   { value: 'claude', label: 'Claude' },
@@ -1738,6 +1752,7 @@ export const backendOptions: { value: CliBackend; label: string }[] = [
   { value: 'pi', label: 'Pi (Beta)' },
   { value: 'commandcode', label: 'Command Code (Beta)' },
   { value: 'grok', label: 'Grok (Beta)' },
+  { value: 'kimi', label: 'Kimi Code (Beta)' },
 ]
 
 export type TerminalApp =
@@ -1837,6 +1852,7 @@ export const newSessionKindOptions: {
   { value: 'opencode', label: 'OpenCode' },
   { value: 'cursor', label: 'Cursor' },
   { value: 'grok', label: 'Grok (Beta)' },
+  { value: 'kimi', label: 'Kimi Code (Beta)' },
 ]
 
 export function getNewSessionKindLabel(
@@ -2131,6 +2147,7 @@ export const defaultPreferences: AppPreferences = {
   selected_pi_model: 'pi/sonnet', // Default PI model
   selected_commandcode_model: 'commandcode/default', // Default Command Code model
   selected_grok_model: 'grok/grok-composer-2.5-fast', // Default Grok model
+  selected_kimi_model: 'kimi/default', // Use Kimi Code's configured default model
   default_codex_reasoning_effort: 'high', // Default: high reasoning
   codex_goal_execution_mode: 'build', // Default: build mode for goals
   codex_multi_agent_enabled: true, // Default: enabled to match parallel execution prompting
@@ -2139,6 +2156,7 @@ export const defaultPreferences: AppPreferences = {
   opencode_auto_steer_enabled: true, // Default: steer OpenCode running turn instead of queueing
   pi_auto_steer_enabled: true, // Default: steer PI running turn instead of queueing
   grok_auto_steer_enabled: true, // Default: steer Grok running turn instead of queueing
+  kimi_auto_steer_enabled: false,
   restore_last_session: true, // Default: enabled
   close_original_on_clear_context: true, // Default: enabled
   build_model: null, // Default: use session model
@@ -2156,6 +2174,7 @@ export const defaultPreferences: AppPreferences = {
   codex_cli_source: 'jean', // Default: Jean-managed
   opencode_cli_source: 'jean', // Default: Jean-managed
   grok_cli_source: 'jean', // Default: Jean-managed
+  kimi_cli_source: 'jean', // Default: Jean-managed
   gh_cli_source: 'jean', // Default: Jean-managed
   pi_cli_source: 'jean', // Default: Jean-managed
   commandcode_cli_source: 'jean', // Default: Jean-managed

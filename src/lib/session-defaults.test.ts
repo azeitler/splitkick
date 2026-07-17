@@ -8,6 +8,7 @@ const preferences = {
   selected_opencode_model: 'opencode/gpt-5.5',
   selected_cursor_model: 'cursor/auto',
   selected_commandcode_model: 'commandcode/deepseek/deepseek-v4-flash',
+  selected_kimi_model: 'kimi/custom-coding-model',
 } as unknown as AppPreferences
 
 describe('resolveDefaultModelForBackend', () => {
@@ -35,6 +36,18 @@ describe('resolveDefaultModelForBackend', () => {
     expect(
       resolveDefaultModelForBackend('commandcode', {} as AppPreferences)
     ).toBe('commandcode/default')
+  })
+
+  it('uses the Kimi model preference for Kimi Code sessions', () => {
+    expect(resolveDefaultModelForBackend('kimi', preferences)).toBe(
+      'kimi/custom-coding-model'
+    )
+  })
+
+  it('falls back to the Kimi Code configured default model', () => {
+    expect(resolveDefaultModelForBackend('kimi', {} as AppPreferences)).toBe(
+      'kimi/default'
+    )
   })
 
   it('uses the first available PI provider model when the stored PI default is unavailable', () => {

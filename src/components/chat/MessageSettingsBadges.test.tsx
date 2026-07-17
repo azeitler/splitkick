@@ -189,6 +189,22 @@ describe('MessageSettingsBadges', () => {
     expect(screen.queryByText('Grok Composer 2.5 Fast')).toBeNull()
   })
 
+  it('formats Kimi Code prompt model labels with backend prefix', () => {
+    render(
+      <MessageSettingsBadges
+        model="kimi/kimi-code/kimi-for-coding"
+        executionMode="build"
+        thinkingLevel="think"
+        effortLevel="high"
+        isCursor={false}
+      />
+    )
+
+    expect(screen.getByText('Kimi Code · Kimi for Coding')).toBeVisible()
+    expect(screen.getByText('· Build')).toBeVisible()
+    expect(screen.getByText('· High')).toBeVisible()
+  })
+
   it('treats PI models with codex provider names as PI models', () => {
     render(
       <MessageSettingsBadges

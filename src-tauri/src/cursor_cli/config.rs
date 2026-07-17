@@ -1,7 +1,7 @@
 //! Configuration and path resolution for Cursor Agent.
 
 use crate::platform::get_wsl_config;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 
 /// Cursor Agent binary name.
@@ -28,6 +28,14 @@ pub const CLI_TOOL_NAME: &str = "agent";
 pub const LEGACY_CLI_TOOL_NAME: &str = "cursor-agent";
 pub const CLI_TOOL_CANDIDATES: [&str; 2] = [LEGACY_CLI_TOOL_NAME, CLI_TOOL_NAME];
 
+fn local_install_candidates(home: &Path) -> [PathBuf; 2] {
+    let bin_dir = home.join(".local").join("bin");
+    [
+        bin_dir.join(LEGACY_CLI_BINARY_NAME),
+        bin_dir.join(CLI_BINARY_NAME),
+    ]
+}
+
 /// Resolve the Cursor Agent binary from system PATH.
 ///
 /// Cursor's installer places the binary on PATH, so Jean resolves the
@@ -50,6 +58,14 @@ pub fn resolve_cli_binary(_app: &AppHandle) -> PathBuf {
     for tool_name in CLI_TOOL_CANDIDATES {
         if let Some(path) = crate::platform::find_cli_in_host_path(tool_name, None) {
             return path;
+        }
+    }
+
+    if let Some(home) = dirs::home_dir() {
+        for candidate in local_install_candidates(&home) {
+            if candidate.is_file() {
+                return candidate;
+            }
         }
     }
 
@@ -77,5 +93,19 @@ mod tests {
         assert_eq!(CLI_TOOL_NAME, "agent");
         assert_eq!(CLI_TOOL_CANDIDATES[0], LEGACY_CLI_TOOL_NAME);
         assert_eq!(CLI_TOOL_CANDIDATES[1], CLI_TOOL_NAME);
+    }
+
+    #[test]
+    fn local_install_candidates_use_cursor_official_bin_directory() {
+        let candidates = local_install_candidates(Path::new("/home/tester"));
+
+        assert_eq!(
+            candidates[0],
+            PathBuf::from("/home/tester/.local/bin").join(LEGACY_CLI_BINARY_NAME)
+        );
+        assert_eq!(
+            candidates[1],
+            PathBuf::from("/home/tester/.local/bin").join(CLI_BINARY_NAME)
+        );
     }
 }

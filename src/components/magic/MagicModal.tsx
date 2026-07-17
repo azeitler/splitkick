@@ -59,6 +59,7 @@ import {
 import { usePreferences } from '@/services/preferences'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { useAvailableGrokModels } from '@/services/grok-cli'
+import { useAvailableKimiModels } from '@/services/kimi-cli'
 import { startCommitJob } from '@/services/commit-jobs'
 import { invoke, listen } from '@/lib/transport'
 import { dismissibleToast } from '@/lib/dismissible-toast'
@@ -471,6 +472,9 @@ export function MagicModal() {
   const { data: availableGrokModels } = useAvailableGrokModels({
     enabled: installedBackends.includes('grok'),
   })
+  const { data: availableKimiModels } = useAvailableKimiModels({
+    enabled: installedBackends.includes('kimi'),
+  })
   const { data: modelCatalog } = useModelCatalog()
 
   // Build columns dynamically based on PR state
@@ -528,6 +532,15 @@ export function MagicModal() {
       : GROK_MODEL_OPTIONS
     return models
   }, [availableGrokModels])
+  const kimiModelOptions = useMemo(() => {
+    if (!availableKimiModels?.length) {
+      return [{ value: 'kimi/default', label: 'Configured default' }]
+    }
+    return availableKimiModels.map(model => ({
+      value: `kimi/${model.id}`,
+      label: model.label,
+    }))
+  }, [availableKimiModels])
 
   const claudeModelOptions = useMemo(
     () =>
@@ -563,10 +576,12 @@ export function MagicModal() {
             : backend === 'commandcode'
               ? (preferences?.selected_commandcode_model ??
                 'commandcode/default')
-              : backend === 'grok'
-                ? (preferences?.selected_grok_model ??
-                  'grok/grok-composer-2.5-fast')
-                : (preferences?.selected_model ?? 'sonnet'))
+              : backend === 'kimi'
+                ? (preferences?.selected_kimi_model ?? 'kimi/default')
+                : backend === 'grok'
+                  ? (preferences?.selected_grok_model ??
+                    'grok/grok-composer-2.5-fast')
+                  : (preferences?.selected_model ?? 'sonnet'))
     const provider = resolveMagicPromptProvider(
       preferences?.magic_prompt_providers,
       providerKey,
@@ -595,10 +610,12 @@ export function MagicModal() {
             : backend === 'commandcode'
               ? (preferences?.selected_commandcode_model ??
                 'commandcode/default')
-              : backend === 'grok'
-                ? (preferences?.selected_grok_model ??
-                  'grok/grok-composer-2.5-fast')
-                : (preferences?.selected_model ?? 'sonnet'))
+              : backend === 'kimi'
+                ? (preferences?.selected_kimi_model ?? 'kimi/default')
+                : backend === 'grok'
+                  ? (preferences?.selected_grok_model ??
+                    'grok/grok-composer-2.5-fast')
+                  : (preferences?.selected_model ?? 'sonnet'))
     const provider = resolveMagicPromptProvider(
       preferences?.magic_prompt_providers,
       RESOLVE_CONFLICTS_PROVIDER_KEY,
@@ -789,11 +806,18 @@ export function MagicModal() {
           return opencodeModelOptions
         case 'grok':
           return grokModelOptions
+        case 'kimi':
+          return kimiModelOptions
         default:
           return investigateClaudeModelOptions
       }
     },
-    [grokModelOptions, investigateClaudeModelOptions, opencodeModelOptions]
+    [
+      grokModelOptions,
+      investigateClaudeModelOptions,
+      kimiModelOptions,
+      opencodeModelOptions,
+    ]
   )
 
   const customInvestigateModelOptions = useMemo(
@@ -821,6 +845,8 @@ export function MagicModal() {
         return 'Cursor'
       case 'grok':
         return 'Grok'
+      case 'kimi':
+        return 'Kimi Code'
       default:
         return 'Claude'
     }
@@ -866,11 +892,18 @@ export function MagicModal() {
           return opencodeModelOptions
         case 'grok':
           return grokModelOptions
+        case 'kimi':
+          return kimiModelOptions
         default:
           return resolveClaudeModelOptions
       }
     },
-    [grokModelOptions, opencodeModelOptions, resolveClaudeModelOptions]
+    [
+      grokModelOptions,
+      kimiModelOptions,
+      opencodeModelOptions,
+      resolveClaudeModelOptions,
+    ]
   )
 
   const customResolveModelOptions = useMemo(
@@ -2635,9 +2668,13 @@ ${resolveInstructions}`
                         size="sm"
                         hideIcon={
                           installedBackends.filter(backend =>
-                            ['claude', 'codex', 'opencode', 'grok'].includes(
-                              backend
-                            )
+                            [
+                              'claude',
+                              'codex',
+                              'opencode',
+                              'grok',
+                              'kimi',
+                            ].includes(backend)
                           ).length <= 1
                         }
                         onClick={() => setInvestigateSelectionMode('custom')}
@@ -2657,6 +2694,11 @@ ${resolveInstructions}`
                         {installedBackends.includes('grok') && (
                           <SelectItem value="grok">
                             <BackendLabel backend="grok" />
+                          </SelectItem>
+                        )}
+                        {installedBackends.includes('kimi') && (
+                          <SelectItem value="kimi">
+                            <BackendLabel backend="kimi" />
                           </SelectItem>
                         )}
                       </SelectContent>
@@ -2790,9 +2832,13 @@ ${resolveInstructions}`
                         size="sm"
                         hideIcon={
                           installedBackends.filter(backend =>
-                            ['claude', 'codex', 'opencode', 'grok'].includes(
-                              backend
-                            )
+                            [
+                              'claude',
+                              'codex',
+                              'opencode',
+                              'grok',
+                              'kimi',
+                            ].includes(backend)
                           ).length <= 1
                         }
                         onClick={() => setResolveSelectionMode('custom')}
@@ -2812,6 +2858,11 @@ ${resolveInstructions}`
                         {installedBackends.includes('grok') && (
                           <SelectItem value="grok">
                             <BackendLabel backend="grok" />
+                          </SelectItem>
+                        )}
+                        {installedBackends.includes('kimi') && (
+                          <SelectItem value="kimi">
+                            <BackendLabel backend="kimi" />
                           </SelectItem>
                         )}
                       </SelectContent>

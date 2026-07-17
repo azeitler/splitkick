@@ -257,6 +257,9 @@ function getDefaultModelForBackend(
   if (backend === 'grok') {
     return preferences?.selected_grok_model ?? 'grok/grok-composer-2.5-fast'
   }
+  if (backend === 'kimi') {
+    return preferences?.selected_kimi_model ?? 'kimi/default'
+  }
   return preferences?.selected_model ?? 'claude-opus-4-8[1m]'
 }
 
@@ -266,7 +269,9 @@ const SESSION_BACKENDS = new Set<Session['backend']>([
   'opencode',
   'cursor',
   'commandcode',
+  'pi',
   'grok',
+  'kimi',
 ])
 
 function asSessionBackend(

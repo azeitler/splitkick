@@ -6,6 +6,7 @@ import {
   DEFAULT_INVESTIGATE_SENTRY_ISSUE_PROMPT,
   defaultPreferences,
   GROK_DEFAULT_MAGIC_PROMPT_BACKENDS,
+  KIMI_DEFAULT_MAGIC_PROMPT_BACKENDS,
   PI_DEFAULT_MAGIC_PROMPT_BACKENDS,
   PI_DEFAULT_MAGIC_PROMPT_MODELS,
   resolveMagicPromptBackend,
@@ -34,6 +35,10 @@ describe('magic prompt preference resolvers', () => {
     expect(defaultPreferences.grok_cli_source).toBe('jean')
   })
 
+  it('uses Jean-managed Kimi Code CLI by default', () => {
+    expect(defaultPreferences.kimi_cli_source).toBe('jean')
+  })
+
   it('provides magic prompt defaults for Pi', () => {
     expect(PI_DEFAULT_MAGIC_PROMPT_BACKENDS.investigate_issue_backend).toBe(
       'pi'
@@ -55,6 +60,12 @@ describe('magic prompt preference resolvers', () => {
   it('provides magic prompt defaults for Grok', () => {
     expect(GROK_DEFAULT_MAGIC_PROMPT_BACKENDS.investigate_issue_backend).toBe(
       'grok'
+    )
+  })
+
+  it('provides magic prompt defaults for Kimi Code', () => {
+    expect(KIMI_DEFAULT_MAGIC_PROMPT_BACKENDS.investigate_issue_backend).toBe(
+      'kimi'
     )
   })
 

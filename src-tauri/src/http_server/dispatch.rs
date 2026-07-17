@@ -2431,6 +2431,39 @@ pub async fn dispatch_command(
             crate::grok_cli::login_grok_cli_device(app.clone()).await?;
             Ok(Value::Null)
         }
+        "check_kimi_cli_installed" => {
+            to_value(crate::kimi_cli::check_kimi_cli_installed(app.clone()).await?)
+        }
+        "detect_kimi_in_path" => to_value(crate::kimi_cli::detect_kimi_in_path(app.clone()).await?),
+        "check_kimi_cli_auth" => to_value(crate::kimi_cli::check_kimi_cli_auth(app.clone()).await?),
+        "list_kimi_models" => to_value(crate::kimi_cli::list_kimi_models(app.clone()).await?),
+        "get_available_kimi_versions" => {
+            to_value(crate::kimi_cli::get_available_kimi_versions(app.clone()).await?)
+        }
+        "check_kimi_cli_version_exists" => {
+            let version: String = from_field(&args, "version")?;
+            to_value(crate::kimi_cli::check_kimi_cli_version_exists(app.clone(), version).await?)
+        }
+        "get_kimi_install_command" => {
+            to_value(crate::kimi_cli::get_kimi_install_command(app.clone()).await?)
+        }
+        "install_kimi_cli" => {
+            let version: Option<String> = from_field_opt(&args, "version")?;
+            crate::kimi_cli::install_kimi_cli(app.clone(), version).await?;
+            Ok(Value::Null)
+        }
+        "uninstall_kimi_cli" => {
+            crate::kimi_cli::uninstall_kimi_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
+        "update_kimi_cli" => {
+            crate::kimi_cli::update_kimi_cli(app.clone()).await?;
+            Ok(Value::Null)
+        }
+        "login_kimi_cli_device" => {
+            crate::kimi_cli::login_kimi_cli_device(app.clone()).await?;
+            Ok(Value::Null)
+        }
         "check_pi_cli_installed" => {
             let result = crate::pi_cli::check_pi_cli_installed(app.clone()).await?;
             to_value(result)

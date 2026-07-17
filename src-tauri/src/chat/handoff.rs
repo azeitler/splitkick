@@ -25,6 +25,7 @@ fn backend_label(backend: &Backend) -> &'static str {
         Backend::Pi => "pi",
         Backend::Commandcode => "commandcode",
         Backend::Grok => "grok",
+        Backend::Kimi => "kimi",
     }
 }
 
@@ -77,6 +78,11 @@ pub(crate) fn latest_completed_backend(metadata: &SessionMetadata) -> Option<Bac
                 || run.model.as_deref().is_some_and(crate::is_grok_model)
             {
                 return Some(Backend::Grok);
+            }
+            if run.kimi_session_id.is_some()
+                || run.model.as_deref().is_some_and(crate::is_kimi_model)
+            {
+                return Some(Backend::Kimi);
             }
             if run.claude_session_id.is_some() {
                 return Some(Backend::Claude);
@@ -334,6 +340,7 @@ mod tests {
             codex_turn_id: None,
             cursor_chat_id: None,
             grok_session_id: None,
+            kimi_session_id: None,
         });
 
         assert_eq!(latest_completed_backend(&metadata), Some(Backend::Claude));
@@ -392,6 +399,7 @@ mod tests {
             codex_turn_id: None,
             cursor_chat_id: None,
             grok_session_id: None,
+            kimi_session_id: None,
         });
         metadata.runs.push(RunEntry {
             run_id: "run-2".to_string(),
@@ -416,6 +424,7 @@ mod tests {
             codex_turn_id: None,
             cursor_chat_id: None,
             grok_session_id: None,
+            kimi_session_id: None,
         });
 
         assert_eq!(

@@ -195,6 +195,7 @@ pub(crate) fn resolve_default_backend(app: &AppHandle, worktree_id: Option<&str>
         "pi" => Backend::Pi,
         "commandcode" => Backend::Commandcode,
         "grok" => Backend::Grok,
+        "kimi" => Backend::Kimi,
         _ => Backend::Claude,
     };
 
@@ -216,6 +217,7 @@ pub(crate) fn resolve_default_backend(app: &AppHandle, worktree_id: Option<&str>
                         "pi" => Backend::Pi,
                         "commandcode" => Backend::Commandcode,
                         "grok" => Backend::Grok,
+                        "kimi" => Backend::Kimi,
                         "claude" => Backend::Claude,
                         _ => resolved,
                     };
@@ -241,6 +243,7 @@ pub(crate) fn resolve_magic_prompt_backend(
             "pi" => return Backend::Pi,
             "commandcode" => return Backend::Commandcode,
             "grok" => return Backend::Grok,
+            "kimi" => return Backend::Kimi,
             "codex" => return Backend::Codex,
             "claude" => return Backend::Claude,
             _ => {}
@@ -260,6 +263,8 @@ fn infer_backend_from_model(model: &str, fallback: Backend) -> Backend {
         Backend::Commandcode
     } else if crate::is_grok_model(model) {
         Backend::Grok
+    } else if model.starts_with("kimi/") {
+        Backend::Kimi
     } else if crate::is_codex_model(model) {
         Backend::Codex
     } else {
@@ -326,6 +331,7 @@ fn default_model_for_backend(
         Backend::Pi => &preferences.selected_pi_model,
         Backend::Commandcode => &preferences.selected_commandcode_model,
         Backend::Grok => &preferences.selected_grok_model,
+        Backend::Kimi => &preferences.selected_kimi_model,
         Backend::Claude => &preferences.selected_model,
     };
 
@@ -334,6 +340,74 @@ fn default_model_for_backend(
     } else {
         Some(model.clone())
     }
+}
+
+fn build_kimi_system_prompt(
+    app: &AppHandle,
+    worktree_id: &str,
+    ai_language: Option<&str>,
+    parallel_prompt: Option<&str>,
+) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(language) = ai_language.map(str::trim).filter(|value| !value.is_empty()) {
+        parts.push(format!("Respond to the user in {language}."));
+    }
+    if let Ok(preferences) = crate::load_preferences_sync(app) {
+        if let Some(prompt) = preferences
+            .magic_prompts
+            .global_system_prompt
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            parts.push(prompt.to_string());
+        }
+    }
+    if let Some(prompt) = parallel_prompt
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        parts.push(prompt.to_string());
+    }
+    if let Ok(data) = load_projects_data(app) {
+        if let Some(worktree) = data.find_worktree(worktree_id) {
+            if let Some(project) = data.find_project(&worktree.project_id) {
+                if let Some(prompt) = project
+                    .custom_system_prompt
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                {
+                    parts.push(prompt.to_string());
+                }
+                let paths = project
+                    .linked_project_ids
+                    .iter()
+                    .filter_map(|id| data.find_project(id))
+                    .map(|project| project.path.trim())
+                    .filter(|path| !path.is_empty())
+                    .map(|path| format!("- {path}"))
+                    .collect::<Vec<_>>();
+                if !paths.is_empty() {
+                    parts.push(format!(
+                        "This project is linked to other projects for cross-project context. Check these directories for instructions and documentation:\n{}",
+                        paths.join("\n")
+                    ));
+                }
+            }
+        }
+    }
+    let gh_binary = crate::gh_cli::config::resolve_gh_binary(app);
+    if gh_binary != std::path::PathBuf::from("gh") {
+        parts.push(format!(
+            "When running GitHub CLI commands, use this binary: {}. Do not use bare `gh`.",
+            gh_binary.display()
+        ));
+    }
+    if super::should_add_recap_instruction(app) {
+        parts.push(super::RECAP_INSTRUCTION.to_string());
+    }
+    (!parts.is_empty()).then(|| parts.join("\n\n"))
 }
 
 /// Get current Unix timestamp in seconds
@@ -710,6 +784,7 @@ pub async fn create_session(
         Some("pi") => Backend::Pi,
         Some("commandcode") => Backend::Commandcode,
         Some("grok") => Backend::Grok,
+        Some("kimi") => Backend::Kimi,
         Some("claude") => Backend::Claude,
         _ => {
             // No explicit backend — check project default, then global preference
@@ -727,6 +802,8 @@ pub async fn create_session(
                     resolved = Backend::Commandcode;
                 } else if prefs.default_backend == "grok" {
                     resolved = Backend::Grok;
+                } else if prefs.default_backend == "kimi" {
+                    resolved = Backend::Kimi;
                 }
             }
             // Check project-level override
@@ -748,6 +825,7 @@ pub async fn create_session(
                             "pi" => Backend::Pi,
                             "commandcode" => Backend::Commandcode,
                             "grok" => Backend::Grok,
+                            "kimi" => Backend::Kimi,
                             "claude" => Backend::Claude,
                             _ => resolved,
                         };
@@ -1571,8 +1649,10 @@ fn plan_mode_content_waits_for_approval(
     has_content: bool,
     has_plan_tool: bool,
 ) -> bool {
-    matches!(backend, Backend::Codex | Backend::Opencode | Backend::Grok)
-        && execution_mode == Some("plan")
+    matches!(
+        backend,
+        Backend::Codex | Backend::Opencode | Backend::Grok | Backend::Kimi
+    ) && execution_mode == Some("plan")
         && has_content
         && !has_plan_tool
 }
@@ -2294,6 +2374,7 @@ fn persist_salvaged_resume_id(session: &mut Session, backend: &Backend, sid: &st
         // run continues the worktree conversation via `-c`.
         Backend::Commandcode => session.commandcode_session_id = Some(sid.to_string()),
         Backend::Grok => session.grok_session_id = Some(sid.to_string()),
+        Backend::Kimi => session.kimi_session_id = Some(sid.to_string()),
     }
 }
 
@@ -2549,6 +2630,7 @@ pub async fn send_chat_message(
         Some("pi") => Backend::Pi,
         Some("commandcode") => Backend::Commandcode,
         Some("grok") => Backend::Grok,
+        Some("kimi") => Backend::Kimi,
         Some("claude") => Backend::Claude,
         _ => session_backend.clone(),
     };
@@ -2604,6 +2686,9 @@ pub async fn send_chat_message(
     let grok_session_id = sessions
         .find_session(&session_id)
         .and_then(|s| s.grok_session_id.clone());
+    let kimi_session_id = sessions
+        .find_session(&session_id)
+        .and_then(|s| s.kimi_session_id.clone());
     // Command Code has no native resume id; a non-empty sentinel marks that a
     // prior Command Code turn completed in this worktree, so the next run can
     // pass `-c` (cwd-scoped continue) to resume the conversation.
@@ -2769,6 +2854,7 @@ pub async fn send_chat_message(
                     Backend::Pi => {}
                     Backend::Commandcode => {}
                     Backend::Grok => {}
+                    Backend::Kimi => {}
                 }
             }
         }
@@ -2820,6 +2906,7 @@ pub async fn send_chat_message(
     let thread_cursor_chat_id = cursor_chat_id.clone();
     let thread_pi_session_id = pi_session_id.clone();
     let thread_grok_session_id = grok_session_id.clone();
+    let thread_kimi_session_id = kimi_session_id.clone();
     let thread_commandcode_resume_id = commandcode_resume_id.clone();
     let thread_model = model.clone();
     let thread_execution_mode = execution_mode.clone();
@@ -4289,6 +4376,7 @@ pub async fn send_chat_message(
                     effort_level: grok_effort.as_deref(),
                     message: &thread_message,
                     system_prompt: grok_system_prompt.as_deref(),
+                    mcp_config: thread_mcp_config.as_deref(),
                     pid_callback: Some(make_pid_callback()),
                 }) {
                     Ok(response) => Ok((
@@ -4309,6 +4397,47 @@ pub async fn send_chat_message(
                         log::error!("execute_grok FAILED: {e}");
                         Err(e)
                     }
+                }
+            }
+            Backend::Kimi => {
+                let system_prompt = build_kimi_system_prompt(
+                    &thread_app,
+                    &thread_worktree_id,
+                    thread_ai_language.as_deref(),
+                    thread_parallel_prompt.as_deref(),
+                );
+                let effort = thread_effort_level
+                    .as_ref()
+                    .and_then(|value| value.effort_value());
+                match super::kimi::execute_kimi(super::kimi::KimiExecutionOptions {
+                    app: &thread_app,
+                    jean_session_id: &thread_session_id,
+                    worktree_id: &thread_worktree_id,
+                    working_dir: std::path::Path::new(&thread_working_dir),
+                    output_file: &thread_output_file,
+                    existing_kimi_session_id: thread_kimi_session_id.as_deref(),
+                    model: thread_model.as_deref(),
+                    execution_mode: thread_execution_mode.as_deref(),
+                    effort_level: effort,
+                    message: &thread_message,
+                    system_prompt: system_prompt.as_deref(),
+                    pid_callback: Some(make_pid_callback()),
+                }) {
+                    Ok(response) => Ok((
+                        0,
+                        UnifiedResponse {
+                            content: response.content,
+                            resume_id: response.session_id,
+                            tool_calls: response.tool_calls,
+                            content_blocks: response.content_blocks,
+                            cancelled: response.cancelled,
+                            waiting_for_plan: false,
+                            error_emitted: false,
+                            usage: response.usage,
+                            backend: Backend::Kimi,
+                        },
+                    )),
+                    Err(error) => Err(error),
                 }
             }
         };
@@ -4448,12 +4577,18 @@ pub async fn send_chat_message(
     // reconstruct content after the live stream completes.
     // Skip when cancelled: cancelled turns stay in run metadata/logs for diagnostics
     // but are intentionally excluded from visible chat history on reload.
-    // Unix Grok host already writes ACP stream JSONL + a result marker — synthetic
+    // Unix Grok/Kimi hosts already write ACP stream JSONL + a result marker — synthetic
     // assistant lines would double content when parse_grok_run_to_message reloads.
-    let skip_synthetic_history = cfg!(unix) && matches!(unified_response.backend, Backend::Grok);
+    let skip_synthetic_history =
+        cfg!(unix) && matches!(unified_response.backend, Backend::Grok | Backend::Kimi);
     if matches!(
         unified_response.backend,
-        Backend::Opencode | Backend::Cursor | Backend::Pi | Backend::Commandcode | Backend::Grok
+        Backend::Opencode
+            | Backend::Cursor
+            | Backend::Pi
+            | Backend::Commandcode
+            | Backend::Grok
+            | Backend::Kimi
     ) && !unified_response.cancelled
         && !skip_synthetic_history
     {
@@ -4650,6 +4785,9 @@ pub async fn send_chat_message(
                         Backend::Grok => {
                             session.grok_session_id = Some(resume_id_for_log.clone());
                         }
+                        Backend::Kimi => {
+                            session.kimi_session_id = Some(resume_id_for_log.clone());
+                        }
                     }
                 }
                 // Remove user message (undo send) - allows frontend to restore to input field
@@ -4796,6 +4934,9 @@ pub async fn send_chat_message(
                     Backend::Grok => {
                         session.grok_session_id = Some(resume_id_for_log.clone());
                     }
+                    Backend::Kimi => {
+                        session.kimi_session_id = Some(resume_id_for_log.clone());
+                    }
                 }
             }
 
@@ -4895,6 +5036,7 @@ pub async fn clear_session_history(
             session.pi_session_id = None;
             session.commandcode_session_id = None;
             session.grok_session_id = None;
+            session.kimi_session_id = None;
             session.selected_model = selected_model;
             session.selected_thinking_level = selected_thinking_level;
             session.selected_effort_level = selected_effort_level;
@@ -5018,6 +5160,7 @@ pub async fn set_session_backend(
                 "pi" => super::types::Backend::Pi,
                 "commandcode" => super::types::Backend::Commandcode,
                 "grok" => super::types::Backend::Grok,
+                "kimi" => super::types::Backend::Kimi,
                 _ => super::types::Backend::Claude,
             };
             log::trace!("Backend selection saved");
@@ -6852,6 +6995,19 @@ fn execute_summarization_claude(
         });
     }
 
+    if backend == super::types::Backend::Kimi {
+        log::trace!("Executing one-shot Kimi summarization");
+        let json_str = super::kimi::execute_one_shot_kimi(
+            app,
+            prompt,
+            model_str,
+            Some(CONTEXT_SUMMARY_SCHEMA),
+            working_dir,
+        )?;
+        return serde_json::from_str(&json_str)
+            .map_err(|e| format!("Failed to parse Kimi summarization response: {e}"));
+    }
+
     let cli_path = resolve_cli_binary(app);
     if !cli_path.exists() {
         return Err("Claude CLI not installed".to_string());
@@ -7230,6 +7386,7 @@ pub async fn get_session_debug_info(
         pi_session_id,
         commandcode_session_id: None,
         grok_session_id,
+        kimi_session_id: session.and_then(|s| s.kimi_session_id.clone()),
         claude_jsonl_file,
         run_log_files,
         total_usage,
@@ -7487,6 +7644,105 @@ pub async fn resume_session(
                         })
                     {
                         log::warn!("Failed to persist recovered Pi session id: {e}");
+                    }
+                }
+            });
+            continue;
+        }
+
+        // === Kimi detached ACP-host resume path ===
+        if run.backend == Some(Backend::Kimi) {
+            let pid = match run.pid {
+                Some(pid) => pid,
+                None => continue,
+            };
+            let output_file = session_dir.join(format!("{run_id}.jsonl"));
+
+            if let Some(metadata_run) = metadata.find_run_mut(&run_id) {
+                metadata_run.status = RunStatus::Running;
+            }
+            save_metadata(&app, &metadata)?;
+
+            if !super::registry::register_detached_process(session_id.clone(), pid) {
+                log::warn!("Resume Kimi session {session_id} was cancelled before tailing started");
+                return Ok(ResumeSessionResponse {
+                    resumed: false,
+                    run_count: 0,
+                });
+            }
+
+            let app_clone = app.clone();
+            let session_id_clone = session_id.clone();
+            let worktree_id_clone = worktree_id.clone();
+            let run_id_clone = run_id.clone();
+            let execution_mode = run.execution_mode.clone();
+
+            tauri::async_runtime::spawn(async move {
+                let emit_done = |app: &tauri::AppHandle, sid: &str, wid: &str| {
+                    let _ = app.emit_all(
+                        "chat:done",
+                        &serde_json::json!({
+                            "session_id": sid,
+                            "worktree_id": wid,
+                            "waiting_for_plan": false,
+                        }),
+                    );
+                };
+
+                let response = match super::kimi::tail_kimi_output(
+                    &app_clone,
+                    &session_id_clone,
+                    &worktree_id_clone,
+                    &output_file,
+                    pid,
+                ) {
+                    Ok(response) => response,
+                    Err(error) => {
+                        log::error!("Resume Kimi tail failed for run {run_id_clone}: {error}");
+                        super::registry::unregister_process(&session_id_clone);
+                        if let Ok(mut writer) =
+                            RunLogWriter::resume(&app_clone, &session_id_clone, &run_id_clone)
+                        {
+                            let _ = writer.crash();
+                        }
+                        emit_done(&app_clone, &session_id_clone, &worktree_id_clone);
+                        return;
+                    }
+                };
+                super::registry::unregister_process(&session_id_clone);
+                let response = super::kimi::finish_kimi_response(
+                    &app_clone,
+                    &session_id_clone,
+                    &worktree_id_clone,
+                    execution_mode.as_deref(),
+                    response,
+                );
+                if response.cancelled {
+                    emit_done(&app_clone, &session_id_clone, &worktree_id_clone);
+                }
+
+                if let Ok(mut writer) =
+                    RunLogWriter::resume(&app_clone, &session_id_clone, &run_id_clone)
+                {
+                    let assistant_message_id = uuid::Uuid::new_v4().to_string();
+                    if let Err(error) =
+                        writer.complete(&assistant_message_id, None, response.usage.clone())
+                    {
+                        log::error!("Failed to mark resumed Kimi run completed: {error}");
+                    }
+                }
+
+                if !response.session_id.is_empty() {
+                    if let Err(error) =
+                        with_existing_metadata_mut(&app_clone, &session_id_clone, |metadata| {
+                            metadata.kimi_session_id = Some(response.session_id.clone());
+                            if let Some(run) = metadata.find_run_mut(&run_id_clone) {
+                                run.kimi_session_id = Some(response.session_id.clone());
+                                run.usage = response.usage.clone();
+                            }
+                        })
+                    {
+                        log::warn!("Failed to persist recovered Kimi session id: {error}");
                     }
                 }
             });
@@ -7824,6 +8080,8 @@ pub struct McpHealthResult {
 /// - Codex:    ~/.codex/config.toml (global) + <worktree>/.codex/config.toml (project)
 /// - OpenCode: ~/.config/opencode/opencode.json (global) + <worktree>/opencode.json (project)
 /// - Cursor:   ~/.cursor/mcp.json (user) + <worktree>/.cursor/mcp.json (project)
+/// - Kimi:     ~/.kimi-code/mcp.json (user) + <worktree>/.kimi-code/mcp.json (project)
+/// - Grok:     ~/.grok/config.toml + project .grok/config.toml (+ Claude/Cursor/.mcp.json compat)
 #[tauri::command]
 pub async fn get_mcp_servers(
     backend: Option<String>,
@@ -7834,7 +8092,8 @@ pub async fn get_mcp_servers(
         Some("codex") => crate::codex_cli::mcp::get_mcp_servers(wt),
         Some("opencode") => crate::opencode_cli::mcp::get_mcp_servers(wt),
         Some("cursor") => crate::cursor_cli::mcp::get_mcp_servers(wt),
-        Some("grok") => Vec::new(),
+        Some("kimi") => crate::kimi_cli::mcp::get_mcp_servers(wt),
+        Some("grok") => crate::grok_cli::mcp::get_mcp_servers(wt),
         _ => crate::claude_cli::mcp::get_mcp_servers(wt),
     };
     Ok(servers)
@@ -7890,6 +8149,7 @@ fn parse_mcp_list_output(output: &str) -> std::collections::HashMap<String, McpH
 /// - Codex:    `codex mcp list --json` (JSON output)
 /// - OpenCode: `opencode mcp list` (text output)
 /// - Cursor:   `cursor-agent mcp list` (text output)
+/// - Grok:     `grok mcp doctor --json`
 #[tauri::command]
 pub async fn check_mcp_health(
     app: AppHandle,
@@ -7900,9 +8160,17 @@ pub async fn check_mcp_health(
         Some("codex") => check_mcp_health_codex(&app),
         Some("opencode") => check_mcp_health_opencode(&app),
         Some("cursor") => check_mcp_health_cursor(&app, worktree_path.as_deref()),
-        Some("grok") => Ok(McpHealthResult {
-            statuses: std::collections::HashMap::new(),
+        Some("kimi") => Ok(McpHealthResult {
+            statuses: crate::kimi_cli::mcp::get_mcp_servers(worktree_path.as_deref())
+                .into_iter()
+                .map(|server| (server.name, McpHealthStatus::Unknown))
+                .collect(),
         }),
+        Some("grok") => {
+            let path = worktree_path.as_deref().map(std::path::Path::new);
+            let statuses = crate::grok_cli::mcp::check_mcp_health(&app, path)?;
+            Ok(McpHealthResult { statuses })
+        }
         _ => check_mcp_health_claude(&app),
     }
 }

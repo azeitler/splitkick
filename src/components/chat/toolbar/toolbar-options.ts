@@ -95,6 +95,19 @@ export const GROK_MODEL_OPTIONS: { value: string; label: string }[] = [
   { value: 'grok/grok-build', label: 'Grok Build' },
 ]
 
+export const KIMI_MODEL_OPTIONS: { value: string; label: string }[] = [
+  { value: 'kimi/default', label: 'Configured default' },
+]
+
+export const KIMI_EFFORT_LEVEL_OPTIONS: {
+  value: EffortLevel
+  label: string
+  description: string
+}[] = [
+  { value: 'off', label: 'Thinking Off', description: 'Disable thinking' },
+  { value: 'high', label: 'Thinking On', description: 'Enable thinking' },
+]
+
 export const THINKING_LEVEL_OPTIONS: {
   value: ThinkingLevel
   label: string

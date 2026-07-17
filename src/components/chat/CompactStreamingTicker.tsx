@@ -330,11 +330,7 @@ export const CompactStreamingTicker = memo(function CompactStreamingTicker(
                 index === lastActivityIndex &&
                 index > lastSteeredIndex
               }
-              streamingContent={
-                index === lastActivityIndex && segment.blocks.length > 0
-                  ? streamingContent
-                  : ''
-              }
+              streamingContent=""
             />
           )
         )}

@@ -389,6 +389,7 @@ pub fn start_run(
         codex_turn_id: None,
         cursor_chat_id: None,
         grok_session_id: None,
+        kimi_session_id: None,
     };
 
     with_metadata_mut(
@@ -1041,7 +1042,7 @@ fn should_inject_synthetic_exit_plan(
             .any(|tc| tc.name == "ExitPlanMode" || tc.name == "CodexPlan");
 
     match backend {
-        Backend::Opencode | Backend::Pi | Backend::Commandcode => base_match,
+        Backend::Opencode | Backend::Pi | Backend::Commandcode | Backend::Kimi => base_match,
         Backend::Cursor => false, // Plan approval only on real createPlanToolCall / interaction_query
         _ => false,
     }
@@ -1072,6 +1073,14 @@ fn inject_synthetic_exit_plan(backend: &Backend, run_id: &str, assistant_msg: &m
             serde_json::json!({
                 "plan": assistant_msg.content,
                 "source": "codex",
+            }),
+        )
+    } else if matches!(backend, Backend::Kimi) {
+        (
+            "ExitPlanMode",
+            serde_json::json!({
+                "plan": assistant_msg.content,
+                "source": "kimi",
             }),
         )
     } else {
@@ -1170,6 +1179,16 @@ fn run_uses_grok_history_parser(metadata_backend: &Backend, run: &RunEntry) -> b
             .map(crate::is_grok_model)
             .unwrap_or(false)
         || (run.model.is_none() && metadata_backend == &Backend::Grok)
+}
+
+fn run_uses_kimi_history_parser(metadata_backend: &Backend, run: &RunEntry) -> bool {
+    run.backend.as_ref() == Some(&Backend::Kimi)
+        || run
+            .model
+            .as_deref()
+            .map(crate::is_kimi_model)
+            .unwrap_or(false)
+        || (run.model.is_none() && metadata_backend == &Backend::Kimi)
 }
 
 fn cancelled_codex_run_has_visible_artifacts(
@@ -1284,6 +1303,8 @@ pub fn load_session_messages_window(
                 super::pi::parse_pi_run_to_message(&lines, run)?
             } else if run_uses_grok_history_parser(&metadata.backend, run) {
                 super::grok::parse_grok_run_to_message(&lines, run)?
+            } else if run_uses_kimi_history_parser(&metadata.backend, run) {
+                super::kimi::parse_kimi_run_to_message(&lines, run)?
             } else {
                 parse_run_to_message(&lines, run)?
             };
@@ -1306,6 +1327,7 @@ pub fn load_session_messages_window(
                     }
                 }
             }
+            let run_backend = run.backend.as_ref().unwrap_or(&metadata.backend);
             assistant_msg.session_id = session_id.to_string();
             if run.status == RunStatus::Running {
                 assistant_msg.id = format!("running-{}", run.run_id);
@@ -1313,15 +1335,15 @@ pub fn load_session_messages_window(
                 assistant_msg.id = format!("cancelled-{}", run.run_id);
             }
 
-            if should_inject_synthetic_enter_plan(&metadata.backend, run, &assistant_msg) {
+            if should_inject_synthetic_enter_plan(run_backend, run, &assistant_msg) {
                 inject_synthetic_enter_plan(&run.run_id, &mut assistant_msg);
             }
 
             // OpenCode/Codex can complete plan-mode runs without a native
             // ExitPlanMode/CodexPlan tool. Recreate the synthetic marker so
             // recovered sessions render the same approval affordances.
-            if should_inject_synthetic_exit_plan(&metadata.backend, run, &assistant_msg) {
-                inject_synthetic_exit_plan(&metadata.backend, &run.run_id, &mut assistant_msg);
+            if should_inject_synthetic_exit_plan(run_backend, run, &assistant_msg) {
+                inject_synthetic_exit_plan(run_backend, &run.run_id, &mut assistant_msg);
             }
 
             // For crashed runs with no content (only metadata header), add placeholder
@@ -1387,6 +1409,7 @@ mod tests {
             codex_turn_id: None,
             cursor_chat_id: None,
             grok_session_id: None,
+            kimi_session_id: None,
         }
     }
 
@@ -1460,6 +1483,24 @@ mod tests {
         assert_eq!(msg.tool_calls.len(), 1);
         assert_eq!(msg.tool_calls[0].name, "ExitPlanMode");
         assert_eq!(msg.tool_calls[0].id, "synthetic-exit-plan-run-123");
+    }
+
+    #[test]
+    fn injects_synthetic_exit_plan_for_recovered_kimi_plan_runs() {
+        let run = sample_run();
+        let mut msg = sample_assistant_message();
+
+        assert!(should_inject_synthetic_exit_plan(
+            &Backend::Kimi,
+            &run,
+            &msg
+        ));
+
+        inject_synthetic_exit_plan(&Backend::Kimi, &run.run_id, &mut msg);
+
+        assert_eq!(msg.tool_calls[0].name, "ExitPlanMode");
+        assert_eq!(msg.tool_calls[0].input["source"], "kimi");
+        assert_eq!(msg.tool_calls[0].input["plan"], "Here is the plan");
     }
 
     #[test]
@@ -1696,6 +1737,7 @@ mod tests {
             codex_turn_id: None,
             cursor_chat_id: None,
             grok_session_id: None,
+            kimi_session_id: None,
         };
 
         let lines = vec![
@@ -2032,6 +2074,7 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
             Some(m) => m,
             None => continue,
         };
+        let metadata_backend = metadata.backend.clone();
 
         let mut modified = false;
 
@@ -2069,19 +2112,15 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
                         run.status = RunStatus::Completed;
                         metadata.is_reviewing = false;
 
-                        // Recover claude_session_id from JSONL so the session can
-                        // resume with full context (#209). This handles the case
-                        // where send_chat_message errored before persisting the
-                        // resume ID to the session index.
-                        if run.claude_session_id.is_none() {
-                            if let Some(sid) =
-                                extract_session_id_from_jsonl(app, &session_id, &run.run_id)
-                            {
-                                log::trace!(
-                                    "Recovered claude_session_id from JSONL for run {} in session {}",
-                                    run.run_id,
-                                    session_id
-                                );
+                        // Recover the provider-owned session id from JSONL so a
+                        // turn that completed while Jean was closed keeps its context.
+                        if let Some(sid) =
+                            extract_session_id_from_jsonl(app, &session_id, &run.run_id)
+                        {
+                            if run.backend.as_ref().unwrap_or(&metadata_backend) == &Backend::Kimi {
+                                run.kimi_session_id = Some(sid.clone());
+                                metadata.kimi_session_id = Some(sid);
+                            } else if run.claude_session_id.is_none() {
                                 run.claude_session_id = Some(sid.clone());
                                 metadata.claude_session_id = Some(sid);
                             }

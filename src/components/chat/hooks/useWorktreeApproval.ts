@@ -78,6 +78,7 @@ function getDefaultModelForBackend(
         selected_pi_model?: string | null
         selected_commandcode_model?: string | null
         selected_grok_model?: string | null
+        selected_kimi_model?: string | null
       }
     | undefined
 ): string {
@@ -98,6 +99,9 @@ function getDefaultModelForBackend(
   }
   if (backend === 'grok') {
     return preferences?.selected_grok_model ?? 'grok/grok-composer-2.5-fast'
+  }
+  if (backend === 'kimi') {
+    return preferences?.selected_kimi_model ?? 'kimi/default'
   }
   return preferences?.selected_model ?? 'claude-opus-4-8[1m]'
 }

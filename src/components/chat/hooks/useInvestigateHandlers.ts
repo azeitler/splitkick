@@ -477,6 +477,7 @@ export function useInvestigateHandlers({
         investigateBackend === 'opencode' ||
         investigateBackend === 'pi' ||
         investigateBackend === 'grok' ||
+        investigateBackend === 'kimi' ||
         investigateUseAdaptive
       const investigateThinkingLevel = usesEffortBackend
         ? undefined
@@ -718,14 +719,17 @@ export function useInvestigateHandlers({
       // Prefer Magic Prompt effort override (e.g. Medium for Grok). Never fall
       // through to Claude thinking levels for effort-based backends.
       const investigateEffort =
-        (preferences?.magic_prompt_efforts
-          ?.investigate_workflow_run_effort as EffortLevel | null | undefined) ??
+        (preferences?.magic_prompt_efforts?.investigate_workflow_run_effort as
+          | EffortLevel
+          | null
+          | undefined) ??
         (investigateUseAdaptive ? selectedEffortLevelRef.current : undefined)
       const usesEffortBackend =
         investigateBackend === 'codex' ||
         investigateBackend === 'opencode' ||
         investigateBackend === 'pi' ||
         investigateBackend === 'grok' ||
+        investigateBackend === 'kimi' ||
         investigateUseAdaptive
       const investigateThinkingLevel = usesEffortBackend
         ? undefined

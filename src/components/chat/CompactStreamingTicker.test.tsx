@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@/test/test-utils'
+import { fireEvent, render, screen } from '@/test/test-utils'
 import { CompactStreamingTicker } from './CompactStreamingTicker'
 import type { Question, QuestionAnswer } from '@/types/chat'
 
@@ -113,6 +113,42 @@ describe('CompactStreamingTicker', () => {
 
     expect(beforeSteer.querySelector('.animate-spin')).not.toBeInTheDocument()
     expect(afterSteer.querySelector('.animate-spin')).toBeInTheDocument()
+  })
+
+  it('does not repeat fallback text inside activity after a steered prompt', () => {
+    render(
+      <CompactStreamingTicker
+        {...baseProps}
+        streamingContent="also after reloading it is good"
+        contentBlocks={[
+          { type: 'tool_use', tool_call_id: 'grep-1' },
+          {
+            type: 'user_input',
+            text: 'also after reloading it is good',
+          },
+          { type: 'tool_use', tool_call_id: 'bash-1' },
+        ]}
+        toolCalls={[
+          {
+            id: 'grep-1',
+            name: 'Grep',
+            input: { pattern: 'streamingContent' },
+            output: 'match',
+          },
+          {
+            id: 'bash-1',
+            name: 'Bash',
+            input: { command: 'bun run test' },
+          },
+        ]}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: /Bash/ }))
+
+    expect(screen.getAllByText('also after reloading it is good')).toHaveLength(
+      1
+    )
   })
 
   it('summarizes fragmented PI text deltas as one meaningful line while streaming', () => {

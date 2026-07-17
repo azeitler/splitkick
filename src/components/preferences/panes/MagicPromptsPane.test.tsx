@@ -191,6 +191,27 @@ describe('MagicPromptsPane', () => {
     expect(screen.getByRole('option', { name: 'Grok' })).toBeInTheDocument()
   })
 
+  it('lists Codex second in the magic prompt backend menu', async () => {
+    installedBackendsMock = [
+      'claude',
+      'codex',
+      'opencode',
+      'cursor',
+      'pi',
+      'commandcode',
+      'grok',
+      'kimi',
+    ]
+    const user = userEvent.setup()
+    render(<MagicPromptsPane />)
+
+    await user.click(screen.getByRole('combobox', { name: 'Backend' }))
+
+    const options = screen.getAllByRole('option')
+    expect(options[0]).toHaveTextContent('Claude')
+    expect(options[1]).toHaveTextContent('Codex')
+  })
+
   it('shows the available Grok models when Grok is selected', async () => {
     installedBackendsMock = ['claude', 'grok']
     availableGrokModelsMock = [
