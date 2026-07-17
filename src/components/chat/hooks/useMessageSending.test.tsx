@@ -233,7 +233,7 @@ describe('useMessageSending Grok /goal', () => {
   it('passes /goal commands through to Grok without Codex RPC wrapping', async () => {
     const { result, sendMessage, executionModeRef } = renderUseMessageSending({
       selectedBackend: 'grok',
-      selectedModel: 'grok/grok-composer-2.5-fast',
+      selectedModel: 'grok/grok-4.5',
       inputValue: '/goal Ship the Grok feature',
     })
 
@@ -442,7 +442,7 @@ describe('useMessageSending Codex auto-steer', () => {
     vi.mocked(steerGrokTurn).mockResolvedValue(undefined)
     const { result, sendMessage } = renderUseMessageSending({
       selectedBackend: 'grok',
-      selectedModel: 'grok/grok-composer-2.5-fast',
+      selectedModel: 'grok/grok-4.5',
       inputValue: 'also inspect grok',
     })
 
@@ -564,7 +564,7 @@ describe('useMessageSending Codex auto-steer', () => {
   it('queues grok prompts instead of steering when grok auto-steer is disabled', async () => {
     const { result } = renderUseMessageSending({
       selectedBackend: 'grok',
-      selectedModel: 'grok/grok-composer-2.5-fast',
+      selectedModel: 'grok/grok-4.5',
       grokAutoSteer: false,
       inputValue: 'also inspect grok',
     })
@@ -584,7 +584,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { toast } = await import('sonner')
     const { result } = renderUseMessageSending({
       selectedBackend: 'grok',
-      selectedModel: 'grok/grok-composer-2.5-fast',
+      selectedModel: 'grok/grok-4.5',
       inputValue: 'also inspect grok',
     })
     useChatStore.setState({

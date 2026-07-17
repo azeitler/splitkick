@@ -6,6 +6,7 @@ import {
   DEFAULT_INVESTIGATE_SENTRY_ISSUE_PROMPT,
   defaultPreferences,
   GROK_DEFAULT_MAGIC_PROMPT_BACKENDS,
+  GROK_DEFAULT_MAGIC_PROMPT_MODELS,
   KIMI_DEFAULT_MAGIC_PROMPT_BACKENDS,
   PI_DEFAULT_MAGIC_PROMPT_BACKENDS,
   PI_DEFAULT_MAGIC_PROMPT_MODELS,
@@ -61,6 +62,10 @@ describe('magic prompt preference resolvers', () => {
     expect(GROK_DEFAULT_MAGIC_PROMPT_BACKENDS.investigate_issue_backend).toBe(
       'grok'
     )
+    expect(GROK_DEFAULT_MAGIC_PROMPT_MODELS.investigate_issue_model).toBe(
+      'grok/grok-4.5'
+    )
+    expect(defaultPreferences.selected_grok_model).toBe('grok/grok-4.5')
   })
 
   it('provides magic prompt defaults for Kimi Code', () => {

@@ -255,7 +255,7 @@ function getDefaultModelForBackend(
     return preferences?.selected_commandcode_model ?? 'commandcode/default'
   }
   if (backend === 'grok') {
-    return preferences?.selected_grok_model ?? 'grok/grok-composer-2.5-fast'
+    return preferences?.selected_grok_model ?? 'grok/grok-4.5'
   }
   if (backend === 'kimi') {
     return preferences?.selected_kimi_model ?? 'kimi/default'

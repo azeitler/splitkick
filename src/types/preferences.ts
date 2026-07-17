@@ -915,7 +915,7 @@ export const COMMANDCODE_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels =
 
 /** Grok preset for all magic prompts */
 export const GROK_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels =
-  makeMagicPromptModelsPreset('grok/grok-composer-2.5-fast')
+  makeMagicPromptModelsPreset('grok/grok-4.5')
 
 export const KIMI_DEFAULT_MAGIC_PROMPT_MODELS: MagicPromptModels =
   makeMagicPromptModelsPreset('kimi/default')
@@ -2146,7 +2146,7 @@ export const defaultPreferences: AppPreferences = {
   selected_cursor_model: 'cursor/auto', // Default Cursor model
   selected_pi_model: 'pi/sonnet', // Default PI model
   selected_commandcode_model: 'commandcode/default', // Default Command Code model
-  selected_grok_model: 'grok/grok-composer-2.5-fast', // Default Grok model
+  selected_grok_model: 'grok/grok-4.5', // Default Grok model
   selected_kimi_model: 'kimi/default', // Use Kimi Code's configured default model
   default_codex_reasoning_effort: 'high', // Default: high reasoning
   codex_goal_execution_mode: 'build', // Default: build mode for goals

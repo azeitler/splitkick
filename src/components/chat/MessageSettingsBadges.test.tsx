@@ -175,7 +175,7 @@ describe('MessageSettingsBadges', () => {
   it('formats Grok prompt model labels with backend prefix', () => {
     render(
       <MessageSettingsBadges
-        model="grok/grok-composer-2.5-fast"
+        model="grok/grok-4.5"
         executionMode="yolo"
         thinkingLevel={undefined}
         effortLevel="medium"
@@ -183,10 +183,10 @@ describe('MessageSettingsBadges', () => {
       />
     )
 
-    expect(screen.getByText('Grok · Composer 2.5 Fast')).toBeVisible()
+    expect(screen.getByText('Grok · 4.5')).toBeVisible()
     expect(screen.getByText('· Yolo')).toBeVisible()
     expect(screen.getByText('· Medium')).toBeVisible()
-    expect(screen.queryByText('Grok Composer 2.5 Fast')).toBeNull()
+    expect(screen.queryByText('Grok 4.5')).toBeNull()
   })
 
   it('formats Kimi Code prompt model labels with backend prefix', () => {

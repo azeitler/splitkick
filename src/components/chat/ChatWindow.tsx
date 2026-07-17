@@ -1345,7 +1345,7 @@ export function ChatWindow({
                     'commandcode/default')
                   : yoloBackend === 'grok'
                     ? (preferences?.selected_grok_model ??
-                      'grok/grok-composer-2.5-fast')
+                      'grok/grok-4.5')
                     : yoloBackend === 'kimi'
                       ? (preferences?.selected_kimi_model ?? 'kimi/default')
                       : selectedModelRef.current)
@@ -1536,7 +1536,7 @@ export function ChatWindow({
                     'commandcode/default')
                   : buildBackend === 'grok'
                     ? (preferences?.selected_grok_model ??
-                      'grok/grok-composer-2.5-fast')
+                      'grok/grok-4.5')
                     : buildBackend === 'kimi'
                       ? (preferences?.selected_kimi_model ?? 'kimi/default')
                       : selectedModelRef.current)
@@ -1810,7 +1810,7 @@ export function ChatWindow({
                     'commandcode/default')
                   : modeBackend === 'grok'
                     ? (preferences?.selected_grok_model ??
-                      'grok/grok-composer-2.5-fast')
+                      'grok/grok-4.5')
                     : modeBackend === 'kimi'
                       ? (preferences?.selected_kimi_model ?? 'kimi/default')
                       : selectedModelRef.current)

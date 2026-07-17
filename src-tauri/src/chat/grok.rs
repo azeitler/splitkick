@@ -477,12 +477,12 @@ fn strip_ansi(input: &str) -> String {
 }
 
 /// Default Grok model used when no Grok-specific model is supplied.
-pub const GROK_DEFAULT_MODEL: &str = "grok-composer-2.5-fast";
+pub const GROK_DEFAULT_MODEL: &str = "grok-4.5";
 
 fn raw_grok_model(model: Option<&str>) -> Option<&str> {
     match model.map(|value| value.strip_prefix("grok/").unwrap_or(value)) {
-        Some("grok-build-0.1") => Some("grok-composer-2.5-fast"),
-        Some("grok-composer-2.5-fast") => Some("grok-composer-2.5-fast"),
+        // Map legacy Grok CLI defaults to the currently available model.
+        Some("grok-build-0.1") | Some("grok-composer-2.5-fast") => Some("grok-4.5"),
         value => value,
     }
 }
@@ -3734,8 +3734,8 @@ mod tests {
         // Grok models pass through unchanged.
         assert_eq!(resolve_one_shot_grok_model("grok-build"), "grok-build");
         assert_eq!(
-            resolve_one_shot_grok_model("grok/grok-composer-2.5-fast"),
-            "grok/grok-composer-2.5-fast"
+            resolve_one_shot_grok_model("grok/grok-4.5"),
+            "grok/grok-4.5"
         );
     }
 
@@ -3840,7 +3840,7 @@ mod tests {
     fn build_grok_args_omits_undocumented_alt_screen_flag() {
         let args = build_grok_args(
             "hello",
-            Some("grok-composer-2.5-fast"),
+            Some("grok-4.5"),
             Some("plan"),
             None,
             Some("session-1"),
@@ -3853,7 +3853,7 @@ mod tests {
     fn build_grok_args_uses_resume_flag_for_existing_session() {
         let args = build_grok_args(
             "hello",
-            Some("grok-composer-2.5-fast"),
+            Some("grok-4.5"),
             Some("plan"),
             None,
             Some("grok-session-1"),
@@ -3903,7 +3903,7 @@ mod tests {
     fn build_grok_args_map_execution_modes() {
         let plan = build_grok_args(
             "hello",
-            Some("grok-composer-2.5-fast"),
+            Some("grok-4.5"),
             Some("plan"),
             None,
             Some("session-1"),
@@ -3916,7 +3916,7 @@ mod tests {
 
         let yolo = build_grok_args(
             "hello",
-            Some("grok-composer-2.5-fast"),
+            Some("grok-4.5"),
             Some("yolo"),
             None,
             Some("session-1"),
@@ -3930,7 +3930,7 @@ mod tests {
     fn build_grok_args_includes_effort_flag() {
         let args = build_grok_args(
             "hello",
-            Some("grok-composer-2.5-fast"),
+            Some("grok-4.5"),
             Some("plan"),
             Some("high"),
             Some("session-1"),
@@ -3947,7 +3947,7 @@ mod tests {
     fn build_grok_args_omits_effort_flag_when_none() {
         let args = build_grok_args(
             "hello",
-            Some("grok-composer-2.5-fast"),
+            Some("grok-4.5"),
             Some("plan"),
             None,
             Some("session-1"),
@@ -4321,7 +4321,7 @@ mod tests {
     #[test]
     fn build_grok_agent_args_use_acp_stdio() {
         let args = build_grok_agent_args(
-            Some("grok/grok-composer-2.5-fast"),
+            Some("grok/grok-4.5"),
             Some("yolo"),
             Some("high"),
         );
@@ -4331,7 +4331,7 @@ mod tests {
         assert!(args.contains(&"stdio".to_string()));
         assert!(!args.contains(&"-p".to_string()));
         assert!(args.contains(&"--model".to_string()));
-        assert!(args.contains(&"grok-composer-2.5-fast".to_string()));
+        assert!(args.contains(&"grok-4.5".to_string()));
         assert!(args.contains(&"--reasoning-effort".to_string()));
         assert!(args.contains(&"high".to_string()));
         assert!(args.contains(&"--always-approve".to_string()));

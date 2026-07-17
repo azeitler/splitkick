@@ -216,11 +216,6 @@ describe('MagicPromptsPane', () => {
     installedBackendsMock = ['claude', 'grok']
     availableGrokModelsMock = [
       { id: 'grok-4.5', label: 'Grok 4.5', isDefault: true },
-      {
-        id: 'grok-composer-2.5-fast',
-        label: 'Grok Composer 2.5 Fast',
-        isDefault: false,
-      },
     ]
     preferencesMock = {
       ...defaultPreferences,
@@ -240,9 +235,6 @@ describe('MagicPromptsPane', () => {
 
     expect(
       screen.getByRole('option', { name: /Grok 4\.5/ })
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('option', { name: /Grok Composer 2\.5 Fast/ })
     ).toBeInTheDocument()
     expect(screen.queryByText('No models found.')).toBeNull()
   })

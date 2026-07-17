@@ -16,19 +16,26 @@ fn shell_from_passwd(contents: &str, uid: u32) -> Option<String> {
     })
 }
 
+#[cfg(unix)]
+fn select_default_shell(inherited_shell: Option<&str>, account_shell: Option<String>) -> String {
+    account_shell
+        .or_else(|| inherited_shell.map(str::to_string))
+        .unwrap_or_else(|| "/bin/sh".to_string())
+}
+
 /// Returns the user's default shell path
-/// - Unix: Uses a valid $SHELL, then the passwd entry, then /bin/sh
+/// - Unix: Uses the passwd entry, then a valid $SHELL, then /bin/sh
 /// - Windows: Returns powershell.exe (for general shell tasks)
 #[cfg(unix)]
 pub fn get_default_shell() -> String {
-    env::var("SHELL")
+    let inherited_shell = env::var("SHELL")
         .ok()
-        .filter(|shell| !shell.trim().is_empty() && std::path::Path::new(shell).is_file())
-        .or_else(|| {
-            let passwd = std::fs::read_to_string("/etc/passwd").ok()?;
-            shell_from_passwd(&passwd, unsafe { libc::geteuid() })
-        })
-        .unwrap_or_else(|| "/bin/sh".to_string())
+        .filter(|shell| !shell.trim().is_empty() && std::path::Path::new(shell).is_file());
+    let account_shell = std::fs::read_to_string("/etc/passwd")
+        .ok()
+        .and_then(|passwd| shell_from_passwd(&passwd, unsafe { libc::geteuid() }));
+
+    select_default_shell(inherited_shell.as_deref(), account_shell)
 }
 
 /// Load the user's interactive login-shell PATH for a Linux headless service.
@@ -84,7 +91,15 @@ pub fn executable_exists(name: &str) -> bool {
 
 #[cfg(all(test, unix))]
 mod tests {
-    use super::shell_from_passwd;
+    use super::{select_default_shell, shell_from_passwd};
+
+    #[test]
+    fn prefers_account_shell_over_launcher_shell() {
+        assert_eq!(
+            select_default_shell(Some("/bin/sh"), Some("/bin/bash".to_string())),
+            "/bin/bash"
+        );
+    }
 
     #[test]
     fn finds_shell_for_uid_in_passwd() {

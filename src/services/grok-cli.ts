@@ -119,11 +119,10 @@ export function useAvailableGrokModels(options?: { enabled?: boolean }) {
       if (!isTauri()) {
         return [
           {
-            id: 'grok-composer-2.5-fast',
-            label: 'Grok Composer 2.5 Fast',
+            id: 'grok-4.5',
+            label: 'Grok 4.5',
             isDefault: true,
           },
-          { id: 'grok-build', label: 'Grok Build', isDefault: false },
         ]
       }
       try {
@@ -132,11 +131,10 @@ export function useAvailableGrokModels(options?: { enabled?: boolean }) {
         logger.error('Failed to list Grok models', { error })
         return [
           {
-            id: 'grok-composer-2.5-fast',
-            label: 'Grok Composer 2.5 Fast',
+            id: 'grok-4.5',
+            label: 'Grok 4.5',
             isDefault: true,
           },
-          { id: 'grok-build', label: 'Grok Build', isDefault: false },
         ]
       }
     },

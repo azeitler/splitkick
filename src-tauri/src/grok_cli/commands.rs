@@ -87,18 +87,11 @@ fn semver_parts(version: &str) -> Vec<u32> {
 }
 
 fn fallback_models() -> Vec<GrokModelInfo> {
-    vec![
-        GrokModelInfo {
-            id: "grok-composer-2.5-fast".to_string(),
-            label: "Grok Composer 2.5 Fast".to_string(),
-            is_default: true,
-        },
-        GrokModelInfo {
-            id: "grok-build".to_string(),
-            label: "Grok Build".to_string(),
-            is_default: false,
-        },
-    ]
+    vec![GrokModelInfo {
+        id: "grok-4.5".to_string(),
+        label: "Grok 4.5".to_string(),
+        is_default: true,
+    }]
 }
 
 fn format_model_label(id: &str) -> String {
@@ -742,21 +735,17 @@ mod tests {
         let output = br#"
 You are logged in with grok.com.
 
-Default model: grok-composer-2.5-fast
+Default model: grok-4.5
 
 Available models:
-  * grok-composer-2.5-fast (default)
-  - grok-build
+  * grok-4.5 (default)
 "#;
 
         let models = parse_models_output(output);
 
-        assert_eq!(models.len(), 2);
-        assert_eq!(models[0].id, "grok-composer-2.5-fast");
-        assert_eq!(models[0].label, "Grok Composer 2.5 Fast");
+        assert_eq!(models.len(), 1);
+        assert_eq!(models[0].id, "grok-4.5");
+        assert_eq!(models[0].label, "Grok 4.5");
         assert!(models[0].is_default);
-        assert_eq!(models[1].id, "grok-build");
-        assert_eq!(models[1].label, "Grok Build");
-        assert!(!models[1].is_default);
     }
 }
