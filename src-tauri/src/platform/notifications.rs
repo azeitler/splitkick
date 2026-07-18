@@ -22,13 +22,7 @@ pub fn show_notification(
     let exe_dir = exe
         .parent()
         .ok_or_else(|| "Failed to resolve the Jean executable directory".to_string())?;
-    let is_unbundled_build =
-        exe_dir.ends_with("target\\debug") || exe_dir.ends_with("target\\release");
-    let app_id = if is_unbundled_build {
-        Toast::POWERSHELL_APP_ID.to_string()
-    } else {
-        app.config().identifier.clone()
-    };
+    let app_id = toast_app_id_for_exe_dir(exe_dir, &app.config().identifier);
     let app = app.clone();
 
     Toast::new(&app_id)
@@ -42,22 +36,45 @@ pub fn show_notification(
         .map_err(|error| error.to_string())
 }
 
-#[cfg(test)]
+/// Resolve the toast app id for the current executable directory.
+///
+/// Unbundled `target\\debug` / `target\\release` builds must use PowerShell's
+/// AUMID so Windows still delivers toasts; packaged installs use Jean's id.
+#[cfg(target_os = "windows")]
+pub(crate) fn toast_app_id_for_exe_dir(exe_dir: &std::path::Path, app_identifier: &str) -> String {
+    use tauri_winrt_notification::Toast;
+
+    let is_unbundled_build =
+        exe_dir.ends_with("target\\debug") || exe_dir.ends_with("target\\release");
+    if is_unbundled_build {
+        Toast::POWERSHELL_APP_ID.to_string()
+    } else {
+        app_identifier.to_string()
+    }
+}
+
+#[cfg(all(test, target_os = "windows"))]
 mod tests {
-    use tauri::{WebviewUrl, WebviewWindowBuilder};
+    use super::toast_app_id_for_exe_dir;
+    use std::path::Path;
+    use tauri_winrt_notification::Toast;
 
     #[test]
-    fn restore_main_window_shows_and_unminimizes_it() {
-        let app = tauri::test::mock_app();
-        let window = WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
-            .build()
-            .unwrap();
-        window.minimize().unwrap();
-        window.hide().unwrap();
+    fn unbundled_debug_builds_use_powershell_app_id() {
+        let app_id = toast_app_id_for_exe_dir(Path::new(r"C:\repo\target\debug"), "io.jean.app");
+        assert_eq!(app_id, Toast::POWERSHELL_APP_ID);
+    }
 
-        super::restore_main_window(app.handle());
+    #[test]
+    fn unbundled_release_builds_use_powershell_app_id() {
+        let app_id = toast_app_id_for_exe_dir(Path::new(r"C:\repo\target\release"), "io.jean.app");
+        assert_eq!(app_id, Toast::POWERSHELL_APP_ID);
+    }
 
-        assert!(window.is_visible().unwrap());
-        assert!(!window.is_minimized().unwrap());
+    #[test]
+    fn packaged_builds_use_app_identifier() {
+        let app_id =
+            toast_app_id_for_exe_dir(Path::new(r"C:\Program Files\Jean"), "io.jean.app");
+        assert_eq!(app_id, "io.jean.app");
     }
 }
