@@ -1677,13 +1677,50 @@ export const useChatStore = create<ChatUIState>()(
 
       consumeStreamingReplayText: (sessionId, text) => {
         if (!text) return text
-        const blocks = get().streamingReplayContentBlocks[sessionId]
-        const first = blocks?.[0]
+        let blocks = get().streamingReplayContentBlocks[sessionId]
+        let first = blocks?.[0]
         if (!blocks?.length || !first) return text
 
+        // Bootstrap replay is capped and may begin after the snapshot prefix.
+        // Find the retained text inside a later snapshot block before deciding
+        // that this is genuinely new live output.
         if (first.type !== 'text') {
-          get().clearStreamingReplayContentBlocks(sessionId)
-          return text
+          const matchingIndex = blocks.findIndex(
+            block => block.type === 'text' && block.text.includes(text)
+          )
+          if (matchingIndex < 0) {
+            get().clearStreamingReplayContentBlocks(sessionId)
+            return text
+          }
+          blocks = blocks.slice(matchingIndex)
+          first = blocks[0]
+        } else if (
+          !first.text.startsWith(text) &&
+          !text.startsWith(first.text)
+        ) {
+          const matchingIndex = blocks.findIndex(
+            block => block.type === 'text' && block.text.includes(text)
+          )
+          if (matchingIndex < 0) {
+            get().clearStreamingReplayContentBlocks(sessionId)
+            return text
+          }
+          blocks = blocks.slice(matchingIndex)
+          first = blocks[0]
+        }
+
+        if (!first || first.type !== 'text') return text
+
+        const matchOffset = first.text.indexOf(text)
+        if (matchOffset > 0) {
+          const remaining = first.text.slice(matchOffset + text.length)
+          get().setStreamingReplayContentBlocks(
+            sessionId,
+            remaining
+              ? [{ type: 'text', text: remaining }, ...blocks.slice(1)]
+              : blocks.slice(1)
+          )
+          return ''
         }
 
         if (first.text.startsWith(text)) {
@@ -1747,6 +1784,21 @@ export const useChatStore = create<ChatUIState>()(
 
         if (first.type === 'tool_use' && first.tool_call_id === toolCallId) {
           get().setStreamingReplayContentBlocks(sessionId, blocks.slice(1))
+          return true
+        }
+
+        // HTTP bootstrap caps replay events, so the first retained event can
+        // start in the middle of the running snapshot. Resynchronize at the
+        // matching tool instead of abandoning dedupe and replaying the suffix.
+        const matchingIndex = blocks.findIndex(
+          block =>
+            block.type === 'tool_use' && block.tool_call_id === toolCallId
+        )
+        if (matchingIndex >= 0) {
+          get().setStreamingReplayContentBlocks(
+            sessionId,
+            blocks.slice(matchingIndex + 1)
+          )
           return true
         }
 

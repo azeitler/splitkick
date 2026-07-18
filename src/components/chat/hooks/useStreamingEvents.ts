@@ -875,11 +875,17 @@ export default function useStreamingEvents({
       const toolCalls = activeToolCalls[sessionId]
       const streamedBlocks = streamingContentBlocks[sessionId]
       const rawContent = authoritativeContent ?? streamedContent
+      // Keep structural blocks (tools, thinking, mid-turn steers). Replacing with
+      // a single authoritative text block would drop steered `user_input` bubbles
+      // after the turn finishes (Grok/Codex steer).
       const hasNonTextBlocks = (streamedBlocks ?? []).some(
-        b => b.type === 'tool_use' || b.type === 'thinking'
+        b =>
+          b.type === 'tool_use' ||
+          b.type === 'thinking' ||
+          b.type === 'user_input'
       )
       // Text-only turns: replace blocks with authoritative string (spaces intact).
-      // Tool/thinking turns: keep streamed block order; Grok hydration repairs text.
+      // Tool/thinking/steer turns: keep streamed block order; Grok hydration repairs text.
       const contentBlocks =
         authoritativeContent != null && !hasNonTextBlocks
           ? [{ type: 'text' as const, text: authoritativeContent }]

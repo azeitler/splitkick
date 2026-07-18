@@ -150,6 +150,7 @@ mod backend_tests {
         let backend: Backend = serde_json::from_str("\"kimi\"").unwrap();
         assert_eq!(backend, Backend::Kimi);
     }
+
 }
 
 /// Role of a chat message sender

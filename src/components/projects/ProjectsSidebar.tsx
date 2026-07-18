@@ -47,9 +47,10 @@ export function ProjectsSidebar() {
         )}
       </div>
 
-      {/* Footer - transparent buttons with hover background */}
+      {/* Footer - transparent buttons with hover background.
+          Extra bottom padding (plus safe-area) lifts controls off the screen edge. */}
       <div
-        className={`flex gap-1 p-1.5 pb-2 ${isNarrow ? 'flex-col' : 'items-center'}`}
+        className={`flex gap-1 p-1.5 pb-[calc(var(--safe-area-bottom)+1.25rem)] ${isNarrow ? 'flex-col' : 'items-center'}`}
       >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

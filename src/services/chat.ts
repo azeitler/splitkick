@@ -2798,7 +2798,7 @@ export async function steerPiTurn(
 
 /**
  * Inject a text-only user message into a running Grok ACP turn via
- * `x.ai/interject`. Throws when no active Grok turn/connection is available —
+ * `_x.ai/interject`. Throws when no active Grok turn/connection is available —
  * callers fall back to queue/cancel+send.
  */
 export async function steerGrokTurn(

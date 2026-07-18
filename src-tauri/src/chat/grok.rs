@@ -1121,6 +1121,23 @@ where
             }
         };
 
+        // Jean run-log markers (mid-turn steer). Must not fall through to
+        // extract_text_delta, which reads any top-level `text` field and would
+        // glue the steered prompt into assistant content (e.g. "who are youI'm").
+        if parsed.get("type").and_then(Value::as_str) == Some("steered_user_message") {
+            if let Some(text) = parsed
+                .get("text")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+            {
+                content_blocks.push(ContentBlock::UserInput {
+                    text: text.to_string(),
+                });
+            }
+            continue;
+        }
+
         if let Some(extracted_session_id) = extract_session_id(&parsed) {
             session_id = extracted_session_id;
         }
@@ -1241,12 +1258,62 @@ where
     })
 }
 
+/// True when assistant text looks like a finished plan (not a research preamble).
+///
+/// Grok plan-mode turns often start with "I'll draft a plan…" then tool research.
+/// If those tools fail or the turn ends early, that preamble must NOT become an
+/// ExitPlanMode approval gate — only real plan structure should.
+fn looks_like_plan_content(content: &str) -> bool {
+    let trimmed = content.trim();
+    if trimmed.chars().count() < 280 {
+        return false;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.contains("implementation plan")
+        || lower.contains("# plan")
+        || trimmed.contains("## ")
+        || trimmed.contains("### ")
+        || trimmed.contains("- [ ]")
+        || trimmed.contains("- [x]")
+    {
+        return true;
+    }
+    let structured_lines = trimmed
+        .lines()
+        .filter(|line| {
+            let s = line.trim_start();
+            if s.starts_with("- ") || s.starts_with("* ") {
+                return true;
+            }
+            // Numbered steps: "1. " / "12. "
+            let mut chars = s.chars();
+            let Some(first) = chars.next() else {
+                return false;
+            };
+            if !first.is_ascii_digit() {
+                return false;
+            }
+            let mut saw_digit = true;
+            for ch in chars.by_ref() {
+                if ch.is_ascii_digit() {
+                    saw_digit = true;
+                    continue;
+                }
+                return saw_digit && ch == '.' && chars.next() == Some(' ');
+            }
+            false
+        })
+        .count();
+    structured_lines >= 4
+}
+
 fn inject_synthetic_plan(response: &mut GrokResponse) -> bool {
     if response.content.trim().is_empty()
         || response
             .tool_calls
             .iter()
             .any(|tool| tool.name == GROK_SYNTHETIC_PLAN_TOOL_NAME)
+        || !looks_like_plan_content(&response.content)
     {
         return false;
     }
@@ -1355,10 +1422,14 @@ fn build_grok_agent_args(
     execution_mode: Option<&str>,
     effort_level: Option<&str>,
 ) -> Vec<String> {
-    let mut args = vec!["--no-auto-update".to_string()];
-    if matches!(execution_mode, Some("build") | Some("yolo")) {
-        args.push("--no-plan".to_string());
-    }
+    // Always disable Grok's native plan state for ACP stdio. Native exit_plan_mode
+    // requires the TUI approval surface Jean cannot show — leaving it enabled causes
+    // plan-mode turns to hang after research. Jean owns plan UX via tool permissions
+    // + synthetic ExitPlanMode on structured plan text.
+    let mut args = vec![
+        "--no-auto-update".to_string(),
+        "--no-plan".to_string(),
+    ];
     args.push("agent".to_string());
     args.push("--no-leader".to_string());
     if matches!(execution_mode, Some("build") | Some("yolo")) {
@@ -1383,7 +1454,14 @@ struct AcpTerminal {
     output_limit: usize,
 }
 
-/// Stdin + request-id counter shared so mid-turn `x.ai/interject` can write
+/// Grok ACP extension method for mid-turn user text injection.
+///
+/// Grok agent stdio exposes this as `_x.ai/interject` (underscore-prefixed
+/// extension, same family as `_x.ai/settings/update`). Bare `x.ai/interject`
+/// returns JSON-RPC -32601 Method not found.
+pub(crate) const GROK_ACP_INTERJECT_METHOD: &str = "_x.ai/interject";
+
+/// Stdin + request-id counter shared so mid-turn `_x.ai/interject` can write
 /// while the prompt loop holds the connection mutex for reading stdout.
 struct GrokAcpWriter {
     stdin: ChildStdin,
@@ -1478,7 +1556,7 @@ pub(crate) fn build_grok_interject_params(
 }
 
 /// Inject a text-only user message into a running Grok ACP turn via
-/// `x.ai/interject` (in-process) or the detached host socket (Unix).
+/// `_x.ai/interject` (in-process) or the detached host socket (Unix).
 /// Fire-and-forget on the wire: the prompt loop ignores non-matching JSON-RPC
 /// response ids, and Grok drains interjections at the next safe point.
 pub fn inject_grok_interjection(
@@ -1546,10 +1624,11 @@ pub fn inject_grok_interjection(
             .unwrap_or(0)
     );
     let params = build_grok_interject_params(&acp_session_id, text, &interjection_id);
-    let request_id = send_acp_request_on_writer(&handle.writer, "x.ai/interject", params)?;
+    let request_id =
+        send_acp_request_on_writer(&handle.writer, GROK_ACP_INTERJECT_METHOD, params)?;
     log::info!(
         "[GrokSteer] interject session={jean_session_id} acp_session={acp_session_id} \
-         request_id={request_id} text_len={}",
+         request_id={request_id} method={GROK_ACP_INTERJECT_METHOD} text_len={}",
         text.len()
     );
     Ok(())
@@ -1961,8 +2040,12 @@ pub fn run_grok_acp_host_from_args() -> Result<(), String> {
                                 message,
                                 &interjection_id,
                             );
-                            if send_acp_request_on_writer(&writer, "x.ai/interject", params)
-                                .is_err()
+                            if send_acp_request_on_writer(
+                                &writer,
+                                GROK_ACP_INTERJECT_METHOD,
+                                params,
+                            )
+                            .is_err()
                             {
                                 if let Ok(mut queue) = pending_interject.lock() {
                                     queue.push(message.to_string());
@@ -2046,7 +2129,7 @@ pub fn run_grok_acp_host_from_args() -> Result<(), String> {
                     .unwrap_or(0)
             );
             let params = build_grok_interject_params(&acp_session_id, &message, &interjection_id);
-            let _ = send_acp_request_on_writer(&writer, "x.ai/interject", params);
+            let _ = send_acp_request_on_writer(&writer, GROK_ACP_INTERJECT_METHOD, params);
         }
     }
 
@@ -2085,19 +2168,42 @@ pub fn run_grok_acp_host_from_args() -> Result<(), String> {
         }
         if value.get("method").is_some() && value.get("id").is_some() {
             // Client requests (fs/terminal/permission) — handle, don't persist.
+            // Do not abort the whole turn if one client request fails; Grok will
+            // otherwise hang waiting for a JSON-RPC response that never arrives.
             let mut writer_guard = writer
                 .lock()
                 .map_err(|_| "Failed to lock Grok ACP writer".to_string())?;
-            handle_acp_client_request(
+            if let Err(error) = handle_acp_client_request(
                 &mut writer_guard.stdin,
                 &value,
                 &mut terminals,
                 execution_mode,
-            )?;
+            ) {
+                eprintln!("[grok-acp-host] client request failed: {error}");
+                if let Some(id) = value.get("id") {
+                    let _ = send_acp_error(
+                        &mut writer_guard.stdin,
+                        id,
+                        &format!("Jean ACP client error: {error}"),
+                    );
+                }
+            }
             continue;
         }
         if grok_host_line_should_persist(trimmed) {
             host_write_output_line(&output, trimmed)?;
+        }
+        // Surface errors for fire-and-forget requests (e.g. interject) that are
+        // not the main session/prompt response — otherwise Method not found
+        // style failures look like a successful steer in Jean.
+        if let Some(resp_id) = value.get("id").and_then(Value::as_i64) {
+            if resp_id != prompt_request_id {
+                if let Some(error) = value.get("error") {
+                    eprintln!(
+                        "[grok-acp-host] non-prompt JSON-RPC error id={resp_id}: {error}"
+                    );
+                }
+            }
         }
         if value.get("id").and_then(Value::as_i64) == Some(prompt_request_id) {
             if let Some(error) = value.get("error") {
@@ -2202,7 +2308,18 @@ fn host_read_acp_response(
             let mut writer_guard = writer
                 .lock()
                 .map_err(|_| "Failed to lock Grok ACP writer".to_string())?;
-            handle_acp_client_request(&mut writer_guard.stdin, &value, terminals, execution_mode)?;
+            if let Err(error) =
+                handle_acp_client_request(&mut writer_guard.stdin, &value, terminals, execution_mode)
+            {
+                log::warn!("[Grok ACP] client request failed during {context}: {error}");
+                if let Some(id) = value.get("id") {
+                    let _ = send_acp_error(
+                        &mut writer_guard.stdin,
+                        id,
+                        &format!("Jean ACP client error: {error}"),
+                    );
+                }
+            }
             continue;
         }
         if value.get("id").and_then(Value::as_i64) == Some(request_id) {
@@ -2272,6 +2389,16 @@ pub fn tail_grok_output(
                     }
                     if let Some(usage) = partial.usage {
                         response.usage = Some(usage);
+                    }
+                    // Preserve mid-turn steered prompts in block order. Live UI
+                    // already gets `chat:steered` from steer_grok_turn; this keeps
+                    // content_blocks correct for finalization/history rebuild.
+                    for block in &partial.content_blocks {
+                        if let ContentBlock::UserInput { text } = block {
+                            response.content_blocks.push(ContentBlock::UserInput {
+                                text: text.clone(),
+                            });
+                        }
                     }
                     if !partial.content.is_empty() {
                         response.content.push_str(&partial.content);
@@ -2541,13 +2668,125 @@ fn selected_permission_option(params: &Value, allow: bool) -> Option<String> {
         ["reject_once", "reject_always"]
     };
     let options = params.get("options").and_then(Value::as_array)?;
-    preferred.iter().find_map(|kind| {
+    if let Some(id) = preferred.iter().find_map(|kind| {
         options
             .iter()
             .find(|option| option.get("kind").and_then(Value::as_str) == Some(*kind))
             .and_then(|option| option.get("optionId").and_then(Value::as_str))
             .map(ToOwned::to_owned)
+    }) {
+        return Some(id);
+    }
+
+    // Fallback: Grok occasionally omits standard kind values. Matching by prefix
+    // avoids returning no option (JSON-RPC error), which can hang the agent tool loop.
+    let prefixes: &[&str] = if allow {
+        &["allow"]
+    } else {
+        &["reject", "deny"]
+    };
+    options.iter().find_map(|option| {
+        let kind = option.get("kind").and_then(Value::as_str)?.to_ascii_lowercase();
+        if prefixes.iter().any(|prefix| kind.starts_with(prefix)) {
+            option
+                .get("optionId")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned)
+        } else {
+            None
+        }
     })
+}
+
+fn is_plan_execution_mode(execution_mode: Option<&str>) -> bool {
+    matches!(execution_mode, Some("plan") | None)
+}
+
+/// Whether a Grok tool name is safe to auto-approve in plan mode.
+fn is_plan_safe_tool_name(name: &str) -> bool {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "web_fetch" | "webfetch" | "webfetchtool" | "fetch" | "web_search" | "websearch"
+        | "websearchtool" | "read_file" | "read" | "grep" | "search" | "list_dir" | "list"
+        | "glob" | "semantic_search" | "open_page" | "browse" | "todo_write" | "todowrite"
+        | "todo_read" | "todoread" => true,
+        _ => false,
+    }
+}
+
+/// Plan mode may auto-approve read-oriented tools so research (WebFetch, Read,
+/// Grep, …) can run. Mutating kinds stay rejected; terminal/* and fs/write are
+/// still hard-blocked below regardless of permission outcome.
+fn plan_mode_permission_allowed(tool_call: Option<&Value>) -> bool {
+    let Some(tool_call) = tool_call else {
+        return false;
+    };
+
+    if let Some(kind) = tool_call.get("kind").and_then(Value::as_str) {
+        match kind {
+            "read" | "search" | "think" | "fetch" => return true,
+            "edit" | "delete" | "move" | "execute" | "switch_mode" => return false,
+            _ => {}
+        }
+    }
+
+    // Grok attaches read_only on tool meta for safe tools (e.g. web_fetch).
+    if let Some(meta) = tool_call.get("_meta") {
+        if let Some(tool_meta) = meta.get("x.ai/tool") {
+            if tool_meta.get("read_only").and_then(Value::as_bool) == Some(true) {
+                return true;
+            }
+            if let Some(name) = tool_meta.get("name").and_then(Value::as_str) {
+                if is_plan_safe_tool_name(name) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    if let Some(variant) = tool_call
+        .get("rawInput")
+        .or_else(|| tool_call.get("raw_input"))
+        .and_then(|input| {
+            input
+                .get("variant")
+                .or_else(|| input.get("name"))
+                .and_then(Value::as_str)
+        })
+    {
+        if is_plan_safe_tool_name(variant) {
+            return true;
+        }
+        if matches!(
+            map_grok_tool_name(variant),
+            Some("WebFetch" | "WebSearch" | "Read" | "Grep" | "List" | "TodoWrite")
+        ) {
+            return true;
+        }
+    }
+
+    if let Some(title) = tool_call.get("title").and_then(Value::as_str) {
+        if let Some(inferred) = infer_name_from_title(title) {
+            return matches!(
+                inferred,
+                "WebFetch" | "WebSearch" | "Read" | "Grep" | "List" | "TodoWrite"
+            );
+        }
+        if is_plan_safe_tool_name(title) {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Build/yolo auto-approve every tool permission. Plan mode only allows
+/// read-oriented tools (see [`plan_mode_permission_allowed`]).
+fn should_allow_acp_permission(execution_mode: Option<&str>, params: &Value) -> bool {
+    if !is_plan_execution_mode(execution_mode) {
+        return true;
+    }
+    let tool_call = params.get("toolCall").or_else(|| params.get("tool_call"));
+    plan_mode_permission_allowed(tool_call)
 }
 
 fn handle_acp_client_request(
@@ -2563,7 +2802,22 @@ fn handle_acp_client_request(
     let params = request.get("params").cloned().unwrap_or(Value::Null);
     match method {
         "session/request_permission" => {
-            let allow = !matches!(execution_mode, Some("plan") | None);
+            let allow = should_allow_acp_permission(execution_mode, &params);
+            let kind = params
+                .get("toolCall")
+                .or_else(|| params.get("tool_call"))
+                .and_then(|tc| tc.get("kind"))
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            let title = params
+                .get("toolCall")
+                .or_else(|| params.get("tool_call"))
+                .and_then(|tc| tc.get("title"))
+                .and_then(Value::as_str)
+                .unwrap_or("");
+            log::info!(
+                "[Grok ACP] request_permission allow={allow} mode={execution_mode:?} kind={kind} title={title}"
+            );
             let Some(option_id) = selected_permission_option(&params, allow) else {
                 return send_acp_error(stdin, id, "No matching permission option");
             };
@@ -2579,7 +2833,7 @@ fn handle_acp_client_request(
             )
         }
         "terminal/create" => {
-            if matches!(execution_mode, Some("plan") | None) {
+            if is_plan_execution_mode(execution_mode) {
                 return send_acp_error(stdin, id, "Terminal execution is disabled in plan mode");
             }
             let Some(command) = params.get("command").and_then(Value::as_str) else {
@@ -2737,7 +2991,7 @@ fn handle_acp_client_request(
             send_acp_response(stdin, id, serde_json::json!({ "content": selected }))
         }
         "fs/write_text_file" | "fs/writeTextFile" => {
-            if matches!(execution_mode, Some("plan") | None) {
+            if is_plan_execution_mode(execution_mode) {
                 return send_acp_error(stdin, id, "File writes are disabled in plan mode");
             }
             let Some(path) = params.get("path").and_then(Value::as_str) else {
@@ -2773,7 +3027,16 @@ fn grok_execution_mode_instruction(execution_mode: Option<&str>) -> Option<&'sta
              for a new plan. Do not ask for confirmation before routine implementation steps. \
              Ask the user directly if a required decision is missing.",
         ),
-        _ => None,
+        // Plan mode previously injected nothing. Without an explicit contract Grok often
+        // runs a research tool batch then stops mid-turn (or waits on native plan UI).
+        _ => Some(
+            "You are in PLAN MODE (read-only). Research with read/search/list/fetch tools only. \
+             Do NOT run shell/terminal commands, edit or write files, or call enter_plan_mode / \
+             exit_plan_mode — Jean owns plan approval. When research is enough, finish the turn \
+             by writing a complete structured implementation plan as markdown with a clear title \
+             (e.g. \"# … Implementation Plan\"), section headings (##), and concrete task steps \
+             (numbered or checkbox lists). Do not implement the work in this mode.",
+        ),
     }
 }
 
@@ -2868,12 +3131,21 @@ fn read_acp_response(
                 .writer
                 .lock()
                 .map_err(|_| "Failed to lock Grok ACP writer".to_string())?;
-            handle_acp_client_request(
+            if let Err(error) = handle_acp_client_request(
                 &mut writer.stdin,
                 &value,
                 &mut connection.terminals,
                 execution_mode,
-            )?;
+            ) {
+                log::warn!("[Grok ACP] client request failed during {context}: {error}");
+                if let Some(id) = value.get("id") {
+                    let _ = send_acp_error(
+                        &mut writer.stdin,
+                        id,
+                        &format!("Jean ACP client error: {error}"),
+                    );
+                }
+            }
             continue;
         }
         if value.get("id").and_then(Value::as_i64) == Some(request_id) {
@@ -3195,12 +3467,21 @@ fn send_grok_acp_prompt(
                 .writer
                 .lock()
                 .map_err(|_| "Failed to lock Grok ACP writer".to_string())?;
-            handle_acp_client_request(
+            if let Err(error) = handle_acp_client_request(
                 &mut writer.stdin,
                 &value,
                 &mut connection.terminals,
                 execution_mode,
-            )?;
+            ) {
+                log::warn!("[Grok ACP] client request failed during prompt: {error}");
+                if let Some(id) = value.get("id") {
+                    let _ = send_acp_error(
+                        &mut writer.stdin,
+                        id,
+                        &format!("Jean ACP client error: {error}"),
+                    );
+                }
+            }
             continue;
         }
         if let Some(session_id) = extract_acp_session_id(&value) {
@@ -3803,6 +4084,138 @@ mod tests {
             .is_some_and(|message| message.contains("stream did not contain valid UTF-8")));
     }
 
+    fn permission_options() -> Value {
+        serde_json::json!([
+            { "optionId": "allow-once", "name": "Allow once", "kind": "allow_once" },
+            { "optionId": "reject-once", "name": "Reject", "kind": "reject_once" }
+        ])
+    }
+
+    #[test]
+    fn plan_mode_allows_web_fetch_permission() {
+        let params = serde_json::json!({
+            "sessionId": "sess-1",
+            "toolCall": {
+                "toolCallId": "call-1",
+                "title": "Fetch: https://example.com/docs",
+                "kind": "fetch",
+                "rawInput": { "variant": "WebFetch", "url": "https://example.com/docs" },
+                "_meta": {
+                    "x.ai/tool": {
+                        "name": "web_fetch",
+                        "kind": "web_fetch",
+                        "read_only": true
+                    }
+                }
+            },
+            "options": permission_options(),
+        });
+        assert!(should_allow_acp_permission(Some("plan"), &params));
+
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "method": "session/request_permission",
+            "params": params,
+        });
+        let mut output = Vec::new();
+        let mut terminals = HashMap::new();
+        handle_acp_client_request(&mut output, &request, &mut terminals, Some("plan")).unwrap();
+        let response: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(
+            response["result"]["outcome"]["optionId"].as_str(),
+            Some("allow-once")
+        );
+    }
+
+    #[test]
+    fn plan_mode_rejects_execute_permission() {
+        let params = serde_json::json!({
+            "sessionId": "sess-1",
+            "toolCall": {
+                "toolCallId": "call-2",
+                "title": "Execute `rm -rf /tmp/x`",
+                "kind": "execute",
+                "rawInput": { "variant": "Bash", "command": "rm -rf /tmp/x" }
+            },
+            "options": permission_options(),
+        });
+        assert!(!should_allow_acp_permission(Some("plan"), &params));
+
+        let request = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 8,
+            "method": "session/request_permission",
+            "params": params,
+        });
+        let mut output = Vec::new();
+        let mut terminals = HashMap::new();
+        handle_acp_client_request(&mut output, &request, &mut terminals, Some("plan")).unwrap();
+        let response: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(
+            response["result"]["outcome"]["optionId"].as_str(),
+            Some("reject-once")
+        );
+    }
+
+    #[test]
+    fn yolo_mode_allows_execute_permission() {
+        let params = serde_json::json!({
+            "sessionId": "sess-1",
+            "toolCall": {
+                "toolCallId": "call-3",
+                "kind": "execute",
+                "title": "Execute `ls`"
+            },
+            "options": permission_options(),
+        });
+        assert!(should_allow_acp_permission(Some("yolo"), &params));
+    }
+
+    #[test]
+    fn inject_synthetic_plan_skips_research_preamble() {
+        let mut response = GrokResponse {
+            content: "I'll draft a full Hermes integration plan with Hermes profiles as a first-class requirement. Gathering Jean's backend patterns and Hermes profile docs so the plan matches both systems.".to_string(),
+            session_id: "s1".into(),
+            tool_calls: vec![],
+            content_blocks: vec![],
+            cancelled: false,
+            usage: None,
+        };
+        assert!(!inject_synthetic_plan(&mut response));
+        assert!(response.tool_calls.is_empty());
+    }
+
+    #[test]
+    fn inject_synthetic_plan_accepts_structured_plan() {
+        let plan = r#"# Hermes Backend Integration Plan
+
+## Overview
+Integrate Hermes as a first-class Jean AI backend with profile support.
+
+## Tasks
+1. Add backend enum and preferences
+2. Wire Rust execution module
+3. Add auth/install CLI commands
+4. Update chat toolbar and settings UI
+
+### Testing
+- [ ] Unit tests for profile resolution
+- [ ] E2E session create with Hermes backend
+"#;
+        let mut response = GrokResponse {
+            content: plan.to_string(),
+            session_id: "s1".into(),
+            tool_calls: vec![],
+            content_blocks: vec![],
+            cancelled: false,
+            usage: None,
+        };
+        assert!(inject_synthetic_plan(&mut response));
+        assert_eq!(response.tool_calls.len(), 1);
+        assert_eq!(response.tool_calls[0].name, "ExitPlanMode");
+    }
+
     #[test]
     fn parse_grok_streaming_json_text_chunks_and_session_id() {
         let input = r#"
@@ -3896,6 +4309,17 @@ mod tests {
         assert_eq!(
             params.get("interjectionId").and_then(Value::as_str),
             Some("jean-steer-1")
+        );
+    }
+
+    #[test]
+    fn grok_acp_interject_method_uses_underscore_extension_prefix() {
+        // Grok agent stdio rejects bare `x.ai/interject` with Method not found;
+        // the live extension method is underscore-prefixed.
+        assert_eq!(GROK_ACP_INTERJECT_METHOD, "_x.ai/interject");
+        assert!(
+            GROK_ACP_INTERJECT_METHOD.starts_with("_x.ai/"),
+            "expected underscore-prefixed xAI ACP extension method"
         );
     }
 
@@ -4340,12 +4764,45 @@ mod tests {
     }
 
     #[test]
-    fn build_grok_agent_args_only_allow_native_plan_mode_in_plan() {
+    fn build_grok_agent_args_disables_native_plan_in_all_modes() {
         let plan = build_grok_agent_args(None, Some("plan"), None);
         let build = build_grok_agent_args(None, Some("build"), None);
+        let yolo = build_grok_agent_args(None, Some("yolo"), None);
 
-        assert!(!plan.contains(&"--no-plan".to_string()));
+        // ACP cannot surface Grok native exit_plan_mode TUI — always --no-plan.
+        assert!(plan.contains(&"--no-plan".to_string()));
         assert!(build.contains(&"--no-plan".to_string()));
+        assert!(yolo.contains(&"--no-plan".to_string()));
+        assert!(!plan.contains(&"--always-approve".to_string()));
+        assert!(build.contains(&"--always-approve".to_string()));
+    }
+
+    #[test]
+    fn build_grok_message_includes_plan_mode_contract() {
+        let message = build_grok_message("plan the feature", None, Some("plan"));
+        assert!(message.contains("PLAN MODE"));
+        assert!(message.contains("Do NOT run shell/terminal"));
+        assert!(message.contains("exit_plan_mode"));
+        assert!(message.contains("Implementation Plan") || message.contains("structured"));
+        assert!(message.ends_with("plan the feature"));
+    }
+
+    #[test]
+    fn selected_permission_option_falls_back_to_kind_prefix() {
+        let params = serde_json::json!({
+            "options": [
+                { "optionId": "ok", "kind": "allow_for_session" },
+                { "optionId": "nope", "kind": "deny_once" }
+            ]
+        });
+        assert_eq!(
+            selected_permission_option(&params, true).as_deref(),
+            Some("ok")
+        );
+        assert_eq!(
+            selected_permission_option(&params, false).as_deref(),
+            Some("nope")
+        );
     }
 
     #[test]
@@ -4431,6 +4888,96 @@ mod tests {
         let message = parse_grok_run_to_message(&lines, &run).unwrap();
         assert_eq!(message.content, "Survived restart");
         assert_eq!(message.id, "a1");
+    }
+
+    #[test]
+    fn parse_grok_stream_keeps_steered_user_message_out_of_assistant_text() {
+        // Jean writes steered prompts into the same JSONL the host tails.
+        // extract_text_delta used to treat `{"type":"steered_user_message","text":...}`
+        // as an agent_message_chunk, gluing the steer into the reply.
+        let input = r#"
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Waiting 10 seconds."}}}}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"tool_call","toolCallId":"t-bash","title":"Bash","rawInput":{"command":"sleep 10","variant":"Bash"}}}}
+{"type":"steered_user_message","text":"who are you"}
+{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"I'm Grok 4.5"}}}}
+"#;
+        let response =
+            parse_grok_stream_inner(BufReader::new(input.as_bytes()), None).unwrap();
+
+        assert_eq!(response.content, "Waiting 10 seconds.I'm Grok 4.5");
+        assert!(
+            !response.content.contains("who are you"),
+            "steered prompt must not leak into assistant content blob: {}",
+            response.content
+        );
+        assert_eq!(response.content_blocks.len(), 4);
+        assert!(matches!(
+            &response.content_blocks[0],
+            ContentBlock::Text { text } if text == "Waiting 10 seconds."
+        ));
+        assert!(matches!(
+            &response.content_blocks[1],
+            ContentBlock::ToolUse { tool_call_id } if tool_call_id == "t-bash"
+        ));
+        assert!(matches!(
+            &response.content_blocks[2],
+            ContentBlock::UserInput { text } if text == "who are you"
+        ));
+        assert!(matches!(
+            &response.content_blocks[3],
+            ContentBlock::Text { text } if text == "I'm Grok 4.5"
+        ));
+    }
+
+    #[test]
+    fn parse_grok_run_to_message_preserves_steered_user_messages() {
+        let lines = vec![
+            r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"Before"}}}}"#.to_string(),
+            r#"{"type":"steered_user_message","text":"also check tests"}"#.to_string(),
+            r#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"s","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"After"}}}}"#.to_string(),
+            r#"{"type":"result","session_id":"s"}"#.to_string(),
+        ];
+        let run = RunEntry {
+            run_id: "run-steer".to_string(),
+            user_message_id: "u-steer".to_string(),
+            user_message: "start".to_string(),
+            model: Some("grok-build".to_string()),
+            execution_mode: Some("build".to_string()),
+            thinking_level: None,
+            effort_level: None,
+            backend: Some(super::super::types::Backend::Grok),
+            custom_profile_name: None,
+            started_at: 1,
+            ended_at: Some(2),
+            status: super::super::types::RunStatus::Completed,
+            assistant_message_id: Some("a-steer".to_string()),
+            cancelled: false,
+            recovered: false,
+            claude_session_id: None,
+            pid: Some(42),
+            usage: None,
+            codex_thread_id: None,
+            codex_turn_id: None,
+            cursor_chat_id: None,
+            grok_session_id: Some("s".to_string()),
+            kimi_session_id: None,
+        };
+        let message = parse_grok_run_to_message(&lines, &run).unwrap();
+        assert_eq!(message.content, "BeforeAfter");
+        assert!(!message.content.contains("also check tests"));
+        assert_eq!(message.content_blocks.len(), 3);
+        assert!(matches!(
+            &message.content_blocks[0],
+            ContentBlock::Text { text } if text == "Before"
+        ));
+        assert!(matches!(
+            &message.content_blocks[1],
+            ContentBlock::UserInput { text } if text == "also check tests"
+        ));
+        assert!(matches!(
+            &message.content_blocks[2],
+            ContentBlock::Text { text } if text == "After"
+        ));
     }
 
     fn grok_acp_idle_lifecycle_keeps_recent_idle_connections_alive() {

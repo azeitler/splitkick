@@ -1649,9 +1649,13 @@ fn plan_mode_content_waits_for_approval(
     has_content: bool,
     has_plan_tool: bool,
 ) -> bool {
+    // Grok is intentionally excluded: incomplete research preambles (e.g. after a
+    // rejected WebFetch in plan mode) must not park the session on plan approval.
+    // Grok waits only when a real/synthetic ExitPlanMode tool is present
+    // (`has_blocking_tool` path via inject_synthetic_plan on plan-like content).
     matches!(
         backend,
-        Backend::Codex | Backend::Opencode | Backend::Grok | Backend::Kimi
+        Backend::Codex | Backend::Opencode | Backend::Kimi
     ) && execution_mode == Some("plan")
         && has_content
         && !has_plan_tool
@@ -8863,7 +8867,7 @@ pub async fn steer_pi_turn(
 }
 
 /// Inject a text-only user message into a running Grok ACP turn via
-/// `x.ai/interject`. Throws when no active Grok process/connection is
+/// `_x.ai/interject`. Throws when no active Grok process/connection is
 /// available — callers fall back to queue/cancel+send.
 #[tauri::command]
 pub async fn steer_grok_turn(
@@ -9286,7 +9290,7 @@ async fn drain_queue_into_pi_turn(app: &AppHandle, worktree_id: &str, session_id
 }
 
 /// Drain steerable queued messages into a running Grok ACP turn via
-/// `x.ai/interject` (when `grok_auto_steer_enabled` is on, default true).
+/// `_x.ai/interject` (when `grok_auto_steer_enabled` is on, default true).
 async fn drain_queue_into_grok_turn(app: &AppHandle, worktree_id: &str, session_id: &str) {
     let auto_steer = crate::load_preferences_sync(app)
         .map(|p| p.grok_auto_steer_enabled)
@@ -9369,7 +9373,7 @@ async fn drain_queue_into_grok_turn(app: &AppHandle, worktree_id: &str, session_
 
 /// Fire-and-forget Grok steer drain — called once the ACP session is ready
 /// and a prompt is in flight, so text-only prompts queued before the turn
-/// became steerable get injected via `x.ai/interject`.
+/// became steerable get injected via `_x.ai/interject`.
 pub(crate) fn trigger_grok_queue_steer(app: AppHandle, worktree_id: String, session_id: String) {
     tauri::async_runtime::spawn(async move {
         drain_queue_into_grok_turn(&app, &worktree_id, &session_id).await;
@@ -9857,6 +9861,13 @@ mod tests {
         ));
         assert!(!plan_mode_content_waits_for_approval(
             &Backend::Commandcode,
+            Some("plan"),
+            true,
+            false
+        ));
+        // Grok research preambles must not auto-wait; only ExitPlanMode tools do.
+        assert!(!plan_mode_content_waits_for_approval(
+            &Backend::Grok,
             Some("plan"),
             true,
             false

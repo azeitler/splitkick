@@ -682,6 +682,7 @@ fn default_kimi_model() -> String {
     "kimi/default".to_string()
 }
 
+
 fn default_grok_cli_source() -> String {
     default_cli_source()
 }
@@ -1985,6 +1986,7 @@ pub fn is_grok_model(model: &str) -> bool {
 pub fn is_kimi_model(model: &str) -> bool {
     model.starts_with("kimi/")
 }
+
 
 /// Returns true if the given model string identifies a Codex model.
 /// Codex model IDs contain "codex" or start with "gpt-", but NOT OpenCode models.
