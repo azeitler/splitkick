@@ -35,6 +35,7 @@ import { UnreadBell } from '@/components/unread/UnreadBell'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
 import { LinuxWindowControls } from './LinuxWindowControls'
+import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
 
 interface TitleBarProps {
   className?: string
@@ -150,6 +151,7 @@ export function TitleBar({
               <TooltipContent>GitHub</TooltipContent>
             </Tooltip>
           )}
+          {native && <RemoteConnectionsDialog />}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

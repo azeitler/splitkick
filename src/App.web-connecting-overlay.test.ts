@@ -5,7 +5,7 @@ describe('web connecting overlay', () => {
   const source = readFileSync(`${process.cwd()}/src/App.tsx`, 'utf8')
 
   it('uses the same opaque theme background as initial loading', () => {
-    expect(source).toContain('!isNativeApp() && !wsConnected')
+    expect(source).toContain('webBackend && !wsConnected && !wsAuthError')
     expect(source).toContain(
       'fixed inset-0 z-[70] flex items-center justify-center bg-background'
     )
