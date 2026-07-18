@@ -75,13 +75,13 @@ sudo ./scripts/install-jean-server.sh --no-service -y
 
 Defaults:
 
-| Item | System install | `--user-install` |
-| --- | --- | --- |
-| Binary | `/usr/local/bin/jean-server` | `~/.local/bin/jean-server` |
-| Env file | `/etc/jean-server.env` | `~/.config/jean-server/jean-server.env` |
-| Service | `jean-server.service` (system) | `jean-server.service` (user) |
-| Host / port | `127.0.0.1:3456` | same |
-| Token | auto-generated (printed once) | same |
+| Item        | System install                 | `--user-install`                        |
+| ----------- | ------------------------------ | --------------------------------------- |
+| Binary      | `/usr/local/bin/jean-server`   | `~/.local/bin/jean-server`              |
+| Env file    | `/etc/jean-server.env`         | `~/.config/jean-server/jean-server.env` |
+| Service     | `jean-server.service` (system) | `jean-server.service` (user)            |
+| Host / port | `127.0.0.1:3456`               | same                                    |
+| Token       | auto-generated (printed once)  | same                                    |
 
 Re-running the installer reuses an existing `JEAN_TOKEN` from the env file unless
 you pass `--token`. Data under `JEAN_DATA_DIR` / the default app-data directory is
@@ -127,15 +127,15 @@ bun run install:local:server
 
 ## Options and environment
 
-| CLI | Environment | Default |
-| --- | --- | --- |
-| `--headless` | `JEAN_HEADLESS=1` | off |
-| `--host <addr>` | `JEAN_HOST` | saved preference, normally `127.0.0.1` |
-| `--port <port>` | `JEAN_PORT` | `3456` |
-| `--token <token>` | `JEAN_TOKEN` | saved/generated token |
-| `--no-token` | `JEAN_NO_TOKEN=1` | off |
-| `--allow-unsafe-no-token` | `JEAN_ALLOW_UNSAFE_NO_TOKEN=1` | off |
-| n/a | `JEAN_ALLOWED_ORIGINS` | same-origin only |
+| CLI                       | Environment                    | Default                                |
+| ------------------------- | ------------------------------ | -------------------------------------- |
+| `--headless`              | `JEAN_HEADLESS=1`              | off                                    |
+| `--host <addr>`           | `JEAN_HOST`                    | saved preference, normally `127.0.0.1` |
+| `--port <port>`           | `JEAN_PORT`                    | `3456`                                 |
+| `--token <token>`         | `JEAN_TOKEN`                   | saved/generated token                  |
+| `--no-token`              | `JEAN_NO_TOKEN=1`              | off                                    |
+| `--allow-unsafe-no-token` | `JEAN_ALLOW_UNSAFE_NO_TOKEN=1` | off                                    |
+| n/a                       | `JEAN_ALLOWED_ORIGINS`         | same-origin only                       |
 
 By default a token is required (using `--token`, `JEAN_TOKEN`, or an auto-generated one); pass `--no-token` to disable it. `--token` and `--no-token` are mutually exclusive. Jean rejects `--no-token` with `--host 0.0.0.0` or `--host ::` unless `--allow-unsafe-no-token` is also set.
 
@@ -245,15 +245,15 @@ jean --headless --host 100.x.y.z --port 3456 --token "$JEAN_TOKEN"
 Nothing is installed in the background — apply only runs after you click
 **Update & restart**.
 
-| Piece | Behavior |
-| --- | --- |
-| Manifest | `server-latest.json` on the latest GitHub release |
-| Check | Web Access calls `check_server_update` after connect and shows a toast if newer |
-| Apply | User clicks **Update & restart** → `apply_server_update` |
-| Verify | SHA-256 from the release manifest |
-| Restart | `systemctl restart jean-server.service` when that unit is loaded (or `JEAN_SERVER_SERVICE`), otherwise re-exec |
-| Containers | Not supported — update the Docker/GHCR image instead |
-| Active sessions | Apply is refused while chat sessions are running |
+| Piece           | Behavior                                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------------------------- |
+| Manifest        | `server-latest.json` on the latest GitHub release                                                              |
+| Check           | Web Access calls `check_server_update` after connect and shows a toast if newer                                |
+| Apply           | User clicks **Update & restart** → `apply_server_update`                                                       |
+| Verify          | SHA-256 from the release manifest                                                                              |
+| Restart         | `systemctl restart jean-server.service` when that unit is loaded (or `JEAN_SERVER_SERVICE`), otherwise re-exec |
+| Containers      | Not supported — update the Docker/GHCR image instead                                                           |
+| Active sessions | Apply is refused while chat sessions are running                                                               |
 
 ## Security recommendations
 

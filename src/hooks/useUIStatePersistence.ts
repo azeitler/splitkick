@@ -15,7 +15,11 @@ import { isLocalBackend } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import type { BrowserTab } from '@/types/browser'
-import type { PendingImage, PendingTextFile, ReadTextResponse } from '@/types/chat'
+import type {
+  PendingImage,
+  PendingTextFile,
+  ReadTextResponse,
+} from '@/types/chat'
 import type {
   PendingImageDraft,
   PendingTextFileDraft,
@@ -57,7 +61,6 @@ function serializePendingTextFiles(
   }
   return out
 }
-
 
 // Simple debounce implementation
 function debounce<T extends (...args: Parameters<T>) => void>(
@@ -421,11 +424,11 @@ export function useUIStatePersistence() {
     const pendingTextFilesDraft = uiState.pending_text_files ?? {}
     if (Object.keys(pendingTextFilesDraft).length > 0) {
       const restoredTextFiles: Record<string, PendingTextFile[]> = {}
-      const needsContentHydration: Array<{
+      const needsContentHydration: {
         sessionId: string
         id: string
         path: string
-      }> = []
+      }[] = []
 
       for (const [sessionId, textFiles] of Object.entries(
         pendingTextFilesDraft
@@ -464,9 +467,12 @@ export function useUIStatePersistence() {
         void (async () => {
           for (const item of needsContentHydration) {
             try {
-              const result = await invoke<ReadTextResponse>('read_pasted_text', {
-                path: item.path,
-              })
+              const result = await invoke<ReadTextResponse>(
+                'read_pasted_text',
+                {
+                  path: item.path,
+                }
+              )
               useChatStore
                 .getState()
                 .updatePendingTextFile(

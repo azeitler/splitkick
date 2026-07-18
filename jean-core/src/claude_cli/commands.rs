@@ -1158,9 +1158,9 @@ async fn refresh_claude_access_token(
         Ok(false) => log::info!(
             "Claude token refresh: using rotated token in-memory only (disk login changed)"
         ),
-        Err(e) => log::warn!(
-            "Claude token refresh succeeded but failed to persist credentials: {e}"
-        ),
+        Err(e) => {
+            log::warn!("Claude token refresh succeeded but failed to persist credentials: {e}")
+        }
     }
 
     log::trace!("Claude token refresh: success");
@@ -1230,10 +1230,7 @@ pub async fn get_claude_usage() -> Result<ClaudeUsageSnapshot, String> {
     get_claude_usage_with_source("ui").await
 }
 
-fn claude_usage_request(
-    client: &reqwest::Client,
-    access_token: &str,
-) -> reqwest::RequestBuilder {
+fn claude_usage_request(client: &reqwest::Client, access_token: &str) -> reqwest::RequestBuilder {
     client
         .get(CLAUDE_USAGE_URL)
         .bearer_auth(access_token.trim())
@@ -1327,9 +1324,7 @@ pub(crate) async fn get_claude_usage_with_source(
         || response.status() == reqwest::StatusCode::FORBIDDEN
     {
         if let Some(stale) = load_stale_cached_claude_usage(now_secs) {
-            log::warn!(
-                "Claude usage auth failed; serving stale cache (source={request_source})"
-            );
+            log::warn!("Claude usage auth failed; serving stale cache (source={request_source})");
             return Ok(stale);
         }
         return Err("Claude token expired. Run `claude` to log in again.".to_string());
