@@ -251,7 +251,8 @@ fn extract_server_binary(archive_content: &[u8]) -> Result<Vec<u8>, String> {
         .entries()
         .map_err(|e| format!("Failed to read server update tar entries: {e}"))?
     {
-        let mut entry = entry.map_err(|e| format!("Failed to read server update tar entry: {e}"))?;
+        let mut entry =
+            entry.map_err(|e| format!("Failed to read server update tar entry: {e}"))?;
         if entry.header().entry_type().is_dir() {
             continue;
         }
@@ -472,7 +473,9 @@ fn current_platform_key() -> Result<&'static str, String> {
     match std::env::consts::ARCH {
         "x86_64" => Ok("linux-amd64"),
         "aarch64" => Ok("linux-arm64"),
-        other => Err(format!("Unsupported architecture for server updates: {other}")),
+        other => Err(format!(
+            "Unsupported architecture for server updates: {other}"
+        )),
     }
 }
 

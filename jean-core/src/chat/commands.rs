@@ -9469,7 +9469,10 @@ mod tests {
                 "isDirectory": false
             }],
         });
-        assert!(queued_message_is_steerable_for_backend(&grok_with_file, "grok"));
+        assert!(queued_message_is_steerable_for_backend(
+            &grok_with_file,
+            "grok"
+        ));
         assert!(queued_message_supports_any_steering(&grok_with_file));
 
         // Pasted images are path refs too — steerable for Grok.

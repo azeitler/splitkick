@@ -572,9 +572,7 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
       'fallback-panel',
       'fallback-session',
     ])
-    expect(terminalState.activeTerminalIds['worktree-1']).toBe(
-      'fallback-panel'
-    )
+    expect(terminalState.activeTerminalIds['worktree-1']).toBe('fallback-panel')
     expect(terminalState.runningTerminals.has('fallback-panel')).toBe(true)
     expect(terminalState.runningTerminals.has('fallback-session')).toBe(true)
     expect(terminalState.terminalPanelOpen['worktree-1']).toBe(true)
