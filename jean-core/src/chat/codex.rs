@@ -2366,6 +2366,10 @@ fn process_server_notification(
                 .and_then(|e| e.get("message"))
                 .and_then(|v| v.as_str())
                 .unwrap_or("Unknown Codex error");
+            if codex_error_will_retry(params) {
+                log::warn!("Codex request failed and will retry: {error_msg}");
+                return;
+            }
             let user_error = format_codex_user_error(error_msg);
             let _ = app.emit_all(
                 "chat:error",
@@ -2376,18 +2380,19 @@ fn process_server_notification(
                 },
             );
             *error_emitted = true;
-            let will_retry = params
-                .get("willRetry")
-                .and_then(|v| v.as_bool())
-                .unwrap_or(false);
-            if !will_retry {
-                *completed = true;
-            }
+            *completed = true;
         }
         _ => {
             log::debug!("[codex-notify] Unhandled notification: {method}");
         }
     }
+}
+
+fn codex_error_will_retry(params: &serde_json::Value) -> bool {
+    params
+        .get("willRetry")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 /// Normalize app-server camelCase item types to snake_case for backward compatibility
@@ -4637,6 +4642,17 @@ mod tests {
             classify_codex_resume(&interrupted, Some("turn-1"), true),
             CodexResumeDisposition::Interrupted
         );
+    }
+
+    #[test]
+    fn retryable_codex_errors_are_not_terminal() {
+        assert!(codex_error_will_retry(&serde_json::json!({
+            "willRetry": true
+        })));
+        assert!(!codex_error_will_retry(&serde_json::json!({
+            "willRetry": false
+        })));
+        assert!(!codex_error_will_retry(&serde_json::json!({})));
     }
 
     #[test]
