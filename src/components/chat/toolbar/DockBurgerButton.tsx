@@ -233,25 +233,28 @@ export function DockBurgerButton({
           )}
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
-
-        <DropdownMenuItem
-          onClick={() =>
-            useUIStore.getState().openPreferencesPane('mcp-servers')
-          }
-        >
-          <Plug
-            className={
-              activeMcpCount > 0
-                ? 'mr-2 h-4 w-4 text-emerald-600 dark:text-emerald-400'
-                : 'mr-2 h-4 w-4'
-            }
-          />
-          MCP Servers
-          {activeMcpCount > 0 && (
-            <DropdownMenuShortcut>{activeMcpCount}</DropdownMenuShortcut>
-          )}
-        </DropdownMenuItem>
+        {!isMobile && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() =>
+                useUIStore.getState().openPreferencesPane('mcp-servers')
+              }
+            >
+              <Plug
+                className={
+                  activeMcpCount > 0
+                    ? 'mr-2 h-4 w-4 text-emerald-600 dark:text-emerald-400'
+                    : 'mr-2 h-4 w-4'
+                }
+              />
+              MCP Servers
+              {activeMcpCount > 0 && (
+                <DropdownMenuShortcut>{activeMcpCount}</DropdownMenuShortcut>
+              )}
+            </DropdownMenuItem>
+          </>
+        )}
 
         {showUsageSection && (
           <>

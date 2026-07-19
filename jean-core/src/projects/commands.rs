@@ -2854,6 +2854,22 @@ pub async fn create_worktree_from_existing_branch(
 
             log::trace!("Background: Git worktree created successfully from existing branch");
 
+            // Link an open PR for the checked-out branch before emitting the
+            // completed worktree so every client receives the linked metadata.
+            let detected_pr = if pr_context_clone.is_none() {
+                match find_open_pr_for_branch(&app_clone, &worktree_path_clone) {
+                    Ok(pr) => pr,
+                    Err(error) => {
+                        log::debug!(
+                            "Background: Could not detect open PR for {branch_name_clone}: {error}"
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
             // Write issue context file if provided
             if let Some(ctx) = &issue_context_clone {
                 log::trace!(
@@ -3107,8 +3123,11 @@ pub async fn create_worktree_from_existing_branch(
                     setup_script,
                     setup_success,
                     session_type: SessionType::Worktree,
-                    pr_number: pr_context_clone.as_ref().map(|ctx| ctx.number),
-                    pr_url: None,
+                    pr_number: pr_context_clone
+                        .as_ref()
+                        .map(|ctx| ctx.number)
+                        .or_else(|| detected_pr.as_ref().map(|pr| pr.pr_number)),
+                    pr_url: detected_pr.as_ref().map(|pr| pr.pr_url.clone()),
                     issue_number: issue_context_clone.as_ref().map(|ctx| ctx.number),
                     linear_issue_identifier: linear_context_clone
                         .as_ref()
@@ -6076,6 +6095,61 @@ pub struct DetectPrResponse {
     pub title: String,
 }
 
+fn parse_open_pr_list(output: &[u8]) -> Result<Option<DetectPrResponse>, String> {
+    let prs: Vec<serde_json::Value> = serde_json::from_slice(output)
+        .map_err(|e| format!("Failed to parse open PR response: {e}"))?;
+    let Some(pr) = prs.first() else {
+        return Ok(None);
+    };
+
+    let pr_number = pr["number"].as_u64().unwrap_or(0) as u32;
+    let pr_url = pr["url"].as_str().unwrap_or("").to_string();
+    if pr_number == 0 || pr_url.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(DetectPrResponse {
+        pr_number,
+        pr_url,
+        title: pr["title"].as_str().unwrap_or("").to_string(),
+    }))
+}
+
+fn find_open_pr_for_branch(
+    app: &AppHandle,
+    worktree_path: &str,
+) -> Result<Option<DetectPrResponse>, String> {
+    let current_branch = git::get_current_branch(worktree_path)?;
+    let gh = resolve_gh_binary(app);
+    let output = gh_command(&gh, worktree_path)
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--head",
+            &current_branch,
+            "--json",
+            "number,url,title",
+            "--limit",
+            "1",
+        ])
+        .output()
+        .map_err(|e| format!("Failed to check open PRs for branch {current_branch}: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if stderr.contains("gh auth login") || stderr.contains("authentication") {
+            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
+        }
+        return Err(format!(
+            "Failed to check open PRs for branch {current_branch}: {stderr}"
+        ));
+    }
+
+    parse_open_pr_list(&output.stdout)
+}
+
 /// Response from manually linking a PR to a worktree.
 #[derive(Serialize, Clone)]
 pub struct LinkWorktreePrResponse {
@@ -6158,57 +6232,13 @@ pub async fn detect_open_pr_for_branch(
     worktree_path: String,
 ) -> Result<Option<DetectPrResponse>, String> {
     log::trace!("Detecting open PR for branch at {worktree_path}");
-
-    let current_branch = git::get_current_branch(&worktree_path)?;
-    let repo = get_repo_identifier(&worktree_path)?;
-    let gh = resolve_gh_binary(&app);
-    let view_output = gh_command(&gh, &worktree_path)
-        .args([
-            "api",
-            "--method",
-            "GET",
-            &format!("repos/{}/{}/pulls", repo.owner, repo.repo),
-            "-f",
-            "state=open",
-            "-f",
-            &format!("head={}:{}", repo.owner, current_branch),
-            "-f",
-            "per_page=1",
-        ])
-        .output()
-        .map_err(|e| format!("Failed to run gh api: {e}"))?;
-
-    if !view_output.status.success() {
-        let stderr = String::from_utf8_lossy(&view_output.stderr);
-        if stderr.contains("gh auth login") || stderr.contains("authentication") {
-            return Err("GitHub CLI not authenticated. Run 'gh auth login' first.".to_string());
-        }
-        return Err(format!("Failed to detect open PR for branch: {stderr}"));
-    }
-
-    if let Ok(view_json) = serde_json::from_slice::<serde_json::Value>(&view_output.stdout) {
-        if let Some(pr) = view_json.as_array().and_then(|items| items.first()) {
-            let pr_number = pr["number"].as_u64().unwrap_or(0) as u32;
-            let pr_url = pr["html_url"].as_str().unwrap_or("").to_string();
-            let title = pr["title"].as_str().unwrap_or("").to_string();
-
-            if pr_number > 0 && !pr_url.is_empty() {
-                return Ok(Some(DetectPrResponse {
-                    pr_number,
-                    pr_url,
-                    title,
-                }));
-            }
-        }
-    }
-
-    Ok(None)
+    find_open_pr_for_branch(&app, &worktree_path)
 }
 
 /// Detect and link an existing PR for the current branch of a worktree.
 ///
-/// Runs `gh pr view` to check if a PR exists. If found, saves the PR info
-/// to the worktree and returns the PR details. Returns None if no PR exists.
+/// Checks explicitly for an open PR. If found, saves the PR info to the
+/// worktree and returns the PR details. Returns None if no open PR exists.
 pub async fn detect_and_link_pr(
     app: AppHandle,
     worktree_id: String,
@@ -6216,38 +6246,21 @@ pub async fn detect_and_link_pr(
 ) -> Result<Option<DetectPrResponse>, String> {
     log::trace!("Detecting PR for worktree {worktree_id} at {worktree_path}");
 
-    let gh = resolve_gh_binary(&app);
-    let view_output = gh_command(&gh, &worktree_path)
-        .args(["pr", "view", "--json", "number,url,title"])
-        .output();
+    if let Some(response) = find_open_pr_for_branch(&app, &worktree_path)? {
+        log::trace!(
+            "Found existing PR #{} for worktree {worktree_id}",
+            response.pr_number
+        );
 
-    if let Ok(view_out) = view_output {
-        if view_out.status.success() {
-            if let Ok(view_json) = serde_json::from_slice::<serde_json::Value>(&view_out.stdout) {
-                let pr_number = view_json["number"].as_u64().unwrap_or(0) as u32;
-                let pr_url = view_json["url"].as_str().unwrap_or("").to_string();
-                let title = view_json["title"].as_str().unwrap_or("").to_string();
-
-                if pr_number > 0 && !pr_url.is_empty() {
-                    log::trace!("Found existing PR #{pr_number} for worktree {worktree_id}");
-
-                    // Save PR info to worktree
-                    if let Ok(mut data) = load_projects_data(&app) {
-                        if let Some(wt) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) {
-                            wt.pr_number = Some(pr_number);
-                            wt.pr_url = Some(pr_url.clone());
-                            let _ = save_projects_data(&app, &data);
-                        }
-                    }
-
-                    return Ok(Some(DetectPrResponse {
-                        pr_number,
-                        pr_url,
-                        title,
-                    }));
-                }
+        if let Ok(mut data) = load_projects_data(&app) {
+            if let Some(wt) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) {
+                wt.pr_number = Some(response.pr_number);
+                wt.pr_url = Some(response.pr_url.clone());
+                let _ = save_projects_data(&app, &data);
             }
         }
+
+        return Ok(Some(response));
     }
 
     log::trace!("No PR found for worktree {worktree_id}");
@@ -12939,6 +12952,19 @@ mod tests {
             args.join(" "),
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    #[test]
+    fn parse_open_pr_list_returns_first_matching_pr() {
+        let response = parse_open_pr_list(
+            br#"[{"number":42,"url":"https://github.com/acme/app/pull/42","title":"Ship it"}]"#,
+        )
+        .expect("parse response")
+        .expect("open PR");
+
+        assert_eq!(response.pr_number, 42);
+        assert_eq!(response.pr_url, "https://github.com/acme/app/pull/42");
+        assert_eq!(response.title, "Ship it");
     }
 
     #[test]

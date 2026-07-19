@@ -164,10 +164,7 @@ export function useSwipeBack({
       // Velocity in the gesture direction (positive = completing the gesture)
       const velocity =
         edgeRef.current === 'right' ? -signedVelocity : signedVelocity
-      const currentProgress = progressDelta(
-        startXRef.current,
-        lastXRef.current
-      )
+      const currentProgress = progressDelta(startXRef.current, lastXRef.current)
       const shouldComplete =
         currentProgress > containerWidth * threshold || velocity > 500
 
@@ -187,8 +184,10 @@ export function useSwipeBack({
             firedRef.current = false
           }, 200)
         } else {
-          // Overlay open / no visual: fire immediately; sheet animates itself
+          // Overlay open: hand off to the drawer and clear any finger-tracked
+          // content offset immediately.
           onSwipeBackRef.current()
+          if (showVisualRef.current) setTranslateX(0)
           setIsSwiping(false)
           firedRef.current = false
         }

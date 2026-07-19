@@ -66,9 +66,6 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     null
   )
   const [stackingFromPR, setStackingFromPR] = useState<number | null>(null)
-  const [stackingFromBranch, setStackingFromBranch] = useState<string | null>(
-    null
-  )
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -78,7 +75,6 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
       setCreatingFromBranch(null)
       setCreatingFromGhsaId(null)
       setStackingFromPR(null)
-      setStackingFromBranch(null)
       setSearchQuery('')
       setSelectedItemIndex(0)
 
@@ -864,7 +860,7 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
   )
 
   // =========================================================================
-  // Stack handlers: create new worktree branched off a PR head or a branch
+  // Stack handler: create a new worktree branched off a PR head
   // =========================================================================
 
   const handleStackOnPR = useCallback(
@@ -894,33 +890,6 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     [selectedProjectId, createWorktree, handleOpenChange]
   )
 
-  const handleStackOnBranch = useCallback(
-    (branchName: string, background = false) => {
-      if (!selectedProjectId) {
-        toast.error('No project selected')
-        return
-      }
-      setStackingFromBranch(branchName)
-      if (background)
-        useUIStore.getState().incrementPendingBackgroundCreations()
-      createWorktree.mutate(
-        {
-          projectId: selectedProjectId,
-          baseBranch: branchName,
-          background,
-        },
-        {
-          onError: () => setStackingFromBranch(null),
-          onSuccess: () => {
-            if (background) setStackingFromBranch(null)
-          },
-        }
-      )
-      if (!background) handleOpenChange(false)
-    },
-    [selectedProjectId, createWorktree, handleOpenChange]
-  )
-
   return {
     creatingFromNumber,
     creatingFromLinearId,
@@ -928,7 +897,6 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     creatingFromBranch,
     creatingFromGhsaId,
     stackingFromPR,
-    stackingFromBranch,
     handleOpenChange,
     handleCreateWorktree,
     handleBaseSession,
@@ -938,7 +906,6 @@ export function useNewWorktreeHandlers(data: Data, setters: Setters) {
     handleSelectPR,
     handleSelectPRAndInvestigate,
     handleStackOnPR,
-    handleStackOnBranch,
     handleSelectSecurityAlert,
     handleSelectSecurityAlertAndInvestigate,
     handleSelectAdvisory,

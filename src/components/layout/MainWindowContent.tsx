@@ -90,6 +90,7 @@ export function MainWindowContent({
     onSwipeBack: swipeOpenTerminalCallback,
     enabled: canSwipeOpenTerminal,
     animateToEnd: false,
+    visualFeedback: true,
     edge: 'right',
   })
 
@@ -108,6 +109,7 @@ export function MainWindowContent({
     onSwipeBack: swipeOpenSidebarCallback,
     enabled: canSwipeOpenSidebar,
     animateToEnd: false,
+    visualFeedback: true,
   })
 
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
@@ -235,8 +237,7 @@ export function MainWindowContent({
           className="relative h-full w-full"
           data-testid="mobile-swipe-chat"
           style={
-            isMobile &&
-            (swipeBack.isSwiping || swipeBack.translateX !== 0)
+            isMobile && (swipeBack.isSwiping || swipeBack.translateX !== 0)
               ? {
                   transform: `translateX(${swipeBack.translateX}px)`,
                   transition: swipeBack.transitionStyle || undefined,
@@ -250,6 +251,19 @@ export function MainWindowContent({
             ref={isMobile ? swipeOpenTerminal.containerRef : undefined}
             className="relative h-full min-h-0 w-full"
             data-testid="mobile-swipe-open-terminal"
+            style={
+              isMobile &&
+              (swipeOpenTerminal.isSwiping ||
+                swipeOpenTerminal.translateX !== 0)
+                ? {
+                    transform: `translateX(${swipeOpenTerminal.translateX}px)`,
+                    transition: swipeOpenTerminal.transitionStyle || undefined,
+                    willChange: swipeOpenTerminal.isSwiping
+                      ? 'transform'
+                      : undefined,
+                  }
+                : undefined
+            }
           >
             {isMobile && (
               <>
@@ -284,8 +298,20 @@ export function MainWindowContent({
           ref={isMobile ? swipeOpenSidebar.containerRef : undefined}
           className="relative flex h-full w-full min-w-0 flex-col"
           data-testid="mobile-swipe-open-sidebar"
+          style={
+            isMobile &&
+            (swipeOpenSidebar.isSwiping || swipeOpenSidebar.translateX !== 0)
+              ? {
+                  transform: `translateX(${swipeOpenSidebar.translateX}px)`,
+                  transition: swipeOpenSidebar.transitionStyle || undefined,
+                  willChange: swipeOpenSidebar.isSwiping
+                    ? 'transform'
+                    : undefined,
+                }
+              : undefined
+          }
         >
-          {/* Edge affordance only — no content translate; sheet animates in */}
+          {/* Edge affordance fades into direct, finger-tracked content motion. */}
           {canSwipeOpenSidebar && (
             <div
               className="pointer-events-none absolute left-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-r-full bg-muted-foreground/20"

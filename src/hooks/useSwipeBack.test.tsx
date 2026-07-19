@@ -10,6 +10,7 @@ function TouchProbe({
   edgeWidth = 24,
   threshold = 0.35,
   edge = 'left',
+  visualFeedback,
 }: {
   onSwipeBack: () => void
   enabled?: boolean
@@ -17,6 +18,7 @@ function TouchProbe({
   edgeWidth?: number
   threshold?: number
   edge?: 'left' | 'right'
+  visualFeedback?: boolean
 }) {
   const swipe = useSwipeBack({
     onSwipeBack,
@@ -25,6 +27,7 @@ function TouchProbe({
     edgeWidth,
     threshold,
     edge,
+    visualFeedback,
   })
   return (
     <div
@@ -115,6 +118,33 @@ describe('useSwipeBack', () => {
     })
 
     expect(onSwipeBack).toHaveBeenCalledTimes(1)
+  })
+
+  it('resets finger-tracked feedback after opening an overlay', () => {
+    const onSwipeBack = vi.fn()
+    const { getByTestId } = render(
+      <TouchProbe
+        onSwipeBack={onSwipeBack}
+        animateToEnd={false}
+        visualFeedback
+      />
+    )
+    const el = getByTestId('swipe-target')
+    Object.defineProperty(el, 'offsetWidth', { value: 400, configurable: true })
+
+    act(() => {
+      fireTouch(el, 'touchstart', 8)
+      fireTouch(el, 'touchmove', 180)
+    })
+    expect(el).toHaveAttribute('data-translate', '172')
+
+    act(() => {
+      fireTouch(el, 'touchend', 180)
+    })
+
+    expect(onSwipeBack).toHaveBeenCalledTimes(1)
+    expect(el).toHaveAttribute('data-translate', '0')
+    expect(el).toHaveAttribute('data-swiping', 'false')
   })
 
   it('does not fire when swipe starts outside the edge zone', () => {
@@ -231,11 +261,7 @@ describe('useSwipeBack', () => {
   it('fires on right-edge swipe left when edge is right', () => {
     const onSwipeBack = vi.fn()
     const { getByTestId } = render(
-      <TouchProbe
-        onSwipeBack={onSwipeBack}
-        animateToEnd={false}
-        edge="right"
-      />
+      <TouchProbe onSwipeBack={onSwipeBack} animateToEnd={false} edge="right" />
     )
     const el = getByTestId('swipe-target')
     Object.defineProperty(el, 'offsetWidth', { value: 400, configurable: true })

@@ -104,6 +104,24 @@ describe('MainWindowContent mobile swipe open sidebar', () => {
     expect(useUIStore.getState().leftSidebarVisible).toBe(true)
   })
 
+  it('tracks the finger while swiping the left sidebar open', async () => {
+    render(<MainWindowContent />)
+
+    const target = await screen.findByTestId('mobile-swipe-open-sidebar')
+    Object.defineProperty(target, 'offsetWidth', {
+      value: 400,
+      configurable: true,
+    })
+
+    act(() => {
+      fireTouch(target, 'touchstart', 8)
+      fireTouch(target, 'touchmove', 120)
+    })
+
+    expect(target).toHaveStyle({ transform: 'translateX(112px)' })
+    expect(useUIStore.getState().leftSidebarVisible).toBe(false)
+  })
+
   it('does not open sidebar when already visible', async () => {
     useUIStore.setState({ leftSidebarVisible: true })
     render(<MainWindowContent />)
@@ -206,6 +224,24 @@ describe('MainWindowContent mobile swipe terminal', () => {
 
     expect(useTerminalStore.getState().terminalPanelOpen['wt-1']).toBe(true)
     expect(useTerminalStore.getState().terminalVisible).toBe(true)
+  })
+
+  it('tracks the finger while swiping the terminal open', async () => {
+    render(<MainWindowContent />)
+
+    const target = await screen.findByTestId('mobile-swipe-open-terminal')
+    Object.defineProperty(target, 'offsetWidth', {
+      value: 400,
+      configurable: true,
+    })
+
+    act(() => {
+      fireTouch(target, 'touchstart', 392)
+      fireTouch(target, 'touchmove', 280)
+    })
+
+    expect(target).toHaveStyle({ transform: 'translateX(-112px)' })
+    expect(useTerminalStore.getState().terminalVisible).toBe(false)
   })
 
   it('closes the terminal on left-edge swipe right when open', async () => {

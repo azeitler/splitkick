@@ -218,6 +218,18 @@ describe('model option helpers', () => {
       'include clickable links when available'
     )
   })
+
+  it('requires GitHub issue and discussion discovery after changes', () => {
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+      'GitHub Issue and Discussion Discovery'
+    )
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+      "search the current repository's existing GitHub issues and discussions"
+    )
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+      'Include the results in both the main response and the `## Recap`'
+    )
+  })
 })
 
 describe('preferences service', () => {

@@ -221,6 +221,7 @@ export function SessionChatModal({
     onSwipeBack: swipeOpenTerminalCallback,
     enabled: canSwipeOpenTerminal,
     animateToEnd: false,
+    visualFeedback: true,
     edge: 'right',
   })
   // Shared host for left-edge (back/close terminal) and right-edge (open terminal)
@@ -965,11 +966,26 @@ export function SessionChatModal({
         )}
         data-testid="session-chat-modal-swipe"
         style={
-          isMobile && (swipe.isSwiping || swipe.translateX !== 0)
+          isMobile &&
+          (swipe.isSwiping ||
+            swipe.translateX !== 0 ||
+            swipeOpenTerminal.isSwiping ||
+            swipeOpenTerminal.translateX !== 0)
             ? {
-                transform: `translateX(${swipe.translateX}px)`,
-                transition: swipe.transitionStyle || undefined,
-                willChange: swipe.isSwiping ? 'transform' : undefined,
+                transform: `translateX(${
+                  swipeOpenTerminal.isSwiping ||
+                  swipeOpenTerminal.translateX !== 0
+                    ? swipeOpenTerminal.translateX
+                    : swipe.translateX
+                }px)`,
+                transition:
+                  swipeOpenTerminal.transitionStyle ||
+                  swipe.transitionStyle ||
+                  undefined,
+                willChange:
+                  swipe.isSwiping || swipeOpenTerminal.isSwiping
+                    ? 'transform'
+                    : undefined,
               }
             : undefined
         }

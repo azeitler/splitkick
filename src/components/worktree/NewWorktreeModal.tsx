@@ -402,9 +402,7 @@ export function NewWorktreeModal() {
                 selectedIndex={selectedItemIndex}
                 setSelectedIndex={setSelectedItemIndex}
                 onSelectBranch={handlers.handleSelectBranch}
-                onStackBranch={handlers.handleStackOnBranch}
                 creatingFromBranch={handlers.creatingFromBranch}
-                stackingFromBranch={handlers.stackingFromBranch}
                 searchInputRef={searchInputRef}
               />
             )}
