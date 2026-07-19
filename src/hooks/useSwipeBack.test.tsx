@@ -20,7 +20,7 @@ function TouchProbe({
   edge?: 'left' | 'right'
   visualFeedback?: boolean
 }) {
-  const swipe = useSwipeBack({
+  const { containerRef, translateX, isSwiping } = useSwipeBack({
     onSwipeBack,
     enabled,
     animateToEnd,
@@ -31,10 +31,10 @@ function TouchProbe({
   })
   return (
     <div
-      ref={swipe.containerRef}
+      ref={containerRef}
       data-testid="swipe-target"
-      data-translate={swipe.translateX}
-      data-swiping={swipe.isSwiping ? 'true' : 'false'}
+      data-translate={translateX}
+      data-swiping={isSwiping ? 'true' : 'false'}
       style={{ width: 400, height: 600 }}
     />
   )
@@ -213,22 +213,22 @@ describe('useSwipeBack', () => {
     const onOuter = vi.fn()
 
     function Nested() {
-      const inner = useSwipeBack({
+      const { containerRef: innerRef } = useSwipeBack({
         onSwipeBack: onInner,
         animateToEnd: false,
       })
-      const outer = useSwipeBack({
+      const { containerRef: outerRef } = useSwipeBack({
         onSwipeBack: onOuter,
         animateToEnd: false,
       })
       return (
         <div
-          ref={outer.containerRef}
+          ref={outerRef}
           data-testid="outer"
           style={{ width: 400, height: 600 }}
         >
           <div
-            ref={inner.containerRef}
+            ref={innerRef}
             data-testid="inner"
             style={{ width: 400, height: 600 }}
           />

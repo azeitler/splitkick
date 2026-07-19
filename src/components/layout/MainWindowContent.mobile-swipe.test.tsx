@@ -26,7 +26,7 @@ vi.mock('@/hooks/useInstalledBackends', () => ({
 vi.mock('@/lib/idle', () => ({
   scheduleIdleWork: (fn: () => void) => {
     fn()
-    return () => {}
+    return () => undefined
   },
 }))
 
