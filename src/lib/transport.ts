@@ -125,6 +125,23 @@ export function convertProjectFileSrc(filePath: string): string {
 /** Unlisten function type — compatible with Tauri's UnlistenFn. */
 export type UnlistenFn = () => void
 
+function containNativeUnlisten(
+  unlisten: () => void | Promise<void>
+): UnlistenFn {
+  let active = true
+  return () => {
+    if (!active) return
+    active = false
+    try {
+      void Promise.resolve(unlisten()).catch(() => {
+        // Page teardown can remove Tauri's listener registry first.
+      })
+    } catch {
+      // Page teardown can remove Tauri's listener registry first.
+    }
+  }
+}
+
 const DESKTOP_ONLY_COMMANDS = new Set([
   'set_window_vibrancy',
   'send_native_notification',
@@ -243,7 +260,8 @@ export async function listen<T>(
 
   if (!usesWebSocketBackend()) {
     const { listen: tauriListen } = await import('@tauri-apps/api/event')
-    return tauriListen<T>(event, handler)
+    const unlisten = await tauriListen<T>(event, handler)
+    return containNativeUnlisten(unlisten)
   }
   return wsTransport.listen<T>(event, handler)
 }
@@ -256,7 +274,8 @@ export async function listenLocal<T>(
 ): Promise<() => void> {
   if (!isNativeApp()) return listen(event, handler)
   const { listen: tauriListen } = await import('@tauri-apps/api/event')
-  return tauriListen<T>(event, handler)
+  const unlisten = await tauriListen<T>(event, handler)
+  return containNativeUnlisten(unlisten)
 }
 
 /**

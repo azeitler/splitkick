@@ -1084,9 +1084,14 @@ function App() {
           const { sendingSessionIds, removeSendingSession } =
             useChatStore.getState()
           const resumableIds = new Set(resumable.map(r => r.session_id))
-          for (const sessionId of Object.keys(sendingSessionIds)) {
-            if (!resumableIds.has(sessionId)) {
-              removeSendingSession(sessionId)
+          // Web bootstrap already restored the registry's authoritative running
+          // set. Recovery can omit a live run when its metadata snapshot is
+          // temporarily unavailable, so only reconcile stale local state here.
+          if (!webBackend) {
+            for (const sessionId of Object.keys(sendingSessionIds)) {
+              if (!resumableIds.has(sessionId)) {
+                removeSendingSession(sessionId)
+              }
             }
           }
 

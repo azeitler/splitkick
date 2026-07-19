@@ -148,6 +148,22 @@ describe('transport bootstrap', () => {
     expect(MockWebSocket.instances).toHaveLength(0)
   })
 
+  it('makes native listener cleanup idempotent and contains teardown errors', async () => {
+    const cleanup = vi
+      .fn()
+      .mockRejectedValue(new Error('listener already gone'))
+    const tauriListen = vi.fn().mockResolvedValue(cleanup)
+    vi.doMock('@tauri-apps/api/event', () => ({ listen: tauriListen }))
+    const transport = await loadNativeTransportModule(vi.fn())
+
+    const unlisten = await transport.listen('chat:chunk', vi.fn())
+
+    expect(unlisten()).toBeUndefined()
+    expect(unlisten()).toBeUndefined()
+    await flushAsync()
+    expect(cleanup).toHaveBeenCalledTimes(1)
+  })
+
   it('explains how to troubleshoot a reachable remote rejected by the desktop client', async () => {
     vi.mocked(fetch).mockRejectedValueOnce(new TypeError('Load failed'))
     const transport = await loadRemoteNativeTransportModule()

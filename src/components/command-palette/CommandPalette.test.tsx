@@ -32,7 +32,16 @@ vi.mock('@/services/preferences', () => ({
 }))
 
 vi.mock('@/services/projects', () => ({
-  useProjects: () => ({ data: [] }),
+  useProjects: () => ({
+    data: [
+      {
+        id: 'project-1',
+        name: 'Jean',
+        path: '/projects/jean',
+        is_folder: false,
+      },
+    ],
+  }),
   useAppDataDir: () => ({ data: undefined }),
 }))
 
@@ -85,6 +94,18 @@ describe('CommandPalette connections', () => {
     expect(screen.getByText('Build server')).toBeInTheDocument()
     expect(screen.getByText('https://build.example.com')).toBeInTheDocument()
     expect(screen.queryByText('Active server')).not.toBeInTheDocument()
+  })
+
+  it('lists projects before connections', () => {
+    render(<CommandPalette />)
+
+    const projectsHeading = screen.getByText('Projects')
+    const connectionsHeading = screen.getByText('Connections')
+
+    expect(
+      projectsHeading.compareDocumentPosition(connectionsHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 
   it('switches connections through the existing reload flow', () => {

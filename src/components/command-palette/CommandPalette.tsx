@@ -236,32 +236,7 @@ export function CommandPalette({
       <CommandList className="max-h-[70dvh] sm:max-h-[300px]">
         <CommandEmpty>No results found.</CommandEmpty>
 
-        {connectionCommands.length > 0 && (
-          <CommandGroup heading="Connections">
-            {connectionCommands.map(command => (
-              <CommandItem
-                key={command.id}
-                value={`${command.label} ${command.description} ${command.keywords.join(' ')}`}
-                onSelect={() => handleCommandSelect(command.id)}
-                className="items-start"
-              >
-                {command.local ? (
-                  <Monitor className="mt-0.5 size-4 shrink-0" />
-                ) : (
-                  <Server className="mt-0.5 size-4 shrink-0" />
-                )}
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate leading-snug">{command.label}</span>
-                  <span className="truncate text-xs leading-snug text-muted-foreground">
-                    {command.description}
-                  </span>
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-
-        {/* Projects stay near the top, after connection shortcuts */}
+        {/* Projects stay at the top for quick switching */}
         {commandGroups.projectCommands.length > 0 && (
           <CommandGroup heading="Projects">
             {commandGroups.projectCommands.map(cmd => (
@@ -291,6 +266,31 @@ export function CommandPalette({
                       {cmd.description}
                     </span>
                   )}
+                </div>
+              </CommandItem>
+            ))}
+          </CommandGroup>
+        )}
+
+        {connectionCommands.length > 0 && (
+          <CommandGroup heading="Connections">
+            {connectionCommands.map(command => (
+              <CommandItem
+                key={command.id}
+                value={`${command.label} ${command.description} ${command.keywords.join(' ')}`}
+                onSelect={() => handleCommandSelect(command.id)}
+                className="items-start"
+              >
+                {command.local ? (
+                  <Monitor className="mt-0.5 size-4 shrink-0" />
+                ) : (
+                  <Server className="mt-0.5 size-4 shrink-0" />
+                )}
+                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="truncate leading-snug">{command.label}</span>
+                  <span className="truncate text-xs leading-snug text-muted-foreground">
+                    {command.description}
+                  </span>
                 </div>
               </CommandItem>
             ))}

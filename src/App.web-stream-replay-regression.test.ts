@@ -9,4 +9,10 @@ describe('web running-session bootstrap', () => {
       /for \(const \{ sessionId, message \} of runningSnapshotMessages\)[\s\S]*?hydrateRunningSnapshot\(sessionId, message, \{[\s\S]*?allowWhileSending: true,[\s\S]*?dedupeReplayedOutput: true,[\s\S]*?\}\)/
     )
   })
+
+  it('does not clear the authoritative web bootstrap running-session set during recovery', () => {
+    expect(source).toMatch(
+      /const resumableIds = new Set[\s\S]*?if \(!webBackend\) \{[\s\S]*?removeSendingSession\(sessionId\)[\s\S]*?\}/
+    )
+  })
 })

@@ -477,14 +477,23 @@ export function ChatWindow({
   // navigation, and any other entry that bypasses App.tsx auto-resume.
   useEffect(() => {
     if (!deferredSessionId || !session) return
-    // Skip hydration while THIS client is actively sending — live chat:chunk
-    // rebuilds streaming state incrementally. Injecting a refetched running
-    // snapshot mid-send duplicates the prior assistant bubble (see answer
-    // submission flow in handleQuestionAnswer).
-    if (useChatStore.getState().sendingSessionIds[deferredSessionId]) return
     const lastMsg = session.messages.at(-1)
     if (lastMsg?.role === 'assistant' && lastMsg.id.startsWith('running-')) {
-      hydrateRunningSnapshot(deferredSessionId, lastMsg)
+      const store = useChatStore.getState()
+      const isSending = !!store.sendingSessionIds[deferredSessionId]
+      const hasLiveStreamingState =
+        !!store.streamingContents[deferredSessionId] ||
+        (store.streamingContentBlocks[deferredSessionId]?.length ?? 0) > 0 ||
+        (store.activeToolCalls[deferredSessionId]?.length ?? 0) > 0
+
+      // A live sender already has the incremental event state. A restored web
+      // session is also marked sending, but starts without that state and must
+      // hydrate the persisted running snapshot (including prior tool calls).
+      if (isSending && hasLiveStreamingState) return
+      hydrateRunningSnapshot(deferredSessionId, lastMsg, {
+        allowWhileSending: true,
+        dedupeReplayedOutput: true,
+      })
     }
   }, [deferredSessionId, session])
 
@@ -1358,8 +1367,7 @@ export function ChatWindow({
                   ? (preferences?.selected_commandcode_model ??
                     'commandcode/default')
                   : yoloBackend === 'grok'
-                    ? (preferences?.selected_grok_model ??
-                      'grok/grok-4.5')
+                    ? (preferences?.selected_grok_model ?? 'grok/grok-4.5')
                     : yoloBackend === 'kimi'
                       ? (preferences?.selected_kimi_model ?? 'kimi/default')
                       : selectedModelRef.current)
@@ -1549,8 +1557,7 @@ export function ChatWindow({
                   ? (preferences?.selected_commandcode_model ??
                     'commandcode/default')
                   : buildBackend === 'grok'
-                    ? (preferences?.selected_grok_model ??
-                      'grok/grok-4.5')
+                    ? (preferences?.selected_grok_model ?? 'grok/grok-4.5')
                     : buildBackend === 'kimi'
                       ? (preferences?.selected_kimi_model ?? 'kimi/default')
                       : selectedModelRef.current)
@@ -1823,8 +1830,7 @@ export function ChatWindow({
                   ? (preferences?.selected_commandcode_model ??
                     'commandcode/default')
                   : modeBackend === 'grok'
-                    ? (preferences?.selected_grok_model ??
-                      'grok/grok-4.5')
+                    ? (preferences?.selected_grok_model ?? 'grok/grok-4.5')
                     : modeBackend === 'kimi'
                       ? (preferences?.selected_kimi_model ?? 'kimi/default')
                       : selectedModelRef.current)
