@@ -349,7 +349,7 @@ fn restart_server_process() -> Result<(), String> {
     {
         use std::os::unix::process::CommandExt;
         let error = command.exec();
-        return Err(format!("Failed to re-exec jean-server: {error}"));
+        Err(format!("Failed to re-exec jean-server: {error}"))
     }
     #[cfg(not(unix))]
     {

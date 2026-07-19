@@ -103,7 +103,7 @@ pub async fn dispatch_command(
         // =====================================================================
         "get_server_platform" => to_value(crate::server_platform_name()),
         "check_server_update" => {
-            let result = crate::server_update::check_server_update(&app).await?;
+            let result = crate::server_update::check_server_update(app).await?;
             to_value(result)
         }
         "apply_server_update" => {
