@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act, screen, waitFor } from '@testing-library/react'
+import { createRef } from 'react'
 import { MainWindowContent } from './MainWindowContent'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore } from '@/store/chat-store'
@@ -37,10 +38,6 @@ vi.mock('@/components/dashboard/ProjectCanvasView', () => ({
   ProjectCanvasView: () => (
     <div data-testid="project-canvas">Project canvas</div>
   ),
-}))
-
-vi.mock('./LeftSideBar', () => ({
-  LeftSideBar: () => <div data-testid="left-sidebar-content">Worktrees</div>,
 }))
 
 function fireTouch(
@@ -88,68 +85,21 @@ describe('MainWindowContent mobile swipe open sidebar', () => {
     useProjectsStore.setState({ selectedProjectId: 'proj-1' })
   })
 
-  it('opens the left sidebar when edge-swiping right on project canvas', async () => {
-    render(<MainWindowContent />)
+  it('keeps the canvas stationary while the sidebar overlay owns the swipe', async () => {
+    const swipeContainerRef = createRef<HTMLDivElement>()
+    render(<MainWindowContent sidebarSwipeContainerRef={swipeContainerRef} />)
 
     const target = await screen.findByTestId('mobile-swipe-open-sidebar')
-    Object.defineProperty(target, 'offsetWidth', {
-      value: 400,
-      configurable: true,
-    })
-
-    expect(useUIStore.getState().leftSidebarVisible).toBe(false)
-
-    act(() => {
-      fireTouch(target, 'touchstart', 8)
-      fireTouch(target, 'touchmove', 200)
-      fireTouch(target, 'touchend', 200)
-    })
-
-    expect(useUIStore.getState().leftSidebarVisible).toBe(true)
-    expect(screen.getByTestId('mobile-swipe-sidebar-underlay')).toBeVisible()
-  })
-
-  it('tracks the finger while swiping the left sidebar open', async () => {
-    render(<MainWindowContent />)
-
-    const target = await screen.findByTestId('mobile-swipe-open-sidebar')
-    Object.defineProperty(target, 'offsetWidth', {
-      value: 400,
-      configurable: true,
-    })
-
-    expect(
-      screen.getByTestId('mobile-swipe-sidebar-underlay')
-    ).toContainElement(await screen.findByTestId('left-sidebar-content'))
+    expect(swipeContainerRef.current).toBe(target)
 
     act(() => {
       fireTouch(target, 'touchstart', 8)
       fireTouch(target, 'touchmove', 120)
     })
 
-    expect(target).toHaveStyle({ transform: 'translateX(112px)' })
-    expect(screen.getByTestId('mobile-swipe-sidebar-underlay')).toBeVisible()
+    expect(target).not.toHaveStyle({ transform: 'translateX(112px)' })
+    expect(screen.queryByTestId('mobile-swipe-sidebar-underlay')).toBeNull()
     expect(useUIStore.getState().leftSidebarVisible).toBe(false)
-  })
-
-  it('does not open sidebar when already visible', async () => {
-    useUIStore.setState({ leftSidebarVisible: true })
-    render(<MainWindowContent />)
-
-    const target = await screen.findByTestId('mobile-swipe-open-sidebar')
-    Object.defineProperty(target, 'offsetWidth', {
-      value: 400,
-      configurable: true,
-    })
-
-    act(() => {
-      fireTouch(target, 'touchstart', 8)
-      fireTouch(target, 'touchmove', 200)
-      fireTouch(target, 'touchend', 200)
-    })
-
-    // Still true (gesture disabled while open — no toggle)
-    expect(useUIStore.getState().leftSidebarVisible).toBe(true)
   })
 
   it('uses swipe-back on chat instead of open-sidebar target', async () => {
@@ -164,31 +114,6 @@ describe('MainWindowContent mobile swipe open sidebar', () => {
       expect(screen.getByTestId('chat-window')).toBeInTheDocument()
     })
     expect(screen.queryByTestId('mobile-swipe-open-sidebar')).toBeNull()
-  })
-
-  it('does not open sidebar while SessionChatModal is open (opened worktree)', async () => {
-    useUIStore.setState({
-      leftSidebarVisible: false,
-      sessionChatModalOpen: true,
-      sessionChatModalWorktreeId: 'wt-1',
-    })
-
-    render(<MainWindowContent />)
-
-    const target = await screen.findByTestId('mobile-swipe-open-sidebar')
-    Object.defineProperty(target, 'offsetWidth', {
-      value: 400,
-      configurable: true,
-    })
-
-    act(() => {
-      fireTouch(target, 'touchstart', 8)
-      fireTouch(target, 'touchmove', 200)
-      fireTouch(target, 'touchend', 200)
-    })
-
-    // Modal owns the edge swipe (close); open-sidebar must stay off
-    expect(useUIStore.getState().leftSidebarVisible).toBe(false)
   })
 })
 

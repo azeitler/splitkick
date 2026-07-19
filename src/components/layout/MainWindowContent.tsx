@@ -1,4 +1,11 @@
-import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useState,
+  type RefObject,
+} from 'react'
 import { cn } from '@/lib/utils'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -19,7 +26,6 @@ import {
 } from '@/lib/terminal-gesture'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
-import { SidebarWidthProvider } from './SidebarWidthContext'
 
 const ChatWindow = lazy(() =>
   import('@/components/chat/ChatWindow').then(mod => ({
@@ -33,29 +39,20 @@ const ProjectCanvasView = lazy(() =>
   }))
 )
 
-const LeftSideBar = lazy(() =>
-  import('./LeftSideBar').then(mod => ({
-    default: mod.LeftSideBar,
-  }))
-)
-
 interface MainWindowContentProps {
   children?: React.ReactNode
   className?: string
+  sidebarSwipeContainerRef?: RefObject<HTMLDivElement | null>
 }
 
 export function MainWindowContent({
   children,
   className,
+  sidebarSwipeContainerRef,
 }: MainWindowContentProps) {
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
   const isMobile = useIsMobile()
-  const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
-  const leftSidebarSize = useUIStore(state => state.leftSidebarSize)
-  // SessionChatModal is nested inside ProjectCanvasView; disable open-sidebar
-  // while it is open so only the modal's swipe-to-close runs.
-  const sessionChatModalOpen = useUIStore(state => state.sessionChatModalOpen)
   // Subscribe so swipe-back can prefer closing terminal over navigating away
   const terminalPanelOpen = useTerminalStore(state =>
     activeWorktreeId
@@ -100,24 +97,6 @@ export function MainWindowContent({
     animateToEnd: false,
     visualFeedback: true,
     edge: 'right',
-  })
-
-  // Project canvas / welcome only: edge swipe right → open projects drawer.
-  // Explicitly off for chat (activeWorktreePath) and SessionChatModal so the
-  // nested swipe-to-close cannot double-fire open-sidebar via event bubbling.
-  const swipeOpenSidebarCallback = useCallback(() => {
-    useUIStore.getState().setLeftSidebarVisible(true)
-  }, [])
-  const canSwipeOpenSidebar =
-    isMobile &&
-    !activeWorktreePath &&
-    !leftSidebarVisible &&
-    !sessionChatModalOpen
-  const swipeOpenSidebar = useSwipeBack({
-    onSwipeBack: swipeOpenSidebarCallback,
-    enabled: canSwipeOpenSidebar,
-    animateToEnd: false,
-    visualFeedback: true,
   })
 
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
@@ -302,48 +281,19 @@ export function MainWindowContent({
           </div>
         </div>
       ) : (
-        <>
-          {isMobile && !sessionChatModalOpen && (
+        <div
+          ref={isMobile ? sidebarSwipeContainerRef : undefined}
+          className="relative flex h-full w-full min-w-0 flex-col bg-background"
+          data-testid="mobile-swipe-open-sidebar"
+        >
+          {sidebarSwipeContainerRef && (
             <div
-              className="pointer-events-none absolute inset-y-0 left-0 z-0 overflow-hidden bg-sidebar"
-              style={{ width: `min(85vw, ${leftSidebarSize}px)` }}
-              data-testid="mobile-swipe-sidebar-underlay"
+              className="pointer-events-none absolute left-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-r-full bg-muted-foreground/20"
               aria-hidden
-              inert
-            >
-              <SidebarWidthProvider value={leftSidebarSize}>
-                <Suspense fallback={null}>
-                  <LeftSideBar />
-                </Suspense>
-              </SidebarWidthProvider>
-            </div>
+            />
           )}
-          <div
-            ref={isMobile ? swipeOpenSidebar.containerRef : undefined}
-            className="relative z-10 flex h-full w-full min-w-0 flex-col bg-background"
-            data-testid="mobile-swipe-open-sidebar"
-            style={
-              isMobile &&
-              (swipeOpenSidebar.isSwiping || swipeOpenSidebar.translateX !== 0)
-                ? {
-                    transform: `translateX(${swipeOpenSidebar.translateX}px)`,
-                    transition: swipeOpenSidebar.transitionStyle || undefined,
-                    willChange: swipeOpenSidebar.isSwiping
-                      ? 'transform'
-                      : undefined,
-                  }
-                : undefined
-            }
-          >
-            {canSwipeOpenSidebar && (
-              <div
-                className="pointer-events-none absolute left-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-r-full bg-muted-foreground/20"
-                aria-hidden
-              />
-            )}
-            {nonChatContent}
-          </div>
-        </>
+          {nonChatContent}
+        </div>
       )}
     </div>
   )

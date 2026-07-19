@@ -13,3 +13,30 @@ export function getStackedBaseBranch(
 
   return baseBranch
 }
+
+interface WorktreeBranchBadgeContext {
+  displayBranch: string | undefined
+  worktreeName: string
+  stackedBaseBranch: string | null
+  prNumber?: number
+  securityAlertNumber?: number
+  advisoryGhsaId?: string
+}
+
+export function shouldShowWorktreeBranchBadge({
+  displayBranch,
+  worktreeName,
+  stackedBaseBranch,
+  prNumber,
+  securityAlertNumber,
+  advisoryGhsaId,
+}: WorktreeBranchBadgeContext): boolean {
+  return Boolean(
+    displayBranch &&
+    (displayBranch !== worktreeName ||
+      stackedBaseBranch ||
+      prNumber ||
+      securityAlertNumber ||
+      advisoryGhsaId)
+  )
+}

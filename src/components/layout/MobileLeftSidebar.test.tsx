@@ -22,13 +22,19 @@ describe('MobileLeftSidebar', () => {
     render(
       <div data-testid="layout-root">
         <div data-testid="main-content">Main content stays put</div>
-        <MobileLeftSidebar open={true} onOpenChange={onOpenChange} width={250} />
+        <MobileLeftSidebar
+          open={true}
+          onOpenChange={onOpenChange}
+          width={250}
+        />
       </div>
     )
 
     const sheet = await screen.findByTestId('mobile-left-sidebar')
     expect(sheet).toBeInTheDocument()
-    expect(await screen.findByTestId('left-sidebar-content')).toBeInTheDocument()
+    expect(
+      await screen.findByTestId('left-sidebar-content')
+    ).toBeInTheDocument()
 
     // Sheet content is portaled (fixed overlay), so main content remains a direct child
     const layoutRoot = screen.getByTestId('layout-root')
@@ -43,6 +49,45 @@ describe('MobileLeftSidebar', () => {
 
     expect(screen.queryByTestId('mobile-left-sidebar')).not.toBeInTheDocument()
     expect(screen.queryByTestId('left-sidebar-content')).not.toBeInTheDocument()
+  })
+
+  it('drags the real sidebar overlay while the persisted open state is closed', async () => {
+    const onOpenChange = vi.fn()
+    const { rerender } = render(
+      <MobileLeftSidebar
+        open={false}
+        onOpenChange={onOpenChange}
+        width={250}
+        isDragging
+        dragOffset={112}
+        dragTransition=""
+      />
+    )
+
+    const sheet = await screen.findByTestId('mobile-left-sidebar')
+    expect(sheet).toHaveAttribute('data-swipe-dragging', 'true')
+    expect(sheet).toHaveStyle({
+      transform: 'translateX(min(0px, calc(-100% + 112px)))',
+      animation: 'none',
+      transition: 'none',
+    })
+    expect(
+      await screen.findByTestId('left-sidebar-content')
+    ).toBeInTheDocument()
+
+    rerender(
+      <MobileLeftSidebar
+        open
+        onOpenChange={onOpenChange}
+        width={250}
+        isDragging={false}
+        dragOffset={400}
+        dragTransition="transform 200ms ease-out"
+      />
+    )
+
+    expect(sheet).toHaveStyle({ animation: 'none' })
+    expect(sheet).not.toHaveStyle({ transform: 'translateX(-100%)' })
   })
 
   it('closes when the dimmed backdrop (grey area) is clicked', async () => {
@@ -63,9 +108,7 @@ describe('MobileLeftSidebar', () => {
   })
 
   it('does not autofocus expand-all (avoids tooltip on open)', async () => {
-    render(
-      <MobileLeftSidebar open={true} onOpenChange={vi.fn()} width={250} />
-    )
+    render(<MobileLeftSidebar open={true} onOpenChange={vi.fn()} width={250} />)
 
     const expandAll = await screen.findByRole('button', {
       name: 'Expand all projects',

@@ -1,4 +1,4 @@
-import { Suspense, lazy, type CSSProperties } from 'react'
+import { Suspense, lazy, useEffect, useState, type CSSProperties } from 'react'
 import {
   Sheet,
   SheetContent,
@@ -18,6 +18,9 @@ interface MobileLeftSidebarProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   width: number
+  isDragging?: boolean
+  dragOffset?: number
+  dragTransition?: string
 }
 
 /**
@@ -28,9 +31,27 @@ export function MobileLeftSidebar({
   open,
   onOpenChange,
   width,
+  isDragging = false,
+  dragOffset = 0,
+  dragTransition = '',
 }: MobileLeftSidebarProps) {
+  const [openedByDrag, setOpenedByDrag] = useState(false)
+
+  useEffect(() => {
+    if (isDragging) {
+      setOpenedByDrag(true)
+    } else if (!open) {
+      setOpenedByDrag(false)
+    }
+  }, [isDragging, open])
+
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet
+      open={open || isDragging}
+      onOpenChange={nextOpen => {
+        if (!isDragging) onOpenChange(nextOpen)
+      }}
+    >
       <SheetContent
         side="left"
         showCloseButton={false}
@@ -41,9 +62,19 @@ export function MobileLeftSidebar({
         style={
           {
             '--mobile-sidebar-width': `${width}px`,
+            ...(isDragging
+              ? {
+                  transform: `translateX(min(0px, calc(-100% + ${dragOffset}px)))`,
+                  transition: dragTransition || 'none',
+                }
+              : {}),
+            ...(isDragging || (open && openedByDrag)
+              ? { animation: 'none' }
+              : {}),
           } as CSSProperties
         }
         data-testid="mobile-left-sidebar"
+        data-swipe-dragging={isDragging}
       >
         <SheetHeader className="sr-only">
           <SheetTitle>Projects</SheetTitle>

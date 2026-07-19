@@ -167,8 +167,10 @@ import { useBrowserEvents } from '@/hooks/useBrowserPane'
 import { useToasterOffset } from '@/hooks/useToasterOffset'
 import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useTerminalThemeSync } from '@/hooks/useTerminalThemeSync'
+import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { useChatStore } from '@/store/chat-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
 import { useGlobalInputSanitizer } from '@/hooks/useGlobalInputSanitizer'
 import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
@@ -243,6 +245,8 @@ export function MainWindow() {
   const updateModalVersion = useUIStore(state => state.updateModalVersion)
   const githubDashboardOpen = useUIStore(state => state.githubDashboardOpen)
   const newSessionModeTarget = useUIStore(state => state.newSessionModeTarget)
+  const sessionChatModalOpen = useUIStore(state => state.sessionChatModalOpen)
+  const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
   const addProjectDialogOpen = useProjectsStore(
     state => state.addProjectDialogOpen
@@ -258,6 +262,17 @@ export function MainWindow() {
 
   const isMobile = useIsMobile()
   const isTouch = useIsTouchDevice()
+  const canSwipeOpenSidebar =
+    isMobile &&
+    !activeWorktreePath &&
+    !leftSidebarVisible &&
+    !sessionChatModalOpen
+  const swipeOpenSidebar = useSwipeBack({
+    onSwipeBack: useCallback(() => {
+      useUIStore.getState().setLeftSidebarVisible(true)
+    }, []),
+    enabled: canSwipeOpenSidebar,
+  })
   const swipeDown = useSwipeDown({
     onSwipeDown: useCallback(() => {
       useUIStore.getState().setCommandPaletteOpen(true)
@@ -522,13 +537,20 @@ export function MainWindow() {
             open={leftSidebarVisible}
             onOpenChange={setLeftSidebarVisible}
             width={leftSidebarSize}
+            isDragging={swipeOpenSidebar.isSwiping}
+            dragOffset={swipeOpenSidebar.translateX}
+            dragTransition={swipeOpenSidebar.transitionStyle}
           />
         )}
 
         {/* Main Content + bottom browser panel stacked vertically */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="relative min-w-0 flex-1 overflow-hidden">
-            <MainWindowContent />
+            <MainWindowContent
+              sidebarSwipeContainerRef={
+                canSwipeOpenSidebar ? swipeOpenSidebar.containerRef : undefined
+              }
+            />
             <FloatingDock />
           </div>
           {/* Browser bottom panel - native-only, pinned to bottom */}
