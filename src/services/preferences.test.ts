@@ -47,6 +47,7 @@ vi.mock('@/lib/transport', () => ({
 }))
 
 vi.mock('@/lib/platform', () => ({
+  isClientMacOS: true,
   isMacOS: true,
   isWindows: false,
   isLinux: false,
@@ -438,8 +439,8 @@ describe('preferences service', () => {
         git_poll_interval: 60,
         remote_poll_interval: 60,
         keybindings: {
-          ...DEFAULT_KEYBINDINGS,
           toggle_left_sidebar: 'mod+1', // Old default
+          restore_last_archived: 'mod+alt+shift+t', // Broken modifier order
         },
         archive_retention_days: 30,
         syntax_theme_dark: 'vitesse-black',
@@ -545,6 +546,15 @@ describe('preferences service', () => {
       // Should migrate to new default
       expect(result.current.data?.keybindings?.toggle_left_sidebar).toBe(
         'mod+b'
+      )
+      expect(result.current.data?.keybindings?.restore_last_archived).toBe(
+        'mod+shift+alt+t'
+      )
+      expect(result.current.data?.keybindings?.open_quick_menu).toBe(
+        DEFAULT_KEYBINDINGS.open_quick_menu
+      )
+      expect(Object.keys(result.current.data?.keybindings ?? {})).toHaveLength(
+        Object.keys(DEFAULT_KEYBINDINGS).length
       )
     })
 
