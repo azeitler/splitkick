@@ -106,6 +106,7 @@ describe('MainWindowContent mobile swipe open sidebar', () => {
     })
 
     expect(useUIStore.getState().leftSidebarVisible).toBe(true)
+    expect(screen.getByTestId('mobile-swipe-sidebar-underlay')).toBeVisible()
   })
 
   it('tracks the finger while swiping the left sidebar open', async () => {

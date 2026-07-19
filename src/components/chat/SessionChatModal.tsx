@@ -125,6 +125,7 @@ import {
   MODAL_TERMINAL_PRIMARY_ROW_CLASS,
   MODAL_TERMINAL_SECONDARY_ROW_CLASS,
 } from './modal-terminal-layout'
+import { getStackedBaseBranch } from './worktree-branch-badge'
 
 /** Track whether any waiting tabs are off-screen to the left or right */
 function useOffScreenWaiting(
@@ -354,11 +355,15 @@ export function SessionChatModal({
   const project = worktree
     ? projects?.find(p => p.id === worktree.project_id)
     : null
+  const stackedBaseBranch = getStackedBaseBranch(
+    worktree?.base_branch,
+    worktree?.branch,
+    project?.default_branch
+  )
   const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open')
-  const stackedOnPR =
-    worktree?.base_branch && worktree.base_branch !== project?.default_branch
-      ? openPRs?.find(pr => pr.headRefName === worktree.base_branch)
-      : undefined
+  const stackedOnPR = stackedBaseBranch
+    ? openPRs?.find(pr => pr.headRefName === stackedBaseBranch)
+    : undefined
   const isBase = worktree ? isBaseSession(worktree) : false
   const { data: gitStatus } = useGitStatus(worktreeId)
   const behindCount =
@@ -1039,22 +1044,21 @@ export function SessionChatModal({
                   )}
                   {isBase ? 'Base Session' : (worktree?.name ?? 'Worktree')}
                 </h2>
-                {worktree?.base_branch &&
-                  worktree.base_branch !== project?.default_branch && (
-                    <span className="inline-flex shrink min-w-0 items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
-                      <GitBranchPlus className="h-2.5 w-2.5" />
-                      <span className="max-w-16 sm:max-w-40 truncate">
-                        {worktree.base_branch}
-                      </span>
-                      {stackedOnPR && (
-                        <>
-                          <span className="text-border">·</span>
-                          <GitPullRequestArrow className="h-2.5 w-2.5" />#
-                          {stackedOnPR.number}
-                        </>
-                      )}
+                {stackedBaseBranch && (
+                  <span className="inline-flex shrink min-w-0 items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">
+                    <GitBranchPlus className="h-2.5 w-2.5" />
+                    <span className="max-w-16 sm:max-w-40 truncate">
+                      {stackedBaseBranch}
                     </span>
-                  )}
+                    {stackedOnPR && (
+                      <>
+                        <span className="text-border">·</span>
+                        <GitPullRequestArrow className="h-2.5 w-2.5" />#
+                        {stackedOnPR.number}
+                      </>
+                    )}
+                  </span>
+                )}
                 <GitStatusBadges
                   behindCount={behindCount}
                   unpushedCount={unpushedCount}

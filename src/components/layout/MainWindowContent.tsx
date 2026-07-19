@@ -303,12 +303,13 @@ export function MainWindowContent({
         </div>
       ) : (
         <>
-          {isMobile && canSwipeOpenSidebar && (
+          {isMobile && !sessionChatModalOpen && (
             <div
               className="pointer-events-none absolute inset-y-0 left-0 z-0 overflow-hidden bg-sidebar"
               style={{ width: `min(85vw, ${leftSidebarSize}px)` }}
               data-testid="mobile-swipe-sidebar-underlay"
               aria-hidden
+              inert
             >
               <SidebarWidthProvider value={leftSidebarSize}>
                 <Suspense fallback={null}>
