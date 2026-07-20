@@ -47,6 +47,31 @@ for (const cargoPath of [
   writeFileSync(cargoPath, cargo)
 }
 
+// Keep Cargo.lock package versions in sync so `cargo build --locked` works in CI.
+// Path packages store their own version in the lockfile; bumping only Cargo.toml
+// leaves the lock stale (Server Release failed on this for v0.1.68).
+for (const [lockPath, packageName] of [
+  [resolve(root, 'src-tauri/Cargo.lock'), 'jean'],
+  [resolve(root, 'src-server/Cargo.lock'), 'jean-server'],
+]) {
+  let lock
+  try {
+    lock = readFileSync(lockPath, 'utf-8')
+  } catch {
+    continue
+  }
+  const pattern = new RegExp(
+    `(name = "${packageName}"\\nversion = ")[^"]+(")`
+  )
+  if (!pattern.test(lock)) {
+    console.warn(
+      `Warning: package ${packageName} not found in ${lockPath}; skip lock bump`
+    )
+    continue
+  }
+  writeFileSync(lockPath, lock.replace(pattern, `$1${newVersion}$2`))
+}
+
 console.log(
   `Bumped version: ${pkg.version.replace(newVersion, '')}${major}.${minor}.${patch} → ${newVersion}`
 )
