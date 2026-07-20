@@ -60,6 +60,9 @@ mod platform;
 mod projects;
 mod server_update;
 mod terminal;
+mod version;
+
+pub use version::{app_version, set_app_version};
 
 // Validation functions
 fn validate_filename(filename: &str) -> Result<(), String> {
@@ -3598,7 +3601,7 @@ struct HttpServerOverrides {
 }
 
 fn print_cli_help() {
-    let version = env!("CARGO_PKG_VERSION");
+    let version = crate::app_version();
     println!("Jean {version}");
     println!();
     println!("Usage: jean [OPTIONS]");
@@ -3627,7 +3630,7 @@ fn parse_cli_args() -> CliArgs {
         std::process::exit(0);
     }
     if args.iter().any(|a| a == "--version" || a == "-V") {
-        println!("Jean {}", env!("CARGO_PKG_VERSION"));
+        println!("Jean {}", crate::app_version());
         std::process::exit(0);
     }
 
