@@ -1350,7 +1350,7 @@ fn format_grok_command(cli_path: &Path, args: &[String]) -> String {
             redact_next = false;
             continue;
         }
-        if arg == "-p" || arg == "--prompt" {
+        if arg == "-p" || arg == "--prompt" || arg == "--prompt-file" {
             redact_next = true;
         }
         parts.push(quote(arg));
@@ -4041,6 +4041,89 @@ Review/answer only from content already in the user message. \
 When the task is a code review, report clear security, correctness, race, data-loss, and contract bugs with high confidence — do not approve with empty findings when the provided diff introduces obvious defects. \
 Prefer no finding only when no actionable defect is present.";
 
+/// Build argv for a headless Grok one-shot. The prompt is always referenced via
+/// `--prompt-file` (never inline `-p`) so large magic-prompt inputs (PR diffs up
+/// to ~200KB plus commits/context) do not exceed OS ARG_MAX (E2BIG / os error 7).
+fn build_one_shot_grok_cli_args(
+    prompt_file: &str,
+    cwd: &str,
+    model: &str,
+    json_schema: Option<&str>,
+    effort_level: Option<&str>,
+) -> Vec<String> {
+    let mut args = vec![
+        "--no-auto-update".to_string(),
+        "--no-memory".to_string(),
+        "--no-subagents".to_string(),
+        "--disable-web-search".to_string(),
+        "--prompt-file".to_string(),
+        prompt_file.to_string(),
+        "--cwd".to_string(),
+        cwd.to_string(),
+        "--permission-mode".to_string(),
+        "dontAsk".to_string(),
+        "--sandbox".to_string(),
+        "read-only".to_string(),
+        "--model".to_string(),
+        raw_grok_model(Some(model))
+            .unwrap_or(model)
+            .to_string(),
+    ];
+    // Prefer native constrained decoding when a schema is available. Implies
+    // --output-format json and populates structuredOutput on success.
+    //
+    // Structured one-shots must not use tools/MCP: Grok's auto skill discovery
+    // (review / caveman-review) plus MCP frequently cancels constrained decoding
+    // and returns empty findings even when the model drafted real issues.
+    if let Some(schema) = json_schema {
+        args.extend([
+            "--json-schema".to_string(),
+            schema.to_string(),
+            // Empty allowlist removes built-in tools for this headless run.
+            "--tools".to_string(),
+            String::new(),
+            "--deny".to_string(),
+            "MCPTool(*)".to_string(),
+            "--rules".to_string(),
+            ONE_SHOT_STRUCTURED_RULES.to_string(),
+            // One-shot magic prompts should finish quickly once tools are gone.
+            "--max-turns".to_string(),
+            "2".to_string(),
+        ]);
+    } else {
+        args.extend(["--output-format".to_string(), "json".to_string()]);
+    }
+    if let Some(effort) = effort_level.filter(|effort| !effort.is_empty()) {
+        args.extend(["--effort".to_string(), effort.to_string()]);
+    }
+    args
+}
+
+fn write_one_shot_prompt_file(prompt: &str) -> Result<std::path::PathBuf, String> {
+    let prompt_file = std::env::temp_dir().join(format!(
+        "jean-grok-one-shot-prompt-{}-{}.txt",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::write(&prompt_file, prompt)
+        .map_err(|e| format!("Failed to write Grok one-shot prompt file: {e}"))?;
+    Ok(prompt_file)
+}
+
+/// Resolve a host-local path for the Grok CLI child. On Windows+WSL the CLI runs
+/// inside the distro, so temp paths must be converted to Unix form.
+fn resolve_cli_path_arg(path: &Path) -> String {
+    let wsl = crate::platform::get_wsl_config();
+    if cfg!(windows) && wsl.enabled {
+        crate::platform::win_to_wsl_path(&path.to_string_lossy())
+    } else {
+        path.to_string_lossy().into_owned()
+    }
+}
+
 pub fn execute_one_shot_grok(
     app: &AppHandle,
     prompt: &str,
@@ -4056,57 +4139,39 @@ pub fn execute_one_shot_grok(
     let dir = working_dir.unwrap_or_else(|| Path::new("."));
     let model = resolve_one_shot_grok_model(model);
     let json_prompt = build_one_shot_json_prompt(prompt, json_schema);
-    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
-    cmd.args([
-        "--no-auto-update",
-        "--no-memory",
-        "--no-subagents",
-        "--disable-web-search",
-        "-p",
-        &json_prompt,
-        "--cwd",
+    let prompt_file = write_one_shot_prompt_file(&json_prompt)?;
+    let prompt_file_arg = resolve_cli_path_arg(&prompt_file);
+
+    let args = build_one_shot_grok_cli_args(
+        &prompt_file_arg,
         &dir.to_string_lossy(),
-        "--permission-mode",
-        "dontAsk",
-        "--sandbox",
-        "read-only",
-        "--model",
-        raw_grok_model(Some(model)).unwrap_or(model),
-    ]);
-    // Prefer native constrained decoding when a schema is available. Implies
-    // --output-format json and populates structuredOutput on success.
-    //
-    // Structured one-shots must not use tools/MCP: Grok's auto skill discovery
-    // (review / caveman-review) plus MCP frequently cancels constrained decoding
-    // and returns empty findings even when the model drafted real issues.
-    if let Some(schema) = json_schema {
-        cmd.args([
-            "--json-schema",
-            schema,
-            // Empty allowlist removes built-in tools for this headless run.
-            "--tools",
-            "",
-            "--deny",
-            "MCPTool(*)",
-            "--rules",
-            ONE_SHOT_STRUCTURED_RULES,
-            // One-shot magic prompts should finish quickly once tools are gone.
-            "--max-turns",
-            "2",
-        ]);
-    } else {
-        cmd.args(["--output-format", "json"]);
-    }
-    if let Some(effort) = effort_level.filter(|effort| !effort.is_empty()) {
-        cmd.args(["--effort", effort]);
-    }
+        model,
+        json_schema,
+        effort_level,
+    );
+
+    let mut cmd = crate::platform::cli_command(&cli_path.to_string_lossy(), None);
+    cmd.args(&args);
     cmd.current_dir(dir)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    let output = cmd
-        .output()
-        .map_err(|e| format!("Failed to run Grok one-shot request: {e}"))?;
+    log::info!(
+        "[Grok one-shot] command: {}",
+        format_grok_command(&cli_path, &args)
+    );
+    log::debug!(
+        "[Grok one-shot] prompt_file={} prompt_bytes={}",
+        prompt_file.display(),
+        json_prompt.len()
+    );
+
+    let output = cmd.output().map_err(|e| {
+        let _ = std::fs::remove_file(&prompt_file);
+        format!("Failed to run Grok one-shot request: {e}")
+    })?;
+    let _ = std::fs::remove_file(&prompt_file);
+
     if !output.status.success() {
         let stderr = strip_ansi(&String::from_utf8_lossy(&output.stderr));
         return Err(format!("Grok one-shot request failed: {}", stderr.trim()));
@@ -4155,6 +4220,63 @@ mod tests {
         let prompt = build_one_shot_json_prompt("Name this session", None);
         assert!(prompt.contains("Name this session"));
         assert!(prompt.contains("Return only a single valid JSON object"));
+    }
+
+    #[test]
+    fn one_shot_cli_args_use_prompt_file_not_inline_prompt() {
+        // ARG_MAX / E2BIG: never put large PR diffs on argv via `-p`.
+        let args = build_one_shot_grok_cli_args(
+            "/tmp/jean-prompt.txt",
+            "/repo",
+            "grok-build",
+            Some(r#"{"type":"object"}"#),
+            Some("high"),
+        );
+
+        assert!(args.contains(&"--prompt-file".to_string()));
+        let prompt_file_idx = args.iter().position(|a| a == "--prompt-file").unwrap();
+        assert_eq!(args[prompt_file_idx + 1], "/tmp/jean-prompt.txt");
+        assert!(!args.iter().any(|a| a == "-p" || a == "--prompt" || a == "--single"));
+        // Prompt body must not appear as an argv entry.
+        assert!(!args.iter().any(|a| a.contains("diff --git") || a.len() > 10_000));
+        assert!(args.contains(&"--json-schema".to_string()));
+        assert!(args.contains(&"--effort".to_string()));
+        assert!(args.contains(&"high".to_string()));
+        assert!(args.contains(&"--max-turns".to_string()));
+    }
+
+    #[test]
+    fn one_shot_cli_args_without_schema_use_json_output() {
+        let args =
+            build_one_shot_grok_cli_args("/tmp/p.txt", ".", "grok-build", None, None);
+        assert!(args.contains(&"--output-format".to_string()));
+        assert!(args.contains(&"json".to_string()));
+        assert!(!args.iter().any(|a| a == "--json-schema"));
+    }
+
+    #[test]
+    fn write_one_shot_prompt_file_round_trips_large_content() {
+        // Simulate a PR-sized payload that would blow ARG_MAX if inlined as `-p`.
+        let large = "x".repeat(250_000);
+        let path = write_one_shot_prompt_file(&large).expect("write prompt file");
+        let read = std::fs::read_to_string(&path).expect("read prompt file");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(read.len(), 250_000);
+        assert_eq!(read, large);
+    }
+
+    #[test]
+    fn format_grok_command_redacts_prompt_file_path() {
+        let args = vec![
+            "--prompt-file".to_string(),
+            "/tmp/secret-prompt.txt".to_string(),
+            "--model".to_string(),
+            "grok-build".to_string(),
+        ];
+        let rendered = format_grok_command(Path::new("grok"), &args);
+        assert!(rendered.contains("--prompt-file"));
+        assert!(rendered.contains("<REDACTED_PROMPT>"));
+        assert!(!rendered.contains("secret-prompt"));
     }
 
     #[test]

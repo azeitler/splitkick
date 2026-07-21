@@ -10114,7 +10114,8 @@ my-disabled: /usr/bin/disabled (STDIO) - disabled";
     #[test]
     fn bulk_update_invalidates_before_returning_partial_failure() {
         let mut invalidated = false;
-        let result = finish_bulk_update(true, Err("save failed"), || invalidated = true);
+        let result: Result<(), &str> =
+            finish_bulk_update(true, Err("save failed"), || invalidated = true);
 
         assert!(invalidated);
         assert_eq!(result, Err("save failed"));
