@@ -462,6 +462,17 @@ fn emit_sessions_cache_invalidation(app: &AppHandle) {
     }
 }
 
+fn finish_bulk_update<T, E>(
+    updated: bool,
+    result: Result<T, E>,
+    invalidate: impl FnOnce(),
+) -> Result<T, E> {
+    if updated {
+        invalidate();
+    }
+    result
+}
+
 // ============================================================================
 // Session Management Commands
 // ============================================================================
@@ -2284,6 +2295,9 @@ pub async fn set_active_session(
 /// Update the last_opened_at timestamp on a session's metadata.
 /// View-only: never mutates waiting/review state — explicit user actions
 /// (approve/reject/answer) are the only path out of waiting.
+///
+/// Emits `cache:invalidate` for sessions so native + web clients refresh
+/// unread/finished-session state (e.g. web marks read → native bell clears).
 pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Result<(), String> {
     log::trace!("Setting last_opened_at for session: {session_id}");
 
@@ -2294,12 +2308,17 @@ pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Resu
             .as_secs();
         metadata.last_opened_at = Some(now);
         save_metadata(&app, &metadata)?;
+        // Broadcast so other clients (native ↔ web) drop stale last_opened_at.
+        emit_sessions_cache_invalidation(&app);
     }
 
     Ok(())
 }
 
 /// Bulk-update last_opened_at for multiple sessions in a single call.
+///
+/// Emits a single `cache:invalidate` after updates so multi-client unread
+/// counts stay in sync (mark all read from web or native).
 pub async fn set_sessions_last_opened_bulk(
     app: AppHandle,
     session_ids: Vec<String>,
@@ -2314,14 +2333,20 @@ pub async fn set_sessions_last_opened_bulk(
         .unwrap_or_default()
         .as_secs();
 
+    let mut updated = false;
+    let mut result = Ok(());
     for session_id in &session_ids {
         if let Ok(Some(mut metadata)) = load_metadata(&app, session_id) {
             metadata.last_opened_at = Some(now);
-            save_metadata(&app, &metadata)?;
+            if let Err(error) = save_metadata(&app, &metadata) {
+                result = Err(error);
+                break;
+            }
+            updated = true;
         }
     }
 
-    Ok(())
+    finish_bulk_update(updated, result, || emit_sessions_cache_invalidation(&app))
 }
 
 // ============================================================================
@@ -10084,6 +10109,15 @@ my-disabled: /usr/bin/disabled (STDIO) - disabled";
         let remaining = vec![s2, s3];
         let selected = find_neighbor_non_archived_session_id(&remaining, 0);
         assert_eq!(selected.as_deref(), Some("s3"));
+    }
+
+    #[test]
+    fn bulk_update_invalidates_before_returning_partial_failure() {
+        let mut invalidated = false;
+        let result = finish_bulk_update(true, Err("save failed"), || invalidated = true);
+
+        assert!(invalidated);
+        assert_eq!(result, Err("save failed"));
     }
 
     #[test]
