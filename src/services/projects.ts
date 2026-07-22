@@ -552,6 +552,8 @@ export function useCreateWorktree() {
         advisoryGhsaId: advisoryContext?.ghsaId,
         customName,
       })
+      // Pass autoOpenInJean to the backend so remote/web clients honor CMD+Click
+      // background creates without relying only on the in-memory pending counter.
       const worktree = await invoke<Worktree>('create_worktree', {
         projectId,
         baseBranch,
@@ -563,6 +565,7 @@ export function useCreateWorktree() {
         sentryContext,
         customName,
         origin,
+        autoOpenInJean: !_background,
       })
       return worktree
     },
@@ -890,8 +893,8 @@ function handleWorktreeReady(
       setActiveWorktree(worktree.id, worktree.path)
     }
   }
-  // Background worktrees with auto-investigate flags are handled
-  // headlessly by useBackgroundInvestigation hook (no modal needed).
+  // Auto-investigate flags (background or opened) are handled headlessly by
+  // useBackgroundInvestigation via start_background_investigation.
 }
 
 /**

@@ -26,13 +26,18 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "archive_worktree",
     "cancel_session_run",
     "clone_project",
+    "create_commit",
+    "create_pull_request",
     "create_session",
     "create_worktree",
     "create_worktree_from_existing_branch",
     "delete_worktree",
     "import_worktree",
     "init_project",
+    "merge_pull_request",
     "permanently_delete_worktree",
+    "push_worktree",
+    "run_review",
     "send_chat_message",
     "unarchive_worktree",
 ];
@@ -137,6 +142,18 @@ pub fn handle_protocol_message(
 }
 
 pub fn tool_registry() -> Value {
+    // Split into two json! arrays so the macro does not hit recursion_limit.
+    let mut tools = tool_registry_core()
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    if let Some(ship) = tool_registry_ship_loop().as_array() {
+        tools.extend(ship.iter().cloned());
+    }
+    Value::Array(tools)
+}
+
+fn tool_registry_core() -> Value {
     json!([
         {"name":"list_projects","description":"List all Jean projects (id, name, path, default_branch).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
         {"name":"add_project","description":"Add an existing local git repository as a Jean project. Path must already be a git repo (use init_project for a new folder, or clone_project for a remote URL). Returns the created project (id, name, path, default_branch).","inputSchema":{"type":"object","properties":{"path":{"type":"string","description":"Absolute path to an existing local git repository."},"parentId":{"type":"string","description":"Optional Jean folder/project parent id for nesting in the project list."}},"required":["path"],"additionalProperties":false}},
@@ -169,6 +186,17 @@ pub fn tool_registry() -> Value {
         {"name":"get_worktree_changes","description":"Get a bounded summary of a worktree's git changes: porcelain status, ahead/behind counts, diff stats, and changed files. Does not return full diffs.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"maxFiles":{"type":"integer","minimum":1,"maximum":500,"default":100}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_worktree_diff","description":"Get a bounded unified git diff for a worktree. diffType is uncommitted (HEAD vs working tree) or branch (origin/base...HEAD). Optional path limits to one pathspec; maxBytes is capped.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"diffType":{"type":"string","enum":["uncommitted","branch"],"default":"uncommitted"},"path":{"type":"string"},"maxBytes":{"type":"integer","minimum":1,"maximum":200000,"default":60000}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName. Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}}
+    ])
+}
+
+fn tool_registry_ship_loop() -> Value {
+    json!([
+        {"name":"create_commit","description":"Stage changes and create a git commit with an AI-generated message (same path as Jean UI Commit). Optional push after commit. Use specificFiles to stage only some paths; omit to stage all. Returns commitHash, message, pushed flags.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"push":{"type":"boolean","default":false,"description":"Push after a successful commit (or push existing unpushed commits when there is nothing new to commit)."},"remote":{"type":"string","description":"Optional git remote name for push."},"prNumber":{"type":"integer","minimum":1,"description":"Optional linked PR number for PR-aware push (fork remotes / force-with-lease)."},"specificFiles":{"type":"array","items":{"type":"string"},"description":"Optional list of paths to stage instead of staging everything."},"customPrompt":{"type":"string","description":"Optional override for the commit-message magic prompt."},"model":{"type":"string"},"reasoningEffort":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"push_worktree","description":"Push the current branch for a worktree (same path as Jean UI push). Optionally pass prNumber for PR-aware push.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"remote":{"type":"string","description":"Optional git remote name."},"prNumber":{"type":"integer","minimum":1,"description":"Optional PR number for PR-aware push."}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"detect_open_pr","description":"Detect whether the worktree's current branch already has an open GitHub PR. Returns the PR (number, url, title) or null when none exists. Call before create_pull_request to avoid duplicates.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"create_pull_request","description":"Create a GitHub PR for the worktree with AI-generated title/body (same path as Jean UI Open PR). Stages and commits uncommitted changes when needed, pushes the branch, and opens the PR against the project default branch. Returns prNumber, prUrl, title, existing. Prefer detect_open_pr first when unsure.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"sessionId":{"type":"string","description":"Optional Jean session id for context when generating PR content."},"customPrompt":{"type":"string","description":"Optional override for the PR-content magic prompt."},"model":{"type":"string"},"reasoningEffort":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"merge_pull_request","description":"Merge the open GitHub PR for the worktree's current branch using gh (same path as Jean UI merge). Uses the repo-allowed merge method (prefers squash). Fails if there is no open mergeable PR.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"run_review","description":"Run Jean's AI code review on the worktree branch (same path as Jean UI Review). Returns summary, findings, and approvalStatus. Does not commit or open a PR.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"customPrompt":{"type":"string","description":"Optional override for the review magic prompt."},"model":{"type":"string"},"backend":{"type":"string","description":"Optional magic-prompt backend override (e.g. claude, codex)."},"reasoningEffort":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}}
     ])
 }
 
@@ -832,6 +860,155 @@ async fn run_tool(
             .await
             .map_err(ToolError::internal)
         }
+        "create_commit" => {
+            let worktree_id = require_str(&args, "worktreeId")?;
+            let worktree_path = resolve_worktree_path(app, &worktree_id)?;
+            let push = args.get("push").and_then(|v| v.as_bool()).unwrap_or(false);
+            let remote = optional_str(&args, "remote");
+            let pr_number = args
+                .get("prNumber")
+                .or_else(|| args.get("pr_number"))
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32);
+            let specific_files = args
+                .get("specificFiles")
+                .or_else(|| args.get("specific_files"))
+                .and_then(|v| v.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(str::to_string))
+                        .collect::<Vec<_>>()
+                })
+                .filter(|files| !files.is_empty());
+            let custom_prompt = optional_str(&args, "customPrompt")
+                .or_else(|| optional_str(&args, "custom_prompt"));
+            let model = optional_str(&args, "model");
+            let reasoning_effort = optional_str(&args, "reasoningEffort")
+                .or_else(|| optional_str(&args, "reasoning_effort"));
+            let mut payload = serde_json::Map::new();
+            payload.insert("worktreePath".to_string(), Value::String(worktree_path));
+            payload.insert("push".to_string(), Value::Bool(push));
+            if let Some(remote) = remote {
+                payload.insert("remote".to_string(), Value::String(remote));
+            }
+            if let Some(pr_number) = pr_number {
+                payload.insert("prNumber".to_string(), json!(pr_number));
+            }
+            if let Some(files) = specific_files {
+                payload.insert("specificFiles".to_string(), json!(files));
+            }
+            if let Some(prompt) = custom_prompt {
+                payload.insert("customPrompt".to_string(), Value::String(prompt));
+            }
+            if let Some(model) = model {
+                payload.insert("model".to_string(), Value::String(model));
+            }
+            if let Some(effort) = reasoning_effort {
+                payload.insert("reasoningEffort".to_string(), Value::String(effort));
+            }
+            dispatch_command(app, "create_commit_with_ai", Value::Object(payload))
+                .await
+                .map_err(ToolError::internal)
+        }
+        "push_worktree" => {
+            let worktree_id = require_str(&args, "worktreeId")?;
+            let worktree_path = resolve_worktree_path(app, &worktree_id)?;
+            let remote = optional_str(&args, "remote");
+            let pr_number = args
+                .get("prNumber")
+                .or_else(|| args.get("pr_number"))
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32);
+            let mut payload = serde_json::Map::new();
+            payload.insert("worktreePath".to_string(), Value::String(worktree_path));
+            if let Some(remote) = remote {
+                payload.insert("remote".to_string(), Value::String(remote));
+            }
+            if let Some(pr_number) = pr_number {
+                payload.insert("prNumber".to_string(), json!(pr_number));
+            }
+            dispatch_command(app, "git_push", Value::Object(payload))
+                .await
+                .map_err(ToolError::internal)
+        }
+        "detect_open_pr" => {
+            let worktree_id = require_str(&args, "worktreeId")?;
+            let worktree_path = resolve_worktree_path(app, &worktree_id)?;
+            dispatch_command(
+                app,
+                "detect_open_pr_for_branch",
+                json!({ "worktreePath": worktree_path }),
+            )
+            .await
+            .map_err(ToolError::internal)
+        }
+        "create_pull_request" => {
+            let worktree_id = require_str(&args, "worktreeId")?;
+            let worktree_path = resolve_worktree_path(app, &worktree_id)?;
+            let session_id = optional_str(&args, "sessionId")
+                .or_else(|| optional_str(&args, "session_id"));
+            let custom_prompt = optional_str(&args, "customPrompt")
+                .or_else(|| optional_str(&args, "custom_prompt"));
+            let model = optional_str(&args, "model");
+            let reasoning_effort = optional_str(&args, "reasoningEffort")
+                .or_else(|| optional_str(&args, "reasoning_effort"));
+            let mut payload = serde_json::Map::new();
+            payload.insert("worktreePath".to_string(), Value::String(worktree_path));
+            if let Some(session_id) = session_id {
+                payload.insert("sessionId".to_string(), Value::String(session_id));
+            }
+            if let Some(prompt) = custom_prompt {
+                payload.insert("customPrompt".to_string(), Value::String(prompt));
+            }
+            if let Some(model) = model {
+                payload.insert("model".to_string(), Value::String(model));
+            }
+            if let Some(effort) = reasoning_effort {
+                payload.insert("reasoningEffort".to_string(), Value::String(effort));
+            }
+            dispatch_command(app, "create_pr_with_ai_content", Value::Object(payload))
+                .await
+                .map_err(ToolError::internal)
+        }
+        "merge_pull_request" => {
+            let worktree_id = require_str(&args, "worktreeId")?;
+            let worktree_path = resolve_worktree_path(app, &worktree_id)?;
+            dispatch_command(
+                app,
+                "merge_github_pr",
+                json!({ "worktreePath": worktree_path }),
+            )
+            .await
+            .map_err(ToolError::internal)
+        }
+        "run_review" => {
+            let worktree_id = require_str(&args, "worktreeId")?;
+            let worktree_path = resolve_worktree_path(app, &worktree_id)?;
+            let custom_prompt = optional_str(&args, "customPrompt")
+                .or_else(|| optional_str(&args, "custom_prompt"));
+            let model = optional_str(&args, "model");
+            let backend = optional_str(&args, "backend");
+            let reasoning_effort = optional_str(&args, "reasoningEffort")
+                .or_else(|| optional_str(&args, "reasoning_effort"));
+            let mut payload = serde_json::Map::new();
+            payload.insert("worktreePath".to_string(), Value::String(worktree_path));
+            if let Some(prompt) = custom_prompt {
+                payload.insert("customPrompt".to_string(), Value::String(prompt));
+            }
+            if let Some(model) = model {
+                payload.insert("model".to_string(), Value::String(model));
+            }
+            if let Some(backend) = backend {
+                payload.insert("backend".to_string(), Value::String(backend));
+            }
+            if let Some(effort) = reasoning_effort {
+                payload.insert("reasoningEffort".to_string(), Value::String(effort));
+            }
+            dispatch_command(app, "run_review_with_ai", Value::Object(payload))
+                .await
+                .map_err(ToolError::internal)
+        }
         "get_current_context" => {
             if source == "anon" {
                 return Err(no_current_context_error(source));
@@ -1279,13 +1456,36 @@ pub async fn start_background_investigation_impl(
         Some(false),
     )
     .await?;
-    let session_id = sessions
+    // Prefer the active/first session; create one if the worktree has none yet
+    // (e.g. programmatically empty index before the UI opens a tab).
+    let session_id = match sessions
         .active_session_id
         .clone()
         .or_else(|| sessions.sessions.first().map(|session| session.id.clone()))
-        .ok_or_else(|| {
-            format!("Background investigation: no session found for worktree {worktree_id}")
-        })?;
+    {
+        Some(id) => id,
+        None => {
+            let created = crate::chat::create_session(
+                app.clone(),
+                worktree_id.clone(),
+                worktree_path.clone(),
+                None,
+                Some(backend.clone()),
+                None,
+                None,
+                None,
+                None,
+                None,
+            )
+            .await
+            .map_err(|err| {
+                format!(
+                    "Background investigation: failed to create session for worktree {worktree_id}: {err}"
+                )
+            })?;
+            created.id
+        }
+    };
 
     crate::chat::set_session_model(
         app.clone(),
@@ -1332,6 +1532,9 @@ pub async fn start_background_investigation_impl(
     // Persist before returning so a transient send race or app reload cannot
     // leave the newly-created session without its investigation prompt. The
     // backend queue drain starts immediately and requeues lost send races.
+    // set_session_* above goes through with_sessions_mut, which materializes
+    // session metadata so enqueue_message's with_existing_metadata_mut succeeds
+    // even for brand-new default "Session 1" index entries.
     crate::chat::enqueue_message(
         app.clone(),
         worktree_id.clone(),
@@ -1917,6 +2120,66 @@ mod tests {
         ] {
             assert!(names.contains(expected), "missing MCP tool {expected}");
         }
+    }
+
+    #[test]
+    fn tool_registry_includes_ship_loop_tools() {
+        let tools = tool_registry();
+        let names: std::collections::HashSet<&str> = tools
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .filter_map(|item| item.get("name").and_then(|name| name.as_str()))
+            .collect();
+
+        for expected in [
+            "create_commit",
+            "push_worktree",
+            "detect_open_pr",
+            "create_pull_request",
+            "merge_pull_request",
+            "run_review",
+        ] {
+            assert!(names.contains(expected), "missing MCP tool {expected}");
+        }
+
+        let create_commit = find_tool(&tools, "create_commit");
+        assert_eq!(
+            create_commit["inputSchema"]["required"],
+            json!(["worktreeId"])
+        );
+        assert_eq!(
+            create_commit["inputSchema"]["properties"]["push"]["type"],
+            "boolean"
+        );
+
+        let create_pr = find_tool(&tools, "create_pull_request");
+        assert_eq!(
+            create_pr["inputSchema"]["required"],
+            json!(["worktreeId"])
+        );
+        assert!(
+            create_pr["inputSchema"]["properties"]
+                .get("sessionId")
+                .is_some()
+        );
+
+        for limited in [
+            "create_commit",
+            "create_pull_request",
+            "merge_pull_request",
+            "push_worktree",
+            "run_review",
+        ] {
+            assert!(
+                RATE_LIMITED_TOOLS.contains(&limited),
+                "ship-loop mutation tool {limited} must be rate-limited"
+            );
+        }
+        assert!(
+            !RATE_LIMITED_TOOLS.contains(&"detect_open_pr"),
+            "detect_open_pr is read-only and should not be rate-limited"
+        );
     }
 
     #[test]

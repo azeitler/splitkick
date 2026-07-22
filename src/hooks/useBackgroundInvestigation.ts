@@ -30,12 +30,13 @@ type InvestigationType =
   | 'sentry-issue'
 
 /**
- * Headless hook for starting investigations on background-created worktrees.
+ * Headless hook for starting investigations on auto-investigate worktrees.
  *
- * When a worktree is created via CMD+Click with auto-investigate, the ChatWindow
- * never mounts (no modal opens), so the auto-investigate flag is never consumed.
- * This hook watches those flags, builds the investigation prompt, and sends it
- * through the shared backend background-investigation command — no modal needed.
+ * Owns the entire auto-investigate path for both CMD+Click background creates
+ * and foreground creates that open a session modal. Always queues the prompt
+ * through `start_background_investigation` so remote/web clients (where the
+ * frontend queue processor does not drain) still start investigations even when
+ * the worktree becomes active or opens in a modal.
  *
  * Must be mounted at App level alongside useQueueProcessor.
  */
@@ -78,10 +79,9 @@ export function useBackgroundInvestigation(): void {
       autoInvestigateAdvisoryWorktreeIds,
       autoInvestigateLinearIssueWorktreeIds,
       autoInvestigateSentryIssueWorktreeIds,
-      autoOpenSessionWorktreeIds,
     } = useUIStore.getState()
 
-    const { worktreePaths, activeWorktreeId } = useChatStore.getState()
+    const { worktreePaths } = useChatStore.getState()
 
     const isWorktreeReady = (worktreeId: string): boolean => {
       const cached = queryClient.getQueryData<Worktree>([
@@ -96,9 +96,10 @@ export function useBackgroundInvestigation(): void {
     const candidates: { worktreeId: string; type: InvestigationType }[] = []
     let skippedNotReady = 0
 
+    // Always handle auto-investigate headlessly — do not skip active or
+    // auto-opening worktrees. ChatWindow used to own those cases, but remote
+    // Jean clients can open the worktree without reliably sending the prompt.
     const checkCandidate = (worktreeId: string): boolean => {
-      if (worktreeId === activeWorktreeId) return false
-      if (autoOpenSessionWorktreeIds.has(worktreeId)) return false
       if (!worktreePaths[worktreeId]) return false
       if (!isWorktreeReady(worktreeId)) {
         skippedNotReady++
@@ -398,7 +399,11 @@ async function processBackgroundInvestigation(
   queryClient: ReturnType<typeof useQueryClient>
 ): Promise<void> {
   const worktreePath = useChatStore.getState().worktreePaths[worktreeId]
-  if (!worktreePath) return
+  if (!worktreePath) {
+    // Throw so the caller keeps the auto-investigate flag and retries instead
+    // of treating a missing path as success and consuming the flag.
+    throw new Error(`Worktree path not registered for ${worktreeId}`)
+  }
 
   logger.info('Starting background investigation', { worktreeId, type })
 
