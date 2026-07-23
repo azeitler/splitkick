@@ -1369,6 +1369,7 @@ pub async fn dispatch_command(
                 model,
             )
             .await?;
+            emit_cache_invalidation(app, &["session", "sessions"]);
             Ok(Value::Null)
         }
         "set_session_thinking_level" => {
