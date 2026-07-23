@@ -462,11 +462,7 @@ export function RemoteConnectionsDialog({
         <DialogHeader>
           <DialogTitle>Jean connections</DialogTitle>
           <DialogDescription>
-            Switch this client between Local and a remote Jean Web Access
-            server. Install jean-server on a Linux host with SSH user + IP, or
-            paste an existing Web Access URL. This app is{' '}
-            {formatJeanVersionLabel(localVersion)}; a warning is shown when a
-            remote reports a different version.
+            Connect this client to Local or a remote Jean Web Access server.
           </DialogDescription>
         </DialogHeader>
 

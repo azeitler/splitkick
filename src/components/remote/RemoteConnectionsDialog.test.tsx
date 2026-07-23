@@ -128,9 +128,6 @@ describe('RemoteConnectionsDialog', () => {
     render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
-    expect(
-      screen.getByText(/This app is v0\.1\.69; a warning is shown/)
-    ).toBeInTheDocument()
     expect(screen.getByText('v0.1.69')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))

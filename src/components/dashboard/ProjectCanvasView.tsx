@@ -20,7 +20,7 @@ import {
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
-import { canOpenNativeApps } from '@/lib/environment'
+import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import {
   Search,
@@ -876,6 +876,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const [activeFilterTab, setActiveFilterTab] = useState<CanvasFilterTab>('all')
   const isMobile = useIsMobile()
   const canOpenLocally = canOpenNativeApps()
+  const canOpenEditor = canOpenInEditor()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const showWorktreeLabelContextMenu = shouldShowWorktreeLabelContextMenu({
     isMobile,
@@ -3067,53 +3068,67 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                       </>
                     )}
 
-                    {canOpenLocally && (
+                    {(canOpenEditor || canOpenLocally) && (
                       <>
                         <DropdownMenuSeparator />
 
-                        <DropdownMenuItem
-                          onSelect={() =>
-                            openInEditor.mutate({
-                              worktreePath: project.path,
-                              editor: preferences?.editor,
-                            })
-                          }
-                        >
-                          <Code className="h-4 w-4" />
-                          Open in {getEditorLabel(preferences?.editor)}
-                        </DropdownMenuItem>
+                        {canOpenEditor && (
+                          <DropdownMenuItem
+                            onSelect={() =>
+                              openInEditor.mutate({
+                                worktreePath: project.path,
+                                editor: preferences?.editor,
+                              })
+                            }
+                          >
+                            <Code className="h-4 w-4" />
+                            Open in {getEditorLabel(preferences?.editor)}
+                          </DropdownMenuItem>
+                        )}
 
-                        <DropdownMenuItem
-                          onSelect={() => openInFinder.mutate(project.path)}
-                        >
-                          <FolderOpen className="h-4 w-4" />
-                          Open in Finder
-                        </DropdownMenuItem>
+                        {canOpenLocally && (
+                          <DropdownMenuItem
+                            onSelect={() => openInFinder.mutate(project.path)}
+                          >
+                            <FolderOpen className="h-4 w-4" />
+                            Open in Finder
+                          </DropdownMenuItem>
+                        )}
 
-                        <DropdownMenuItem
-                          onSelect={() =>
-                            openInTerminal.mutate({
-                              worktreePath: project.path,
-                              terminal: preferences?.terminal,
-                            })
-                          }
-                        >
-                          <Terminal className="h-4 w-4" />
-                          Open in {getTerminalLabel(preferences?.terminal)}
-                        </DropdownMenuItem>
+                        {canOpenLocally && (
+                          <DropdownMenuItem
+                            onSelect={() =>
+                              openInTerminal.mutate({
+                                worktreePath: project.path,
+                                terminal: preferences?.terminal,
+                              })
+                            }
+                          >
+                            <Terminal className="h-4 w-4" />
+                            Open in {getTerminalLabel(preferences?.terminal)}
+                          </DropdownMenuItem>
+                        )}
 
-                        <DropdownMenuSeparator />
+                        {canOpenLocally && (
+                          <>
+                            <DropdownMenuSeparator />
 
-                        <DropdownMenuItem
-                          onSelect={() => openWorktreesFolder.mutate(projectId)}
-                        >
-                          <Folder className="h-4 w-4" />
-                          Open Worktrees Folder
-                        </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onSelect={() =>
+                                openWorktreesFolder.mutate(projectId)
+                              }
+                            >
+                              <Folder className="h-4 w-4" />
+                              Open Worktrees Folder
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </>
                     )}
 
-                    {!canOpenLocally && <DropdownMenuSeparator />}
+                    {!canOpenEditor && !canOpenLocally && (
+                      <DropdownMenuSeparator />
+                    )}
 
                     <DropdownMenuItem
                       onSelect={() => openOnGitHub.mutate(projectId)}

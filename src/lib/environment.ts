@@ -44,6 +44,20 @@ export const isNativeOpenAllowed = (): boolean => _nativeOpenAllowed
 export const canOpenNativeApps = (): boolean =>
   isLocalBackend() || _nativeOpenAllowed
 
+/**
+ * Native desktop shell connected to a remote Jean can open remote paths in the
+ * local Zed CLI via `ssh://` (see `prepareRemoteEditorOpenArgs`).
+ */
+export const canOpenRemoteEditorLocally = (): boolean =>
+  isNativeApp() && getActiveRemoteConnection() !== null
+
+/**
+ * Show Open in Editor: full host-native open, or remote Jean + local Zed CLI.
+ * Finder/terminal still use `canOpenNativeApps()`.
+ */
+export const canOpenInEditor = (): boolean =>
+  canOpenNativeApps() || canOpenRemoteEditorLocally()
+
 /** A backend is available (either Tauri IPC, WebSocket connection, or E2E mock). */
 export const hasBackend = (): boolean => {
   if (isLocalBackend()) return true

@@ -28,7 +28,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
-import { canOpenNativeApps } from '@/lib/environment'
+import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { getFileManagerName } from '@/lib/platform'
 import type { useWorktreeMenuActions } from './useWorktreeMenuActions'
 
@@ -88,9 +88,11 @@ export function WorktreeContextMenu({
           </ContextMenuSub>
         )}
 
-        {canOpenNativeApps() && <ContextMenuSeparator />}
+        {(canOpenInEditor() || canOpenNativeApps()) && (
+          <ContextMenuSeparator />
+        )}
 
-        {canOpenNativeApps() && (
+        {canOpenInEditor() && (
           <ContextMenuItem onClick={handleOpenInEditor}>
             <Code className="mr-2 h-4 w-4" />
             Open in {getEditorLabel(preferences?.editor)}
