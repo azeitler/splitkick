@@ -197,4 +197,129 @@ describe('useBackgroundInvestigation', () => {
     expect(args.message).toContain('After investigation, fix the issue')
     expect(args.message).not.toMatch(/If you are in yolo mode/i)
   })
+
+  it('starts PR investigation when client status was wiped by a remote refetch', async () => {
+    // get_worktree omits client-only `status`; after a remote refetch the cache
+    // often has path + worktree data but no status field.
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    queryClient.setQueryData<Worktree>(
+      [...projectsQueryKeys.all, 'worktree', 'worktree-1'],
+      {
+        id: 'worktree-1',
+        project_id: 'project-1',
+        path: '/tmp/worktree-1',
+        // status intentionally omitted — mirrors post-refetch remote cache
+      } as Worktree
+    )
+
+    useUIStore.setState({
+      autoInvestigateWorktreeIds: new Set(),
+      autoInvestigatePRWorktreeIds: new Set(['worktree-1']),
+    })
+
+    vi.mocked(invoke).mockImplementation(async command => {
+      if (command === 'list_loaded_pr_contexts') return [{ number: 99 }]
+      if (command === 'start_background_investigation') {
+        return {
+          sessionId: 'session-1',
+          worktreeId: 'worktree-1',
+          status: 'investigation_started',
+        }
+      }
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    renderHook(() => useBackgroundInvestigation(), { wrapper })
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith(
+        'list_loaded_pr_contexts',
+        expect.objectContaining({
+          sessionId: 'worktree-1',
+          worktreeId: 'worktree-1',
+        })
+      )
+      expect(invoke).toHaveBeenCalledWith(
+        'start_background_investigation',
+        expect.objectContaining({
+          worktreeId: 'worktree-1',
+          message: expect.stringContaining('#99'),
+        })
+      )
+    })
+
+    await waitFor(() => {
+      expect(
+        useUIStore.getState().autoInvestigatePRWorktreeIds.has('worktree-1')
+      ).toBe(false)
+    })
+  })
+
+  it('recovers path from list cache and starts PR investigation', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    // Single-worktree cache missing; list cache has the server-backed worktree
+    // (typical after a missed worktree:created event + list recovery refetch).
+    // worktreePaths is empty — path must be recovered from the list cache.
+    queryClient.setQueryData<Worktree[]>(projectsQueryKeys.worktrees('project-1'), [
+      {
+        id: 'worktree-1',
+        project_id: 'project-1',
+        path: '/tmp/worktree-1',
+        name: 'pr-99',
+        branch: 'feature',
+        created_at: 1,
+        session_type: 'worktree',
+        order: 0,
+      } as Worktree,
+    ])
+    useChatStore.setState({
+      activeWorktreeId: null,
+      worktreePaths: {},
+    })
+    useUIStore.setState({
+      autoInvestigateWorktreeIds: new Set(),
+      autoInvestigatePRWorktreeIds: new Set(['worktree-1']),
+    })
+
+    vi.mocked(invoke).mockImplementation(async command => {
+      if (command === 'list_loaded_pr_contexts') return [{ number: 99 }]
+      if (command === 'start_background_investigation') {
+        return {
+          sessionId: 'session-1',
+          worktreeId: 'worktree-1',
+          status: 'investigation_started',
+        }
+      }
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    renderHook(() => useBackgroundInvestigation(), { wrapper })
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith(
+        'start_background_investigation',
+        expect.objectContaining({
+          worktreeId: 'worktree-1',
+          worktreePath: '/tmp/worktree-1',
+          message: expect.stringContaining('#99'),
+        })
+      )
+    })
+
+    expect(useChatStore.getState().worktreePaths['worktree-1']).toBe(
+      '/tmp/worktree-1'
+    )
+  })
 })

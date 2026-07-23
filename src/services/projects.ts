@@ -153,7 +153,15 @@ export function useWorktree(worktreeId: string | null) {
           worktreeId,
         })
         logger.info('Worktree loaded successfully', { id: worktree.id })
-        return worktree
+        // `status` is client-only (pending/ready/error). Backend payloads omit
+        // it; preserve the previous client status so remote refetches do not
+        // clear `ready` and block auto-investigation / setup UI.
+        const previous = queryClient.getQueryData<Worktree>(queryKey)
+        const preservedStatus =
+          previous?.status === 'pending'
+            ? 'pending'
+            : (previous?.status ?? 'ready')
+        return { ...worktree, status: preservedStatus }
       } catch (error) {
         logger.error('Failed to load worktree', { error, worktreeId })
         return preserveQueryCacheOnError(error)
@@ -985,6 +993,15 @@ export function useWorktreeEvents() {
               })
             } else if (!stillPending) {
               pendingTimeoutAttempts.delete(worktreeId)
+              // Missed worktree:created (common on remote WS reconnects): the
+              // worktree is now on the server. Promote single-worktree cache
+              // and register the path so auto-investigate can start.
+              const serverWorktree = queryClient
+                .getQueryData<Worktree[]>(projectsQueryKeys.worktrees(projectId))
+                ?.find(w => w.id === worktreeId && w.status !== 'pending')
+              if (serverWorktree) {
+                handleWorktreeReady(serverWorktree, queryClient, false)
+              }
             }
           })
         queryClient.invalidateQueries({
