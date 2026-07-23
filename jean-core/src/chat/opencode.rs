@@ -2102,7 +2102,7 @@ fn process_shared_sse_event(
             let Some(error) = info.get("error") else {
                 return Some(false);
             };
-            if role != "assistant" && role != "" {
+            if role != "assistant" && !role.is_empty() {
                 return Some(false);
             }
             let opencode_session_id = info
