@@ -358,7 +358,8 @@ export function SessionChatModal({
   const stackedBaseBranch = getStackedBaseBranch(
     worktree?.base_branch,
     worktree?.branch,
-    project?.default_branch
+    project?.default_branch,
+    worktree?.base_remote
   )
   const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open')
   const stackedOnPR = stackedBaseBranch
@@ -838,11 +839,19 @@ export function SessionChatModal({
       await performGitPull({
         worktreeId,
         worktreePath,
-        baseBranch: defaultBranch,
+        baseBranch: worktree?.base_branch ?? defaultBranch,
         projectId: project?.id,
+        remote: worktree?.base_remote,
       })
     },
-    [worktreeId, worktreePath, defaultBranch, project?.id]
+    [
+      worktreeId,
+      worktreePath,
+      worktree?.base_branch,
+      worktree?.base_remote,
+      defaultBranch,
+      project?.id,
+    ]
   )
 
   const pickRemoteOrRun = useRemotePicker(worktreePath)

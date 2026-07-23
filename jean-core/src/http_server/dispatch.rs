@@ -383,8 +383,10 @@ pub async fn dispatch_command(
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
             let diff_type: String = field(&args, "diffType", "diff_type")?;
             let base_branch: Option<String> = field_opt(&args, "baseBranch", "base_branch")?;
+            let base_remote: Option<String> = field_opt(&args, "baseRemote", "base_remote")?;
             let result =
-                crate::projects::get_git_diff(worktree_path, diff_type, base_branch).await?;
+                crate::projects::get_git_diff(worktree_path, diff_type, base_branch, base_remote)
+                    .await?;
             to_value(result)
         }
         "get_commit_history" => {
@@ -1795,6 +1797,12 @@ pub async fn dispatch_command(
         "get_git_remotes" => {
             let repo_path: String = field(&args, "repoPath", "repo_path")?;
             let result = crate::projects::get_git_remotes(repo_path).await?;
+            to_value(result)
+        }
+        "list_remotes_with_branch" => {
+            let repo_path: String = field(&args, "repoPath", "repo_path")?;
+            let branch: String = from_field(&args, "branch")?;
+            let result = crate::projects::list_remotes_with_branch(repo_path, branch).await?;
             to_value(result)
         }
         "get_github_remotes" => {
