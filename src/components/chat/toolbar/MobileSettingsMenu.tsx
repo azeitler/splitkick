@@ -38,7 +38,11 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { CustomCliProfile, CliBackend } from '@/types/preferences'
+import type {
+  CliBackend,
+  CodexProviderProfile,
+  CustomCliProfile,
+} from '@/types/preferences'
 import type {
   EffortLevel,
   McpServerInfo,
@@ -114,7 +118,7 @@ interface MobileSettingsMenuProps {
   isCodex: boolean
   modelReasoning?: ModelReasoningCapability | null
   customCliProfiles: CustomCliProfile[]
-  customCodexProviders?: import('@/types/preferences').CodexProviderProfile[]
+  customCodexProviders?: CodexProviderProfile[]
 
   onOpenBackendModelPicker: () => void
   handleProviderChange: (value: string) => void

@@ -23,7 +23,9 @@ const {
   warnRemoteVersionMismatch: vi.fn(() => false),
   invoke: vi.fn(),
   isNativeApp: vi.fn(() => false),
-  listenLocal: vi.fn(async () => () => {}),
+  listenLocal: vi.fn(async () => () => {
+    // no-op unsubscribe
+  }),
 }))
 
 vi.mock('@/lib/remote-connections', () => ({

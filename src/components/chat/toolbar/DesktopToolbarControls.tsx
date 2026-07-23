@@ -27,7 +27,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import type { CliBackend, CustomCliProfile } from '@/types/preferences'
+import type {
+  CliBackend,
+  CodexProviderProfile,
+  CustomCliProfile,
+} from '@/types/preferences'
 import type {
   EffortLevel,
   ExecutionMode,
@@ -81,7 +85,7 @@ interface DesktopToolbarControlsProps {
   sessionHasMessages?: boolean
   providerLocked?: boolean
   customCliProfiles: CustomCliProfile[]
-  customCodexProviders?: import('@/types/preferences').CodexProviderProfile[]
+  customCodexProviders?: CodexProviderProfile[]
   isCodex: boolean
   modelReasoning?: ModelReasoningCapability | null
 
