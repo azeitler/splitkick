@@ -32,8 +32,8 @@ vi.mock('@/lib/environment', () => ({
 }))
 
 vi.mock('@/lib/transport', () => ({
-  invoke: (...args: unknown[]) => invoke(...args),
-  listenLocal: (...args: unknown[]) => listenLocal(...args),
+  invoke,
+  listenLocal,
 }))
 
 describe('RemoteConnectionsDialog', () => {
