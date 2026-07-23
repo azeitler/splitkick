@@ -33,6 +33,7 @@ import {
   isLoginSlashCommand,
   openBackendLoginModal,
 } from '@/lib/cli-auth'
+import { isBackendAutoSteerEnabled } from '@/lib/backend-auto-steer'
 
 interface UseMessageSendingParams {
   activeSessionId: string | null | undefined
@@ -533,20 +534,7 @@ export function useMessageSending({
           textFiles.length > 0 ||
           skills.length > 0
         const backend = selectedBackendRef.current
-        const autoSteerEnabled =
-          backend === 'opencode'
-            ? (preferences?.opencode_auto_steer_enabled ?? true)
-            : backend === 'pi'
-              ? (preferences?.pi_auto_steer_enabled ?? true)
-              : backend === 'grok'
-                ? (preferences?.grok_auto_steer_enabled ?? true)
-                : (preferences?.codex_auto_steer_enabled ?? true)
-        const isSteerBackend =
-          backend === 'codex' ||
-          backend === 'opencode' ||
-          backend === 'pi' ||
-          backend === 'grok'
-        if (isSteerBackend && autoSteerEnabled) {
+        if (isBackendAutoSteerEnabled(backend, preferences)) {
           try {
             const steerMessage = buildMessageWithRefs(queuedMessage)
             if (backend === 'pi') {

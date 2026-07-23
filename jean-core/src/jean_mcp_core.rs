@@ -173,7 +173,7 @@ fn tool_registry_core() -> Value {
         {"name":"list_security_issues","description":"List Dependabot security alerts for a project using the same backend command as the UI. Pass projectId; the server resolves the repo path.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"state":{"type":"string","enum":["open","dismissed","fixed","auto_dismissed","all"],"default":"open"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"list_security_advisories","description":"List repository security advisories for a project using the same backend command as the UI. Pass projectId; the server resolves the repo path.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"state":{"type":"string","enum":["draft","published","triage","closed","all"],"default":"all"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"list_linear_issues","description":"List Linear issues for a project using the same backend command as the UI. Pass projectId; Linear API config is resolved from project/global settings.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"}},"required":["projectId"],"additionalProperties":false}},
-        {"name":"create_worktree","description":"Create a new worktree for a project. Provide issueNumber or prNumber for a GitHub issue/PR, or linearIssueIdentifier (e.g. \"PLA-215\") for a Linear issue; these are mutually exclusive. Jean fetches the chosen context and attaches it to the worktree, reusing the same branch naming and context-loading as the Jean UI. Pass action=\"start_autoinvestigating\" to create a session and start investigating the issue/PR/Linear issue with the Magic Prompts settings default backend/model. This never switches/opens Jean's UI unless the user opens the worktree separately.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"baseBranch":{"type":"string"},"customName":{"type":"string"},"issueNumber":{"type":"integer","minimum":1},"prNumber":{"type":"integer","minimum":1},"linearIssueIdentifier":{"type":"string","description":"Linear issue identifier like \"PLA-215\". Mutually exclusive with issueNumber/prNumber."},"action":{"type":"string","enum":["start_autoinvestigating"]}},"required":["projectId"],"additionalProperties":false}},
+        {"name":"create_worktree","description":"Create a new worktree for a project. Provide issueNumber or prNumber for a GitHub issue/PR, linearIssueIdentifier (e.g. \"PLA-215\") for a Linear issue, or ghsaId (e.g. \"GHSA-xxxx-xxxx-xxxx\") for a repository security advisory; these are mutually exclusive. Jean fetches the chosen context and attaches it to the worktree, reusing the same branch naming and context-loading as the Jean UI. Pass action=\"start_autoinvestigating\" to create a session and start investigating (and magic-fix when the Magic Prompts execution mode is yolo) the issue/PR/Linear issue/security advisory with the Magic Prompts settings default backend/model. This never switches/opens Jean's UI unless the user opens the worktree separately.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"baseBranch":{"type":"string"},"customName":{"type":"string"},"issueNumber":{"type":"integer","minimum":1},"prNumber":{"type":"integer","minimum":1},"linearIssueIdentifier":{"type":"string","description":"Linear issue identifier like \"PLA-215\". Mutually exclusive with issueNumber/prNumber/ghsaId."},"ghsaId":{"type":"string","description":"Repository security advisory GHSA id like \"GHSA-xxxx-xxxx-xxxx\". Mutually exclusive with issueNumber/prNumber/linearIssueIdentifier."},"action":{"type":"string","enum":["start_autoinvestigating"]}},"required":["projectId"],"additionalProperties":false}},
         {"name":"create_worktree_from_existing_branch","description":"Create a Jean worktree from an existing local or remote-tracking branch (branch name is used as the worktree name). Does not open Jean's UI. Prefer create_worktree for new branches; use this when the branch already exists.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"branchName":{"type":"string","description":"Existing branch name to check out into a new worktree path."}},"required":["projectId","branchName"],"additionalProperties":false}},
         {"name":"import_worktree","description":"Import an existing git worktree/directory on disk into a Jean project. Path must already exist and be a git worktree or repo. Does not create a new git worktree.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"path":{"type":"string","description":"Absolute path to an existing git worktree directory."}},"required":["projectId","path"],"additionalProperties":false}},
         {"name":"rename_worktree","description":"Rename a worktree's display name in Jean (does not rename the git branch or folder).","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"newName":{"type":"string","description":"New display name. Must be unique within the project."}},"required":["worktreeId","newName"],"additionalProperties":false}},
@@ -527,10 +527,18 @@ async fn run_tool(
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(str::to_string);
+            let ghsa_id = args
+                .get("ghsaId")
+                .or_else(|| args.get("ghsa_id"))
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string);
             validate_create_worktree_inputs(
                 issue_number.is_some(),
                 pr_number.is_some(),
                 linear_identifier.is_some(),
+                ghsa_id.is_some(),
                 action,
             )?;
 
@@ -548,7 +556,8 @@ async fn run_tool(
             // causes the normal UI path to create its default session in addition to
             // the autoinvestigation session, so keep MCP-created worktrees background-only.
             payload.insert("autoOpenInJean".to_string(), Value::Bool(false));
-            let project_path = if issue_number.is_some() || pr_number.is_some() {
+            let project_path = if issue_number.is_some() || pr_number.is_some() || ghsa_id.is_some()
+            {
                 Some(resolve_project_path(app, &project_id)?)
             } else {
                 None
@@ -682,6 +691,48 @@ async fn run_tool(
                     }),
                 );
             }
+            if let Some(ref ghsa_id) = ghsa_id {
+                let project_path = project_path.clone().ok_or_else(|| {
+                    ToolError::internal("missing project_path for advisory fetch")
+                })?;
+                let detail = dispatch_command(
+                    app,
+                    "get_repository_advisory",
+                    json!({ "projectPath": project_path, "ghsaId": ghsa_id }),
+                )
+                .await
+                .map_err(ToolError::internal)?;
+                if !has_custom_name {
+                    let summary = detail.get("summary").and_then(|v| v.as_str()).unwrap_or("");
+                    let advisory_branch =
+                        crate::projects::generate_branch_name_from_advisory(ghsa_id, summary);
+                    let resolved =
+                        resolve_non_conflicting_worktree_name(app, &project_id, &advisory_branch)?;
+                    if resolved != advisory_branch {
+                        payload.insert("customName".to_string(), Value::String(resolved.clone()));
+                    }
+                }
+                // Map vulnerabilities into the AdvisoryContext shape expected by create_worktree.
+                let vulnerabilities = detail
+                    .get("vulnerabilities")
+                    .cloned()
+                    .unwrap_or_else(|| json!([]));
+                payload.insert(
+                    "advisoryContext".to_string(),
+                    json!({
+                        "ghsaId": detail
+                            .get("ghsaId")
+                            .cloned()
+                            .unwrap_or_else(|| json!(ghsa_id)),
+                        "severity": detail.get("severity").cloned().unwrap_or(json!("unknown")),
+                        "summary": detail.get("summary").cloned().unwrap_or(Value::Null),
+                        "description": detail.get("description").cloned().unwrap_or(json!("")),
+                        "cveId": detail.get("cveId").cloned().unwrap_or(Value::Null),
+                        "vulnerabilities": vulnerabilities,
+                        "htmlUrl": detail.get("htmlUrl").cloned().unwrap_or(Value::Null),
+                    }),
+                );
+            }
             let worktree = dispatch_command(app, "create_worktree", Value::Object(payload))
                 .await
                 .map_err(ToolError::internal)?;
@@ -690,6 +741,8 @@ async fn run_tool(
                     InvestigationKind::Issue
                 } else if linear_identifier.is_some() {
                     InvestigationKind::Linear
+                } else if ghsa_id.is_some() {
+                    InvestigationKind::Advisory
                 } else {
                     InvestigationKind::Pr
                 };
@@ -1444,12 +1497,13 @@ fn resolve_non_conflicting_worktree_name(
 }
 
 /// Validate the mutually-exclusive context inputs for create_worktree.
-/// GitHub `issueNumber`/`prNumber` and Linear `linearIssueIdentifier` are mutually
-/// exclusive, and `action=start_autoinvestigating` needs one of them.
+/// GitHub `issueNumber`/`prNumber`, Linear `linearIssueIdentifier`, and advisory
+/// `ghsaId` are mutually exclusive, and `action=start_autoinvestigating` needs one of them.
 fn validate_create_worktree_inputs(
     has_issue: bool,
     has_pr: bool,
     has_linear: bool,
+    has_advisory: bool,
     action: Option<&str>,
 ) -> Result<(), ToolError> {
     if has_issue && has_pr {
@@ -1462,9 +1516,19 @@ fn validate_create_worktree_inputs(
             "Pass a GitHub issueNumber/prNumber or a linearIssueIdentifier, not both",
         ));
     }
-    if action == Some("start_autoinvestigating") && !has_issue && !has_pr && !has_linear {
+    if has_advisory && (has_issue || has_pr || has_linear) {
         return Err(ToolError::invalid_params(
-            "action=start_autoinvestigating requires issueNumber, prNumber, or linearIssueIdentifier",
+            "Pass a GitHub issueNumber/prNumber, linearIssueIdentifier, or ghsaId, not both",
+        ));
+    }
+    if action == Some("start_autoinvestigating")
+        && !has_issue
+        && !has_pr
+        && !has_linear
+        && !has_advisory
+    {
+        return Err(ToolError::invalid_params(
+            "action=start_autoinvestigating requires issueNumber, prNumber, linearIssueIdentifier, or ghsaId",
         ));
     }
     Ok(())
@@ -1486,6 +1550,7 @@ pub(crate) enum InvestigationKind {
     Issue,
     Pr,
     Linear,
+    Advisory,
 }
 
 #[derive(Debug)]
@@ -1897,6 +1962,7 @@ fn resolve_investigation_selection(
             .magic_prompt_models
             .investigate_linear_issue_model
             .clone(),
+        InvestigationKind::Advisory => prefs.magic_prompt_models.investigate_advisory_model.clone(),
     };
     let magic_backend = match kind {
         InvestigationKind::Issue => prefs
@@ -1910,6 +1976,10 @@ fn resolve_investigation_selection(
         InvestigationKind::Linear => prefs
             .magic_prompt_backends
             .investigate_linear_issue_backend
+            .as_deref(),
+        InvestigationKind::Advisory => prefs
+            .magic_prompt_backends
+            .investigate_advisory_backend
             .as_deref(),
     };
     let provider = match kind {
@@ -1928,6 +1998,11 @@ fn resolve_investigation_selection(
             .investigate_linear_issue_provider
             .clone()
             .or_else(|| prefs.default_provider.clone()),
+        InvestigationKind::Advisory => prefs
+            .magic_prompt_providers
+            .investigate_advisory_provider
+            .clone()
+            .or_else(|| prefs.default_provider.clone()),
     };
     let effort = match kind {
         InvestigationKind::Issue => prefs.magic_prompt_efforts.investigate_issue_effort.clone(),
@@ -1935,6 +2010,10 @@ fn resolve_investigation_selection(
         InvestigationKind::Linear => prefs
             .magic_prompt_efforts
             .investigate_linear_issue_effort
+            .clone(),
+        InvestigationKind::Advisory => prefs
+            .magic_prompt_efforts
+            .investigate_advisory_effort
             .clone(),
     }
     .or_else(|| Some(prefs.default_codex_reasoning_effort.clone()));
@@ -1945,6 +2024,7 @@ fn resolve_investigation_selection(
             .magic_prompt_modes
             .investigate_linear_issue_mode
             .clone(),
+        InvestigationKind::Advisory => prefs.magic_prompt_modes.investigate_advisory_mode.clone(),
     };
 
     let worktree_id = worktree.get("id").and_then(|v| v.as_str());
@@ -2030,6 +2110,25 @@ pub(crate) fn build_investigation_prompt(
                 .replace("{linearWord}", "issue")
                 .replace("{linearRefs}", &identifier)
                 .replace("{linearContext}", "")
+        }
+        InvestigationKind::Advisory => {
+            let ghsa_id = worktree
+                .get("advisory_ghsa_id")
+                .or_else(|| worktree.get("advisoryGhsaId"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| "the loaded security advisory".to_string());
+            let template = prefs
+                .magic_prompts
+                .investigate_advisory
+                .clone()
+                .filter(|p| !p.trim().is_empty())
+                .unwrap_or_else(crate::default_investigate_advisory_prompt);
+            // Full advisory context is written to a session context file during
+            // worktree creation, so the prompt only needs the GHSA id reference.
+            template
+                .replace("{advisoryWord}", "advisory")
+                .replace("{advisoryRefs}", &ghsa_id)
         }
     }
 }
@@ -2290,6 +2389,26 @@ mod tests {
     }
 
     #[test]
+    fn create_worktree_schema_exposes_ghsa_id() {
+        let tools = tool_registry();
+        let create_worktree = find_tool(&tools, "create_worktree");
+        assert_eq!(
+            create_worktree["inputSchema"]["properties"]["ghsaId"]["type"],
+            "string",
+            "create_worktree must expose a ghsaId input for security advisories"
+        );
+        let description = create_worktree["description"].as_str().unwrap_or_default();
+        assert!(
+            description.contains("ghsaId"),
+            "create_worktree description must document ghsaId"
+        );
+        assert!(
+            description.contains("security advisory") || description.contains("security advisories"),
+            "create_worktree description must mention security advisories"
+        );
+    }
+
+    #[test]
     fn parse_linear_issue_number_extracts_trailing_number() {
         assert_eq!(parse_linear_issue_number("PLA-215"), Some(215));
         assert_eq!(parse_linear_issue_number("eng-12"), Some(12));
@@ -2308,17 +2427,28 @@ mod tests {
     #[test]
     fn validate_inputs_rejects_github_and_linear_together() {
         // issueNumber + linearIssueIdentifier
-        let err = validate_create_worktree_inputs(true, false, true, None).unwrap_err();
+        let err = validate_create_worktree_inputs(true, false, true, false, None).unwrap_err();
         assert_eq!(err.code, -32602);
         assert!(err.message.contains("linearIssueIdentifier"));
         // prNumber + linearIssueIdentifier
-        let err = validate_create_worktree_inputs(false, true, true, None).unwrap_err();
+        let err = validate_create_worktree_inputs(false, true, true, false, None).unwrap_err();
         assert_eq!(err.code, -32602);
     }
 
     #[test]
     fn validate_inputs_rejects_issue_and_pr_together() {
-        let err = validate_create_worktree_inputs(true, true, false, None).unwrap_err();
+        let err = validate_create_worktree_inputs(true, true, false, false, None).unwrap_err();
+        assert_eq!(err.code, -32602);
+    }
+
+    #[test]
+    fn validate_inputs_rejects_advisory_with_other_context() {
+        let err = validate_create_worktree_inputs(true, false, false, true, None).unwrap_err();
+        assert_eq!(err.code, -32602);
+        assert!(err.message.contains("ghsaId"));
+        let err = validate_create_worktree_inputs(false, true, false, true, None).unwrap_err();
+        assert_eq!(err.code, -32602);
+        let err = validate_create_worktree_inputs(false, false, true, true, None).unwrap_err();
         assert_eq!(err.code, -32602);
     }
 
@@ -2329,11 +2459,13 @@ mod tests {
             false,
             false,
             true,
+            false,
             Some("start_autoinvestigating")
         )
         .is_ok());
         // No context at all fails the autoinvestigate guard.
         assert!(validate_create_worktree_inputs(
+            false,
             false,
             false,
             false,
@@ -2343,11 +2475,42 @@ mod tests {
     }
 
     #[test]
+    fn validate_inputs_allows_advisory_only_autoinvestigate() {
+        assert!(validate_create_worktree_inputs(
+            false,
+            false,
+            false,
+            true,
+            Some("start_autoinvestigating")
+        )
+        .is_ok());
+    }
+
+    #[test]
     fn validate_inputs_allows_single_context() {
-        assert!(validate_create_worktree_inputs(true, false, false, None).is_ok());
-        assert!(validate_create_worktree_inputs(false, true, false, None).is_ok());
-        assert!(validate_create_worktree_inputs(false, false, true, None).is_ok());
-        assert!(validate_create_worktree_inputs(false, false, false, None).is_ok());
+        assert!(validate_create_worktree_inputs(true, false, false, false, None).is_ok());
+        assert!(validate_create_worktree_inputs(false, true, false, false, None).is_ok());
+        assert!(validate_create_worktree_inputs(false, false, true, false, None).is_ok());
+        assert!(validate_create_worktree_inputs(false, false, false, true, None).is_ok());
+        assert!(validate_create_worktree_inputs(false, false, false, false, None).is_ok());
+    }
+
+    #[test]
+    fn build_investigation_prompt_for_advisory_uses_ghsa_id() {
+        let prefs = crate::AppPreferences::default();
+        let worktree = json!({
+            "advisory_ghsa_id": "GHSA-xxxx-yyyy-zzzz",
+        });
+        let prompt =
+            build_investigation_prompt(&prefs, &worktree, InvestigationKind::Advisory);
+        assert!(
+            prompt.contains("GHSA-xxxx-yyyy-zzzz"),
+            "advisory investigation prompt should include the GHSA id"
+        );
+        assert!(
+            prompt.contains("advisory"),
+            "advisory investigation prompt should use advisory wording"
+        );
     }
 
     #[test]

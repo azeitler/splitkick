@@ -134,6 +134,7 @@ export const ChatToolbar = memo(function ChatToolbar({
   onSetExecutionMode,
   onAttach,
   onCancel,
+  willSteer,
   queuedMessageCount,
   availableMcpServers,
   enabledMcpServers,
@@ -600,6 +601,7 @@ export const ChatToolbar = memo(function ChatToolbar({
             <SendCancelButton
               isSending={isSending}
               canSend={canSend}
+              willSteer={willSteer}
               queuedMessageCount={queuedMessageCount}
               onCancel={onCancel}
             />

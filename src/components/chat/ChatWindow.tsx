@@ -140,6 +140,7 @@ import { ChatErrorFallback } from './ChatErrorFallback'
 import { logger } from '@/lib/logger'
 import { saveCrashState } from '@/lib/recovery'
 import { resolveDefaultModelForBackend } from '@/lib/session-defaults'
+import { isBackendAutoSteerEnabled } from '@/lib/backend-auto-steer'
 import { ErrorBanner } from './ErrorBanner'
 import {
   VirtualizedMessageList,
@@ -3591,6 +3592,10 @@ export function ChatWindow({
                                   triggerChatAttachRef.current?.()
                                 }
                                 onCancel={handleCancel}
+                                willSteer={isBackendAutoSteerEnabled(
+                                  selectedBackend,
+                                  preferences
+                                )}
                                 queuedMessageCount={
                                   currentQueuedMessages.length
                                 }

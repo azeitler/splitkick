@@ -1754,7 +1754,7 @@ fn spawn_grok_acp_host(
         serde_json::to_string(mcp_servers).unwrap_or_else(|_| "[]".to_string()),
     )
     .map_err(|e| format!("Failed to write Grok MCP servers file: {e}"))?;
-    let exe = std::env::current_exe().map_err(|e| format!("Failed to get Jean executable: {e}"))?;
+    let exe = super::detached::current_executable_for_detached_host()?;
 
     let mut args = vec![
         GROK_ACP_HOST_ARG.to_string(),

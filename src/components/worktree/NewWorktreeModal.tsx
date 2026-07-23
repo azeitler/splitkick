@@ -270,6 +270,8 @@ export function NewWorktreeModal() {
                 jeanConfig={data.jeanConfig}
                 remotes={data.remotes}
                 defaultBranch={defaultBranch}
+                branches={data.branches}
+                isLoadingBranches={data.isLoadingBranches}
               />
             )}
 

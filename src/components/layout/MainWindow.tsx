@@ -225,7 +225,6 @@ export function MainWindow() {
   const jeanMcpIntroOpen = useUIStore(state => state.jeanMcpIntroOpen)
   const openInModalOpen = useUIStore(state => state.openInModalOpen)
   const remotePickerOpen = useUIStore(state => state.remotePickerOpen)
-  const magicModalOpen = useUIStore(state => state.magicModalOpen)
   const resolveConflictsDialogOpen = useUIStore(
     state => state.resolveConflictsDialogOpen
   )
@@ -447,7 +446,9 @@ export function MainWindow() {
     reviewCommentsModalOpen
   )
   const shouldRenderWorkflowRunsModal = useRetainedMount(workflowRunsModalOpen)
-  const shouldRenderMagicModal = useRetainedMount(magicModalOpen)
+  // Always mount MagicModal so automation event listeners (mobile toolbar
+  // magic-command dispatches) work even when the dialog has never been opened.
+  const shouldRenderMagicModal = true
   const shouldRenderResolveConflictsDialog = useRetainedMount(
     resolveConflictsDialogOpen
   )

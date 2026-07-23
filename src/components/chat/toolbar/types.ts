@@ -107,6 +107,8 @@ export interface ChatToolbarProps {
   onSetExecutionMode: (mode: ExecutionMode) => void
   onAttach: () => void
   onCancel: () => void
+  /** When true while sending, the secondary submit button steers instead of queues. */
+  willSteer?: boolean
   queuedMessageCount?: number
 
   availableMcpServers: McpServerInfo[]
