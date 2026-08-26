@@ -10,7 +10,14 @@ import {
   ArrowUp,
   ChevronDown,
   GitBranch,
+  Pause,
 } from 'lucide-react'
+import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
+import {
+  SessionContextMenuItems,
+  closeOpenSessionContextMenus,
+} from '@/components/chat/SessionContextMenuItems'
+import { LabelModal } from '@/components/chat/LabelModal'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { dismissibleToast } from '@/lib/dismissible-toast'
@@ -31,7 +38,7 @@ import {
   decideSessionMiddleClose,
 } from './worktree-close-decision'
 import { useRenameWorktree } from '@/services/projects'
-import { useSessions } from '@/services/chat'
+import { useSessions, useRenameSession } from '@/services/chat'
 import { isAskUserQuestion, isPlanToolCall, type Session } from '@/types/chat'
 import {
   computeSessionCardData,
@@ -127,7 +134,8 @@ export function WorktreeItem({
   const { handleArchiveOrClose, preferences } = menuActions
 
   // Delete/archive a single conversation (session) respecting removal_behavior.
-  const { handleDeleteSession } = useSessionArchive({
+  // Shared by middle-click close and the session context menu.
+  const { handleArchiveSession, handleDeleteSession } = useSessionArchive({
     worktreeId: worktree.id,
     worktreePath: worktree.path,
     removalBehavior: preferences?.removal_behavior,
@@ -378,6 +386,66 @@ export function WorktreeItem({
       }, 50)
     },
     [projectId, worktree.id, worktree.path, selectProject, selectWorktree]
+  )
+
+  // --- Session context-menu actions (reused from the canvas tab-bar menu) ---
+  const renameSession = useRenameSession()
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
+    null
+  )
+  const [renameValue, setRenameValue] = useState('')
+  const renameInputRef = useCallback((node: HTMLInputElement | null) => {
+    if (node) {
+      node.focus()
+      node.select()
+    }
+  }, [])
+  // Delay rename start so the input renders after the context menu fully closes
+  // (Radix restores focus to the trigger on close, which would steal focus).
+  const handleStartRename = useCallback(
+    (sessionId: string, currentName: string) => {
+      setRenameValue(currentName)
+      setTimeout(() => setRenamingSessionId(sessionId), 200)
+    },
+    []
+  )
+  const handleRenameSubmit = useCallback(
+    (sessionId: string) => {
+      const newName = renameValue.trim()
+      const current = (sessionsData?.sessions ?? []).find(
+        s => s.id === sessionId
+      )?.name
+      if (newName && newName !== current) {
+        renameSession.mutate({
+          worktreeId: worktree.id,
+          worktreePath: worktree.path,
+          sessionId,
+          newName,
+        })
+      }
+      setRenamingSessionId(null)
+    },
+    [renameValue, worktree.id, worktree.path, renameSession, sessionsData]
+  )
+  const handleRenameKeyDown = useCallback(
+    (e: React.KeyboardEvent, sessionId: string) => {
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        handleRenameSubmit(sessionId)
+      } else if (e.key === 'Escape') {
+        setRenamingSessionId(null)
+      }
+    },
+    [handleRenameSubmit]
+  )
+  const [labelModalOpen, setLabelModalOpen] = useState(false)
+  const [labelTargetSessionId, setLabelTargetSessionId] = useState<
+    string | null
+  >(null)
+  const labelTargetLabel = useChatStore(state =>
+    labelTargetSessionId
+      ? (state.sessionLabels[labelTargetSessionId] ?? null)
+      : null
   )
 
   // Responsive padding based on sidebar width
@@ -883,26 +951,17 @@ export function WorktreeItem({
                 </div>
                 {group.cards.map(card => {
                   const config = statusConfig[card.status]
-                  return (
-                    <button
-                      type="button"
-                      key={card.session.id}
-                      className={cn(
-                        'flex w-full items-center gap-1.5 pl-5 py-1 cursor-pointer text-sm truncate text-left',
-                        activeSessionId === card.session.id && isSelected
-                          ? 'text-foreground bg-primary/10 font-medium'
-                          : activeSessionId === card.session.id
-                            ? 'text-foreground/80 hover:text-foreground hover:bg-accent/50'
-                            : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-                      )}
-                      onClick={e => {
-                        e.stopPropagation()
-                        handleSessionSelect(card.session.id)
-                      }}
-                      {...middleClickClose(() =>
-                        handleSessionMiddleClose(card.session)
-                      )}
-                    >
+                  const isRenaming = renamingSessionId === card.session.id
+                  const rowClassName = cn(
+                    'flex w-full items-center gap-1.5 pl-5 py-1 cursor-pointer text-sm truncate text-left',
+                    activeSessionId === card.session.id && isSelected
+                      ? 'text-foreground bg-primary/10 font-medium'
+                      : activeSessionId === card.session.id
+                        ? 'text-foreground/80 hover:text-foreground hover:bg-accent/50'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                  )
+                  const rowContent = (
+                    <>
                       <StatusIndicator
                         status={config.indicatorStatus}
                         variant={config.indicatorVariant}
@@ -910,24 +969,87 @@ export function WorktreeItem({
                         label={config.label}
                         className="h-1.5 w-1.5 shrink-0"
                       />
-                      <span
-                        className="flex-1 truncate min-w-0 text-xs"
-                        title={`${config.label}: ${card.session.name || 'Untitled'}`}
-                      >
-                        {card.session.name || 'Untitled'}
-                      </span>
-                      {card.label && (
-                        <span
-                          className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-                          style={{
-                            backgroundColor: card.label.color,
-                            color: getLabelTextColor(card.label.color),
-                          }}
-                        >
-                          {card.label.name}
-                        </span>
+                      {card.status === 'paused' && (
+                        <Pause className="h-3 w-3 shrink-0 text-muted-foreground" />
                       )}
-                    </button>
+                      {isRenaming ? (
+                        <input
+                          ref={renameInputRef}
+                          type="text"
+                          value={renameValue}
+                          onChange={e => setRenameValue(e.target.value)}
+                          onBlur={() => handleRenameSubmit(card.session.id)}
+                          onKeyDown={e =>
+                            handleRenameKeyDown(e, card.session.id)
+                          }
+                          onClick={e => e.stopPropagation()}
+                          className="w-full min-w-0 bg-transparent text-xs outline-none"
+                        />
+                      ) : (
+                        <>
+                          <span
+                            className="flex-1 truncate min-w-0 text-xs"
+                            title={`${config.label}: ${card.session.name || 'Untitled'}`}
+                          >
+                            {card.session.name || 'Untitled'}
+                          </span>
+                          {card.label && (
+                            <span
+                              className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+                              style={{
+                                backgroundColor: card.label.color,
+                                color: getLabelTextColor(card.label.color),
+                              }}
+                            >
+                              {card.label.name}
+                            </span>
+                          )}
+                        </>
+                      )}
+                    </>
+                  )
+                  return (
+                    <ContextMenu key={card.session.id}>
+                      <ContextMenuTrigger asChild>
+                        {isRenaming ? (
+                          // An <input> cannot live inside a <button>, so the
+                          // row degrades to a plain container while renaming.
+                          <div
+                            onContextMenuCapture={closeOpenSessionContextMenus}
+                            className={rowClassName}
+                          >
+                            {rowContent}
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onContextMenuCapture={closeOpenSessionContextMenus}
+                            className={rowClassName}
+                            onClick={e => {
+                              e.stopPropagation()
+                              handleSessionSelect(card.session.id)
+                            }}
+                            {...middleClickClose(() =>
+                              handleSessionMiddleClose(card.session)
+                            )}
+                          >
+                            {rowContent}
+                          </button>
+                        )}
+                      </ContextMenuTrigger>
+                      <SessionContextMenuItems
+                        card={card}
+                        worktreeId={worktree.id}
+                        contentClassName="w-56"
+                        onRename={handleStartRename}
+                        onToggleLabel={sessionId => {
+                          setLabelTargetSessionId(sessionId)
+                          setLabelModalOpen(true)
+                        }}
+                        onArchive={handleArchiveSession}
+                        onDelete={handleDeleteSession}
+                      />
+                    </ContextMenu>
                   )
                 })}
               </div>
@@ -953,6 +1075,16 @@ export function WorktreeItem({
         }}
         branchName={worktree.branch}
         mode={closeConfirm?.mode ?? 'worktree'}
+      />
+
+      <LabelModal
+        isOpen={labelModalOpen}
+        onClose={() => {
+          setLabelModalOpen(false)
+          setLabelTargetSessionId(null)
+        }}
+        sessionId={labelTargetSessionId}
+        currentLabel={labelTargetLabel}
       />
     </div>
   )
