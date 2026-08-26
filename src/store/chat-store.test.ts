@@ -378,9 +378,9 @@ describe('ChatStore', () => {
 
       setSessionPaused('session-1', true)
       expect(useChatStore.getState().isSessionPaused('session-1')).toBe(true)
-      expect(
-        useChatStore.getState().sessionStatusOverrides['session-1']
-      ).toBe('paused')
+      expect(useChatStore.getState().sessionStatusOverrides['session-1']).toBe(
+        'paused'
+      )
 
       setSessionPaused('session-1', false)
       expect(useChatStore.getState().isSessionPaused('session-1')).toBe(false)
@@ -396,9 +396,9 @@ describe('ChatStore', () => {
       setSessionStatusOverride('session-1', 'completed')
       setSessionPaused('session-1', false)
 
-      expect(
-        useChatStore.getState().sessionStatusOverrides['session-1']
-      ).toBe('completed')
+      expect(useChatStore.getState().sessionStatusOverrides['session-1']).toBe(
+        'completed'
+      )
     })
 
     it('pausing clears reviewing (single-valued override)', () => {
