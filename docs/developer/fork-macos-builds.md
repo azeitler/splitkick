@@ -27,6 +27,32 @@ Two rules apply to the overlay:
 - **Do not rename the overlay to `tauri.macos.conf.json`.** Tauri applies that
   filename automatically to every macOS build, including the official one.
 
+## Which workflows run
+
+`.github/workflows/macos-build.yml` is the fork's only active workflow. It runs
+the full quality gate (typecheck, lint, frontend tests, clippy, Rust tests) and
+then builds, signs and publishes JeanZ - all in one job on one runner, so the
+application compiles once.
+
+The upstream workflows are disabled at the repository level instead of deleted,
+so `git merge upstream/main` stays clean:
+
+| Workflow             | Why it is off                                                          |
+| -------------------- | ---------------------------------------------------------------------- |
+| CI Build / Preflight | Ran the same checks on four platforms and compiled macOS a second time |
+| Release Jean         | Builds four platforms and needs coolLabs' secrets                      |
+| Server Release       | Not used by this fork                                                  |
+
+`Release Jean` and `Server Release` also both trigger on `release: published`,
+which the rolling prerelease below fires on every push. Leaving them active
+would start a four-platform build after every JeanZ build.
+
+Re-enable any of them with:
+
+```bash
+gh workflow enable "CI Build" --repo azeitler/jean
+```
+
 ## Build it locally
 
 ```bash
@@ -60,8 +86,11 @@ and whether the build is notarized.
 
 ## Signing secrets
 
-CI signs and notarizes when these repository secrets exist. Without them the
-build still succeeds, but ad-hoc signed.
+CI signs and notarizes when these repository secrets exist. The build step
+degrades instead of failing: with no certificate it uses the overlay's ad-hoc
+identity, and with a certificate but no notarization credentials it produces a
+signed build. The "Report signature status" step states which of the three
+results you got.
 
 | Secret                       | Content                                                                        |
 | ---------------------------- | ------------------------------------------------------------------------------ |

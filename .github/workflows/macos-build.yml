@@ -1,6 +1,16 @@
-# Builds and publishes the JeanZ flavor (see src-tauri/tauri.fork.conf.json) on
+# The fork's only active CI workflow. It runs the quality gate and then builds,
+# signs and publishes the JeanZ flavor (see src-tauri/tauri.fork.conf.json) on
 # every push to main. This workflow belongs to the fork only - it is not part of
 # upstream, so it never causes merge conflicts.
+#
+# The upstream workflows (CI Build, Preflight, Release Jean, Server Release) are
+# disabled at the repository level, not deleted, so upstream merges stay clean:
+#
+#   gh workflow enable "CI Build" --repo azeitler/jean
+#
+# CI Build ran the same checks on four platforms and compiled macOS a second
+# time. Release Jean and Server Release both trigger on `release: published`,
+# which the rolling prerelease below would fire on every push.
 #
 # The Apple secrets are optional. When they are absent the overlay's ad-hoc
 # identity is used and the build still succeeds, but macOS shows a Gatekeeper
@@ -62,18 +72,64 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Lint
+        run: bun run lint
+
+      - name: Frontend tests
+        run: bun run test:run
+
+      # The Tauri build script needs the bundle.resources path `../dist` to
+      # exist before any cargo command runs.
+      - name: Ensure dist exists for Tauri resources
+        run: mkdir -p dist && touch dist/.gitkeep
+
+      - name: Rust clippy
+        run: bun run rust:clippy
+
+      - name: Rust tests
+        run: bun run rust:test
+
       - name: Build JeanZ bundle
         env:
-          # Overrides the coolLabs identity pinned in tauri.conf.json. The
-          # bundler rejects APPLE_CERTIFICATE when it does not match.
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_PROVIDER_SHORT_NAME: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CERT: ${{ secrets.APPLE_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
+          # A missing secret arrives as an empty string, and Tauri reads
+          # APPLE_SIGNING_IDENTITY with var_os. An empty value would therefore
+          # be used as the identity and break codesign, so only a complete set
+          # is exported. Everything else falls back to the overlay's ad-hoc
+          # identity. Four characters is below every real value and above the
+          # placeholders.
+          complete() { [ "${#1}" -ge 4 ]; }
+
+          if complete "$IDENTITY" && complete "$CERT"; then
+            # Overrides the coolLabs identity pinned in tauri.conf.json. The
+            # bundler rejects APPLE_CERTIFICATE when it does not match.
+            export APPLE_SIGNING_IDENTITY="$IDENTITY"
+            export APPLE_CERTIFICATE="$CERT"
+            export APPLE_CERTIFICATE_PASSWORD="$CERT_PASSWORD"
+            echo "Signing with the Developer ID certificate"
+
+            if complete "$NOTARY_APPLE_ID" && complete "$NOTARY_PASSWORD" && complete "$TEAM_ID"; then
+              export APPLE_ID="$NOTARY_APPLE_ID"
+              export APPLE_PASSWORD="$NOTARY_PASSWORD"
+              export APPLE_TEAM_ID="$TEAM_ID"
+              export APPLE_PROVIDER_SHORT_NAME="$TEAM_ID"
+              echo "Notarization is enabled"
+            else
+              echo "No notarization credentials - the build is signed but not notarized"
+            fi
+          else
+            echo "No certificate - using the ad-hoc identity from the overlay"
+          fi
+
           bun run tauri build --ci \
             --target aarch64-apple-darwin \
             --bundles app,dmg \
@@ -102,10 +158,14 @@ jobs:
           APP="${{ steps.dmg.outputs.app_path }}"
           codesign -dv --verbose=4 "$APP" 2>&1 | sed -n 's/^Authority=/authority: /p' || true
           if spctl -a -vv "$APP" 2>&1 | grep -q 'accepted'; then
-            echo "status=notarized" >> "$GITHUB_OUTPUT"
+            STATUS="notarized"
+          elif codesign -dv --verbose=2 "$APP" 2>&1 | grep -q 'Authority=Developer ID Application'; then
+            STATUS="signed, not notarized (Gatekeeper will warn)"
           else
-            echo "status=ad-hoc (Gatekeeper will warn)" >> "$GITHUB_OUTPUT"
+            STATUS="ad-hoc (Gatekeeper will warn)"
           fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "Signature status: $STATUS"
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
