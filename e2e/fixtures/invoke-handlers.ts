@@ -118,6 +118,11 @@ export const defaultResponses: Record<string, unknown> = {
   // Files
   list_worktree_files: [],
 
+  // Package scripts — must be an array. Unmocked commands resolve to null,
+  // and ScriptsButton spreads the result, so a missing mock crashes the app
+  // into its error boundary and every spec fails.
+  get_package_scripts: [],
+
   // GitHub
   list_github_issues: { issues: [], has_next_page: false },
   list_github_prs: [],
