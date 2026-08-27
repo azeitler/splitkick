@@ -29,29 +29,29 @@ Two rules apply to the overlay:
 
 ## Which workflows run
 
-`.github/workflows/macos-build.yml` is the fork's only active workflow. It runs
-the full quality gate (typecheck, lint, frontend tests, clippy, Rust tests) and
-then builds, signs and publishes JeanZ - all in one job on one runner, so the
-application compiles once.
+The fork reuses the existing workflows instead of adding new ones. They are
+scoped down to macOS on Apple Silicon, which is the only platform this fork
+ships.
 
-The upstream workflows are disabled at the repository level instead of deleted,
-so `git merge upstream/main` stays clean:
+`CI Build` calls `Preflight` with `publishFlavor: true`. Preflight runs the
+usual gate - typecheck, lint, clippy, frontend tests, Rust tests - and its last
+step normally compiles the application with `--no-bundle` and throws the binary
+away. With `publishFlavor` set, that step instead builds the JeanZ bundle,
+signs it, notarizes it and publishes the rolling prerelease. It is the same
+compile on the same runner, so the application is built once.
 
-| Workflow             | Why it is off                                                          |
-| -------------------- | ---------------------------------------------------------------------- |
-| CI Build / Preflight | Ran the same checks on four platforms and compiled macOS a second time |
-| Release Jean         | Builds four platforms and needs coolLabs' secrets                      |
-| Server Release       | Not used by this fork                                                  |
+| Workflow             | State                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| CI Build / Preflight | Active, macOS arm64 only                                                                                                  |
+| Release Jean         | Active, macOS arm64 only. Skips the `main-build` tag, and the Homebrew tap job is off because the tap lives in coollabsio |
+| Server Release       | Manual only; the `release: published` trigger is removed                                                                  |
 
-`Release Jean` and `Server Release` also both trigger on `release: published`,
-which the rolling prerelease below fires on every push. Leaving them active
-would start a four-platform build after every JeanZ build.
+`Release Jean` and `Server Release` both triggered on `release: published`,
+which the rolling prerelease fires on every push. Without the guards, one push
+would have started a second, four-platform build.
 
-Re-enable any of them with:
-
-```bash
-gh workflow enable "CI Build" --repo azeitler/jean
-```
+Every removed platform is commented out in the matrix, not deleted. Restore an
+entry to bring a platform back; all steps are still platform-aware.
 
 ## Build it locally
 

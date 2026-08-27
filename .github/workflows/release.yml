@@ -17,6 +17,9 @@ env:
 jobs:
   prepare-release:
     name: Prepare release metadata
+    # The rolling `main-build` prerelease is published by CI Build on every push
+    # to main. Without this guard it would start a full release build each time.
+    if: github.event.release.tag_name != 'main-build'
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.version.outputs.tag }}
@@ -50,15 +53,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Scoped down to the only platform this fork ships. Restore an entry to
+        # bring a platform back; every step below is still platform-aware.
+        #   - platform: 'ubuntu-22.04'
+        #     args: '--bundles deb,rpm'
+        #   - platform: 'ubuntu-22.04-arm'
+        #     args: '--bundles deb,rpm'
+        #   - platform: 'windows-latest'
+        #     args: '--bundles msi,nsis'
         include:
           - platform: 'macos-latest'
-            args: '--target universal-apple-darwin --bundles app,dmg'
-          - platform: 'ubuntu-22.04'
-            args: '--bundles deb,rpm'
-          - platform: 'ubuntu-22.04-arm'
-            args: '--bundles deb,rpm'
-          - platform: 'windows-latest'
-            args: '--bundles msi,nsis'
+            args: '--target aarch64-apple-darwin --bundles app,dmg'
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -108,9 +113,9 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Install macOS universal targets
+      - name: Install macOS targets
         if: matrix.platform == 'macos-latest'
-        run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+        run: rustup target add aarch64-apple-darwin
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -220,7 +225,8 @@ jobs:
     name: Update Homebrew Tap
     needs: [prepare-release, publish-tauri]
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'release' && github.event.action == 'published')
+    # Off in this fork: the tap lives in coollabsio/homebrew-jean.
+    if: false
 
     steps:
       - name: Wait for DMG availability

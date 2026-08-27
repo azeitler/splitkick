@@ -12,4 +12,12 @@ concurrency:
 jobs:
   preflight:
     name: Preflight
+    permissions:
+      contents: write
+    # publishFlavor turns the throwaway compile at the end of the gate into the
+    # signed JeanZ bundle and publishes it. secrets: inherit passes the APPLE_*
+    # secrets through to the reusable workflow.
     uses: ./.github/workflows/preflight.yml
+    with:
+      publishFlavor: true
+    secrets: inherit

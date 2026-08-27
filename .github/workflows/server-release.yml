@@ -1,8 +1,9 @@
 name: Server Release
 
 on:
-  release:
-    types: [published]
+  # Off in this fork: no server images are published, and every JeanZ build
+  # publishes a release, which would trigger this workflow. Run it by hand if
+  # it is ever needed.
   workflow_dispatch:
     inputs:
       version:
