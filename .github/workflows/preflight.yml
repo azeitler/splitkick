@@ -170,7 +170,10 @@ jobs:
           mv "$DMG" "$DMG_NAME"
           APP="$BUNDLE_DIR/macos/JeanZ.app"
           codesign -dv --verbose=4 "$APP" 2>&1 | sed -n 's/^Authority=/authority: /p' || true
-          if spctl -a -vv "$APP" 2>&1 | grep -q 'accepted'; then
+          # `spctl -a` accepts a Developer ID build that was never notarized as
+          # long as the copy is not quarantined, so it cannot be used here. A
+          # stapled ticket is the only definitive test.
+          if xcrun stapler validate "$APP" > /dev/null 2>&1; then
             STATUS="notarized"
           elif codesign -dv --verbose=2 "$APP" 2>&1 | grep -q 'Authority=Developer ID Application'; then
             STATUS="signed, not notarized (Gatekeeper will warn)"
