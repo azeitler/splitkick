@@ -65,8 +65,18 @@ fn fix_macos_path() {
 
 #[cfg(target_os = "macos")]
 fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    let app_menu = SubmenuBuilder::new(app, "Jean")
-        .item(&MenuItemBuilder::with_id("about", "About Jean").build(app)?)
+    // Read the name from the config so build flavors (see tauri.fork.conf.json)
+    // get their own menu title instead of a hardcoded "Jean".
+    let app_name = app
+        .config()
+        .product_name
+        .clone()
+        .unwrap_or_else(|| "Jean".to_string());
+    let hide_label = format!("Hide {app_name}");
+    let quit_label = format!("Quit {app_name}");
+
+    let app_menu = SubmenuBuilder::new(app, &app_name)
+        .item(&MenuItemBuilder::with_id("about", format!("About {app_name}")).build(app)?)
         .separator()
         .item(&MenuItemBuilder::with_id("check-updates", "Check for Updates...").build(app)?)
         .separator()
@@ -76,11 +86,11 @@ fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
                 .build(app)?,
         )
         .separator()
-        .item(&PredefinedMenuItem::hide(app, Some("Hide Jean"))?)
+        .item(&PredefinedMenuItem::hide(app, Some(hide_label.as_str()))?)
         .item(&PredefinedMenuItem::hide_others(app, None)?)
         .item(&PredefinedMenuItem::show_all(app, None)?)
         .separator()
-        .item(&PredefinedMenuItem::quit(app, Some("Quit Jean"))?)
+        .item(&PredefinedMenuItem::quit(app, Some(quit_label.as_str()))?)
         .build()?;
     let edit_menu = SubmenuBuilder::new(app, "Edit")
         .item(&PredefinedMenuItem::undo(app, None)?)

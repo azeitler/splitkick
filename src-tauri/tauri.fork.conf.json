@@ -1,0 +1,53 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "JeanZ",
+  "app": {
+    "windows": [
+      {
+        "title": "JeanZ",
+        "width": 800,
+        "height": 600,
+        "minWidth": 1000,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "maximized": false,
+        "center": true,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "alwaysOnTop": false,
+        "transparent": false,
+        "shadow": true,
+        "dragDropEnabled": false,
+        "windowEffects": {
+          "effects": [],
+          "radius": 0,
+          "state": "active"
+        }
+      }
+    ]
+  },
+  "bundle": {
+    "createUpdaterArtifacts": false,
+    "icon": [
+      "icons-fork/32x32.png",
+      "icons-fork/128x128.png",
+      "icons-fork/128x128@2x.png",
+      "icons-fork/icon.icns",
+      "icons-fork/icon.ico"
+    ],
+    "publisher": "Andreas Zeitler",
+    "shortDescription": "JeanZ - personal Jean build",
+    "longDescription": "JeanZ is a personal build of Jean, an AI assistant application built with Tauri, React, and TypeScript.",
+    "macOS": {
+      "signingIdentity": "-",
+      "providerShortName": null
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": []
+    }
+  }
+}

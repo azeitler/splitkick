@@ -1,0 +1,143 @@
+# Builds and publishes the JeanZ flavor (see src-tauri/tauri.fork.conf.json) on
+# every push to main. This workflow belongs to the fork only - it is not part of
+# upstream, so it never causes merge conflicts.
+#
+# The Apple secrets are optional. When they are absent the overlay's ad-hoc
+# identity is used and the build still succeeds, but macOS shows a Gatekeeper
+# warning. See docs/developer/fork-macos-builds.md.
+name: JeanZ macOS build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  RELEASE_TAG: main-build
+  DMG_NAME: JeanZ_macos_arm64.dmg
+
+jobs:
+  build:
+    name: Build, sign and publish
+    runs-on: macos-latest
+    timeout-minutes: 90
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Bun cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: |
+            bun-${{ runner.os }}-
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      # Separate cache key from preflight: that job builds the universal target,
+      # this one builds aarch64 only, so the artifacts do not overlap.
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          shared-key: macos-fork
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build JeanZ bundle
+        env:
+          # Overrides the coolLabs identity pinned in tauri.conf.json. The
+          # bundler rejects APPLE_CERTIFICATE when it does not match.
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_PROVIDER_SHORT_NAME: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          bun run tauri build --ci \
+            --target aarch64-apple-darwin \
+            --bundles app,dmg \
+            -c src-tauri/tauri.fork.conf.json
+
+      - name: Collect the DMG
+        id: dmg
+        run: |
+          BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
+          DMG=$(find "$BUNDLE_DIR/dmg" -name '*.dmg' -print -quit)
+          if [ -z "$DMG" ]; then
+            echo "No DMG was produced"
+            exit 1
+          fi
+          mv "$DMG" "$DMG_NAME"
+          VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          {
+            echo "version=$VERSION"
+            echo "app_path=$BUNDLE_DIR/macos/JeanZ.app"
+          } >> "$GITHUB_OUTPUT"
+
+      # Informational only: shows whether this build is notarized or ad-hoc.
+      - name: Report signature status
+        id: signature
+        run: |
+          APP="${{ steps.dmg.outputs.app_path }}"
+          codesign -dv --verbose=4 "$APP" 2>&1 | sed -n 's/^Authority=/authority: /p' || true
+          if spctl -a -vv "$APP" 2>&1 | grep -q 'accepted'; then
+            echo "status=notarized" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=ad-hoc (Gatekeeper will warn)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jeanz-macos-arm64-${{ github.sha }}
+          path: ${{ env.DMG_NAME }}
+          if-no-files-found: error
+          retention-days: 14
+
+      # Recreated on every push so the download URL never changes. Marked as a
+      # prerelease so it can never appear as the repository's latest release.
+      - name: Publish rolling release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
+          gh release create "$RELEASE_TAG" \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "JeanZ (main)" \
+            --notes "Version ${{ steps.dmg.outputs.version }} - commit \`${GITHUB_SHA:0:7}\` - signature: ${{ steps.signature.outputs.status }}.
+
+          Apple Silicon only. Install by opening the DMG and dragging JeanZ to Applications.
+
+          JeanZ shares the Jean app-data directory, so projects, sessions and CLI logins carry over. Do not run both apps at the same time." \
+            "$DMG_NAME"
+
+      - name: Summary
+        run: |
+          {
+            echo "### JeanZ ${{ steps.dmg.outputs.version }}"
+            echo ""
+            echo "- signature: ${{ steps.signature.outputs.status }}"
+            echo "- download: https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/$DMG_NAME"
+          } >> "$GITHUB_STEP_SUMMARY"
