@@ -220,3 +220,135 @@ describe('older message prepend scroll restoration', () => {
     expect(container.scrollTop).toBe(470)
   })
 })
+
+describe('compact list scroll-driven reveal of hidden prompts', () => {
+  it('reveals older in-memory prompts on scroll-up without a click, and anchors the viewport', () => {
+    const scrollContainerRef = { current: null as HTMLDivElement | null }
+    const onRevealOlderPrompts = vi.fn()
+    const onLoadOlderRuns = vi.fn()
+    const currentMessages = [
+      message('user-current'),
+      message('assistant-current'),
+    ]
+
+    // First render with nothing loadable so the scroll effect stays unbound
+    // while scrollContainerRef is still null.
+    const { rerender } = render(
+      <ScrollContainer>
+        <CompactMessageList
+          {...baseProps}
+          messages={currentMessages}
+          scrollContainerRef={scrollContainerRef}
+          totalMessages={currentMessages.length}
+          hiddenPromptCount={0}
+          onRevealOlderPrompts={onRevealOlderPrompts}
+          hasOlderOnDisk={false}
+          onLoadOlderRuns={onLoadOlderRuns}
+        />
+      </ScrollContainer>
+    )
+    const container = screen.getByTestId('scroll-container') as HTMLDivElement
+    scrollContainerRef.current = container
+
+    // Now hidden prompts appear: the effect re-runs and binds the listener.
+    rerender(
+      <ScrollContainer>
+        <CompactMessageList
+          {...baseProps}
+          messages={currentMessages}
+          scrollContainerRef={scrollContainerRef}
+          totalMessages={currentMessages.length}
+          hiddenPromptCount={7}
+          onRevealOlderPrompts={onRevealOlderPrompts}
+          hasOlderOnDisk={false}
+          onLoadOlderRuns={onLoadOlderRuns}
+        />
+      </ScrollContainer>
+    )
+
+    container.scrollTop = 250
+    rectTopByMessageId.set('user-current', 140)
+    rectTopByMessageId.set('assistant-current', 230)
+
+    fireEvent.scroll(container)
+
+    // Stage 1 reveals in-memory prompts; the disk fetch stays untouched.
+    expect(onRevealOlderPrompts).toHaveBeenCalledTimes(1)
+    expect(onLoadOlderRuns).not.toHaveBeenCalled()
+
+    rectTopByMessageId.set('user-current', 360)
+    rectTopByMessageId.set('assistant-current', 450)
+    const revealedMessages = [
+      message('user-older'),
+      message('assistant-older'),
+      ...currentMessages,
+    ]
+
+    rerender(
+      <ScrollContainer>
+        <CompactMessageList
+          {...baseProps}
+          messages={revealedMessages}
+          scrollContainerRef={scrollContainerRef}
+          totalMessages={revealedMessages.length}
+          hiddenPromptCount={6}
+          onRevealOlderPrompts={onRevealOlderPrompts}
+          hasOlderOnDisk={false}
+          onLoadOlderRuns={onLoadOlderRuns}
+        />
+      </ScrollContainer>
+    )
+
+    expect(container.scrollTop).toBe(470)
+  })
+
+  it('falls through to the disk fetch once no in-memory prompts are hidden', () => {
+    const scrollContainerRef = { current: null as HTMLDivElement | null }
+    const onRevealOlderPrompts = vi.fn()
+    const onLoadOlderRuns = vi.fn()
+    const currentMessages = [
+      message('user-current'),
+      message('assistant-current'),
+    ]
+
+    const { rerender } = render(
+      <ScrollContainer>
+        <CompactMessageList
+          {...baseProps}
+          messages={currentMessages}
+          scrollContainerRef={scrollContainerRef}
+          totalMessages={currentMessages.length}
+          hiddenPromptCount={0}
+          onRevealOlderPrompts={onRevealOlderPrompts}
+          hasOlderOnDisk={false}
+          onLoadOlderRuns={onLoadOlderRuns}
+          loadedRunStartIndex={4}
+        />
+      </ScrollContainer>
+    )
+    const container = screen.getByTestId('scroll-container') as HTMLDivElement
+    scrollContainerRef.current = container
+
+    rerender(
+      <ScrollContainer>
+        <CompactMessageList
+          {...baseProps}
+          messages={currentMessages}
+          scrollContainerRef={scrollContainerRef}
+          totalMessages={currentMessages.length}
+          hiddenPromptCount={0}
+          onRevealOlderPrompts={onRevealOlderPrompts}
+          hasOlderOnDisk
+          onLoadOlderRuns={onLoadOlderRuns}
+          loadedRunStartIndex={4}
+        />
+      </ScrollContainer>
+    )
+
+    container.scrollTop = 250
+    fireEvent.scroll(container)
+
+    expect(onLoadOlderRuns).toHaveBeenCalledTimes(1)
+    expect(onRevealOlderPrompts).not.toHaveBeenCalled()
+  })
+})

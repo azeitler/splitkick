@@ -27,9 +27,11 @@ describe('ChatWindow zen composer', () => {
 
   it('hides old-prompt loading controls in zen mode', () => {
     expect(source).toContain('hasOlderOnDisk={!zenMode && hasOlderOnDisk}')
-    expect(source).toContain('zenMode || isCompactHistoryExpanded')
     expect(source).toMatch(
-      /onShowHiddenPrompts=\{\s*zenMode\s*\? undefined\s*:\s*handleShowHiddenCompactPrompts\s*\}/
+      /hiddenPromptCount=\{\s*zenMode\s*\?\s*0\s*:\s*compactHistoryWindow\.hiddenPromptCount\s*\}/
+    )
+    expect(source).toMatch(
+      /onRevealOlderPrompts=\{\s*zenMode\s*\? undefined\s*:\s*handleRevealOlderCompactPrompts\s*\}/
     )
   })
 

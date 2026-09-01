@@ -34,7 +34,7 @@ import {
 /** Number of messages to render initially (from the end) */
 const INITIAL_VISIBLE_COUNT = getDefaultVisibleCount()
 /** Number of messages to load when scrolling up */
-const LOAD_MORE_COUNT = 20
+const LOAD_MORE_COUNT = 40
 /** Scroll threshold in pixels to trigger loading more */
 const SCROLL_THRESHOLD = 300
 

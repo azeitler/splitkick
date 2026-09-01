@@ -105,7 +105,7 @@ interface CompactMessageListProps {
   onLoadOlderRuns?: () => void
   loadedRunStartIndex?: number
   hiddenPromptCount?: number
-  onShowHiddenPrompts?: () => void
+  onRevealOlderPrompts?: () => void
 }
 
 type RenderItem =
@@ -686,7 +686,7 @@ export const CompactMessageList = memo(
         onLoadOlderRuns,
         loadedRunStartIndex = 0,
         hiddenPromptCount = 0,
-        onShowHiddenPrompts,
+        onRevealOlderPrompts,
       },
       ref
     ) {
@@ -704,7 +704,7 @@ export const CompactMessageList = memo(
       const getMessages = useCallback(() => messagesRef.current, [])
 
       const lastIndex = messages.length - 1
-      const hasHiddenPrompts = hiddenPromptCount > 0 && !!onShowHiddenPrompts
+      const hasHiddenPrompts = hiddenPromptCount > 0 && !!onRevealOlderPrompts
 
       const hasFollowUpMap = useMemo(() => {
         const map = new Map<number, boolean>()
@@ -932,22 +932,30 @@ export const CompactMessageList = memo(
         ]
       )
 
+      // Two-stage loader: reveal older prompts already held in memory first,
+      // then fall through to a disk fetch once nothing is hidden. Both stages
+      // grow the `messages` prop, so the prepend effect below anchors either.
       const loadOlder = useCallback(() => {
         const container = scrollContainerRef.current
-        if (
-          !container ||
-          !hasOlderOnDisk ||
-          isLoadingOlder ||
-          !onLoadOlderRuns ||
-          pendingPrependMessagesLengthRef.current !== null
-        ) {
+        if (!container || pendingPrependMessagesLengthRef.current !== null) {
           return
         }
+
+        if (hasHiddenPrompts) {
+          pendingPrependAnchorRef.current = capturePrependScrollAnchor(container)
+          pendingPrependMessagesLengthRef.current = messages.length
+          onRevealOlderPrompts?.()
+          return
+        }
+
+        if (!hasOlderOnDisk || isLoadingOlder || !onLoadOlderRuns) return
         pendingPrependAnchorRef.current = capturePrependScrollAnchor(container)
         pendingPrependMessagesLengthRef.current = messages.length
         onLoadOlderRuns()
       }, [
         scrollContainerRef,
+        hasHiddenPrompts,
+        onRevealOlderPrompts,
         hasOlderOnDisk,
         isLoadingOlder,
         onLoadOlderRuns,
@@ -973,7 +981,7 @@ export const CompactMessageList = memo(
       // Scroll-to-top auto-load.
       useEffect(() => {
         const container = scrollContainerRef.current
-        if (!container || !hasOlderOnDisk || hasHiddenPrompts) return
+        if (!container || (!hasHiddenPrompts && !hasOlderOnDisk)) return
         const handleScroll = () => {
           if (container.scrollTop < SCROLL_THRESHOLD) loadOlder()
         }
@@ -1036,7 +1044,7 @@ export const CompactMessageList = memo(
           {(hasHiddenPrompts || hasOlderOnDisk) && (
             <button
               type="button"
-              onClick={hasHiddenPrompts ? onShowHiddenPrompts : loadOlder}
+              onClick={loadOlder}
               disabled={!hasHiddenPrompts && isLoadingOlder}
               className="w-full text-center text-muted-foreground text-xs py-2 opacity-60 hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-wait"
             >

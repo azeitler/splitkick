@@ -140,7 +140,9 @@ import { StreamingMessage } from './StreamingMessage'
 import { CompactStreamingTicker } from './CompactStreamingTicker'
 import { CompactMessageList } from './CompactMessageList'
 import {
-  getCurrentPromptWindow,
+  DEFAULT_VISIBLE_PROMPTS,
+  getRecentPromptsWindow,
+  REVEAL_PROMPT_BATCH,
   remapIndexForWindow,
 } from './compact-history-window'
 import { CodexGoalBanner } from './CodexGoalBanner'
@@ -2886,30 +2888,36 @@ export function ChatWindow({
     ]
   )
 
+  // Compact view renders the most recent prompts only. Scrolling up (or the
+  // "Load old prompts" button) reveals another batch. The revealed count is
+  // scoped to the session, so it survives new prompts but resets on switch.
+  const compactScopeKey = deferredSessionId ?? 'no-session'
+  const [revealedCompactPrompts, setRevealedCompactPrompts] = useState<{
+    key: string
+    count: number
+  } | null>(null)
+  const visibleCompactPromptCount =
+    revealedCompactPrompts?.key === compactScopeKey
+      ? revealedCompactPrompts.count
+      : DEFAULT_VISIBLE_PROMPTS
   const compactHistoryWindow = useMemo(
-    () => getCurrentPromptWindow(messages),
-    [messages]
+    () => getRecentPromptsWindow(messages, visibleCompactPromptCount),
+    [messages, visibleCompactPromptCount]
   )
-  const compactScopeKey = `${deferredSessionId ?? 'no-session'}:${
-    messages[compactHistoryWindow.startIndex]?.id ?? 'empty'
-  }`
-  const [expandedCompactScopeKey, setExpandedCompactScopeKey] = useState<
-    string | null
-  >(null)
-  const isCompactHistoryExpanded = expandedCompactScopeKey === compactScopeKey
   const compactMessages = useMemo(
-    () =>
-      isCompactHistoryExpanded
-        ? messages
-        : messages.slice(compactHistoryWindow.startIndex),
-    [isCompactHistoryExpanded, messages, compactHistoryWindow.startIndex]
+    () => messages.slice(compactHistoryWindow.startIndex),
+    [messages, compactHistoryWindow.startIndex]
   )
-  const compactLastPlanMessageIndex = isCompactHistoryExpanded
-    ? lastPlanMessageIndex
-    : remapIndexForWindow(lastPlanMessageIndex, compactHistoryWindow.startIndex)
-  const handleShowHiddenCompactPrompts = useCallback(() => {
-    setExpandedCompactScopeKey(compactScopeKey)
-  }, [compactScopeKey])
+  const compactLastPlanMessageIndex = remapIndexForWindow(
+    lastPlanMessageIndex,
+    compactHistoryWindow.startIndex
+  )
+  const handleRevealOlderCompactPrompts = useCallback(() => {
+    setRevealedCompactPrompts({
+      key: compactScopeKey,
+      count: visibleCompactPromptCount + REVEAL_PROMPT_BATCH,
+    })
+  }, [compactScopeKey, visibleCompactPromptCount])
 
   // Virtualizer for message list - always use virtualization for consistent performance
   // Even small conversations benefit from virtualization when messages have heavy content
@@ -3229,14 +3237,14 @@ export function ChatWindow({
                                     }
                                     loadedRunStartIndex={loadedRunStartIndex}
                                     hiddenPromptCount={
-                                      zenMode || isCompactHistoryExpanded
+                                      zenMode
                                         ? 0
                                         : compactHistoryWindow.hiddenPromptCount
                                     }
-                                    onShowHiddenPrompts={
+                                    onRevealOlderPrompts={
                                       zenMode
                                         ? undefined
-                                        : handleShowHiddenCompactPrompts
+                                        : handleRevealOlderCompactPrompts
                                     }
                                   />
                                 ) : (

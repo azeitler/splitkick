@@ -23,7 +23,7 @@ export interface SessionScrollSnapshot {
   visibleCount: number
 }
 
-const DEFAULT_VISIBLE_COUNT = 10
+const DEFAULT_VISIBLE_COUNT = 40
 
 const snapshots = new Map<string, SessionScrollSnapshot>()
 

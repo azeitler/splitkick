@@ -29,24 +29,27 @@ describe('session-scroll-state', () => {
   })
 
   it('merges partial updates without wiping other fields', () => {
+    // Stay above the clamp floor so this case tests merging, not clamping.
+    const visibleCount = getDefaultVisibleCount() + 20
+
     saveSessionScrollState('s1', {
       scrollTop: 100,
       isFollowingTail: false,
-      visibleCount: 30,
+      visibleCount,
     })
 
     updateSessionScrollState('s1', { scrollTop: 250 })
     expect(getSessionScrollState('s1')).toEqual({
       scrollTop: 250,
       isFollowingTail: false,
-      visibleCount: 30,
+      visibleCount,
     })
 
     updateSessionScrollState('s1', { isFollowingTail: true })
     expect(getSessionScrollState('s1')).toEqual({
       scrollTop: 250,
       isFollowingTail: true,
-      visibleCount: 30,
+      visibleCount,
     })
   })
 
