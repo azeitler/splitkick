@@ -17,9 +17,10 @@ env:
 jobs:
   prepare-release:
     name: Prepare release metadata
-    # The rolling `main-build` prerelease is published by CI Build on every push
-    # to main. Without this guard it would start a full release build each time.
-    if: github.event.release.tag_name != 'main-build'
+    # JeanZ releases are tagged v<upstream>-z<n> and CI Build publishes one on
+    # every push to main. Without this guard each of them would start a full
+    # upstream release build. No upstream tag contains "-z".
+    if: ${{ !contains(github.event.release.tag_name, '-z') }}
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.version.outputs.tag }}

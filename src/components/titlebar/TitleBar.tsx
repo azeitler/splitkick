@@ -36,6 +36,7 @@ import { isNativeApp } from '@/lib/environment'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
+import { releaseUrlForVersion } from '@/lib/release-url'
 import { applyServerUpdate } from '@/hooks/useServerUpdateCheck'
 import { LinuxWindowControls } from './LinuxWindowControls'
 import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
@@ -292,11 +293,7 @@ export function TitleBar({
             {appVersion && (
               <button
                 type="button"
-                onClick={() =>
-                  openExternal(
-                    `https://github.com/coollabsio/jean/releases/tag/v${appVersion}`
-                  )
-                }
+                onClick={() => openExternal(releaseUrlForVersion(appVersion))}
                 className="px-1.5 text-[0.625rem] text-foreground/40 transition-colors cursor-pointer hover:text-foreground/60"
               >
                 v{appVersion}

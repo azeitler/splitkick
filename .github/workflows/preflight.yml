@@ -17,8 +17,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  RELEASE_TAG: main-build
+  # The asset name is constant so that the "latest release" download URL never
+  # changes, even though every release has its own tag.
   DMG_NAME: JeanZ_macos_arm64.dmg
+  UPDATER_NAME: JeanZ_macos_arm64.app.tar.gz
 
 jobs:
   build:
@@ -52,6 +54,19 @@ jobs:
       - name: Assert release version
         if: inputs.version != ''
         run: node scripts/assert-release-version.js "${{ inputs.version }}"
+
+      # A JeanZ release is the upstream product version plus this fork's own
+      # patch suffix: 0.1.73-z1, 0.1.73-z2, 0.2.0-z3. The counter is read from
+      # the existing tags and never restarts, so a higher -z is always newer.
+      # It is resolved before the build because the version is compiled into
+      # the bundle.
+      - name: Resolve the JeanZ version
+        id: version
+        if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
+        # An explicit bash sets pipefail, which the default shell does not, so a
+        # failing resolver fails the step instead of being swallowed by tee.
+        shell: bash
+        run: node scripts/jeanz-version.mjs | tee -a "$GITHUB_OUTPUT"
 
       - name: Install Linux dependencies
         if: startsWith(matrix.platform, 'ubuntu')
@@ -105,6 +120,9 @@ jobs:
       - name: Frontend tests
         run: bun run test:run
 
+      - name: Release version tests
+        run: bun run test:jeanz-version
+
       - name: Rust tests
         run: bun run rust:test
 
@@ -124,6 +142,8 @@ jobs:
           NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
           NOTARY_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          UPDATER_KEY: ${{ secrets.JEANZ_UPDATER_PRIVATE_KEY }}
+          UPDATER_KEY_PASSWORD: ${{ secrets.JEANZ_UPDATER_PRIVATE_KEY_PASSWORD }}
         run: |
           # A missing secret arrives as an empty string, and Tauri reads
           # APPLE_SIGNING_IDENTITY with var_os. An empty value would therefore
@@ -153,9 +173,32 @@ jobs:
             echo "No certificate - using the ad-hoc identity from the overlay"
           fi
 
+          # The overlay leaves createUpdaterArtifacts off, because Tauri fails
+          # the build when a pubkey is configured and the artifacts are asked
+          # for without a private key - that would break every local build. It
+          # is turned on here, and only when the key is actually present.
+          # Both halves are required. Tauri prompts on a terminal that does not
+          # exist when the password is missing, and rejects an empty one, so a
+          # half-configured pair would fail the build rather than degrade.
+          UPDATER_CONFIG='{}'
+          if complete "$UPDATER_KEY" && complete "$UPDATER_KEY_PASSWORD"; then
+            export TAURI_SIGNING_PRIVATE_KEY="$UPDATER_KEY"
+            export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$UPDATER_KEY_PASSWORD"
+            UPDATER_CONFIG='{"bundle": {"createUpdaterArtifacts": true}}'
+            echo "Building updater artifacts"
+          else
+            echo "No updater key - this build ships no in-app update"
+          fi
+
+          # Configs are merged in the order they are given and the flag also
+          # accepts an inline JSON string, so the resolved version and the
+          # updater switch are layered on top of the flavor overlay without
+          # editing a file. https://v2.tauri.app/reference/cli/#build
           bun run tauri build --ci ${{ matrix.preflightArgs }} \
             --bundles app,dmg \
-            -c src-tauri/tauri.fork.conf.json
+            -c src-tauri/tauri.fork.conf.json \
+            -c "{\"version\": \"${{ steps.version.outputs.version }}\"}" \
+            -c "$UPDATER_CONFIG"
 
       - name: Collect the DMG
         id: dmg
@@ -181,42 +224,101 @@ jobs:
             STATUS="ad-hoc (Gatekeeper will warn)"
           fi
           echo "Signature status: $STATUS"
-          {
-            echo "status=$STATUS"
-            echo "version=$(node -p "require('./src-tauri/tauri.conf.json').version")"
-          } >> "$GITHUB_OUTPUT"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+      # The in-app update check reads latest.json from the newest release,
+      # downloads the .app.tar.gz named in it, verifies it against the pubkey
+      # in the overlay and replaces the running bundle. Both files are written
+      # here; the build step only produces them when the signing key exists, so
+      # a keyless build simply publishes no update and says so.
+      - name: Write latest.json
+        if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
+          TARBALL="$BUNDLE_DIR/macos/JeanZ.app.tar.gz"
+
+          if [ ! -f "$TARBALL" ]; then
+            echo "No updater artifacts in this build - skipping latest.json"
+            exit 0
+          fi
+
+          mv "$TARBALL" "$UPDATER_NAME"
+          # node writes the JSON so that the minisign signature, which is two
+          # lines of text, is escaped correctly.
+          SIGNATURE_PATH="$TARBALL.sig" node -e '
+            const { readFileSync, writeFileSync } = require("node:fs")
+            writeFileSync(
+              "latest.json",
+              JSON.stringify(
+                {
+                  version: process.env.VERSION,
+                  notes: `JeanZ ${process.env.VERSION}`,
+                  pub_date: new Date().toISOString(),
+                  platforms: {
+                    "darwin-aarch64": {
+                      signature: readFileSync(process.env.SIGNATURE_PATH, "utf8"),
+                      url: `https://github.com/${process.env.REPOSITORY}/releases/download/${process.env.TAG}/${process.env.UPDATER_NAME}`,
+                    },
+                  },
+                },
+                null,
+                2
+              ) + "\n"
+            )
+          '
+          cat latest.json
 
       - name: Upload build artifact
         if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
         uses: actions/upload-artifact@v4
         with:
-          name: jeanz-macos-arm64-${{ github.sha }}
+          name: jeanz-macos-arm64-${{ steps.version.outputs.version }}
           path: ${{ env.DMG_NAME }}
           if-no-files-found: error
           retention-days: 14
 
-      # Recreated on every push so the download URL never changes. It is a
-      # prerelease, so it never becomes the repository's latest release.
-      - name: Publish rolling release
+      # A full release, not a prerelease, and its own tag per build. --latest
+      # keeps the /releases/latest/download/ URL pointing at the newest build,
+      # so the download link is stable although the tag changes.
+      - name: Publish the release
         if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          UPSTREAM: ${{ steps.version.outputs.upstream }}
+          STATUS: ${{ steps.dmg.outputs.status }}
         run: |
-          gh release delete "$RELEASE_TAG" --yes --cleanup-tag || true
-          gh release create "$RELEASE_TAG" \
-            --prerelease \
-            --target "$GITHUB_SHA" \
-            --title "JeanZ (main)" \
-            --notes "Version ${{ steps.dmg.outputs.version }} - commit \`${GITHUB_SHA:0:7}\` - signature: ${{ steps.dmg.outputs.status }}.
+          # latest.json has to sit in the newest release, because that is the
+          # URL the installed app polls. It is absent when the build had no
+          # updater key, and then the release simply carries the DMG.
+          ASSETS=("$DMG_NAME")
+          UPDATE="no (this build has no updater artifacts)"
+          if [ -f latest.json ]; then
+            ASSETS+=("$UPDATER_NAME" latest.json)
+            UPDATE="yes"
+          fi
 
-          Apple Silicon only. Install by opening the DMG and dragging JeanZ to Applications.
+          gh release create "$TAG" \
+            --target "$GITHUB_SHA" \
+            --latest \
+            --title "JeanZ $VERSION" \
+            --notes "Jean $UPSTREAM - commit \`${GITHUB_SHA:0:7}\` - signature: $STATUS.
+
+          Apple Silicon only. Install by opening the DMG and dragging JeanZ to Applications. Later builds arrive through the in-app update check.
 
           JeanZ shares the Jean app-data directory, so projects, sessions and CLI logins carry over. Do not run both apps at the same time." \
-            "$DMG_NAME"
+            "${ASSETS[@]}"
 
           {
-            echo "### JeanZ ${{ steps.dmg.outputs.version }}"
+            echo "### JeanZ $VERSION"
             echo ""
-            echo "- signature: ${{ steps.dmg.outputs.status }}"
-            echo "- download: https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/$DMG_NAME"
+            echo "- upstream: Jean $UPSTREAM"
+            echo "- signature: $STATUS"
+            echo "- in-app update: $UPDATE"
+            echo "- download: https://github.com/${{ github.repository }}/releases/latest/download/$DMG_NAME"
           } >> "$GITHUB_STEP_SUMMARY"

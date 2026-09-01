@@ -52,7 +52,7 @@ const resolved = mergeJsonConfig(base, fork) as {
     createUpdaterArtifacts: boolean
     macOS: { signingIdentity: string | null; providerShortName: string | null }
   }
-  plugins: { updater: { endpoints: string[] } }
+  plugins: { updater: { endpoints: string[]; pubkey: string } }
 }
 
 describe('JeanZ fork configuration', () => {
@@ -102,10 +102,23 @@ describe('JeanZ fork configuration', () => {
     expect(resolved.bundle.macOS.providerShortName).toBeNull()
   })
 
-  it('disables the updater so a JeanZ install cannot replace itself with upstream Jean', () => {
-    // Same identifier + upstream pubkey means upstream's latest.json would
-    // verify. Empty endpoints stop the check completely.
-    expect(resolved.plugins.updater.endpoints).toEqual([])
+  it('points the updater at the fork so JeanZ cannot replace itself with upstream Jean', () => {
+    // JeanZ keeps upstream's bundle identifier, so upstream's latest.json
+    // would verify against upstream's pubkey and silently install Jean over
+    // JeanZ. Both halves have to move together: the endpoint and the key.
+    expect(resolved.plugins.updater.endpoints).toEqual([
+      'https://github.com/azeitler/jean/releases/latest/download/latest.json',
+    ])
+    expect(resolved.plugins.updater.pubkey).not.toBe(
+      (base.plugins as { updater: { pubkey: string } }).updater.pubkey
+    )
+  })
+
+  it('leaves updater artifacts off so a local build needs no signing key', () => {
+    // Tauri fails the build when a pubkey is configured and the artifacts are
+    // requested without TAURI_SIGNING_PRIVATE_KEY. CI turns them on with an
+    // extra -c layer once the secret is present; scripts/build-fork-macos.sh
+    // does not, so it keeps working on a machine that has no key.
     expect(resolved.bundle.createUpdaterArtifacts).toBe(false)
   })
 })
