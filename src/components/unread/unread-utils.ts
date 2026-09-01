@@ -1,3 +1,12 @@
+import {
+  AlertTriangle,
+  CheckCircle2,
+  CirclePause,
+  FileText,
+  HelpCircle,
+  Loader2,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import type { Session } from '@/types/chat'
 
 export const FINISHED_UNREAD_STATUSES = ['completed', 'cancelled', 'crashed']
@@ -33,4 +42,103 @@ export function isUnreadSession(session: Session): boolean {
 
   if (!session.last_opened_at) return true
   return session.last_opened_at < session.updated_at
+}
+
+export interface SessionStatusDisplay {
+  icon: LucideIcon
+  label: string
+  className: string
+}
+
+const FINISHED_STATUS_DISPLAY: Record<string, SessionStatusDisplay> = {
+  completed: {
+    icon: CheckCircle2,
+    label: 'Completed',
+    className: 'text-green-500',
+  },
+  cancelled: {
+    icon: CirclePause,
+    label: 'Cancelled',
+    className: 'text-muted-foreground',
+  },
+  crashed: {
+    icon: AlertTriangle,
+    label: 'Crashed',
+    className: 'text-destructive',
+  },
+}
+
+/**
+ * Compact status badge for a session, shared by the unread bell and the command
+ * palette. Prefers specific actionable reasons over generic waiting, matching
+ * the project canvas. Returns null when there is nothing worth showing.
+ */
+export function getSessionStatus(
+  session: Session
+): SessionStatusDisplay | null {
+  const hasPermission =
+    (session.pending_codex_permission_requests?.length ?? 0) > 0 ||
+    (session.pending_opencode_permission_requests?.length ?? 0) > 0 ||
+    (session.pending_permission_denials?.length ?? 0) > 0
+
+  if (hasPermission) {
+    return {
+      icon: AlertTriangle,
+      label: 'Permission required',
+      className: 'text-yellow-500',
+    }
+  }
+  if ((session.pending_codex_command_approval_requests?.length ?? 0) > 0) {
+    return {
+      icon: AlertTriangle,
+      label: 'Command approval required',
+      className: 'text-yellow-500',
+    }
+  }
+  if ((session.pending_codex_dynamic_tool_call_requests?.length ?? 0) > 0) {
+    return {
+      icon: AlertTriangle,
+      label: 'Tool approval required',
+      className: 'text-yellow-500',
+    }
+  }
+  if ((session.pending_codex_mcp_elicitation_requests?.length ?? 0) > 0) {
+    return {
+      icon: HelpCircle,
+      label: 'MCP input required',
+      className: 'text-yellow-500',
+    }
+  }
+  if ((session.pending_codex_user_input_requests?.length ?? 0) > 0) {
+    return {
+      icon: HelpCircle,
+      label: 'Input required',
+      className: 'text-yellow-500',
+    }
+  }
+  if (session.waiting_for_input) {
+    const isPlan = session.waiting_for_input_type === 'plan'
+    return {
+      icon: isPlan ? FileText : HelpCircle,
+      label: isPlan ? 'Plan approval required' : 'Input required',
+      className: 'text-yellow-500',
+    }
+  }
+  if (session.scheduled_wakeup) {
+    return {
+      icon: CirclePause,
+      label: 'Scheduled',
+      className: 'text-cyan-500',
+    }
+  }
+  if (session.last_run_status === 'running') {
+    return {
+      icon: Loader2,
+      label: 'Running',
+      className: 'text-blue-500 animate-spin',
+    }
+  }
+  return session.last_run_status
+    ? (FINISHED_STATUS_DISPLAY[session.last_run_status] ?? null)
+    : null
 }

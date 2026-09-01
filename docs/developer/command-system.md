@@ -278,6 +278,43 @@ export function CommandPalette() {
 }
 ```
 
+#### Entity Entries (sessions, projects, connections)
+
+Not everything in the palette comes from the registry. Rows that point at a
+piece of _data_ rather than an action are built inside `CommandPalette.tsx` and
+dispatched before the `executeCommand()` fallback:
+
+| Group       | Source                                        | Id prefix            |
+| ----------- | --------------------------------------------- | -------------------- |
+| Sessions    | `useAllSessions()` → `buildSessionCommands()` | `goto-session-`      |
+| Projects    | `useProjects()`                               | `goto-project-`      |
+| Connections | `useRemoteConnections()`                      | `switch-connection-` |
+
+Keep these out of the registry. `AppCommand` has a static `id` and no data
+payload, so a registry entry per session would mean re-registering on every
+data change.
+
+**Two rules when adding an entity group:**
+
+1. **Put every matched field in the cmdk `value`.** `CommandDialog` does not set
+   `shouldFilter={false}`, so cmdk re-filters each row on its `value` prop
+   _after_ your own filter runs. A row that matched on a field missing from
+   `value` gets dropped again by cmdk, and the bug looks like flaky search.
+   `buildSessionCommands` handles this by exposing `searchValue` (for cmdk) and
+   `matchText` (its own lowercased haystack) as separate fields.
+2. **Keep the matching logic pure and outside the component.** See
+   `src/components/command-palette/session-commands.ts` — filtering, ranking and
+   limits live in one tested function, so the component only renders.
+
+Ordering is by likely target, not by group age: Sessions, then Projects, then
+Connections, then the registry groups. With an empty query the Sessions group
+shows recent sessions, so `Cmd+K` → `Enter` reopens the last session.
+
+Navigation to a session must go through `navigateToSession()`
+(`src/lib/navigate-to-session.ts`), shared with the unread bell. It queues the
+auto-open through the UI store, which survives the target project's canvas not
+being mounted yet.
+
 ### Keyboard Shortcuts
 
 See [keyboard-shortcuts.md](./keyboard-shortcuts.md) for details on the keybinding system that triggers commands.

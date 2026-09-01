@@ -7,6 +7,7 @@ Element.prototype.scrollIntoView = vi.fn()
 const {
   fetchRemoteServerInfo,
   markConnectionSwitch,
+  navigateToSession,
   reloadApp,
   selectConnection,
   setCommandPaletteOpen,
@@ -20,6 +21,7 @@ const {
   })),
   markConnectionSwitch: vi.fn(),
   reloadApp: vi.fn(),
+  navigateToSession: vi.fn(),
   selectConnection: vi.fn(),
   setCommandPaletteOpen: vi.fn(),
   showToast: vi.fn(),
@@ -41,11 +43,15 @@ const remoteConnections = [
   },
 ]
 
+const uiState = {
+  commandPaletteOpen: true,
+  setCommandPaletteOpen,
+  sessionChatModalWorktreeId: null,
+}
+
 vi.mock('@/store/ui-store', () => ({
-  useUIStore: () => ({
-    commandPaletteOpen: true,
-    setCommandPaletteOpen,
-  }),
+  useUIStore: (selector: (state: typeof uiState) => unknown) =>
+    selector(uiState),
 }))
 
 vi.mock('@/hooks/use-command-context', () => ({
@@ -65,18 +71,65 @@ vi.mock('@/services/projects', () => ({
         path: '/projects/jean',
         is_folder: false,
       },
+      {
+        id: 'project-2',
+        name: 'Second project',
+        path: '/projects/second',
+        is_folder: false,
+      },
     ],
   }),
   useAppDataDir: () => ({ data: undefined }),
 }))
 
-vi.mock('@/store/chat-store', () => ({
-  useChatStore: { getState: () => ({ clearActiveWorktree: vi.fn() }) },
+const chatState = {
+  sessionLabels: {},
+  activeWorktreeId: 'worktree-1',
+  activeSessionIds: { 'worktree-1': 'session-open' },
+}
+
+vi.mock('@/store/chat-store', () => {
+  const useChatStore = (selector: (state: typeof chatState) => unknown) =>
+    selector(chatState)
+  useChatStore.getState = () => ({ clearActiveWorktree: vi.fn() })
+  return { useChatStore }
+})
+
+vi.mock('@/lib/navigate-to-session', () => ({ navigateToSession }))
+
+vi.mock('@/services/chat', () => ({
+  useAllSessions: () => ({
+    data: {
+      entries: [
+        {
+          project_id: 'project-2',
+          project_name: 'Coolify',
+          worktree_id: 'worktree-2',
+          worktree_path: '/projects/coolify',
+          worktree_name: 'feat/deploy',
+          sessions: [
+            {
+              id: 'session-recent',
+              name: 'Deploy pipeline',
+              updated_at: 300,
+              messages: [],
+            },
+            {
+              id: 'session-open',
+              name: 'Currently open session',
+              updated_at: 400,
+              messages: [],
+            },
+          ],
+        },
+      ],
+    },
+  }),
 }))
 
 vi.mock('@/store/projects-store', () => ({
   useProjectsStore: (selector: (state: unknown) => unknown) =>
-    selector({ projectAccessTimestamps: {}, selectedProjectId: null }),
+    selector({ projectAccessTimestamps: {}, selectedProjectId: 'project-1' }),
 }))
 
 vi.mock('@/lib/commands', () => ({
@@ -166,5 +219,72 @@ describe('CommandPalette connections', () => {
       expect(reloadApp).toHaveBeenCalledOnce()
     })
     expect(showToast).not.toHaveBeenCalled()
+  })
+})
+
+describe('CommandPalette sessions', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('lists recent sessions with no query, ahead of projects', () => {
+    render(<CommandPalette />)
+
+    const sessionsHeading = screen.getByText('Recent Sessions')
+    expect(screen.getByText('Deploy pipeline')).toBeInTheDocument()
+    expect(screen.getByText('Coolify · feat/deploy')).toBeInTheDocument()
+
+    expect(
+      sessionsHeading.compareDocumentPosition(screen.getByText('Projects')) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  it('hides the session that is already open', () => {
+    render(<CommandPalette />)
+
+    expect(screen.queryByText('Currently open session')).not.toBeInTheDocument()
+  })
+
+  it('opens a session in another project through the shared navigation', () => {
+    render(<CommandPalette />)
+
+    fireEvent.click(screen.getByText('Deploy pipeline'))
+
+    expect(setCommandPaletteOpen).toHaveBeenCalledWith(false)
+    expect(navigateToSession).toHaveBeenCalledWith({
+      projectId: 'project-2',
+      worktreeId: 'worktree-2',
+      sessionId: 'session-recent',
+    })
+  })
+
+  it('filters sessions by project name and renames the heading', () => {
+    render(<CommandPalette />)
+
+    fireEvent.change(
+      screen.getByPlaceholderText('Type a command or search...'),
+      {
+        target: { value: 'coolify' },
+      }
+    )
+
+    expect(screen.getByText('Sessions')).toBeInTheDocument()
+    expect(screen.queryByText('Recent Sessions')).not.toBeInTheDocument()
+    expect(screen.getByText('Deploy pipeline')).toBeInTheDocument()
+  })
+
+  it('keeps the current project hidden while idle but searchable once typed', () => {
+    render(<CommandPalette />)
+
+    // Hidden with no query so the first project entry is the previous project.
+    expect(screen.queryByText('Jean')).not.toBeInTheDocument()
+
+    fireEvent.change(
+      screen.getByPlaceholderText('Type a command or search...'),
+      { target: { value: 'jean' } }
+    )
+
+    expect(screen.getByText('Jean')).toBeInTheDocument()
   })
 })

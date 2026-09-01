@@ -1,13 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import {
-  BellDot,
-  Loader2,
-  CheckCircle2,
-  AlertTriangle,
-  CirclePause,
-  HelpCircle,
-  FileText,
-} from 'lucide-react'
+import { BellDot, Loader2, CheckCircle2 } from 'lucide-react'
 import {
   Popover,
   PopoverTrigger,
@@ -19,28 +11,14 @@ import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAllSessions } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
-import { useProjectsStore } from '@/store/projects-store'
-import { useChatStore } from '@/store/chat-store'
-import { useUIStore } from '@/store/ui-store'
 import { useUnreadCount } from './useUnreadCount'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import type { Session } from '@/types/chat'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { isNativeApp } from '@/lib/environment'
-import { isUnreadSession } from './unread-utils'
-
-function formatRelativeTime(timestamp: number): string {
-  const ms = timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp
-  const diffMs = Date.now() - ms
-  if (diffMs < 0) return 'just now'
-  const minuteMs = 60_000
-  const hourMs = 60 * minuteMs
-  const dayMs = 24 * hourMs
-  if (diffMs < hourMs)
-    return `${Math.max(1, Math.floor(diffMs / minuteMs))}m ago`
-  if (diffMs < dayMs) return `${Math.floor(diffMs / hourMs)}h ago`
-  return `${Math.floor(diffMs / dayMs)}d ago`
-}
+import { getSessionStatus, isUnreadSession } from './unread-utils'
+import { formatRelativeTime } from '@/lib/relative-time'
+import { navigateToSession } from '@/lib/navigate-to-session'
 
 interface UnreadItem {
   session: Session
@@ -49,97 +27,6 @@ interface UnreadItem {
   worktreeId: string
   worktreeName: string
   worktreePath: string
-}
-
-function getSessionStatus(session: Session) {
-  // Prefer specific actionable reasons over generic waiting (matches canvas)
-  const hasCodexPermission =
-    (session.pending_codex_permission_requests?.length ?? 0) > 0 ||
-    (session.pending_opencode_permission_requests?.length ?? 0) > 0 ||
-    (session.pending_permission_denials?.length ?? 0) > 0
-  const hasCodexCommand =
-    (session.pending_codex_command_approval_requests?.length ?? 0) > 0
-  const hasCodexUserInput =
-    (session.pending_codex_user_input_requests?.length ?? 0) > 0
-  const hasCodexMcp =
-    (session.pending_codex_mcp_elicitation_requests?.length ?? 0) > 0
-  const hasCodexTool =
-    (session.pending_codex_dynamic_tool_call_requests?.length ?? 0) > 0
-
-  if (hasCodexPermission) {
-    return {
-      icon: AlertTriangle,
-      label: 'Permission required',
-      className: 'text-yellow-500',
-    }
-  }
-  if (hasCodexCommand) {
-    return {
-      icon: AlertTriangle,
-      label: 'Command approval required',
-      className: 'text-yellow-500',
-    }
-  }
-  if (hasCodexTool) {
-    return {
-      icon: AlertTriangle,
-      label: 'Tool approval required',
-      className: 'text-yellow-500',
-    }
-  }
-  if (hasCodexMcp) {
-    return {
-      icon: HelpCircle,
-      label: 'MCP input required',
-      className: 'text-yellow-500',
-    }
-  }
-  if (hasCodexUserInput) {
-    return {
-      icon: HelpCircle,
-      label: 'Input required',
-      className: 'text-yellow-500',
-    }
-  }
-  if (session.waiting_for_input) {
-    const isPlan = session.waiting_for_input_type === 'plan'
-    return {
-      icon: isPlan ? FileText : HelpCircle,
-      label: isPlan ? 'Plan approval required' : 'Input required',
-      className: 'text-yellow-500',
-    }
-  }
-  if (session.scheduled_wakeup) {
-    return {
-      icon: CirclePause,
-      label: 'Scheduled',
-      className: 'text-cyan-500',
-    }
-  }
-  const config: Record<
-    string,
-    { icon: typeof CheckCircle2; label: string; className: string }
-  > = {
-    completed: {
-      icon: CheckCircle2,
-      label: 'Completed',
-      className: 'text-green-500',
-    },
-    cancelled: {
-      icon: CirclePause,
-      label: 'Cancelled',
-      className: 'text-muted-foreground',
-    },
-    crashed: {
-      icon: AlertTriangle,
-      label: 'Crashed',
-      className: 'text-destructive',
-    },
-  }
-  if (session.last_run_status && config[session.last_run_status]) {
-    return config[session.last_run_status]
-  }
-  return null
 }
 
 interface UnreadBellProps {
@@ -311,26 +198,11 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
 
   const handleSelect = useCallback(
     (item: UnreadItem) => {
-      const { selectedProjectId, selectProject } = useProjectsStore.getState()
-      const { setActiveSession, clearActiveWorktree, setLastOpenedForProject } =
-        useChatStore.getState()
-
-      if (selectedProjectId !== item.projectId) {
-        selectProject(item.projectId)
-      }
-
-      // Navigate to ProjectCanvasView (no-op if already there)
-      clearActiveWorktree()
-      setActiveSession(item.worktreeId, item.session.id, {
-        markOpened: false,
+      navigateToSession({
+        projectId: item.projectId,
+        worktreeId: item.worktreeId,
+        sessionId: item.session.id,
       })
-      setLastOpenedForProject(item.projectId, item.worktreeId, item.session.id)
-
-      // Queue auto-open via store so it survives lazy-mount + Suspense + remount.
-      // ProjectCanvasView consumes pendingAutoOpenSessionIds in its own effect.
-      useUIStore
-        .getState()
-        .markWorktreeForAutoOpenSession(item.worktreeId, item.session.id)
 
       // Mark read AFTER auto-open is queued so unreadCount->0 unmount can't race
       // the modal-open path. Bell popover closes via the unreadCount===0 check.

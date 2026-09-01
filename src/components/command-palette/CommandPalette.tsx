@@ -5,7 +5,14 @@ import { usePreferences } from '@/services/preferences'
 import { useProjects, useAppDataDir } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { useAllSessions } from '@/services/chat'
 import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
+import { cn } from '@/lib/utils'
+import { formatRelativeTime } from '@/lib/relative-time'
+import { navigateToSession } from '@/lib/navigate-to-session'
+import { getSessionStatus } from '@/components/unread/unread-utils'
+import { getBackendIcon } from '@/components/ui/backend-label'
+import { buildSessionCommands } from './session-commands'
 import { getAllCommands, executeCommand } from '@/lib/commands'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import { Monitor, Server } from 'lucide-react'
@@ -56,7 +63,11 @@ export function CommandPalette({
 }: {
   reloadApp?: () => void
 } = {}) {
-  const { commandPaletteOpen, setCommandPaletteOpen } = useUIStore()
+  const commandPaletteOpen = useUIStore(state => state.commandPaletteOpen)
+  const setCommandPaletteOpen = useUIStore(state => state.setCommandPaletteOpen)
+  const sessionChatModalWorktreeId = useUIStore(
+    state => state.sessionChatModalWorktreeId
+  )
   const { data: preferences } = usePreferences()
   const commandContext = useCommandContext(preferences)
   const [search, setSearch] = useState('')
@@ -66,6 +77,17 @@ export function CommandPalette({
   // Fetch projects for dynamic commands
   const { data: projects = [] } = useProjects()
   const { data: appDataDir } = useAppDataDir()
+
+  // Sessions across every project. The ['all-sessions'] cache is already kept
+  // warm app-wide by the unread bell, so this dedupes onto the same key.
+  const { data: allSessions } = useAllSessions(commandPaletteOpen)
+  const sessionLabels = useChatStore(state => state.sessionLabels)
+
+  // The session already on screen (inline chat, or the canvas session modal)
+  const activeSessionId = useChatStore(state => {
+    const worktreeId = state.activeWorktreeId ?? sessionChatModalWorktreeId
+    return worktreeId ? (state.activeSessionIds[worktreeId] ?? null) : null
+  })
 
   // Get project access timestamps for recency sorting
   const projectAccessTimestamps = useProjectsStore(
@@ -104,11 +126,26 @@ export function CommandPalette({
     )
   }, [activeConnectionId, remoteConnections])
 
+  // Sessions lead the palette: jumping back to a session is the most common
+  // reason to open it, so an empty query still lists the most recent ones.
+  const sessionCommands = useMemo(
+    () =>
+      buildSessionCommands({
+        entries: allSessions?.entries ?? [],
+        sessionLabels,
+        query: search,
+        excludeSessionId: activeSessionId,
+      }),
+    [allSessions, sessionLabels, search, activeSessionId]
+  )
+
   // Create dynamic project commands (sorted by last-accessed, most recent first)
-  // Current project is excluded so the previous project is first (quick CMD+K → Enter switching)
   const projectCommands = useMemo((): ProjectCommand[] => {
+    // The current project is hidden only while idle, so the first entry is the
+    // project you were in before. Once searching, hiding it looks like a bug.
+    const hideCurrent = !search.trim()
     return projects
-      .filter(p => !p.is_folder && p.id !== selectedProjectId)
+      .filter(p => !p.is_folder && !(hideCurrent && p.id === selectedProjectId))
       .sort((a, b) => {
         const aTime = projectAccessTimestamps[a.id] ?? 0
         const bTime = projectAccessTimestamps[b.id] ?? 0
@@ -132,7 +169,7 @@ export function CommandPalette({
           useProjectsStore.getState().selectProject(project.id)
         },
       }))
-  }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId])
+  }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId, search])
 
   // Get all available commands (memoized to prevent re-filtering on every render)
   const commandGroups = useMemo(() => {
@@ -198,6 +235,16 @@ export function CommandPalette({
         return
       }
 
+      const sessionCmd = sessionCommands.find(c => c.id === commandId)
+      if (sessionCmd) {
+        navigateToSession({
+          projectId: sessionCmd.projectId,
+          worktreeId: sessionCmd.worktreeId,
+          sessionId: sessionCmd.session.id,
+        })
+        return
+      }
+
       const projectCmd = projectCommands.find(c => c.id === commandId)
       if (projectCmd) {
         projectCmd.execute()
@@ -214,6 +261,7 @@ export function CommandPalette({
       commandContext,
       connectionCommands,
       projectCommands,
+      sessionCommands,
       reloadApp,
       setCommandPaletteOpen,
     ]
@@ -260,13 +308,60 @@ export function CommandPalette({
       <CommandList className="max-h-[70dvh] sm:max-h-[300px]">
         <CommandEmpty>No results found.</CommandEmpty>
 
-        {/* Projects stay at the top for quick switching */}
+        {/* Sessions lead: with no query these are the most recent ones */}
+        {sessionCommands.length > 0 && (
+          <CommandGroup
+            heading={search.trim() ? 'Sessions' : 'Recent Sessions'}
+          >
+            {sessionCommands.map(cmd => {
+              const BackendIcon = getBackendIcon(
+                cmd.session.backend ?? 'claude'
+              )
+              const status = getSessionStatus(cmd.session)
+              const StatusIcon = status?.icon
+              const activityAt =
+                cmd.session.last_message_at ?? cmd.session.updated_at
+
+              return (
+                <CommandItem
+                  key={cmd.id}
+                  value={cmd.searchValue}
+                  onSelect={() => handleCommandSelect(cmd.id)}
+                  className="items-start"
+                >
+                  <BackendIcon className="mt-0.5 size-4 shrink-0" />
+                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate leading-snug">{cmd.label}</span>
+                    <span className="truncate text-xs leading-snug text-muted-foreground">
+                      {cmd.description}
+                    </span>
+                  </div>
+                  <div className="ml-2 flex shrink-0 items-center gap-1.5 self-center">
+                    {StatusIcon && (
+                      <StatusIcon
+                        className={cn('size-3.5', status?.className)}
+                        aria-label={status?.label}
+                      />
+                    )}
+                    {activityAt ? (
+                      <span className="text-xs text-muted-foreground">
+                        {formatRelativeTime(activityAt)}
+                      </span>
+                    ) : null}
+                  </div>
+                </CommandItem>
+              )
+            })}
+          </CommandGroup>
+        )}
+
+        {/* Projects follow, so CMD+K -> down-arrow still reaches them fast */}
         {commandGroups.projectCommands.length > 0 && (
           <CommandGroup heading="Projects">
             {commandGroups.projectCommands.map(cmd => (
               <CommandItem
                 key={cmd.id}
-                value={`${cmd.label} ${cmd.description ?? ''}`}
+                value={`${cmd.label} ${cmd.description ?? ''} ${cmd.keywords.join(' ')}`}
                 onSelect={() => handleCommandSelect(cmd.id)}
                 className="items-start"
               >
@@ -374,7 +469,7 @@ function getGroupLabel(groupName: string): string {
     case 'github':
       return 'GitHub'
     case 'sessions':
-      return 'Sessions'
+      return 'Session Actions'
     case 'other':
       return 'Other'
     default:
