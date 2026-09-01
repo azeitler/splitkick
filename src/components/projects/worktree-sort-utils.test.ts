@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest'
 import type { Session } from '@/types/chat'
 import type { Worktree } from '@/types/projects'
 import {
+  STALE_ACTIVITY_MS,
   compareWorktreesForCanvasSort,
   getSessionActivityTimestamp,
   getWorktreeLastActivity,
+  isStaleActivity,
 } from './worktree-sort-utils'
 
 function worktree(overrides: Partial<Worktree> & { id: string }): Worktree {
@@ -134,5 +136,35 @@ describe('worktree-sort-utils', () => {
     )
 
     expect(sorted.map(w => w.id)).toEqual(['newer', 'older'])
+  })
+})
+
+describe('isStaleActivity', () => {
+  const now = Date.UTC(2026, 8, 1) // fixed clock so the tests never drift
+  const day = 24 * 60 * 60 * 1000
+
+  it('flags a millisecond timestamp older than a week', () => {
+    expect(isStaleActivity(now - 8 * day, now)).toBe(true)
+  })
+
+  it('does not flag a millisecond timestamp inside the week', () => {
+    expect(isStaleActivity(now - 6 * day, now)).toBe(false)
+  })
+
+  it('normalizes second-precision timestamps before comparing', () => {
+    const eightDaysAgoInSeconds = Math.floor((now - 8 * day) / 1000)
+    expect(isStaleActivity(eightDaysAgoInSeconds, now)).toBe(true)
+
+    const oneDayAgoInSeconds = Math.floor((now - day) / 1000)
+    expect(isStaleActivity(oneDayAgoInSeconds, now)).toBe(false)
+  })
+
+  it('treats exactly one week as not stale', () => {
+    expect(isStaleActivity(now - STALE_ACTIVITY_MS, now)).toBe(false)
+    expect(isStaleActivity(now - STALE_ACTIVITY_MS - 1, now)).toBe(true)
+  })
+
+  it('does not flag timestamps in the future', () => {
+    expect(isStaleActivity(now + day, now)).toBe(false)
   })
 })

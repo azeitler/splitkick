@@ -44,8 +44,14 @@ import {
   computeSessionCardData,
   groupCardsByStatus,
   statusConfig,
+  type SessionStatus,
 } from '@/components/chat/session-card-utils'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
+import {
+  getSessionActivityTimestamp,
+  getWorktreeLastActivity,
+  isStaleActivity,
+} from './worktree-sort-utils'
 import {
   useGitStatus,
   gitPush,
@@ -60,6 +66,16 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
+
+/**
+ * Settled session states that may render faded once stale. Anything that still
+ * needs attention (waiting, review, crashed, …) always stays at full weight.
+ */
+const FADEABLE_SESSION_STATUSES = new Set<SessionStatus>([
+  'idle',
+  'completed',
+  'cancelled',
+])
 
 interface WorktreeItemProps {
   worktree: Worktree
@@ -355,6 +371,15 @@ export function WorktreeItem({
       sessions.map(s => computeSessionCardData(s, storeState))
     )
   }, [isExpanded, sessionsData?.sessions, storeState])
+
+  // Workspaces with no interaction for a week render faded so active work is
+  // easier to find. Busy and selected rows are never faded.
+  const isStaleWorktree = useMemo(() => {
+    const sessions = sessionsData?.sessions ?? []
+    return isStaleActivity(
+      getWorktreeLastActivity(sessions, worktree.created_at)
+    )
+  }, [sessionsData?.sessions, worktree.created_at])
 
   const handleChevronClick = useCallback(
     (e: React.MouseEvent) => {
@@ -759,7 +784,11 @@ export function WorktreeItem({
             isNarrowSidebar ? 'pl-4' : 'pl-7',
             isSelected
               ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
-              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+            !isSelected &&
+              indicatorStatus === 'idle' &&
+              isStaleWorktree &&
+              'opacity-50 hover:opacity-100'
           )}
           onClick={handleClick}
           onKeyDown={e => {
@@ -958,7 +987,13 @@ export function WorktreeItem({
                       ? 'text-foreground bg-primary/10 font-medium'
                       : activeSessionId === card.session.id
                         ? 'text-foreground/80 hover:text-foreground hover:bg-accent/50'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+                    activeSessionId !== card.session.id &&
+                      FADEABLE_SESSION_STATUSES.has(card.status) &&
+                      isStaleActivity(
+                        getSessionActivityTimestamp(card.session)
+                      ) &&
+                      'opacity-50 hover:opacity-100'
                   )
                   const rowContent = (
                     <>

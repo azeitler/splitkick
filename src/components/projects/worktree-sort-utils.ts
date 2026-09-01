@@ -4,6 +4,7 @@ import {
   type WorktreeSortMode,
 } from '@/types/projects'
 import type { Session } from '@/types/chat'
+import { toMilliseconds } from '@/lib/relative-time'
 
 export type { WorktreeSortMode } from '@/types/projects'
 
@@ -19,6 +20,18 @@ export function getWorktreeLastActivity(
     (latest, session) => Math.max(latest, getSessionActivityTimestamp(session)),
     fallbackTimestamp
   )
+}
+
+/** Rows with no interaction for this long render faded in the project tree. */
+export const STALE_ACTIVITY_MS = 7 * 24 * 60 * 60 * 1000
+
+/**
+ * True when the last interaction is older than {@link STALE_ACTIVITY_MS}.
+ *
+ * `now` is injectable so the tests stay deterministic.
+ */
+export function isStaleActivity(timestamp: number, now = Date.now()): boolean {
+  return now - toMilliseconds(timestamp) > STALE_ACTIVITY_MS
 }
 
 export function getWorktreeSortValue(
