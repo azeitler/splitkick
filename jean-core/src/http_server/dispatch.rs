@@ -1818,6 +1818,18 @@ pub async fn dispatch_command(
             crate::projects::open_worktree_in_finder(parsed.worktree_path).await?;
             Ok(Value::Null)
         }
+        "reveal_path_in_file_manager" => {
+            crate::platform::ensure_native_open_allowed("a file manager")?;
+            let path: String = from_field(&args, "path")?;
+            crate::projects::reveal_path_in_file_manager(path).await?;
+            Ok(Value::Null)
+        }
+        "open_path_in_default_app" => {
+            crate::platform::ensure_native_open_allowed("a file in the default app")?;
+            let path: String = from_field(&args, "path")?;
+            crate::projects::open_path_in_default_app(path).await?;
+            Ok(Value::Null)
+        }
         "open_project_worktrees_folder" => {
             crate::platform::ensure_native_open_allowed("a file manager")?;
             let project_id: String = field(&args, "projectId", "project_id")?;
@@ -3903,6 +3915,11 @@ mod tests {
                     json!({ "worktreePath": "/tmp" }),
                 ),
                 ("open_file_in_default_app", json!({ "path": "/tmp/file" })),
+                (
+                    "reveal_path_in_file_manager",
+                    json!({ "path": "/tmp/file" }),
+                ),
+                ("open_path_in_default_app", json!({ "path": "/tmp/file" })),
             ] {
                 let error = runtime
                     .block_on(dispatch_command(&app, command, args))

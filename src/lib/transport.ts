@@ -158,6 +158,8 @@ const DESKTOP_ONLY_COMMANDS = new Set([
   'save_dropped_image',
   'open_file_in_default_app',
   'open_worktree_in_finder',
+  'reveal_path_in_file_manager',
+  'open_path_in_default_app',
   'open_project_worktrees_folder',
   'open_worktree_in_terminal',
   'open_worktree_in_editor',

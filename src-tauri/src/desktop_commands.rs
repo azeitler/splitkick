@@ -208,6 +208,20 @@ pub async fn open_worktree_in_finder(worktree_path: String) -> Result<(), String
 }
 
 #[tauri::command]
+pub async fn reveal_path_in_file_manager(path: String) -> Result<(), String> {
+    // Delegate to jean-core so the per-platform reveal flags (`open -R`,
+    // `explorer /select,`, WSL explorer.exe fallback) stay in one place.
+    jean_core::reveal_path_in_file_manager(path).await
+}
+
+#[tauri::command]
+pub async fn open_path_in_default_app(path: String) -> Result<(), String> {
+    // Shell-association open. Unlike `open_file_in_default_app`, which always
+    // launches a code editor, this hands the path to the OS.
+    jean_core::open_path_in_default_app(path).await
+}
+
+#[tauri::command]
 pub async fn open_log_directory(app: AppHandle) -> Result<(), String> {
     let path = app
         .path()

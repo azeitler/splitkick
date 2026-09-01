@@ -2214,6 +2214,37 @@ export function useOpenWorktreeInFinder() {
 }
 
 /**
+ * Hook to reveal a single file or directory in the system file manager.
+ * Selects the target inside its parent folder (Linux opens the parent folder).
+ */
+export function useRevealPathInFileManager() {
+  return useMutation({
+    mutationFn: async (path: string): Promise<void> => {
+      if (!isTauri()) {
+        throw new Error('Not in Tauri context')
+      }
+
+      logger.debug(`Revealing path in ${getFileManagerName()}`, { path })
+      await invoke('reveal_path_in_file_manager', { path })
+      logger.info(`Revealed path in ${getFileManagerName()}`)
+    },
+    // No query invalidation: OS file manager side effect only
+    onError: error => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error occurred'
+      logger.error(`Failed to reveal in ${getFileManagerName()}`, { error })
+      toast.error(`Failed to reveal in ${getFileManagerName()}`, {
+        description: message,
+      })
+    },
+  })
+}
+
+/**
  * Hook to open a project's worktrees folder in Finder
  */
 export function useOpenProjectWorktreesFolder() {

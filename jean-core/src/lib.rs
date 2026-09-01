@@ -74,7 +74,9 @@ pub use version::{app_version, set_app_version};
 // macOS app fallbacks, Windows .cmd wrappers).
 pub use chat::open_file_in_default_app;
 pub use platform::open_url_in_browser;
+pub use projects::open_path_in_default_app;
 pub use projects::open_worktree_in_editor;
+pub use projects::reveal_path_in_file_manager;
 
 // Validation functions
 fn validate_filename(filename: &str) -> Result<(), String> {

@@ -45,6 +45,8 @@ import {
   pathsToExpandForMatches,
   type FileTreeNode,
 } from './build-file-tree'
+import { FileTreeContextMenu } from './FileTreeContextMenu'
+import { useFileMenuActions } from './useFileMenuActions'
 
 /**
  * Stable empty list for useWorktreeFiles while data is undefined.
@@ -102,12 +104,7 @@ function useFileBrowserRootPath(): {
       }
     }
     return { rootPath: null, label: null }
-  }, [
-    activeWorktreePath,
-    selectedWorktree,
-    projects,
-    selectedProjectId,
-  ])
+  }, [activeWorktreePath, selectedWorktree, projects, selectedProjectId])
 }
 
 export function FileBrowserSidebar({
@@ -121,6 +118,8 @@ export function FileBrowserSidebar({
   const viewingFilePath = useUIStore(state => state.viewingFilePath)
 
   const { rootPath, label } = useFileBrowserRootPath()
+  // Computed once here so the row context menus stay presentational.
+  const menuActions = useFileMenuActions(rootPath)
   const {
     data: files = EMPTY_WORKTREE_FILES,
     isLoading,
@@ -161,9 +160,7 @@ export function FileBrowserSidebar({
       return
     }
 
-    const normalizedRoot = rootPath
-      .replace(/[\\/]+$/, '')
-      .replace(/\\/g, '/')
+    const normalizedRoot = rootPath.replace(/[\\/]+$/, '').replace(/\\/g, '/')
     const normalizedView = viewing.replace(/\\/g, '/')
     if (
       normalizedView !== normalizedRoot &&
@@ -221,15 +218,18 @@ export function FileBrowserSidebar({
     })
   }, [queryClient, rootPath])
 
-  const toggleDir = useCallback((relativePath: string) => {
-    const next = new Set(expandedRef.current)
-    if (next.has(relativePath)) next.delete(relativePath)
-    else next.add(relativePath)
-    setExpanded(next)
-    if (!search.trim()) {
-      userExpandedRef.current = next
-    }
-  }, [search])
+  const toggleDir = useCallback(
+    (relativePath: string) => {
+      const next = new Set(expandedRef.current)
+      if (next.has(relativePath)) next.delete(relativePath)
+      else next.add(relativePath)
+      setExpanded(next)
+      if (!search.trim()) {
+        userExpandedRef.current = next
+      }
+    },
+    [search]
+  )
 
   const openFile = useCallback(
     (relativePath: string) => {
@@ -256,6 +256,11 @@ export function FileBrowserSidebar({
       }
     },
     [openFile, toggleDir]
+  )
+
+  const handleOpenFromMenu = useCallback(
+    (node: FileTreeNode) => openFile(node.relativePath),
+    [openFile]
   )
 
   const handleKeyDown = useCallback(
@@ -390,9 +395,7 @@ export function FileBrowserSidebar({
           )}
           {rootPath && isError && (
             <p className="px-2 py-4 text-center text-sm text-destructive">
-              {error instanceof Error
-                ? error.message
-                : 'Failed to load files'}
+              {error instanceof Error ? error.message : 'Failed to load files'}
             </p>
           )}
           {rootPath && !isLoading && !isError && visibleRows.length === 0 && (
@@ -408,43 +411,50 @@ export function FileBrowserSidebar({
               : getExtensionColor(node.extension)
 
             return (
-              <button
+              <FileTreeContextMenu
                 key={node.relativePath}
-                type="button"
-                role="treeitem"
-                aria-expanded={node.isDir ? isExpanded : undefined}
-                aria-selected={isSelected}
-                className={cn(
-                  // Match projects/worktree list: text-sm row labels
-                  'flex w-full items-center gap-1.5 rounded-sm px-1 py-1 text-left text-sm',
-                  'hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
-                  isSelected && 'bg-sidebar-accent text-sidebar-accent-foreground'
-                )}
-                style={{ paddingLeft: `${depth * 12 + 4}px` }}
-                onClick={() => handleRowActivate(node)}
-                onKeyDown={e => handleKeyDown(e, node)}
-                title={node.relativePath}
+                node={node}
+                actions={menuActions}
+                onOpen={handleOpenFromMenu}
               >
-                {node.isDir ? (
-                  isExpanded ? (
-                    <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                <button
+                  type="button"
+                  role="treeitem"
+                  aria-expanded={node.isDir ? isExpanded : undefined}
+                  aria-selected={isSelected}
+                  className={cn(
+                    // Match projects/worktree list: text-sm row labels
+                    'flex w-full items-center gap-1.5 rounded-sm px-1 py-1 text-left text-sm',
+                    'hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
+                    isSelected &&
+                      'bg-sidebar-accent text-sidebar-accent-foreground'
+                  )}
+                  style={{ paddingLeft: `${depth * 12 + 4}px` }}
+                  onClick={() => handleRowActivate(node)}
+                  onKeyDown={e => handleKeyDown(e, node)}
+                  title={node.relativePath}
+                >
+                  {node.isDir ? (
+                    isExpanded ? (
+                      <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
+                    )
                   ) : (
-                    <ChevronRight className="size-3.5 shrink-0 text-muted-foreground" />
-                  )
-                ) : (
-                  <span className="size-3.5 shrink-0" />
-                )}
-                {node.isDir ? (
-                  isExpanded ? (
-                    <FolderOpen className={cn('size-3.5 shrink-0', color)} />
+                    <span className="size-3.5 shrink-0" />
+                  )}
+                  {node.isDir ? (
+                    isExpanded ? (
+                      <FolderOpen className={cn('size-3.5 shrink-0', color)} />
+                    ) : (
+                      <Folder className={cn('size-3.5 shrink-0', color)} />
+                    )
                   ) : (
-                    <Folder className={cn('size-3.5 shrink-0', color)} />
-                  )
-                ) : (
-                  <FileIcon className={cn('size-3.5 shrink-0', color)} />
-                )}
-                <span className="truncate">{node.name}</span>
-              </button>
+                    <FileIcon className={cn('size-3.5 shrink-0', color)} />
+                  )}
+                  <span className="truncate">{node.name}</span>
+                </button>
+              </FileTreeContextMenu>
             )
           })}
         </div>

@@ -4903,6 +4903,119 @@ pub async fn open_worktree_in_finder(worktree_path: String) -> Result<(), String
     Ok(())
 }
 
+/// Reveal a file or directory in the system file manager.
+///
+/// Unlike `open_worktree_in_finder`, which opens a directory, this selects the
+/// target inside its parent directory. Linux has no portable "select" flag, so
+/// it opens the parent directory instead.
+pub async fn reveal_path_in_file_manager(path: String) -> Result<(), String> {
+    log::trace!("Revealing path in file explorer: {path}");
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-R")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open Finder: {e}"))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // `/select,<path>` must stay a single argument, and Explorer only
+        // understands backslash separators.
+        std::process::Command::new("explorer")
+            .arg(windows_reveal_arg(&path))
+            .spawn()
+            .map_err(|e| format!("Failed to open Explorer: {e}"))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let parent = reveal_parent_dir(&path);
+        let plan = linux_file_manager_launch_plan(&parent, crate::platform::is_running_in_wsl());
+        let mut command = std::process::Command::new(plan.program);
+        command.args(plan.args);
+        if let Some(current_dir) = plan.current_dir {
+            command.current_dir(current_dir);
+        }
+        command
+            .spawn()
+            .map_err(|e| format!("Failed to open file manager: {e}"))?;
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        log::warn!("File explorer not supported on this platform");
+        return Err("File explorer not supported on this platform".to_string());
+    }
+
+    Ok(())
+}
+
+/// Open a file or directory with the application the operating system has
+/// registered for it.
+///
+/// `open_file_in_default_app` is a misnomer inherited from the chat module: it
+/// always launches a code editor (Zed by default). This is the real
+/// shell-association open, used by the Files sidebar for assets an editor
+/// cannot show (images, PDFs, archives).
+pub async fn open_path_in_default_app(path: String) -> Result<(), String> {
+    log::trace!("Opening path with the system default app: {path}");
+
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open path: {e}"))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // `cmd /c start "" <path>` is the shell-association launcher. The empty
+        // title argument stops `start` from treating the path as a window
+        // title. silent_command keeps the cmd.exe intermediary from flashing a
+        // console window (issue #588).
+        crate::platform::silent_command("cmd")
+            .args(["/c", "start", "", path.as_str()])
+            .spawn()
+            .map_err(|e| format!("Failed to open path: {e}"))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open path: {e}"))?;
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
+    {
+        log::warn!("Opening a path is not supported on this platform");
+        return Err("Opening a path is not supported on this platform".to_string());
+    }
+
+    Ok(())
+}
+
+#[cfg(any(target_os = "windows", test))]
+fn windows_reveal_arg(path: &str) -> String {
+    format!("/select,{}", path.replace('/', "\\"))
+}
+
+/// Parent directory of `path`, falling back to `path` itself when it has none
+/// (drive/filesystem root). Used for the Linux reveal fallback.
+#[cfg(any(target_os = "linux", test))]
+fn reveal_parent_dir(path: &str) -> String {
+    std::path::Path::new(path)
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(|parent| parent.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string())
+}
+
 #[cfg(any(target_os = "linux", test))]
 #[derive(Debug, PartialEq)]
 struct LinuxFileManagerLaunchPlan {
@@ -14252,6 +14365,29 @@ mod tests {
                 current_dir: None,
             }
         );
+    }
+
+    #[test]
+    fn windows_reveal_arg_selects_the_target_with_backslashes() {
+        assert_eq!(
+            windows_reveal_arg("C:/Users/dev/project/src/main.rs"),
+            "/select,C:\\Users\\dev\\project\\src\\main.rs"
+        );
+        assert_eq!(
+            windows_reveal_arg("C:\\Users\\dev\\project"),
+            "/select,C:\\Users\\dev\\project"
+        );
+    }
+
+    #[test]
+    fn reveal_parent_dir_returns_the_containing_directory() {
+        assert_eq!(
+            reveal_parent_dir("/home/user/project/src/main.rs"),
+            "/home/user/project/src"
+        );
+        // A trailing component with no parent falls back to the path itself.
+        assert_eq!(reveal_parent_dir("/"), "/");
+        assert_eq!(reveal_parent_dir("main.rs"), "main.rs");
     }
 
     #[test]

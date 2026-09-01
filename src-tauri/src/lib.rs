@@ -409,6 +409,8 @@ pub fn run() {
             desktop_commands::save_dropped_image,
             desktop_commands::open_file_in_default_app,
             desktop_commands::open_worktree_in_finder,
+            desktop_commands::reveal_path_in_file_manager,
+            desktop_commands::open_path_in_default_app,
             desktop_commands::open_log_directory,
             desktop_commands::open_project_worktrees_folder,
             desktop_commands::open_worktree_in_terminal,
