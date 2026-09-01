@@ -70,6 +70,8 @@ import { useLoadedSentryContexts } from '@/services/sentry'
 import { useChatStore, DEFAULT_THINKING_LEVEL } from '@/store/chat-store'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { getLabelTextColor } from '@/lib/label-colors'
+import { formatLastActive, toMilliseconds } from '@/lib/relative-time'
+import { getSessionActivityTimestamp } from '@/components/projects/worktree-sort-utils'
 import {
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   PREDEFINED_CLI_PROFILES,
@@ -243,6 +245,9 @@ import { usePendingAttachments } from './hooks/usePendingAttachments'
 import { dedupeInFlightAssistantMessage } from './in-flight-message-dedupe'
 import { shouldShowPermissionApproval } from './permission-approval-utils'
 import { navigateToForkedSession } from './fork-session-navigation'
+
+/** Below this age the "Last active" badge stays hidden — the session is still warm. */
+const LAST_ACTIVE_MIN_AGE_MS = 60 * 60 * 1000
 
 // PERFORMANCE: Stable empty array references to prevent infinite render loops
 // When Zustand selectors return [], a new reference is created each time
@@ -2888,6 +2893,17 @@ export function ChatWindow({
     ]
   )
 
+  // Staleness hint for a session you are returning to. Suppressed while the
+  // session is live and below an hour, so it never nags during normal use.
+  const lastActiveLabel = useMemo(() => {
+    if (!session || isSending || messages.length === 0) return null
+    const activityAt = getSessionActivityTimestamp(session)
+    if (!activityAt) return null
+    if (Date.now() - toMilliseconds(activityAt) < LAST_ACTIVE_MIN_AGE_MS)
+      return null
+    return formatLastActive(activityAt)
+  }, [session, isSending, messages.length])
+
   // Compact view renders the most recent prompts only. Scrolling up (or the
   // "Load old prompts" button) reveals another batch. The revealed count is
   // scoped to the session, so it survives new prompts but resets on switch.
@@ -3057,17 +3073,26 @@ export function ChatWindow({
                   <div className="flex h-full min-h-0 flex-col">
                     {/* Messages area */}
                     <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
-                      {/* Session label badge - absolute positioned to avoid covering content */}
-                      {sessionLabel && (
-                        <span
-                          className="absolute top-2 right-4 z-20 inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
-                          style={{
-                            backgroundColor: sessionLabel.color,
-                            color: getLabelTextColor(sessionLabel.color),
-                          }}
-                        >
-                          {sessionLabel.name}
-                        </span>
+                      {/* Session badges - absolute positioned to avoid covering content */}
+                      {(lastActiveLabel || sessionLabel) && (
+                        <div className="absolute top-2 right-4 z-20 flex items-center gap-1.5">
+                          {lastActiveLabel && (
+                            <span className="inline-flex items-center rounded-md bg-muted/60 px-2 py-0.5 text-xs text-muted-foreground">
+                              Last active {lastActiveLabel}
+                            </span>
+                          )}
+                          {sessionLabel && (
+                            <span
+                              className="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium"
+                              style={{
+                                backgroundColor: sessionLabel.color,
+                                color: getLabelTextColor(sessionLabel.color),
+                              }}
+                            >
+                              {sessionLabel.name}
+                            </span>
+                          )}
+                        </div>
                       )}
                       <ChatSearchBar scrollContainerRef={scrollViewportRef} />
                       {/* Bottom fade gradient so messages don't hard-cut at the input area */}
@@ -3135,13 +3160,13 @@ export function ChatWindow({
                               activeWorktreeId &&
                               isFirstSession &&
                               !isSetupScriptDismissed && (
-                              <SetupScriptOutput
-                                result={setupScriptResult}
-                                onDismiss={() =>
-                                  dismissSetupScript(activeWorktreeId)
-                                }
-                              />
-                            )}
+                                <SetupScriptOutput
+                                  result={setupScriptResult}
+                                  onDismiss={() =>
+                                    dismissSetupScript(activeWorktreeId)
+                                  }
+                                />
+                              )}
                             <CodexGoalBanner
                               sessionId={activeSessionId ?? null}
                               worktreeId={activeWorktreeId ?? null}

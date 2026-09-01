@@ -44,7 +44,8 @@ import { ThinkingBlock } from './ThinkingBlock'
 import { SteeredPromptGroup } from './SteeredPromptGroup'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { logger } from '@/lib/logger'
-import { formatDuration } from './time-utils'
+import { MessageMetaLine } from './MessageMetaLine'
+import { formatMessageTimestamp } from '@/lib/relative-time'
 import {
   parseReviewFindings,
   hasReviewFindings,
@@ -344,11 +345,11 @@ export const MessageItem = memo(function MessageItem({
     isDuplicatePlanTextBlock(displayContent, resolvedPlan.content)
   const shouldRenderDisplayContent =
     Boolean(showContent) && !isDuplicateAssistantPlanContent
+  // Assistant meta line: timestamp (hidden in zen mode) plus the turn runtime.
+  // The runtime keeps its own render condition so timestamps can never hide it.
   const durationBadge =
-    message.role === 'assistant' && durationMs != null && durationMs > 0 ? (
-      <span className="mt-1 block min-h-4 text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono">
-        {formatDuration(durationMs)}
-      </span>
+    message.role === 'assistant' ? (
+      <MessageMetaLine timestamp={message.timestamp} durationMs={durationMs} />
     ) : null
 
   const messageBoxContent = (
@@ -893,15 +894,22 @@ export const MessageItem = memo(function MessageItem({
         <div className="group flex max-w-[85%] min-w-0 flex-col items-end gap-1 sm:max-w-[70%]">
           <div className="min-w-0 max-w-full break-words [overflow-wrap:anywhere] rounded-lg border border-border bg-muted/20 px-3 py-2 text-foreground">
             {messageBoxContent}
-            {!zenMode && message.model && (
-              <div className="mt-1.5">
-                <MessageSettingsBadges
-                  model={message.model}
-                  executionMode={message.execution_mode}
-                  thinkingLevel={message.thinking_level}
-                  effortLevel={message.effort_level}
-                  isCursor={message.model.startsWith('cursor/')}
-                />
+            {!zenMode && (message.model || message.timestamp > 0) && (
+              <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-muted-foreground/50">
+                {message.model && (
+                  <MessageSettingsBadges
+                    model={message.model}
+                    executionMode={message.execution_mode}
+                    thinkingLevel={message.thinking_level}
+                    effortLevel={message.effort_level}
+                    isCursor={message.model.startsWith('cursor/')}
+                  />
+                )}
+                {message.timestamp > 0 && (
+                  <span className="tabular-nums">
+                    {formatMessageTimestamp(message.timestamp)}
+                  </span>
+                )}
               </div>
             )}
           </div>

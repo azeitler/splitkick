@@ -9,6 +9,7 @@ import type {
   Question,
 } from '@/types/chat'
 import { useUIStore } from '@/store/ui-store'
+import { formatMessageTimestamp } from '@/lib/relative-time'
 
 const mocks = vi.hoisted(() => ({
   copyToClipboard: vi.fn(),
@@ -469,6 +470,49 @@ describe('MessageItem', () => {
     render(<MessageItem {...baseProps} durationMs={23_000} />)
 
     expect(screen.getByText('23s')).toBeVisible()
+  })
+
+  it('renders the assistant timestamp alongside the duration', () => {
+    const at = Math.floor(new Date(2026, 8, 1, 14, 32).getTime() / 1000)
+    render(
+      <MessageItem
+        {...baseProps}
+        message={{ ...baseMessage, timestamp: at }}
+        durationMs={145_000}
+      />
+    )
+
+    expect(screen.getByText(formatMessageTimestamp(at))).toBeVisible()
+    expect(screen.getByText('02:25')).toBeVisible()
+  })
+
+  it('renders the assistant timestamp when there is no duration', () => {
+    const at = Math.floor(new Date(2026, 8, 1, 14, 32).getTime() / 1000)
+    render(
+      <MessageItem {...baseProps} message={{ ...baseMessage, timestamp: at }} />
+    )
+
+    expect(screen.getByText(formatMessageTimestamp(at))).toBeVisible()
+  })
+
+  it('renders the timestamp on user messages', () => {
+    const at = Math.floor(new Date(2026, 8, 1, 14, 32).getTime() / 1000)
+    render(
+      <MessageItem
+        {...baseProps}
+        message={{
+          ...baseMessage,
+          id: 'user-1',
+          role: 'user',
+          content: 'Hello',
+          timestamp: at,
+          tool_calls: [],
+          content_blocks: [],
+        }}
+      />
+    )
+
+    expect(screen.getByText(formatMessageTimestamp(at))).toBeVisible()
   })
 
   it('copies an assistant response to the clipboard', async () => {

@@ -38,7 +38,8 @@ import { EditedFilesDisplay } from './EditedFilesDisplay'
 import { AskUserQuestion } from './AskUserQuestion'
 import { SteeredPromptGroup } from './SteeredPromptGroup'
 import { buildTimeline, coalesceContentBlocks } from './tool-call-utils'
-import { formatDuration, getAssistantDurationMs } from './time-utils'
+import { getAssistantDurationMs } from './time-utils'
+import { MessageMetaLine } from './MessageMetaLine'
 import {
   TOOL_CALL_ROW_CLASS,
   TOOL_CALL_DETAIL_PILL_CLASS,
@@ -401,6 +402,7 @@ function CompactActivityRow({
     () => group.some(item => item.message.cancelled),
     [group]
   )
+  const groupTimestamp = group[group.length - 1]?.message.timestamp ?? null
   const groupDurationMs = useMemo(() => {
     for (let i = group.length - 1; i >= 0; i--) {
       const item = group[i]
@@ -479,18 +481,11 @@ function CompactActivityRow({
           </div>
         </CollapsibleContent>
       </div>
-      {(groupDurationMs != null || hasCancelledMessage) && (
-        <div className="mt-1 flex min-h-4 items-center gap-2 text-xs leading-4 text-muted-foreground/40">
-          {groupDurationMs != null && (
-            <span className="tabular-nums font-mono">
-              {formatDuration(groupDurationMs)}
-            </span>
-          )}
-          {hasCancelledMessage && (
-            <span className="italic text-muted-foreground/50">(cancelled)</span>
-          )}
-        </div>
-      )}
+      <MessageMetaLine timestamp={groupTimestamp} durationMs={groupDurationMs}>
+        {hasCancelledMessage && (
+          <span className="italic text-muted-foreground/50">(cancelled)</span>
+        )}
+      </MessageMetaLine>
       <span aria-hidden className="sr-only">
         Total: {total}
       </span>
@@ -620,11 +615,7 @@ function CompactQuestionMessage({
           />
         )
       })}
-      {durationMs != null && durationMs > 0 && (
-        <span className="mt-1 block min-h-4 text-xs leading-4 text-muted-foreground/40 tabular-nums font-mono">
-          {formatDuration(durationMs)}
-        </span>
-      )}
+      <MessageMetaLine timestamp={message.timestamp} durationMs={durationMs} />
     </>
   )
 }
@@ -942,7 +933,8 @@ export const CompactMessageList = memo(
         }
 
         if (hasHiddenPrompts) {
-          pendingPrependAnchorRef.current = capturePrependScrollAnchor(container)
+          pendingPrependAnchorRef.current =
+            capturePrependScrollAnchor(container)
           pendingPrependMessagesLengthRef.current = messages.length
           onRevealOlderPrompts?.()
           return
