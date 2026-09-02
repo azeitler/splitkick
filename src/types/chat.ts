@@ -1677,6 +1677,37 @@ export interface AllSessionsResponse {
   entries: AllSessionsEntry[]
 }
 
+/**
+ * One session whose message content matched a full-text search.
+ *
+ * Message text lives in per-run JSONL logs, not in session metadata, so this
+ * comes from the Rust-side `search_session_messages` scan rather than from
+ * filtering `list_all_sessions` on the client.
+ */
+export interface SessionSearchHit {
+  session_id: string
+  session_name: string
+  project_id: string
+  project_name: string
+  worktree_id: string
+  worktree_name: string
+  worktree_path: string
+  /** Message text around the first match, with an ellipsis where it was cut */
+  snippet: string
+  /** Message the snippet came from, so the UI can scroll to it */
+  message_id?: string
+  /** How many messages matched, not how many times */
+  match_count: number
+  updated_at: number
+}
+
+/** Response from the search_session_messages Tauri command */
+export interface SessionSearchResponse {
+  hits: SessionSearchHit[]
+  /** True when the limit cut the result short */
+  truncated: boolean
+}
+
 // ============================================================================
 // Debug Info Types (for SessionDebugPanel)
 // ============================================================================

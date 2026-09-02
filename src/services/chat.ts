@@ -16,6 +16,7 @@ import {
 } from '@/lib/session-state-hydration'
 import type {
   AllSessionsResponse,
+  SessionSearchResponse,
   ArchivedSessionEntry,
   ChatMessage,
   ChatHistory,
@@ -624,6 +625,41 @@ export function useAllSessions(enabled = true) {
     enabled,
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 5,
+  })
+}
+
+/** Shortest query the backend will scan for — matches MIN_QUERY_LEN in search.rs */
+export const MIN_SESSION_SEARCH_LEN = 3
+
+/**
+ * Full-text search across the messages of every session.
+ *
+ * The scan runs in Rust because message text lives in per-run JSONL logs, not
+ * in session metadata — `list_all_sessions` returns empty `messages` arrays, so
+ * this cannot be done on the client. Callers should pass an already-debounced
+ * query; every keystroke would otherwise walk the run logs.
+ */
+export function useSessionMessageSearch(query: string, enabled = true) {
+  const trimmed = query.trim()
+  const longEnough = trimmed.length >= MIN_SESSION_SEARCH_LEN
+
+  return useQuery({
+    queryKey: ['session-message-search', trimmed],
+    queryFn: async (): Promise<SessionSearchResponse> => {
+      try {
+        return await invoke<SessionSearchResponse>('search_session_messages', {
+          query: trimmed,
+        })
+      } catch (error) {
+        logger.error('Session message search failed', { error })
+        return { hits: [], truncated: false }
+      }
+    },
+    enabled: enabled && longEnough,
+    // Results are derived from run logs that only change when a run finishes.
+    staleTime: 1000 * 30,
+    gcTime: 1000 * 60,
+    placeholderData: previous => previous,
   })
 }
 

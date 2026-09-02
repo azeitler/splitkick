@@ -28,6 +28,27 @@ const {
   warnRemoteVersionMismatch: vi.fn(() => false),
 }))
 
+const searchCalls: { query: string; enabled: boolean }[] = []
+
+const searchResult = {
+  truncated: false,
+  hits: [
+    {
+      session_id: 'session-hit',
+      session_name: 'Parser rewrite',
+      project_id: 'project-2',
+      project_name: 'Coolify',
+      worktree_id: 'worktree-2',
+      worktree_name: 'feat/deploy',
+      worktree_path: '/projects/coolify',
+      snippet: '…the parser needs a rewrite because…',
+      message_id: 'message-1',
+      match_count: 3,
+      updated_at: 1_700_000_000_000,
+    },
+  ],
+}
+
 const remoteConnections = [
   {
     id: 'remote-1',
@@ -98,6 +119,14 @@ vi.mock('@/store/chat-store', () => {
 vi.mock('@/lib/navigate-to-session', () => ({ navigateToSession }))
 
 vi.mock('@/services/chat', () => ({
+  MIN_SESSION_SEARCH_LEN: 3,
+  useSessionMessageSearch: (query: string, enabled: boolean) => {
+    searchCalls.push({ query, enabled })
+    return {
+      data: enabled && query.trim().length >= 3 ? searchResult : undefined,
+      isFetching: false,
+    }
+  },
   useAllSessions: () => ({
     data: {
       entries: [
@@ -287,5 +316,157 @@ describe('CommandPalette sessions', () => {
     expect(
       other.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
+  })
+})
+
+describe('CommandPalette search mode', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    searchCalls.length = 0
+  })
+
+  const typeQuery = (value: string) =>
+    fireEvent.change(
+      screen.getByPlaceholderText(/Type a command|Search across/),
+      {
+        target: { value },
+      }
+    )
+
+  const hitRow = () => document.querySelector('[data-value="session-hit"]')
+
+  const pressTab = () =>
+    fireEvent.keyDown(
+      screen.getByPlaceholderText(/Type a command|Search across/),
+      {
+        key: 'Tab',
+      }
+    )
+
+  it('starts in quick mode and does not run a backend search', () => {
+    render(<CommandPalette />)
+
+    expect(screen.getByText('Recent Sessions')).toBeInTheDocument()
+    expect(searchCalls.every(call => !call.enabled)).toBe(true)
+  })
+
+  it('switches to search mode with Tab and back again', () => {
+    render(<CommandPalette />)
+
+    pressTab()
+    expect(
+      screen.getByPlaceholderText('Search across all session messages...')
+    ).toBeInTheDocument()
+    // Quick-mode groups are gone, so the two modes never render together.
+    expect(screen.queryByText('Recent Sessions')).not.toBeInTheDocument()
+
+    pressTab()
+    expect(screen.getByText('Recent Sessions')).toBeInTheDocument()
+  })
+
+  it('switches mode by clicking the chip, which is the only route on mobile', () => {
+    render(<CommandPalette />)
+
+    fireEvent.click(screen.getByText('Search messages'))
+
+    expect(
+      screen.getByPlaceholderText('Search across all session messages...')
+    ).toBeInTheDocument()
+  })
+
+  it('asks for a longer query before hitting the backend', () => {
+    render(<CommandPalette />)
+    pressTab()
+    typeQuery('ab')
+
+    expect(screen.getByText(/Type at least 3 characters/)).toBeInTheDocument()
+    expect(searchCalls.every(call => call.query.trim().length < 3)).toBe(true)
+  })
+
+  it('renders a hit with its snippet, location and match count', async () => {
+    render(<CommandPalette />)
+    pressTab()
+    typeQuery('parser')
+
+    // The query is debounced before it reaches the backend. Match on the row
+    // rather than on text nodes, because highlighting splits them across marks.
+    await waitFor(() => expect(hitRow()).not.toBeNull())
+
+    const row = hitRow()
+    expect(row?.textContent).toContain('Parser rewrite')
+    expect(row?.textContent).toContain('the parser needs a rewrite because')
+    expect(row?.textContent).toContain('Coolify · feat/deploy · 3 matches')
+  })
+
+  it('opens the session the hit belongs to', async () => {
+    render(<CommandPalette />)
+    pressTab()
+    typeQuery('parser')
+
+    await waitFor(() => expect(hitRow()).not.toBeNull())
+
+    const row = hitRow()
+    if (!row) throw new Error('search hit row never rendered')
+    fireEvent.click(row)
+
+    expect(setCommandPaletteOpen).toHaveBeenCalledWith(false)
+    expect(navigateToSession).toHaveBeenCalledWith({
+      projectId: 'project-2',
+      worktreeId: 'worktree-2',
+      sessionId: 'session-hit',
+    })
+  })
+
+  it('leaves Shift+Tab alone so dialog focus navigation still works', () => {
+    render(<CommandPalette />)
+
+    fireEvent.keyDown(
+      screen.getByPlaceholderText('Type a command or search...'),
+      { key: 'Tab', shiftKey: true }
+    )
+
+    expect(screen.getByText('Recent Sessions')).toBeInTheDocument()
+  })
+})
+
+describe('CommandPalette layout and highlighting', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    searchCalls.length = 0
+  })
+
+  it('anchors near the top instead of centering, so the input cannot jump', () => {
+    // Vertical centering repositions the whole dialog whenever the result count
+    // changes, which moves the search field under the cursor while typing.
+    const { container } = render(<CommandPalette />)
+    const dialog = container.ownerDocument.querySelector(
+      '[data-slot="dialog-content"]'
+    )
+
+    expect(dialog?.className).toContain('translate-y-0')
+    expect(dialog?.className).not.toContain('translate-y-[-50%]')
+  })
+
+  it('highlights the query inside the snippet and the session name', async () => {
+    render(<CommandPalette />)
+    fireEvent.keyDown(
+      screen.getByPlaceholderText('Type a command or search...'),
+      { key: 'Tab' }
+    )
+    fireEvent.change(
+      screen.getByPlaceholderText('Search across all session messages...'),
+      { target: { value: 'parser' } }
+    )
+
+    await waitFor(() =>
+      expect(document.querySelectorAll('mark').length).toBeGreaterThan(0)
+    )
+
+    const marked = Array.from(document.querySelectorAll('mark')).map(
+      node => node.textContent
+    )
+    // Casing comes from the source text, not from what was typed.
+    expect(marked).toContain('Parser')
+    expect(marked).toContain('parser')
   })
 })

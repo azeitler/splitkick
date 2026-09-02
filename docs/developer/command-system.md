@@ -315,6 +315,35 @@ Navigation to a session must go through `navigateToSession()`
 auto-open through the UI store, which survives the target project's canvas not
 being mounted yet.
 
+#### Palette Modes
+
+The palette has two modes, toggled with `Tab` or by clicking the chips under the
+input. The split is by **mechanism, not by entity type**:
+
+| Mode            | Filtering              | Source                    |
+| --------------- | ---------------------- | ------------------------- |
+| Quick           | instant, in memory     | data already loaded       |
+| Search messages | debounced 250ms, async | `search_session_messages` |
+
+Sessions, projects, commands and connections all filter instantly, so they stay
+together in Quick. Only message search is async, so only it earns a mode.
+
+Two things this depends on:
+
+- `CommandDialog` takes `shouldFilter`. In Search mode it is `false`, because
+  the hits arrive already ranked by the backend and cmdk would otherwise
+  re-filter them against the raw query and drop rows whose `value` does not
+  contain it.
+- `Tab` is hijacked on the input only, and `Shift+Tab` is deliberately left
+  alone so dialog focus navigation still works. `Tab` already means "cycle a
+  mode" elsewhere in Jean (`ChatInput.tsx` toggles the backend with it).
+
+**Message content is not on the client.** `list_all_sessions` returns sessions
+with empty `messages` arrays — `SessionMetadata::to_session` sets
+`messages: vec![]` and the text lives in per-run JSONL logs. Any feature that
+needs message content must call the backend; it cannot filter `useAllSessions()`
+in memory. See `jean-core/src/chat/search.rs` for the two-phase scan.
+
 ### Keyboard Shortcuts
 
 See [keyboard-shortcuts.md](./keyboard-shortcuts.md) for details on the keybinding system that triggers commands.

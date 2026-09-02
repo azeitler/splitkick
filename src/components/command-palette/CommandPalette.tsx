@@ -5,17 +5,26 @@ import { usePreferences } from '@/services/preferences'
 import { useProjects, useAppDataDir } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { useAllSessions } from '@/services/chat'
+import {
+  useAllSessions,
+  useSessionMessageSearch,
+  MIN_SESSION_SEARCH_LEN,
+} from '@/services/chat'
 import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/lib/relative-time'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { getSessionStatus } from '@/components/unread/unread-utils'
 import { getBackendIcon } from '@/components/ui/backend-label'
+import { useDebouncedValue } from '@/hooks/useDebouncedValue'
+import { useIsMobile } from '@/hooks/use-mobile'
+import { Kbd } from '@/components/ui/kbd'
 import { buildSessionCommands } from './session-commands'
+import { HighlightedText } from './highlight-matches'
 import { getAllCommands, executeCommand } from '@/lib/commands'
 import { formatShortcutDisplay } from '@/types/keybindings'
-import { Monitor, Server } from 'lucide-react'
+import type { SessionSearchHit } from '@/types/chat'
+import { Monitor, Server, Loader2, MessageSquareText } from 'lucide-react'
 import {
   LOCAL_CONNECTION_ID,
   getActiveConnectionId,
@@ -37,6 +46,13 @@ import {
   CommandItem,
   CommandShortcut,
 } from '@/components/ui/command'
+
+type PaletteMode = 'quick' | 'search'
+
+const MODES: { id: PaletteMode; label: string }[] = [
+  { id: 'quick', label: 'Quick' },
+  { id: 'search', label: 'Search messages' },
+]
 
 interface ProjectCommand {
   id: string
@@ -71,6 +87,11 @@ export function CommandPalette({
   const { data: preferences } = usePreferences()
   const commandContext = useCommandContext(preferences)
   const [search, setSearch] = useState('')
+  // 'quick' filters loaded data instantly. 'search' runs a debounced backend
+  // scan over message content, which is why it is a separate mode and not
+  // another group in the same list.
+  const [mode, setMode] = useState<PaletteMode>('quick')
+  const isMobile = useIsMobile()
   const remoteConnections = useRemoteConnections()
   const activeConnectionId = getActiveConnectionId()
 
@@ -125,6 +146,15 @@ export function CommandPalette({
       connection => connection.connectionId !== activeConnectionId
     )
   }, [activeConnectionId, remoteConnections])
+
+  // Every keystroke would otherwise walk the run logs on disk.
+  const debouncedQuery = useDebouncedValue(search, 250)
+  const { data: searchData, isFetching: isSearching } = useSessionMessageSearch(
+    debouncedQuery,
+    commandPaletteOpen && mode === 'search'
+  )
+  const searchHits = searchData?.hits ?? []
+  const highlightQuery = debouncedQuery.trim()
 
   // Sessions lead the palette: jumping back to a session is the most common
   // reason to open it, so an empty query still lists the most recent ones.
@@ -268,12 +298,42 @@ export function CommandPalette({
     ]
   )
 
+  const handleSearchHitSelect = useCallback(
+    (hit: SessionSearchHit) => {
+      setCommandPaletteOpen(false)
+      setSearch('')
+      navigateToSession({
+        projectId: hit.project_id,
+        worktreeId: hit.worktree_id,
+        sessionId: hit.session_id,
+      })
+    },
+    [setCommandPaletteOpen]
+  )
+
+  // Tab toggles the mode. Jean already reads Tab as "cycle a mode" in the chat
+  // input, and inside a dialog it would otherwise only move focus.
+  const handleInputKeyDown = useCallback((event: React.KeyboardEvent) => {
+    if (
+      event.key !== 'Tab' ||
+      event.shiftKey ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey
+    ) {
+      return
+    }
+    event.preventDefault()
+    setMode(current => (current === 'quick' ? 'search' : 'quick'))
+  }, [])
+
   // Handle dialog open/close with search clearing
   const handleOpenChange = useCallback(
     (open: boolean) => {
       setCommandPaletteOpen(open)
       if (!open) {
         setSearch('') // Clear search when closing
+        setMode('quick')
       }
     },
     [setCommandPaletteOpen]
@@ -298,19 +358,107 @@ export function CommandPalette({
       onOpenChange={handleOpenChange}
       title="Command Palette"
       description="Type a command or search..."
-      className="top-4 translate-y-0 sm:top-[50%] sm:translate-y-[-50%] sm:max-w-2xl"
+      className="top-4 translate-y-0 sm:top-[10vh] sm:max-w-2xl"
       disablePointerSelection
+      shouldFilter={mode === 'quick'}
     >
       <CommandInput
-        placeholder="Type a command or search..."
+        placeholder={
+          mode === 'search'
+            ? 'Search across all session messages...'
+            : 'Type a command or search...'
+        }
         value={search}
         onValueChange={setSearch}
+        onKeyDown={handleInputKeyDown}
       />
+
+      <div className="flex items-center gap-1 border-b px-2 py-1.5">
+        {MODES.map(item => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => setMode(item.id)}
+            className={cn(
+              'rounded-md px-2 py-1 text-xs transition-colors',
+              mode === item.id
+                ? 'bg-accent text-accent-foreground'
+                : 'text-muted-foreground hover:bg-accent/50'
+            )}
+          >
+            {item.label}
+          </button>
+        ))}
+        {isSearching && (
+          <Loader2 className="size-3 animate-spin text-muted-foreground" />
+        )}
+        {!isMobile && (
+          <Kbd
+            className="ml-auto h-4 px-1 text-[10px] opacity-70"
+            title="Switch mode"
+          >
+            Tab
+          </Kbd>
+        )}
+      </div>
       <CommandList className="max-h-[70dvh] sm:max-h-[min(640px,65dvh)]">
-        <CommandEmpty>No results found.</CommandEmpty>
+        {mode === 'quick' && <CommandEmpty>No results found.</CommandEmpty>}
+
+        {mode === 'search' && (
+          <>
+            {search.trim().length < MIN_SESSION_SEARCH_LEN ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                Type at least {MIN_SESSION_SEARCH_LEN} characters to search
+                message content.
+              </div>
+            ) : searchHits.length === 0 && !isSearching ? (
+              <div className="py-6 text-center text-sm text-muted-foreground">
+                No messages match “{search.trim()}”.
+              </div>
+            ) : (
+              <CommandGroup
+                heading={
+                  searchData?.truncated
+                    ? `Messages (first ${searchHits.length})`
+                    : 'Messages'
+                }
+              >
+                {searchHits.map(hit => (
+                  <CommandItem
+                    key={hit.session_id}
+                    value={hit.session_id}
+                    onSelect={() => handleSearchHitSelect(hit)}
+                    className="items-start"
+                  >
+                    <MessageSquareText className="mt-0.5 size-4 shrink-0" />
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <HighlightedText
+                        text={hit.session_name}
+                        query={highlightQuery}
+                        className="truncate leading-snug"
+                      />
+                      <HighlightedText
+                        text={hit.snippet}
+                        query={highlightQuery}
+                        className="truncate text-xs leading-snug text-muted-foreground"
+                      />
+                      <span className="truncate text-[11px] leading-snug text-muted-foreground/70">
+                        {hit.project_name} · {hit.worktree_name}
+                        {hit.match_count > 1 && ` · ${hit.match_count} matches`}
+                      </span>
+                    </div>
+                    <span className="ml-2 shrink-0 self-center text-xs text-muted-foreground">
+                      {formatRelativeTime(hit.updated_at)}
+                    </span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+          </>
+        )}
 
         {/* Sessions lead: with no query these are the most recent ones */}
-        {sessionCommands.length > 0 && (
+        {mode === 'quick' && sessionCommands.length > 0 && (
           <CommandGroup
             heading={search.trim() ? 'Sessions' : 'Recent Sessions'}
           >
@@ -357,7 +505,7 @@ export function CommandPalette({
         )}
 
         {/* Projects follow, so CMD+K -> down-arrow still reaches them fast */}
-        {commandGroups.projectCommands.length > 0 && (
+        {mode === 'quick' && commandGroups.projectCommands.length > 0 && (
           <CommandGroup heading="Projects">
             {commandGroups.projectCommands.map(cmd => (
               <CommandItem
@@ -392,7 +540,7 @@ export function CommandPalette({
           </CommandGroup>
         )}
 
-        {connectionCommands.length > 0 && (
+        {mode === 'quick' && connectionCommands.length > 0 && (
           <CommandGroup heading="Connections">
             {connectionCommands.map(command => (
               <CommandItem
@@ -418,39 +566,40 @@ export function CommandPalette({
         )}
 
         {/* Static command groups */}
-        {Object.entries(commandGroups.staticGroups).map(
-          ([groupName, groupCommands]) => (
-            <CommandGroup key={groupName} heading={getGroupLabel(groupName)}>
-              {groupCommands.map(command => (
-                <CommandItem
-                  key={command.id}
-                  value={`${command.id} ${command.label} ${command.description ?? ''} ${command.keywords?.join(' ') ?? ''}`}
-                  onSelect={() => handleCommandSelect(command.id)}
-                  className="items-start"
-                >
-                  {command.icon && (
-                    <command.icon className="mt-0.5 size-4 shrink-0" />
-                  )}
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate leading-snug">
-                      {command.label}
-                    </span>
-                    {command.description && (
-                      <span className="text-xs leading-snug text-muted-foreground">
-                        {command.description}
-                      </span>
+        {mode === 'quick' &&
+          Object.entries(commandGroups.staticGroups).map(
+            ([groupName, groupCommands]) => (
+              <CommandGroup key={groupName} heading={getGroupLabel(groupName)}>
+                {groupCommands.map(command => (
+                  <CommandItem
+                    key={command.id}
+                    value={`${command.id} ${command.label} ${command.description ?? ''} ${command.keywords?.join(' ') ?? ''}`}
+                    onSelect={() => handleCommandSelect(command.id)}
+                    className="items-start"
+                  >
+                    {command.icon && (
+                      <command.icon className="mt-0.5 size-4 shrink-0" />
                     )}
-                  </div>
-                  {command.shortcut && (
-                    <CommandShortcut className="self-center">
-                      {formatShortcutDisplay(command.shortcut)}
-                    </CommandShortcut>
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )
-        )}
+                    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      <span className="truncate leading-snug">
+                        {command.label}
+                      </span>
+                      {command.description && (
+                        <span className="text-xs leading-snug text-muted-foreground">
+                          {command.description}
+                        </span>
+                      )}
+                    </div>
+                    {command.shortcut && (
+                      <CommandShortcut className="self-center">
+                        {formatShortcutDisplay(command.shortcut)}
+                      </CommandShortcut>
+                    )}
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )
+          )}
       </CommandList>
     </CommandDialog>
   )
