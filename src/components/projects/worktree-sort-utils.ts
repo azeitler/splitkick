@@ -34,6 +34,25 @@ export function isStaleActivity(timestamp: number, now = Date.now()): boolean {
   return now - toMilliseconds(timestamp) > STALE_ACTIVITY_MS
 }
 
+/**
+ * Rows touched more recently than this show no "last active" label. Under an
+ * hour the age carries no information the status indicator does not already
+ * give, and a label on every row is noise.
+ */
+export const LAST_ACTIVE_LABEL_MIN_AGE_MS = 60 * 60 * 1000
+
+/**
+ * True once a row is old enough to be worth labelling with its age.
+ *
+ * `now` is injectable so the tests stay deterministic.
+ */
+export function shouldShowLastActive(
+  timestamp: number,
+  now = Date.now()
+): boolean {
+  return now - toMilliseconds(timestamp) >= LAST_ACTIVE_LABEL_MIN_AGE_MS
+}
+
 export function getWorktreeSortValue(
   worktree: Worktree,
   latestActivityAt: number,

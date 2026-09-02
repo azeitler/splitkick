@@ -8,17 +8,36 @@ export function toMilliseconds(timestamp: number): number {
   return timestamp < 1_000_000_000_000 ? timestamp * 1000 : timestamp
 }
 
-/** Compact "time ago" label — `just now`, `5m ago`, `3h ago`, `2d ago`. */
-export function formatRelativeTime(timestamp: number): string {
-  const diffMs = Date.now() - toMilliseconds(timestamp)
+/**
+ * Compact "time ago" label — `just now`, `5m ago`, `3h ago`, `2d ago`,
+ * `6w ago`, `3mo ago`, `2y ago`.
+ *
+ * Months use `mo`, not `m`, because `m` already means minutes. Weeks run to
+ * `8w` and months start at `2mo`, so the label never appears to jump backwards
+ * (`8w` → `2mo` rather than `8w` → `1mo`). Months are a flat 30 days and years
+ * a flat 365, which keeps the boundaries predictable at this precision.
+ *
+ * `now` is injectable so the tests stay deterministic.
+ */
+export function formatRelativeTime(
+  timestamp: number,
+  now = Date.now()
+): string {
+  const diffMs = now - toMilliseconds(timestamp)
   if (diffMs < 0) return 'just now'
   const minuteMs = 60_000
   const hourMs = 60 * minuteMs
   const dayMs = 24 * hourMs
+  const weekMs = 7 * dayMs
+  const monthMs = 30 * dayMs
+  const yearMs = 365 * dayMs
   if (diffMs < hourMs)
     return `${Math.max(1, Math.floor(diffMs / minuteMs))}m ago`
   if (diffMs < dayMs) return `${Math.floor(diffMs / hourMs)}h ago`
-  return `${Math.floor(diffMs / dayMs)}d ago`
+  if (diffMs < weekMs) return `${Math.floor(diffMs / dayMs)}d ago`
+  if (diffMs < 2 * monthMs) return `${Math.floor(diffMs / weekMs)}w ago`
+  if (diffMs < yearMs) return `${Math.floor(diffMs / monthMs)}mo ago`
+  return `${Math.floor(diffMs / yearMs)}y ago`
 }
 
 function isSameDay(a: Date, b: Date): boolean {

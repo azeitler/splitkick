@@ -9,6 +9,7 @@ import {
 const MINUTE = 60_000
 const HOUR = 60 * MINUTE
 const DAY = 24 * HOUR
+const WEEK = 7 * DAY
 
 describe('toMilliseconds', () => {
   it('scales unix seconds up to milliseconds', () => {
@@ -21,11 +22,48 @@ describe('toMilliseconds', () => {
 })
 
 describe('formatRelativeTime', () => {
+  const now = Date.UTC(2026, 8, 1)
+
   it('formats minutes, hours and days', () => {
-    const now = Date.now()
-    expect(formatRelativeTime(now - 5 * MINUTE)).toBe('5m ago')
-    expect(formatRelativeTime(now - 3 * HOUR)).toBe('3h ago')
-    expect(formatRelativeTime(now - 2 * DAY)).toBe('2d ago')
+    expect(formatRelativeTime(now - 5 * MINUTE, now)).toBe('5m ago')
+    expect(formatRelativeTime(now - 3 * HOUR, now)).toBe('3h ago')
+    expect(formatRelativeTime(now - 2 * DAY, now)).toBe('2d ago')
+  })
+
+  it('defaults to the current clock', () => {
+    expect(formatRelativeTime(Date.now() - 3 * HOUR)).toBe('3h ago')
+  })
+
+  it('formats weeks, months and years', () => {
+    expect(formatRelativeTime(now - 6 * WEEK, now)).toBe('6w ago')
+    expect(formatRelativeTime(now - 100 * DAY, now)).toBe('3mo ago')
+    expect(formatRelativeTime(now - 800 * DAY, now)).toBe('2y ago')
+  })
+
+  it('uses mo for months so it never collides with m for minutes', () => {
+    expect(formatRelativeTime(now - 3 * MINUTE, now)).toBe('3m ago')
+    expect(formatRelativeTime(now - 90 * DAY, now)).toBe('3mo ago')
+  })
+
+  it('steps up through the units without reading backwards', () => {
+    // Days hand over to weeks at 7d, weeks to months at 60d, months to years
+    // at 365d. Months start at 2mo so "8w" is never followed by "1mo".
+    expect(formatRelativeTime(now - (7 * DAY - 1), now)).toBe('6d ago')
+    expect(formatRelativeTime(now - 7 * DAY, now)).toBe('1w ago')
+    expect(formatRelativeTime(now - (60 * DAY - 1), now)).toBe('8w ago')
+    expect(formatRelativeTime(now - 60 * DAY, now)).toBe('2mo ago')
+    expect(formatRelativeTime(now - (365 * DAY - 1), now)).toBe('12mo ago')
+    expect(formatRelativeTime(now - 365 * DAY, now)).toBe('1y ago')
+  })
+
+  it('normalizes second-precision timestamps', () => {
+    expect(formatRelativeTime(Math.floor((now - 6 * WEEK) / 1000), now)).toBe(
+      '6w ago'
+    )
+  })
+
+  it('treats future timestamps as just now', () => {
+    expect(formatRelativeTime(now + DAY, now)).toBe('just now')
   })
 })
 

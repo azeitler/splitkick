@@ -52,6 +52,7 @@ import {
   getSessionActivityTimestamp,
   getWorktreeLastActivity,
   isStaleActivity,
+  shouldShowLastActive,
 } from './worktree-sort-utils'
 import {
   useGitStatus,
@@ -67,6 +68,7 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
+import { formatMessageTimestamp, formatRelativeTime } from '@/lib/relative-time'
 
 /**
  * Settled session states that may render faded once stale. Anything that still
@@ -76,6 +78,21 @@ const FADEABLE_SESSION_STATUSES = new Set<SessionStatus>([
   'idle',
   'completed',
   'cancelled',
+])
+
+/**
+ * Sessions that are not doing work right now, and so may carry a "last active"
+ * age label. Wider than {@link FADEABLE_SESSION_STATUSES} on purpose: dimming a
+ * crashed or review-ready session would bury it, but telling you how long it
+ * has sat there is exactly what you want to know.
+ */
+const SETTLED_SESSION_STATUSES = new Set<SessionStatus>([
+  'idle',
+  'completed',
+  'cancelled',
+  'paused',
+  'review',
+  'crashed',
 ])
 
 interface WorktreeItemProps {
@@ -375,14 +392,17 @@ export function WorktreeItem({
     )
   }, [isExpanded, sessionsData?.sessions, storeState])
 
+  // Newest interaction across the workspace's sessions, falling back to when
+  // the workspace itself was created. Drives both the fade and the "last
+  // active" label on the right of the row.
+  const lastActivityAt = useMemo(() => {
+    const sessions = sessionsData?.sessions ?? []
+    return getWorktreeLastActivity(sessions, worktree.created_at)
+  }, [sessionsData?.sessions, worktree.created_at])
+
   // Workspaces with no interaction for a week render faded so active work is
   // easier to find. Busy and selected rows are never faded.
-  const isStaleWorktree = useMemo(() => {
-    const sessions = sessionsData?.sessions ?? []
-    return isStaleActivity(
-      getWorktreeLastActivity(sessions, worktree.created_at)
-    )
-  }, [sessionsData?.sessions, worktree.created_at])
+  const isStaleWorktree = isStaleActivity(lastActivityAt)
 
   const handleChevronClick = useCallback(
     (e: React.MouseEvent) => {
@@ -957,6 +977,22 @@ export function WorktreeItem({
               <TooltipContent>{`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}</TooltipContent>
             </Tooltip>
           )}
+
+          {/* Last activity across the workspace's sessions. Hidden while the
+              workspace is busy, since the indicator already says so, and below
+              the age threshold. Dropped on a narrow sidebar too, where the git
+              badges already own the remaining space. */}
+          {!isNarrowSidebar &&
+            indicatorStatus !== 'running' &&
+            indicatorStatus !== 'waiting' &&
+            shouldShowLastActive(lastActivityAt) && (
+              <span
+                className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70"
+                title={`Last active: ${formatMessageTimestamp(lastActivityAt)}`}
+              >
+                {formatRelativeTime(lastActivityAt)}
+              </span>
+            )}
         </div>
       </WorktreeContextMenu>
 
@@ -988,6 +1024,9 @@ export function WorktreeItem({
                 {group.cards.map(card => {
                   const config = statusConfig[card.status]
                   const isRenaming = renamingSessionId === card.session.id
+                  const sessionActivityAt = getSessionActivityTimestamp(
+                    card.session
+                  )
                   const rowClassName = cn(
                     'flex w-full items-center gap-1.5 pl-5 py-1 cursor-pointer text-sm truncate text-left',
                     activeSessionId === card.session.id && isSelected
@@ -997,9 +1036,7 @@ export function WorktreeItem({
                         : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
                     activeSessionId !== card.session.id &&
                       FADEABLE_SESSION_STATUSES.has(card.status) &&
-                      isStaleActivity(
-                        getSessionActivityTimestamp(card.session)
-                      ) &&
+                      isStaleActivity(sessionActivityAt) &&
                       'opacity-50 hover:opacity-100'
                   )
                   const rowContent = (
@@ -1046,6 +1083,15 @@ export function WorktreeItem({
                               {card.label.name}
                             </span>
                           )}
+                          {SETTLED_SESSION_STATUSES.has(card.status) &&
+                            shouldShowLastActive(sessionActivityAt) && (
+                              <span
+                                className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70"
+                                title={`Last active: ${formatMessageTimestamp(sessionActivityAt)}`}
+                              >
+                                {formatRelativeTime(sessionActivityAt)}
+                              </span>
+                            )}
                         </>
                       )}
                     </>

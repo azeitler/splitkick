@@ -2,11 +2,13 @@ import { describe, expect, it } from 'vitest'
 import type { Session } from '@/types/chat'
 import type { Worktree } from '@/types/projects'
 import {
+  LAST_ACTIVE_LABEL_MIN_AGE_MS,
   STALE_ACTIVITY_MS,
   compareWorktreesForCanvasSort,
   getSessionActivityTimestamp,
   getWorktreeLastActivity,
   isStaleActivity,
+  shouldShowLastActive,
 } from './worktree-sort-utils'
 
 function worktree(overrides: Partial<Worktree> & { id: string }): Worktree {
@@ -166,5 +168,34 @@ describe('isStaleActivity', () => {
 
   it('does not flag timestamps in the future', () => {
     expect(isStaleActivity(now + day, now)).toBe(false)
+  })
+})
+
+describe('shouldShowLastActive', () => {
+  const now = Date.UTC(2026, 8, 1)
+  const minute = 60 * 1000
+
+  it('hides the age for anything touched in the last hour', () => {
+    expect(shouldShowLastActive(now, now)).toBe(false)
+    expect(shouldShowLastActive(now - 59 * minute, now)).toBe(false)
+  })
+
+  it('shows the age from one hour onwards', () => {
+    expect(shouldShowLastActive(now - LAST_ACTIVE_LABEL_MIN_AGE_MS, now)).toBe(
+      true
+    )
+    expect(shouldShowLastActive(now - 3 * 60 * minute, now)).toBe(true)
+  })
+
+  it('normalizes second-precision timestamps before comparing', () => {
+    const threeHoursAgoInSeconds = Math.floor((now - 180 * minute) / 1000)
+    expect(shouldShowLastActive(threeHoursAgoInSeconds, now)).toBe(true)
+
+    const tenMinutesAgoInSeconds = Math.floor((now - 10 * minute) / 1000)
+    expect(shouldShowLastActive(tenMinutesAgoInSeconds, now)).toBe(false)
+  })
+
+  it('hides the age for timestamps in the future', () => {
+    expect(shouldShowLastActive(now + 60 * minute, now)).toBe(false)
   })
 })
