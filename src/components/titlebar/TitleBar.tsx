@@ -39,6 +39,7 @@ import { FALLBACK_APP_VERSION } from '@/lib/app-version'
 import { releaseUrlForVersion } from '@/lib/release-url'
 import { applyServerUpdate } from '@/hooks/useServerUpdateCheck'
 import { LinuxWindowControls } from './LinuxWindowControls'
+import { UsagePopover } from './UsagePopover'
 import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
 
 interface TitleBarProps {
@@ -182,6 +183,7 @@ export function TitleBar({
                 </kbd>
               </TooltipContent>
             </Tooltip>
+            <UsagePopover />
             {native && <RemoteConnectionsDialog />}
           </div>
         )}

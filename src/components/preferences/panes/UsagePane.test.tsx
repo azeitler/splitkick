@@ -236,6 +236,23 @@ describe('UsagePane', () => {
     expect(screen.getByText(/Frequent: 1 \/ 10/)).toBeInTheDocument()
   })
 
+  it('keeps the preferences search anchors by default', () => {
+    render(<UsagePane />)
+
+    expect(document.getElementById('pref-usage-section-claude')).not.toBeNull()
+    expect(document.getElementById('pref-usage-section-codex')).not.toBeNull()
+    expect(document.getElementById('pref-usage-section-grok')).not.toBeNull()
+  })
+
+  it('drops the anchors when withSectionIds is false', () => {
+    render(<UsagePane withSectionIds={false} />)
+
+    expect(screen.getByText('Claude')).toBeInTheDocument()
+    expect(document.getElementById('pref-usage-section-claude')).toBeNull()
+    expect(document.getElementById('pref-usage-section-codex')).toBeNull()
+    expect(document.getElementById('pref-usage-section-grok')).toBeNull()
+  })
+
   it('retries Claude usage on error', async () => {
     const user = userEvent.setup()
     const refetch = vi.fn()

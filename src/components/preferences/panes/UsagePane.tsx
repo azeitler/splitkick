@@ -24,7 +24,8 @@ function CompactSection({
   children,
 }: {
   title: string
-  anchorId: string
+  /** Omitted outside Settings so the ids stay unique for preferences search. */
+  anchorId?: string
   children: React.ReactNode
 }) {
   return (
@@ -209,14 +210,24 @@ function ErrorLine({
   )
 }
 
-export const UsagePane: React.FC = () => {
+interface UsagePaneProps {
+  /**
+   * Adds the `pref-usage-section-*` ids that preferences search jumps to.
+   * Set to false when the pane renders outside the Settings dialog, so the
+   * ids cannot appear twice in the document.
+   */
+  withSectionIds?: boolean
+}
+
+export const UsagePane: React.FC<UsagePaneProps> = ({
+  withSectionIds = true,
+}) => {
   const claudeStatus = useClaudeCliStatus()
   const claudeAuth = useClaudeCliAuth({
     enabled: !!claudeStatus.data?.installed,
   })
   const claudeUsage = useClaudeUsage({
-    enabled:
-      !!claudeStatus.data?.installed && !!claudeAuth.data?.authenticated,
+    enabled: !!claudeStatus.data?.installed && !!claudeAuth.data?.authenticated,
   })
 
   const codexStatus = useCodexCliStatus()
@@ -525,19 +536,28 @@ export const UsagePane: React.FC = () => {
       ) : null}
 
       {showClaude ? (
-        <CompactSection title="Claude" anchorId="pref-usage-section-claude">
+        <CompactSection
+          title="Claude"
+          anchorId={withSectionIds ? 'pref-usage-section-claude' : undefined}
+        >
           {renderClaude()}
         </CompactSection>
       ) : null}
 
       {showCodex ? (
-        <CompactSection title="Codex" anchorId="pref-usage-section-codex">
+        <CompactSection
+          title="Codex"
+          anchorId={withSectionIds ? 'pref-usage-section-codex' : undefined}
+        >
           {renderCodex()}
         </CompactSection>
       ) : null}
 
       {showGrok ? (
-        <CompactSection title="Grok" anchorId="pref-usage-section-grok">
+        <CompactSection
+          title="Grok"
+          anchorId={withSectionIds ? 'pref-usage-section-grok' : undefined}
+        >
           {renderGrok()}
         </CompactSection>
       ) : null}
