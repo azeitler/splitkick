@@ -40,6 +40,7 @@ import {
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
+import { CollapsedCountBadge } from './CollapsedCountBadge'
 import { WorktreeList } from './WorktreeList'
 import { ProjectContextMenu } from './ProjectContextMenu'
 
@@ -344,6 +345,13 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
           ) : (
             <span className="flex flex-1 items-center gap-0.5 truncate text-sm">
               <span className="truncate">{project.name}</span>
+              {/* Hidden workspace count while the row is collapsed */}
+              {!isExpanded && (
+                <CollapsedCountBadge
+                  count={worktrees.length}
+                  noun="workspace"
+                />
+              )}
               {hasWorktrees && (
                 <button
                   type="button"

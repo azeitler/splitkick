@@ -28,6 +28,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { pushNeedsRemotePicker, useRemotePicker } from '@/hooks/useRemotePicker'
 import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
+import { CollapsedCountBadge } from './CollapsedCountBadge'
 import { WorktreeContextMenu } from './WorktreeContextMenu'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
@@ -364,6 +365,8 @@ export function WorktreeItem({
 
   // Card data is only rendered by the expanded session list, so skip the
   // O(sessions × messages) computation entirely for collapsed rows.
+  const sessionCount = sessionsData?.sessions.length ?? 0
+
   const sessionGroups = useMemo(() => {
     if (!isExpanded) return []
     const sessions = sessionsData?.sessions ?? []
@@ -831,6 +834,10 @@ export function WorktreeItem({
               )}
             >
               <span className="truncate">{worktree.name}</span>
+              {/* Hidden session count while the row is collapsed */}
+              {!isExpanded && (
+                <CollapsedCountBadge count={sessionCount} noun="session" />
+              )}
               {/* Chevron for expand/collapse sessions */}
               <button
                 type="button"

@@ -2898,6 +2898,10 @@ pub struct UIState {
     #[serde(default)]
     pub expanded_folder_ids: Vec<String>,
 
+    /// Worktree IDs whose session lists are expanded in sidebar
+    #[serde(default)]
+    pub expanded_worktree_ids: Vec<String>,
+
     /// Left sidebar width in pixels, defaults to 250
     #[serde(default)]
     pub left_sidebar_size: Option<f64>,
@@ -3129,6 +3133,7 @@ impl Default for UIState {
             active_project_id: None,
             expanded_project_ids: Vec::new(),
             expanded_folder_ids: Vec::new(),
+            expanded_worktree_ids: Vec::new(),
             left_sidebar_size: None,
             left_sidebar_visible: None,
             file_browser_size: None,

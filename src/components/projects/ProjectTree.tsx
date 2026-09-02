@@ -226,7 +226,12 @@ function SortableItem({
         )}
       >
         <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />
-        <FolderTreeItem folder={item} depth={depth} isDropTarget={isOverFolder}>
+        <FolderTreeItem
+          folder={item}
+          depth={depth}
+          childCount={allProjects.filter(p => p.parent_id === item.id).length}
+          isDropTarget={isOverFolder}
+        >
           {isExpanded && (
             <NestedItems
               projects={allProjects}

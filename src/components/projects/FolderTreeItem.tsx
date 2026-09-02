@@ -4,12 +4,15 @@ import { cn } from '@/lib/utils'
 import type { Project } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useRenameFolder } from '@/services/projects'
+import { CollapsedCountBadge } from './CollapsedCountBadge'
 import { FolderContextMenu } from './FolderContextMenu'
 
 interface FolderTreeItemProps {
   folder: Project
   children: React.ReactNode
   depth: number
+  /** Direct children (projects + sub-folders), shown as a badge when collapsed */
+  childCount: number
   isDropTarget?: boolean
 }
 
@@ -17,6 +20,7 @@ export function FolderTreeItem({
   folder,
   children,
   depth,
+  childCount,
   isDropTarget,
 }: FolderTreeItemProps) {
   const {
@@ -152,7 +156,13 @@ export function FolderTreeItem({
               autoFocus
             />
           ) : (
-            <span className="flex-1 truncate text-sm">{folder.name}</span>
+            <span className="flex flex-1 items-center gap-0.5 truncate text-sm">
+              <span className="truncate">{folder.name}</span>
+              {/* Hidden child count while the row is collapsed */}
+              {!isExpanded && (
+                <CollapsedCountBadge count={childCount} noun="item" />
+              )}
+            </span>
           )}
         </div>
 

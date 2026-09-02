@@ -150,6 +150,20 @@ describe('ProjectTreeItem', () => {
     expect(useChatStore.getState().activeWorktreePath).toBeNull()
   })
 
+  it('hides the workspace count badge while the project is expanded', () => {
+    render(<ProjectTreeItem project={project} />)
+
+    expect(screen.queryByTestId('collapsed-count-badge')).toBeNull()
+  })
+
+  it('shows the workspace count badge while the project is collapsed', () => {
+    useProjectsStore.setState({ expandedProjectIds: new Set() })
+    render(<ProjectTreeItem project={project} />)
+
+    expect(screen.getByTestId('collapsed-count-badge')).toHaveTextContent('1')
+    expect(screen.getByLabelText('1 workspace')).toBeInTheDocument()
+  })
+
   it('starts inline rename on double-click and renames on Enter', async () => {
     const user = userEvent.setup()
     render(<ProjectTreeItem project={project} />)

@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTerminalStore } from '@/store/terminal-store'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore } from '@/store/chat-store'
+import { useProjectsStore } from '@/store/projects-store'
 import type { UIState } from '@/types/ui-state'
 
 let nativeApp = false
@@ -99,6 +100,9 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
       sessionTerminalIds: {},
       sessionPrimarySurface: {},
     })
+    useProjectsStore.setState({
+      expandedWorktreeIds: new Set<string>(),
+    })
     useChatStore.setState({
       activeWorktreeId: null,
       activeWorktreePath: null,
@@ -137,6 +141,54 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
         'session-1': 'first unsent message',
         'session-2': 'second unsent message',
       })
+    })
+  })
+
+  it('restores expanded worktrees after a restart', async () => {
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({ expanded_worktree_ids: ['wt-1', 'wt-2'] }),
+      isSuccess: true,
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect([...useProjectsStore.getState().expandedWorktreeIds]).toEqual([
+        'wt-1',
+        'wt-2',
+      ])
+    })
+  })
+
+  it('persists expanded worktrees when a worktree is expanded', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useProjectsStore.getState().toggleWorktreeExpanded('wt-1')
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({ expanded_worktree_ids: ['wt-1'] })
+      )
     })
   })
 
@@ -649,7 +701,9 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     expect(terminalState.activeTerminalIds['worktree-1']).toBe('fallback-panel')
     expect(terminalState.runningTerminals.has('fallback-panel')).toBe(true)
     expect(terminalState.runningTerminals.has('fallback-session')).toBe(true)
-    expect(terminalState.terminals['worktree-1']?.[0]?.sessionId).toBeUndefined()
+    expect(
+      terminalState.terminals['worktree-1']?.[0]?.sessionId
+    ).toBeUndefined()
     expect(terminalState.terminals['worktree-1']?.[1]?.sessionId).toBe(
       'session-1'
     )

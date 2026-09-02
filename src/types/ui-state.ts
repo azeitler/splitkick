@@ -64,6 +64,8 @@ export interface UIState {
   active_project_id: string | null
   expanded_project_ids: string[]
   expanded_folder_ids: string[]
+  /** Worktree IDs whose session lists are expanded in the sidebar */
+  expanded_worktree_ids?: string[]
   /** Left sidebar width in pixels, defaults to 250 */
   left_sidebar_size?: number
   /** Left sidebar visibility, defaults to false */
@@ -164,6 +166,7 @@ export const defaultUIState: UIState = {
   active_project_id: null,
   expanded_project_ids: [],
   expanded_folder_ids: [],
+  expanded_worktree_ids: [],
   left_sidebar_size: 250,
   left_sidebar_visible: false,
   file_browser_size: 280,

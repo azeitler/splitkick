@@ -138,6 +138,7 @@ export function useUIStatePersistence() {
     const {
       expandedProjectIds,
       expandedFolderIds,
+      expandedWorktreeIds,
       selectedProjectId,
       projectAccessTimestamps,
       dashboardWorktreeCollapseOverrides,
@@ -201,6 +202,7 @@ export function useUIStatePersistence() {
       active_project_id: selectedProjectId,
       expanded_project_ids: Array.from(expandedProjectIds),
       expanded_folder_ids: Array.from(expandedFolderIds),
+      expanded_worktree_ids: Array.from(expandedWorktreeIds),
       left_sidebar_size: leftSidebarSize,
       left_sidebar_visible: leftSidebarVisible,
       file_browser_size: fileBrowserSize,
@@ -325,6 +327,17 @@ export function useUIStatePersistence() {
           expandedFolderIds: new Set(validFolderIds),
         })
       }
+    }
+
+    // Restore expanded worktrees. Worktrees are not loaded yet at this point,
+    // so ids are restored as-is; ids of removed worktrees are inert Set members
+    // that no row reads.
+    const expandedWorktreeIds = uiState.expanded_worktree_ids ?? []
+    if (expandedWorktreeIds.length > 0) {
+      logger.debug('Restoring expanded worktrees', { expandedWorktreeIds })
+      useProjectsStore.setState({
+        expandedWorktreeIds: new Set(expandedWorktreeIds),
+      })
     }
 
     // Restore left sidebar size (must be at least 150px to be valid)
@@ -1050,6 +1063,8 @@ export function useUIStatePersistence() {
     // Track previous values to detect actual changes
     let prevExpandedProjectIds = useProjectsStore.getState().expandedProjectIds
     let prevExpandedFolderIds = useProjectsStore.getState().expandedFolderIds
+    let prevExpandedWorktreeIds =
+      useProjectsStore.getState().expandedWorktreeIds
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
     let prevProjectAccessTimestamps =
       useProjectsStore.getState().projectAccessTimestamps
@@ -1108,6 +1123,8 @@ export function useUIStatePersistence() {
       const projectIdsChanged =
         state.expandedProjectIds !== prevExpandedProjectIds
       const folderIdsChanged = state.expandedFolderIds !== prevExpandedFolderIds
+      const worktreeIdsChanged =
+        state.expandedWorktreeIds !== prevExpandedWorktreeIds
       const selectedProjectChanged =
         state.selectedProjectId !== prevSelectedProjectId
       const accessTimestampsChanged =
@@ -1124,6 +1141,7 @@ export function useUIStatePersistence() {
       if (
         projectIdsChanged ||
         folderIdsChanged ||
+        worktreeIdsChanged ||
         selectedProjectChanged ||
         accessTimestampsChanged ||
         collapseOverridesChanged ||
@@ -1132,6 +1150,7 @@ export function useUIStatePersistence() {
       ) {
         prevExpandedProjectIds = state.expandedProjectIds
         prevExpandedFolderIds = state.expandedFolderIds
+        prevExpandedWorktreeIds = state.expandedWorktreeIds
         prevSelectedProjectId = state.selectedProjectId
         prevProjectAccessTimestamps = state.projectAccessTimestamps
         prevDashboardCollapseOverrides =
