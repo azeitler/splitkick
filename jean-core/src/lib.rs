@@ -420,8 +420,6 @@ pub struct AppPreferences {
     pub expand_tool_calls_by_default: bool, // Expand all tool call collapsibles by default (default: false)
     #[serde(default)]
     pub window_vibrancy: bool, // macOS window vibrancy effect (high GPU cost, default false)
-    #[serde(default = "default_finished_session_animation_enabled")]
-    pub finished_session_animation_enabled: bool, // Soft glow on finished-sessions badge (default true)
     #[serde(default = "default_terminal_background")]
     pub terminal_background: String, // "auto" | "light" | "dark" | "custom"
     #[serde(default)]
@@ -434,10 +432,6 @@ pub struct AppPreferences {
     pub jean_mcp_max_depth: u32, // Max recursive spawn depth via Jean MCP (default 3)
     #[serde(default = "default_jean_mcp_rate_limit")]
     pub jean_mcp_rate_limit_per_minute: u32, // Per-source rate limit for session-spawning tools (default 20)
-}
-
-fn default_finished_session_animation_enabled() -> bool {
-    true
 }
 
 fn default_jean_mcp_enabled() -> bool {
@@ -1240,29 +1234,15 @@ mod tests {
     }
 
     #[test]
-    fn app_preferences_default_finished_session_animation_enabled_for_new_and_missing_prefs() {
-        assert!(AppPreferences::default().finished_session_animation_enabled);
-
-        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
-        prefs_json
-            .as_object_mut()
-            .unwrap()
-            .remove("finished_session_animation_enabled");
-
-        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
-        assert!(prefs.finished_session_animation_enabled);
-    }
-
-    #[test]
-    fn app_preferences_preserves_explicit_finished_session_animation_disabled() {
+    fn app_preferences_ignores_removed_finished_session_animation_key() {
         let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
         prefs_json.as_object_mut().unwrap().insert(
             "finished_session_animation_enabled".to_string(),
             json!(false),
         );
 
-        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
-        assert!(!prefs.finished_session_animation_enabled);
+        // Stale stored preferences must still deserialize after the field was dropped.
+        serde_json::from_value::<AppPreferences>(prefs_json).unwrap();
     }
 
     #[test]
@@ -2877,7 +2857,6 @@ impl Default for AppPreferences {
             coderabbit_cli_source: default_cli_source(),
             expand_tool_calls_by_default: false,
             window_vibrancy: false,
-            finished_session_animation_enabled: default_finished_session_animation_enabled(),
             terminal_background: default_terminal_background(),
             terminal_background_custom: None,
             auto_update_ai_backends: default_auto_update_ai_backends(),
@@ -3464,7 +3443,6 @@ const CLIENT_ONLY_PREFERENCE_KEYS: &[&str] = &[
     "confirm_session_close",
     "expand_tool_calls_by_default",
     "window_vibrancy",
-    "finished_session_animation_enabled",
     "terminal_background",
     "terminal_background_custom",
 ];

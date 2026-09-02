@@ -342,33 +342,6 @@
   -webkit-transform: translateZ(0);
 }
 
-/* Bell ring animation for unread notifications */
-@keyframes bell-ring {
-  0%,
-  70%,
-  100% {
-    transform: rotate(0deg);
-  }
-  5% {
-    transform: rotate(14deg);
-  }
-  10% {
-    transform: rotate(-12deg);
-  }
-  15% {
-    transform: rotate(10deg);
-  }
-  20% {
-    transform: rotate(-8deg);
-  }
-  25% {
-    transform: rotate(5deg);
-  }
-  30% {
-    transform: rotate(0deg);
-  }
-}
-
 /* Pulsing glow for running terminal icon indicator (opacity-based, GPU-friendly) */
 @keyframes icon-glow {
   0%,
@@ -676,7 +649,6 @@ body:not(.native-app) kbd {
   .animate-dots,
   .animate-spin,
   .animate-pulse,
-  [class*='bell-ring'],
   .square-spinner::before,
   .card-border-spin::before {
     animation: none !important;
@@ -690,7 +662,6 @@ body:not(.native-app) kbd {
 .window-blurred .animate-dots,
 .window-blurred .animate-spin,
 .window-blurred .animate-pulse,
-.window-blurred [class*='bell-ring'],
 .window-blurred .card-border-spin::before,
 .window-blurred .square-spinner::before {
   animation-play-state: paused !important;

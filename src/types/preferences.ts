@@ -1327,8 +1327,6 @@ export interface AppPreferences {
   coderabbit_cli_source?: 'jean' | 'path' // CodeRabbit CLI source: 'jean' (managed) or 'path' (system PATH)
   expand_tool_calls_by_default: boolean // Expand all tool call collapsibles by default
   window_vibrancy: boolean // macOS window vibrancy effect (high GPU cost, default false)
-  /** Bell ring animation on the finished-sessions titlebar badge (default true) */
-  finished_session_animation_enabled?: boolean
   terminal_background: TerminalBackgroundMode // Override the terminal background independently of the app theme
   terminal_background_custom: string | null // Hex color used when terminal_background === 'custom'
   auto_update_ai_backends: boolean // Auto-install CLI updates in background when a new version is detected
@@ -2453,7 +2451,6 @@ export const defaultPreferences: AppPreferences = {
   coderabbit_cli_source: 'jean', // Default: Jean-managed
   expand_tool_calls_by_default: false, // Default: collapsed
   window_vibrancy: false, // Default: disabled (high GPU cost)
-  finished_session_animation_enabled: true, // Default: bell ring on finished-sessions badge
   terminal_background: 'auto',
   terminal_background_custom: null,
   auto_update_ai_backends: true, // Default: auto-update AI backends in the background

@@ -11,9 +11,7 @@ describe('web connection header', () => {
     expect(source).not.toContain('useWsConnectionStatus')
     expect(source).not.toContain('Reconnecting…')
     expect(source).not.toContain('Loader2')
-    expect(source).toContain(
-      '<UnreadBell title={title} hideTitle={hideTitle} />'
-    )
+    expect(source).toContain('<UnreadBell />')
   })
 
   it('uses the client platform for native window chrome', () => {

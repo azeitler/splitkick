@@ -5,12 +5,16 @@ import {
   PopoverTrigger,
   PopoverContent,
 } from '@/components/ui/popover'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { Kbd } from '@/components/ui/kbd'
 import { cn } from '@/lib/utils'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAllSessions } from '@/services/chat'
-import { usePreferences } from '@/services/preferences'
 import { useUnreadCount } from './useUnreadCount'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import type { Session } from '@/types/chat'
@@ -29,12 +33,7 @@ interface UnreadItem {
   worktreePath: string
 }
 
-interface UnreadBellProps {
-  title: string
-  hideTitle?: boolean
-}
-
-export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
+export function UnreadBell() {
   const [open, setOpen] = useState(false)
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const [snapshotItems, setSnapshotItems] = useState<UnreadItem[] | null>(null)
@@ -43,9 +42,6 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
   const showDesktopKeyboardAffordances = isNativeApp() && !isMobile
   const queryClient = useQueryClient()
   const unreadCount = useUnreadCount()
-  const { data: preferences } = usePreferences()
-  const animationEnabled =
-    preferences?.finished_session_animation_enabled ?? true
   const { data: allSessions, isLoading } = useAllSessions(open)
   // Listen for command palette event to open the popover
   useEffect(() => {
@@ -284,17 +280,10 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
       ?.scrollIntoView({ block: 'nearest' })
   }, [focusedIndex])
 
-  // No unread → show normal title (or nothing if hideTitle).
+  // No unread → no badge.
   // Keep trigger mounted while popover is open so a queued prompt restarting a
   // session mid-interaction can't yank the trigger out and detach the popover.
-  if (unreadCount === 0 && !open) {
-    if (hideTitle) return null
-    return (
-      <span className="block truncate text-sm font-medium text-foreground/80">
-        {title}
-      </span>
-    )
-  }
+  if (unreadCount === 0 && !open) return null
 
   // Display count: prefer snapshot length while popover is open so the trigger
   // label matches what's actually shown inside the popover (and stays > 0 after
@@ -304,30 +293,31 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
 
   return (
     <Popover open={open} onOpenChange={handleOpenChange}>
-      <PopoverTrigger asChild>
-        <div>
-          <button
-            type="button"
-            onClick={handleTriggerClick}
-            className="relative z-[1] flex items-center gap-1.5 truncate rounded-md bg-background px-1.5 text-sm font-medium text-yellow-400 cursor-pointer"
-          >
-            <BellDot
-              className={cn(
-                'h-3.5 w-3.5 shrink-0',
-                animationEnabled &&
-                  'animate-[bell-ring_2s_ease-in-out_infinite]'
-              )}
-            />
-            {displayCount} finished{' '}
-            {displayCount === 1 ? 'session' : 'sessions'}
-            {showDesktopKeyboardAffordances && (
-              <Kbd className="ml-1 h-4 px-1 text-[10px] opacity-60">
-                {formatShortcutDisplay('mod+shift+f')}
-              </Kbd>
-            )}
-          </button>
-        </div>
-      </PopoverTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              onClick={handleTriggerClick}
+              aria-label={`${displayCount} finished ${
+                displayCount === 1 ? 'session' : 'sessions'
+              }`}
+              className="relative z-[1] mr-1.5 flex items-center gap-1 rounded-md bg-yellow-400/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-yellow-400 transition-colors hover:bg-yellow-400/25 cursor-pointer"
+            >
+              <BellDot className="size-3 shrink-0" />
+              <span>{displayCount}</span>
+            </button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          {displayCount} finished {displayCount === 1 ? 'session' : 'sessions'}
+          {showDesktopKeyboardAffordances && (
+            <Kbd className="ml-1 h-4 px-1 text-[10px] opacity-60">
+              {formatShortcutDisplay('mod+shift+f')}
+            </Kbd>
+          )}
+        </TooltipContent>
+      </Tooltip>
       <PopoverContent
         ref={contentRef}
         align="center"

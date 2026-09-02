@@ -182,44 +182,12 @@ export function TitleBar({
                 </kbd>
               </TooltipContent>
             </Tooltip>
-            {!isMobile && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={() =>
-                      openExternal('https://github.com/coollabsio/jean')
-                    }
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
-                  >
-                    <Github className="size-3.5" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>GitHub</TooltipContent>
-              </Tooltip>
-            )}
             {native && <RemoteConnectionsDialog />}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={() =>
-                    openExternal('https://jean.build/sponsorships/')
-                  }
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 rounded-none text-pink-500 hover:text-pink-400"
-                >
-                  <Heart className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Sponsor</TooltipContent>
-            </Tooltip>
           </div>
         )}
       </div>
 
-      {/* Center - Title / Unread indicator (inlined left in mobile zen) */}
+      {/* Center - Title (inlined left in mobile zen) */}
       {mobileZen ? (
         <div
           className="relative z-10 flex min-w-0 flex-1 items-center pl-3 pr-1"
@@ -234,15 +202,21 @@ export function TitleBar({
           className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[50%] px-2"
           style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
         >
-          <UnreadBell title={title} hideTitle={hideTitle} />
+          {!hideTitle && (
+            <span className="block truncate text-sm font-medium text-foreground/80">
+              {title}
+            </span>
+          )}
         </div>
       )}
 
-      {/* Right side - Version + Windows/Linux window controls (hidden in zen) */}
+      {/* Right side - Unread badge, updates, links, version + Windows/Linux
+          window controls. Only the unread badge survives zen mode. */}
       <div
         className={cn('flex items-center pt-1', isMobile && 'pr-2')}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
+        <UnreadBell />
         {mobileZen && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -270,26 +244,39 @@ export function TitleBar({
         )}
         {!zenMode && (
           <>
-            {isMobile && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={() =>
-                      openExternal('https://github.com/coollabsio/jean')
-                    }
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
-                  >
-                    <Github className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>GitHub</TooltipContent>
-              </Tooltip>
-            )}
             <CliUpdatesIndicator />
             <ServerUpdateIndicator />
             {appVersion && <UpdateIndicator />}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={() =>
+                    openExternal('https://github.com/coollabsio/jean')
+                  }
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
+                >
+                  <Github className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>GitHub</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={() =>
+                    openExternal('https://jean.build/sponsorships/')
+                  }
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6 rounded-none text-pink-500 hover:text-pink-400"
+                >
+                  <Heart className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Sponsor</TooltipContent>
+            </Tooltip>
             {appVersion && (
               <button
                 type="button"

@@ -24,15 +24,6 @@ vi.mock('@/services/chat', () => ({
   useAllSessions: () => ({ data: allSessions, isLoading: false }),
 }))
 
-let finishedSessionAnimationEnabled = true
-vi.mock('@/services/preferences', () => ({
-  usePreferences: () => ({
-    data: {
-      finished_session_animation_enabled: finishedSessionAnimationEnabled,
-    },
-  }),
-}))
-
 vi.mock('./useUnreadCount', () => ({
   useUnreadCount: () => unreadCount,
 }))
@@ -121,7 +112,7 @@ function renderWithQueryClient(children: ReactNode) {
 
 async function openDropdown() {
   const user = userEvent.setup()
-  renderWithQueryClient(<UnreadBell title="Jean" />)
+  renderWithQueryClient(<UnreadBell />)
   await user.click(screen.getByRole('button', { name: /2 finished sessions/i }))
   await screen.findByText('Session one')
   return user
@@ -137,7 +128,6 @@ describe('UnreadBell', () => {
       globalThis as typeof globalThis & { __JEAN_TEST_IS_NATIVE__?: boolean }
     ).__JEAN_TEST_IS_NATIVE__ = true
     unreadCount = 2
-    finishedSessionAnimationEnabled = true
     allSessions = {
       entries: [
         {
@@ -198,34 +188,41 @@ describe('UnreadBell', () => {
     expect(within(firstRow).queryByText('R')).not.toBeInTheDocument()
   })
 
-  it('shows the finished sessions shortcut hint on native desktop', () => {
-    renderWithQueryClient(<UnreadBell title="Jean" />)
+  it('shows the finished sessions shortcut hint on native desktop', async () => {
+    const user = userEvent.setup()
+    renderWithQueryClient(<UnreadBell />)
 
-    expect(
-      screen.getByText(/(?:⌘|⌃|Ctrl) \+ ⇧|Shift \+ F/i)
-    ).toBeInTheDocument()
-  })
-
-  it('uses a bell ring animation on the finished-sessions badge by default', () => {
-    const { container } = renderWithQueryClient(<UnreadBell title="Jean" />)
-
-    const bell = container.querySelector('svg')
-    expect(bell?.getAttribute('class') ?? '').toContain('bell-ring')
-    expect(container.querySelector('.finished-session-glow')).toBeNull()
-    expect(container.querySelector('.card-border-spin')).toBeNull()
-  })
-
-  it('disables the finished-sessions animation when preference is off', () => {
-    finishedSessionAnimationEnabled = false
-    const { container } = renderWithQueryClient(<UnreadBell title="Jean" />)
-
-    const bell = container.querySelector('svg')
-    expect(bell?.getAttribute('class') ?? '').not.toContain('bell-ring')
-    expect(container.querySelector('.finished-session-glow')).toBeNull()
-    expect(container.querySelector('.card-border-spin')).toBeNull()
-    expect(
+    await user.hover(
       screen.getByRole('button', { name: /2 finished sessions/i })
-    ).toBeInTheDocument()
+    )
+
+    // Radix renders the tooltip twice (visible content + a11y announcement).
+    const hints = await screen.findAllByText(
+      /(?:⌘|⌃|Ctrl) \+ (?:⇧|Shift) \+ F/i,
+      undefined,
+      { timeout: 3000 }
+    )
+    expect(hints.length).toBeGreaterThan(0)
+  })
+
+  it('renders a count-only badge without animation', () => {
+    const { container } = renderWithQueryClient(<UnreadBell />)
+
+    const badge = screen.getByRole('button', { name: /2 finished sessions/i })
+    expect(badge).toHaveTextContent('2')
+    expect(badge).not.toHaveTextContent(/session/i)
+    expect(
+      container.querySelector('svg')?.getAttribute('class') ?? ''
+    ).not.toContain('animate-')
+    expect(container.querySelector('.finished-session-glow')).toBeNull()
+    expect(container.querySelector('.card-border-spin')).toBeNull()
+  })
+
+  it('renders nothing when there are no unread sessions', () => {
+    unreadCount = 0
+    const { container } = renderWithQueryClient(<UnreadBell />)
+
+    expect(container).toBeEmptyDOMElement()
   })
 
   it('hides unread keyboard affordances in web access', async () => {

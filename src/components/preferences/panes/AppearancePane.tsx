@@ -388,22 +388,6 @@ export const AppearancePane: React.FC = () => {
           )}
 
           <InlineField
-            label="Finished session animation"
-            description="Bell animation on the finished-sessions badge in the title bar"
-          >
-            <Switch
-              aria-label="Finished session animation"
-              checked={preferences?.finished_session_animation_enabled ?? true}
-              onCheckedChange={checked =>
-                patchPreferences.mutate({
-                  finished_session_animation_enabled: checked,
-                })
-              }
-              disabled={patchPreferences.isPending}
-            />
-          </InlineField>
-
-          <InlineField
             label="Terminal background"
             description="Pick a background color for the terminal panel"
           >

@@ -67,10 +67,6 @@ describe('magic prompt preference resolvers', () => {
     expect(defaultPreferences.web_access_sounds_enabled).toBe(true)
   })
 
-  it('enables finished session animation by default', () => {
-    expect(defaultPreferences.finished_session_animation_enabled).toBe(true)
-  })
-
   it('defaults font weight to normal', () => {
     expect(defaultPreferences.font_weight).toBe('normal')
   })

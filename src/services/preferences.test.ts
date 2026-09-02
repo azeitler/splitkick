@@ -1294,15 +1294,10 @@ describe('preferences service', () => {
   })
 
   describe('AppearancePane scaling', () => {
-    it(
-      'stores desktop/mobile zoom on this client only (not shared prefs)',
-      async () => {
+    it('stores desktop/mobile zoom on this client only (not shared prefs)', async () => {
       const { invoke } = await import('@/lib/transport')
-      const {
-        clearClientZoomForTests,
-        readClientZoom,
-        writeClientZoom,
-      } = await import('@/lib/client-zoom')
+      const { clearClientZoomForTests, readClientZoom, writeClientZoom } =
+        await import('@/lib/client-zoom')
       clearClientZoomForTests()
       // Seed client zoom so the pane does not depend on async prefs hydrate.
       writeClientZoom({
@@ -1343,8 +1338,9 @@ describe('preferences service', () => {
 
       const patchCallsBefore = vi
         .mocked(invoke)
-        .mock.calls.filter(([command]) => command === 'patch_preferences')
-        .length
+        .mock.calls.filter(
+          ([command]) => command === 'patch_preferences'
+        ).length
 
       await user.click(syncCheckbox)
 
@@ -1378,50 +1374,7 @@ describe('preferences service', () => {
       ).toHaveLength(patchCallsBefore)
 
       clearClientZoomForTests()
-    },
-      15_000
-    )
-  })
-
-  describe('AppearancePane finished session animation', () => {
-    it('toggles the finished session animation preference', async () => {
-      const { invoke } = await import('@/lib/transport')
-      let storedPreferences = {
-        ...defaultPreferences,
-        finished_session_animation_enabled: true,
-      }
-      vi.mocked(invoke).mockImplementation(async (command, args) => {
-        if (command === 'load_preferences') return storedPreferences
-        if (command === 'patch_preferences') {
-          storedPreferences = {
-            ...storedPreferences,
-            ...(args as { patch: Partial<AppPreferences> }).patch,
-          }
-          return undefined
-        }
-        throw new Error(`Unexpected command ${command}`)
-      })
-
-      const user = userEvent.setup()
-      render(
-        createElement(
-          QueryClientProvider,
-          { client: queryClient },
-          createElement(AppearancePane)
-        )
-      )
-
-      const switchEl = await screen.findByRole('switch', {
-        name: 'Finished session animation',
-      })
-      expect(switchEl).toHaveAttribute('aria-checked', 'true')
-
-      await user.click(switchEl)
-
-      await waitFor(() => expect(switchEl).toHaveAttribute('aria-checked', 'false'))
-      expect(invoke).not.toHaveBeenCalledWith('patch_preferences', expect.anything())
-      expect(switchEl).toHaveAttribute('aria-checked', 'false')
-    })
+    }, 15_000)
   })
 
   describe('AppearancePane window vibrancy', () => {
@@ -1452,10 +1405,15 @@ describe('preferences service', () => {
 
       await user.click(switchEl)
 
-      await waitFor(() => expect(invoke).toHaveBeenCalledWith('set_window_vibrancy', {
-        enabled: true,
-      }))
-      expect(invoke).not.toHaveBeenCalledWith('patch_preferences', expect.anything())
+      await waitFor(() =>
+        expect(invoke).toHaveBeenCalledWith('set_window_vibrancy', {
+          enabled: true,
+        })
+      )
+      expect(invoke).not.toHaveBeenCalledWith(
+        'patch_preferences',
+        expect.anything()
+      )
       expect(
         queryClient.getQueryData<AppPreferences>(
           preferencesQueryKeys.preferences()

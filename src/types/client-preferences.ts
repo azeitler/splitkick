@@ -31,7 +31,6 @@ export const CLIENT_PREFERENCE_KEYS = [
   'confirm_session_close',
   'expand_tool_calls_by_default',
   'window_vibrancy',
-  'finished_session_animation_enabled',
   'terminal_background',
   'terminal_background_custom',
 ] as const satisfies readonly (keyof AppPreferences)[]
