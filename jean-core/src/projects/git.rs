@@ -3071,18 +3071,27 @@ mod tests {
         let path = dir.path().to_str().unwrap();
         let started = Instant::now();
 
+        // The elapsed check is the whole point: if the process group kill
+        // misses the descendant, `sleep` keeps the stdout pipe open and
+        // reading it blocks for the full 30 seconds.
+        //
+        // Keep the two numbers far apart. Everything before the deadline
+        // counts towards `elapsed`, including starting a login shell, which
+        // costs seconds on a loaded CI runner and has nothing to do with what
+        // this test asserts. A tight budget fails there while the kill works
+        // perfectly.
         let error = run_jean_script_with_timeout(
             "setup",
             path,
             path,
             "test-branch",
-            "echo started; sleep 5",
+            "echo started; sleep 30",
             Duration::from_millis(100),
         )
         .unwrap_err();
 
         assert!(error.starts_with("setup script timed out after"));
-        assert!(started.elapsed() < Duration::from_secs(3));
+        assert!(started.elapsed() < Duration::from_secs(15));
     }
 
     // ========================================================================
