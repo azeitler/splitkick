@@ -4,8 +4,8 @@ import {
   ArrowDownUp,
   ArrowUp,
   ChevronDown,
-  MoreHorizontal,
   Plus,
+  Settings,
 } from 'lucide-react'
 import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { cn } from '@/lib/utils'
@@ -472,7 +472,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
                 aria-label="Project settings"
                 className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
               >
-                <MoreHorizontal className="size-3.5" />
+                <Settings className="size-3.5" />
               </button>
             </TooltipTrigger>
             <TooltipContent>Project settings</TooltipContent>

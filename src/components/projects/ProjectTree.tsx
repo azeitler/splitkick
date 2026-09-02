@@ -340,12 +340,49 @@ function RootDropZone({ isOver }: { isOver: boolean }) {
   )
 }
 
+/**
+ * Single control that expands or collapses a whole tree section. Shows the
+ * action that is currently available: collapse while anything is expanded,
+ * expand otherwise.
+ */
+function BulkExpandToggle({
+  isExpanded,
+  onExpandAll,
+  onCollapseAll,
+  section,
+}: {
+  isExpanded: boolean
+  onExpandAll: () => void
+  onCollapseAll: () => void
+  section: string
+}) {
+  const Icon = isExpanded ? ChevronsDownUp : ChevronsUpDown
+  const label = isExpanded ? 'Collapse all' : 'Expand all'
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
+          onClick={isExpanded ? onCollapseAll : onExpandAll}
+          aria-label={`${label} ${section}`}
+        >
+          <Icon className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
 export function ProjectTree({ projects }: ProjectTreeProps) {
   const reorderItems = useReorderItems()
   const moveItem = useMoveItem()
   const {
     expandFolder,
     expandedFolderIds,
+    expandedProjectIds,
     expandAllFolders,
     collapseAllFolders,
     expandAllProjects,
@@ -383,6 +420,13 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
   const allProjectIds = useMemo(
     () => projects.flatMap(p => (!isFolder(p) ? [p.id] : [])),
     [projects]
+  )
+
+  // A section counts as expanded while at least one of its items is open, so
+  // the toggle always offers the action that changes something.
+  const anyFolderExpanded = allFolderIds.some(id => expandedFolderIds.has(id))
+  const anyProjectExpanded = allProjectIds.some(id =>
+    expandedProjectIds.has(id)
   )
 
   const clearDragState = useCallback(() => {
@@ -731,34 +775,12 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
             Folders
           </span>
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                  onClick={() => expandAllFolders(allFolderIds)}
-                  aria-label="Expand all folders"
-                >
-                  <ChevronsUpDown className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Expand all</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                  onClick={collapseAllFolders}
-                  aria-label="Collapse all folders"
-                >
-                  <ChevronsDownUp className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Collapse all</TooltipContent>
-            </Tooltip>
-          </div>
+          <BulkExpandToggle
+            isExpanded={anyFolderExpanded}
+            onExpandAll={() => expandAllFolders(allFolderIds)}
+            onCollapseAll={collapseAllFolders}
+            section="folders"
+          />
         </div>
       )}
       {rootFolders.map(item => (
@@ -784,34 +806,12 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
             Projects
           </span>
-          <div className="flex items-center gap-1">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                  onClick={() => expandAllProjects(allProjectIds)}
-                  aria-label="Expand all projects"
-                >
-                  <ChevronsUpDown className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Expand all</TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                  onClick={collapseAllProjects}
-                  aria-label="Collapse all projects"
-                >
-                  <ChevronsDownUp className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Collapse all</TooltipContent>
-            </Tooltip>
-          </div>
+          <BulkExpandToggle
+            isExpanded={anyProjectExpanded}
+            onExpandAll={() => expandAllProjects(allProjectIds)}
+            onCollapseAll={collapseAllProjects}
+            section="projects"
+          />
         </div>
       )}
       {rootProjects.map(item => (
