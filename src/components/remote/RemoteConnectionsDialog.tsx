@@ -22,6 +22,11 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Spinner } from '@/components/ui/spinner'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { isNativeApp } from '@/lib/environment'
 import { cn } from '@/lib/utils'
 import {
@@ -106,9 +111,7 @@ export function RemoteConnectionsDialog({
 
   const refreshVersions = useCallback(async (items: RemoteConnection[]) => {
     if (items.length === 0) {
-      setVersions(current =>
-        Object.keys(current).length === 0 ? current : {}
-      )
+      setVersions(current => (Object.keys(current).length === 0 ? current : {}))
       return
     }
 
@@ -281,10 +284,7 @@ export function RemoteConnectionsDialog({
     try {
       // Best-effort probe so the user sees a version toast before reload;
       // transport re-checks after connect. Failures do not block switching.
-      const info = await fetchRemoteServerInfo(
-        connection.url,
-        connection.token
-      )
+      const info = await fetchRemoteServerInfo(connection.url, connection.token)
       warnRemoteVersionMismatch(info.appVersion)
     } catch {
       // Unreachable remotes still switch so recovery UI can handle them.
@@ -447,25 +447,26 @@ export function RemoteConnectionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          aria-label="Jean connections"
-          title="Jean connections"
-          variant="ghost"
-          size="icon"
-          className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
-        >
-          <Server className="size-3.5" />
-          {remoteActive && (
-            <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-green-500" />
-          )}
-        </Button>
-      </DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>
+            <Button
+              aria-label="Jean connections"
+              variant="ghost"
+              size="icon"
+              className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
+            >
+              <Server className="size-3.5" />
+              {remoteActive && (
+                <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-green-500" />
+              )}
+            </Button>
+          </DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Jean connections</TooltipContent>
+      </Tooltip>
       {/* Above RemoteConnectionRecovery (z-100) so Edit connection works while offline. */}
-      <DialogContent
-        className="sm:max-w-md z-[110]"
-        overlayClassName="z-[110]"
-      >
+      <DialogContent className="sm:max-w-md z-[110]" overlayClassName="z-[110]">
         <DialogHeader>
           <DialogTitle>Jean connections</DialogTitle>
           <DialogDescription>
@@ -906,9 +907,7 @@ function ConnectionRow({
               : 'text-muted-foreground'
           }`}
           title={
-            versionWarning
-              ? 'Remote version differs from this app'
-              : undefined
+            versionWarning ? 'Remote version differs from this app' : undefined
           }
         >
           {versionLabel}

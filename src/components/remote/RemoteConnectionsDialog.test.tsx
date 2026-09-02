@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { RemoteConnectionsDialog } from './RemoteConnectionsDialog'
 
@@ -93,6 +94,22 @@ describe('RemoteConnectionsDialog', () => {
     })
     warnRemoteVersionMismatch.mockReturnValue(false)
     isNativeApp.mockReturnValue(false)
+  })
+
+  it('uses the title bar tooltip instead of the native browser tooltip', async () => {
+    const user = userEvent.setup()
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+
+    const trigger = screen.getByRole('button', { name: 'Jean connections' })
+    expect(trigger).not.toHaveAttribute('title')
+
+    await user.hover(trigger)
+
+    // Radix renders the tooltip twice: visible content and a11y announcement.
+    const labels = await screen.findAllByText('Jean connections', undefined, {
+      timeout: 3000,
+    })
+    expect(labels.length).toBeGreaterThan(0)
   })
 
   it('adds and selects a remote from a complete Web Access URL', async () => {
