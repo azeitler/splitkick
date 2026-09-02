@@ -4,11 +4,14 @@ import {
   computeSessionCardData,
   getEffectiveSessionWaiting,
   getResumeArgs,
+  groupCardsByStatus,
   isDedicatedEmptyCodeReviewSession,
   shouldShowCodeReviewLoadingPanel,
   shouldShowReviewFullWidth,
   statusConfig,
   type ChatStoreState,
+  type SessionCardData,
+  type SessionStatus,
 } from './session-card-utils'
 import type { ContentBlock, Session } from '@/types/chat'
 
@@ -393,6 +396,70 @@ describe('computeSessionCardData', () => {
     expect(card.automaticStatus).toBe('input_required')
     expect(card.statusOverride).toBe('review')
     expect(card.status).toBe('input_required')
+  })
+
+  it('lets a completed override win over an actionable waiting status', () => {
+    const session = createBaseSession({
+      waiting_for_input: true,
+      waiting_for_input_type: 'question',
+      last_run_status: 'completed',
+      last_run_execution_mode: 'plan',
+    })
+    const storeState = createBaseStoreState({
+      sessionStatusOverrides: { 'session-1': 'completed' },
+      waitingForInputSessionIds: { 'session-1': true },
+    })
+
+    const card = computeSessionCardData(session, storeState)
+
+    expect(card.automaticStatus).toBe('input_required')
+    expect(card.status).toBe('completed')
+  })
+
+  it('lets a cancelled override win over an actionable waiting status', () => {
+    const session = createBaseSession({
+      waiting_for_input: true,
+      waiting_for_input_type: 'plan',
+      last_run_status: 'completed',
+      last_run_execution_mode: 'plan',
+    })
+    const storeState = createBaseStoreState({
+      sessionStatusOverrides: { 'session-1': 'cancelled' },
+      waitingForInputSessionIds: { 'session-1': true },
+    })
+
+    const card = computeSessionCardData(session, storeState)
+
+    expect(card.automaticStatus).toBe('plan_approval')
+    expect(card.status).toBe('cancelled')
+  })
+
+  it('does not let a completed override hide a live run', () => {
+    const session = createBaseSession({ selected_execution_mode: 'build' })
+    const storeState = createBaseStoreState({
+      sendingSessionIds: { 'session-1': true },
+      sessionStatusOverrides: { 'session-1': 'completed' },
+    })
+
+    const card = computeSessionCardData(session, storeState)
+
+    expect(card.automaticStatus).toBe('vibing')
+    expect(card.status).toBe('vibing')
+  })
+
+  it('does not let a cancelled override hide a crashed run', () => {
+    const session = createBaseSession({
+      last_run_status: 'crashed',
+      last_run_execution_mode: 'build',
+    })
+    const storeState = createBaseStoreState({
+      sessionStatusOverrides: { 'session-1': 'cancelled' },
+    })
+
+    const card = computeSessionCardData(session, storeState)
+
+    expect(card.automaticStatus).toBe('crashed')
+    expect(card.status).toBe('crashed')
   })
 
   it('applies a paused override to an idle session', () => {
@@ -909,5 +976,93 @@ describe('computeSessionCardData', () => {
     const card = computeSessionCardData(createBaseSession(), storeState)
 
     expect(card.label).toBeNull()
+  })
+})
+
+describe('groupCardsByStatus', () => {
+  function card(
+    id: string,
+    status: SessionStatus,
+    createdAt = 1
+  ): SessionCardData {
+    return {
+      status,
+      session: { id, created_at: createdAt } as Session,
+    } as SessionCardData
+  }
+
+  it('gives completed and cancelled their own sections apart from review', () => {
+    const groups = groupCardsByStatus([
+      card('a', 'review'),
+      card('b', 'completed'),
+      card('c', 'cancelled'),
+    ])
+
+    expect(groups.map(g => [g.key, g.title])).toEqual([
+      ['review', 'Review'],
+      ['completed', 'Completed'],
+      ['cancelled', 'Cancelled'],
+    ])
+    expect(groups.map(g => g.cards.map(c => c.session.id))).toEqual([
+      ['a'],
+      ['b'],
+      ['c'],
+    ])
+  })
+
+  it('gives the new sections their own indicator status', () => {
+    const groups = groupCardsByStatus([
+      card('b', 'completed'),
+      card('c', 'cancelled'),
+    ])
+
+    expect(groups.map(g => g.indicatorStatus)).toEqual([
+      'completed',
+      'cancelled',
+    ])
+  })
+
+  it('keeps crashed in the review section', () => {
+    const groups = groupCardsByStatus([card('a', 'crashed')])
+
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.key).toBe('review')
+  })
+
+  it('orders sections waiting → in progress → review → paused → completed → cancelled → idle', () => {
+    const groups = groupCardsByStatus([
+      card('idle', 'idle'),
+      card('cancelled', 'cancelled'),
+      card('completed', 'completed'),
+      card('paused', 'paused'),
+      card('review', 'review'),
+      card('vibing', 'vibing'),
+      card('waiting', 'waiting'),
+    ])
+
+    expect(groups.map(g => g.key)).toEqual([
+      'waiting',
+      'inProgress',
+      'review',
+      'paused',
+      'completed',
+      'cancelled',
+      'idle',
+    ])
+  })
+
+  it('drops empty sections', () => {
+    const groups = groupCardsByStatus([card('b', 'completed')])
+
+    expect(groups.map(g => g.key)).toEqual(['completed'])
+  })
+
+  it('sorts the settled sections oldest first', () => {
+    const groups = groupCardsByStatus([
+      card('new', 'completed', 20),
+      card('old', 'completed', 10),
+    ])
+
+    expect(groups[0]?.cards.map(c => c.session.id)).toEqual(['old', 'new'])
   })
 })

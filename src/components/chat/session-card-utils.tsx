@@ -110,12 +110,48 @@ export const AUTOMATIC_PRIORITY_STATUSES: readonly SessionStatus[] = [
   'crashed',
 ] as const
 
+/**
+ * Automatic statuses that even a terminal manual pin (`completed`/`cancelled`)
+ * must not hide: a run is in flight, queued to start, or ended badly.
+ */
+export const LIVE_PRIORITY_STATUSES: readonly SessionStatus[] = [
+  'planning',
+  'vibing',
+  'yoloing',
+  'reviewing',
+  'scheduled',
+  'crashed',
+] as const
+
 export function isActionableWaitingStatus(status: SessionStatus): boolean {
   return (ACTIONABLE_WAITING_STATUSES as readonly string[]).includes(status)
 }
 
 export function isAutomaticPriorityStatus(status: SessionStatus): boolean {
   return (AUTOMATIC_PRIORITY_STATUSES as readonly string[]).includes(status)
+}
+
+export function isLivePriorityStatus(status: SessionStatus): boolean {
+  return (LIVE_PRIORITY_STATUSES as readonly string[]).includes(status)
+}
+
+/**
+ * Does a manual override win over the automatic status?
+ *
+ * `completed`/`cancelled` are the user declaring the session finished or
+ * abandoned, so they also beat an actionable-waiting status — otherwise pinning
+ * them on a parked session does nothing at all. Everything else keeps the
+ * stricter rule: any actionable or live automatic status wins.
+ */
+export function shouldApplyStatusOverride(
+  statusOverride: ManualSessionStatus,
+  automaticStatus: SessionStatus
+): boolean {
+  const isTerminalOverride =
+    statusOverride === 'completed' || statusOverride === 'cancelled'
+  return isTerminalOverride
+    ? !isLivePriorityStatus(automaticStatus)
+    : !isAutomaticPriorityStatus(automaticStatus)
 }
 
 export interface SessionCardData {
@@ -715,7 +751,7 @@ export function computeSessionCardData(
   })
   // Manual override sits next to automatic status: live/actionable automatic
   // states still win; otherwise the user-pinned override is displayed.
-  if (statusOverride && !isAutomaticPriorityStatus(automaticStatus)) {
+  if (statusOverride && shouldApplyStatusOverride(statusOverride, automaticStatus)) {
     status = statusOverride
   }
 
@@ -891,7 +927,14 @@ export function buildNativeClientSessionInput(
 // --- Status grouping ---
 
 export interface StatusGroup {
-  key: 'inProgress' | 'waiting' | 'review' | 'paused' | 'idle'
+  key:
+    | 'inProgress'
+    | 'waiting'
+    | 'review'
+    | 'paused'
+    | 'completed'
+    | 'cancelled'
+    | 'idle'
   title: string
   /** Representative status for group header icon/color. */
   indicatorStatus: SessionStatus
@@ -920,8 +963,8 @@ const STATUS_GROUP_ORDER: {
     key: 'review',
     title: 'Review',
     indicatorStatus: 'review',
-    // Keep completed distinct from review-ready within the group via statusConfig labels
-    statuses: ['review', 'completed', 'cancelled', 'crashed'],
+    // Crashed stays here: it still needs attention, unlike the settled sections below.
+    statuses: ['review', 'crashed'],
   },
   {
     key: 'paused',
@@ -929,12 +972,31 @@ const STATUS_GROUP_ORDER: {
     indicatorStatus: 'paused',
     statuses: ['paused'],
   },
+  {
+    key: 'completed',
+    title: 'Completed',
+    indicatorStatus: 'completed',
+    statuses: ['completed'],
+  },
+  {
+    key: 'cancelled',
+    title: 'Cancelled',
+    indicatorStatus: 'cancelled',
+    statuses: ['cancelled'],
+  },
   { key: 'idle', title: 'Idle', indicatorStatus: 'idle', statuses: ['idle'] },
+]
+
+/** Settled groups that read best oldest-first. */
+const CREATED_AT_SORTED_GROUPS: readonly StatusGroup['key'][] = [
+  'review',
+  'completed',
+  'cancelled',
 ]
 
 /** Group cards by status. Returns only non-empty groups.
  * - inProgress group: reversed so newest appears first
- * - review group: sorted by created_at (oldest first) */
+ * - review/completed/cancelled groups: sorted by created_at (oldest first) */
 export function groupCardsByStatus(cards: SessionCardData[]): StatusGroup[] {
   return STATUS_GROUP_ORDER.map(({ key, title, indicatorStatus, statuses }) => {
     let filteredCards = cards.filter(c => statuses.includes(c.status))
@@ -942,8 +1004,8 @@ export function groupCardsByStatus(cards: SessionCardData[]): StatusGroup[] {
     if (key === 'inProgress') {
       filteredCards = [...filteredCards].reverse()
     }
-    // Sort review group by created_at (oldest first)
-    if (key === 'review') {
+    // Sort settled groups by created_at (oldest first)
+    if (CREATED_AT_SORTED_GROUPS.includes(key)) {
       filteredCards = [...filteredCards].sort(
         (a, b) => a.session.created_at - b.session.created_at
       )

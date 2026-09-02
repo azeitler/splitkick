@@ -54,7 +54,8 @@ const FINISHED_STATUS_DISPLAY: Record<string, SessionStatusDisplay> = {
   completed: {
     icon: CheckCircle2,
     label: 'Completed',
-    className: 'text-green-500',
+    // Matches the light-blue "completed" dot in StatusIndicator.
+    className: 'text-sky-400',
   },
   cancelled: {
     icon: CirclePause,

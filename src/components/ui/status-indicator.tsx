@@ -113,15 +113,18 @@ export function StatusIndicator({
     status === 'input_required' ||
     status === 'permission'
       ? 'text-yellow-500 animate-blink motion-reduce:animate-none forced-colors:text-[Highlight]'
-      : status === 'review' || status === 'completed'
+      : status === 'review'
         ? 'text-green-500 forced-colors:text-[Highlight]'
-        : status === 'crashed'
-          ? 'text-destructive forced-colors:text-[Mark]'
-          : status === 'scheduled'
-            ? 'text-cyan-500 forced-colors:text-[Highlight]'
-            : status === 'cancelled'
-              ? 'text-muted-foreground forced-colors:text-[GrayText]'
-              : 'text-muted-foreground/50 forced-colors:text-[GrayText]'
+        : status === 'completed'
+          ? // Light blue keeps a finished session apart from review-ready green.
+            'text-sky-400 forced-colors:text-[Highlight]'
+          : status === 'crashed'
+            ? 'text-destructive forced-colors:text-[Mark]'
+            : status === 'scheduled'
+              ? 'text-cyan-500 forced-colors:text-[Highlight]'
+              : status === 'cancelled'
+                ? 'text-muted-foreground forced-colors:text-[GrayText]'
+                : 'text-muted-foreground/50 forced-colors:text-[GrayText]'
 
   // Ring shape already uses border + transparent fill; others fill with currentColor
   const fillClass = resolvedShape === 'ring' ? '' : 'bg-current'
