@@ -139,14 +139,15 @@ export function CommandPalette({
     [allSessions, sessionLabels, search, activeSessionId]
   )
 
-  // Create dynamic project commands (sorted by last-accessed, most recent first)
+  // Create dynamic project commands (sorted by last-accessed, most recent first).
+  // Every project is listed, but the current one sorts last: the top of a switch
+  // list should be where you would go, not where you already are.
   const projectCommands = useMemo((): ProjectCommand[] => {
-    // The current project is hidden only while idle, so the first entry is the
-    // project you were in before. Once searching, hiding it looks like a bug.
-    const hideCurrent = !search.trim()
     return projects
-      .filter(p => !p.is_folder && !(hideCurrent && p.id === selectedProjectId))
+      .filter(p => !p.is_folder)
       .sort((a, b) => {
+        if (a.id === selectedProjectId) return 1
+        if (b.id === selectedProjectId) return -1
         const aTime = projectAccessTimestamps[a.id] ?? 0
         const bTime = projectAccessTimestamps[b.id] ?? 0
         return bTime - aTime
@@ -154,7 +155,7 @@ export function CommandPalette({
       .map(project => ({
         id: `goto-project-${project.id}`,
         label: project.name,
-        description: 'Open',
+        description: project.id === selectedProjectId ? 'Current' : 'Open',
         avatarUrl:
           project.avatar_path && appDataDir
             ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
@@ -169,7 +170,7 @@ export function CommandPalette({
           useProjectsStore.getState().selectProject(project.id)
         },
       }))
-  }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId, search])
+  }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId])
 
   // Get all available commands (memoized to prevent re-filtering on every render)
   const commandGroups = useMemo(() => {
@@ -305,7 +306,7 @@ export function CommandPalette({
         value={search}
         onValueChange={setSearch}
       />
-      <CommandList className="max-h-[70dvh] sm:max-h-[300px]">
+      <CommandList className="max-h-[70dvh] sm:max-h-[min(640px,65dvh)]">
         <CommandEmpty>No results found.</CommandEmpty>
 
         {/* Sessions lead: with no query these are the most recent ones */}

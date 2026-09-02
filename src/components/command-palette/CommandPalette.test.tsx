@@ -274,17 +274,18 @@ describe('CommandPalette sessions', () => {
     expect(screen.getByText('Deploy pipeline')).toBeInTheDocument()
   })
 
-  it('keeps the current project hidden while idle but searchable once typed', () => {
+  it('lists the current project last, marked as current', () => {
     render(<CommandPalette />)
 
-    // Hidden with no query so the first project entry is the previous project.
-    expect(screen.queryByText('Jean')).not.toBeInTheDocument()
+    // Every project is listed, so nothing looks missing...
+    const current = screen.getByText('Jean')
+    const other = screen.getByText('Second project')
+    expect(current).toBeInTheDocument()
+    expect(screen.getByText('Current')).toBeInTheDocument()
 
-    fireEvent.change(
-      screen.getByPlaceholderText('Type a command or search...'),
-      { target: { value: 'jean' } }
-    )
-
-    expect(screen.getByText('Jean')).toBeInTheDocument()
+    // ...but the one you are already in sorts below the ones you might switch to.
+    expect(
+      other.compareDocumentPosition(current) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
   })
 })
