@@ -29,11 +29,27 @@ function isSameDay(a: Date, b: Date): boolean {
   )
 }
 
+function ordinalSuffix(day: number): string {
+  if (day % 100 >= 11 && day % 100 <= 13) return 'th'
+  if (day % 10 === 1) return 'st'
+  if (day % 10 === 2) return 'nd'
+  if (day % 10 === 3) return 'rd'
+  return 'th'
+}
+
+/** 24-hour clock time, e.g. "13:23". */
+function clockTime(date: Date): string {
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${hours}:${minutes}`
+}
+
 /**
  * Timestamp shown next to a chat message.
  *
- * Messages from today only need the clock time. Older messages also need the
- * date, because a bare time is ambiguous once a thread spans several days.
+ * Messages from today only need the clock time ("13:23"). Older messages also
+ * need the date ("Sep 1st 26, 13:23"), because a bare time is ambiguous once a
+ * thread spans several days.
  *
  * `now` is injectable so the tests stay deterministic.
  */
@@ -42,13 +58,12 @@ export function formatMessageTimestamp(
   now = Date.now()
 ): string {
   const date = new Date(toMilliseconds(timestamp))
-  if (isSameDay(date, new Date(now))) {
-    return date.toLocaleTimeString(undefined, { timeStyle: 'short' })
-  }
-  return date.toLocaleString(undefined, {
-    dateStyle: 'short',
-    timeStyle: 'short',
-  })
+  if (isSameDay(date, new Date(now))) return clockTime(date)
+
+  const month = date.toLocaleDateString(undefined, { month: 'short' })
+  const day = date.getDate()
+  const year = String(date.getFullYear() % 100).padStart(2, '0')
+  return `${month} ${day}${ordinalSuffix(day)} ${year}, ${clockTime(date)}`
 }
 
 function agoLabel(value: number, unit: string): string {

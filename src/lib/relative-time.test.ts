@@ -32,36 +32,57 @@ describe('formatRelativeTime', () => {
 describe('formatMessageTimestamp', () => {
   // Local-time constructors keep the assertions timezone independent.
   const now = new Date(2026, 8, 1, 14, 32).getTime()
+  const shortMonth = (date: Date) =>
+    date.toLocaleDateString(undefined, { month: 'short' })
 
-  it('shows the time only for messages from today', () => {
-    const at = new Date(2026, 8, 1, 9, 5).getTime()
-    expect(formatMessageTimestamp(at, now)).toBe(
-      new Date(at).toLocaleTimeString(undefined, { timeStyle: 'short' })
-    )
+  it('shows a 24-hour clock time only for messages from today', () => {
+    expect(formatMessageTimestamp(new Date(2026, 8, 1, 13, 23).getTime(), now)) //
+      .toBe('13:23')
+    expect(formatMessageTimestamp(new Date(2026, 8, 1, 9, 5).getTime(), now)) //
+      .toBe('09:05')
   })
 
   it('adds the date for messages from an earlier day', () => {
-    const at = new Date(2026, 7, 30, 9, 5).getTime()
-    expect(formatMessageTimestamp(at, now)).toBe(
-      new Date(at).toLocaleString(undefined, {
-        dateStyle: 'short',
-        timeStyle: 'short',
-      })
+    const at = new Date(2026, 8, 1, 13, 23)
+    // The "today" cutoff is the calendar day, not a rolling 24 hours.
+    const later = new Date(2026, 8, 2, 1, 0).getTime()
+    expect(formatMessageTimestamp(at.getTime(), later)).toBe(
+      `${shortMonth(at)} 1st 26, 13:23`
     )
   })
 
-  it('treats the same clock time on a different day as an earlier day', () => {
-    const sameTimeYesterday = new Date(2026, 7, 31, 14, 32).getTime()
-    expect(formatMessageTimestamp(sameTimeYesterday, now)).not.toBe(
-      formatMessageTimestamp(now, now)
+  it('picks the right English ordinal for the day of month', () => {
+    const cases: [number, string][] = [
+      [1, '1st'],
+      [2, '2nd'],
+      [3, '3rd'],
+      [4, '4th'],
+      [11, '11th'],
+      [12, '12th'],
+      [13, '13th'],
+      [21, '21st'],
+      [22, '22nd'],
+      [23, '23rd'],
+      [31, '31st'],
+    ]
+    for (const [day, expected] of cases) {
+      const at = new Date(2026, 0, day, 13, 23)
+      expect(formatMessageTimestamp(at.getTime(), now)).toBe(
+        `${shortMonth(at)} ${expected} 26, 13:23`
+      )
+    }
+  })
+
+  it('shortens the year to two digits', () => {
+    const at = new Date(2007, 8, 1, 13, 23)
+    expect(formatMessageTimestamp(at.getTime(), now)).toBe(
+      `${shortMonth(at)} 1st 07, 13:23`
     )
   })
 
   it('accepts unix seconds', () => {
     const at = new Date(2026, 8, 1, 9, 5).getTime()
-    expect(formatMessageTimestamp(Math.floor(at / 1000), now)).toBe(
-      formatMessageTimestamp(at, now)
-    )
+    expect(formatMessageTimestamp(Math.floor(at / 1000), now)).toBe('09:05')
   })
 })
 

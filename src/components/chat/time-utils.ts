@@ -1,17 +1,21 @@
 import type { ChatMessage } from '@/types/chat'
 
 /**
- * Format milliseconds as seconds when under a minute, otherwise mm:ss.
- * Examples: "0s", "23s", "02:25"
+ * Format milliseconds as a compact duration with a unit indicator.
+ *
+ * The leading field never carries a padding zero, so the unit letter is what
+ * tells you the scale. Examples: "0s", "23s", "2:25m", "1:03h"
  */
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
+  const hours = Math.floor(totalSeconds / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
   const seconds = totalSeconds % 60
 
-  if (minutes === 0) return `${seconds}s`
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}h`
+  if (minutes > 0) return `${minutes}:${String(seconds).padStart(2, '0')}m`
 
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+  return `${seconds}s`
 }
 
 /**

@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import { Fragment, type ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 import { formatMessageTimestamp } from '@/lib/relative-time'
 import { useUIStore } from '@/store/ui-store'
@@ -15,9 +15,11 @@ interface MessageMetaLineProps {
 }
 
 /**
- * The muted line under a message holding its timestamp and turn runtime.
+ * The muted line under a message holding its timestamp and turn runtime,
+ * separated by dots.
  *
- * The two values are deliberately independent: the runtime renders on its own
+ * Timestamp and runtime deliberately share one type scale, and stay in
+ * separate spans with independent conditions: the runtime renders on its own
  * terms, so adding timestamps can never hide or replace it. Zen mode drops the
  * timestamp only.
  */
@@ -34,24 +36,40 @@ export function MessageMetaLine({
 
   if (!showTimestamp && !showDuration && !children) return null
 
+  const segments: ReactNode[] = []
+  if (showTimestamp) {
+    segments.push(
+      <span key="timestamp" className="tabular-nums">
+        {formatMessageTimestamp(timestamp)}
+      </span>
+    )
+  }
+  if (showDuration) {
+    segments.push(
+      <span key="duration" className="tabular-nums">
+        {formatDuration(durationMs)}
+      </span>
+    )
+  }
+  if (children) segments.push(<Fragment key="extra">{children}</Fragment>)
+
   return (
     <div
       className={cn(
-        'mt-1 flex min-h-4 items-center gap-2 text-xs leading-4 text-muted-foreground/40',
+        'mt-1 flex min-h-4 flex-wrap items-center gap-x-1.5 text-xs leading-4 text-muted-foreground/40',
         className
       )}
     >
-      {showTimestamp && (
-        <span className="tabular-nums">
-          {formatMessageTimestamp(timestamp)}
-        </span>
-      )}
-      {showDuration && (
-        <span className="tabular-nums font-mono">
-          {formatDuration(durationMs)}
-        </span>
-      )}
-      {children}
+      {segments.map((segment, index) => (
+        <Fragment key={index}>
+          {index > 0 && (
+            <span aria-hidden className="text-muted-foreground/30">
+              ·
+            </span>
+          )}
+          {segment}
+        </Fragment>
+      ))}
     </div>
   )
 }

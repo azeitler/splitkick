@@ -8,9 +8,17 @@ describe('formatDuration', () => {
     expect(formatDuration(23_999)).toBe('23s')
   })
 
-  it('formats minute boundaries as mm:ss', () => {
-    expect(formatDuration(60_000)).toBe('01:00')
-    expect(formatDuration(145_000)).toBe('02:25')
+  it('formats minutes with an "m" indicator and no leading zero', () => {
+    expect(formatDuration(60_000)).toBe('1:00m')
+    expect(formatDuration(145_000)).toBe('2:25m')
+    expect(formatDuration(144_000)).toBe('2:24m')
+    expect(formatDuration(59 * 60_000 + 59_000)).toBe('59:59m')
+  })
+
+  it('formats hours with an "h" indicator and no leading zero', () => {
+    expect(formatDuration(60 * 60_000)).toBe('1:00h')
+    expect(formatDuration(63 * 60_000)).toBe('1:03h')
+    expect(formatDuration(10 * 60 * 60_000 + 25 * 60_000)).toBe('10:25h')
   })
 })
 

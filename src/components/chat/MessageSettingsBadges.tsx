@@ -62,12 +62,12 @@ export const MessageSettingsBadges = memo(function MessageSettingsBadges({
     !usesEffortOnly && thinkingLevel && thinkingLevel !== 'off'
       ? thinkingLevel === 'adaptive'
         ? ADAPTIVE_EFFORT_OPTION.label
-        : (THINKING_LEVEL_OPTIONS.find(o => o.value === thinkingLevel)
-            ?.label ?? thinkingLevel)
+        : (THINKING_LEVEL_OPTIONS.find(o => o.value === thinkingLevel)?.label ??
+          thinkingLevel)
       : null
 
   return (
-    <div className="flex items-center text-[10px] text-muted-foreground/50">
+    <div className="flex items-center">
       <span>{modelLabel}</span>
       {executionModeLabel && <span>&nbsp;· {executionModeLabel}</span>}
       {!isCursor && effortLabel && <span>&nbsp;· {effortLabel}</span>}

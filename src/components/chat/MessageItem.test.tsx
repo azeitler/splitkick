@@ -463,7 +463,7 @@ describe('MessageItem', () => {
   it('renders assistant duration in mm:ss format when minutes are non-zero', () => {
     render(<MessageItem {...baseProps} durationMs={145_000} />)
 
-    expect(screen.getByText('02:25')).toBeVisible()
+    expect(screen.getByText('2:25m')).toBeVisible()
   })
 
   it('renders assistant duration as seconds only when under a minute', () => {
@@ -483,7 +483,7 @@ describe('MessageItem', () => {
     )
 
     expect(screen.getByText(formatMessageTimestamp(at))).toBeVisible()
-    expect(screen.getByText('02:25')).toBeVisible()
+    expect(screen.getByText('2:25m')).toBeVisible()
   })
 
   it('renders the assistant timestamp when there is no duration', () => {

@@ -72,7 +72,7 @@ describe('MessageList durations', () => {
       />
     )
 
-    expect(screen.getByText('02:25')).toBeVisible()
+    expect(screen.getByText('2:25m')).toBeVisible()
   })
 
   it('falls back to persisted user-to-assistant timestamp delta', () => {

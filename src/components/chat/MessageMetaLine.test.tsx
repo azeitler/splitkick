@@ -15,21 +15,46 @@ describe('MessageMetaLine', () => {
     render(<MessageMetaLine timestamp={AT} durationMs={145_000} />)
 
     expect(screen.getByText(formatMessageTimestamp(AT))).toBeVisible()
-    expect(screen.getByText('02:25')).toBeVisible()
+    expect(screen.getByText('2:25m')).toBeVisible()
+  })
+
+  it('joins segments with a dot separator', () => {
+    const { container } = render(
+      <MessageMetaLine timestamp={AT} durationMs={145_000}>
+        <span>(cancelled)</span>
+      </MessageMetaLine>
+    )
+
+    expect(container.textContent).toBe(
+      `${formatMessageTimestamp(AT)}·2:25m·(cancelled)`
+    )
+  })
+
+  it('gives the timestamp and the runtime the same type scale', () => {
+    const { container } = render(
+      <MessageMetaLine timestamp={AT} durationMs={145_000} />
+    )
+    const line = container.firstElementChild
+
+    expect(line).toHaveClass('text-xs')
+    // Neither span may override the size set on the shared line.
+    for (const span of Array.from(line?.querySelectorAll('span') ?? [])) {
+      expect(span.className).not.toMatch(/text-(xs|sm|base|\[)/)
+    }
   })
 
   // Guards the promise that adding timestamps never hides the runtime.
   it('renders the runtime even when no timestamp is given', () => {
     render(<MessageMetaLine durationMs={145_000} />)
 
-    expect(screen.getByText('02:25')).toBeVisible()
+    expect(screen.getByText('2:25m')).toBeVisible()
   })
 
   it('keeps the runtime in zen mode and drops only the timestamp', () => {
     useUIStore.setState({ zenMode: true })
     render(<MessageMetaLine timestamp={AT} durationMs={145_000} />)
 
-    expect(screen.getByText('02:25')).toBeVisible()
+    expect(screen.getByText('2:25m')).toBeVisible()
     expect(screen.queryByText(formatMessageTimestamp(AT))).toBeNull()
   })
 
