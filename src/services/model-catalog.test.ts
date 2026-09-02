@@ -173,10 +173,12 @@ describe('model catalog', () => {
       }),
     })
 
-    expect(getCatalogModelOptions(catalog, 'claude')).toContainEqual({
-      value: 'claude-opus-4-8[1m]',
-      label: 'Claude Opus 4.8 (1M)',
-    })
+    expect(getCatalogModelOptions(catalog, 'claude')).toEqual(
+      expect.arrayContaining([
+        { value: 'claude-fable-5-1', label: 'Claude Fable 5.1' },
+        { value: 'claude-opus-4-8[1m]', label: 'Claude Opus 4.8 (1M)' },
+      ])
+    )
     expect(getCatalogModelOptions(catalog, 'codex')).toContainEqual({
       value: 'gpt-5.5',
       label: 'GPT 5.5',
