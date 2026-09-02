@@ -71,49 +71,71 @@ pub fn silent_command<S: AsRef<std::ffi::OsStr>>(program: S) -> Command {
     cmd
 }
 
-/// Open a URL in the system default browser without flashing a console window.
+/// Hand a URL or a filesystem path to the operating system's shell
+/// association, without flashing a console window.
 ///
-/// On Windows the shell association path is `cmd /c start "" <url>`. That
-/// intermediary `cmd.exe` must use [`silent_command`] (`CREATE_NO_WINDOW`);
-/// otherwise a visible Command Prompt briefly steals focus (issue #588).
-/// The browser window itself still opens normally.
+/// A URL and a path take the identical route on every platform: `open`,
+/// `xdg-open`, and on Windows `cmd /c start "" <target>`. That intermediary
+/// `cmd.exe` must use [`silent_command`] (`CREATE_NO_WINDOW`); otherwise a
+/// visible Command Prompt briefly steals focus (issue #588). The window the
+/// association opens still appears normally.
 ///
-/// Prefer this helper over raw `Command::new("cmd")` / `open` / `xdg-open`
-/// for any Jean-initiated URL launch.
-pub fn open_url_in_browser(url: &str) -> Result<(), String> {
+/// `subject` only shapes the error message. Call [`open_url_in_browser`] or
+/// [`open_path_with_shell`] instead of this function.
+fn shell_open(target: &str, subject: &str) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         silent_command("open")
-            .arg(url)
+            .arg(target)
             .spawn()
-            .map_err(|e| format!("Failed to open browser: {e}"))?;
+            .map_err(|e| format!("Failed to open {subject}: {e}"))?;
     }
 
     #[cfg(target_os = "linux")]
     {
         silent_command("xdg-open")
-            .arg(url)
+            .arg(target)
             .spawn()
-            .map_err(|e| format!("Failed to open browser: {e}"))?;
+            .map_err(|e| format!("Failed to open {subject}: {e}"))?;
     }
 
     #[cfg(target_os = "windows")]
     {
         // Empty title ("") is required so `start` treats the next token as the
-        // URL rather than a window title when the URL is quoted/contains spaces.
+        // target rather than a window title when it is quoted or contains
+        // spaces.
         silent_command("cmd")
-            .args(["/c", "start", "", url])
+            .args(["/c", "start", "", target])
             .spawn()
-            .map_err(|e| format!("Failed to open browser: {e}"))?;
+            .map_err(|e| format!("Failed to open {subject}: {e}"))?;
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
     {
-        let _ = url;
-        return Err("Opening a browser is not supported on this platform".to_string());
+        let _ = target;
+        return Err(format!(
+            "Opening a {subject} is not supported on this platform"
+        ));
     }
 
     Ok(())
+}
+
+/// Open a URL in the system default browser without flashing a console window.
+///
+/// Prefer this helper over raw `Command::new("cmd")` / `open` / `xdg-open`
+/// for any Jean-initiated URL launch.
+pub fn open_url_in_browser(url: &str) -> Result<(), String> {
+    shell_open(url, "browser")
+}
+
+/// Open a file or directory with the application the operating system has
+/// registered for it, without flashing a console window.
+///
+/// Prefer this helper over raw `Command::new("cmd")` / `open` / `xdg-open`
+/// for any Jean-initiated shell-association open.
+pub fn open_path_with_shell(path: &str) -> Result<(), String> {
+    shell_open(path, "path")
 }
 
 /// Raise the open-file-descriptor soft limit (`RLIMIT_NOFILE`) to the hard limit.

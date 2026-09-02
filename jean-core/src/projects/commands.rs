@@ -4963,41 +4963,10 @@ pub async fn reveal_path_in_file_manager(path: String) -> Result<(), String> {
 pub async fn open_path_in_default_app(path: String) -> Result<(), String> {
     log::trace!("Opening path with the system default app: {path}");
 
-    #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open path: {e}"))?;
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        // `cmd /c start "" <path>` is the shell-association launcher. The empty
-        // title argument stops `start` from treating the path as a window
-        // title. silent_command keeps the cmd.exe intermediary from flashing a
-        // console window (issue #588).
-        crate::platform::silent_command("cmd")
-            .args(["/c", "start", "", path.as_str()])
-            .spawn()
-            .map_err(|e| format!("Failed to open path: {e}"))?;
-    }
-
-    #[cfg(target_os = "linux")]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(&path)
-            .spawn()
-            .map_err(|e| format!("Failed to open path: {e}"))?;
-    }
-
-    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
-    {
-        log::warn!("Opening a path is not supported on this platform");
-        return Err("Opening a path is not supported on this platform".to_string());
-    }
-
-    Ok(())
+    // The shell association is the same mechanism that opens a URL, so it
+    // lives in one place. That keeps the Windows console-flash handling
+    // (issue #588) from being reimplemented per call site.
+    crate::platform::open_path_with_shell(&path)
 }
 
 #[cfg(any(target_os = "windows", test))]
