@@ -1131,7 +1131,7 @@ export function WorktreeItem({
                         projectId={projectId}
                         contentClassName="w-56"
                         onRename={handleStartRename}
-                        onToggleLabel={sessionId => {
+                        onManageLabels={sessionId => {
                           setLabelTargetSessionId(sessionId)
                           setLabelModalOpen(true)
                         }}

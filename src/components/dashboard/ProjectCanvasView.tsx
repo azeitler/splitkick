@@ -55,7 +55,6 @@ import { Button } from '@/components/ui/button'
 import {
   ContextMenu,
   ContextMenuContent,
-  ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import {
@@ -133,7 +132,9 @@ import {
 } from '@/components/chat/worktree-branch-badge'
 
 import { LabelModal } from '@/components/chat/LabelModal'
+import { LabelsSubmenu } from '@/components/chat/LabelsSubmenu'
 import { getLabelTextColor } from '@/lib/label-colors'
+import { getKnownLabels } from '@/lib/labels'
 import {
   countWorktreesWithLabel,
   deleteLabelFromRegistry,
@@ -486,6 +487,9 @@ function WorktreeSectionHeader({
   onRowClick,
   onDiffClick,
   onSetLabels,
+  assignedLabels,
+  availableLabels,
+  onLabelsChange,
   onResolveConflicts,
   disableTextSelection = false,
 }: {
@@ -499,7 +503,18 @@ function WorktreeSectionHeader({
   shortcutNumber?: number
   onRowClick?: () => void
   onDiffClick?: (request: DiffRequest) => void
+  /** Opens the label modal, used by the "Manage labels…" submenu item. */
   onSetLabels?: () => void
+  /**
+   * Labels on this worktree, merged with the project pinned state. Merged, not
+   * raw: a toggle writes this whole list back, so an unmerged list would strip
+   * `pinned` off the labels it leaves alone.
+   */
+  assignedLabels?: LabelData[]
+  /** The catalog the submenu offers. Shared by every row. */
+  availableLabels?: LabelData[]
+  /** Applies the full next label list for this worktree. */
+  onLabelsChange?: (labels: LabelData[]) => void
   onResolveConflicts?: (worktree: Worktree) => void
   disableTextSelection?: boolean
 }) {
@@ -911,16 +926,19 @@ function WorktreeSectionHeader({
     </div>
   )
 
-  if (!onSetLabels) return row
+  if (!onLabelsChange) return row
 
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
-      <ContextMenuContent className="w-44">
-        <ContextMenuItem onSelect={onSetLabels}>
-          <Tag className="mr-2 h-4 w-4" />
-          Set labels
-        </ContextMenuItem>
+      <ContextMenuContent className="w-52">
+        <LabelsSubmenu
+          mode="multi"
+          labels={availableLabels ?? []}
+          selected={assignedLabels ?? []}
+          onChange={onLabelsChange}
+          onManage={onSetLabels}
+        />
       </ContextMenuContent>
     </ContextMenu>
   )
@@ -1095,6 +1113,13 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         assignedWorktreeLabels
       ),
     [projectLabels, projectPinnedLabels, assignedWorktreeLabels]
+  )
+
+  // One catalog shared by every row's Labels submenu. Each row's own labels
+  // drive its check marks.
+  const labelCatalog = useMemo(
+    () => getKnownLabels({ extraLabels: allWorktreeLabels }),
+    [allWorktreeLabels]
   )
 
   // Load sessions for all worktrees dynamically using useQueries.
@@ -2450,18 +2475,22 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     assignedCount: number
   } | null>(null)
 
+  /** A worktree's labels, merged with the project's pinned state. */
+  const resolveWorktreeLabels = useCallback(
+    (worktree: Worktree) =>
+      mergePinnedLabels(getWorktreeLabels(worktree), projectPinnedLabels),
+    [projectPinnedLabels]
+  )
+
   const openWorktreeLabelModal = useCallback(
     (worktree: Worktree) => {
       setWorktreeLabelTarget({
         worktreeId: worktree.id,
-        currentLabels: mergePinnedLabels(
-          getWorktreeLabels(worktree),
-          projectPinnedLabels
-        ),
+        currentLabels: resolveWorktreeLabels(worktree),
       })
       setWorktreeLabelModalOpen(true)
     },
-    [projectPinnedLabels]
+    [resolveWorktreeLabels]
   )
 
   // Listen for toggle-session-label event — open label modal for worktree
@@ -2548,38 +2577,53 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     project?.default_branch,
   ])
 
-  const handleWorktreeLabelApply = useCallback(
-    async (labels: LabelData[]) => {
-      if (!worktreeLabelTarget) return
+  /**
+   * Write a worktree's full label list. Patches the query cache first so the
+   * submenu check marks flip at once, and rolls back when the write fails.
+   *
+   * Clearing `label` matters: `update_worktree_labels` clears the legacy field
+   * on the backend, and `getWorktreeLabels` falls back to it when `labels` is
+   * empty. Without this, removing the last label looks like it did nothing
+   * until the refetch lands.
+   */
+  const applyWorktreeLabels = useCallback(
+    async (worktreeId: string, labels: LabelData[]) => {
+      const queryKey = projectsQueryKeys.worktrees(projectId)
+      const previous = queryClient.getQueryData<Worktree[]>(queryKey)
+
+      queryClient.setQueryData<Worktree[]>(queryKey, old =>
+        old?.map(wt =>
+          wt.id === worktreeId ? { ...wt, labels, label: undefined } : wt
+        )
+      )
+      useProjectsStore
+        .getState()
+        .setProjectCanvasLabels(
+          projectId,
+          mergeLabelRegistry(projectLabels, labels)
+        )
 
       try {
-        await invoke('update_worktree_labels', {
-          worktreeId: worktreeLabelTarget.worktreeId,
-          labels,
-        })
-        useProjectsStore
-          .getState()
-          .setProjectCanvasLabels(
-            projectId,
-            mergeLabelRegistry(
-              mergeLabelRegistry(
-                projectLabels,
-                worktreeLabelTarget.currentLabels
-              ),
-              labels
-            )
-          )
-        setWorktreeLabelTarget(target =>
-          target ? { ...target, currentLabels: labels } : target
-        )
-        queryClient.invalidateQueries({
-          queryKey: projectsQueryKeys.worktrees(projectId),
-        })
+        await invoke('update_worktree_labels', { worktreeId, labels })
+        queryClient.invalidateQueries({ queryKey })
       } catch (error) {
+        if (previous) queryClient.setQueryData(queryKey, previous)
         toast.error(`Failed to update labels: ${error}`)
       }
     },
-    [worktreeLabelTarget, queryClient, projectId, projectLabels]
+    [projectId, projectLabels, queryClient]
+  )
+
+  const handleWorktreeLabelApply = useCallback(
+    async (labels: LabelData[]) => {
+      if (!worktreeLabelTarget) return
+      // The modal reads its selection from this mirror, not from the query.
+      setWorktreeLabelTarget(target =>
+        target ? { ...target, currentLabels: labels } : target
+      )
+      await applyWorktreeLabels(worktreeLabelTarget.worktreeId, labels)
+    },
+    [applyWorktreeLabels, worktreeLabelTarget]
   )
 
   const handleLabelPinnedChange = useCallback(
@@ -3722,6 +3766,21 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                           onSetLabels={
                             showWorktreeLabelContextMenu
                               ? () => openWorktreeLabelModal(section.worktree)
+                              : undefined
+                          }
+                          assignedLabels={
+                            showWorktreeLabelContextMenu
+                              ? resolveWorktreeLabels(section.worktree)
+                              : undefined
+                          }
+                          availableLabels={labelCatalog}
+                          onLabelsChange={
+                            showWorktreeLabelContextMenu
+                              ? next =>
+                                  void applyWorktreeLabels(
+                                    section.worktree.id,
+                                    next
+                                  )
                               : undefined
                           }
                           onResolveConflicts={handleCanvasResolveConflicts}

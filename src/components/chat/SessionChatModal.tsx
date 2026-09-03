@@ -1488,7 +1488,7 @@ export function SessionChatModal({
                           worktreeId={worktreeId}
                           projectId={worktree?.project_id}
                           onRename={handleStartRename}
-                          onToggleLabel={sessionId => {
+                          onManageLabels={sessionId => {
                             setLabelTargetSessionId(sessionId)
                             setLabelModalOpen(true)
                           }}

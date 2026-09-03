@@ -36,7 +36,7 @@ function renderMenu(projectId?: string) {
         worktreeId="worktree-1"
         projectId={projectId}
         onRename={vi.fn()}
-        onToggleLabel={vi.fn()}
+        onManageLabels={vi.fn()}
         onArchive={vi.fn()}
         onDelete={vi.fn()}
       />

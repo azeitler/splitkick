@@ -7,7 +7,6 @@ import {
   PinOff,
   Play,
   RefreshCw,
-  Tag,
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -21,6 +20,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { copyToClipboard } from '@/lib/clipboard'
 import { canReconnectSession, reconnectNativeCliSession } from '@/services/chat'
 import type { Session } from '@/types/chat'
+import { SessionLabelsSubmenu } from './LabelsSubmenu'
 import { SessionStatusMenu } from './SessionStatusMenu'
 import {
   getResumeCommand,
@@ -32,7 +32,8 @@ interface SessionContextMenuItemsProps {
   card: SessionCardData
   worktreeId: string
   onRename: (sessionId: string, currentName: string) => void
-  onToggleLabel: (sessionId: string) => void
+  /** Opens the label modal, used by the "Manage labels…" submenu item. */
+  onManageLabels: (sessionId: string) => void
   onArchive: (sessionId: string) => void
   onDelete: (sessionId: string) => void
   /** Optional host-provided native-client launcher (canvas tab bar only). */
@@ -48,15 +49,15 @@ interface SessionContextMenuItemsProps {
 /**
  * Canonical session context menu — shared by the canvas session tab bar
  * (SessionChatModal) and the sidebar worktree session rows (WorktreeItem).
- * Status/Pause/Resume/Reconnect are self-contained; rename/label/archive/delete
- * are delegated to the host so each surface can wire its own UI (inline rename,
- * label modal, archive confirmation, etc.).
+ * Status/Pause/Resume/Reconnect and the Labels submenu are self-contained;
+ * rename/archive/delete and the label modal are delegated to the host so each
+ * surface can wire its own UI (inline rename, archive confirmation, etc.).
  */
 export function SessionContextMenuItems({
   card,
   worktreeId,
   onRename,
-  onToggleLabel,
+  onManageLabels,
   onArchive,
   onDelete,
   onOpenInNativeClient,
@@ -66,7 +67,6 @@ export function SessionContextMenuItems({
 }: SessionContextMenuItemsProps) {
   const session = card.session
   const isPausedOverride = card.statusOverride === 'paused'
-  const hasLabel = useChatStore(state => !!state.sessionLabels[session.id])
   // Select a boolean, not the pins array: the selector must subscribe to the
   // value that decides the label, or the item would not flip after a pin.
   const isPinned = useProjectsStore(state =>
@@ -84,10 +84,11 @@ export function SessionContextMenuItems({
         <Pencil className="mr-2 h-4 w-4" />
         Rename
       </ContextMenuItem>
-      <ContextMenuItem onSelect={() => onToggleLabel(session.id)}>
-        <Tag className="mr-2 h-4 w-4" />
-        {hasLabel ? 'Remove Label' : 'Add Label'}
-      </ContextMenuItem>
+      <SessionLabelsSubmenu
+        sessionId={session.id}
+        currentLabel={card.label}
+        onManage={() => onManageLabels(session.id)}
+      />
       {projectId && (
         <ContextMenuItem
           onSelect={() => {

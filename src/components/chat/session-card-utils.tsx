@@ -187,7 +187,8 @@ export interface SessionCardProps {
   onClearContextBuildApprove?: () => void
   onWorktreeBuildApprove?: () => void
   onWorktreeYoloApprove?: () => void
-  onToggleLabel?: () => void
+  /** Opens the label modal, used by the "Manage labels…" submenu item. */
+  onManageLabels?: () => void
   /** @deprecated Prefer onSetStatusOverride for full manual status control. */
   onToggleReview?: () => void
   onSetStatusOverride?: (status: ManualSessionStatus | null) => void
@@ -751,7 +752,10 @@ export function computeSessionCardData(
   })
   // Manual override sits next to automatic status: live/actionable automatic
   // states still win; otherwise the user-pinned override is displayed.
-  if (statusOverride && shouldApplyStatusOverride(statusOverride, automaticStatus)) {
+  if (
+    statusOverride &&
+    shouldApplyStatusOverride(statusOverride, automaticStatus)
+  ) {
     status = statusOverride
   }
 
@@ -826,7 +830,8 @@ export function getResumeSessionId(session: Session): string | null {
   if (session.backend === 'pi') return session.pi_session_id ?? null
   if (session.backend === 'grok') return session.grok_session_id ?? null
   if (session.backend === 'kimi') return session.kimi_session_id ?? null
-  if (session.backend === 'antigravity') return session.antigravity_session_id ?? null
+  if (session.backend === 'antigravity')
+    return session.antigravity_session_id ?? null
   return null
 }
 

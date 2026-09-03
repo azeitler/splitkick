@@ -324,8 +324,8 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
   },
   {
     action: 'toggle_session_label',
-    label: 'Toggle label',
-    description: 'Mark/unmark session with "Needs testing" label',
+    label: 'Manage labels',
+    description: 'Open the label manager for the selected session or workspace',
     default_shortcut: 'mod+s',
     category: 'chat',
   },

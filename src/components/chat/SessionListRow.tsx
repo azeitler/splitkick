@@ -8,7 +8,6 @@ import {
   Play,
   RefreshCw,
   Shield,
-  Tag,
   Trash2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -37,6 +36,7 @@ import {
   type ManualSessionStatus,
   type SessionCardProps,
 } from './session-card-utils'
+import { SessionLabelsSubmenu } from './LabelsSubmenu'
 import { SessionStatusMenu } from './SessionStatusMenu'
 import { canReconnectSession } from '@/services/chat'
 
@@ -54,7 +54,7 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
       onClearContextApprove,
       onWorktreeBuildApprove,
       onWorktreeYoloApprove,
-      onToggleLabel,
+      onManageLabels,
       onToggleReview,
       onSetStatusOverride,
       onReconnect,
@@ -273,12 +273,11 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
               Rename
             </ContextMenuItem>
           )}
-          {onToggleLabel && (
-            <ContextMenuItem onSelect={onToggleLabel}>
-              <Tag className="mr-2 h-4 w-4" />
-              {card.label ? 'Remove Label' : 'Add Label'}
-            </ContextMenuItem>
-          )}
+          <SessionLabelsSubmenu
+            sessionId={card.session.id}
+            currentLabel={card.label}
+            onManage={onManageLabels}
+          />
           {handleSetStatusOverride && (
             <SessionStatusMenu
               statusOverride={card.statusOverride}

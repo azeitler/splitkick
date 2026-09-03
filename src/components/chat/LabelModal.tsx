@@ -11,21 +11,15 @@ import { Tag, Check, Pencil, Pin, Trash2 } from 'lucide-react'
 import { useChatStore } from '@/store/chat-store'
 import type { LabelData } from '@/types/chat'
 import { getLabelTextColor } from '@/lib/label-colors'
-
-const PRESET_LABELS = ['Needs testing']
-
-const LABEL_COLORS = [
-  { name: 'Blue', value: '#3b82f6' },
-  { name: 'Green', value: '#22c55e' },
-  { name: 'Yellow', value: '#eab308' },
-  { name: 'Orange', value: '#f97316' },
-  { name: 'Red', value: '#ef4444' },
-  { name: 'Purple', value: '#a855f7' },
-  { name: 'Pink', value: '#ec4899' },
-  { name: 'Gray', value: '#6b7280' },
-  { name: 'Cyan', value: '#06b6d4' },
-  { name: 'Lime', value: '#84cc16' },
-]
+import {
+  DEFAULT_LABEL_COLOR,
+  LABEL_COLORS,
+  PRESET_LABELS,
+  getKnownLabelNames,
+  isLabelSelected as isNameSelected,
+  resolveLabelData,
+  toggleLabelInList,
+} from '@/lib/labels'
 
 interface LabelModalProps {
   isOpen: boolean
@@ -65,9 +59,7 @@ export function LabelModal({
   onDeleteLabel,
 }: LabelModalProps) {
   const [inputValue, setInputValue] = useState('')
-  const [selectedColor, setSelectedColor] = useState(
-    LABEL_COLORS[2]?.value ?? '#eab308'
-  )
+  const [selectedColor, setSelectedColor] = useState(DEFAULT_LABEL_COLOR)
   const [isCreatingCustom, setIsCreatingCustom] = useState(false)
   const [editingLabelName, setEditingLabelName] = useState<string | null>(null)
   const [focusedIndex, setFocusedIndex] = useState(0)
@@ -77,60 +69,34 @@ export function LabelModal({
 
   const sessionLabels = useChatStore(state => state.sessionLabels)
 
-  // Extract unique label names (from LabelData + extraLabels) for the dropdown list
-  const customLabels = useMemo(() => {
-    const presetSet = new Set(PRESET_LABELS)
-    const unique = new Set<string>()
-    for (const label of Object.values(sessionLabels)) {
-      if (!presetSet.has(label.name)) unique.add(label.name)
-    }
-    if (extraLabels) {
-      for (const label of extraLabels) {
-        if (!presetSet.has(label.name)) unique.add(label.name)
-      }
-    }
-    return [...unique].sort()
-  }, [sessionLabels, extraLabels])
-
-  const allLabelNames = useMemo(
-    () => [...PRESET_LABELS, ...customLabels],
-    [customLabels]
+  const selectedLabels = useMemo(
+    () =>
+      mode === 'multi'
+        ? (currentLabels ?? [])
+        : currentLabel
+          ? [currentLabel]
+          : [],
+    [mode, currentLabels, currentLabel]
   )
 
-  // Get the label data for current label (for preset labels, use default yellow)
-  const getLabelData = useCallback(
-    (name: string): LabelData => {
-      const selected =
-        mode === 'multi'
-          ? currentLabels?.find(l => l.name === name)
-          : currentLabel?.name === name
-            ? currentLabel
-            : undefined
-      // Check local color overrides first (instant feedback before async refetch)
-      if (colorOverrides[name]) {
-        return { ...(selected ?? { name }), color: colorOverrides[name] }
-      }
-      const extra = extraLabels?.find(l => l.name === name)
-      if (selected) {
-        return extra?.pinned ? { ...selected, pinned: true } : selected
-      }
-      // Check if this label name exists in sessionLabels or extraLabels (has a color)
-      const existing = Object.values(sessionLabels).find(l => l.name === name)
-      if (existing) {
-        return extra?.pinned ? { ...existing, pinned: true } : existing
-      }
-      if (extra) return extra
-      // Preset labels get yellow by default
-      return { name, color: '#eab308' }
-    },
-    [
+  const labelSources = useMemo(
+    () => ({
       sessionLabels,
-      colorOverrides,
       extraLabels,
-      currentLabel,
-      currentLabels,
-      mode,
-    ]
+      selected: selectedLabels,
+      colorOverrides,
+    }),
+    [sessionLabels, extraLabels, selectedLabels, colorOverrides]
+  )
+
+  const allLabelNames = useMemo(
+    () => getKnownLabelNames(labelSources),
+    [labelSources]
+  )
+
+  const getLabelData = useCallback(
+    (name: string): LabelData => resolveLabelData(name, labelSources),
+    [labelSources]
   )
 
   // Update all sessions that use a given label name to use a new color
@@ -147,30 +113,17 @@ export function LabelModal({
     []
   )
 
-  const selectedLabels = useMemo(
-    () =>
-      mode === 'multi'
-        ? (currentLabels ?? [])
-        : currentLabel
-          ? [currentLabel]
-          : [],
-    [mode, currentLabels, currentLabel]
-  )
-
   const isLabelSelected = useCallback(
-    (name: string) => selectedLabels.some(label => label.name === name),
+    (name: string) => isNameSelected(selectedLabels, name),
     [selectedLabels]
   )
 
   const applyLabel = useCallback(
     (labelData: LabelData | null) => {
       if (mode === 'multi') {
-        const next = labelData
-          ? isLabelSelected(labelData.name)
-            ? selectedLabels.filter(label => label.name !== labelData.name)
-            : [...selectedLabels, labelData]
-          : []
-        onApplyLabels?.(next)
+        onApplyLabels?.(
+          labelData ? toggleLabelInList(selectedLabels, labelData) : []
+        )
         return
       }
       if (onApply) {
@@ -182,15 +135,7 @@ export function LabelModal({
       useChatStore.getState().setSessionLabel(sessionId, labelData)
       onClose()
     },
-    [
-      mode,
-      selectedLabels,
-      isLabelSelected,
-      onApplyLabels,
-      onApply,
-      onClose,
-      sessionId,
-    ]
+    [mode, selectedLabels, onApplyLabels, onApply, onClose, sessionId]
   )
 
   // Start editing an existing label's color
