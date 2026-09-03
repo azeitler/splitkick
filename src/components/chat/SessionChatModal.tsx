@@ -1486,6 +1486,7 @@ export function SessionChatModal({
                         <SessionContextMenuItems
                           card={card}
                           worktreeId={worktreeId}
+                          projectId={worktree?.project_id}
                           onRename={handleStartRename}
                           onToggleLabel={sessionId => {
                             setLabelTargetSessionId(sessionId)

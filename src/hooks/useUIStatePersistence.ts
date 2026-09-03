@@ -259,6 +259,10 @@ export function useUIStatePersistence() {
             worktree_sort_mode: settings.worktreeSortMode,
             pinned_labels: settings.pinnedLabels,
             labels: settings.labels,
+            pinned_sessions: settings.pinnedSessions?.map(pin => ({
+              session_id: pin.sessionId,
+              worktree_id: pin.worktreeId,
+            })),
           },
         ])
       ),
@@ -887,6 +891,10 @@ export function useUIStatePersistence() {
               worktreeSortMode: settings.worktree_sort_mode,
               pinnedLabels: settings.pinned_labels,
               labels: settings.labels,
+              pinnedSessions: settings.pinned_sessions?.map(pin => ({
+                sessionId: pin.session_id,
+                worktreeId: pin.worktree_id,
+              })),
             },
           ])
         )

@@ -3,6 +3,8 @@ import {
   Copy,
   Pause,
   Pencil,
+  Pin,
+  PinOff,
   Play,
   RefreshCw,
   Tag,
@@ -15,6 +17,7 @@ import {
   ContextMenuSeparator,
 } from '@/components/ui/context-menu'
 import { useChatStore } from '@/store/chat-store'
+import { useProjectsStore } from '@/store/projects-store'
 import { copyToClipboard } from '@/lib/clipboard'
 import { canReconnectSession, reconnectNativeCliSession } from '@/services/chat'
 import type { Session } from '@/types/chat'
@@ -38,6 +41,8 @@ interface SessionContextMenuItemsProps {
   openInNativeClientDisabled?: boolean
   /** Tailwind width class for the menu content (defaults to w-64). */
   contentClassName?: string
+  /** Project owning the session's worktree. Omit to hide the pin item. */
+  projectId?: string
 }
 
 /**
@@ -57,10 +62,20 @@ export function SessionContextMenuItems({
   onOpenInNativeClient,
   openInNativeClientDisabled = false,
   contentClassName = 'w-64',
+  projectId,
 }: SessionContextMenuItemsProps) {
   const session = card.session
   const isPausedOverride = card.statusOverride === 'paused'
   const hasLabel = useChatStore(state => !!state.sessionLabels[session.id])
+  // Select a boolean, not the pins array: the selector must subscribe to the
+  // value that decides the label, or the item would not flip after a pin.
+  const isPinned = useProjectsStore(state =>
+    projectId
+      ? (state.projectCanvasSettings[projectId]?.pinnedSessions ?? []).some(
+          pin => pin.sessionId === session.id
+        )
+      : false
+  )
   const resumeCommand = getResumeCommand(session)
 
   return (
@@ -73,6 +88,30 @@ export function SessionContextMenuItems({
         <Tag className="mr-2 h-4 w-4" />
         {hasLabel ? 'Remove Label' : 'Add Label'}
       </ContextMenuItem>
+      {projectId && (
+        <ContextMenuItem
+          onSelect={() => {
+            const store = useProjectsStore.getState()
+            if (isPinned) {
+              store.unpinSessionFromProject(projectId, session.id)
+            } else {
+              store.pinSessionToProject(projectId, session.id, worktreeId)
+            }
+          }}
+        >
+          {isPinned ? (
+            <>
+              <PinOff className="mr-2 h-4 w-4" />
+              Unpin from Project
+            </>
+          ) : (
+            <>
+              <Pin className="mr-2 h-4 w-4" />
+              Pin to Project
+            </>
+          )}
+        </ContextMenuItem>
+      )}
       <SessionStatusMenu
         statusOverride={card.statusOverride}
         automaticStatus={card.automaticStatus}

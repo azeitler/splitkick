@@ -3,10 +3,18 @@ import { devtools } from 'zustand/middleware'
 import type { LabelData } from '@/types/chat'
 import type { WorktreeSortMode } from '@/types/projects'
 
+/** A session pinned to a project root. */
+export interface PinnedSessionRef {
+  sessionId: string
+  worktreeId: string
+}
+
 export interface ProjectCanvasSettings {
   worktreeSortMode?: WorktreeSortMode
   pinnedLabels?: LabelData[]
   labels?: LabelData[]
+  /** Sessions pinned to the project root, in pin order. */
+  pinnedSessions?: PinnedSessionRef[]
 }
 
 interface ProjectsUIState {
@@ -115,6 +123,12 @@ interface ProjectsUIState {
     pinnedLabels: LabelData[]
   ) => void
   setProjectCanvasLabels: (projectId: string, labels: LabelData[]) => void
+  pinSessionToProject: (
+    projectId: string,
+    sessionId: string,
+    worktreeId: string
+  ) => void
+  unpinSessionFromProject: (projectId: string, sessionId: string) => void
   setGitHubDashboardFavoriteProjectIds: (projectIds: string[]) => void
   toggleGitHubDashboardFavoriteProject: (projectId: string) => void
 }
@@ -345,6 +359,51 @@ export const useProjectsStore = create<ProjectsUIState>()(
           },
           undefined,
           'setProjectCanvasLabels'
+        ),
+
+      pinSessionToProject: (projectId, sessionId, worktreeId) =>
+        set(
+          state => {
+            const current =
+              state.projectCanvasSettings[projectId]?.pinnedSessions ?? []
+            // Guard: already pinned, so keep the same reference.
+            if (current.some(pin => pin.sessionId === sessionId)) return state
+
+            return {
+              projectCanvasSettings: {
+                ...state.projectCanvasSettings,
+                [projectId]: {
+                  ...state.projectCanvasSettings[projectId],
+                  pinnedSessions: [...current, { sessionId, worktreeId }],
+                },
+              },
+            }
+          },
+          undefined,
+          'pinSessionToProject'
+        ),
+
+      unpinSessionFromProject: (projectId, sessionId) =>
+        set(
+          state => {
+            const current =
+              state.projectCanvasSettings[projectId]?.pinnedSessions ?? []
+            const next = current.filter(pin => pin.sessionId !== sessionId)
+            // Guard: nothing was pinned under that id.
+            if (next.length === current.length) return state
+
+            return {
+              projectCanvasSettings: {
+                ...state.projectCanvasSettings,
+                [projectId]: {
+                  ...state.projectCanvasSettings[projectId],
+                  pinnedSessions: next,
+                },
+              },
+            }
+          },
+          undefined,
+          'unpinSessionFromProject'
         ),
 
       setGitHubDashboardFavoriteProjectIds: projectIds =>

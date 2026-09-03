@@ -17,6 +17,14 @@ import { cn } from '@/lib/utils'
 import { chatQueryKeys } from '@/services/chat'
 import { isTauri, useReorderWorktrees } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
+import { navigateToSession } from '@/lib/navigate-to-session'
+import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
+import { computeSessionCardData } from '@/components/chat/session-card-utils'
+import { PinnedSessionsSection } from '@/components/chat/PinnedSessionsSection'
+import {
+  resolvePinnedSessionRows,
+  type PinnedSessionRow,
+} from '@/components/chat/pinned-sessions'
 import {
   compareWorktreesForCanvasSort,
   getWorktreeLastActivity,
@@ -255,6 +263,43 @@ export function WorktreeList({
 
     return [...sortedPending, ...sortedReady]
   }, [pendingWorktrees, readyWorktrees, sessionsByWorktreeId, worktreeSortMode])
+
+  // Sessions pinned to the project root, shown directly under the project row.
+  // sessionsByWorktreeId is already loaded for the sidebar, so no extra fetch.
+  const storeState = useCanvasStoreState()
+  const pinnedSessionRefs = useProjectsStore(
+    state => state.projectCanvasSettings[projectId]?.pinnedSessions
+  )
+
+  const pinnedRows = useMemo(() => {
+    const rows = resolvePinnedSessionRows(
+      pinnedSessionRefs,
+      worktreeId => sessionsByWorktreeId.get(worktreeId)?.sessions,
+      readyWorktrees
+    )
+    return rows.map(row => ({
+      row,
+      card: computeSessionCardData(row.session, storeState),
+    }))
+  }, [pinnedSessionRefs, sessionsByWorktreeId, readyWorktrees, storeState])
+
+  const handleOpenPinnedSession = useCallback(
+    (row: PinnedSessionRow) => {
+      navigateToSession({
+        projectId,
+        worktreeId: row.worktreeId,
+        sessionId: row.sessionId,
+      })
+    },
+    [projectId]
+  )
+
+  const handleUnpinSession = useCallback(
+    (sessionId: string) => {
+      useProjectsStore.getState().unpinSessionFromProject(projectId, sessionId)
+    },
+    [projectId]
+  )
 
   const canReorderWorktree = useCallback((worktree: Worktree) => {
     return (
@@ -507,6 +552,12 @@ export function WorktreeList({
       onDrop={handleNativeDrop}
       onDragEnd={handleNativeDragEnd}
     >
+      <PinnedSessionsSection
+        rows={pinnedRows}
+        variant="sidebar"
+        onOpen={handleOpenPinnedSession}
+        onUnpin={handleUnpinSession}
+      />
       {sortedWorktrees.map(worktree => {
         const isTarget = dragState.targetId === worktree.id
         return (

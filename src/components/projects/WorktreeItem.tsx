@@ -1128,6 +1128,7 @@ export function WorktreeItem({
                       <SessionContextMenuItems
                         card={card}
                         worktreeId={worktree.id}
+                        projectId={projectId}
                         contentClassName="w-56"
                         onRename={handleStartRename}
                         onToggleLabel={sessionId => {

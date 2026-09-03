@@ -271,6 +271,81 @@ describe('ProjectsStore', () => {
     })
   })
 
+  describe('pinned sessions', () => {
+    it('pins a session with its worktree id, in pin order', () => {
+      const { pinSessionToProject } = useProjectsStore.getState()
+
+      pinSessionToProject('project-1', 'session-a', 'worktree-1')
+      pinSessionToProject('project-1', 'session-b', 'worktree-2')
+
+      expect(
+        useProjectsStore.getState().projectCanvasSettings['project-1']
+          ?.pinnedSessions
+      ).toEqual([
+        { sessionId: 'session-a', worktreeId: 'worktree-1' },
+        { sessionId: 'session-b', worktreeId: 'worktree-2' },
+      ])
+    })
+
+    it('keeps the same state reference when the session is already pinned', () => {
+      const { pinSessionToProject } = useProjectsStore.getState()
+
+      pinSessionToProject('project-1', 'session-a', 'worktree-1')
+      const before = useProjectsStore.getState().projectCanvasSettings
+
+      pinSessionToProject('project-1', 'session-a', 'worktree-1')
+
+      expect(useProjectsStore.getState().projectCanvasSettings).toBe(before)
+    })
+
+    it('unpins only the target and leaves the other canvas settings alone', () => {
+      const { pinSessionToProject, unpinSessionFromProject } =
+        useProjectsStore.getState()
+
+      useProjectsStore
+        .getState()
+        .setProjectCanvasWorktreeSortMode('project-1', 'last_activity')
+      pinSessionToProject('project-1', 'session-a', 'worktree-1')
+      pinSessionToProject('project-1', 'session-b', 'worktree-2')
+
+      unpinSessionFromProject('project-1', 'session-a')
+
+      const settings =
+        useProjectsStore.getState().projectCanvasSettings['project-1']
+      expect(settings?.pinnedSessions).toEqual([
+        { sessionId: 'session-b', worktreeId: 'worktree-2' },
+      ])
+      expect(settings?.worktreeSortMode).toBe('last_activity')
+    })
+
+    it('keeps the same state reference when unpinning an unknown session', () => {
+      const { pinSessionToProject, unpinSessionFromProject } =
+        useProjectsStore.getState()
+
+      pinSessionToProject('project-1', 'session-a', 'worktree-1')
+      const before = useProjectsStore.getState().projectCanvasSettings
+
+      unpinSessionFromProject('project-1', 'session-missing')
+
+      expect(useProjectsStore.getState().projectCanvasSettings).toBe(before)
+    })
+
+    it('scopes pins per project', () => {
+      const { pinSessionToProject } = useProjectsStore.getState()
+
+      pinSessionToProject('project-1', 'session-a', 'worktree-1')
+      pinSessionToProject('project-2', 'session-b', 'worktree-9')
+
+      const settings = useProjectsStore.getState().projectCanvasSettings
+      expect(settings['project-1']?.pinnedSessions).toEqual([
+        { sessionId: 'session-a', worktreeId: 'worktree-1' },
+      ])
+      expect(settings['project-2']?.pinnedSessions).toEqual([
+        { sessionId: 'session-b', worktreeId: 'worktree-9' },
+      ])
+    })
+  })
+
   describe('GitHub dashboard favorites', () => {
     it('toggles favorite project IDs without duplicating them', () => {
       const { toggleGitHubDashboardFavoriteProject } =

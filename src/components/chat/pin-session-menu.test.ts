@@ -1,0 +1,59 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+function read(path: string): string {
+  return readFileSync(join(process.cwd(), path), 'utf8')
+}
+
+// Both surfaces that host a session right-click menu must pass projectId, or
+// the pin item silently disappears on that surface.
+const menuConsumers = [
+  'src/components/chat/SessionChatModal.tsx',
+  'src/components/projects/WorktreeItem.tsx',
+]
+
+// Both surfaces that render the pinned list.
+const pinnedSectionHosts = [
+  'src/components/dashboard/ProjectCanvasView.tsx',
+  'src/components/projects/WorktreeList.tsx',
+]
+
+describe('pin session to project', () => {
+  it('offers pin and unpin on the shared session context menu', () => {
+    const source = read('src/components/chat/SessionContextMenuItems.tsx')
+
+    expect(source).toContain('Pin to Project')
+    expect(source).toContain('Unpin from Project')
+    expect(source).toContain(
+      'pinSessionToProject(projectId, session.id, worktreeId)'
+    )
+    expect(source).toContain('unpinSessionFromProject(projectId, session.id)')
+  })
+
+  it('passes projectId from every session context menu consumer', () => {
+    for (const path of menuConsumers) {
+      const source = read(path)
+      const menuUsage = source.slice(source.indexOf('<SessionContextMenuItems'))
+
+      expect(menuUsage).toMatch(/projectId=\{/)
+    }
+  })
+
+  it('renders the pinned section on the canvas and in the sidebar', () => {
+    for (const path of pinnedSectionHosts) {
+      const source = read(path)
+
+      expect(source).toContain('<PinnedSessionsSection')
+      expect(source).toContain('resolvePinnedSessionRows')
+      // Both surfaces open a pinned session through the shared navigation helper.
+      expect(source).toContain('navigateToSession')
+    }
+  })
+
+  it('offers unpin from the pinned row itself', () => {
+    const source = read('src/components/chat/PinnedSessionsSection.tsx')
+
+    expect(source).toContain('Unpin from Project')
+  })
+})

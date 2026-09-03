@@ -12,10 +12,17 @@
 
 import type { LabelData } from '@/types/chat'
 
+/** A session pinned to a project root (mirrors the Rust PinnedSessionEntry). */
+export interface PinnedSessionEntry {
+  session_id: string
+  worktree_id: string
+}
+
 export interface ProjectCanvasSettingsState {
   worktree_sort_mode?: 'created' | 'last_activity' | 'manual'
   pinned_labels?: LabelData[]
   labels?: LabelData[]
+  pinned_sessions?: PinnedSessionEntry[]
 }
 
 export type ModalTerminalDockMode = 'floating' | 'left' | 'right' | 'bottom'

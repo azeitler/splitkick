@@ -24,6 +24,7 @@ import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { dismissibleToast } from '@/lib/dismissible-toast'
+import { navigateToSession } from '@/lib/navigate-to-session'
 import {
   Search,
   X,
@@ -78,6 +79,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
+import { PinnedSessionsSection } from '@/components/chat/PinnedSessionsSection'
+import {
+  resolvePinnedSessionRows,
+  type PinnedSessionRow,
+} from '@/components/chat/pinned-sessions'
 import { Spinner } from '@/components/ui/spinner'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import {
@@ -1162,6 +1168,45 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Use shared store state hook
   const storeState = useCanvasStoreState()
   const queryClient = useQueryClient()
+
+  // Sessions pinned to the project root. sessionsByWorktreeId already holds
+  // every session in the project, so this costs no extra fetch. Pins that no
+  // longer resolve (archived, deleted, worktree removed) simply drop out.
+  const pinnedSessionRefs = useProjectsStore(
+    state => state.projectCanvasSettings[projectId]?.pinnedSessions
+  )
+
+  const pinnedRows = useMemo(() => {
+    const rows = resolvePinnedSessionRows(
+      pinnedSessionRefs,
+      worktreeId => sessionsByWorktreeId.get(worktreeId)?.sessions,
+      readyWorktrees
+    )
+    return rows.map(row => ({
+      row,
+      card: computeSessionCardData(row.session, storeState),
+    }))
+  }, [pinnedSessionRefs, sessionsByWorktreeId, readyWorktrees, storeState])
+
+  const handleOpenPinnedSession = useCallback(
+    (row: PinnedSessionRow) => {
+      // Same helper the command palette and unread bell use: it queues the
+      // auto-open that this component consumes below.
+      navigateToSession({
+        projectId,
+        worktreeId: row.worktreeId,
+        sessionId: row.sessionId,
+      })
+    },
+    [projectId]
+  )
+
+  const handleUnpinSession = useCallback(
+    (sessionId: string) => {
+      useProjectsStore.getState().unpinSessionFromProject(projectId, sessionId)
+    },
+    [projectId]
+  )
 
   const markWorktreeLastUsed = useCallback(
     (worktreeId: string) => {
@@ -3560,8 +3605,19 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
         {/* Canvas View */}
         <div
-          className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery ? '' : 'pt-5 px-4'}`}
+          className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery && pinnedRows.length === 0 ? '' : 'pt-5 px-4'}`}
         >
+          {/* Pinned sessions sit above the worktree sections and outside the
+              empty-state branch, and stay visible on every filter tab. They are
+              hidden during a search, where un-matching rows would be noise. */}
+          {!searchQuery.trim() && (
+            <PinnedSessionsSection
+              rows={pinnedRows}
+              variant="canvas"
+              onOpen={handleOpenPinnedSession}
+              onUnpin={handleUnpinSession}
+            />
+          )}
           {worktreeSections.length === 0 ? (
             searchQuery ? (
               <div className="flex h-full items-center justify-center text-muted-foreground">

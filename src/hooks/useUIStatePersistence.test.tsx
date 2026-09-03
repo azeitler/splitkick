@@ -102,6 +102,7 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
     useProjectsStore.setState({
       expandedWorktreeIds: new Set<string>(),
+      projectCanvasSettings: {},
     })
     useChatStore.setState({
       activeWorktreeId: null,
@@ -913,5 +914,72 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     )
     expect(useTerminalStore.getState().terminalVisible).toBe(true)
     expect(useTerminalStore.getState().terminalHeight).toBe(42)
+  })
+
+  it('restores sessions pinned to a project after a restart', async () => {
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({
+        project_canvas_settings: {
+          'project-1': {
+            worktree_sort_mode: 'created',
+            pinned_sessions: [
+              { session_id: 'session-a', worktree_id: 'worktree-1' },
+            ],
+          },
+        },
+      }),
+      isSuccess: true,
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(
+        useProjectsStore.getState().projectCanvasSettings['project-1']
+          ?.pinnedSessions
+      ).toEqual([{ sessionId: 'session-a', worktreeId: 'worktree-1' }])
+    })
+  })
+
+  it('persists pinned sessions with snake_case keys', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useProjectsStore
+      .getState()
+      .pinSessionToProject('project-1', 'session-a', 'worktree-1')
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          project_canvas_settings: expect.objectContaining({
+            'project-1': expect.objectContaining({
+              pinned_sessions: [
+                { session_id: 'session-a', worktree_id: 'worktree-1' },
+              ],
+            }),
+          }),
+        })
+      )
+    })
   })
 })

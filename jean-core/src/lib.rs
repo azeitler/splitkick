@@ -3116,12 +3116,25 @@ pub struct PendingTextFileDraft {
     pub content: Option<String>,
 }
 
+/// A session the user pinned to a project root. Sessions live inside worktrees,
+/// so the worktree id is stored alongside the session id: it is what the pinned
+/// row needs to open the session, and looking it up doubles as the staleness
+/// check for archived/deleted sessions and removed worktrees.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PinnedSessionEntry {
+    pub session_id: String,
+    pub worktree_id: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProjectCanvasSettings {
     #[serde(default)]
     pub worktree_sort_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pinned_labels: Vec<crate::chat::types::LabelData>,
+    /// Sessions pinned to the project root, in pin order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pinned_sessions: Vec<PinnedSessionEntry>,
 }
 
 impl Default for UIState {
@@ -4633,4 +4646,68 @@ pub async fn run_server() -> Result<(), String> {
     let _ = opencode_server::shutdown_managed_server();
     chat::codex_server::shutdown_server();
     Ok(())
+}
+
+#[cfg(test)]
+mod project_canvas_settings_tests {
+    use super::{PinnedSessionEntry, ProjectCanvasSettings, UIState};
+
+    #[test]
+    fn legacy_settings_without_pinned_sessions_deserialize_to_an_empty_list() {
+        let settings: ProjectCanvasSettings =
+            serde_json::from_str(r#"{"worktree_sort_mode":"created"}"#).unwrap();
+
+        assert_eq!(settings.worktree_sort_mode.as_deref(), Some("created"));
+        assert!(settings.pinned_sessions.is_empty());
+    }
+
+    #[test]
+    fn pinned_sessions_round_trip_with_snake_case_keys() {
+        let settings = ProjectCanvasSettings {
+            worktree_sort_mode: None,
+            pinned_labels: Vec::new(),
+            pinned_sessions: vec![PinnedSessionEntry {
+                session_id: "session-a".to_string(),
+                worktree_id: "worktree-1".to_string(),
+            }],
+        };
+
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains(r#""session_id":"session-a""#));
+        assert!(json.contains(r#""worktree_id":"worktree-1""#));
+
+        let parsed: ProjectCanvasSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.pinned_sessions, settings.pinned_sessions);
+    }
+
+    #[test]
+    fn empty_pinned_sessions_are_skipped_when_serializing() {
+        let json = serde_json::to_string(&ProjectCanvasSettings::default()).unwrap();
+
+        assert!(!json.contains("pinned_sessions"));
+    }
+
+    #[test]
+    fn ui_state_carries_pinned_sessions_per_project() {
+        let json = r#"{
+            "project_canvas_settings": {
+                "project-1": {
+                    "pinned_sessions": [
+                        {"session_id":"session-a","worktree_id":"worktree-1"}
+                    ]
+                }
+            }
+        }"#;
+
+        let ui_state: UIState = serde_json::from_str(json).unwrap();
+        let settings = ui_state
+            .project_canvas_settings
+            .get("project-1")
+            .expect("project settings");
+
+        assert_eq!(settings.pinned_sessions.len(), 1);
+        assert_eq!(settings.pinned_sessions[0].session_id, "session-a");
+        assert_eq!(settings.pinned_sessions[0].worktree_id, "worktree-1");
+        assert!(UIState::default().project_canvas_settings.is_empty());
+    }
 }
