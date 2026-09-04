@@ -53,6 +53,24 @@ export function shouldShowLastActive(
   return now - toMilliseconds(timestamp) >= LAST_ACTIVE_LABEL_MIN_AGE_MS
 }
 
+/**
+ * Whether a project-tree row should render faded.
+ *
+ * Age is the only test. Deliberately no status gate: a session's status is
+ * derived from persisted state, so one abandoned mid-question or mid-plan
+ * reports `waiting` or `plan_approval` forever and would never fade, sitting
+ * bright beside equally dead idle rows. Live work needs no gate either — a
+ * running session's activity timestamp is its current run's start, so it can
+ * never read as stale. The row you are on stays at full weight regardless.
+ */
+export function shouldFadeRow(
+  activityAt: number,
+  isCurrent: boolean,
+  now = Date.now()
+): boolean {
+  return !isCurrent && isStaleActivity(activityAt, now)
+}
+
 export function getWorktreeSortValue(
   worktree: Worktree,
   latestActivityAt: number,

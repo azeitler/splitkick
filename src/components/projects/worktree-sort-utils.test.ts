@@ -8,6 +8,7 @@ import {
   getSessionActivityTimestamp,
   getWorktreeLastActivity,
   isStaleActivity,
+  shouldFadeRow,
   shouldShowLastActive,
 } from './worktree-sort-utils'
 
@@ -197,5 +198,36 @@ describe('shouldShowLastActive', () => {
 
   it('hides the age for timestamps in the future', () => {
     expect(shouldShowLastActive(now + 60 * minute, now)).toBe(false)
+  })
+})
+
+describe('shouldFadeRow', () => {
+  const now = Date.UTC(2026, 8, 1)
+  const day = 24 * 60 * 60 * 1000
+
+  it('fades a row idle for longer than a week', () => {
+    expect(shouldFadeRow(now - 8 * day, false, now)).toBe(true)
+  })
+
+  it('leaves a recently used row alone', () => {
+    expect(shouldFadeRow(now - 2 * day, false, now)).toBe(false)
+  })
+
+  it('never fades the row you are on, however old', () => {
+    expect(shouldFadeRow(now - 400 * day, true, now)).toBe(false)
+  })
+
+  // Regression: the fade used to be gated on session status too. Status is
+  // derived from persisted state, so a session abandoned mid-question reports
+  // `waiting` forever and stayed bright next to equally dead idle rows. Age is
+  // now the only input, so every row of the same age fades alike.
+  it('depends on age alone, so equally old rows agree', () => {
+    const eightDaysAgo = now - 8 * day
+    expect(shouldFadeRow(eightDaysAgo, false, now)).toBe(true)
+    expect(shouldFadeRow(eightDaysAgo - day, false, now)).toBe(true)
+  })
+
+  it('cannot fade live work, whose activity timestamp is the running turn', () => {
+    expect(shouldFadeRow(now, false, now)).toBe(false)
   })
 })

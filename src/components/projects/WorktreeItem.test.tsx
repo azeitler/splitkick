@@ -207,6 +207,57 @@ describe('WorktreeItem session filter', () => {
   })
 })
 
+describe('WorktreeItem stale fade', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  function rowFor(name: string): HTMLElement {
+    const row = screen.getByText(name).closest('[class*="pl-5"]')
+    if (!row) throw new Error(`no session row for ${name}`)
+    return row as HTMLElement
+  }
+
+  beforeEach(() => {
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(['wt-1']),
+    })
+  })
+
+  it('fades a session untouched for over a week and leaves a recent one alone', () => {
+    mocks.sessions = [
+      session('old', 'Stale work', { last_message_at: Date.now() - 30 * DAY }),
+      session('new', 'Fresh work', { last_message_at: Date.now() - DAY }),
+    ]
+    renderItem({})
+
+    expect(rowFor('Stale work').className).toContain('opacity-50')
+    expect(rowFor('Fresh work').className).not.toContain('opacity-50')
+  })
+
+  // Regression: the fade was gated on session status as well as age. Status is
+  // derived from persisted state, so a session abandoned mid-question reports
+  // `waiting` forever and stayed bright beside equally dead idle rows.
+  it('fades equally old sessions alike, whatever state they were left in', () => {
+    const longAgo = Date.now() - 30 * DAY
+    mocks.sessions = [
+      session('idle', 'Left idle', { last_message_at: longAgo }),
+      session('asking', 'Left mid-question', {
+        last_message_at: longAgo,
+        waiting_for_input: true,
+      }),
+      session('planning', 'Left mid-plan', {
+        last_message_at: longAgo,
+        pending_plan_message_id: 'msg-1',
+      }),
+    ]
+    renderItem({})
+
+    for (const name of ['Left idle', 'Left mid-question', 'Left mid-plan']) {
+      expect(rowFor(name).className).toContain('opacity-50')
+    }
+  })
+})
+
 describe('WorktreeItem linked issue badge', () => {
   beforeEach(() => {
     mocks.sessions = [session('a', 'Auth Refactor')]
