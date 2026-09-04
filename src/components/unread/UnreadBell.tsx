@@ -302,7 +302,7 @@ export function UnreadBell() {
               aria-label={`${displayCount} finished ${
                 displayCount === 1 ? 'session' : 'sessions'
               }`}
-              className="relative z-[1] mr-1.5 flex items-center gap-1 rounded-md bg-yellow-400/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-yellow-400 transition-colors hover:bg-yellow-400/25 cursor-pointer"
+              className="relative z-[1] mr-1.5 flex items-center gap-1 rounded-md bg-green-500/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-green-500 transition-colors hover:bg-green-500/25 cursor-pointer"
             >
               <BellDot className="size-3 shrink-0" />
               <span>{displayCount}</span>
