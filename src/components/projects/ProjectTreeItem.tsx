@@ -5,6 +5,7 @@ import {
   ArrowUp,
   ChevronDown,
   Plus,
+  Search,
   Settings,
 } from 'lucide-react'
 import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
@@ -43,6 +44,8 @@ import {
 import { CollapsedCountBadge } from './CollapsedCountBadge'
 import { WorktreeList } from './WorktreeList'
 import { ProjectContextMenu } from './ProjectContextMenu'
+import { SessionFilterInput } from './SessionFilterInput'
+import { useSessionFilter } from './useSessionFilter'
 
 interface ProjectTreeItemProps {
   project: Project
@@ -78,6 +81,13 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
     state => state.setNewWorktreeModalOpen
   )
 
+  // Session filter across every workspace of this project. An active filter
+  // reveals the workspaces without touching the persisted expansion state, so
+  // clearing it leaves the tree exactly as it was.
+  const filter = useSessionFilter()
+  const { toggle: toggleFilter, close: closeFilter } = filter
+  const showWorktrees = hasWorktrees && (isExpanded || filter.isActive)
+
   const avatarKey = project.avatar_path ?? project.default_avatar_path ?? null
 
   // Track image load errors to fall back to letter avatar
@@ -94,7 +104,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
         : null
 
   // Fetch git status for all worktrees when project is expanded
-  useFetchWorktreesStatus(project.id, isExpanded)
+  useFetchWorktreesStatus(project.id, showWorktrees)
 
   // Check if base session exists
   const hasBaseSession = worktrees.some(w => isBaseSession(w))
@@ -217,6 +227,14 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
       toggleProjectExpanded(project.id)
     },
     [project.id, toggleProjectExpanded]
+  )
+
+  const handleToggleFilter = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      toggleFilter()
+    },
+    [toggleFilter]
   )
 
   const handleAddWorktree = useCallback(
@@ -346,7 +364,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
             <span className="flex flex-1 items-center gap-0.5 truncate text-sm">
               <span className="truncate">{project.name}</span>
               {/* Hidden workspace count while the row is collapsed */}
-              {!isExpanded && (
+              {!showWorktrees && (
                 <CollapsedCountBadge
                   count={worktrees.length}
                   noun="workspace"
@@ -468,6 +486,27 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
             </div>
           )}
 
+          {/* Filter sessions */}
+          {hasWorktrees && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={handleToggleFilter}
+                  aria-label="Filter sessions"
+                  aria-expanded={filter.isOpen}
+                  className={cn(
+                    'flex size-4 shrink-0 items-center justify-center rounded hover:bg-accent-foreground/10 hover:opacity-100',
+                    filter.isOpen ? 'text-foreground opacity-100' : 'opacity-50'
+                  )}
+                >
+                  <Search className="size-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Filter sessions</TooltipContent>
+            </Tooltip>
+          )}
+
           {/* Settings */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -502,13 +541,26 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
           </Tooltip>
         </div>
 
+        {filter.isOpen && (
+          <SessionFilterInput
+            value={filter.query}
+            onChange={filter.setQuery}
+            onClose={closeFilter}
+            placeholder="Filter sessions"
+            className="mb-1 ml-4 mr-2"
+            inputTestId={`project-session-filter-${project.id}`}
+          />
+        )}
+
         {/* Worktrees */}
-        {isExpanded && (
+        {showWorktrees && (
           <WorktreeList
             projectId={project.id}
             projectPath={project.path}
             worktrees={worktrees}
             defaultBranch={project.default_branch}
+            sessionFilterQuery={filter.activeQuery}
+            onSessionSelected={closeFilter}
           />
         )}
       </div>

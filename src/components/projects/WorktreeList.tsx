@@ -29,6 +29,7 @@ import {
   compareWorktreesForCanvasSort,
   getWorktreeLastActivity,
 } from './worktree-sort-utils'
+import { selectWorktreesMatchingQuery } from './session-filter-utils'
 import { WorktreeItem } from './WorktreeItem'
 import { WorktreeItemSkeleton } from './WorktreeItemSkeleton'
 import {
@@ -58,6 +59,8 @@ interface SortableWorktreeProps {
   disabled: boolean
   isDragging: boolean
   closestEdge: Edge | null
+  sessionFilterQuery: string
+  onSessionSelected?: () => void
 }
 
 function SortableWorktree({
@@ -68,6 +71,8 @@ function SortableWorktree({
   disabled,
   isDragging,
   closestEdge,
+  sessionFilterQuery,
+  onSessionSelected,
 }: SortableWorktreeProps) {
   const elementRef = useRef<HTMLDivElement | null>(null)
 
@@ -147,6 +152,8 @@ function SortableWorktree({
         projectId={projectId}
         projectPath={projectPath}
         defaultBranch={defaultBranch}
+        sessionFilterQuery={sessionFilterQuery}
+        onSessionSelected={onSessionSelected}
       />
     </div>
   )
@@ -168,6 +175,10 @@ interface WorktreeListProps {
   projectPath: string
   worktrees: Worktree[]
   defaultBranch: string
+  /** Project-level session filter, inherited by every workspace row. */
+  sessionFilterQuery?: string
+  /** Called once a session row is picked, so the project filter can close. */
+  onSessionSelected?: () => void
 }
 
 export function WorktreeList({
@@ -175,6 +186,8 @@ export function WorktreeList({
   projectPath,
   worktrees,
   defaultBranch,
+  sessionFilterQuery = '',
+  onSessionSelected,
 }: WorktreeListProps) {
   const reorderWorktrees = useReorderWorktrees()
   const worktreeSortMode = useProjectsStore(
@@ -264,6 +277,20 @@ export function WorktreeList({
     return [...sortedPending, ...sortedReady]
   }, [pendingWorktrees, readyWorktrees, sessionsByWorktreeId, worktreeSortMode])
 
+  // Rendered subset only. `sortedWorktrees` stays whole on purpose: the drop
+  // handler ships the full ordered id list to `reorder_worktrees`, so a
+  // filtered source list would persist an order covering only visible rows.
+  const isFiltering = sessionFilterQuery.trim().length > 0
+  const visibleWorktrees = useMemo(
+    () =>
+      selectWorktreesMatchingQuery(
+        sortedWorktrees,
+        sessionsByWorktreeId,
+        sessionFilterQuery
+      ),
+    [sortedWorktrees, sessionsByWorktreeId, sessionFilterQuery]
+  )
+
   // Sessions pinned to the project root, shown directly under the project row.
   // sessionsByWorktreeId is already loaded for the sidebar, so no extra fetch.
   const storeState = useCanvasStoreState()
@@ -290,8 +317,9 @@ export function WorktreeList({
         worktreeId: row.worktreeId,
         sessionId: row.sessionId,
       })
+      onSessionSelected?.()
     },
-    [projectId]
+    [projectId, onSessionSelected]
   )
 
   const handleUnpinSession = useCallback(
@@ -558,7 +586,12 @@ export function WorktreeList({
         onOpen={handleOpenPinnedSession}
         onUnpin={handleUnpinSession}
       />
-      {sortedWorktrees.map(worktree => {
+      {isFiltering && visibleWorktrees.length === 0 && (
+        <div className="px-3 py-1 text-xs text-muted-foreground/70">
+          No matching sessions
+        </div>
+      )}
+      {visibleWorktrees.map(worktree => {
         const isTarget = dragState.targetId === worktree.id
         return (
           <SortableWorktree
@@ -568,10 +601,14 @@ export function WorktreeList({
             projectPath={projectPath}
             defaultBranch={defaultBranch}
             disabled={
-              reorderWorktrees.isPending || !canReorderWorktree(worktree)
+              reorderWorktrees.isPending ||
+              isFiltering ||
+              !canReorderWorktree(worktree)
             }
             isDragging={dragState.draggingId === worktree.id}
             closestEdge={isTarget ? dragState.closestEdge : null}
+            sessionFilterQuery={sessionFilterQuery}
+            onSessionSelected={onSessionSelected}
           />
         )
       })}

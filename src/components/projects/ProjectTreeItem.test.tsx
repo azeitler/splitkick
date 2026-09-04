@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { render, screen } from '@/test/test-utils'
+import { render, screen, waitFor } from '@/test/test-utils'
 import {
   ProjectTreeItem,
   resolveProjectRowClickAction,
@@ -53,7 +53,9 @@ vi.mock('@/components/shared/SecurityAlertsBadge', () => ({
 }))
 
 vi.mock('./WorktreeList', () => ({
-  WorktreeList: () => <div data-testid="worktree-list" />,
+  WorktreeList: ({ sessionFilterQuery }: { sessionFilterQuery?: string }) => (
+    <div data-testid="worktree-list" data-filter={sessionFilterQuery ?? ''} />
+  ),
 }))
 
 vi.mock('./ProjectContextMenu', () => ({
@@ -162,6 +164,69 @@ describe('ProjectTreeItem', () => {
 
     expect(screen.getByTestId('collapsed-count-badge')).toHaveTextContent('1')
     expect(screen.getByLabelText('1 workspace')).toBeInTheDocument()
+  })
+
+  it('passes the typed filter down to the worktree list', async () => {
+    const user = userEvent.setup()
+    render(<ProjectTreeItem project={project} />)
+
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+    await user.type(
+      screen.getByTestId('project-session-filter-project-1'),
+      'auth'
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId('worktree-list')).toHaveAttribute(
+        'data-filter',
+        'auth'
+      )
+    )
+  })
+
+  it('reveals a collapsed project while filtering without expanding it', async () => {
+    useProjectsStore.setState({ expandedProjectIds: new Set() })
+    const user = userEvent.setup()
+    render(<ProjectTreeItem project={project} />)
+
+    expect(screen.queryByTestId('worktree-list')).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+    await user.type(
+      screen.getByTestId('project-session-filter-project-1'),
+      'auth'
+    )
+
+    await waitFor(() =>
+      expect(screen.getByTestId('worktree-list')).toBeInTheDocument()
+    )
+    // The persisted expansion state must stay untouched.
+    expect(useProjectsStore.getState().expandedProjectIds.size).toBe(0)
+  })
+
+  it('closes and clears the filter on Escape', async () => {
+    const user = userEvent.setup()
+    render(<ProjectTreeItem project={project} />)
+
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+    const input = screen.getByTestId('project-session-filter-project-1')
+    await user.type(input, 'auth')
+    await user.type(input, '{Escape}')
+
+    expect(screen.queryByTestId('project-session-filter-project-1')).toBeNull()
+
+    // Reopening starts empty.
+    await user.click(screen.getByRole('button', { name: 'Filter sessions' }))
+    expect(screen.getByTestId('project-session-filter-project-1')).toHaveValue(
+      ''
+    )
+  })
+
+  it('hides the filter toggle for a project without worktrees', () => {
+    mocks.worktrees = []
+    render(<ProjectTreeItem project={project} />)
+
+    expect(screen.queryByRole('button', { name: 'Filter sessions' })).toBeNull()
   })
 
   it('starts inline rename on double-click and renames on Enter', async () => {

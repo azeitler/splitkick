@@ -11,6 +11,7 @@ import {
   ChevronDown,
   GitBranch,
   Pause,
+  Search,
 } from 'lucide-react'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import {
@@ -29,6 +30,9 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { pushNeedsRemotePicker, useRemotePicker } from '@/hooks/useRemotePicker'
 import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
 import { CollapsedCountBadge } from './CollapsedCountBadge'
+import { SessionFilterInput } from './SessionFilterInput'
+import { useSessionFilter } from './useSessionFilter'
+import { filterSessionsByQuery } from './session-filter-utils'
 import { LinkedIssueBadge } from './LinkedIssueBadge'
 import { WorktreeContextMenu } from './WorktreeContextMenu'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
@@ -101,12 +105,18 @@ interface WorktreeItemProps {
   projectId: string
   projectPath: string
   defaultBranch: string
+  /** Filter inherited from the project row. */
+  sessionFilterQuery?: string
+  /** Lets the project row close its filter once a session is picked. */
+  onSessionSelected?: () => void
 }
 
 export function WorktreeItem({
   worktree,
   projectId,
   defaultBranch,
+  sessionFilterQuery = '',
+  onSessionSelected,
 }: WorktreeItemProps) {
   const isMobile = useIsMobile()
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
@@ -385,13 +395,24 @@ export function WorktreeItem({
   // O(sessions × messages) computation entirely for collapsed rows.
   const sessionCount = sessionsData?.sessions.length ?? 0
 
+  // A filter on this row wins over the one inherited from the project row:
+  // the more specific scope narrows further.
+  const filter = useSessionFilter()
+  const { toggle: toggleFilter, close: closeFilter } = filter
+  const effectiveQuery = filter.activeQuery || sessionFilterQuery
+  const isFilterActive = effectiveQuery.trim().length > 0
+  const showSessions = isExpanded || isFilterActive
+
   const sessionGroups = useMemo(() => {
-    if (!isExpanded) return []
-    const sessions = sessionsData?.sessions ?? []
+    if (!showSessions) return []
+    const sessions = filterSessionsByQuery(
+      sessionsData?.sessions ?? [],
+      effectiveQuery
+    )
     return groupCardsByStatus(
       sessions.map(s => computeSessionCardData(s, storeState))
     )
-  }, [isExpanded, sessionsData?.sessions, storeState])
+  }, [showSessions, effectiveQuery, sessionsData?.sessions, storeState])
 
   // Newest interaction across the workspace's sessions, falling back to when
   // the workspace itself was created. Drives both the fade and the "last
@@ -413,8 +434,20 @@ export function WorktreeItem({
     [worktree.id, toggleWorktreeExpanded]
   )
 
+  const handleToggleFilter = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation()
+      toggleFilter()
+    },
+    [toggleFilter]
+  )
+
   const handleSessionSelect = useCallback(
     (sessionId: string) => {
+      // Picking a session ends the search: close this row's filter and tell the
+      // project row to drop its own, so the tree returns to its normal shape.
+      closeFilter()
+      onSessionSelected?.()
       selectProject(projectId)
       selectWorktree(worktree.id)
       // Clear active worktree so MainWindowContent renders ProjectCanvasView
@@ -434,7 +467,15 @@ export function WorktreeItem({
         )
       }, 50)
     },
-    [projectId, worktree.id, worktree.path, selectProject, selectWorktree]
+    [
+      projectId,
+      worktree.id,
+      worktree.path,
+      selectProject,
+      selectWorktree,
+      closeFilter,
+      onSessionSelected,
+    ]
   )
 
   // --- Session context-menu actions (reused from the canvas tab-bar menu) ---
@@ -856,7 +897,7 @@ export function WorktreeItem({
             >
               <span className="truncate">{worktree.name}</span>
               {/* Hidden session count while the row is collapsed */}
-              {!isExpanded && (
+              {!showSessions && (
                 <CollapsedCountBadge count={sessionCount} noun="session" />
               )}
               {/* Chevron for expand/collapse sessions */}
@@ -875,6 +916,24 @@ export function WorktreeItem({
                   )}
                 />
               </button>
+              {sessionCount > 0 && (
+                <button
+                  type="button"
+                  aria-label="Filter sessions"
+                  aria-expanded={filter.isOpen}
+                  className={cn(
+                    'flex size-4 shrink-0 items-center justify-center rounded transition-opacity hover:bg-accent-foreground/10 hover:!opacity-100',
+                    filter.isOpen
+                      ? 'text-foreground opacity-100'
+                      : isMobile
+                        ? 'opacity-70'
+                        : 'opacity-0 group-hover:opacity-50'
+                  )}
+                  onClick={handleToggleFilter}
+                >
+                  <Search className="size-3" />
+                </button>
+              )}
               {/* Show branch name only when different from displayed name */}
               {(() => {
                 const displayBranch =
@@ -997,8 +1056,32 @@ export function WorktreeItem({
         </div>
       </WorktreeContextMenu>
 
+      {/* Rendered outside the context-menu trigger, or a right-click inside the
+          field would open the workspace context menu. */}
+      {filter.isOpen && (
+        <SessionFilterInput
+          value={filter.query}
+          onChange={filter.setQuery}
+          onClose={closeFilter}
+          placeholder="Filter sessions"
+          className={cn('mb-1 mr-2', isNarrowSidebar ? 'ml-6' : 'ml-9')}
+          inputTestId={`worktree-session-filter-${worktree.id}`}
+        />
+      )}
+
+      {showSessions && isFilterActive && sessionGroups.length === 0 && (
+        <div
+          className={cn(
+            'py-1 pl-3 text-xs text-muted-foreground/70',
+            isNarrowSidebar ? 'ml-6' : 'ml-9'
+          )}
+        >
+          No matching sessions
+        </div>
+      )}
+
       {/* Expandable session list grouped by status */}
-      {isExpanded && sessionGroups.length > 0 && (
+      {showSessions && sessionGroups.length > 0 && (
         <div
           className={cn(
             'border-l border-border/40 py-0.5',
