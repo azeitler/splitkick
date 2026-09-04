@@ -29,6 +29,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { pushNeedsRemotePicker, useRemotePicker } from '@/hooks/useRemotePicker'
 import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
 import { CollapsedCountBadge } from './CollapsedCountBadge'
+import { LinkedIssueBadge } from './LinkedIssueBadge'
 import { WorktreeContextMenu } from './WorktreeContextMenu'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
@@ -1072,9 +1073,16 @@ export function WorktreeItem({
                           >
                             {card.session.name || 'Untitled'}
                           </span>
+                          {/* Issue the workspace was created from. Dropped on a
+                              narrow sidebar, where the indented row has no room. */}
+                          {!isNarrowSidebar && (
+                            <LinkedIssueBadge
+                              issueNumber={worktree.issue_number}
+                            />
+                          )}
                           {card.label && (
                             <span
-                              className="ml-auto shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+                              className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
                               style={{
                                 backgroundColor: card.label.color,
                                 color: getLabelTextColor(card.label.color),
