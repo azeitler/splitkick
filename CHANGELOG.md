@@ -7,6 +7,23 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Files sidebar: a context menu on file and folder rows.** A row could only
+  be left-clicked into Jean's internal viewer. A right-click now gives Open,
+  Open in your editor, Open in Default App, Reveal in Finder, Open in Terminal
+  (folders only), Add to Chat, Copy Path and Copy Relative Path.
+  - "Reveal in Finder" selects the target inside its parent folder. Windows
+    shows it in Explorer. Linux opens the parent folder, because it has no
+    portable flag to select a file.
+  - "Open in Default App" hands the file to the application the operating
+    system has registered for it, so images and PDFs no longer open in a code
+    editor.
+  - "Add to Chat" puts the row into the composer as an `@mention` and attaches
+    the file, the same as the `@` popover does.
+  - Items that need a host shell are hidden in web access. Open, Add to Chat
+    and the two copy items stay available.
+
 ### Fixed
 
 - **Sidebar: "Completed" and "Cancelled" session statuses now change the row.**
