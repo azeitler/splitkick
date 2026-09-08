@@ -41,6 +41,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **JeanZ keeps its own UI state, so stable Jean can no longer erase it.** JeanZ
+  ships with the stable bundle identifier on purpose, so both builds read and
+  write one app-data directory. They do not share a `UIState` schema: a build
+  that does not know a field drops that field when it saves, which silently
+  deleted the newer build's state. Workspace expansion, added in JeanZ first,
+  disappeared on every restart for anyone who also ran stable Jean.
+  - JeanZ now uses `ui-state_jeanz.json`; stable Jean keeps `ui-state.json`.
+  - On its first start JeanZ reads the shared file once, so the window layout,
+    drafts and expansion carry over. Every later save goes to the JeanZ file.
+  - The flavor is recognised from the build config and from the `.app` bundle
+    name, so both signals must miss before a JeanZ build is read as stable Jean.
+  - Projects, sessions, preferences and CLI logins are still shared, which is
+    the point of the shared identifier.
+
 - **Sidebar: "Completed" and "Cancelled" session statuses now change the row.**
   Setting a session to Completed had no visible effect, and Cancelled did not
   move the row out of the Review section. Three causes were corrected:

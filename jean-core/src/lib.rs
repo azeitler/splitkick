@@ -889,10 +889,28 @@ mod tests {
     use super::{
         default_global_system_prompt, default_model, migrate_smoke_test_preferences,
         parse_cli_args_from, resolve_headless_bind_host, resolve_headless_token_required,
-        resolve_http_server_bind_host, server_preferences_value, validate_headless_security,
-        AppPreferences,
+        resolve_http_server_bind_host, server_preferences_value, ui_state_file_name,
+        validate_headless_security, AppPreferences, UI_STATE_FILE, UI_STATE_FILE_JEANZ,
     };
     use serde_json::json;
+
+    #[test]
+    fn jeanz_keeps_its_own_ui_state_file() {
+        assert_eq!(ui_state_file_name(Some("JeanZ")), UI_STATE_FILE_JEANZ);
+    }
+
+    #[test]
+    fn every_other_build_uses_the_shared_ui_state_file() {
+        assert_eq!(ui_state_file_name(Some("Jean")), UI_STATE_FILE);
+        assert_eq!(ui_state_file_name(None), UI_STATE_FILE);
+        // A name we do not know must not get a file of its own.
+        assert_eq!(ui_state_file_name(Some("jeanz")), UI_STATE_FILE);
+    }
+
+    #[test]
+    fn the_two_ui_state_files_never_collide() {
+        assert_ne!(UI_STATE_FILE, UI_STATE_FILE_JEANZ);
+    }
 
     #[test]
     fn server_preferences_exclude_client_fields_and_redact_secrets() {
@@ -3621,6 +3639,29 @@ async fn delete_cli_profile(name: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Product name of the JeanZ build flavor, as set by
+/// `src-tauri/tauri.fork.conf.json`.
+pub const PRODUCT_NAME_JEANZ: &str = "JeanZ";
+
+/// UI state file name for stable Jean.
+const UI_STATE_FILE: &str = "ui-state.json";
+
+/// UI state file name for the JeanZ build flavor.
+const UI_STATE_FILE_JEANZ: &str = "ui-state_jeanz.json";
+
+/// Pick the UI state file for this build flavor.
+///
+/// JeanZ keeps the stable bundle identifier on purpose, so both builds share
+/// one app-data directory. They do not share a `UIState` schema: a build that
+/// does not know a field drops that field when it saves, which silently
+/// deletes the other build's state. One file per flavor keeps them apart.
+fn ui_state_file_name(product_name: Option<&str>) -> &'static str {
+    match product_name {
+        Some(PRODUCT_NAME_JEANZ) => UI_STATE_FILE_JEANZ,
+        _ => UI_STATE_FILE,
+    }
+}
+
 fn get_ui_state_path(app: &AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
         .path()
@@ -3631,19 +3672,30 @@ fn get_ui_state_path(app: &AppHandle) -> Result<PathBuf, String> {
     std::fs::create_dir_all(&app_data_dir)
         .map_err(|e| format!("Failed to create app data directory: {e}"))?;
 
-    Ok(app_data_dir.join("ui-state.json"))
+    Ok(app_data_dir.join(ui_state_file_name(app.product_name())))
 }
 
 async fn load_ui_state(app: AppHandle) -> Result<UIState, String> {
     log::trace!("Loading UI state from disk");
     let state_path = get_ui_state_path(&app)?;
 
-    if !state_path.exists() {
-        log::trace!("UI state file not found, using defaults");
-        return Ok(UIState::default());
-    }
+    // A flavor that has never saved inherits the shared file once, so the
+    // window layout and drafts carry over on its first start. Every later save
+    // goes to the flavor file.
+    let read_path = if state_path.exists() {
+        state_path
+    } else {
+        let shared = state_path.with_file_name(UI_STATE_FILE);
+        if shared.exists() {
+            log::info!("No flavor UI state yet, reading {shared:?} once");
+            shared
+        } else {
+            log::trace!("UI state file not found, using defaults");
+            return Ok(UIState::default());
+        }
+    };
 
-    let contents = std::fs::read_to_string(&state_path).map_err(|e| {
+    let contents = std::fs::read_to_string(&read_path).map_err(|e| {
         log::error!("Failed to read UI state file: {e}");
         format!("Failed to read UI state file: {e}")
     })?;

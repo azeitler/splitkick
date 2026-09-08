@@ -168,6 +168,41 @@ fn install_menu_events(app: &tauri::App) {
     });
 }
 
+/// Name of the `.app` bundle this executable runs from, e.g. `JeanZ`.
+///
+/// The bundle is what the user actually launches, so it is the second opinion
+/// when the embedded config and the shipped bundle disagree about the flavor.
+/// Only macOS builds live in a bundle; elsewhere there is no `.app` ancestor
+/// and the answer is `None`.
+fn bundle_name_from_exe(exe: &std::path::Path) -> Option<String> {
+    exe.ancestors()
+        .find(|path| path.extension().is_some_and(|ext| ext == "app"))
+        .and_then(|path| path.file_stem())
+        .and_then(|stem| stem.to_str())
+        .map(str::to_string)
+}
+
+fn bundle_name() -> Option<String> {
+    bundle_name_from_exe(&std::env::current_exe().ok()?)
+}
+
+/// Product name of this build, used to keep flavor state files apart.
+///
+/// A flavor is applied through a `-c` config overlay at build time (see
+/// `.github/workflows/preflight.yml`) and through the bundle it produces.
+/// Either signal alone is enough to name the flavor, so both must miss before
+/// a JeanZ build is treated as stable Jean.
+fn resolve_product_name(app: &tauri::App) -> Option<String> {
+    let config_name = app.config().product_name.clone();
+    if config_name.as_deref() == Some(jean_core::PRODUCT_NAME_JEANZ) {
+        return config_name;
+    }
+    if bundle_name().as_deref() == Some(jean_core::PRODUCT_NAME_JEANZ) {
+        return Some(jean_core::PRODUCT_NAME_JEANZ.to_string());
+    }
+    config_name
+}
+
 fn initialize_core(app: &mut tauri::App) -> Result<jean_core::RuntimeContext, String> {
     let app_data_dir = app
         .path()
@@ -177,7 +212,13 @@ fn initialize_core(app: &mut tauri::App) -> Result<jean_core::RuntimeContext, St
         .path()
         .resource_dir()
         .map_err(|error| error.to_string())?;
-    let core = jean_core::RuntimeContext::new(app_data_dir, resource_dir)?;
+    // Build flavors (see tauri.fork.conf.json) share the stable bundle
+    // identifier, so they share one app-data directory. Pass the product name
+    // through so a flavor can keep its own state files inside it.
+    let product_name = resolve_product_name(app);
+    log::info!("Starting as product {product_name:?}");
+    let core =
+        jean_core::RuntimeContext::new_with_product_name(app_data_dir, resource_dir, product_name)?;
     let event_app = app.handle().clone();
     core.set_event_sink(move |event, payload| {
         let payload: Value = serde_json::from_str(payload)
@@ -461,4 +502,35 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bundle_name_from_exe;
+    use std::path::Path;
+
+    #[test]
+    fn reads_the_flavor_name_from_the_bundle_path() {
+        assert_eq!(
+            bundle_name_from_exe(Path::new("/Applications/JeanZ.app/Contents/MacOS/jean")),
+            Some("JeanZ".to_string())
+        );
+    }
+
+    #[test]
+    fn reads_the_stable_name_from_the_bundle_path() {
+        assert_eq!(
+            bundle_name_from_exe(Path::new("/Applications/Jean.app/Contents/MacOS/jean")),
+            Some("Jean".to_string())
+        );
+    }
+
+    #[test]
+    fn an_unbundled_binary_has_no_name() {
+        // `tauri dev` runs the binary straight out of target/, with no bundle.
+        assert_eq!(
+            bundle_name_from_exe(Path::new("/repo/src-tauri/target/debug/jean")),
+            None
+        );
+    }
 }

@@ -18,6 +18,7 @@ pub struct RuntimeContext {
 struct RuntimeInner {
     app_data_dir: PathBuf,
     resource_dir: PathBuf,
+    product_name: Option<String>,
     state: RwLock<HashMap<TypeId, Arc<dyn Any + Send + Sync>>>,
     listeners: Mutex<HashMap<String, HashMap<u64, ListenerFn>>>,
     event_sink: RwLock<Option<EventSink>>,
@@ -26,18 +27,37 @@ struct RuntimeInner {
 
 impl RuntimeContext {
     pub fn new(app_data_dir: PathBuf, resource_dir: PathBuf) -> Result<Self, String> {
+        Self::new_with_product_name(app_data_dir, resource_dir, None)
+    }
+
+    /// `product_name` comes from the Tauri config, so a build flavor such as
+    /// JeanZ (see `src-tauri/tauri.fork.conf.json`) can be told apart from
+    /// stable Jean. Both keep the same bundle identifier on purpose, so they
+    /// also share one app-data directory; the name lets a flavor pick its own
+    /// state files inside that directory.
+    pub fn new_with_product_name(
+        app_data_dir: PathBuf,
+        resource_dir: PathBuf,
+        product_name: Option<String>,
+    ) -> Result<Self, String> {
         std::fs::create_dir_all(&app_data_dir)
             .map_err(|error| format!("Failed to create app data directory: {error}"))?;
         Ok(Self {
             inner: Arc::new(RuntimeInner {
                 app_data_dir,
                 resource_dir,
+                product_name,
                 state: RwLock::new(HashMap::new()),
                 listeners: Mutex::new(HashMap::new()),
                 event_sink: RwLock::new(None),
                 next_listener_id: AtomicU64::new(1),
             }),
         })
+    }
+
+    /// Product name of this build, when the host supplied one.
+    pub fn product_name(&self) -> Option<&str> {
+        self.inner.product_name.as_deref()
     }
 
     pub fn from_environment() -> Result<Self, String> {
