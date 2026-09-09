@@ -74,6 +74,21 @@ this fork's own and never restarts.
   - Every step is best effort. A failure leaves JeanZ with the empty state it
     would have had anyway and never stops it from starting.
 
+- **Pinned sessions get the same context menu as every other session row.** A
+  right-click on a pinned row offered one item, "Unpin from Project", while the
+  identical session under its workspace offered the full menu. Renaming or
+  archiving a pinned session meant finding it again somewhere else.
+  - The pinned row now carries the shared session menu: open, rename, status,
+    labels, pin/unpin, archive and delete.
+  - Rename works inline on the row, exactly as it does in the tree.
+  - Delete follows the removal preference, so it archives unless you have set
+    it to delete for real.
+  - Pinned rows come from several workspaces at once, so rename and removal
+    now take their target per call. Rows that all share one workspace keep the
+    simpler bound handlers.
+  - Pinned rows still stay out of the canvas keyboard navigation, which counts
+    workspace sections.
+
 - **Remote connections: a login proxy is named instead of retried forever.** A
   remote Jean server behind an SSO proxy such as Cloudflare Access, Authelia,
   Authentik, Google IAP or oauth2-proxy left the desktop app reconnecting every

@@ -1,10 +1,34 @@
-import { render, screen } from '@testing-library/react'
+import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { render } from '@/test/test-utils'
+import { useProjectsStore } from '@/store/projects-store'
+import { useChatStore } from '@/store/chat-store'
 import type { Session } from '@/types/chat'
 import { PinnedSessionsSection } from './PinnedSessionsSection'
 import type { SessionCardData } from './session-card-utils'
 import type { PinnedSessionRow } from './pinned-sessions'
+
+const renameMutate = vi.fn()
+const archiveMutate = vi.fn()
+const closeMutate = vi.fn()
+const removalBehavior = { current: 'archive' as 'archive' | 'delete' }
+
+vi.mock('@/services/chat', async importOriginal => ({
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  ...(await importOriginal<typeof import('@/services/chat')>()),
+  useRenameSession: () => ({ mutate: renameMutate }),
+  useArchiveSession: () => ({ mutate: archiveMutate }),
+  useCloseSession: () => ({ mutate: closeMutate }),
+}))
+
+vi.mock('@/services/preferences', async importOriginal => ({
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  ...(await importOriginal<typeof import('@/services/preferences')>()),
+  usePreferences: () => ({
+    data: { removal_behavior: removalBehavior.current },
+  }),
+}))
 
 function entry(
   sessionId: string,
@@ -41,14 +65,29 @@ function entry(
   return { row, card }
 }
 
+async function openRowMenu(name: string) {
+  const user = userEvent.setup()
+  await user.pointer({ keys: '[MouseRight]', target: screen.getByText(name) })
+  return user
+}
+
 describe('PinnedSessionsSection', () => {
+  beforeEach(() => {
+    renameMutate.mockClear()
+    archiveMutate.mockClear()
+    closeMutate.mockClear()
+    removalBehavior.current = 'archive'
+    useProjectsStore.setState({ projectCanvasSettings: {} })
+    useChatStore.setState({ sessionLabels: {} })
+  })
+
   it('renders nothing when no session is pinned', () => {
     const { container } = render(
       <PinnedSessionsSection
         rows={[]}
         variant="canvas"
+        projectId="p-1"
         onOpen={vi.fn()}
-        onUnpin={vi.fn()}
       />
     )
 
@@ -63,8 +102,8 @@ describe('PinnedSessionsSection', () => {
           entry('s-2', 'Review', 'feature-b'),
         ]}
         variant="canvas"
+        projectId="p-1"
         onOpen={vi.fn()}
-        onUnpin={vi.fn()}
       />
     )
 
@@ -84,8 +123,8 @@ describe('PinnedSessionsSection', () => {
       <PinnedSessionsSection
         rows={[entry('s-1', 'Investigation', 'feature-a')]}
         variant="sidebar"
+        projectId="p-1"
         onOpen={onOpen}
-        onUnpin={vi.fn()}
       />
     )
 
@@ -99,26 +138,102 @@ describe('PinnedSessionsSection', () => {
     })
   })
 
-  it('unpins from the row context menu', async () => {
-    const onUnpin = vi.fn()
-    const user = userEvent.setup()
+  // The pinned row and the session's row under its workspace are the same
+  // session, so they must offer the same actions.
+  describe('row context menu', () => {
+    function renderRow() {
+      render(
+        <PinnedSessionsSection
+          rows={[entry('s-1', 'Investigation', 'feature-a')]}
+          variant="canvas"
+          projectId="p-1"
+          onOpen={vi.fn()}
+        />
+      )
+    }
 
-    render(
-      <PinnedSessionsSection
-        rows={[entry('s-1', 'Investigation', 'feature-a')]}
-        variant="canvas"
-        onOpen={vi.fn()}
-        onUnpin={onUnpin}
-      />
-    )
+    it('offers the full shared session menu', async () => {
+      renderRow()
+      await openRowMenu('Investigation')
 
-    await user.pointer({
-      keys: '[MouseRight]',
-      target: screen.getByText('Investigation'),
+      for (const item of [
+        'Rename',
+        'Labels',
+        'Status',
+        'Mark as Paused',
+        'Archive Session',
+        'Copy Session ID',
+        'Delete Session',
+      ]) {
+        expect(await screen.findByText(item)).toBeInTheDocument()
+      }
     })
-    await user.click(await screen.findByText('Unpin from Project'))
 
-    expect(onUnpin).toHaveBeenCalledWith('s-1')
+    it('unpins through the store', async () => {
+      useProjectsStore.getState().pinSessionToProject('p-1', 's-1', 'wt-s-1')
+
+      renderRow()
+      const user = await openRowMenu('Investigation')
+      await user.click(await screen.findByText('Unpin from Project'))
+
+      expect(
+        useProjectsStore.getState().projectCanvasSettings['p-1']?.pinnedSessions
+      ).toEqual([])
+    })
+
+    // The row's own worktree — not some worktree bound once for the section.
+    // Rename starts on a short delay, so the input is awaited.
+    it('renames against the row worktree', async () => {
+      renderRow()
+      const user = await openRowMenu('Investigation')
+      await user.click(await screen.findByText('Rename'))
+
+      const input = await screen.findByDisplayValue('Investigation')
+      await user.clear(input)
+      await user.type(input, 'Renamed{Enter}')
+
+      expect(renameMutate).toHaveBeenCalledWith({
+        worktreeId: 'wt-s-1',
+        worktreePath: '/tmp/feature-a',
+        sessionId: 's-1',
+        newName: 'Renamed',
+      })
+    })
+
+    it('archives against the row worktree', async () => {
+      renderRow()
+      const user = await openRowMenu('Investigation')
+      await user.click(await screen.findByText('Archive Session'))
+
+      expect(archiveMutate).toHaveBeenCalledWith({
+        worktreeId: 'wt-s-1',
+        worktreePath: '/tmp/feature-a',
+        sessionId: 's-1',
+      })
+    })
+
+    it('deletes for real when the removal preference says so', async () => {
+      removalBehavior.current = 'delete'
+      renderRow()
+      const user = await openRowMenu('Investigation')
+      await user.click(await screen.findByText('Delete Session'))
+
+      expect(closeMutate).toHaveBeenCalledWith({
+        worktreeId: 'wt-s-1',
+        worktreePath: '/tmp/feature-a',
+        sessionId: 's-1',
+      })
+      expect(archiveMutate).not.toHaveBeenCalled()
+    })
+
+    it('archives instead of deleting by default', async () => {
+      renderRow()
+      const user = await openRowMenu('Investigation')
+      await user.click(await screen.findByText('Delete Session'))
+
+      expect(closeMutate).not.toHaveBeenCalled()
+      expect(archiveMutate).toHaveBeenCalledTimes(1)
+    })
   })
 
   // The sidebar parent used to be an uppercase caption, which broke the rhythm
@@ -132,10 +247,10 @@ describe('PinnedSessionsSection', () => {
             entry('s-2', 'Review', 'feature-b'),
           ]}
           variant="sidebar"
+          projectId="p-1"
           expanded={expanded}
           onToggleExpanded={onToggleExpanded}
           onOpen={vi.fn()}
-          onUnpin={vi.fn()}
         />
       )
       return { onToggleExpanded }
@@ -181,8 +296,8 @@ describe('PinnedSessionsSection', () => {
         <PinnedSessionsSection
           rows={[entry('s-1', 'Investigation', 'feature-a')]}
           variant="canvas"
+          projectId="p-1"
           onOpen={vi.fn()}
-          onUnpin={vi.fn()}
         />
       )
 
@@ -200,8 +315,8 @@ describe('PinnedSessionsSection', () => {
           }),
         ]}
         variant="canvas"
+        projectId="p-1"
         onOpen={vi.fn()}
-        onUnpin={vi.fn()}
       />
     )
 

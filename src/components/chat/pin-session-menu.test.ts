@@ -11,6 +11,7 @@ function read(path: string): string {
 const menuConsumers = [
   'src/components/chat/SessionChatModal.tsx',
   'src/components/projects/WorktreeItem.tsx',
+  'src/components/chat/PinnedSessionsSection.tsx',
 ]
 
 // Both surfaces that render the pinned list.
@@ -51,9 +52,12 @@ describe('pin session to project', () => {
     }
   })
 
-  it('offers unpin from the pinned row itself', () => {
+  // The pinned row is the same session as its row under the workspace, so it
+  // must carry the same menu rather than a hand-rolled subset.
+  it('gives the pinned row the shared session menu', () => {
     const source = read('src/components/chat/PinnedSessionsSection.tsx')
 
-    expect(source).toContain('Unpin from Project')
+    expect(source).toContain('<SessionContextMenuItems')
+    expect(source).not.toContain('<ContextMenuContent')
   })
 })

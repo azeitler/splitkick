@@ -383,13 +383,6 @@ export function WorktreeList({
     [projectId, onSessionSelected]
   )
 
-  const handleUnpinSession = useCallback(
-    (sessionId: string) => {
-      useProjectsStore.getState().unpinSessionFromProject(projectId, sessionId)
-    },
-    [projectId]
-  )
-
   // The pinned row keeps its own expansion, persisted like a workspace row's.
   const isPinnedExpanded = useProjectsStore(state =>
     state.expandedPinnedProjectIds.has(projectId)
@@ -663,10 +656,10 @@ export function WorktreeList({
       <PinnedSessionsSection
         rows={pinnedRows}
         variant="sidebar"
+        projectId={projectId}
         expanded={isPinnedExpanded}
         onToggleExpanded={handleTogglePinned}
         onOpen={handleOpenPinnedSession}
-        onUnpin={handleUnpinSession}
       />
       {isFiltering && visibleWorktrees.length === 0 && (
         <div className="px-3 py-1 text-xs text-muted-foreground/70">

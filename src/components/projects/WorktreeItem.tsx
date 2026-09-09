@@ -45,13 +45,14 @@ import { WorktreeContextMenu } from './WorktreeContextMenu'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { useSessionArchive } from '@/components/chat/hooks/useSessionArchive'
+import { useSessionRename } from '@/components/chat/hooks/useSessionRename'
 import { middleClickClose } from '@/lib/middle-click'
 import {
   decideWorktreeMiddleClose,
   decideSessionMiddleClose,
 } from './worktree-close-decision'
 import { useRenameWorktree } from '@/services/projects'
-import { useSessions, useRenameSession } from '@/services/chat'
+import { useSessions } from '@/services/chat'
 import { isAskUserQuestion, isPlanToolCall, type Session } from '@/types/chat'
 import {
   computeSessionCardData,
@@ -468,54 +469,25 @@ export function WorktreeItem({
   )
 
   // --- Session context-menu actions (reused from the canvas tab-bar menu) ---
-  const renameSession = useRenameSession()
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
-    null
-  )
-  const [renameValue, setRenameValue] = useState('')
-  const renameInputRef = useCallback((node: HTMLInputElement | null) => {
-    if (node) {
-      node.focus()
-      node.select()
-    }
-  }, [])
-  // Delay rename start so the input renders after the context menu fully closes
-  // (Radix restores focus to the trigger on close, which would steal focus).
+  const {
+    renamingSessionId,
+    renameValue,
+    setRenameValue,
+    renameInputRef,
+    startRename,
+    submitRename,
+    handleRenameKeyDown,
+  } = useSessionRename()
   const handleStartRename = useCallback(
     (sessionId: string, currentName: string) => {
-      setRenameValue(currentName)
-      setTimeout(() => setRenamingSessionId(sessionId), 200)
+      startRename({
+        sessionId,
+        currentName,
+        worktreeId: worktree.id,
+        worktreePath: worktree.path,
+      })
     },
-    []
-  )
-  const handleRenameSubmit = useCallback(
-    (sessionId: string) => {
-      const newName = renameValue.trim()
-      const current = (sessionsData?.sessions ?? []).find(
-        s => s.id === sessionId
-      )?.name
-      if (newName && newName !== current) {
-        renameSession.mutate({
-          worktreeId: worktree.id,
-          worktreePath: worktree.path,
-          sessionId,
-          newName,
-        })
-      }
-      setRenamingSessionId(null)
-    },
-    [renameValue, worktree.id, worktree.path, renameSession, sessionsData]
-  )
-  const handleRenameKeyDown = useCallback(
-    (e: React.KeyboardEvent, sessionId: string) => {
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        handleRenameSubmit(sessionId)
-      } else if (e.key === 'Escape') {
-        setRenamingSessionId(null)
-      }
-    },
-    [handleRenameSubmit]
+    [startRename, worktree.id, worktree.path]
   )
   const [labelModalOpen, setLabelModalOpen] = useState(false)
   const [labelTargetSessionId, setLabelTargetSessionId] = useState<
@@ -1126,9 +1098,9 @@ export function WorktreeItem({
                           type="text"
                           value={renameValue}
                           onChange={e => setRenameValue(e.target.value)}
-                          onBlur={() => handleRenameSubmit(card.session.id)}
+                          onBlur={() => submitRename(card.session.name)}
                           onKeyDown={e =>
-                            handleRenameKeyDown(e, card.session.id)
+                            handleRenameKeyDown(e, card.session.name)
                           }
                           onClick={e => e.stopPropagation()}
                           className="w-full min-w-0 bg-transparent text-xs outline-none"
