@@ -1079,7 +1079,7 @@ export function WorktreeItem({
                     card.session
                   )
                   const rowClassName = cn(
-                    'flex w-full items-center gap-1.5 pl-5 py-1 cursor-pointer text-sm truncate text-left',
+                    'flex w-full items-center gap-1.5 pl-5 pr-2 py-1 cursor-pointer text-sm truncate text-left',
                     activeSessionId === card.session.id && isSelected
                       ? 'text-foreground bg-primary/10 font-medium'
                       : activeSessionId === card.session.id

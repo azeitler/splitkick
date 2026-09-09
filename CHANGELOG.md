@@ -41,6 +41,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Sidebar: the scrollbar no longer covers the session timestamp.** A session
+  row carried left padding only, so its "time ago" text ended flush with the
+  sidebar edge and the scrollbar thumb was drawn on top of it once the list
+  grew long enough to scroll.
+  - The session row now keeps the same `pr-2` as the workspace row above it,
+    so both end at the same place.
+  - The tree's scroll container reserves a lane for the scrollbar
+    (`scrollbar-gutter: stable`), so nothing is drawn over the row and the
+    tree no longer shifts sideways the moment the list starts to overflow.
+
 - **Project canvas: labels you created but assigned to nobody now survive a
   restart.** The canvas keeps a per-project label registry so a label stays in
   the picker after you take it off the last worktree. The frontend wrote that

@@ -298,3 +298,24 @@ describe('WorktreeItem linked issue badge', () => {
     expect(screen.queryByTestId('linked-issue-badge')).toBeNull()
   })
 })
+
+// Regression: the session row carried no right padding at all, so the "time
+// ago" text sat flush against the sidebar edge and the scrollbar thumb was
+// drawn over it. The row now keeps the same `pr-2` as the workspace row.
+describe('WorktreeItem session row right padding', () => {
+  beforeEach(() => {
+    mocks.sessions = [session('a', 'Auth Refactor')]
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(['wt-1']),
+    })
+  })
+
+  it('leaves room after the timestamp for the scrollbar', () => {
+    renderItem({})
+
+    const row = screen.getByText('Auth Refactor').closest('[class*="pl-5"]')
+    expect(row).not.toBeNull()
+    expect((row as HTMLElement).className).toContain('pr-2')
+  })
+})

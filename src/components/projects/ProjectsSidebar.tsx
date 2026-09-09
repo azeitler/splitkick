@@ -51,7 +51,10 @@ export function ProjectsSidebar() {
   return (
     <div className="flex h-full flex-col">
       {/* Content */}
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+      {/* `scrollbar-gutter: stable` keeps a lane for the scrollbar, so the
+          thumb never draws over the session timestamps at the right edge and
+          the tree does not shift sideways when the list starts to overflow. */}
+      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
         {isLoading ? (
           <div className="flex items-center justify-center p-4">
             <span className="text-sm text-muted-foreground">Loading...</span>
