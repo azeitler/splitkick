@@ -36,6 +36,7 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+mod activity;
 mod agent_browser;
 mod antigravity_cli;
 mod auto_fix;
@@ -3150,6 +3151,10 @@ pub struct ProjectCanvasSettings {
     pub worktree_sort_mode: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pinned_labels: Vec<crate::chat::types::LabelData>,
+    /// Every label the project knows, including labels no worktree carries.
+    /// The label picker needs it, so a label survives being unassigned.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<crate::chat::types::LabelData>,
     /// Sessions pinned to the project root, in pin order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pinned_sessions: Vec<PinnedSessionEntry>,
@@ -4703,6 +4708,7 @@ pub async fn run_server() -> Result<(), String> {
 #[cfg(test)]
 mod project_canvas_settings_tests {
     use super::{PinnedSessionEntry, ProjectCanvasSettings, UIState};
+    use crate::chat::types::LabelData;
 
     #[test]
     fn legacy_settings_without_pinned_sessions_deserialize_to_an_empty_list() {
@@ -4718,6 +4724,7 @@ mod project_canvas_settings_tests {
         let settings = ProjectCanvasSettings {
             worktree_sort_mode: None,
             pinned_labels: Vec::new(),
+            labels: Vec::new(),
             pinned_sessions: vec![PinnedSessionEntry {
                 session_id: "session-a".to_string(),
                 worktree_id: "worktree-1".to_string(),
@@ -4737,6 +4744,55 @@ mod project_canvas_settings_tests {
         let json = serde_json::to_string(&ProjectCanvasSettings::default()).unwrap();
 
         assert!(!json.contains("pinned_sessions"));
+    }
+
+    #[test]
+    fn the_label_registry_survives_a_round_trip() {
+        let settings = ProjectCanvasSettings {
+            worktree_sort_mode: None,
+            pinned_labels: Vec::new(),
+            labels: vec![LabelData {
+                name: "Needs testing".to_string(),
+                color: "#eab308".to_string(),
+                pinned: false,
+            }],
+            pinned_sessions: Vec::new(),
+        };
+
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains(r#""labels":[{"name":"Needs testing""#));
+
+        let parsed: ProjectCanvasSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.labels.len(), 1);
+        assert_eq!(parsed.labels[0].name, "Needs testing");
+        assert_eq!(parsed.labels[0].color, "#eab308");
+    }
+
+    #[test]
+    fn an_empty_label_registry_is_skipped_when_serializing() {
+        let json = serde_json::to_string(&ProjectCanvasSettings::default()).unwrap();
+
+        assert!(!json.contains(r#""labels""#));
+    }
+
+    #[test]
+    fn ui_state_carries_the_label_registry_per_project() {
+        let json = r##"{
+            "project_canvas_settings": {
+                "project-1": {
+                    "labels": [{"name":"Bug","color":"#ef4444"}]
+                }
+            }
+        }"##;
+
+        let ui_state: UIState = serde_json::from_str(json).unwrap();
+        let settings = ui_state
+            .project_canvas_settings
+            .get("project-1")
+            .expect("project settings");
+
+        assert_eq!(settings.labels.len(), 1);
+        assert_eq!(settings.labels[0].name, "Bug");
     }
 
     #[test]

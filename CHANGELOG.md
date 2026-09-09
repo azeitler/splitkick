@@ -41,6 +41,21 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Project canvas: labels you created but assigned to nobody now survive a
+  restart.** The canvas keeps a per-project label registry so a label stays in
+  the picker after you take it off the last worktree. The frontend wrote that
+  registry into `project_canvas_settings.<project>.labels`, but the Rust
+  `ProjectCanvasSettings` struct had no such field, and serde drops unknown
+  fields — so every save discarded it.
+  - A label you created and then unassigned disappeared from the picker on the
+    next start, and a colour change was lost with it. The registry rebuilt
+    itself from the labels still on worktrees, which made the loss look like
+    the label had never been created.
+  - Rust now carries `labels` next to `pinned_labels`, with the same
+    `#[serde(default)]` and empty-list skip, so old state files still load and
+    a project without labels writes no extra key.
+  - Pinned labels were never affected; they always had a Rust field.
+
 - **JeanZ keeps its own UI state, so stable Jean can no longer erase it.** JeanZ
   ships with the stable bundle identifier on purpose, so both builds read and
   write one app-data directory. They do not share a `UIState` schema: a build
