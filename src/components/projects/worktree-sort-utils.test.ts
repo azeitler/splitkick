@@ -144,27 +144,36 @@ describe('worktree-sort-utils', () => {
 
 describe('isStaleActivity', () => {
   const now = Date.UTC(2026, 8, 1) // fixed clock so the tests never drift
-  const day = 24 * 60 * 60 * 1000
+  const hour = 60 * 60 * 1000
+  const day = 24 * hour
 
-  it('flags a millisecond timestamp older than a week', () => {
-    expect(isStaleActivity(now - 8 * day, now)).toBe(true)
+  it('flags a millisecond timestamp older than two days', () => {
+    expect(isStaleActivity(now - 3 * day, now)).toBe(true)
   })
 
-  it('does not flag a millisecond timestamp inside the week', () => {
-    expect(isStaleActivity(now - 6 * day, now)).toBe(false)
+  it('does not flag a millisecond timestamp inside the two days', () => {
+    expect(isStaleActivity(now - hour, now)).toBe(false)
+    expect(isStaleActivity(now - 47 * hour, now)).toBe(false)
   })
 
   it('normalizes second-precision timestamps before comparing', () => {
-    const eightDaysAgoInSeconds = Math.floor((now - 8 * day) / 1000)
-    expect(isStaleActivity(eightDaysAgoInSeconds, now)).toBe(true)
+    const threeDaysAgoInSeconds = Math.floor((now - 3 * day) / 1000)
+    expect(isStaleActivity(threeDaysAgoInSeconds, now)).toBe(true)
 
     const oneDayAgoInSeconds = Math.floor((now - day) / 1000)
     expect(isStaleActivity(oneDayAgoInSeconds, now)).toBe(false)
   })
 
-  it('treats exactly one week as not stale', () => {
+  it('treats exactly 48 hours as not stale', () => {
     expect(isStaleActivity(now - STALE_ACTIVITY_MS, now)).toBe(false)
     expect(isStaleActivity(now - STALE_ACTIVITY_MS - 1, now)).toBe(true)
+  })
+
+  // The fade and the age label must agree: formatRelativeTime floors to whole
+  // days, so a row can never read "1d ago" while faded, nor "2d ago" while not.
+  it('turns over where the day label does', () => {
+    expect(isStaleActivity(now - (2 * day - 1), now)).toBe(false)
+    expect(isStaleActivity(now - (2 * day + 1), now)).toBe(true)
   })
 
   it('does not flag timestamps in the future', () => {
@@ -205,12 +214,12 @@ describe('shouldFadeRow', () => {
   const now = Date.UTC(2026, 8, 1)
   const day = 24 * 60 * 60 * 1000
 
-  it('fades a row idle for longer than a week', () => {
-    expect(shouldFadeRow(now - 8 * day, false, now)).toBe(true)
+  it('fades a row idle for longer than two days', () => {
+    expect(shouldFadeRow(now - 3 * day, false, now)).toBe(true)
   })
 
   it('leaves a recently used row alone', () => {
-    expect(shouldFadeRow(now - 2 * day, false, now)).toBe(false)
+    expect(shouldFadeRow(now - day, false, now)).toBe(false)
   })
 
   it('never fades the row you are on, however old', () => {
@@ -222,9 +231,9 @@ describe('shouldFadeRow', () => {
   // `waiting` forever and stayed bright next to equally dead idle rows. Age is
   // now the only input, so every row of the same age fades alike.
   it('depends on age alone, so equally old rows agree', () => {
-    const eightDaysAgo = now - 8 * day
-    expect(shouldFadeRow(eightDaysAgo, false, now)).toBe(true)
-    expect(shouldFadeRow(eightDaysAgo - day, false, now)).toBe(true)
+    const threeDaysAgo = now - 3 * day
+    expect(shouldFadeRow(threeDaysAgo, false, now)).toBe(true)
+    expect(shouldFadeRow(threeDaysAgo - day, false, now)).toBe(true)
   })
 
   it('cannot fade live work, whose activity timestamp is the running turn', () => {

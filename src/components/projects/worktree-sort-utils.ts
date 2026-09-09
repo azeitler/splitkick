@@ -22,8 +22,14 @@ export function getWorktreeLastActivity(
   )
 }
 
-/** Rows with no interaction for this long render faded in the project tree. */
-export const STALE_ACTIVITY_MS = 7 * 24 * 60 * 60 * 1000
+/**
+ * Rows with no interaction for this long render faded in the project tree.
+ *
+ * Two days, which lines up with the age label: `formatRelativeTime` floors to
+ * whole days, so everything reading `2d ago` or older is faded and everything
+ * reading `1d ago` or newer is not.
+ */
+export const STALE_ACTIVITY_MS = 48 * 60 * 60 * 1000
 
 /**
  * True when the last interaction is older than {@link STALE_ACTIVITY_MS}.

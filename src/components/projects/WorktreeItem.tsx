@@ -410,7 +410,7 @@ export function WorktreeItem({
     return getWorktreeLastActivity(sessions, worktree.created_at)
   }, [sessionsData?.sessions, worktree.created_at])
 
-  // Workspaces with no interaction for a week render faded so active work is
+  // Workspaces with no interaction for two days render faded so active work is
   // easier to find.
   const isFaded = shouldFadeRow(lastActivityAt, isSelected)
 

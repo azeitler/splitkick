@@ -223,7 +223,7 @@ describe('WorktreeItem stale fade', () => {
     })
   })
 
-  it('fades a session untouched for over a week and leaves a recent one alone', () => {
+  it('fades a session untouched for over two days and leaves a recent one alone', () => {
     mocks.sessions = [
       session('old', 'Stale work', { last_message_at: Date.now() - 30 * DAY }),
       session('new', 'Fresh work', { last_message_at: Date.now() - DAY }),
@@ -232,6 +232,19 @@ describe('WorktreeItem stale fade', () => {
 
     expect(rowFor('Stale work').className).toContain('opacity-50')
     expect(rowFor('Fresh work').className).not.toContain('opacity-50')
+  })
+
+  // The reported case: a few days old, finished, and still at full weight
+  // under the old seven-day threshold.
+  it('fades a session a few days old', () => {
+    mocks.sessions = [
+      session('recent', 'Three days old', {
+        last_message_at: Date.now() - 3 * DAY,
+      }),
+    ]
+    renderItem({})
+
+    expect(rowFor('Three days old').className).toContain('opacity-50')
   })
 
   // Regression: the fade was gated on session status as well as age. Status is
