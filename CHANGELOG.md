@@ -39,6 +39,24 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - Items that need a host shell are hidden in web access. Open, Add to Chat
     and the two copy items stay available.
 
+### Changed
+
+- **Sidebar: the "Pinned" block is now a tree row like any other.** Its parent
+  was a small uppercase caption, so it broke the alignment of the workspace
+  rows directly below it, and its sessions were indented differently from
+  ordinary session rows.
+  - The parent takes the workspace row's geometry — the same height, padding,
+    indent (including the narrow-sidebar indent) and full-width hover.
+  - It expands and collapses with the same chevron as a workspace row, and
+    that expansion is remembered across restarts, per project.
+  - While collapsed it carries the same count badge a collapsed workspace row
+    carries.
+  - The pinned sessions now match session rows exactly, and the bespoke
+    separator line under the block is gone — spacing comes from being a row.
+  - The row is a button, so Enter and Space open and close it. It still stays
+    out of the canvas keyboard index, which counts workspace sections.
+  - The canvas variant of the block is untouched.
+
 ### Fixed
 
 - **Sidebar: the scrollbar no longer covers the session timestamp.** A session

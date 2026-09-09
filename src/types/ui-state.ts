@@ -73,6 +73,8 @@ export interface UIState {
   expanded_folder_ids: string[]
   /** Worktree IDs whose session lists are expanded in the sidebar */
   expanded_worktree_ids?: string[]
+  /** Project IDs whose pinned-sessions row is expanded in the sidebar */
+  expanded_pinned_project_ids?: string[]
   /** Left sidebar width in pixels, defaults to 250 */
   left_sidebar_size?: number
   /** Left sidebar visibility, defaults to false */
@@ -174,6 +176,7 @@ export const defaultUIState: UIState = {
   expanded_project_ids: [],
   expanded_folder_ids: [],
   expanded_worktree_ids: [],
+  expanded_pinned_project_ids: [],
   left_sidebar_size: 250,
   left_sidebar_visible: false,
   file_browser_size: 280,

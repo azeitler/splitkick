@@ -1,10 +1,12 @@
-import { Pin, PinOff } from 'lucide-react'
+import { ChevronDown, Pin, PinOff } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
+import { CollapsedCountBadge } from '@/components/projects/CollapsedCountBadge'
+import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { cn } from '@/lib/utils'
@@ -21,6 +23,10 @@ interface PinnedSessionsSectionProps {
   rows: PinnedSessionEntryRow[]
   /** `canvas` sits above the worktree sections; `sidebar` sits under the project row. */
   variant: 'canvas' | 'sidebar'
+  /** Sidebar only: whether the pinned row shows its sessions. Canvas is always open. */
+  expanded?: boolean
+  /** Sidebar only: toggles `expanded`. Without it the row keeps no disclosure. */
+  onToggleExpanded?: () => void
   onOpen: (row: PinnedSessionRow) => void
   onUnpin: (sessionId: string) => void
 }
@@ -29,85 +35,127 @@ interface PinnedSessionsSectionProps {
  * Sessions the user pinned to the project root, shown on the project canvas and
  * in the sidebar tree. Rows are mouse and context-menu only — they deliberately
  * stay out of the canvas keyboard navigation, which indexes worktree sections.
+ * The sidebar parent is a real tree row, so it is a native button and answers
+ * Enter and Space; that is browser focus, not the canvas index.
  */
 export function PinnedSessionsSection({
   rows,
   variant,
+  expanded = true,
+  onToggleExpanded,
   onOpen,
   onUnpin,
 }: PinnedSessionsSectionProps) {
+  const sidebarWidth = useSidebarWidth()
+
   if (rows.length === 0) return null
 
   const isSidebar = variant === 'sidebar'
+  // Matches WorktreeItem, so the two rows indent alike as the sidebar narrows.
+  const isNarrowSidebar = sidebarWidth < 200
+  const isOpen = !isSidebar || expanded
+
+  const parent = isSidebar ? (
+    // A workspace-style row, so the pinned block reads as a sibling of the
+    // workspaces rather than a caption pasted above them.
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={onToggleExpanded}
+      className={cn(
+        'group relative flex w-full cursor-pointer items-center gap-1.5 overflow-hidden py-1.5 pr-2 text-left text-muted-foreground transition-colors duration-150 hover:bg-accent/50 hover:text-foreground',
+        isNarrowSidebar ? 'pl-4' : 'pl-7'
+      )}
+    >
+      <Pin className="size-2.5 shrink-0" />
+      <span className="flex flex-1 items-center gap-0.5 truncate text-sm">
+        <span className="truncate">Pinned</span>
+        {!expanded && (
+          <CollapsedCountBadge count={rows.length} noun="session" />
+        )}
+        <span className="flex size-4 shrink-0 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-50">
+          <ChevronDown
+            className={cn(
+              'size-3 transition-transform',
+              expanded && 'rotate-180'
+            )}
+          />
+        </span>
+      </span>
+    </button>
+  ) : (
+    <div className="flex items-center gap-1.5 px-1 pb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
+      <Pin className="size-3 shrink-0" />
+      <span>Pinned</span>
+      <span className="text-muted-foreground/60">{rows.length}</span>
+    </div>
+  )
 
   return (
     <div
-      // The sidebar host already supplies the tree indent and left border, so
-      // this variant only adds the separator under the block.
-      className={cn(isSidebar ? 'mb-1 border-b border-border/40 pb-1' : 'mb-3')}
+      // The sidebar host supplies the tree indent and left border. Spacing comes
+      // from being an ordinary row, so this variant adds no separator.
+      className={cn(!isSidebar && 'mb-3')}
       data-testid="pinned-sessions-section"
     >
-      <div
-        className={cn(
-          'flex items-center gap-1.5 uppercase tracking-wide text-muted-foreground',
-          isSidebar ? 'pl-3 py-0.5 text-[10px]' : 'px-1 pb-1 text-[11px]'
-        )}
-      >
-        <Pin className={isSidebar ? 'size-2.5 shrink-0' : 'size-3 shrink-0'} />
-        <span>Pinned</span>
-        <span className="text-muted-foreground/60">{rows.length}</span>
-      </div>
+      {parent}
 
-      {rows.map(({ row, card }) => {
-        const config = statusConfig[card.status]
-        return (
-          <ContextMenu key={row.sessionId}>
-            <ContextMenuTrigger asChild>
-              <button
-                type="button"
-                onClick={() => onOpen(row)}
-                onContextMenuCapture={closeOpenSessionContextMenus}
-                title={`${row.session.name} — ${row.worktreeName}`}
-                className={cn(
-                  'flex w-full items-center gap-1.5 truncate text-left text-muted-foreground hover:text-foreground hover:bg-accent/50',
-                  isSidebar
-                    ? 'pl-5 py-1 text-sm'
-                    : 'rounded px-2 py-1.5 text-sm'
-                )}
-              >
-                <StatusIndicator
-                  status={config.indicatorStatus}
-                  variant={config.indicatorVariant}
-                  shape={config.indicatorShape}
-                  label={config.label}
-                  className="h-1.5 w-1.5 shrink-0"
-                />
-                <span className="truncate">{row.session.name}</span>
-                <span className="shrink-0 truncate text-[10px] text-muted-foreground/70">
-                  {row.worktreeName}
-                </span>
-                {card.label && (
+      {isOpen &&
+        rows.map(({ row, card }) => {
+          const config = statusConfig[card.status]
+          return (
+            <ContextMenu key={row.sessionId}>
+              <ContextMenuTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => onOpen(row)}
+                  onContextMenuCapture={closeOpenSessionContextMenus}
+                  title={`${row.session.name} — ${row.worktreeName}`}
+                  className={cn(
+                    'flex w-full items-center gap-1.5 truncate text-left text-sm text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+                    isSidebar ? 'py-1 pl-5 pr-2' : 'rounded px-2 py-1.5'
+                  )}
+                >
+                  <StatusIndicator
+                    status={config.indicatorStatus}
+                    variant={config.indicatorVariant}
+                    shape={config.indicatorShape}
+                    label={config.label}
+                    className="h-1.5 w-1.5 shrink-0"
+                  />
                   <span
-                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-                    style={{
-                      backgroundColor: card.label.color,
-                      color: getLabelTextColor(card.label.color),
-                    }}
+                    className={cn(
+                      'truncate',
+                      isSidebar && 'min-w-0 flex-1 text-xs'
+                    )}
                   >
-                    {card.label.name}
+                    {row.session.name}
                   </span>
-                )}
-              </button>
-            </ContextMenuTrigger>
-            <ContextMenuContent className="w-56">
-              <ContextMenuItem onSelect={() => onUnpin(row.sessionId)}>
-                <PinOff className="mr-2 h-4 w-4" />
-                Unpin from Project
-              </ContextMenuItem>
-            </ContextMenuContent>
-          </ContextMenu>
-        )
-      })}
+                  <span className="shrink-0 truncate text-[10px] text-muted-foreground/70">
+                    {row.worktreeName}
+                  </span>
+                  {card.label && (
+                    <span
+                      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+                      style={{
+                        backgroundColor: card.label.color,
+                        color: getLabelTextColor(card.label.color),
+                      }}
+                    >
+                      {card.label.name}
+                    </span>
+                  )}
+                </button>
+              </ContextMenuTrigger>
+              <ContextMenuContent className="w-56">
+                <ContextMenuItem onSelect={() => onUnpin(row.sessionId)}>
+                  <PinOff className="mr-2 h-4 w-4" />
+                  Unpin from Project
+                </ContextMenuItem>
+              </ContextMenuContent>
+            </ContextMenu>
+          )
+        })}
     </div>
   )
 }

@@ -139,6 +139,7 @@ export function useUIStatePersistence() {
       expandedProjectIds,
       expandedFolderIds,
       expandedWorktreeIds,
+      expandedPinnedProjectIds,
       selectedProjectId,
       projectAccessTimestamps,
       dashboardWorktreeCollapseOverrides,
@@ -203,6 +204,7 @@ export function useUIStatePersistence() {
       expanded_project_ids: Array.from(expandedProjectIds),
       expanded_folder_ids: Array.from(expandedFolderIds),
       expanded_worktree_ids: Array.from(expandedWorktreeIds),
+      expanded_pinned_project_ids: Array.from(expandedPinnedProjectIds),
       left_sidebar_size: leftSidebarSize,
       left_sidebar_visible: leftSidebarVisible,
       file_browser_size: fileBrowserSize,
@@ -341,6 +343,14 @@ export function useUIStatePersistence() {
       logger.debug('Restoring expanded worktrees', { expandedWorktreeIds })
       useProjectsStore.setState({
         expandedWorktreeIds: new Set(expandedWorktreeIds),
+      })
+    }
+
+    // Restore the expanded pinned-sessions rows, keyed by project id.
+    const expandedPinnedProjectIds = uiState.expanded_pinned_project_ids ?? []
+    if (expandedPinnedProjectIds.length > 0) {
+      useProjectsStore.setState({
+        expandedPinnedProjectIds: new Set(expandedPinnedProjectIds),
       })
     }
 
@@ -1073,6 +1083,8 @@ export function useUIStatePersistence() {
     let prevExpandedFolderIds = useProjectsStore.getState().expandedFolderIds
     let prevExpandedWorktreeIds =
       useProjectsStore.getState().expandedWorktreeIds
+    let prevExpandedPinnedProjectIds =
+      useProjectsStore.getState().expandedPinnedProjectIds
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
     let prevProjectAccessTimestamps =
       useProjectsStore.getState().projectAccessTimestamps
@@ -1133,6 +1145,8 @@ export function useUIStatePersistence() {
       const folderIdsChanged = state.expandedFolderIds !== prevExpandedFolderIds
       const worktreeIdsChanged =
         state.expandedWorktreeIds !== prevExpandedWorktreeIds
+      const pinnedProjectIdsChanged =
+        state.expandedPinnedProjectIds !== prevExpandedPinnedProjectIds
       const selectedProjectChanged =
         state.selectedProjectId !== prevSelectedProjectId
       const accessTimestampsChanged =
@@ -1150,6 +1164,7 @@ export function useUIStatePersistence() {
         projectIdsChanged ||
         folderIdsChanged ||
         worktreeIdsChanged ||
+        pinnedProjectIdsChanged ||
         selectedProjectChanged ||
         accessTimestampsChanged ||
         collapseOverridesChanged ||
@@ -1159,6 +1174,7 @@ export function useUIStatePersistence() {
         prevExpandedProjectIds = state.expandedProjectIds
         prevExpandedFolderIds = state.expandedFolderIds
         prevExpandedWorktreeIds = state.expandedWorktreeIds
+        prevExpandedPinnedProjectIds = state.expandedPinnedProjectIds
         prevSelectedProjectId = state.selectedProjectId
         prevProjectAccessTimestamps = state.projectAccessTimestamps
         prevDashboardCollapseOverrides =

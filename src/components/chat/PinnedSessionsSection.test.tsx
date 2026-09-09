@@ -121,6 +121,76 @@ describe('PinnedSessionsSection', () => {
     expect(onUnpin).toHaveBeenCalledWith('s-1')
   })
 
+  // The sidebar parent used to be an uppercase caption, which broke the rhythm
+  // of the workspace rows it sits above.
+  describe('sidebar parent row', () => {
+    function renderSidebar(expanded: boolean, onToggleExpanded = vi.fn()) {
+      render(
+        <PinnedSessionsSection
+          rows={[
+            entry('s-1', 'Investigation', 'feature-a'),
+            entry('s-2', 'Review', 'feature-b'),
+          ]}
+          variant="sidebar"
+          expanded={expanded}
+          onToggleExpanded={onToggleExpanded}
+          onOpen={vi.fn()}
+          onUnpin={vi.fn()}
+        />
+      )
+      return { onToggleExpanded }
+    }
+
+    it('is a workspace-style row with the same geometry', () => {
+      renderSidebar(true)
+
+      const row = screen.getByRole('button', { expanded: true })
+      expect(row.className).toContain('py-1.5')
+      expect(row.className).toContain('pr-2')
+      expect(row.className).toContain('pl-7')
+    })
+
+    it('hides its sessions while collapsed and counts them instead', () => {
+      renderSidebar(false)
+
+      expect(screen.queryByText('Investigation')).toBeNull()
+      expect(screen.getByTestId('collapsed-count-badge')).toHaveTextContent('2')
+    })
+
+    it('drops the count badge once the sessions are on screen', () => {
+      renderSidebar(true)
+
+      expect(screen.getByText('Investigation')).toBeInTheDocument()
+      expect(screen.queryByTestId('collapsed-count-badge')).toBeNull()
+    })
+
+    it('toggles from a click and from the keyboard', async () => {
+      const user = userEvent.setup()
+      const { onToggleExpanded } = renderSidebar(false)
+
+      const row = screen.getByRole('button', { expanded: false })
+      await user.click(row)
+      row.focus()
+      await user.keyboard('{Enter}')
+
+      expect(onToggleExpanded).toHaveBeenCalledTimes(2)
+    })
+
+    it('keeps the canvas caption unchanged', () => {
+      render(
+        <PinnedSessionsSection
+          rows={[entry('s-1', 'Investigation', 'feature-a')]}
+          variant="canvas"
+          onOpen={vi.fn()}
+          onUnpin={vi.fn()}
+        />
+      )
+
+      expect(screen.queryByRole('button', { expanded: true })).toBeNull()
+      expect(screen.getByText('Investigation')).toBeInTheDocument()
+    })
+  })
+
   it('shows the session label when one is set', () => {
     render(
       <PinnedSessionsSection

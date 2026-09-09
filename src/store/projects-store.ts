@@ -28,6 +28,10 @@ interface ProjectsUIState {
   // Expansion state for worktrees (sidebar session list)
   expandedWorktreeIds: Set<string>
 
+  // Project IDs whose pinned-sessions row is expanded in the sidebar tree.
+  // The row sits beside the workspace rows, so it keeps its own expansion.
+  expandedPinnedProjectIds: Set<string>
+
   // Dashboard worktree collapse overrides (list view): true=collapsed, false=expanded
   dashboardWorktreeCollapseOverrides: Record<string, boolean>
 
@@ -76,6 +80,9 @@ interface ProjectsUIState {
 
   // Worktree expansion actions
   toggleWorktreeExpanded: (id: string) => void
+
+  // Pinned-sessions row expansion, per project
+  togglePinnedExpanded: (projectId: string) => void
 
   // Dashboard collapse actions
   toggleDashboardWorktreeCollapsed: (
@@ -141,6 +148,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       selectedWorktreeId: null,
       expandedProjectIds: new Set<string>(),
       expandedWorktreeIds: new Set<string>(),
+      expandedPinnedProjectIds: new Set<string>(),
       dashboardWorktreeCollapseOverrides: {},
       expandedFolderIds: new Set<string>(),
       projectAccessTimestamps: {},
@@ -252,6 +260,21 @@ export const useProjectsStore = create<ProjectsUIState>()(
           },
           undefined,
           'toggleWorktreeExpanded'
+        ),
+
+      togglePinnedExpanded: projectId =>
+        set(
+          state => {
+            const newSet = new Set(state.expandedPinnedProjectIds)
+            if (newSet.has(projectId)) {
+              newSet.delete(projectId)
+            } else {
+              newSet.add(projectId)
+            }
+            return { expandedPinnedProjectIds: newSet }
+          },
+          undefined,
+          'togglePinnedExpanded'
         ),
 
       // Dashboard collapse actions

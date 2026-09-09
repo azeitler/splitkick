@@ -329,6 +329,14 @@ export function WorktreeList({
     [projectId]
   )
 
+  // The pinned row keeps its own expansion, persisted like a workspace row's.
+  const isPinnedExpanded = useProjectsStore(state =>
+    state.expandedPinnedProjectIds.has(projectId)
+  )
+  const handleTogglePinned = useCallback(() => {
+    useProjectsStore.getState().togglePinnedExpanded(projectId)
+  }, [projectId])
+
   const canReorderWorktree = useCallback((worktree: Worktree) => {
     return (
       !isBaseSession(worktree) &&
@@ -583,6 +591,8 @@ export function WorktreeList({
       <PinnedSessionsSection
         rows={pinnedRows}
         variant="sidebar"
+        expanded={isPinnedExpanded}
+        onToggleExpanded={handleTogglePinned}
         onOpen={handleOpenPinnedSession}
         onUnpin={handleUnpinSession}
       />

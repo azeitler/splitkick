@@ -193,6 +193,54 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
   })
 
+  it('persists the expanded pinned rows, keyed by project', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useProjectsStore.getState().togglePinnedExpanded('project-1')
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          expanded_pinned_project_ids: ['project-1'],
+        })
+      )
+    })
+  })
+
+  it('restores the expanded pinned rows after a reload', async () => {
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({ expanded_pinned_project_ids: ['project-1'] }),
+      isSuccess: true,
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(
+        useProjectsStore.getState().expandedPinnedProjectIds.has('project-1')
+      ).toBe(true)
+    })
+  })
+
   it('restores zen mode after a reload', async () => {
     mockUseUIState.mockReturnValue({
       data: buildUiState({ zen_mode: true }),
