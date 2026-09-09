@@ -42,6 +42,24 @@ this fork's own and never restarts.
 
 ### Added
 
+- **JeanZ inherits stable Jean's look and client settings on its first start.**
+  Jean's own data — projects, sessions, worktrees, preferences, CLI logins —
+  is shared by path and was never at risk. Two stores sit outside that
+  directory and follow the bundle identifier instead, so a JeanZ build with its
+  own identifier would have started with both of them empty.
+  - The WebView store carries the theme, the zoom level, the client
+    preferences, the cached model catalog and the remote-connection list. The
+    whole store is copied, so cookies and IndexedDB come along too. The
+    per-origin directories inside it are named from the page origin and a salt
+    that travels with the tree, so the copy lands where the new WebView looks.
+  - The Tauri plugin state beside the data directory is copied as well: the
+    window geometry and the persisted file scope.
+  - It happens once. A later start never overwrites what JeanZ has since
+    written, and a copy that fails part way leaves nothing behind, so the next
+    start tries again instead of treating a half-copy as finished.
+  - Every step is best effort. A failure leaves JeanZ with the empty state it
+    would have had anyway and never stops it from starting.
+
 - **Global search: Sessions and Projects each get their own tab.** CMD+K had
   Quick and Search messages only, so sessions, projects, connections and every
   static command shared one list. Quick caps the sessions at eight and the rest
@@ -136,11 +154,11 @@ this fork's own and never restarts.
   - Project avatars and pasted images keep loading: the asset protocol scope
     follows the identifier, so the shared directory is granted by its real path
     at startup.
-  - Two one-time effects on the first JeanZ start after this change. Settings
-    kept in the WebView (zoom, client preferences, the remote-connection list)
-    start empty, and the files Tauri plugins own move with the identifier — the
-    window-state file, the persisted file scope and the log directory. Jean's
-    own window layout lives in `ui-state_jeanz.json` and is unaffected.
+  - Nothing is lost in the move. On its first start JeanZ copies stable Jean's
+    WebView store and plugin state across, so it opens looking exactly like the
+    app it was built from — same theme, same zoom, same client preferences,
+    same remote connections, same window geometry. Only the log directory is
+    left behind, which nobody misses.
   - A locally built JeanZ is ad-hoc signed, so its code hash changes on every
     build and no grant can stick for it. Only a Developer ID build has a stable
     identity.

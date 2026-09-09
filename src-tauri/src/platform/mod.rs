@@ -1,5 +1,11 @@
 pub mod notifications;
 
+#[cfg(target_os = "macos")]
+pub mod flavor_seed;
+
+#[cfg(target_os = "macos")]
+pub use flavor_seed::seed_flavor_state;
+
 #[cfg(target_os = "linux")]
 pub mod linux_webkit;
 

@@ -187,7 +187,7 @@ directory plus `jean_core::DATA_DIR_NAME` — the stable identifier, as a
 constant. Set `JEAN_DATA_DIR` to run an isolated profile.
 
 **Why the identifier had to move.** macOS keys a TCC grant by the client's
-bundle identifier *and* the code requirement recorded when the grant was made.
+bundle identifier _and_ the code requirement recorded when the grant was made.
 That requirement pins the Developer ID team. JeanZ is signed by a different
 team than upstream Jean, so two bundles both claiming `com.jean.desktop` fail
 each other's stored requirement: every launch re-asked "JeanZ.app would like to
@@ -198,13 +198,28 @@ A locally built JeanZ is still ad-hoc signed (`signingIdentity: "-"`), which
 produces a new code hash on every build, so a grant cannot stick for it. Only a
 Developer ID build keeps a stable identity across launches.
 
-Two consequences of the split identifier, both one-time and minor:
+Two stores follow the identifier rather than the data directory, so a flavor
+would start with both empty. `seed_flavor_state()` in
+`src-tauri/src/platform/flavor_seed.rs` copies them from stable Jean on the
+flavor's first start:
 
-- The WebView store moves, so client-only settings kept in `localStorage`
-  (zoom, client preferences, the remote-connection list) start empty once.
-- Files owned by Tauri plugins move with the identifier: the window-state file,
-  the persisted fs scope, and `~/Library/Logs/<identifier>`. Jean's own window
-  layout lives in `ui-state_jeanz.json` and is unaffected.
+- `~/Library/WebKit/<identifier>` — the WebView store. It holds the theme, the
+  zoom level, the client preferences, the cached model catalog and the
+  remote-connection list, plus cookies and IndexedDB. The per-origin
+  directories inside it are named from the page origin (`tauri://localhost`,
+  which does not change) and a salt that travels with the tree, so a
+  whole-tree copy lands where the flavor's WebView looks.
+- `<data dir>/<identifier>/.window-state.json` and `.persisted-scope` — the
+  state files the Tauri plugins own. They sit beside Jean's data, not in it.
+
+`~/Library/Logs/<identifier>` is deliberately not copied.
+
+The seeding runs from `run()` before `tauri::Builder`, because Tauri creates
+the main window — and with it the WebView — before the setup hook. It happens
+once: an existing target is never overwritten. Each copy lands on a staging
+sibling and is renamed into place, so an interrupted run leaves nothing that a
+later start could mistake for finished work. Every step is best effort and a
+failure only leaves the flavor with the empty state it would have had anyway.
 
 Project avatars and pasted images are loaded through the asset protocol, whose
 `$APPDATA/**` scope also follows the identifier. `allow_project_assets()` in

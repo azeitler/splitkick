@@ -425,6 +425,14 @@ pub fn run() {
         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
     ];
 
+    // Read the identifier before the builder runs. Tauri creates the main
+    // window — and with it the WebView — before the setup hook, so a flavor
+    // has to inherit stable Jean's WebView store and plugin state now or not
+    // at all.
+    let context = tauri::generate_context!();
+    #[cfg(target_os = "macos")]
+    platform::seed_flavor_state(&context.config().identifier);
+
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
@@ -486,7 +494,7 @@ pub fn run() {
             browser::get_active_browser_tabs,
             browser::has_active_browser_tab,
         ])
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error building Tauri application")
         .run(|app, event| match event {
             tauri::RunEvent::Exit => jean_core::shutdown_runtime(),
