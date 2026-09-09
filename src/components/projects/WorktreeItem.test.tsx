@@ -332,3 +332,59 @@ describe('WorktreeItem session row right padding', () => {
     expect((row as HTMLElement).className).toContain('pr-2')
   })
 })
+
+// The base session is named after the default branch, so the sidebar row read
+// as an ordinary "main" workspace while the project canvas called the same
+// session "Base Session".
+describe('WorktreeItem base session badge', () => {
+  beforeEach(() => {
+    mocks.sessions = []
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(),
+    })
+  })
+
+  it('marks the base session next to its branch name', () => {
+    renderItem({
+      worktree: {
+        ...worktree,
+        name: 'main',
+        branch: 'main',
+        session_type: 'base',
+      },
+    })
+
+    expect(screen.getByText('main')).toBeInTheDocument()
+    expect(screen.getByTestId('base-session-badge')).toHaveTextContent(
+      'Base Session'
+    )
+  })
+
+  it('leaves an ordinary workspace unmarked', () => {
+    renderItem({})
+
+    expect(screen.queryByTestId('base-session-badge')).toBeNull()
+  })
+
+  it('drops the badge on a narrow sidebar, where the row has no room', () => {
+    render(
+      <SidebarWidthProvider value={150}>
+        <WorktreeItem
+          worktree={{
+            ...worktree,
+            name: 'main',
+            branch: 'main',
+            session_type: 'base',
+          }}
+          projectId="project-1"
+          projectPath="/tmp/jean"
+          defaultBranch="main"
+        />
+      </SidebarWidthProvider>
+    )
+
+    expect(screen.getByText('main')).toBeInTheDocument()
+    expect(screen.queryByTestId('base-session-badge')).toBeNull()
+  })
+})

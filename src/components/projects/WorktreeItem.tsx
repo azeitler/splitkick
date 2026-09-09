@@ -29,6 +29,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { pushNeedsRemotePicker, useRemotePicker } from '@/hooks/useRemotePicker'
 import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
+import { BaseSessionBadge } from './BaseSessionBadge'
 import { CollapsedCountBadge } from './CollapsedCountBadge'
 import { sidebarRowId } from '@/lib/navigate-to-session'
 import { SessionFilterInput } from './SessionFilterInput'
@@ -881,6 +882,9 @@ export function WorktreeItem({
               )}
             >
               <span className="truncate">{worktree.name}</span>
+              {/* The base session is named after the default branch, so it
+                  reads as an ordinary "main" workspace without this pill. */}
+              {isBase && !isNarrowSidebar && <BaseSessionBadge />}
               {/* Hidden session count while the row is collapsed */}
               {!showSessions && (
                 <CollapsedCountBadge count={sessionCount} noun="session" />

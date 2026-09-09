@@ -7,6 +7,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **The base session carries a "Base Session" badge everywhere.** A base
+  session is named after the default branch, so the sidebar listed it as an
+  ordinary workspace called `main`, while the project canvas dropped the name
+  and printed `Base Session` in its place. The same session went by two names,
+  and neither surface told you what the other one meant.
+  - Both now show the branch name followed by the same small **Base Session**
+    pill. The sidebar drops the pill below 200px of width, where the row has no
+    room, the way it already drops the last-active time and the labels.
+  - Screen readers keep the wording: the canvas row and its drag handle read
+    "Open main (Base Session)" and "Reorder main (Base Session)".
+
 ### Fixed
 
 - **Sidebar: a project row no longer collapses on a click.** Clicking a

@@ -164,6 +164,7 @@ import {
   getSessionActivityTimestamp,
   getWorktreeLastActivity,
 } from '@/components/projects/worktree-sort-utils'
+import { BaseSessionBadge } from '@/components/projects/BaseSessionBadge'
 import { usePlanApproval } from '@/components/chat/hooks/usePlanApproval'
 import { useClearContextApproval } from '@/components/chat/hooks/useClearContextApproval'
 import { useWorktreeApproval } from '@/components/chat/hooks/useWorktreeApproval'
@@ -349,7 +350,7 @@ function SortableCanvasWorktreeSection({
           ref={dragHandleRef}
           type="button"
           className="absolute -left-5 top-2 z-10 flex h-7 w-5 cursor-grab items-center justify-center rounded text-muted-foreground/45 opacity-0 transition-opacity hover:bg-muted/70 hover:text-muted-foreground group-hover/canvas-list:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/60 active:cursor-grabbing"
-          aria-label={`Reorder ${isBaseSession(section.worktree) ? 'Base Session' : section.worktree.name}`}
+          aria-label={`Reorder ${section.worktree.name}${isBaseSession(section.worktree) ? ' (Base Session)' : ''}`}
           onClick={event => event.stopPropagation()}
         >
           <GripVertical className="h-4 w-4" />
@@ -718,7 +719,7 @@ function WorktreeSectionHeader({
       tabIndex={onRowClick ? 0 : undefined}
       aria-label={
         onRowClick
-          ? `Open ${isBase ? 'Base Session' : worktree.name}`
+          ? `Open ${worktree.name}${isBase ? ' (Base Session)' : ''}`
           : undefined
       }
     >
@@ -739,9 +740,10 @@ function WorktreeSectionHeader({
           />
           <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
             <span className="flex min-w-0 items-center gap-1.5">
-              <span className="min-w-0 flex-1 truncate">
-                {isBase ? 'Base Session' : worktree.name}
-              </span>
+              <span className="min-w-0 flex-1 truncate">{worktree.name}</span>
+              {/* Same pill as the sidebar row, so the base session reads the
+                  same way in both places. */}
+              {isBase && <BaseSessionBadge />}
               {showBranchBadge && (
                 <span className="hidden items-center gap-1 rounded border border-border/50 px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground sm:inline-flex">
                   <GitBranch className="h-2.5 w-2.5" />
