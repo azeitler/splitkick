@@ -41,6 +41,21 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **The sidebar now follows a command-palette jump.** Opening a session with
+  CMD+K moved the main area but left the tree behind: the previous selection
+  stayed highlighted, the target's project and workspace could still be
+  collapsed, and a row further down the list was never scrolled to. You saw a
+  session with no idea where it lived.
+  - Every programmatic jump — the palette, the unread bell, the Home view —
+    now selects the target workspace, opens the folders above the project, the
+    project itself and the workspace, and scrolls the session row into view.
+  - The scroll uses `block: 'nearest'`, so a row already on screen does not
+    move, and it follows the system "reduce motion" setting.
+  - One reveal per jump. Scrolling away afterwards is never undone.
+  - Picking a project in the palette opens the folders above it and scrolls to
+    its row. The project's own subtree is left as you had it.
+  - The mobile drawer gets the same behavior, since it renders the same tree.
+
 - **Sidebar: the "Pinned" block is now a tree row like any other.** Its parent
   was a small uppercase caption, so it broke the alignment of the workspace
   rows directly below it, and its sessions were indented differently from

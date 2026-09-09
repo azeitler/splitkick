@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Folder, Archive, Briefcase } from 'lucide-react'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
@@ -12,8 +12,10 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { ProjectTree } from './ProjectTree'
+import { SidebarHomeRow } from './SidebarHomeRow'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
+import { useSidebarReveal } from './useSidebarReveal'
 
 /** Close the mobile projects drawer when leaving into a dialog/modal. */
 function closeMobileSidebarIfNeeded(isMobile: boolean) {
@@ -35,6 +37,10 @@ export function ProjectsSidebar() {
   })
   const setupIncomplete = installedBackends.length === 0
 
+  // Lets a command-palette jump scroll its target row into view.
+  const scrollRef = useRef<HTMLDivElement>(null)
+  useSidebarReveal(scrollRef)
+
   // Responsive layout threshold
   const isNarrow = sidebarWidth < 180
 
@@ -54,7 +60,14 @@ export function ProjectsSidebar() {
       {/* `scrollbar-gutter: stable` keeps a lane for the scrollbar, so the
           thumb never draws over the session timestamps at the right edge and
           the tree does not shift sideways when the list starts to overflow. */}
-      <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]">
+      <div
+        ref={scrollRef}
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
+      >
+        {/* Home stays pinned above the tree, so it is reachable from any
+            project without collapsing anything. */}
+        <SidebarHomeRow />
+
         {isLoading ? (
           <div className="flex items-center justify-center p-4">
             <span className="text-sm text-muted-foreground">Loading...</span>

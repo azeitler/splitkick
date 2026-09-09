@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { cn } from '@/lib/utils'
+import { sidebarRowId } from '@/lib/navigate-to-session'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import type { Project } from '@/types/projects'
 import { isBaseSession } from '@/types/projects'
@@ -329,6 +330,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
           data-testid={`project-row-${project.id}`}
+          data-sidebar-row-id={sidebarRowId('project', project.id)}
         >
           {/* Avatar */}
           {avatarUrl ? (
@@ -560,6 +562,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
             worktrees={worktrees}
             defaultBranch={project.default_branch}
             sessionFilterQuery={filter.activeQuery}
+            sessionFilterOpen={filter.isOpen}
             onSessionSelected={closeFilter}
           />
         )}

@@ -13,7 +13,10 @@ import {
 import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/lib/relative-time'
-import { navigateToSession } from '@/lib/navigate-to-session'
+import {
+  navigateToProject,
+  navigateToSession,
+} from '@/lib/navigate-to-session'
 import { getSessionStatus } from '@/components/unread/unread-utils'
 import { getBackendIcon } from '@/components/ui/backend-label'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
@@ -195,10 +198,7 @@ export function CommandPalette({
         avatarFallback: project.name[0]?.toUpperCase() ?? '?',
         group: 'projects',
         keywords: ['project', 'switch', 'open', project.name.toLowerCase()],
-        execute: () => {
-          useChatStore.getState().clearActiveWorktree()
-          useProjectsStore.getState().selectProject(project.id)
-        },
+        execute: () => navigateToProject(project.id),
       }))
   }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId])
 

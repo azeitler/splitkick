@@ -155,6 +155,10 @@ interface UIState {
   autoOpenSessionWorktreeIds: Set<string>
   /** Specific session ID to auto-open per worktree (overrides first-session default) */
   pendingAutoOpenSessionIds: Record<string, string>
+  /** Sidebar row the tree should reveal once, after a programmatic navigation.
+   *  Holds the value of the row's `data-sidebar-row-id`; null when nothing is
+   *  pending. One reveal per navigation, so scrolling away does not re-scroll. */
+  pendingSidebarRevealId: string | null
   /** Whether a session chat modal is open (for magic command keybinding checks) */
   sessionChatModalOpen: boolean
   /** Whether the chat toolbar is mounted — used to hide the global FloatingDock
@@ -276,6 +280,8 @@ interface UIState {
   consumeAutoInvestigateLinearIssue: (worktreeId: string) => boolean
   markWorktreeForAutoInvestigateSentryIssue: (worktreeId: string) => void
   consumeAutoInvestigateSentryIssue: (worktreeId: string) => boolean
+  markSidebarReveal: (rowId: string) => void
+  clearSidebarReveal: (rowId: string) => void
   markWorktreeForAutoOpenSession: (
     worktreeId: string,
     sessionId?: string
@@ -386,6 +392,7 @@ export const useUIStore = create<UIState>()(
       pendingBackgroundCreations: 0,
       autoOpenSessionWorktreeIds: new Set(),
       pendingAutoOpenSessionIds: {},
+      pendingSidebarRevealId: null,
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
       sessionPrimarySurface: {},
@@ -983,6 +990,27 @@ export const useUIStore = create<UIState>()(
         )
         return true
       },
+
+      markSidebarReveal: rowId =>
+        set(
+          state =>
+            state.pendingSidebarRevealId === rowId
+              ? state
+              : { pendingSidebarRevealId: rowId },
+          undefined,
+          'markSidebarReveal'
+        ),
+
+      // Takes the row id, so a stale clear cannot swallow a newer reveal.
+      clearSidebarReveal: rowId =>
+        set(
+          state =>
+            state.pendingSidebarRevealId === rowId
+              ? { pendingSidebarRevealId: null }
+              : state,
+          undefined,
+          'clearSidebarReveal'
+        ),
 
       markWorktreeForAutoOpenSession: (worktreeId, sessionId) =>
         set(

@@ -30,9 +30,15 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { pushNeedsRemotePicker, useRemotePicker } from '@/hooks/useRemotePicker'
 import { TerminalStatusIndicator } from '@/hooks/useWorktreeTerminalStatus'
 import { CollapsedCountBadge } from './CollapsedCountBadge'
+import { sidebarRowId } from '@/lib/navigate-to-session'
 import { SessionFilterInput } from './SessionFilterInput'
 import { useSessionFilter } from './useSessionFilter'
-import { filterSessionsByQuery } from './session-filter-utils'
+import {
+  filterSessions,
+  isSessionFilterEmpty,
+  type SessionFilterCriteria,
+} from './session-filter-utils'
+import { EMPTY_LABEL_FILTER, type LabelFilter } from '@/lib/label-filter'
 import { LinkedIssueBadge } from './LinkedIssueBadge'
 import { WorktreeContextMenu } from './WorktreeContextMenu'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
@@ -81,6 +87,8 @@ interface WorktreeItemProps {
   defaultBranch: string
   /** Filter inherited from the project row. */
   sessionFilterQuery?: string
+  /** Project-level label selection, inherited from the sidebar chip row. */
+  sessionLabelFilter?: LabelFilter
   /** Lets the project row close its filter once a session is picked. */
   onSessionSelected?: () => void
 }
@@ -90,6 +98,7 @@ export function WorktreeItem({
   projectId,
   defaultBranch,
   sessionFilterQuery = '',
+  sessionLabelFilter = EMPTY_LABEL_FILTER,
   onSessionSelected,
 }: WorktreeItemProps) {
   const isMobile = useIsMobile()
@@ -374,19 +383,24 @@ export function WorktreeItem({
   const filter = useSessionFilter()
   const { toggle: toggleFilter, close: closeFilter } = filter
   const effectiveQuery = filter.activeQuery || sessionFilterQuery
-  const isFilterActive = effectiveQuery.trim().length > 0
+  const filterCriteria: SessionFilterCriteria = useMemo(
+    () => ({
+      query: effectiveQuery,
+      labelFilter: sessionLabelFilter,
+      sessionLabels: storeState.sessionLabels,
+    }),
+    [effectiveQuery, sessionLabelFilter, storeState.sessionLabels]
+  )
+  const isFilterActive = !isSessionFilterEmpty(filterCriteria)
   const showSessions = isExpanded || isFilterActive
 
   const sessionGroups = useMemo(() => {
     if (!showSessions) return []
-    const sessions = filterSessionsByQuery(
-      sessionsData?.sessions ?? [],
-      effectiveQuery
-    )
+    const sessions = filterSessions(sessionsData?.sessions ?? [], filterCriteria)
     return groupCardsByStatus(
       sessions.map(s => computeSessionCardData(s, storeState))
     )
-  }, [showSessions, effectiveQuery, sessionsData?.sessions, storeState])
+  }, [showSessions, filterCriteria, sessionsData?.sessions, storeState])
 
   // Newest interaction across the workspace's sessions, falling back to when
   // the workspace itself was created. Drives both the fade and the "last
@@ -1160,6 +1174,10 @@ export function WorktreeItem({
                           // An <input> cannot live inside a <button>, so the
                           // row degrades to a plain container while renaming.
                           <div
+                            data-sidebar-row-id={sidebarRowId(
+                              'session',
+                              card.session.id
+                            )}
                             onContextMenuCapture={closeOpenSessionContextMenus}
                             className={rowClassName}
                           >
@@ -1168,6 +1186,10 @@ export function WorktreeItem({
                         ) : (
                           <button
                             type="button"
+                            data-sidebar-row-id={sidebarRowId(
+                              'session',
+                              card.session.id
+                            )}
                             onContextMenuCapture={closeOpenSessionContextMenus}
                             className={rowClassName}
                             onClick={e => {
