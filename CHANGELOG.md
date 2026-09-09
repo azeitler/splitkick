@@ -74,6 +74,28 @@ this fork's own and never restarts.
   - Every step is best effort. A failure leaves JeanZ with the empty state it
     would have had anyway and never stops it from starting.
 
+- **Remote connections: a login proxy is named instead of retried forever.** A
+  remote Jean server behind an SSO proxy such as Cloudflare Access, Authelia,
+  Authentik, Google IAP or oauth2-proxy left the desktop app reconnecting every
+  ten seconds with no explanation.
+  - The desktop app genuinely cannot sign in to one. Its page origin is
+    `tauri://localhost`, so every call to the remote host is cross-origin and
+    carries no cookies, and a WebView cannot put headers or cookies on a
+    WebSocket handshake at all. A browser can, because there the page and the
+    socket share the proxy's origin.
+  - Jean now recognises the proxy: a real Jean server always answers
+    `/api/auth` with JSON, for 200 and for 401 alike, so an HTML body or a
+    redirect to another origin means something else replied.
+  - The message says what to do — reach the server over a private network such
+    as Cloudflare One/WARP or Tailscale, or open the URL in a browser, where
+    the login works.
+  - The ten-second auto-retry stops for this failure, since no retry can fix
+    it. The manual Retry button stays.
+  - Adding or editing such a connection is blocked while you are still in the
+    dialog, next to an invalid token. Every other probe failure stays
+    non-blocking, so a server that is merely offline can still be saved.
+  - Browser web access is exempt: there the proxy's own session cookie works.
+
 - **Global search: Sessions and Projects each get their own tab.** CMD+K had
   Quick and Search messages only, so sessions, projects, connections and every
   static command shared one list. Quick caps the sessions at eight and the rest

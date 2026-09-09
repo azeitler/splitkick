@@ -202,9 +202,35 @@ describe('transport bootstrap', () => {
 
     await waitFor(() =>
       expect(result.current).toBe(
-        "Jean could not reach the server's authentication endpoint. Check that the server is running and the URL and port are correct. If the address opens in a browser, update and restart the remote Jean server so it allows desktop connections (CORS)."
+        "Jean could not reach the server's authentication endpoint. Check that the server is running and the URL and port are correct. If the address opens in a browser but not here, the server either needs an update and a restart so it allows desktop connections (CORS), or it sits behind an SSO login proxy such as Cloudflare Access, which the desktop app cannot sign in to."
       )
     )
+    expect(result.current).not.toContain('secret')
+  })
+
+  it('reports an SSO login proxy instead of looping on the socket (issue #15)', async () => {
+    // Cloudflare Access answers /api/auth with its sign-in page: a redirect to
+    // another origin that lands on 200 text/html.
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      redirected: true,
+      url: 'https://team.cloudflareaccess.com/cdn-cgi/access/login',
+      headers: new Headers({ 'content-type': 'text/html; charset=utf-8' }),
+      json: async () => {
+        throw new SyntaxError("Unexpected token '<'")
+      },
+    } as unknown as Response)
+
+    const transport = await loadRemoteNativeTransportModule()
+    const { result } = renderHook(() => transport.useWsAuthError())
+
+    transport.connectTransport()
+
+    await waitFor(() => expect(result.current).toContain('SSO login proxy'))
+    expect(result.current).toContain('Cloudflare Access')
+    // The upgrade could never authenticate, so no socket is opened at all.
+    expect(MockWebSocket.instances.length).toBe(0)
     expect(result.current).not.toContain('secret')
   })
 

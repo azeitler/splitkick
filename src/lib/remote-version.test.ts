@@ -4,8 +4,12 @@ import {
   checkRemoteVersionCompatibility,
   fetchRemoteServerInfo,
   formatJeanVersionLabel,
+  isBlockingProbeError,
+  isSsoProxyMessage,
+  isSsoProxyResponse,
   probeRemoteConnectionVersion,
   resetRemoteVersionMismatchNotification,
+  SSO_PROXY_ERROR,
   warnRemoteVersionMismatch,
 } from './remote-version'
 
@@ -32,9 +36,9 @@ describe('remote version helpers', () => {
     expect(buildRemoteAuthUrl('https://jean.example.com/', '')).toBe(
       'https://jean.example.com/api/auth'
     )
-    expect(
-      buildRemoteAuthUrl('https://jean.example.com', 'secret token')
-    ).toBe('https://jean.example.com/api/auth?token=secret+token')
+    expect(buildRemoteAuthUrl('https://jean.example.com', 'secret token')).toBe(
+      'https://jean.example.com/api/auth?token=secret+token'
+    )
   })
 
   it('formats version labels', () => {
@@ -73,7 +77,9 @@ describe('remote version helpers', () => {
     const result = checkRemoteVersionCompatibility('0.1.50', '0.1.69')
     expect(result.compatible).toBe(false)
     if (!result.compatible) {
-      expect(result.message).toContain('Consider updating the remote Jean server')
+      expect(result.message).toContain(
+        'Consider updating the remote Jean server'
+      )
     }
   })
 
@@ -140,5 +146,114 @@ describe('remote version helpers', () => {
 
     expect(warnRemoteVersionMismatch('9.9.9', '0.1.69')).toBe(true)
     expect(toastWarning).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('SSO login proxy detection (issue #15)', () => {
+  const authUrl = 'https://jean.example.com/api/auth?token=secret'
+  const headers = (contentType: string | null) => ({
+    get: (name: string) =>
+      name.toLowerCase() === 'content-type' ? contentType : null,
+  })
+
+  it('flags an HTML sign-in page returned with 200', () => {
+    expect(
+      isSsoProxyResponse(
+        { status: 200, headers: headers('text/html; charset=utf-8') },
+        authUrl
+      )
+    ).toBe(true)
+  })
+
+  it('flags a redirect to a different origin', () => {
+    expect(
+      isSsoProxyResponse(
+        {
+          status: 200,
+          redirected: true,
+          url: 'https://team.cloudflareaccess.com/cdn-cgi/access/login',
+          headers: headers('application/json'),
+        },
+        authUrl
+      )
+    ).toBe(true)
+  })
+
+  it('accepts JSON from Jean itself, including its 401', () => {
+    expect(
+      isSsoProxyResponse(
+        { status: 200, headers: headers('application/json') },
+        authUrl
+      )
+    ).toBe(false)
+    expect(
+      isSsoProxyResponse(
+        { status: 401, headers: headers('application/json') },
+        authUrl
+      )
+    ).toBe(false)
+  })
+
+  it('does not flag a same-origin redirect', () => {
+    expect(
+      isSsoProxyResponse(
+        {
+          status: 200,
+          redirected: true,
+          url: 'https://jean.example.com/api/auth',
+          headers: headers('application/json'),
+        },
+        authUrl
+      )
+    ).toBe(false)
+  })
+
+  it('leaves 5xx and a missing content type to the status handler', () => {
+    expect(
+      isSsoProxyResponse(
+        { status: 502, headers: headers('text/html') },
+        authUrl
+      )
+    ).toBe(false)
+    expect(
+      isSsoProxyResponse({ status: 200, headers: headers(null) }, authUrl)
+    ).toBe(false)
+    expect(isSsoProxyResponse({ status: 200 }, authUrl)).toBe(false)
+  })
+
+  it('reports the proxy instead of a raw JSON parse error', async () => {
+    const fetchImpl = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      redirected: true,
+      url: 'https://team.cloudflareaccess.com/cdn-cgi/access/login',
+      headers: headers('text/html'),
+      json: async () => {
+        throw new SyntaxError("Unexpected token '<'")
+      },
+    })
+
+    await expect(
+      fetchRemoteServerInfo('https://jean.example.com', 'secret', fetchImpl)
+    ).rejects.toThrow(SSO_PROXY_ERROR)
+  })
+
+  it('blocks saving on proxy and token errors, but not on an offline server', () => {
+    expect(isBlockingProbeError(new Error(SSO_PROXY_ERROR))).toBe(true)
+    expect(
+      isBlockingProbeError(
+        new Error('Invalid access token for this Jean server.')
+      )
+    ).toBe(true)
+    expect(
+      isBlockingProbeError(new Error('Timed out reaching the Jean server.'))
+    ).toBe(false)
+    expect(isBlockingProbeError('not an error')).toBe(false)
+  })
+
+  it('recognises its own message', () => {
+    expect(isSsoProxyMessage(SSO_PROXY_ERROR)).toBe(true)
+    expect(isSsoProxyMessage('Connection lost.')).toBe(false)
+    expect(isSsoProxyMessage(null)).toBe(false)
   })
 })

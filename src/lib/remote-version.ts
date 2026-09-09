@@ -36,6 +36,87 @@ export function getLocalJeanVersion(): string {
   return FALLBACK_APP_VERSION
 }
 
+/**
+ * Marker kept out of the message text so callers can recognise this failure
+ * without matching the whole sentence.
+ */
+const SSO_PROXY_MARKER = 'SSO login proxy'
+
+/**
+ * Shown when a remote URL sits behind an SSO login proxy such as Cloudflare
+ * Access, Authelia, Authentik, Google IAP, or oauth2-proxy.
+ *
+ * The native desktop client cannot sign in to one. Its origin is
+ * `tauri://localhost`, so every call to the remote host is cross-origin and
+ * `fetch` sends no cookies. A WebView also cannot put headers or cookies on a
+ * WebSocket handshake, so `/ws` can never authenticate. A browser can, because
+ * there the page and the socket share the proxy's origin. See issue #15.
+ */
+export const SSO_PROXY_ERROR =
+  `This URL is behind an ${SSO_PROXY_MARKER} (for example Cloudflare Access). ` +
+  'The Jean desktop app cannot sign in to it, because it cannot send login ' +
+  'cookies or headers on the WebSocket connection. Reach the server through a ' +
+  'private network instead (Cloudflare One/WARP or Tailscale), or open this ' +
+  'URL in a web browser, where the login does work.'
+
+/** True when a message reports the SSO login proxy failure above. */
+export function isSsoProxyMessage(message: string | null | undefined): boolean {
+  return typeof message === 'string' && message.includes(SSO_PROXY_MARKER)
+}
+
+function sameOrigin(a: string, b: string): boolean {
+  try {
+    return new URL(a).origin === new URL(b).origin
+  } catch {
+    // Cannot compare, so do not accuse a proxy.
+    return true
+  }
+}
+
+/**
+ * True when something other than Jean answered `/api/auth`.
+ *
+ * A real Jean server always answers that route with JSON, for 200 and for 401
+ * alike (`auth_handler` in `jean-core/src/http_server/server.rs`). So an HTML
+ * body, or a redirect to a different origin, means a login proxy replied
+ * instead.
+ *
+ * Two cases stay unflagged on purpose: a missing content type, because older
+ * servers may omit it, and 5xx, because that is an origin or gateway error
+ * rather than a login page.
+ */
+export function isSsoProxyResponse(
+  res: Pick<Response, 'status'> &
+    Partial<Pick<Response, 'redirected' | 'url'>> & {
+      headers?: { get(name: string): string | null }
+    },
+  requestUrl: string
+): boolean {
+  if (
+    res.redirected === true &&
+    !sameOrigin(res.url ?? requestUrl, requestUrl)
+  ) {
+    return true
+  }
+  if (res.status >= 500) return false
+  const contentType = res.headers?.get('content-type') ?? ''
+  if (!contentType) return false
+  return !contentType.toLowerCase().includes('json')
+}
+
+/**
+ * Probe failures that must stop the user from saving a connection, because no
+ * retry can make it work. Every other failure stays non-blocking, so a server
+ * that is merely offline can still be saved and recovered later.
+ */
+export function isBlockingProbeError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false
+  return (
+    error.message.includes('Invalid access token') ||
+    isSsoProxyMessage(error.message)
+  )
+}
+
 export function buildRemoteAuthUrl(url: string, token: string): string {
   const base = `${url.replace(/\/+$/, '')}/`
   const authUrl = new URL('api/auth', base)
@@ -94,6 +175,11 @@ export async function fetchRemoteServerInfo(
 
   try {
     const res = await fetchImpl(authUrl, { signal: controller.signal })
+    // Check for a login proxy before the status, because it can answer 200
+    // with an HTML sign-in page after a redirect.
+    if (isSsoProxyResponse(res, authUrl)) {
+      throw new Error(SSO_PROXY_ERROR)
+    }
     if (!res.ok) {
       if (res.status === 401) {
         throw new Error('Invalid access token for this Jean server.')
@@ -101,10 +187,15 @@ export async function fetchRemoteServerInfo(
       throw new Error(`Jean server returned HTTP ${res.status}.`)
     }
 
-    const body = (await res.json()) as {
+    let body: {
       ok?: boolean
       appVersion?: string | null
       webBuildId?: string | null
+    }
+    try {
+      body = await res.json()
+    } catch {
+      throw new Error('The Jean server did not return a valid response.')
     }
 
     return {

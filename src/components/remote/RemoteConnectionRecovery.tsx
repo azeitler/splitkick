@@ -8,6 +8,7 @@ import {
   type RemoteConnection,
 } from '@/lib/remote-connections'
 import { dismissTransientUi } from '@/lib/dismiss-transient-ui'
+import { isSsoProxyMessage } from '@/lib/remote-version'
 
 function reloadPage() {
   window.location.reload()
@@ -26,10 +27,15 @@ export function RemoteConnectionRecovery({
     dismissTransientUi()
   }, [])
 
+  // An SSO login proxy rejects the desktop client every time, so the usual
+  // auto-retry can only loop. Leave the manual Retry button available.
+  const permanent = isSsoProxyMessage(error)
+
   useEffect(() => {
+    if (permanent) return
     const retryTimer = window.setInterval(reloadPage, 10_000)
     return () => window.clearInterval(retryTimer)
-  }, [])
+  }, [permanent])
 
   return (
     // z-[100] sits above dialogs (70) and menus/popovers (80).

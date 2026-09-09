@@ -48,6 +48,7 @@ import {
   fetchRemoteServerInfo,
   formatJeanVersionLabel,
   getLocalJeanVersion,
+  isBlockingProbeError,
   warnRemoteVersionMismatch,
 } from '@/lib/remote-version'
 import { invoke, listenLocal } from '@/lib/transport'
@@ -315,12 +316,10 @@ export function RemoteConnectionsDialog({
           warnRemoteVersionMismatch(info.appVersion)
         } catch (probeError) {
           // Still allow save/connect; transport/recovery handles auth/network.
-          // Surface probe failures only when we cannot normalize further.
-          if (
-            probeError instanceof Error &&
-            probeError.message.includes('Invalid access token')
-          ) {
-            setError(probeError.message)
+          // Block only on failures that no retry can fix (bad token, or an SSO
+          // login proxy the desktop app can never sign in to).
+          if (isBlockingProbeError(probeError)) {
+            setError((probeError as Error).message)
             return
           }
         }
@@ -338,8 +337,12 @@ export function RemoteConnectionsDialog({
               normalized.token
             )
             warnRemoteVersionMismatch(info.appVersion)
-          } catch {
+          } catch (probeError) {
             // Allow reconnect; recovery screen handles hard failures.
+            if (isBlockingProbeError(probeError)) {
+              setError((probeError as Error).message)
+              return
+            }
           }
           updateRemoteConnection(editingId, input)
           markConnectionSwitch()

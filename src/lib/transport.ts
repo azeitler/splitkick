@@ -17,7 +17,11 @@ import { generateId } from './uuid'
 import { isServerWindows } from './platform'
 import { getActiveRemoteConnection } from './remote-connections'
 import { prepareRemoteEditorOpenArgs } from './remote-editor'
-import { warnRemoteVersionMismatch } from './remote-version'
+import {
+  isSsoProxyResponse,
+  SSO_PROXY_ERROR,
+  warnRemoteVersionMismatch,
+} from './remote-version'
 
 export function usesWebSocketBackend(): boolean {
   return !isNativeApp() || getActiveRemoteConnection() !== null
@@ -591,6 +595,17 @@ class WsTransport {
 
     try {
       const res = await fetchBackend(authUrl)
+
+      // A login proxy in front of a remote answers with its own sign-in page,
+      // often 200 after a redirect. Stop here: the WebSocket upgrade can never
+      // authenticate through it, so connecting would only loop (issue #15).
+      // Browser web access is exempt, because there the page shares the
+      // proxy's origin and its session cookie does work.
+      if (remote && isSsoProxyResponse(res, authUrl)) {
+        this.setAuthError(SSO_PROXY_ERROR)
+        return
+      }
+
       if (!res.ok) {
         // Invalid token — clear it and wait for the user to provide another.
         if (!remote) {
@@ -617,7 +632,7 @@ class WsTransport {
     } catch {
       if (remote) {
         this.setAuthError(
-          "Jean could not reach the server's authentication endpoint. Check that the server is running and the URL and port are correct. If the address opens in a browser, update and restart the remote Jean server so it allows desktop connections (CORS)."
+          "Jean could not reach the server's authentication endpoint. Check that the server is running and the URL and port are correct. If the address opens in a browser but not here, the server either needs an update and a restart so it allows desktop connections (CORS), or it sits behind an SSO login proxy such as Cloudflare Access, which the desktop app cannot sign in to."
         )
         return
       }

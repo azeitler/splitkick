@@ -21,6 +21,7 @@ import {
 } from '@/lib/remote-connections'
 import {
   fetchRemoteServerInfo,
+  isBlockingProbeError,
   warnRemoteVersionMismatch,
 } from '@/lib/remote-version'
 import { invoke, listenLocal } from '@/lib/transport'
@@ -106,11 +107,10 @@ export function RemoteSetupStep({
         )
         warnRemoteVersionMismatch(info.appVersion)
       } catch (probeError) {
-        if (
-          probeError instanceof Error &&
-          probeError.message.includes('Invalid access token')
-        ) {
-          setError(probeError.message)
+        // Block only on failures that no retry can fix (bad token, or an SSO
+        // login proxy the desktop app can never sign in to).
+        if (isBlockingProbeError(probeError)) {
+          setError((probeError as Error).message)
           return
         }
       }
@@ -313,7 +313,9 @@ export function RemoteSetupStep({
           </div>
         )}
         {error && (
-          <p className="whitespace-pre-wrap text-sm text-destructive">{error}</p>
+          <p className="whitespace-pre-wrap text-sm text-destructive">
+            {error}
+          </p>
         )}
         <Button type="submit" className="w-full" size="lg" disabled={busy}>
           {installing ? (
