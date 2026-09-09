@@ -170,6 +170,15 @@ pub async fn dispatch_command(
         }
 
         // =====================================================================
+        // Activity log
+        // =====================================================================
+        "list_recent_activity" => {
+            let limit: Option<usize> = from_field_opt(&args, "limit")?;
+            let result = crate::activity::list_recent_activity(app.clone(), limit).await?;
+            to_value(result)
+        }
+
+        // =====================================================================
         // Projects
         // =====================================================================
         "list_projects" => {

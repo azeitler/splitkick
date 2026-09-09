@@ -29,7 +29,19 @@ import {
   compareWorktreesForCanvasSort,
   getWorktreeLastActivity,
 } from './worktree-sort-utils'
-import { selectWorktreesMatchingQuery } from './session-filter-utils'
+import {
+  collectSessionLabelSources,
+  isSessionFilterEmpty,
+  selectWorktreesMatchingFilters,
+  type SessionFilterCriteria,
+} from './session-filter-utils'
+import { LabelFilterChips } from '@/components/labels/LabelFilterChips'
+import {
+  collectLabelOptions,
+  pruneLabelFilter,
+  toggleLabelFilter,
+  type LabelFilter,
+} from '@/lib/label-filter'
 import { WorktreeItem } from './WorktreeItem'
 import { WorktreeItemSkeleton } from './WorktreeItemSkeleton'
 import {
@@ -60,6 +72,7 @@ interface SortableWorktreeProps {
   isDragging: boolean
   closestEdge: Edge | null
   sessionFilterQuery: string
+  sessionLabelFilter: LabelFilter
   onSessionSelected?: () => void
 }
 
@@ -72,6 +85,7 @@ function SortableWorktree({
   isDragging,
   closestEdge,
   sessionFilterQuery,
+  sessionLabelFilter,
   onSessionSelected,
 }: SortableWorktreeProps) {
   const elementRef = useRef<HTMLDivElement | null>(null)
@@ -153,6 +167,7 @@ function SortableWorktree({
         projectPath={projectPath}
         defaultBranch={defaultBranch}
         sessionFilterQuery={sessionFilterQuery}
+        sessionLabelFilter={sessionLabelFilter}
         onSessionSelected={onSessionSelected}
       />
     </div>
@@ -177,6 +192,8 @@ interface WorktreeListProps {
   defaultBranch: string
   /** Project-level session filter, inherited by every workspace row. */
   sessionFilterQuery?: string
+  /** Whether the project's filter field is open, which reveals the label chips. */
+  sessionFilterOpen?: boolean
   /** Called once a session row is picked, so the project filter can close. */
   onSessionSelected?: () => void
 }
@@ -187,6 +204,7 @@ export function WorktreeList({
   worktrees,
   defaultBranch,
   sessionFilterQuery = '',
+  sessionFilterOpen = false,
   onSessionSelected,
 }: WorktreeListProps) {
   const reorderWorktrees = useReorderWorktrees()
@@ -277,23 +295,66 @@ export function WorktreeList({
     return [...sortedPending, ...sortedReady]
   }, [pendingWorktrees, readyWorktrees, sessionsByWorktreeId, worktreeSortMode])
 
-  // Rendered subset only. `sortedWorktrees` stays whole on purpose: the drop
-  // handler ships the full ordered id list to `reorder_worktrees`, so a
-  // filtered source list would persist an order covering only visible rows.
-  const isFiltering = sessionFilterQuery.trim().length > 0
-  const visibleWorktrees = useMemo(
-    () =>
-      selectWorktreesMatchingQuery(
-        sortedWorktrees,
-        sessionsByWorktreeId,
-        sessionFilterQuery
-      ),
-    [sortedWorktrees, sessionsByWorktreeId, sessionFilterQuery]
-  )
-
   // Sessions pinned to the project root, shown directly under the project row.
   // sessionsByWorktreeId is already loaded for the sidebar, so no extra fetch.
   const storeState = useCanvasStoreState()
+
+  // Label filter for this project's sessions. It is component-local and reset
+  // when the filter row closes, for the same reason the text query is: a
+  // restored filter would hide sessions and read as data loss.
+  const [selectedLabels, setSelectedLabels] = useState<LabelFilter>(
+    () => new Set<string>()
+  )
+
+  const labelOptions = useMemo(
+    () =>
+      collectLabelOptions(
+        collectSessionLabelSources(sessionsByWorktreeId, storeState.sessionLabels)
+      ),
+    [sessionsByWorktreeId, storeState.sessionLabels]
+  )
+
+  // A label nobody carries any more must not hide every row.
+  const labelFilter = useMemo(
+    () => pruneLabelFilter(selectedLabels, labelOptions),
+    [selectedLabels, labelOptions]
+  )
+
+  useEffect(() => {
+    if (!sessionFilterOpen) setSelectedLabels(new Set<string>())
+  }, [sessionFilterOpen])
+
+  const handleToggleLabel = useCallback((name: string) => {
+    setSelectedLabels(current => toggleLabelFilter(current, name))
+  }, [])
+
+  const handleClearLabels = useCallback(
+    () => setSelectedLabels(new Set<string>()),
+    []
+  )
+
+  const filterCriteria: SessionFilterCriteria = useMemo(
+    () => ({
+      query: sessionFilterQuery,
+      labelFilter,
+      sessionLabels: storeState.sessionLabels,
+    }),
+    [sessionFilterQuery, labelFilter, storeState.sessionLabels]
+  )
+
+  // Rendered subset only. `sortedWorktrees` stays whole on purpose: the drop
+  // handler ships the full ordered id list to `reorder_worktrees`, so a
+  // filtered source list would persist an order covering only visible rows.
+  const isFiltering = !isSessionFilterEmpty(filterCriteria)
+  const visibleWorktrees = useMemo(
+    () =>
+      selectWorktreesMatchingFilters(
+        sortedWorktrees,
+        sessionsByWorktreeId,
+        filterCriteria
+      ),
+    [sortedWorktrees, sessionsByWorktreeId, filterCriteria]
+  )
   const pinnedSessionRefs = useProjectsStore(
     state => state.projectCanvasSettings[projectId]?.pinnedSessions
   )
@@ -588,6 +649,17 @@ export function WorktreeList({
       onDrop={handleNativeDrop}
       onDragEnd={handleNativeDragEnd}
     >
+      {sessionFilterOpen && labelOptions.length > 0 && (
+        <LabelFilterChips
+          options={labelOptions}
+          filter={labelFilter}
+          onToggle={handleToggleLabel}
+          onClear={handleClearLabels}
+          variant="compact"
+          className="px-2 pb-1 pt-0.5"
+        />
+      )}
+
       <PinnedSessionsSection
         rows={pinnedRows}
         variant="sidebar"
@@ -618,6 +690,7 @@ export function WorktreeList({
             isDragging={dragState.draggingId === worktree.id}
             closestEdge={isTarget ? dragState.closestEdge : null}
             sessionFilterQuery={sessionFilterQuery}
+            sessionLabelFilter={labelFilter}
             onSessionSelected={onSessionSelected}
           />
         )

@@ -8,6 +8,10 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import { getWorktreeLabels } from '@/lib/worktree-labels'
+import {
+  createLabelFilter,
+  worktreeMatchesLabelFilter,
+} from '@/lib/label-filter'
 import { isBaseSession, type Worktree } from '@/types/projects'
 
 export type CanvasPredefinedFilterTab =
@@ -87,10 +91,9 @@ export function matchesCanvasFilterTab(
   activeFilterTab: CanvasFilterTab
 ): boolean {
   if (isLabelFilterTab(activeFilterTab)) {
-    const labelName = activeFilterTab.slice('label:'.length).toLowerCase()
-    return getWorktreeLabels(worktree).some(
-      label => label.name.toLowerCase() === labelName
-    )
+    // Same matcher as Home and the sidebar, so one label rule covers all three.
+    const labelName = activeFilterTab.slice('label:'.length)
+    return worktreeMatchesLabelFilter(worktree, createLabelFilter([labelName]))
   }
 
   switch (activeFilterTab) {

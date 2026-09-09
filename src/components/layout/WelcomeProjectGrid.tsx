@@ -7,6 +7,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Kbd } from '@/components/ui/kbd'
 
+/**
+ * The projects section of the Home view.
+ *
+ * It renders as a section, not as a page: `HomeView` owns the page frame and
+ * the scrolling, so the recent-session and activity sections can sit below it.
+ */
 interface WelcomeProjectGridProps {
   projects: Project[]
   onProjectClick: (projectId: string) => void
@@ -73,22 +79,21 @@ export function WelcomeProjectGrid({
   }, [projects, search])
 
   return (
-    <div className="flex flex-1 flex-col items-center gap-6 overflow-y-auto px-6 py-12 font-sans">
-      <h1 className="text-4xl font-bold text-foreground">Welcome to Jean!</h1>
+    <section className="flex w-full max-w-4xl flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-semibold text-foreground">Projects</h2>
 
-      {projects.length >= 6 && (
-        <div className="w-full max-w-4xl">
+        {projects.length >= 6 && (
           <Input
             placeholder="Filter projects..."
             value={search}
             onChange={e => setSearch(e.target.value)}
-            autoFocus
-            className="max-w-xs"
+            className="h-8 max-w-[12rem]"
           />
-        </div>
-      )}
+        )}
+      </div>
 
-      <div className="grid w-full max-w-4xl grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
+      <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
         {filtered.map(project => (
           <ProjectCard
             key={project.id}
@@ -105,11 +110,16 @@ export function WelcomeProjectGrid({
         </p>
       )}
 
-      <Button variant="outline" size="sm" onClick={onAddProject}>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={onAddProject}
+        className="self-start"
+      >
         <Plus className="mr-2 h-4 w-4" />
         Add Project
         <Kbd className="ml-2 h-5 px-1.5 text-[10px]">⌘ N</Kbd>
       </Button>
-    </div>
+    </section>
   )
 }

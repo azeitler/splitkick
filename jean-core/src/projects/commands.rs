@@ -5577,6 +5577,14 @@ pub async fn commit_changes(
         worktree.name,
         result
     );
+
+    crate::activity::record(
+        &app,
+        crate::activity::ActivityKind::CommitCreated,
+        crate::activity::NewActivity::for_worktree(worktree_id.clone())
+            .title(crate::activity::first_line(&message)),
+    );
+
     Ok(result)
 }
 
@@ -5622,6 +5630,15 @@ pub async fn open_pull_request(
         "Successfully opened pull request for worktree: {}",
         worktree.name
     );
+
+    crate::activity::record(
+        &app,
+        crate::activity::ActivityKind::PrOpened,
+        crate::activity::NewActivity::for_worktree(worktree_id.clone())
+            .title(title.clone().unwrap_or_else(|| worktree.name.clone()))
+            .url(result.clone()),
+    );
+
     Ok(result)
 }
 
@@ -8249,6 +8266,14 @@ pub async fn create_pr_with_ai_content(
 
     log::trace!("Successfully created PR #{pr_number}: {pr_url}");
 
+    crate::activity::record(
+        &app,
+        crate::activity::ActivityKind::PrOpened,
+        crate::activity::NewActivity::for_worktree_path(worktree_path.clone())
+            .title(format!("#{pr_number} {}", pr_content.title))
+            .url(pr_url.clone()),
+    );
+
     Ok(CreatePrResponse {
         pr_number,
         pr_url,
@@ -9530,6 +9555,13 @@ pub async fn create_commit_with_ai(
         (false, false, false)
     };
 
+    crate::activity::record(
+        &app,
+        crate::activity::ActivityKind::CommitCreated,
+        crate::activity::NewActivity::for_worktree_path(worktree_path.clone())
+            .title(crate::activity::first_line(&response.message)),
+    );
+
     Ok(CreateCommitResponse {
         commit_hash,
         message: response.message,
@@ -10330,6 +10362,21 @@ pub async fn run_review_with_ai(
         "Review complete: {} findings, status: {}",
         response.findings.len(),
         response.approval_status
+    );
+
+    crate::activity::record(
+        &app,
+        crate::activity::ActivityKind::ReviewFinished,
+        crate::activity::NewActivity::for_worktree(worktree_id.clone()).title(format!(
+            "{} finding{} \u{2014} {}",
+            response.findings.len(),
+            if response.findings.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            response.approval_status
+        )),
     );
 
     Ok(response)

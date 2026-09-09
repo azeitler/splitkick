@@ -15,7 +15,7 @@ import { useTerminalStore } from '@/store/terminal-store'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { Plus, Loader2 } from 'lucide-react'
-import { WelcomeProjectGrid } from './WelcomeProjectGrid'
+import { HomeView } from '@/components/home/HomeView'
 import { isFolder } from '@/types/projects'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
@@ -160,7 +160,7 @@ export function MainWindowContent({
   ) : children ? (
     children
   ) : realProjects.length > 0 ? (
-    <WelcomeProjectGrid
+    <HomeView
       projects={realProjects}
       onProjectClick={handleProjectClick}
       onAddProject={() => setAddProjectDialogOpen(true)}

@@ -1,0 +1,93 @@
+import { describe, it, expect } from 'vitest'
+import { flattenAllSessions, resolveSessionLabel } from './home-utils'
+import type { AllSessionsEntry, LabelData, Session } from '@/types/chat'
+
+function session(overrides: Partial<Session>): Session {
+  return {
+    id: 'session',
+    name: 'Session',
+    created_at: 1,
+    updated_at: 1,
+    messages: [],
+    order: 0,
+    ...overrides,
+  } as unknown as Session
+}
+
+function entry(sessions: Session[], suffix = 'a'): AllSessionsEntry {
+  return {
+    project_id: `project-${suffix}`,
+    project_name: `Project ${suffix}`,
+    worktree_id: `worktree-${suffix}`,
+    worktree_name: `Worktree ${suffix}`,
+    worktree_path: `/tmp/${suffix}`,
+    sessions,
+  }
+}
+
+describe('flattenAllSessions', () => {
+  it('sorts every project together, newest activity first', () => {
+    const rows = flattenAllSessions([
+      entry([session({ id: 'old', updated_at: 10 })], 'a'),
+      entry([session({ id: 'new', updated_at: 30 })], 'b'),
+      entry([session({ id: 'mid', updated_at: 20 })], 'c'),
+    ])
+
+    expect(rows.map(row => row.session.id)).toEqual(['new', 'mid', 'old'])
+  })
+
+  it('carries the project and worktree of each session', () => {
+    const rows = flattenAllSessions([entry([session({ id: 's' })], 'a')])
+    const [row] = rows
+    if (!row) throw new Error('expected one row')
+
+    expect(row.projectId).toBe('project-a')
+    expect(row.projectName).toBe('Project a')
+    expect(row.worktreeId).toBe('worktree-a')
+    expect(row.worktreeName).toBe('Worktree a')
+    expect(row.worktreePath).toBe('/tmp/a')
+  })
+
+  it('leaves archived sessions out', () => {
+    const rows = flattenAllSessions([
+      entry([
+        session({ id: 'live' }),
+        session({ id: 'archived', archived_at: 5 }),
+      ]),
+    ])
+
+    expect(rows.map(row => row.session.id)).toEqual(['live'])
+  })
+
+  it('prefers the last message over the update time', () => {
+    const rows = flattenAllSessions([
+      entry([session({ id: 'a', updated_at: 5, last_message_at: 50 })], 'a'),
+      entry([session({ id: 'b', updated_at: 40 })], 'b'),
+    ])
+
+    expect(rows.map(row => row.session.id)).toEqual(['a', 'b'])
+  })
+
+  it('returns nothing for an empty response', () => {
+    expect(flattenAllSessions([])).toEqual([])
+  })
+})
+
+describe('resolveSessionLabel', () => {
+  const stored: LabelData = { name: 'Stored', color: '#111111' }
+  const unsaved: LabelData = { name: 'Unsaved', color: '#222222' }
+
+  it('uses the unsaved store label first', () => {
+    const target = session({ id: 's', label: stored })
+    expect(resolveSessionLabel(target, { s: unsaved })).toBe(unsaved)
+  })
+
+  it('falls back to the persisted label', () => {
+    const target = session({ id: 's', label: stored })
+    expect(resolveSessionLabel(target, {})).toBe(stored)
+  })
+
+  it('returns nothing when the session has no label', () => {
+    expect(resolveSessionLabel(session({ id: 's' }), {})).toBeUndefined()
+  })
+})

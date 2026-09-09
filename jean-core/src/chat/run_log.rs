@@ -10,6 +10,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use uuid::Uuid;
 
+use crate::activity::{ActivityKind, NewActivity};
+
 use super::storage::{
     get_session_dir, list_all_session_ids, load_metadata, save_metadata, with_metadata_mut,
 };
@@ -112,6 +114,8 @@ impl RunLogWriter {
             }
         }
 
+        self.record_activity(ActivityKind::SessionCompleted);
+
         log::trace!("Run completed: {}", self.run_id);
         Ok(())
     }
@@ -169,6 +173,8 @@ impl RunLogWriter {
             }
         }
 
+        self.record_activity(ActivityKind::SessionCancelled);
+
         log::trace!("Run cancelled: {}", self.run_id);
         Ok(())
     }
@@ -194,6 +200,8 @@ impl RunLogWriter {
                 Ok(())
             },
         )?;
+
+        self.record_activity(ActivityKind::SessionCrashed);
 
         log::trace!("Run marked as crashed: {}", self.run_id);
         Ok(())
@@ -345,8 +353,20 @@ impl RunLogWriter {
             },
         )?;
 
+        self.record_activity(ActivityKind::SessionCrashed);
+
         log::trace!("Run marked as crashed: {}", self.run_id);
         Ok(())
+    }
+
+    /// Add this run to the activity log that the Home feed reads.
+    fn record_activity(&self, kind: ActivityKind) {
+        crate::activity::record(
+            &self.app,
+            kind,
+            NewActivity::for_worktree(self.worktree_id.clone())
+                .session(self.session_id.clone(), self.session_name.clone()),
+        );
     }
 }
 

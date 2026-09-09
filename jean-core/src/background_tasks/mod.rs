@@ -19,7 +19,7 @@ use tauri::AppHandle;
 use crate::gh_cli::config::resolve_gh_binary;
 use crate::http_server::EmitExt;
 use crate::projects::git_status::{get_branch_status, ActiveWorktreeInfo, GitBranchStatus};
-use crate::projects::pr_status::{get_pr_status, PrStatus};
+use crate::projects::pr_status::{get_pr_status, PrState, PrStatus};
 
 pub mod commands;
 
@@ -833,10 +833,37 @@ fn emit_git_status(app: &AppHandle, status: GitBranchStatus) -> Result<(), Strin
         .map_err(|e| format!("Failed to emit git:status-update event: {e}"))
 }
 
-/// Emit a PR status event to the frontend
+/// Emit a PR status event to the frontend, and log a merge or a close once.
+///
+/// GitHub does not tell Jean when a pull request is merged; the poller sees the
+/// new state. `record_once` keeps the first sighting and drops every later
+/// tick, so the activity feed shows one row.
 fn emit_pr_status(app: &AppHandle, status: PrStatus) -> Result<(), String> {
+    record_pr_state_activity(app, &status);
+
     app.emit_all("pr:status-update", &status)
         .map_err(|e| format!("Failed to emit pr:status-update event: {e}"))
+}
+
+fn record_pr_state_activity(app: &AppHandle, status: &PrStatus) {
+    let kind = match status.state {
+        PrState::Merged => crate::activity::ActivityKind::PrMerged,
+        PrState::Closed => crate::activity::ActivityKind::PrClosed,
+        PrState::Open => return,
+    };
+    let state = match kind {
+        crate::activity::ActivityKind::PrMerged => "merged",
+        _ => "closed",
+    };
+
+    crate::activity::record_once(
+        app,
+        kind,
+        crate::activity::NewActivity::for_worktree(status.worktree_id.clone())
+            .title(format!("#{}", status.pr_number))
+            .url(status.pr_url.clone())
+            .dedupe_key(format!("pr:{}:{state}", status.pr_url)),
+    );
 }
 
 #[cfg(test)]
