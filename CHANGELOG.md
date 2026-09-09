@@ -62,6 +62,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Session context menu: "Set Status" is now "Status."** The verb added
+  nothing next to the neighbouring rows.
+
 - **The sidebar now follows a command-palette jump.** Opening a session with
   CMD+K moved the main area but left the tree behind: the previous selection
   stayed highlighted, the target's project and workspace could still be
@@ -94,6 +97,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - The canvas variant of the block is untouched.
 
 ### Fixed
+
+- **Context menus: submenu rows now match the rows above and below them.** The
+  "Status" and "Labels" rows in the session context menu are submenu triggers,
+  not plain menu items, and the shared `ContextMenuSubTrigger` was missing the
+  icon and spacing rules that `ContextMenuItem` carries. Their icons stayed at
+  full foreground colour while every sibling icon was faded, and their text sat
+  8px to the left of the text on every other row.
+  - The sub-trigger now uses the same `gap-2`, faded-icon and icon-size rules
+    as a menu item, so the labels line up and the icons share one tone.
+  - The chevron on the right is now faded as well, to match the leading icons.
+  - The "Run" submenu on a worktree with several run scripts is corrected by
+    the same change.
 
 - **Sidebar: the scrollbar no longer covers the session timestamp.** A session
   row carried left padding only, so its "time ago" text ended flush with the

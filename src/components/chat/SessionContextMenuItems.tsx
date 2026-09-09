@@ -121,7 +121,7 @@ export function SessionContextMenuItems({
         }}
       />
       <ContextMenuItem
-        // Quick toggle for the 'paused' override that the Set Status submenu
+        // Quick toggle for the 'paused' override that the Status submenu
         // also exposes. Live states still outrank it visually, but the override
         // is remembered and applies once the session goes idle.
         onSelect={() => {
