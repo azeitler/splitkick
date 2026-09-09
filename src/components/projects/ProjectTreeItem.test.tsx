@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor } from '@/test/test-utils'
-import {
-  ProjectTreeItem,
-  resolveProjectRowClickAction,
-} from './ProjectTreeItem'
+import { ProjectTreeItem } from './ProjectTreeItem'
 import type { Project, Worktree } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -85,16 +82,6 @@ const worktree: Worktree = {
   session_type: 'worktree',
 }
 
-describe('resolveProjectRowClickAction', () => {
-  it('toggles expand when the project has worktrees', () => {
-    expect(resolveProjectRowClickAction(true)).toBe('toggle-expand')
-  })
-
-  it('opens canvas when the project has no worktrees', () => {
-    expect(resolveProjectRowClickAction(false)).toBe('open-canvas')
-  })
-})
-
 describe('ProjectTreeItem', () => {
   beforeEach(() => {
     mocks.worktrees = [worktree]
@@ -126,17 +113,32 @@ describe('ProjectTreeItem', () => {
     })
   })
 
-  it('toggles expand without clearing the selected worktree/session', async () => {
+  it('opens the project canvas on a row click without collapsing the project', async () => {
     const user = userEvent.setup()
     render(<ProjectTreeItem project={project} />)
 
     await user.click(screen.getByTestId('project-row-project-1'))
 
     const projectsState = useProjectsStore.getState()
-    expect(projectsState.selectedWorktreeId).toBe('wt-1')
-    expect(projectsState.expandedProjectIds.has('project-1')).toBe(false)
-    expect(useChatStore.getState().activeWorktreeId).toBe('wt-1')
-    expect(useChatStore.getState().activeWorktreePath).toBe('/tmp/jean-feature')
+    expect(projectsState.selectedProjectId).toBe('project-1')
+    // Leaving the chat is what puts the canvas on screen.
+    expect(useChatStore.getState().activeWorktreeId).toBeNull()
+    expect(useChatStore.getState().activeWorktreePath).toBeNull()
+    // The chevron owns the open/closed state, not the row.
+    expect(projectsState.expandedProjectIds.has('project-1')).toBe(true)
+  })
+
+  it('collapses the project from the chevron only', async () => {
+    const user = userEvent.setup()
+    render(<ProjectTreeItem project={project} />)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse project' }))
+
+    expect(
+      useProjectsStore.getState().expandedProjectIds.has('project-1')
+    ).toBe(false)
+    // The chevron must not move the selection either.
+    expect(useProjectsStore.getState().selectedWorktreeId).toBe('wt-1')
   })
 
   it('opens project canvas when the project has no worktrees', async () => {

@@ -7,6 +7,21 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sidebar: a project row no longer collapses on a click.** Clicking a
+  workspace row left its open/closed state alone — only the chevron changed it
+  — but clicking a project row expanded or collapsed the project. The two row
+  types look the same and sit in the same tree, so the same click gave two
+  different results, and a project collapsed by accident whenever you only
+  meant to click the row.
+  - A click on a project row now opens the project canvas, whether the project
+    has workspaces or not. It was the behavior of an empty project already, and
+    a project that has workspaces had no row to click its way in.
+  - The chevron is the only control for expand and collapse, for projects and
+    for workspaces alike. Double-click to rename and the context menu are
+    unchanged.
+
 ## [0.1.73-z.4] - 2026-09-09
 
 Built on Jean 0.1.73. JeanZ versions carry a `-z.<n>` suffix; the counter is

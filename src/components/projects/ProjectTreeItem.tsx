@@ -52,17 +52,6 @@ interface ProjectTreeItemProps {
   project: Project
 }
 
-/**
- * Resolve the primary action for a project-row click.
- * Projects with worktrees expand/collapse only — never clear session selection.
- * Empty projects still open the project canvas.
- */
-export function resolveProjectRowClickAction(
-  hasWorktrees: boolean
-): 'toggle-expand' | 'open-canvas' {
-  return hasWorktrees ? 'toggle-expand' : 'open-canvas'
-}
-
 export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
   const isMobile = useIsMobile()
   const { data: preferences } = usePreferences()
@@ -156,31 +145,18 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
     }
   }, [isEditing])
 
+  // A row click opens the project canvas — the only way in for a project that
+  // already has worktrees. It never changes the open/closed state; the chevron
+  // does that, the same as a workspace row.
   const handleClick = useCallback(() => {
     if (isEditing) return
 
-    const action = resolveProjectRowClickAction(hasWorktrees)
-    if (action === 'toggle-expand') {
-      // Expand/collapse only — preserve selected worktree/session highlight
-      toggleProjectExpanded(project.id)
-      return
-    }
-
-    // Empty project: open project canvas
     selectProject(project.id)
     clearActiveWorktree()
     if (isMobile) {
       useUIStore.getState().setLeftSidebarVisible(false)
     }
-  }, [
-    isEditing,
-    hasWorktrees,
-    toggleProjectExpanded,
-    project.id,
-    selectProject,
-    clearActiveWorktree,
-    isMobile,
-  ])
+  }, [isEditing, project.id, selectProject, clearActiveWorktree, isMobile])
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
