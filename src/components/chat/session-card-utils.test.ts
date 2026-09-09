@@ -374,7 +374,7 @@ describe('computeSessionCardData', () => {
 
     const card = computeSessionCardData(session, storeState)
 
-    expect(card.automaticStatus).toBe('completed')
+    expect(card.automaticStatus).toBe('review')
     expect(card.statusOverride).toBe('cancelled')
     expect(card.status).toBe('cancelled')
   })
@@ -517,7 +517,7 @@ describe('computeSessionCardData', () => {
     expect(card.status).toBe('paused')
   })
 
-  it('can force idle even when automatic status is completed', () => {
+  it('can force idle even when the run finished cleanly', () => {
     const session = createBaseSession({
       last_run_status: 'completed',
     })
@@ -527,7 +527,7 @@ describe('computeSessionCardData', () => {
 
     const card = computeSessionCardData(session, storeState)
 
-    expect(card.automaticStatus).toBe('completed')
+    expect(card.automaticStatus).toBe('review')
     expect(card.status).toBe('idle')
   })
 
@@ -562,7 +562,7 @@ describe('computeSessionCardData', () => {
 
     expect(getEffectiveSessionWaiting(session, storeState)).toBe(false)
     expect(card.isWaiting).toBe(false)
-    expect(card.status).toBe('completed')
+    expect(card.status).toBe('review')
   })
 
   it('does not treat a normal reviewed session as a code review loading panel', () => {
@@ -889,22 +889,46 @@ describe('computeSessionCardData', () => {
     expect(card.status).toBe('scheduled')
   })
 
-  it('keeps review and completed distinguishable', () => {
+  it('never reaches completed automatically — a clean finish is review-ready', () => {
+    const card = computeSessionCardData(
+      createBaseSession({ last_run_status: 'completed' }),
+      createBaseStoreState()
+    )
+
+    expect(card.automaticStatus).toBe('review')
+    expect(card.statusOverride).toBeNull()
+    expect(card.status).toBe('review')
+    expect(statusConfig[card.status].label).toBe('Review ready')
+  })
+
+  it('keeps review and a pinned completed distinguishable', () => {
     const reviewCard = computeSessionCardData(
-      createBaseSession({
-        is_reviewing: true,
-        last_run_status: 'completed',
-      }),
-      createBaseStoreState({ reviewingSessions: { 'session-1': true } })
+      createBaseSession({ last_run_status: 'completed' }),
+      createBaseStoreState()
     )
     const completedCard = computeSessionCardData(
       createBaseSession({ last_run_status: 'completed' }),
-      createBaseStoreState()
+      createBaseStoreState({
+        sessionStatusOverrides: { 'session-1': 'completed' },
+      })
     )
     expect(reviewCard.status).toBe('review')
     expect(completedCard.status).toBe('completed')
     expect(statusConfig[reviewCard.status].label).toBe('Review ready')
     expect(statusConfig[completedCard.status].label).toBe('Completed')
+  })
+
+  it('reads a completed pin persisted on the session (MCP set_session_status)', () => {
+    const card = computeSessionCardData(
+      createBaseSession({
+        last_run_status: 'completed',
+        status_override: 'completed',
+      }),
+      createBaseStoreState()
+    )
+
+    expect(card.statusOverride).toBe('completed')
+    expect(card.status).toBe('completed')
   })
 
   it('prefers input_required over plan_approval when both are waiting', () => {

@@ -9,6 +9,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **A session that finishes a run is Review, not Completed.** Sessions skipped
+  the review state and landed in Completed on their own, so "Completed" said
+  nothing about whether anyone had looked at the work.
+  - A run that ends cleanly now reports as **Review ready**. `completed` is a
+    manual status only: you pin it from the Set Status menu, or an agent pins it
+    for its own session through the MCP `set_session_status` tool.
+  - The unread bell and the command palette follow the same rule. They read
+    "Review ready" for a finished run and keep the light-blue "Completed" for a
+    pinned one.
+  - A pinned Completed no longer counts toward a worktree's review tally on the
+    project canvas, and no longer pulls the worktree summary back to review. You
+    marked it done, so it is done.
+  - `cancelled`, `crashed` and the live states are untouched.
+
 - **The base session carries a "Base Session" badge everywhere.** A base
   session is named after the default branch, so the sidebar listed it as an
   ordinary workspace called `main`, while the project canvas dropped the name

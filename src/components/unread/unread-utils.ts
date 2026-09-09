@@ -51,11 +51,12 @@ export interface SessionStatusDisplay {
 }
 
 const FINISHED_STATUS_DISPLAY: Record<string, SessionStatusDisplay> = {
+  // A run that ended cleanly is review-ready. "Completed" is manual only, so it
+  // is reported from the pin below rather than from the run outcome.
   completed: {
     icon: CheckCircle2,
-    label: 'Completed',
-    // Matches the light-blue "completed" dot in StatusIndicator.
-    className: 'text-sky-400',
+    label: 'Review ready',
+    className: 'text-green-500',
   },
   cancelled: {
     icon: CirclePause,
@@ -67,6 +68,13 @@ const FINISHED_STATUS_DISPLAY: Record<string, SessionStatusDisplay> = {
     label: 'Crashed',
     className: 'text-destructive',
   },
+}
+
+/** Light blue, matching the manual-only "completed" dot in StatusIndicator. */
+const PINNED_COMPLETED_DISPLAY: SessionStatusDisplay = {
+  icon: CheckCircle2,
+  label: 'Completed',
+  className: 'text-sky-400',
 }
 
 /**
@@ -139,6 +147,13 @@ export function getSessionStatus(
       className: 'text-blue-500 animate-spin',
     }
   }
+  // A manual pin outranks the run outcome: the user (or an agent via the MCP
+  // `set_session_status` tool) already said what this session is.
+  if (session.status_override === 'completed') return PINNED_COMPLETED_DISPLAY
+  if (session.status_override === 'cancelled') {
+    return FINISHED_STATUS_DISPLAY.cancelled ?? null
+  }
+
   return session.last_run_status
     ? (FINISHED_STATUS_DISPLAY[session.last_run_status] ?? null)
     : null

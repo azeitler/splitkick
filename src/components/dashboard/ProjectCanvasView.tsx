@@ -413,9 +413,9 @@ function getActiveStatus(cards: SessionCardData[]): ActiveStatus {
     return 'planning'
   if (cards.some(c => c.status === 'vibing')) return 'vibing'
   if (cards.some(c => c.status === 'yoloing')) return 'yoloing'
-  // Prefer review-ready over completed for worktree-level summary
+  // A clean finish already reports as `review`; a manual `completed` pin means
+  // the user is done with it, so it must not pull the worktree back to review.
   if (cards.some(c => c.status === 'review')) return 'review'
-  if (cards.some(c => c.status === 'completed')) return 'review'
   return null
 }
 
@@ -447,11 +447,9 @@ function getSessionMetrics(cards: SessionCardData[]) {
   const waitingCount = cards.filter(c =>
     isActionableWaitingStatus(c.status)
   ).length
-  // Keep review-ready and completed countable together for metrics, but
-  // cancelled/crashed are not "ready for review".
-  const reviewCount = cards.filter(
-    c => c.status === 'review' || c.status === 'completed'
-  ).length
+  // Only review-ready counts. A manual `completed` pin is done, and
+  // cancelled/crashed are not "ready for review" either.
+  const reviewCount = cards.filter(c => c.status === 'review').length
   const planningCount = cards.filter(
     c => c.status === 'planning' || c.status === 'scheduled'
   ).length
@@ -1224,13 +1222,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         worktreeId: row.worktreeId,
         sessionId: row.sessionId,
       })
-    },
-    [projectId]
-  )
-
-  const handleUnpinSession = useCallback(
-    (sessionId: string) => {
-      useProjectsStore.getState().unpinSessionFromProject(projectId, sessionId)
     },
     [projectId]
   )
@@ -3660,8 +3651,8 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
             <PinnedSessionsSection
               rows={pinnedRows}
               variant="canvas"
+              projectId={projectId}
               onOpen={handleOpenPinnedSession}
-              onUnpin={handleUnpinSession}
             />
           )}
           {worktreeSections.length === 0 ? (

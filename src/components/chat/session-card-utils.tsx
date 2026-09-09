@@ -684,7 +684,10 @@ export function computeSessionCardData(
   //   input_required > plan_approval > waiting >
   //   sending modes > reviewing > review >
   //   restart recovery (running/resumable) > scheduled >
-  //   cancelled > crashed > completed > idle
+  //   cancelled > crashed > review (clean finish) > idle
+  //
+  // `completed` is never produced here — it is a manual-only status applied
+  // from the override below.
   //
   // Plan/question flags can be true while still streaming (hasExitPlanMode from
   // live tool calls). Only promote them to actionable statuses once the session
@@ -742,7 +745,10 @@ export function computeSessionCardData(
   } else if (!sessionSending && session.last_run_status === 'crashed') {
     status = 'crashed'
   } else if (!sessionSending && session.last_run_status === 'completed') {
-    status = 'completed'
+    // A run that ended cleanly is ready for you to look at, not done.
+    // `completed` is a manual status only: a person pins it from the Set Status
+    // menu, or an agent pins it via the MCP `set_session_status` tool.
+    status = 'review'
   }
 
   const automaticStatus = status
