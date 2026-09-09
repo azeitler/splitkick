@@ -10,6 +10,24 @@ use std::sync::{Arc, Mutex, RwLock};
 type ListenerFn = Arc<dyn Fn(Event) + Send + Sync>;
 type EventSink = Arc<dyn Fn(&str, &str) -> Result<(), String> + Send + Sync>;
 
+/// Directory Jean keeps its data in, under the platform data directory.
+///
+/// A constant, not the bundle identifier. Build flavors ship their own
+/// identifier so macOS can hold a separate TCC grant per app, but they must
+/// still read one set of projects, sessions, worktrees and CLI logins. The
+/// value is the stable Jean identifier, so no existing install has to move.
+pub const DATA_DIR_NAME: &str = "com.jean.desktop";
+
+/// Resolve Jean's data directory, the same way for every host.
+///
+/// `JEAN_DATA_DIR` overrides it, which is how an isolated profile is made.
+/// Otherwise it is the platform data directory plus [`DATA_DIR_NAME`].
+pub fn resolve_data_dir() -> Option<PathBuf> {
+    std::env::var_os("JEAN_DATA_DIR")
+        .map(PathBuf::from)
+        .or_else(|| dirs::data_dir().map(|path| path.join(DATA_DIR_NAME)))
+}
+
 #[derive(Clone)]
 pub struct RuntimeContext {
     inner: Arc<RuntimeInner>,
@@ -32,9 +50,9 @@ impl RuntimeContext {
 
     /// `product_name` comes from the Tauri config, so a build flavor such as
     /// JeanZ (see `src-tauri/tauri.fork.conf.json`) can be told apart from
-    /// stable Jean. Both keep the same bundle identifier on purpose, so they
-    /// also share one app-data directory; the name lets a flavor pick its own
-    /// state files inside that directory.
+    /// stable Jean. Flavors carry their own bundle identifier but share one
+    /// app-data directory (see [`resolve_data_dir`]); the name lets a flavor
+    /// pick its own state files inside that directory.
     pub fn new_with_product_name(
         app_data_dir: PathBuf,
         resource_dir: PathBuf,
@@ -61,9 +79,7 @@ impl RuntimeContext {
     }
 
     pub fn from_environment() -> Result<Self, String> {
-        let app_data_dir = std::env::var_os("JEAN_DATA_DIR")
-            .map(PathBuf::from)
-            .or_else(|| dirs::data_dir().map(|path| path.join("com.jean.desktop")))
+        let app_data_dir = resolve_data_dir()
             .ok_or_else(|| "Unable to resolve Jean data directory".to_string())?;
         let resource_dir = std::env::var_os("JEAN_RESOURCE_DIR")
             .map(PathBuf::from)
@@ -284,6 +300,23 @@ mod tests {
         context.manage(String::from("shared"));
 
         assert_eq!(&*context.clone().state::<String>(), "shared");
+    }
+    // The data directory must not follow the bundle identifier: JeanZ ships
+    // its own so macOS can hold a separate TCC grant, but both builds read one
+    // set of projects, sessions and CLI logins.
+    #[test]
+    fn the_data_directory_is_the_stable_identifier() {
+        assert_eq!(DATA_DIR_NAME, "com.jean.desktop");
+    }
+
+    #[test]
+    fn the_default_data_directory_sits_under_the_platform_data_dir() {
+        // JEAN_DATA_DIR is process-wide, so this asserts the fallback shape
+        // rather than setting the variable and racing other tests.
+        let expected = dirs::data_dir().map(|path| path.join(DATA_DIR_NAME));
+        if std::env::var_os("JEAN_DATA_DIR").is_none() {
+            assert_eq!(resolve_data_dir(), expected);
+        }
     }
 
     #[test]

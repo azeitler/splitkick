@@ -204,17 +204,18 @@ fn resolve_product_name(app: &tauri::App) -> Option<String> {
 }
 
 fn initialize_core(app: &mut tauri::App) -> Result<jean_core::RuntimeContext, String> {
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| error.to_string())?;
+    // Deliberately not `path().app_data_dir()`, which Tauri derives from the
+    // bundle identifier. Build flavors (see tauri.fork.conf.json) carry their
+    // own identifier so macOS can hold a separate TCC grant for each app, but
+    // they must keep reading one set of projects, sessions and CLI logins.
+    let app_data_dir = jean_core::resolve_data_dir()
+        .ok_or_else(|| "Unable to resolve Jean data directory".to_string())?;
     let resource_dir = app
         .path()
         .resource_dir()
         .map_err(|error| error.to_string())?;
-    // Build flavors (see tauri.fork.conf.json) share the stable bundle
-    // identifier, so they share one app-data directory. Pass the product name
-    // through so a flavor can keep its own state files inside it.
+    // Pass the product name through so a flavor can keep its own state files
+    // inside the shared directory.
     let product_name = resolve_product_name(app);
     log::info!("Starting as product {product_name:?}");
     let core =
@@ -255,6 +256,12 @@ fn allow_project_assets(app: &AppHandle, core: &jean_core::RuntimeContext) {
         let _ = app
             .asset_protocol_scope()
             .allow_directory(home.join("jean"), true);
+    }
+    // `$APPDATA` in tauri.conf.json resolves through the bundle identifier, so
+    // a flavor's scope would miss the shared data directory that holds project
+    // avatars and pasted images. Grant it by its real path.
+    if let Some(data_dir) = jean_core::resolve_data_dir() {
+        let _ = app.asset_protocol_scope().allow_directory(data_dir, true);
     }
 }
 

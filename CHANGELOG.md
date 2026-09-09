@@ -110,6 +110,34 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - The "Run" submenu on a worktree with several run scripts is corrected by
     the same change.
 
+- **macOS stops re-asking JeanZ for access to other apps' data.** JeanZ shipped
+  the stable `com.jean.desktop` bundle identifier, but it is signed by a
+  different Developer ID team than Jean. macOS records a privacy grant against
+  the bundle identifier *and* the code signature it saw, so each app failed the
+  requirement the other had stored: the dialog "JeanZ.app would like to access
+  data from other apps" came back on every launch, and allowing it invalidated
+  stable Jean's grant in turn.
+  - JeanZ now ships `com.jean.desktop.jeanz`. Each app gets its own privacy
+    record, so one grant sticks.
+  - The data stays shared. The desktop app no longer takes its data directory
+    from the bundle identifier — it calls `jean_core::resolve_data_dir()`,
+    which returns the platform data directory plus a constant. Projects,
+    sessions, worktrees, preferences and CLI logins are untouched, and no
+    install has to migrate.
+  - `JEAN_DATA_DIR` now also overrides that directory for the desktop app, not
+    only for the headless host, which is how an isolated profile is made.
+  - Project avatars and pasted images keep loading: the asset protocol scope
+    follows the identifier, so the shared directory is granted by its real path
+    at startup.
+  - Two one-time effects on the first JeanZ start after this change. Settings
+    kept in the WebView (zoom, client preferences, the remote-connection list)
+    start empty, and the files Tauri plugins own move with the identifier — the
+    window-state file, the persisted file scope and the log directory. Jean's
+    own window layout lives in `ui-state_jeanz.json` and is unaffected.
+  - A locally built JeanZ is ad-hoc signed, so its code hash changes on every
+    build and no grant can stick for it. Only a Developer ID build has a stable
+    identity.
+
 - **Sidebar: the scrollbar no longer covers the session timestamp.** A session
   row carried left padding only, so its "time ago" text ended flush with the
   sidebar edge and the scrollbar thumb was drawn on top of it once the list
@@ -136,8 +164,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - Pinned labels were never affected; they always had a Rust field.
 
 - **JeanZ keeps its own UI state, so stable Jean can no longer erase it.** JeanZ
-  ships with the stable bundle identifier on purpose, so both builds read and
-  write one app-data directory. They do not share a `UIState` schema: a build
+  shares one app-data directory with stable Jean on purpose, so both builds
+  read and write the same files. They do not share a `UIState` schema: a build
   that does not know a field drops that field when it saves, which silently
   deleted the newer build's state. Workspace expansion, added in JeanZ first,
   disappeared on every restart for anyone who also ran stable Jean.
@@ -147,7 +175,7 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - The flavor is recognised from the build config and from the `.app` bundle
     name, so both signals must miss before a JeanZ build is read as stable Jean.
   - Projects, sessions, preferences and CLI logins are still shared, which is
-    the point of the shared identifier.
+    the point of the shared directory.
 
 - **Sidebar: "Completed" and "Cancelled" session statuses now change the row.**
   Setting a session to Completed had no visible effect, and Cancelled did not

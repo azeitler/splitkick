@@ -3661,8 +3661,9 @@ const UI_STATE_FILE_JEANZ: &str = "ui-state_jeanz.json";
 
 /// Pick the UI state file for this build flavor.
 ///
-/// JeanZ keeps the stable bundle identifier on purpose, so both builds share
-/// one app-data directory. They do not share a `UIState` schema: a build that
+/// JeanZ shares one app-data directory with stable Jean on purpose, even
+/// though the two carry different bundle identifiers. What they must not
+/// share is a `UIState` schema: a build that
 /// does not know a field drops that field when it saves, which silently
 /// deletes the other build's state. One file per flavor keeps them apart.
 fn ui_state_file_name(product_name: Option<&str>) -> &'static str {

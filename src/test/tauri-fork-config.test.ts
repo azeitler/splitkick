@@ -56,11 +56,15 @@ const resolved = mergeJsonConfig(base, fork) as {
 }
 
 describe('JeanZ fork configuration', () => {
-  it('renames the app without touching the bundle identifier', () => {
+  it('renames the app and gives it its own bundle identifier', () => {
     expect(resolved.productName).toBe('JeanZ')
-    // The shared identifier is deliberate: JeanZ reuses the Jean app-data
-    // directory, so projects, sessions and CLI logins carry over.
-    expect(resolved.identifier).toBe('com.jean.desktop')
+    // A distinct identifier is deliberate. macOS keys a TCC grant by bundle
+    // identifier plus code signature, so two bundles claiming
+    // "com.jean.desktop" with different Developer IDs invalidate each other's
+    // grant and re-prompt forever. Data stays shared through
+    // jean_core::resolve_data_dir(), not through the identifier.
+    expect(resolved.identifier).toBe('com.jean.desktop.jeanz')
+    expect(base.identifier).toBe('com.jean.desktop')
     expect(base.productName).toBe('Jean')
   })
 
@@ -103,9 +107,9 @@ describe('JeanZ fork configuration', () => {
   })
 
   it('points the updater at the fork so JeanZ cannot replace itself with upstream Jean', () => {
-    // JeanZ keeps upstream's bundle identifier, so upstream's latest.json
-    // would verify against upstream's pubkey and silently install Jean over
-    // JeanZ. Both halves have to move together: the endpoint and the key.
+    // Left unchanged, upstream's latest.json would verify against upstream's
+    // pubkey and silently install Jean over JeanZ. Both halves have to move
+    // together: the endpoint and the key.
     expect(resolved.plugins.updater.endpoints).toEqual([
       'https://github.com/azeitler/jean/releases/latest/download/latest.json',
     ])

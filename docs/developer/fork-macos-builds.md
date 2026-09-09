@@ -172,31 +172,55 @@ The key must have a password. Tauri rejects an empty one and then falls back to
 prompting on a terminal that a runner does not have, which fails the build
 rather than degrading.
 
-## JeanZ and Jean share one data directory
+## JeanZ and Jean share one data directory, but not one bundle identifier
 
-The bundle identifier stays `com.jean.desktop`. Tauri derives the app-data
-directory from it, so JeanZ reads and writes
-`~/Library/Application Support/com.jean.desktop`. Projects, sessions,
-preferences and the Jean-managed CLI installs carry over, and nothing has to be
-authenticated again.
+JeanZ ships `com.jean.desktop.jeanz`; stable Jean keeps `com.jean.desktop`.
+Both read and write `~/Library/Application Support/com.jean.desktop`, so
+projects, sessions, preferences and the Jean-managed CLI installs carry over
+and nothing has to be authenticated again.
+
+The two are decoupled on purpose. Tauri derives `path().app_data_dir()` from
+the bundle identifier, so the desktop host does not use it. `initialize_core()`
+in `src-tauri/src/lib.rs` calls `jean_core::resolve_data_dir()` instead, which
+returns `JEAN_DATA_DIR` when it is set and otherwise the platform data
+directory plus `jean_core::DATA_DIR_NAME` — the stable identifier, as a
+constant. Set `JEAN_DATA_DIR` to run an isolated profile.
+
+**Why the identifier had to move.** macOS keys a TCC grant by the client's
+bundle identifier *and* the code requirement recorded when the grant was made.
+That requirement pins the Developer ID team. JeanZ is signed by a different
+team than upstream Jean, so two bundles both claiming `com.jean.desktop` fail
+each other's stored requirement: every launch re-asked "JeanZ.app would like to
+access data from other apps", and allowing it overwrote the row that stable
+Jean depended on. A distinct identifier gives each app its own row.
+
+A locally built JeanZ is still ad-hoc signed (`signingIdentity: "-"`), which
+produces a new code hash on every build, so a grant cannot stick for it. Only a
+Developer ID build keeps a stable identity across launches.
+
+Two consequences of the split identifier, both one-time and minor:
+
+- The WebView store moves, so client-only settings kept in `localStorage`
+  (zoom, client preferences, the remote-connection list) start empty once.
+- Files owned by Tauri plugins move with the identifier: the window-state file,
+  the persisted fs scope, and `~/Library/Logs/<identifier>`. Jean's own window
+  layout lives in `ui-state_jeanz.json` and is unaffected.
+
+Project avatars and pasted images are loaded through the asset protocol, whose
+`$APPDATA/**` scope also follows the identifier. `allow_project_assets()` in
+`src-tauri/src/lib.rs` therefore grants the shared data directory by its real
+path at startup.
 
 **Do not run both apps at the same time.** That state is plain JSON
 (`projects.json`, `preferences.json`, `ui-state.json`) protected by an
 in-process lock only. Two processes that write it together lose changes.
 
-If an isolated profile is ever needed: `jean-core` already reads `JEAN_DATA_DIR`
-in `RuntimeContext::from_environment()`, but the desktop app calls
-`RuntimeContext::new()` with the identifier-derived path
-(`src-tauri/src/lib.rs`). Honouring the variable there as well would be a
-three-line change.
-
 ## The updater targets this fork
 
 The app checks for updates five seconds after launch and from "Check for
 Updates…". Upstream points that check at coolLabs' `latest.json` and verifies
-it with coolLabs' public key. JeanZ keeps the same bundle identifier, so an
-unchanged check would verify successfully and quietly replace JeanZ with the
-official Jean. **Endpoint and key therefore have to move together**, and the
+it with coolLabs' public key. An unchanged check would verify successfully and
+quietly replace JeanZ with the official Jean. **Endpoint and key therefore have to move together**, and the
 overlay changes both:
 
 ```json
