@@ -13,16 +13,13 @@ import {
 import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/lib/relative-time'
-import {
-  navigateToProject,
-  navigateToSession,
-} from '@/lib/navigate-to-session'
+import { navigateToProject, navigateToSession } from '@/lib/navigate-to-session'
 import { getSessionStatus } from '@/components/unread/unread-utils'
 import { getBackendIcon } from '@/components/ui/backend-label'
 import { useDebouncedValue } from '@/hooks/useDebouncedValue'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { Kbd } from '@/components/ui/kbd'
-import { buildSessionCommands } from './session-commands'
+import { buildSessionCommands, type SessionCommand } from './session-commands'
 import { HighlightedText } from './highlight-matches'
 import { getAllCommands, executeCommand } from '@/lib/commands'
 import { formatShortcutDisplay } from '@/types/keybindings'
@@ -50,12 +47,24 @@ import {
   CommandShortcut,
 } from '@/components/ui/command'
 
-type PaletteMode = 'quick' | 'search'
+type PaletteMode = 'quick' | 'sessions' | 'projects' | 'search'
 
 const MODES: { id: PaletteMode; label: string }[] = [
   { id: 'quick', label: 'Quick' },
+  { id: 'sessions', label: 'Sessions' },
+  { id: 'projects', label: 'Projects' },
   { id: 'search', label: 'Search messages' },
 ]
+
+const PLACEHOLDERS: Record<PaletteMode, string> = {
+  quick: 'Type a command or search...',
+  sessions: 'Search sessions...',
+  projects: 'Search projects...',
+  search: 'Search across all session messages...',
+}
+
+/** No cap on the dedicated Sessions tab — the whole point is to see them all. */
+const ALL_SESSIONS_LIMIT = Number.POSITIVE_INFINITY
 
 interface ProjectCommand {
   id: string
@@ -172,6 +181,21 @@ export function CommandPalette({
     [allSessions, sessionLabels, search, activeSessionId]
   )
 
+  // The Sessions tab lists every session, newest activity first, and leaves the
+  // filtering to cmdk over the same haystack the Quick tab matches against.
+  const allSessionCommands = useMemo(
+    () =>
+      mode === 'sessions'
+        ? buildSessionCommands({
+            entries: allSessions?.entries ?? [],
+            sessionLabels,
+            query: '',
+            recentLimit: ALL_SESSIONS_LIMIT,
+          })
+        : [],
+    [mode, allSessions, sessionLabels]
+  )
+
   // Create dynamic project commands (sorted by last-accessed, most recent first).
   // Every project is listed, but the current one sorts last: the top of a switch
   // list should be where you would go, not where you already are.
@@ -266,36 +290,37 @@ export function CommandPalette({
         return
       }
 
-      const sessionCmd = sessionCommands.find(c => c.id === commandId)
-      if (sessionCmd) {
-        navigateToSession({
-          projectId: sessionCmd.projectId,
-          worktreeId: sessionCmd.worktreeId,
-          sessionId: sessionCmd.session.id,
-        })
-        return
-      }
-
-      const projectCmd = projectCommands.find(c => c.id === commandId)
-      if (projectCmd) {
-        projectCmd.execute()
-        return
-      }
-
       const result = await executeCommand(commandId, commandContext)
 
       if (!result.success && result.error) {
         commandContext.showToast(result.error, 'error')
       }
     },
-    [
-      commandContext,
-      connectionCommands,
-      projectCommands,
-      sessionCommands,
-      reloadApp,
-      setCommandPaletteOpen,
-    ]
+    [commandContext, connectionCommands, reloadApp, setCommandPaletteOpen]
+  )
+
+  // Session and project rows are rendered by more than one tab, so they close
+  // the palette themselves rather than being looked up by id in one list.
+  const handleSessionSelect = useCallback(
+    (cmd: SessionCommand) => {
+      setCommandPaletteOpen(false)
+      setSearch('')
+      navigateToSession({
+        projectId: cmd.projectId,
+        worktreeId: cmd.worktreeId,
+        sessionId: cmd.session.id,
+      })
+    },
+    [setCommandPaletteOpen]
+  )
+
+  const handleProjectSelect = useCallback(
+    (cmd: ProjectCommand) => {
+      setCommandPaletteOpen(false)
+      setSearch('')
+      cmd.execute()
+    },
+    [setCommandPaletteOpen]
   )
 
   const handleSearchHitSelect = useCallback(
@@ -311,20 +336,19 @@ export function CommandPalette({
     [setCommandPaletteOpen]
   )
 
-  // Tab toggles the mode. Jean already reads Tab as "cycle a mode" in the chat
-  // input, and inside a dialog it would otherwise only move focus.
+  // Tab cycles the mode, Shift+Tab cycles back. Jean already reads Tab as
+  // "cycle a mode" in the chat input, and inside a dialog it would otherwise
+  // only move focus.
   const handleInputKeyDown = useCallback((event: React.KeyboardEvent) => {
-    if (
-      event.key !== 'Tab' ||
-      event.shiftKey ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.altKey
-    ) {
+    if (event.key !== 'Tab' || event.metaKey || event.ctrlKey || event.altKey) {
       return
     }
     event.preventDefault()
-    setMode(current => (current === 'quick' ? 'search' : 'quick'))
+    setMode(current => {
+      const index = MODES.findIndex(item => item.id === current)
+      const step = event.shiftKey ? MODES.length - 1 : 1
+      return MODES[(index + step) % MODES.length]?.id ?? 'quick'
+    })
   }, [])
 
   // Handle dialog open/close with search clearing
@@ -360,27 +384,24 @@ export function CommandPalette({
       description="Type a command or search..."
       className="top-4 translate-y-0 sm:top-[10vh] sm:max-w-2xl"
       disablePointerSelection
-      shouldFilter={mode === 'quick'}
+      // Only `search` goes to the backend; every other tab filters loaded data.
+      shouldFilter={mode !== 'search'}
     >
       <CommandInput
-        placeholder={
-          mode === 'search'
-            ? 'Search across all session messages...'
-            : 'Type a command or search...'
-        }
+        placeholder={PLACEHOLDERS[mode]}
         value={search}
         onValueChange={setSearch}
         onKeyDown={handleInputKeyDown}
       />
 
-      <div className="flex items-center gap-1 border-b px-2 py-1.5">
+      <div className="flex flex-wrap items-center gap-1 border-b px-2 py-1.5">
         {MODES.map(item => (
           <button
             key={item.id}
             type="button"
             onClick={() => setMode(item.id)}
             className={cn(
-              'rounded-md px-2 py-1 text-xs transition-colors',
+              'shrink-0 rounded-md px-2 py-1 text-xs transition-colors',
               mode === item.id
                 ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:bg-accent/50'
@@ -403,6 +424,20 @@ export function CommandPalette({
       </div>
       <CommandList className="max-h-[70dvh] sm:max-h-[min(640px,65dvh)]">
         {mode === 'quick' && <CommandEmpty>No results found.</CommandEmpty>}
+        {mode === 'sessions' && (
+          <CommandEmpty>
+            {search.trim()
+              ? `No sessions match “${search.trim()}”.`
+              : 'No sessions yet.'}
+          </CommandEmpty>
+        )}
+        {mode === 'projects' && (
+          <CommandEmpty>
+            {search.trim()
+              ? `No projects match “${search.trim()}”.`
+              : 'No projects yet.'}
+          </CommandEmpty>
+        )}
 
         {mode === 'search' && (
           <>
@@ -462,81 +497,35 @@ export function CommandPalette({
           <CommandGroup
             heading={search.trim() ? 'Sessions' : 'Recent Sessions'}
           >
-            {sessionCommands.map(cmd => {
-              const BackendIcon = getBackendIcon(
-                cmd.session.backend ?? 'claude'
-              )
-              const status = getSessionStatus(cmd.session)
-              const StatusIcon = status?.icon
-              const activityAt =
-                cmd.session.last_message_at ?? cmd.session.updated_at
+            {sessionCommands.map(cmd =>
+              renderSessionRow(cmd, handleSessionSelect)
+            )}
+          </CommandGroup>
+        )}
 
-              return (
-                <CommandItem
-                  key={cmd.id}
-                  value={cmd.searchValue}
-                  onSelect={() => handleCommandSelect(cmd.id)}
-                  className="items-start"
-                >
-                  <BackendIcon className="mt-0.5 size-4 shrink-0" />
-                  <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                    <span className="truncate leading-snug">{cmd.label}</span>
-                    <span className="truncate text-xs leading-snug text-muted-foreground">
-                      {cmd.description}
-                    </span>
-                  </div>
-                  <div className="ml-2 flex shrink-0 items-center gap-1.5 self-center">
-                    {StatusIcon && (
-                      <StatusIcon
-                        className={cn('size-3.5', status?.className)}
-                        aria-label={status?.label}
-                      />
-                    )}
-                    {activityAt ? (
-                      <span className="text-xs text-muted-foreground">
-                        {formatRelativeTime(activityAt)}
-                      </span>
-                    ) : null}
-                  </div>
-                </CommandItem>
-              )
-            })}
+        {/* The whole list, uncapped and unmixed with commands */}
+        {mode === 'sessions' && (
+          <CommandGroup heading="Sessions">
+            {allSessionCommands.map(cmd =>
+              renderSessionRow(cmd, handleSessionSelect)
+            )}
+          </CommandGroup>
+        )}
+
+        {mode === 'projects' && (
+          <CommandGroup heading="Projects">
+            {projectCommands.map(cmd =>
+              renderProjectRow(cmd, handleProjectSelect)
+            )}
           </CommandGroup>
         )}
 
         {/* Projects follow, so CMD+K -> down-arrow still reaches them fast */}
         {mode === 'quick' && commandGroups.projectCommands.length > 0 && (
           <CommandGroup heading="Projects">
-            {commandGroups.projectCommands.map(cmd => (
-              <CommandItem
-                key={cmd.id}
-                value={`${cmd.label} ${cmd.description ?? ''} ${cmd.keywords.join(' ')}`}
-                onSelect={() => handleCommandSelect(cmd.id)}
-                className="items-start"
-              >
-                {cmd.avatarUrl ? (
-                  <img
-                    src={cmd.avatarUrl}
-                    alt={cmd.label}
-                    className="mt-0.5 size-4 shrink-0 rounded object-cover"
-                  />
-                ) : (
-                  <div className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded bg-muted-foreground/20">
-                    <span className="text-[10px] font-medium uppercase">
-                      {cmd.avatarFallback}
-                    </span>
-                  </div>
-                )}
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate leading-snug">{cmd.label}</span>
-                  {cmd.description && (
-                    <span className="text-xs leading-snug text-muted-foreground">
-                      {cmd.description}
-                    </span>
-                  )}
-                </div>
-              </CommandItem>
-            ))}
+            {commandGroups.projectCommands.map(cmd =>
+              renderProjectRow(cmd, handleProjectSelect)
+            )}
           </CommandGroup>
         )}
 
@@ -602,6 +591,90 @@ export function CommandPalette({
           )}
       </CommandList>
     </CommandDialog>
+  )
+}
+
+/**
+ * One session row, shared by the Quick tab and the Sessions tab.
+ *
+ * A plain render helper rather than a component: the backend icon is resolved
+ * per row, and resolving a component inside a component body is exactly what
+ * "no components during render" forbids.
+ */
+function renderSessionRow(
+  cmd: SessionCommand,
+  onSelect: (cmd: SessionCommand) => void
+) {
+  const BackendIcon = getBackendIcon(cmd.session.backend ?? 'claude')
+  const status = getSessionStatus(cmd.session)
+  const StatusIcon = status?.icon
+  const activityAt = cmd.session.last_message_at ?? cmd.session.updated_at
+
+  return (
+    <CommandItem
+      key={cmd.id}
+      value={cmd.searchValue}
+      onSelect={() => onSelect(cmd)}
+      className="items-start"
+    >
+      <BackendIcon className="mt-0.5 size-4 shrink-0" />
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate leading-snug">{cmd.label}</span>
+        <span className="truncate text-xs leading-snug text-muted-foreground">
+          {cmd.description}
+        </span>
+      </div>
+      <div className="ml-2 flex shrink-0 items-center gap-1.5 self-center">
+        {StatusIcon && (
+          <StatusIcon
+            className={cn('size-3.5', status?.className)}
+            aria-label={status?.label}
+          />
+        )}
+        {activityAt ? (
+          <span className="text-xs text-muted-foreground">
+            {formatRelativeTime(activityAt)}
+          </span>
+        ) : null}
+      </div>
+    </CommandItem>
+  )
+}
+
+/** One project row, shared by the Quick tab and the Projects tab. */
+function renderProjectRow(
+  cmd: ProjectCommand,
+  onSelect: (cmd: ProjectCommand) => void
+) {
+  return (
+    <CommandItem
+      key={cmd.id}
+      value={`${cmd.label} ${cmd.description ?? ''} ${cmd.keywords.join(' ')}`}
+      onSelect={() => onSelect(cmd)}
+      className="items-start"
+    >
+      {cmd.avatarUrl ? (
+        <img
+          src={cmd.avatarUrl}
+          alt={cmd.label}
+          className="mt-0.5 size-4 shrink-0 rounded object-cover"
+        />
+      ) : (
+        <div className="mt-0.5 flex size-4 shrink-0 items-center justify-center rounded bg-muted-foreground/20">
+          <span className="text-[10px] font-medium uppercase">
+            {cmd.avatarFallback}
+          </span>
+        </div>
+      )}
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="truncate leading-snug">{cmd.label}</span>
+        {cmd.description && (
+          <span className="text-xs leading-snug text-muted-foreground">
+            {cmd.description}
+          </span>
+        )}
+      </div>
+    </CommandItem>
   )
 }
 

@@ -180,6 +180,15 @@ vi.mock('@/lib/remote-version', () => ({
   warnRemoteVersionMismatch,
 }))
 
+/** The mode tabs carry the same words as the group headings, so scope to one. */
+function groupHeading(text: string): HTMLElement {
+  const heading = Array.from(
+    document.querySelectorAll('[cmdk-group-heading]')
+  ).find(node => node.textContent === text)
+  if (!heading) throw new Error(`no "${text}" group heading`)
+  return heading as HTMLElement
+}
+
 describe('CommandPalette connections', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -205,8 +214,8 @@ describe('CommandPalette connections', () => {
   it('lists projects before connections', () => {
     render(<CommandPalette />)
 
-    const projectsHeading = screen.getByText('Projects')
-    const connectionsHeading = screen.getByText('Connections')
+    const projectsHeading = groupHeading('Projects')
+    const connectionsHeading = groupHeading('Connections')
 
     expect(
       projectsHeading.compareDocumentPosition(connectionsHeading) &
@@ -259,12 +268,12 @@ describe('CommandPalette sessions', () => {
   it('lists recent sessions with no query, ahead of projects', () => {
     render(<CommandPalette />)
 
-    const sessionsHeading = screen.getByText('Recent Sessions')
+    const sessionsHeading = groupHeading('Recent Sessions')
     expect(screen.getByText('Deploy pipeline')).toBeInTheDocument()
     expect(screen.getByText('Coolify · feat/deploy')).toBeInTheDocument()
 
     expect(
-      sessionsHeading.compareDocumentPosition(screen.getByText('Projects')) &
+      sessionsHeading.compareDocumentPosition(groupHeading('Projects')) &
         Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
   })
@@ -298,8 +307,10 @@ describe('CommandPalette sessions', () => {
       }
     )
 
-    expect(screen.getByText('Sessions')).toBeInTheDocument()
-    expect(screen.queryByText('Recent Sessions')).not.toBeInTheDocument()
+    expect(groupHeading('Sessions')).toBeInTheDocument()
+    expect(
+      document.querySelector('[cmdk-group-heading]')?.textContent
+    ).not.toBe('Recent Sessions')
     expect(screen.getByText('Deploy pipeline')).toBeInTheDocument()
   })
 
@@ -327,7 +338,9 @@ describe('CommandPalette search mode', () => {
 
   const typeQuery = (value: string) =>
     fireEvent.change(
-      screen.getByPlaceholderText(/Type a command|Search across/),
+      screen.getByPlaceholderText(
+        /Type a command|Search sessions|Search projects|Search across/
+      ),
       {
         target: { value },
       }
@@ -335,13 +348,20 @@ describe('CommandPalette search mode', () => {
 
   const hitRow = () => document.querySelector('[data-value="session-hit"]')
 
-  const pressTab = () =>
-    fireEvent.keyDown(
-      screen.getByPlaceholderText(/Type a command|Search across/),
-      {
-        key: 'Tab',
-      }
+  const modeInput = () =>
+    screen.getByPlaceholderText(
+      /Type a command|Search sessions|Search projects|Search across/
     )
+
+  const pressTab = (shiftKey = false) =>
+    fireEvent.keyDown(modeInput(), { key: 'Tab', shiftKey })
+
+  /** Tab now cycles four modes, so search is three steps from quick. */
+  const goToSearchMode = () => {
+    pressTab()
+    pressTab()
+    pressTab()
+  }
 
   it('starts in quick mode and does not run a backend search', () => {
     render(<CommandPalette />)
@@ -350,18 +370,42 @@ describe('CommandPalette search mode', () => {
     expect(searchCalls.every(call => !call.enabled)).toBe(true)
   })
 
-  it('switches to search mode with Tab and back again', () => {
+  it('cycles every mode with Tab and wraps back to quick', () => {
     render(<CommandPalette />)
+
+    pressTab()
+    expect(
+      screen.getByPlaceholderText('Search sessions...')
+    ).toBeInTheDocument()
+    // Quick-mode groups are gone, so two modes never render together.
+    expect(screen.queryByText('Recent Sessions')).not.toBeInTheDocument()
+
+    pressTab()
+    expect(
+      screen.getByPlaceholderText('Search projects...')
+    ).toBeInTheDocument()
 
     pressTab()
     expect(
       screen.getByPlaceholderText('Search across all session messages...')
     ).toBeInTheDocument()
-    // Quick-mode groups are gone, so the two modes never render together.
-    expect(screen.queryByText('Recent Sessions')).not.toBeInTheDocument()
 
     pressTab()
     expect(screen.getByText('Recent Sessions')).toBeInTheDocument()
+  })
+
+  it('cycles backwards with Shift+Tab', () => {
+    render(<CommandPalette />)
+
+    pressTab(true)
+    expect(
+      screen.getByPlaceholderText('Search across all session messages...')
+    ).toBeInTheDocument()
+
+    pressTab(true)
+    expect(
+      screen.getByPlaceholderText('Search projects...')
+    ).toBeInTheDocument()
   })
 
   it('switches mode by clicking the chip, which is the only route on mobile', () => {
@@ -376,7 +420,7 @@ describe('CommandPalette search mode', () => {
 
   it('asks for a longer query before hitting the backend', () => {
     render(<CommandPalette />)
-    pressTab()
+    goToSearchMode()
     typeQuery('ab')
 
     expect(screen.getByText(/Type at least 3 characters/)).toBeInTheDocument()
@@ -385,7 +429,7 @@ describe('CommandPalette search mode', () => {
 
   it('renders a hit with its snippet, location and match count', async () => {
     render(<CommandPalette />)
-    pressTab()
+    goToSearchMode()
     typeQuery('parser')
 
     // The query is debounced before it reaches the backend. Match on the row
@@ -400,7 +444,7 @@ describe('CommandPalette search mode', () => {
 
   it('opens the session the hit belongs to', async () => {
     render(<CommandPalette />)
-    pressTab()
+    goToSearchMode()
     typeQuery('parser')
 
     await waitFor(() => expect(hitRow()).not.toBeNull())
@@ -417,15 +461,76 @@ describe('CommandPalette search mode', () => {
     })
   })
 
-  it('leaves Shift+Tab alone so dialog focus navigation still works', () => {
+  it('ignores Tab with a modifier, so app shortcuts still get through', () => {
     render(<CommandPalette />)
 
     fireEvent.keyDown(
       screen.getByPlaceholderText('Type a command or search...'),
-      { key: 'Tab', shiftKey: true }
+      { key: 'Tab', metaKey: true }
     )
 
     expect(screen.getByText('Recent Sessions')).toBeInTheDocument()
+  })
+})
+
+// Quick caps its lists and mixes them with commands, so a known session or
+// project could be truncated away or buried under unrelated entries.
+describe('CommandPalette dedicated tabs', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('lists every session, including the one already open, and nothing else', () => {
+    render(<CommandPalette />)
+    fireEvent.click(screen.getByRole('button', { name: 'Sessions' }))
+
+    expect(groupHeading('Sessions')).toBeInTheDocument()
+    expect(screen.getByText('Deploy pipeline')).toBeInTheDocument()
+    // Quick hides it so the top hit is somewhere new; a full list must not.
+    expect(screen.getByText('Currently open session')).toBeInTheDocument()
+    expect(
+      Array.from(document.querySelectorAll('[cmdk-group-heading]')).map(
+        node => node.textContent
+      )
+    ).toEqual(['Sessions'])
+  })
+
+  it('opens a session from the Sessions tab through the shared navigation', () => {
+    render(<CommandPalette />)
+    fireEvent.click(screen.getByRole('button', { name: 'Sessions' }))
+    fireEvent.click(screen.getByText('Deploy pipeline'))
+
+    expect(setCommandPaletteOpen).toHaveBeenCalledWith(false)
+    expect(navigateToSession).toHaveBeenCalledWith({
+      projectId: 'project-2',
+      worktreeId: 'worktree-2',
+      sessionId: 'session-recent',
+    })
+  })
+
+  it('gives projects the whole window, with no commands mixed in', () => {
+    render(<CommandPalette />)
+    fireEvent.click(screen.getByRole('button', { name: 'Projects' }))
+
+    expect(
+      Array.from(document.querySelectorAll('[cmdk-group-heading]')).map(
+        node => node.textContent
+      )
+    ).toEqual(['Projects'])
+    expect(screen.getByText('Jean')).toBeInTheDocument()
+    expect(screen.getByText('Second project')).toBeInTheDocument()
+  })
+
+  it('names the tab in the empty state', () => {
+    render(<CommandPalette />)
+    fireEvent.click(screen.getByRole('button', { name: 'Projects' }))
+    fireEvent.change(screen.getByPlaceholderText('Search projects...'), {
+      target: { value: 'nothing-matches-this' },
+    })
+
+    expect(
+      screen.getByText('No projects match “nothing-matches-this”.')
+    ).toBeInTheDocument()
   })
 })
 
@@ -449,10 +554,7 @@ describe('CommandPalette layout and highlighting', () => {
 
   it('highlights the query inside the snippet and the session name', async () => {
     render(<CommandPalette />)
-    fireEvent.keyDown(
-      screen.getByPlaceholderText('Type a command or search...'),
-      { key: 'Tab' }
-    )
+    fireEvent.click(screen.getByText('Search messages'))
     fireEvent.change(
       screen.getByPlaceholderText('Search across all session messages...'),
       { target: { value: 'parser' } }

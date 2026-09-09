@@ -39,6 +39,27 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - Items that need a host shell are hidden in web access. Open, Add to Chat
     and the two copy items stay available.
 
+### Added
+
+- **Global search: Sessions and Projects each get their own tab.** CMD+K had
+  Quick and Search messages only, so sessions, projects, connections and every
+  static command shared one list. Quick caps the sessions at eight and the rest
+  is mixed in with commands, so the row you wanted was often truncated away or
+  buried.
+  - The **Sessions** tab lists every session across every project, newest
+    activity first, with no cap and no commands mixed in. Unlike Quick it also
+    lists the session you already have open.
+  - The **Projects** tab lists every project, most recently opened first.
+  - Both use the same rows Quick uses — backend icon, status, "time ago" for
+    sessions; avatar and label for projects — and both filter the loaded data
+    as you type. Only "Search messages" still asks the backend.
+  - Tab cycles all four tabs and Shift+Tab cycles back; it used to flip
+    between two. Clicking a tab still works, which is the route on mobile, and
+    the tab strip wraps rather than squeezing in a narrow window.
+  - The placeholder and the empty state name the tab you are in.
+  - Opening a session from either tab goes through the same navigation as
+    everywhere else, so the sidebar follows the jump.
+
 ### Changed
 
 - **The sidebar now follows a command-palette jump.** Opening a session with
