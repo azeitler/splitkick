@@ -43,6 +43,7 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "run_review",
     "send_chat_message",
     "set_session_model",
+    "set_session_status",
     "start_run_environment",
     "unarchive_session",
     "unarchive_worktree",
@@ -250,6 +251,7 @@ fn tool_registry_session() -> Value {
         {"name":"cancel_session_run","description":"Cancel the currently running request for a session. Returns whether Jean found an active process/turn/flag to cancel.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"read_session_messages","description":"Read recent messages from a session (most recent first). Use limit to cap returned messages.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":50}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"set_session_model","description":"Persist the selected model (and optionally backend) on a Jean session without sending a message. Prefer this when switching models for later turns; pass model on send_chat_message for a one-shot override only. When backend is omitted, Jean infers it from the model id when possible (e.g. grok/*, gpt-*, cursor/*). Returns sessionId, model, backend.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"model":{"type":"string","description":"Model id as used in Jean (e.g. claude-sonnet-4-6[1m], gpt-5.6-sol, grok/grok-4.6)."},"backend":{"type":"string","enum":["claude","codex","cursor","opencode","pi","commandcode","grok","kimi","antigravity"],"description":"Optional backend override. Inferred from model when omitted."}},"required":["sessionId","model"],"additionalProperties":false}},
+        {"name":"set_session_status","description":"Set or clear the manual status on a Jean session. Use \"completed\" after you finish the work in the current session so it leaves Jean's unread/attention list. Omit sessionId to target the calling session. Live automatic states (running, waiting for input, plan approval, crashed) still take priority while the session is active; the manual status shows once the session goes idle. Sending a new message clears \"paused\" and \"review\" automatically. Pass status null to clear. Returns sessionId and status.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"status":{"type":["string","null"],"enum":["idle","review","paused","completed","cancelled",null],"description":"Manual status to pin, or null to clear it."}},"required":["status"],"additionalProperties":false}},
         {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Jean Settings → Usage). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
         {"name":"get_worktree_changes","description":"Get a bounded summary of a worktree's git changes: porcelain status, ahead/behind counts, diff stats, and changed files. Does not return full diffs.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"maxFiles":{"type":"integer","minimum":1,"maximum":500,"default":100}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_worktree_diff","description":"Get a bounded unified git diff for a worktree. diffType is uncommitted (HEAD vs working tree) or branch (origin/base...HEAD). Optional path limits to one pathspec; maxBytes is capped.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"diffType":{"type":"string","enum":["uncommitted","branch"],"default":"uncommitted"},"path":{"type":"string"},"maxBytes":{"type":"integer","minimum":1,"maximum":200000,"default":60000}},"required":["worktreeId"],"additionalProperties":false}},
@@ -1130,6 +1132,37 @@ async fn run_tool(
                 "backend": backend,
             }))
         }
+        "set_session_status" => {
+            let session_id = match optional_str(&args, "sessionId") {
+                Some(id) => id,
+                None => {
+                    if source == "anon" {
+                        return Err(no_current_context_error(source));
+                    }
+                    source.to_string()
+                }
+            };
+            let status = parse_status_override_arg(&args)?;
+            let (worktree_id, worktree_path) = resolve_session_worktree(app, &session_id)?;
+
+            dispatch_command(
+                app,
+                "update_session_state",
+                json!({
+                    "sessionId": session_id.clone(),
+                    "worktreeId": worktree_id,
+                    "worktreePath": worktree_path,
+                    "statusOverride": status,
+                }),
+            )
+            .await
+            .map_err(ToolError::internal)?;
+
+            Ok(json!({
+                "sessionId": session_id,
+                "status": status,
+            }))
+        }
         "get_usage" => {
             let backend_filter = args
                 .get("backend")
@@ -1564,6 +1597,36 @@ fn optional_str(args: &Value, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+/// Parse the `status` argument of `set_session_status` as a tri-state:
+/// a valid manual status, or `None` to clear the override.
+///
+/// The accepted values come from `chat::MANUAL_SESSION_STATUSES`, so this stays in
+/// step with the core validator instead of repeating the list.
+fn parse_status_override_arg(args: &Value) -> Result<Option<String>, ToolError> {
+    let expected = crate::chat::MANUAL_SESSION_STATUSES.join(", ");
+    match args.get("status") {
+        None => Err(ToolError::invalid_params(format!(
+            "missing 'status'. Expected one of: {expected}, or null to clear."
+        ))),
+        Some(Value::Null) => Ok(None),
+        Some(value) => {
+            let status = value
+                .as_str()
+                .ok_or_else(|| {
+                    ToolError::invalid_params("'status' must be a string or null".to_string())
+                })?
+                .trim()
+                .to_string();
+            if !crate::chat::MANUAL_SESSION_STATUSES.contains(&status.as_str()) {
+                return Err(ToolError::invalid_params(format!(
+                    "Invalid status '{status}'. Expected one of: {expected}, or null to clear."
+                )));
+            }
+            Ok(Some(status))
+        }
+    }
 }
 
 fn parse_label_arg(args: &Value) -> Result<LabelData, ToolError> {
@@ -3063,6 +3126,69 @@ mod tests {
         assert!(
             RATE_LIMITED_TOOLS.contains(&"set_session_model"),
             "set_session_model mutates session state and should be rate-limited"
+        );
+    }
+
+    #[test]
+    fn tool_registry_set_session_status_schema_matches_core_statuses() {
+        let tools = tool_registry();
+        let set_status = find_tool(&tools, "set_session_status");
+
+        // sessionId is optional: the tool defaults to the calling session.
+        assert_eq!(set_status["inputSchema"]["required"], json!(["status"]));
+
+        // The schema enum must stay in step with the core validator, otherwise the
+        // agent can send a value that update_session_state then rejects.
+        let mut expected: Vec<Value> = crate::chat::MANUAL_SESSION_STATUSES
+            .iter()
+            .map(|status| json!(status))
+            .collect();
+        expected.push(Value::Null);
+        assert_eq!(
+            set_status["inputSchema"]["properties"]["status"]["enum"],
+            Value::Array(expected)
+        );
+        assert_eq!(
+            set_status["inputSchema"]["properties"]["status"]["type"],
+            json!(["string", "null"])
+        );
+
+        assert!(
+            RATE_LIMITED_TOOLS.contains(&"set_session_status"),
+            "set_session_status mutates session state and should be rate-limited"
+        );
+    }
+
+    #[test]
+    fn parse_status_override_arg_handles_set_clear_and_bad_values() {
+        // A valid status is trimmed and passed through.
+        assert_eq!(
+            parse_status_override_arg(&json!({ "status": " completed " })).unwrap(),
+            Some("completed".to_string())
+        );
+        // Explicit null clears the override.
+        assert_eq!(
+            parse_status_override_arg(&json!({ "status": null })).unwrap(),
+            None
+        );
+        // Every core status is accepted.
+        for status in crate::chat::MANUAL_SESSION_STATUSES {
+            assert_eq!(
+                parse_status_override_arg(&json!({ "status": status })).unwrap(),
+                Some(status.to_string())
+            );
+        }
+        // A missing key is an error, because clearing must be explicit.
+        let missing = parse_status_override_arg(&json!({})).unwrap_err();
+        assert!(missing.message.contains("missing 'status'"), "{missing:?}");
+        // An unknown value fails in the MCP layer, before it reaches the core.
+        let bad = parse_status_override_arg(&json!({ "status": "done" })).unwrap_err();
+        assert!(bad.message.contains("Invalid status 'done'"), "{bad:?}");
+        // A non-string, non-null value is rejected.
+        let wrong_type = parse_status_override_arg(&json!({ "status": 3 })).unwrap_err();
+        assert!(
+            wrong_type.message.contains("must be a string or null"),
+            "{wrong_type:?}"
         );
     }
 
