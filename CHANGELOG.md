@@ -7,37 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Added
+## [0.1.73-z.4] - 2026-09-09
 
-- **Title bar: a Usage button that shows plan limits in place.** Plan limits for
-  Claude, Codex and Grok were only visible in Settings → Usage, which covers the
-  whole app for a glance at a percentage. A chart button now sits in the left
-  title bar, after Settings, and opens the same pane in a popover under it.
-  - The popover shows every installed and signed-in backend, with the same
-    progress bars, plan names, reset times and Refresh button as the Settings
-    pane.
-  - A "Settings" button in its header opens Settings on the Usage pane, for the
-    times you want the full-height view.
-  - The usage figures load only while the popover is open, and they are shared
-    with the dock's usage badge, so opening it asks the backends for nothing
-    they were not already asked.
-  - The dock usage dropdown is unchanged. It follows the active session, while
-    the title bar button is always in reach.
-
-- **Files sidebar: a context menu on file and folder rows.** A row could only
-  be left-clicked into Jean's internal viewer. A right-click now gives Open,
-  Open in your editor, Open in Default App, Reveal in Finder, Open in Terminal
-  (folders only), Add to Chat, Copy Path and Copy Relative Path.
-  - "Reveal in Finder" selects the target inside its parent folder. Windows
-    shows it in Explorer. Linux opens the parent folder, because it has no
-    portable flag to select a file.
-  - "Open in Default App" hands the file to the application the operating
-    system has registered for it, so images and PDFs no longer open in a code
-    editor.
-  - "Add to Chat" puts the row into the composer as an `@mention` and attaches
-    the file, the same as the `@` popover does.
-  - Items that need a host shell are hidden in web access. Open, Add to Chat
-    and the two copy items stay available.
+Built on Jean 0.1.73. JeanZ versions carry a `-z.<n>` suffix; the counter is
+this fork's own and never restarts.
 
 ### Added
 
@@ -64,6 +37,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Session context menu: "Set Status" is now "Status."** The verb added
   nothing next to the neighbouring rows.
+
+- **Sidebar: a row fades after two days, not seven.** A finished session six
+  days old still rendered at full weight, long past the point where it is
+  worth scanning. The threshold is now 48 hours, which lines up with the age
+  label: everything reading "2d ago" or older is faded, everything reading
+  "1d ago" or newer is not.
 
 - **The sidebar now follows a command-palette jump.** Opening a session with
   CMD+K moved the main area but left the tree behind: the previous selection
@@ -113,7 +92,7 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **macOS stops re-asking JeanZ for access to other apps' data.** JeanZ shipped
   the stable `com.jean.desktop` bundle identifier, but it is signed by a
   different Developer ID team than Jean. macOS records a privacy grant against
-  the bundle identifier *and* the code signature it saw, so each app failed the
+  the bundle identifier _and_ the code signature it saw, so each app failed the
   requirement the other had stored: the dialog "JeanZ.app would like to access
   data from other apps" came back on every launch, and allowing it invalidated
   stable Jean's grant in turn.
@@ -163,6 +142,44 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
     a project without labels writes no extra key.
   - Pinned labels were never affected; they always had a Rust field.
 
+## [0.1.73-z.3] - 2026-09-09
+
+Built on Jean 0.1.73.
+
+### Added
+
+- **Title bar: a Usage button that shows plan limits in place.** Plan limits for
+  Claude, Codex and Grok were only visible in Settings → Usage, which covers the
+  whole app for a glance at a percentage. A chart button now sits in the left
+  title bar, after Settings, and opens the same pane in a popover under it.
+  - The popover shows every installed and signed-in backend, with the same
+    progress bars, plan names, reset times and Refresh button as the Settings
+    pane.
+  - A "Settings" button in its header opens Settings on the Usage pane, for the
+    times you want the full-height view.
+  - The usage figures load only while the popover is open, and they are shared
+    with the dock's usage badge, so opening it asks the backends for nothing
+    they were not already asked.
+  - The dock usage dropdown is unchanged. It follows the active session, while
+    the title bar button is always in reach.
+
+- **Files sidebar: a context menu on file and folder rows.** A row could only
+  be left-clicked into Jean's internal viewer. A right-click now gives Open,
+  Open in your editor, Open in Default App, Reveal in Finder, Open in Terminal
+  (folders only), Add to Chat, Copy Path and Copy Relative Path.
+  - "Reveal in Finder" selects the target inside its parent folder. Windows
+    shows it in Explorer. Linux opens the parent folder, because it has no
+    portable flag to select a file.
+  - "Open in Default App" hands the file to the application the operating
+    system has registered for it, so images and PDFs no longer open in a code
+    editor.
+  - "Add to Chat" puts the row into the composer as an `@mention` and attaches
+    the file, the same as the `@` popover does.
+  - Items that need a host shell are hidden in web access. Open, Add to Chat
+    and the two copy items stay available.
+
+### Fixed
+
 - **JeanZ keeps its own UI state, so stable Jean can no longer erase it.** JeanZ
   shares one app-data directory with stable Jean on purpose, so both builds
   read and write the same files. They do not share a `UIState` schema: a build
@@ -190,3 +207,7 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
     for a plan approval or an answer, so the pin did nothing. A pinned terminal
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
+
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.4...HEAD
+[0.1.73-z.4]: https://github.com/azeitler/jean/compare/v0.1.73-z.3...v0.1.73-z.4
+[0.1.73-z.3]: https://github.com/azeitler/jean/compare/v0.1.73-z.2...v0.1.73-z.3
