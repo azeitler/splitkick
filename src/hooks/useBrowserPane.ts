@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { invoke, listen } from '@/lib/transport'
 import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import { toFileUrl } from '@/lib/path-utils'
+import { isLoopbackHost } from '@/lib/remote-editor'
 import { isBlankTabUrl, useBrowserStore } from '@/store/browser-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
@@ -109,6 +110,23 @@ function findTab(
  * Subscribe to all Rust → React browser events and feed them into the Zustand store.
  * Mount once at the app shell level (not per pane) — events are global.
  */
+/**
+ * Whether this client can load a URL the backend asked it to open.
+ *
+ * Every connected client hears `browser:open-url`. The backend's own desktop
+ * can load anything. A client connected to a remote Jean cannot load a
+ * loopback URL: an agent's `http://localhost:5173` is a dev server on the
+ * backend's machine, and here it would load this machine's port instead.
+ */
+function reachableFromThisClient(url: string): boolean {
+  if (isLocalBackend()) return true
+  try {
+    return !isLoopbackHost(new URL(url).hostname)
+  } catch {
+    return false
+  }
+}
+
 export function useBrowserEvents(): void {
   useEffect(() => {
     if (!isNativeApp()) return
@@ -209,7 +227,9 @@ export function useBrowserEvents(): void {
       listen<BrowserOpenUrlEvent>('browser:open-url', e => {
         const { worktreeId, url, path } = e.payload
         if (url) {
-          void openUrlInWorktreeBrowser(worktreeId, url)
+          if (reachableFromThisClient(url)) {
+            void openUrlInWorktreeBrowser(worktreeId, url)
+          }
         } else if (path && isLocalBackend()) {
           // The path names a file on the backend's machine; with a remote
           // backend it does not exist here.

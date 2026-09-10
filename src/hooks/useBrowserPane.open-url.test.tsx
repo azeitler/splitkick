@@ -100,4 +100,32 @@ describe('browser:open-url event', () => {
 
     expect(tabUrls('wt-visible')).toEqual([])
   })
+
+  it('opens a public URL on a client connected to a remote backend', async () => {
+    localBackend.value = false
+
+    handler({
+      payload: { worktreeId: 'wt-visible', url: 'https://example.com/' },
+    })
+
+    await vi.waitFor(() =>
+      expect(tabUrls('wt-visible')).toEqual(['https://example.com/'])
+    )
+  })
+
+  it("ignores a remote backend's localhost URL, which points at that machine", async () => {
+    localBackend.value = false
+
+    for (const url of [
+      'http://localhost:5173/',
+      'http://127.0.0.1:3000/',
+      'http://[::1]:8080/',
+      'http://app.localhost/',
+    ]) {
+      handler({ payload: { worktreeId: 'wt-visible', url } })
+    }
+    await Promise.resolve()
+
+    expect(tabUrls('wt-visible')).toEqual([])
+  })
 })

@@ -7,12 +7,17 @@ export interface RemoteSshEndpoint {
   port?: number
 }
 
-/** Loopback hosts are never a useful SSH target for the *client* machine. */
-function isLoopbackHost(host: string): boolean {
+/**
+ * A loopback host names the machine it is resolved on. A client connected to a
+ * remote Jean resolves it to itself, not to the backend: it is never a useful
+ * SSH target, and a backend's `localhost` page is not reachable from there.
+ */
+export function isLoopbackHost(host: string): boolean {
   const h = host.trim().toLowerCase()
   return (
     h === 'localhost' ||
-    h === '127.0.0.1' ||
+    h.endsWith('.localhost') ||
+    h.startsWith('127.') ||
     h === '::1' ||
     h === '[::1]' ||
     h === '0.0.0.0' ||
