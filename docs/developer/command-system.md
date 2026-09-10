@@ -344,6 +344,39 @@ with empty `messages` arrays — `SessionMetadata::to_session` sets
 needs message content must call the backend; it cannot filter `useAllSessions()`
 in memory. See `jean-core/src/chat/search.rs` for the two-phase scan.
 
+#### Result Order While Typing (cmdk sorting)
+
+**Render order is not display order once there is a query.** With
+`shouldFilter` on, cmdk re-sorts on every keystroke:
+
+- **Rows inside a group** are sorted by score, always.
+- **Groups** are sorted by their best row's score — but only when cmdk can
+  find them. cmdk 1.1.1 writes a group's `data-value` raw, then looks it up
+  with `encodeURIComponent(value)`. A heading with a space ("Go to Project",
+  "Recent Sessions", "Session Actions") never matches that selector, so the
+  group is never moved. One-word groups ("Sessions", "Projects", "Help") are.
+
+So today, multi-word groups keep their render position and one-word groups
+are appended after them in score order. Do not rely on either half: the first
+is a cmdk bug, and a fix would change the order.
+
+cmdk's scorer also docks a small penalty for a case mismatch. A capitalised
+name like "Jean" scores below a lowercase value that starts the same way — a
+command id, or a session's lowercased haystack.
+
+**To force a row to the top, pin it by score, not by position.** The palette
+passes `filter={paletteFilter}` (`src/components/command-palette/pinned-results.ts`).
+It returns the maximum score, 1, for any row carrying `PINNED_KEYWORD` in its
+`keywords`, and defers to cmdk's `defaultFilter` for everything else. Scores
+cap at 1 and both sorts are stable, so pinned rows render in the order you
+gave them and a pinned group rendered first stays first, whether or not cmdk
+fixes the lookup bug.
+
+The Quick tab's **Go to Project** group uses this: `findPinnedProjects()`
+pins projects whose name equals the query or starts with it, exact matches
+first. Without the pin, typing `jean` would put a lowercase `jeanz` above the
+exact match `Jean`, and Enter would open the wrong project.
+
 ### Keyboard Shortcuts
 
 See [keyboard-shortcuts.md](./keyboard-shortcuts.md) for details on the keybinding system that triggers commands.

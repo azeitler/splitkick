@@ -7,6 +7,7 @@ Element.prototype.scrollIntoView = vi.fn()
 const {
   fetchRemoteServerInfo,
   markConnectionSwitch,
+  navigateToProject,
   navigateToSession,
   reloadApp,
   selectConnection,
@@ -21,6 +22,7 @@ const {
   })),
   markConnectionSwitch: vi.fn(),
   reloadApp: vi.fn(),
+  navigateToProject: vi.fn(),
   navigateToSession: vi.fn(),
   selectConnection: vi.fn(),
   setCommandPaletteOpen: vi.fn(),
@@ -29,6 +31,9 @@ const {
 }))
 
 const searchCalls: { query: string; enabled: boolean }[] = []
+
+// Registry commands for the current test. Empty unless a test sets it.
+let staticCommands: unknown[] = []
 
 const searchResult = {
   truncated: false,
@@ -83,23 +88,26 @@ vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({ data: undefined }),
 }))
 
+const defaultProjects = [
+  {
+    id: 'project-1',
+    name: 'Jean',
+    path: '/projects/jean',
+    is_folder: false,
+  },
+  {
+    id: 'project-2',
+    name: 'Second project',
+    path: '/projects/second',
+    is_folder: false,
+  },
+]
+
+// Projects for the current test. The default list unless a test replaces it.
+let projectsData = defaultProjects
+
 vi.mock('@/services/projects', () => ({
-  useProjects: () => ({
-    data: [
-      {
-        id: 'project-1',
-        name: 'Jean',
-        path: '/projects/jean',
-        is_folder: false,
-      },
-      {
-        id: 'project-2',
-        name: 'Second project',
-        path: '/projects/second',
-        is_folder: false,
-      },
-    ],
-  }),
+  useProjects: () => ({ data: projectsData }),
   useAppDataDir: () => ({ data: undefined }),
 }))
 
@@ -116,7 +124,10 @@ vi.mock('@/store/chat-store', () => {
   return { useChatStore }
 })
 
-vi.mock('@/lib/navigate-to-session', () => ({ navigateToSession }))
+vi.mock('@/lib/navigate-to-session', () => ({
+  navigateToProject,
+  navigateToSession,
+}))
 
 vi.mock('@/services/chat', () => ({
   MIN_SESSION_SEARCH_LEN: 3,
@@ -162,7 +173,7 @@ vi.mock('@/store/projects-store', () => ({
 }))
 
 vi.mock('@/lib/commands', () => ({
-  getAllCommands: () => [],
+  getAllCommands: () => staticCommands,
   executeCommand: vi.fn(),
 }))
 
@@ -570,5 +581,148 @@ describe('CommandPalette layout and highlighting', () => {
     // Casing comes from the source text, not from what was typed.
     expect(marked).toContain('Parser')
     expect(marked).toContain('parser')
+  })
+})
+
+describe('CommandPalette pinned project matches', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    staticCommands = []
+    projectsData = defaultProjects
+  })
+
+  const input = () =>
+    screen.getByPlaceholderText(/Type a command|Search/) as HTMLInputElement
+
+  const typeQuery = (value: string) =>
+    fireEvent.change(input(), { target: { value } })
+
+  // Visible groups only: cmdk keeps an empty group in the DOM, just hidden.
+  const headings = () =>
+    Array.from(
+      document.querySelectorAll(
+        '[cmdk-group]:not([hidden]) [cmdk-group-heading]'
+      )
+    ).map(node => node.textContent)
+
+  it('puts a project whose name starts with the query in its own group at the top', () => {
+    render(<CommandPalette />)
+    typeQuery('sec')
+
+    expect(headings()[0]).toBe('Go to Project')
+    expect(screen.getByText('Second project')).toBeInTheDocument()
+  })
+
+  it('matches case-insensitively', () => {
+    render(<CommandPalette />)
+    typeQuery('SECOND P')
+
+    expect(headings()[0]).toBe('Go to Project')
+  })
+
+  it('stays on top when another group matches the query better', () => {
+    // A lowercase command starting "jea" outscores the capitalised "Jean" in
+    // cmdk's scorer. The group still has to come first.
+    staticCommands = [
+      {
+        id: 'jean-docs-open',
+        label: 'jean docs',
+        group: 'help',
+        execute: vi.fn(),
+      },
+    ]
+    render(<CommandPalette />)
+    typeQuery('jea')
+
+    const order = headings()
+    expect(order).toContain('Help')
+    expect(order[0]).toBe('Go to Project')
+  })
+
+  it('does not list a pinned project a second time further down', () => {
+    render(<CommandPalette />)
+    typeQuery('sec')
+
+    expect(screen.getAllByText('Second project')).toHaveLength(1)
+    expect(headings()).not.toContain('Projects')
+  })
+
+  it('does not pin a project that only contains the query mid-name', () => {
+    render(<CommandPalette />)
+    // "Second project" contains "project" but does not start with it.
+    typeQuery('project')
+
+    expect(headings()).not.toContain('Go to Project')
+  })
+
+  it('pins nothing while the query is empty', () => {
+    render(<CommandPalette />)
+
+    expect(headings()).not.toContain('Go to Project')
+    expect(headings()[0]).toBe('Recent Sessions')
+  })
+
+  it('only pins in Quick, not in the dedicated tabs', () => {
+    render(<CommandPalette />)
+    // The tab chip, not the Quick group heading of the same name.
+    fireEvent.click(screen.getByRole('button', { name: 'Projects' }))
+    typeQuery('sec')
+
+    expect(headings()).not.toContain('Go to Project')
+  })
+
+  it('opens the pinned project and closes the palette', () => {
+    render(<CommandPalette />)
+    typeQuery('sec')
+
+    fireEvent.click(screen.getByText('Second project'))
+
+    expect(setCommandPaletteOpen).toHaveBeenCalledWith(false)
+    expect(navigateToProject).toHaveBeenCalledWith('project-2')
+  })
+
+  it('selects the pinned project first, so Enter goes straight there', () => {
+    render(<CommandPalette />)
+    typeQuery('sec')
+
+    const selected = document.querySelector('[cmdk-item][aria-selected="true"]')
+    expect(selected?.textContent).toContain('Second project')
+  })
+})
+
+describe('CommandPalette pinned project ordering', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    staticCommands = []
+    projectsData = defaultProjects
+  })
+
+  it('keeps an exact match first even when cmdk would rank a prefix match above it', () => {
+    // cmdk sorts rows inside a group by score and docks a case-mismatch penalty,
+    // so lowercase "jeanz" outscores the exact match "Jean" by default. Only the
+    // pin keeps the exact match first — and on Enter.
+    projectsData = [
+      ...defaultProjects,
+      {
+        id: 'project-3',
+        name: 'jeanz',
+        path: '/projects/jeanz',
+        is_folder: false,
+      },
+    ]
+    render(<CommandPalette />)
+    fireEvent.change(screen.getByPlaceholderText(/Type a command/), {
+      target: { value: 'jean' },
+    })
+
+    const rows = Array.from(
+      document.querySelectorAll('[cmdk-group]:not([hidden]) [cmdk-item]')
+    ).map(row => row.textContent ?? '')
+    expect(rows[0]).toContain('Jean')
+    expect(rows[0]).not.toContain('jeanz')
+    expect(rows[1]).toContain('jeanz')
+
+    const selected = document.querySelector('[cmdk-item][aria-selected="true"]')
+    expect(selected?.textContent).toContain('Current') // "Jean" is the current project
   })
 })

@@ -9,6 +9,21 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Global search: a matching project jumps to the top of Quick.** When you
+  type the start of a project name in CMD+K, that project now shows first, in
+  its own **Go to Project** group, above sessions and commands. Type a few
+  letters and press Enter to switch project.
+  - A project shows there when its name equals what you typed, or starts with
+    it. Upper and lower case do not matter.
+  - An exact match comes first. So `jean` opens the project **Jean**, even when
+    a project called **jeanz** was opened more recently.
+  - The other matches follow, most recently opened first. Among them, the
+    project you are in comes last.
+  - A match inside a name does not count: `app` does not pin **My App**. That
+    project still shows in the normal Projects group.
+  - A pinned project is not listed a second time further down.
+  - This applies to Quick only. The Sessions, Projects and Search messages tabs
+    are unchanged.
 - **Chat: image embeds in responses show as images.** When an agent writes
   `![alt](path)`, Jean now shows the image in more cases.
   ([#19](https://github.com/azeitler/jean/issues/19))

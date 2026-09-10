@@ -21,6 +21,11 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { Kbd } from '@/components/ui/kbd'
 import { buildSessionCommands, type SessionCommand } from './session-commands'
 import { HighlightedText } from './highlight-matches'
+import {
+  PINNED_KEYWORD,
+  findPinnedProjects,
+  paletteFilter,
+} from './pinned-results'
 import { getAllCommands, executeCommand } from '@/lib/commands'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import type { SessionSearchHit } from '@/types/chat'
@@ -226,19 +231,33 @@ export function CommandPalette({
       }))
   }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId])
 
+  // Quick only: projects whose name equals or starts with the query jump above
+  // every other result, so a project's first letters then Enter is the fastest
+  // way to switch.
+  const pinnedProjects = useMemo(
+    () => (mode === 'quick' ? findPinnedProjects(projectCommands, search) : []),
+    [mode, projectCommands, search]
+  )
+
   // Get all available commands (memoized to prevent re-filtering on every render)
   const commandGroups = useMemo(() => {
     const staticCommands = getAllCommands(commandContext, search)
 
     // Filter project commands by search
     const searchLower = search.toLowerCase().trim()
-    const filteredProjectCommands = searchLower
-      ? projectCommands.filter(
-          cmd =>
-            cmd.label.toLowerCase().includes(searchLower) ||
-            cmd.keywords.some(kw => kw.includes(searchLower))
-        )
-      : projectCommands
+    // A pinned project already sits at the top; listing it again here would
+    // show the same row twice, and cmdk marks rows sharing a value as selected
+    // together.
+    const pinnedIds = new Set(pinnedProjects.map(cmd => cmd.id))
+    const filteredProjectCommands = (
+      searchLower
+        ? projectCommands.filter(
+            cmd =>
+              cmd.label.toLowerCase().includes(searchLower) ||
+              cmd.keywords.some(kw => kw.includes(searchLower))
+          )
+        : projectCommands
+    ).filter(cmd => !pinnedIds.has(cmd.id))
 
     // Group static commands
     const staticGroups = staticCommands.reduce(
@@ -252,7 +271,7 @@ export function CommandPalette({
     )
 
     return { staticGroups, projectCommands: filteredProjectCommands }
-  }, [commandContext, search, projectCommands])
+  }, [commandContext, search, projectCommands, pinnedProjects])
 
   // Handle command execution
   const handleCommandSelect = useCallback(
@@ -386,6 +405,7 @@ export function CommandPalette({
       disablePointerSelection
       // Only `search` goes to the backend; every other tab filters loaded data.
       shouldFilter={mode !== 'search'}
+      filter={paletteFilter}
     >
       <CommandInput
         placeholder={PLACEHOLDERS[mode]}
@@ -490,6 +510,15 @@ export function CommandPalette({
               </CommandGroup>
             )}
           </>
+        )}
+
+        {/* Exact or prefix project matches outrank everything while typing */}
+        {mode === 'quick' && pinnedProjects.length > 0 && (
+          <CommandGroup heading="Go to Project">
+            {pinnedProjects.map(cmd =>
+              renderProjectRow(cmd, handleProjectSelect, { pinned: true })
+            )}
+          </CommandGroup>
         )}
 
         {/* Sessions lead: with no query these are the most recent ones */}
@@ -641,15 +670,22 @@ function renderSessionRow(
   )
 }
 
-/** One project row, shared by the Quick tab and the Projects tab. */
+/**
+ * One project row, shared by the Quick tab and the Projects tab.
+ *
+ * `pinned` tags the row so `paletteFilter` scores it at the top, which is what
+ * keeps the "Go to Project" group first once cmdk starts sorting by score.
+ */
 function renderProjectRow(
   cmd: ProjectCommand,
-  onSelect: (cmd: ProjectCommand) => void
+  onSelect: (cmd: ProjectCommand) => void,
+  { pinned = false }: { pinned?: boolean } = {}
 ) {
   return (
     <CommandItem
       key={cmd.id}
       value={`${cmd.label} ${cmd.description ?? ''} ${cmd.keywords.join(' ')}`}
+      keywords={pinned ? [PINNED_KEYWORD] : undefined}
       onSelect={() => onSelect(cmd)}
       className="items-start"
     >
