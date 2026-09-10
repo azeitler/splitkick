@@ -128,7 +128,7 @@ describe('SidebarStarredSection', () => {
     expect(useProjectsStore.getState().starredSectionCollapsed).toBe(true)
   })
 
-  it('opens a star through the shared navigation', async () => {
+  it('opens a star without revealing its original row in the tree', async () => {
     const user = userEvent.setup()
     useProjectsStore.setState({
       starredSessions: [star('s-2', 'Coolify', 'feat/deploy')],
@@ -137,11 +137,16 @@ describe('SidebarStarredSection', () => {
 
     await user.click(screen.getByText('Deploy pipeline'))
 
-    expect(mocks.navigateToSession).toHaveBeenCalledWith({
-      projectId: 'id-Coolify',
-      worktreeId: 'id-feat/deploy',
-      sessionId: 's-2',
-    })
+    // The row already sits in the sidebar: revealing the original row would
+    // expand its workspace and scroll the tree away from the click (#18).
+    expect(mocks.navigateToSession).toHaveBeenCalledWith(
+      {
+        projectId: 'id-Coolify',
+        worktreeId: 'id-feat/deploy',
+        sessionId: 's-2',
+      },
+      { revealInSidebar: false }
+    )
   })
 
   it('offers Unstar on the row menu and removes the star', async () => {

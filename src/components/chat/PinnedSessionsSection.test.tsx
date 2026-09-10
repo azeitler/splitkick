@@ -1,7 +1,10 @@
 import { screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { render } from '@/test/test-utils'
+import { SidebarWidthProvider } from '@/components/layout/SidebarWidthContext'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import type { Session } from '@/types/chat'
@@ -319,6 +322,71 @@ describe('PinnedSessionsSection', () => {
 
       expect(screen.queryByRole('button', { expanded: true })).toBeNull()
       expect(screen.getByText('Investigation')).toBeInTheDocument()
+    })
+  })
+
+  // Pinned sessions used to sit flush under the Pinned row, with no guide
+  // line, so they did not read as the nested rows they are (#17).
+  describe('sidebar session rows', () => {
+    function renderSidebarRows(sidebarWidth = 250) {
+      render(
+        <SidebarWidthProvider value={sidebarWidth}>
+          <PinnedSessionsSection
+            rows={[entry('s-1', 'Investigation', 'feature-a')]}
+            variant="sidebar"
+            projectId="p-1"
+            expanded={true}
+            onToggleExpanded={vi.fn()}
+            onOpen={vi.fn()}
+          />
+        </SidebarWidthProvider>
+      )
+      return screen.getByTestId('pinned-sessions-list')
+    }
+
+    it('nests under a guide line at a workspace session offset', () => {
+      const list = renderSidebarRows()
+
+      expect(list.className).toContain('border-l')
+      expect(list.className).toContain('ml-9')
+      const row = screen.getByText('Investigation').closest('button')
+      expect(list).toContainElement(row)
+      expect(row?.className).toContain('pl-5')
+    })
+
+    it('uses the narrow offset on a narrow sidebar', () => {
+      const list = renderSidebarRows(180)
+
+      expect(list.className).toContain('ml-6')
+      expect(list.className).not.toContain('ml-9')
+    })
+
+    it('matches the container WorktreeItem nests its sessions in', () => {
+      const worktreeItem = readFileSync(
+        join(process.cwd(), 'src/components/projects/WorktreeItem.tsx'),
+        'utf8'
+      )
+      const list = renderSidebarRows()
+
+      // If the workspace session list changes, the pinned list must follow.
+      expect(worktreeItem).toContain("'border-l border-border/40 py-0.5'")
+      expect(worktreeItem).toContain("isNarrowSidebar ? 'ml-6' : 'ml-9'")
+      for (const token of ['border-l', 'border-border/40', 'py-0.5', 'ml-9']) {
+        expect(list.className).toContain(token)
+      }
+    })
+
+    it('adds no nested list on the canvas', () => {
+      render(
+        <PinnedSessionsSection
+          rows={[entry('s-1', 'Investigation', 'feature-a')]}
+          variant="canvas"
+          projectId="p-1"
+          onOpen={vi.fn()}
+        />
+      )
+
+      expect(screen.queryByTestId('pinned-sessions-list')).toBeNull()
     })
   })
 

@@ -95,13 +95,30 @@ export function PinnedSessionsSection({
         </div>
       )}
 
-      {isOpen && (
-        <SessionShortcutRows
-          shortcuts={shortcuts}
-          variant={variant}
-          onOpen={handleOpen}
-        />
-      )}
+      {isOpen &&
+        (isSidebar ? (
+          // The same guide line and offset as a workspace's session list in
+          // WorktreeItem, so a pinned session reads as the nested row it is.
+          <div
+            className={cn(
+              'border-l border-border/40 py-0.5',
+              isNarrowSidebar ? 'ml-6' : 'ml-9'
+            )}
+            data-testid="pinned-sessions-list"
+          >
+            <SessionShortcutRows
+              shortcuts={shortcuts}
+              variant="sidebar"
+              onOpen={handleOpen}
+            />
+          </div>
+        ) : (
+          <SessionShortcutRows
+            shortcuts={shortcuts}
+            variant="canvas"
+            onOpen={handleOpen}
+          />
+        ))}
     </div>
   )
 }

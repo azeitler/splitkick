@@ -309,7 +309,10 @@ export function WorktreeList({
   const labelOptions = useMemo(
     () =>
       collectLabelOptions(
-        collectSessionLabelSources(sessionsByWorktreeId, storeState.sessionLabels)
+        collectSessionLabelSources(
+          sessionsByWorktreeId,
+          storeState.sessionLabels
+        )
       ),
     [sessionsByWorktreeId, storeState.sessionLabels]
   )
@@ -373,11 +376,15 @@ export function WorktreeList({
 
   const handleOpenPinnedSession = useCallback(
     (row: PinnedSessionRow) => {
-      navigateToSession({
-        projectId,
-        worktreeId: row.worktreeId,
-        sessionId: row.sessionId,
-      })
+      // The row already sits in the sidebar, so the tree stays put.
+      navigateToSession(
+        {
+          projectId,
+          worktreeId: row.worktreeId,
+          sessionId: row.sessionId,
+        },
+        { revealInSidebar: false }
+      )
       onSessionSelected?.()
     },
     [projectId, onSessionSelected]

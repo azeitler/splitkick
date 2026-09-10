@@ -11,6 +11,19 @@ export interface SessionNavigationTarget {
   sessionId: string
 }
 
+export interface SessionNavigationOptions {
+  /**
+   * Expand the target's folders, project and workspace, and scroll its row
+   * into view. Defaults to true.
+   *
+   * Pass false from a shortcut row that already sits in the sidebar (Pinned,
+   * Starred). A shortcut exists so the user does not have to find the session
+   * in the tree; revealing the original row would scroll the tree away from
+   * the row they clicked.
+   */
+  revealInSidebar?: boolean
+}
+
 /** `data-sidebar-row-id` of a tree row, so a reveal can find it in the DOM. */
 export function sidebarRowId(kind: 'project' | 'session', id: string): string {
   return `${kind}:${id}`
@@ -45,11 +58,14 @@ function expandAncestorFolders(projectId: string): void {
  * project's canvas may not be mounted yet, so the auto-open is queued through
  * the UI store rather than dispatched as a DOM event.
  *
- * The sidebar follows: the target's folders, project and workspace are
- * expanded, the workspace is selected, and the session row is queued for a
- * single scroll into view.
+ * The sidebar follows: the workspace is selected and, unless
+ * `revealInSidebar` is false, the target's folders, project and workspace are
+ * expanded and the session row is queued for a single scroll into view.
  */
-export function navigateToSession(target: SessionNavigationTarget): void {
+export function navigateToSession(
+  target: SessionNavigationTarget,
+  { revealInSidebar = true }: SessionNavigationOptions = {}
+): void {
   const {
     selectedProjectId,
     selectProject,
@@ -65,13 +81,17 @@ export function navigateToSession(target: SessionNavigationTarget): void {
     selectProject(target.projectId)
   }
 
-  // Reveal the target in the sidebar. `selectProject` clears the workspace
-  // selection, so the selection is moved back onto the target afterwards.
-  expandAncestorFolders(target.projectId)
-  expandProject(target.projectId)
-  if (!expandedWorktreeIds.has(target.worktreeId)) {
-    toggleWorktreeExpanded(target.worktreeId)
+  // Reveal the target in the sidebar.
+  if (revealInSidebar) {
+    expandAncestorFolders(target.projectId)
+    expandProject(target.projectId)
+    if (!expandedWorktreeIds.has(target.worktreeId)) {
+      toggleWorktreeExpanded(target.worktreeId)
+    }
   }
+  // Always select, even without a reveal: `selectProject` clears the workspace
+  // selection, and an unchanged project would keep the old workspace
+  // highlighted. Selecting moves no row and expands nothing.
   selectWorktree(target.worktreeId)
 
   // Navigate to ProjectCanvasView (no-op if already there)
@@ -83,7 +103,9 @@ export function navigateToSession(target: SessionNavigationTarget): void {
   // ProjectCanvasView consumes pendingAutoOpenSessionIds in its own effect.
   const ui = useUIStore.getState()
   ui.markWorktreeForAutoOpenSession(target.worktreeId, target.sessionId)
-  ui.markSidebarReveal(sidebarRowId('session', target.sessionId))
+  if (revealInSidebar) {
+    ui.markSidebarReveal(sidebarRowId('session', target.sessionId))
+  }
 }
 
 /**

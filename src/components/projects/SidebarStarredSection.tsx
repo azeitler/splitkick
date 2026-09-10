@@ -48,11 +48,15 @@ export function SidebarStarredSection() {
 
   const handleOpen = useCallback(
     (shortcut: SessionShortcut) => {
-      navigateToSession({
-        projectId: shortcut.projectId,
-        worktreeId: shortcut.worktreeId,
-        sessionId: shortcut.sessionId,
-      })
+      // The row already sits in the sidebar, so the tree stays put.
+      navigateToSession(
+        {
+          projectId: shortcut.projectId,
+          worktreeId: shortcut.worktreeId,
+          sessionId: shortcut.sessionId,
+        },
+        { revealInSidebar: false }
+      )
       if (isMobile) {
         useUIStore.getState().setLeftSidebarVisible(false)
       }

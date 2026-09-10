@@ -34,6 +34,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   selected a session but left a collapsed row collapsed, so the selected
   session was not visible in the tree. The row now expands. A workspace with
   no sessions stays collapsed, since there is nothing to show.
+- **Sidebar: pinned sessions are indented like a workspace's sessions.** They
+  sat flush under the Pinned row, with no guide line. They now have the same
+  offset and guide line as the sessions under a workspace, also on a narrow
+  sidebar. ([#17](https://github.com/azeitler/jean/issues/17))
+- **Sidebar: a Starred or Pinned row opens its session in place.** The click
+  also expanded the session's workspace and scrolled the tree to the original
+  row, away from the row you clicked. The tree now stays where it is. The
+  command palette, the unread bell and Home still reveal the session in the
+  tree. ([#18](https://github.com/azeitler/jean/issues/18))
 
 ## [0.1.73-z.4] - 2026-09-10
 

@@ -89,6 +89,62 @@ describe('navigateToSession sidebar follow', () => {
   })
 })
 
+describe('navigateToSession without a sidebar reveal', () => {
+  const target = {
+    projectId: 'project-1',
+    worktreeId: 'wt-1',
+    sessionId: 'session-1',
+  }
+
+  beforeEach(() => {
+    queryClient.setQueryData(projectsQueryKeys.list(), [
+      project('folder-outer'),
+      project('project-1', 'folder-outer'),
+    ])
+    useProjectsStore.setState({
+      selectedProjectId: 'project-1',
+      selectedWorktreeId: 'wt-other',
+      expandedProjectIds: new Set<string>(),
+      expandedFolderIds: new Set<string>(),
+      expandedWorktreeIds: new Set<string>(),
+    })
+    useUIStore.setState({
+      pendingSidebarRevealId: null,
+      pendingAutoOpenSessionIds: {},
+    })
+  })
+
+  it('expands nothing in the tree', () => {
+    navigateToSession(target, { revealInSidebar: false })
+
+    const state = useProjectsStore.getState()
+    expect(state.expandedProjectIds.size).toBe(0)
+    expect(state.expandedWorktreeIds.size).toBe(0)
+    expect(state.expandedFolderIds.size).toBe(0)
+  })
+
+  it('queues no scroll to the original row', () => {
+    navigateToSession(target, { revealInSidebar: false })
+
+    expect(useUIStore.getState().pendingSidebarRevealId).toBeNull()
+  })
+
+  it('still moves the selection onto the target workspace', () => {
+    navigateToSession(target, { revealInSidebar: false })
+
+    // Without this the old workspace would stay highlighted (#9).
+    expect(useProjectsStore.getState().selectedWorktreeId).toBe('wt-1')
+  })
+
+  it('still opens the session', () => {
+    navigateToSession(target, { revealInSidebar: false })
+
+    expect(useUIStore.getState().pendingAutoOpenSessionIds).toEqual({
+      'wt-1': 'session-1',
+    })
+  })
+})
+
 describe('navigateToProject', () => {
   beforeEach(() => {
     queryClient.setQueryData(projectsQueryKeys.list(), [
