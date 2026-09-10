@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { highestSequence, nextVersion } from './jeanz-version.mjs'
+import { highestSequence, nextVersion, previousTag } from './jeanz-version.mjs'
 
 test('starts at z.1 when no JeanZ tag exists', () => {
   assert.equal(nextVersion('0.1.73', []), '0.1.73-z.1')
@@ -104,3 +104,22 @@ function compareSemver(a, b) {
 
   return identifiersA.length - identifiersB.length
 }
+
+test('names the newest existing tag, for the commit range in the notes', () => {
+  const refs = ['v0.68.1-z.1', 'v0.70.0-z.3', 'v0.68.1-z.2']
+
+  assert.equal(previousTag(refs), 'v0.70.0-z.3')
+})
+
+test('adds the missing v prefix and reads peeled refs', () => {
+  assert.equal(previousTag(['0.1.73-z.7']), 'v0.1.73-z.7')
+  assert.equal(
+    previousTag(['refs/tags/v0.1.73-z.6', 'refs/tags/v0.1.73-z.6^{}']),
+    'v0.1.73-z.6'
+  )
+})
+
+test('has no previous tag before the first release', () => {
+  assert.equal(previousTag([]), null)
+  assert.equal(previousTag(['v0.1.72', 'main-build']), null)
+})

@@ -16,8 +16,8 @@
  * two identifiers "z" and "4", the number is compared numerically and the
  * order stays correct forever.
  *
- * Run without arguments to print `upstream=`, `version=`, `tag=` and
- * `sequence=` lines. Append the output to $GITHUB_OUTPUT in CI.
+ * Run without arguments to print `upstream=`, `version=`, `tag=`, `sequence=`
+ * and `previous=` lines. Append the output to $GITHUB_OUTPUT in CI.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -52,6 +52,31 @@ export function highestSequence(refs) {
   return highest
 }
 
+/**
+ * The tag of the newest existing JeanZ release, or `null` when there is none.
+ *
+ * The release notes list the commits since that tag when the changelog has no
+ * section for the new version.
+ */
+export function previousTag(refs) {
+  const highest = highestSequence(refs)
+  if (highest === 0) return null
+
+  for (const ref of refs) {
+    const name = ref
+      .trim()
+      .replace(/^refs\/tags\//, '')
+      .replace(/\^\{\}$/, '')
+    const match = JEANZ_TAG.exec(name)
+
+    if (match && Number(match[1]) === highest) {
+      return name.startsWith('v') ? name : `v${name}`
+    }
+  }
+
+  return null
+}
+
 /** `<upstream>-z.<highest + 1>`, for example 0.1.73-z.4. */
 export function nextVersion(upstream, refs) {
   if (!UPSTREAM_VERSION.test(upstream)) {
@@ -77,12 +102,14 @@ function main() {
     readFileSync(resolve(root, 'src-tauri/tauri.conf.json'), 'utf8')
   )
   const upstream = config.version
-  const version = nextVersion(upstream, listRemoteTags(root))
+  const refs = listRemoteTags(root)
+  const version = nextVersion(upstream, refs)
 
   console.log(`upstream=${upstream}`)
   console.log(`version=${version}`)
   console.log(`tag=v${version}`)
   console.log(`sequence=${version.split('-z.')[1]}`)
+  console.log(`previous=${previousTag(refs) ?? ''}`)
 }
 
 if (

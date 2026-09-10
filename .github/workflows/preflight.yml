@@ -123,6 +123,9 @@ jobs:
       - name: Release version tests
         run: bun run test:jeanz-version
 
+      - name: Release notes tests
+        run: bun run test:changelog-notes
+
       - name: Rust tests
         run: bun run rust:test
 
@@ -291,6 +294,7 @@ jobs:
           TAG: ${{ steps.version.outputs.tag }}
           VERSION: ${{ steps.version.outputs.version }}
           UPSTREAM: ${{ steps.version.outputs.upstream }}
+          PREVIOUS: ${{ steps.version.outputs.previous }}
           STATUS: ${{ steps.dmg.outputs.status }}
         run: |
           # latest.json has to sit in the newest release, because that is the
@@ -303,15 +307,58 @@ jobs:
             UPDATE="yes"
           fi
 
+          # CHANGELOG.md is written per commit and says what changed and why,
+          # so the release quotes its section for this version. A version with
+          # no section falls back to the commit subjects since the last tag,
+          # which is thin but still tells the reader what landed.
+          CHANGES=$(node scripts/changelog-notes.mjs "$VERSION")
+          if [ -z "$CHANGES" ] && [ -n "$PREVIOUS" ]; then
+            echo "No CHANGELOG.md section for $VERSION - falling back to commit subjects"
+            # Asked of the API, not of the clone: the checkout is shallow and
+            # carries neither the previous tag nor the commits between.
+            SUBJECTS=$(gh api "repos/${GITHUB_REPOSITORY}/compare/${PREVIOUS}...${GITHUB_SHA}" \
+              --jq '.commits[] | "- " + (.commit.message | split("\n")[0])' || true)
+            if [ -n "$SUBJECTS" ]; then
+              CHANGES=$(printf '### Commits\n\n%s' "$SUBJECTS")
+            fi
+          fi
+          if [ -z "$CHANGES" ]; then
+            CHANGES="_No change list was available for this build._"
+          fi
+
+          COMPARE=""
+          if [ -n "$PREVIOUS" ]; then
+            COMPARE="[Compare with $PREVIOUS](https://github.com/${GITHUB_REPOSITORY}/compare/${PREVIOUS}...${TAG})"
+          fi
+
+          # A heredoc keeps the markdown intact; --notes with an inline string
+          # would have to escape every backtick and newline.
+          cat > release-notes.md <<NOTES
+          $CHANGES
+
+          ---
+
+          ### Build
+
+          - Upstream: Jean $UPSTREAM
+          - Commit: \`${GITHUB_SHA:0:7}\`
+          - Signature: $STATUS
+          - In-app update: $UPDATE
+
+          $COMPARE
+
+          ### Install
+
+          Apple Silicon only. Open the DMG and drag JeanZ to Applications. Later builds arrive through the in-app update check.
+
+          JeanZ shares the Jean app-data directory, so projects, sessions and CLI logins carry over. Do not run both apps at the same time.
+          NOTES
+
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
             --latest \
             --title "JeanZ $VERSION" \
-            --notes "Jean $UPSTREAM - commit \`${GITHUB_SHA:0:7}\` - signature: $STATUS.
-
-          Apple Silicon only. Install by opening the DMG and dragging JeanZ to Applications. Later builds arrive through the in-app update check.
-
-          JeanZ shares the Jean app-data directory, so projects, sessions and CLI logins carry over. Do not run both apps at the same time." \
+            --notes-file release-notes.md \
             "${ASSETS[@]}"
 
           {
