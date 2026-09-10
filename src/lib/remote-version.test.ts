@@ -194,6 +194,20 @@ describe('SSO login proxy detection (issue #15)', () => {
     ).toBe(false)
   })
 
+  it('does not flag an http to https redirect on the same host', () => {
+    expect(
+      isSsoProxyResponse(
+        {
+          status: 200,
+          redirected: true,
+          url: 'https://jean.example.com:8080/api/auth',
+          headers: headers('application/json'),
+        },
+        'http://jean.example.com:8080/api/auth?token=secret'
+      )
+    ).toBe(false)
+  })
+
   it('does not flag a same-origin redirect', () => {
     expect(
       isSsoProxyResponse(

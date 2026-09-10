@@ -64,9 +64,18 @@ export function isSsoProxyMessage(message: string | null | undefined): boolean {
   return typeof message === 'string' && message.includes(SSO_PROXY_MARKER)
 }
 
-function sameOrigin(a: string, b: string): boolean {
+/**
+ * Compares the host only, not the whole origin.
+ *
+ * A login proxy lives on another host - `team.cloudflareaccess.com` for the
+ * server at `jean.example.com`. A scheme or port change on the same host is an
+ * ordinary redirect instead: a server behind TLS answers `http://host:8080`
+ * with a 301 to `https://host:8080`, and comparing origins would read that
+ * healthy server as a proxy and refuse to save the connection.
+ */
+function sameHost(a: string, b: string): boolean {
   try {
-    return new URL(a).origin === new URL(b).origin
+    return new URL(a).hostname === new URL(b).hostname
   } catch {
     // Cannot compare, so do not accuse a proxy.
     return true
@@ -78,7 +87,7 @@ function sameOrigin(a: string, b: string): boolean {
  *
  * A real Jean server always answers that route with JSON, for 200 and for 401
  * alike (`auth_handler` in `jean-core/src/http_server/server.rs`). So an HTML
- * body, or a redirect to a different origin, means a login proxy replied
+ * body, or a redirect to a different host, means a login proxy replied
  * instead.
  *
  * Two cases stay unflagged on purpose: a missing content type, because older
@@ -92,10 +101,7 @@ export function isSsoProxyResponse(
     },
   requestUrl: string
 ): boolean {
-  if (
-    res.redirected === true &&
-    !sameOrigin(res.url ?? requestUrl, requestUrl)
-  ) {
+  if (res.redirected === true && !sameHost(res.url ?? requestUrl, requestUrl)) {
     return true
   }
   if (res.status >= 500) return false
