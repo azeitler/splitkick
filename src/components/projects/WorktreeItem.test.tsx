@@ -5,6 +5,7 @@ import { WorktreeItem } from './WorktreeItem'
 import type { Worktree } from '@/types/projects'
 import type { Session } from '@/types/chat'
 import { useProjectsStore } from '@/store/projects-store'
+import { useChatStore } from '@/store/chat-store'
 import { SidebarWidthProvider } from '@/components/layout/SidebarWidthContext'
 
 const mocks = vi.hoisted(() => ({
@@ -464,5 +465,55 @@ describe('WorktreeItem starred glyph', () => {
     expect(
       screen.getByText('Auth Refactor').closest('[class*="pl-5"]')
     ).toContainElement(glyphs[0] ?? null)
+  })
+})
+
+// Regression: a click on a collapsed workspace row selected a session but left
+// the row collapsed, so the selected session could not be seen in the tree.
+describe('WorktreeItem row click', () => {
+  beforeEach(() => {
+    mocks.sessions = [session('a', 'Auth Refactor')]
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(),
+    })
+    // A click remembers the session it selected; start each test without one.
+    useChatStore.setState({ activeSessionIds: {} })
+  })
+
+  it('expands a collapsed row to show the session it selects', async () => {
+    const user = userEvent.setup()
+    renderItem({})
+
+    await user.click(screen.getByText('feature'))
+
+    expect(useProjectsStore.getState().expandedWorktreeIds.has('wt-1')).toBe(
+      true
+    )
+    expect(screen.getByText('Auth Refactor')).toBeInTheDocument()
+  })
+
+  it('keeps an expanded row expanded', async () => {
+    useProjectsStore.setState({ expandedWorktreeIds: new Set(['wt-1']) })
+    const user = userEvent.setup()
+    renderItem({})
+
+    await user.click(screen.getByText('feature'))
+
+    expect(useProjectsStore.getState().expandedWorktreeIds.has('wt-1')).toBe(
+      true
+    )
+  })
+
+  it('leaves a row without sessions collapsed, as there is nothing to show', async () => {
+    mocks.sessions = []
+    const user = userEvent.setup()
+    renderItem({})
+
+    await user.click(screen.getByText('feature'))
+
+    expect(useProjectsStore.getState().expandedWorktreeIds.has('wt-1')).toBe(
+      false
+    )
   })
 })

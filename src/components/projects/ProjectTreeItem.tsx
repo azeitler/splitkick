@@ -154,6 +154,9 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
 
     selectProject(project.id)
     clearActiveWorktree()
+    // Land on the canvas itself: close a session that is open on it, and skip
+    // "restore last session", which would reopen one on a project switch.
+    useUIStore.getState().requestProjectHome(project.id)
     if (isMobile) {
       useUIStore.getState().setLeftSidebarVisible(false)
     }

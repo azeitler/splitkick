@@ -5,6 +5,7 @@ import { ProjectTreeItem } from './ProjectTreeItem'
 import type { Project, Worktree } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 
 const mocks = vi.hoisted(() => ({
   worktrees: [] as Worktree[],
@@ -126,6 +127,18 @@ describe('ProjectTreeItem', () => {
     expect(useChatStore.getState().activeWorktreePath).toBeNull()
     // The chevron owns the open/closed state, not the row.
     expect(projectsState.expandedProjectIds.has('project-1')).toBe(true)
+  })
+
+  // Regression: with "restore last session" on, the canvas reopened the last
+  // session of a project, so the row click never showed the project page.
+  it('asks the canvas for its home page, not the last session', async () => {
+    useUIStore.setState({ pendingProjectHomeId: null })
+    const user = userEvent.setup()
+    render(<ProjectTreeItem project={project} />)
+
+    await user.click(screen.getByTestId('project-row-project-1'))
+
+    expect(useUIStore.getState().pendingProjectHomeId).toBe('project-1')
   })
 
   it('collapses the project from the chevron only', async () => {

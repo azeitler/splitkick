@@ -591,6 +591,8 @@ export function WorktreeItem({
     const targetSessionId = activeSessionId ?? activeSessions[0]?.id
     if (targetSessionId) {
       useChatStore.getState().setActiveSession(worktree.id, targetSessionId)
+      // Show the session the click selected: a collapsed row would hide it.
+      if (!isExpanded) toggleWorktreeExpanded(worktree.id)
     }
     // Always open modal — SessionChatModal fetches sessions independently
     // and falls back to first available session when no activeSessionId is set
@@ -618,6 +620,8 @@ export function WorktreeItem({
     sessionsData?.sessions,
     selectProject,
     selectWorktree,
+    isExpanded,
+    toggleWorktreeExpanded,
   ])
 
   // Middle-click closes the worktree, mirroring the canvas/session-tab close —

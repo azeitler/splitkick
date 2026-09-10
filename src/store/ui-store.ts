@@ -159,6 +159,10 @@ interface UIState {
    *  Holds the value of the row's `data-sidebar-row-id`; null when nothing is
    *  pending. One reveal per navigation, so scrolling away does not re-scroll. */
   pendingSidebarRevealId: string | null
+  /** Project whose canvas must show its own home page once, not the last
+   *  session. Set by a sidebar project-row click; the canvas consumes it, even
+   *  when it mounts later. */
+  pendingProjectHomeId: string | null
   /** Whether a session chat modal is open (for magic command keybinding checks) */
   sessionChatModalOpen: boolean
   /** Whether the chat toolbar is mounted — used to hide the global FloatingDock
@@ -282,6 +286,8 @@ interface UIState {
   consumeAutoInvestigateSentryIssue: (worktreeId: string) => boolean
   markSidebarReveal: (rowId: string) => void
   clearSidebarReveal: (rowId: string) => void
+  requestProjectHome: (projectId: string) => void
+  clearProjectHomeRequest: (projectId: string) => void
   markWorktreeForAutoOpenSession: (
     worktreeId: string,
     sessionId?: string
@@ -393,6 +399,7 @@ export const useUIStore = create<UIState>()(
       autoOpenSessionWorktreeIds: new Set(),
       pendingAutoOpenSessionIds: {},
       pendingSidebarRevealId: null,
+      pendingProjectHomeId: null,
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
       sessionPrimarySurface: {},
@@ -1010,6 +1017,27 @@ export const useUIStore = create<UIState>()(
               : state,
           undefined,
           'clearSidebarReveal'
+        ),
+
+      requestProjectHome: projectId =>
+        set(
+          state =>
+            state.pendingProjectHomeId === projectId
+              ? state
+              : { pendingProjectHomeId: projectId },
+          undefined,
+          'requestProjectHome'
+        ),
+
+      // Takes the project id, so a stale clear cannot swallow a newer request.
+      clearProjectHomeRequest: projectId =>
+        set(
+          state =>
+            state.pendingProjectHomeId === projectId
+              ? { pendingProjectHomeId: null }
+              : state,
+          undefined,
+          'clearProjectHomeRequest'
         ),
 
       markWorktreeForAutoOpenSession: (worktreeId, sessionId) =>

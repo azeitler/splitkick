@@ -202,3 +202,33 @@ describe('UIStore', () => {
     expect(useUIStore.getState().updateReadyVersion).toBe('1.2.3')
   })
 })
+
+describe('project home request', () => {
+  beforeEach(() => {
+    useUIStore.setState({ pendingProjectHomeId: null })
+  })
+
+  it('holds the request until the canvas of that project clears it', () => {
+    useUIStore.getState().requestProjectHome('project-1')
+    expect(useUIStore.getState().pendingProjectHomeId).toBe('project-1')
+
+    useUIStore.getState().clearProjectHomeRequest('project-1')
+    expect(useUIStore.getState().pendingProjectHomeId).toBeNull()
+  })
+
+  it('does not let a stale clear swallow a newer request', () => {
+    useUIStore.getState().requestProjectHome('project-1')
+    useUIStore.getState().requestProjectHome('project-2')
+
+    useUIStore.getState().clearProjectHomeRequest('project-1')
+    expect(useUIStore.getState().pendingProjectHomeId).toBe('project-2')
+  })
+
+  it('keeps the same state on a repeated request', () => {
+    useUIStore.getState().requestProjectHome('project-1')
+    const before = useUIStore.getState()
+
+    useUIStore.getState().requestProjectHome('project-1')
+    expect(useUIStore.getState()).toBe(before)
+  })
+})

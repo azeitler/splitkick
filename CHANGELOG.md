@@ -7,6 +7,21 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sidebar: a project row click always shows the project page.** For some
+  projects the click opened a session instead.
+  - With **Restore last session on project switch** on — the default — the
+    project page reopened the last session of the project the moment it
+    appeared. A click on the project row is a request for the page itself, so
+    it now skips that restore once. Other project switches still restore.
+  - A click on the row of the project you are already in left its open
+    session on top. The click now closes that session.
+- **Sidebar: a workspace row click shows the session it opens.** The click
+  selected a session but left a collapsed row collapsed, so the selected
+  session was not visible in the tree. The row now expands. A workspace with
+  no sessions stays collapsed, since there is nothing to show.
+
 ## [0.1.73-z.4] - 2026-09-10
 
 Built on Jean 0.1.73. JeanZ versions carry a `-z.<n>` suffix; the counter is

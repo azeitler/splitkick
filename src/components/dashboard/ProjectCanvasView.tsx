@@ -1866,6 +1866,19 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       )
   }, [selectedWorktreeModal?.worktreeId])
 
+  // A sidebar project-row click asks for this page itself. Close any open
+  // session, and stop "restore last session" from reopening one. Declared
+  // before the restore effect so the suppression is in place when it runs.
+  const projectHomeRequested = useUIStore(
+    state => state.pendingProjectHomeId === projectId
+  )
+  useEffect(() => {
+    if (!projectHomeRequested) return
+    useUIStore.getState().clearProjectHomeRequest(projectId)
+    suppressNextRestoreAutoOpenRef.current = true
+    setSelectedWorktreeModal(null)
+  }, [projectHomeRequested, projectId])
+
   // Open modal from external triggers (e.g. base session switch)
   useEffect(() => {
     const handleOpenModal = (
