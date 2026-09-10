@@ -19,18 +19,19 @@ import {
   toggleLabelFilter,
   type LabelFilter,
 } from '@/lib/label-filter'
-import { flattenAllSessions, resolveSessionLabel } from './home-utils'
-
-/** Rows shown before the "show more" step. */
-const COLLAPSED_COUNT = 8
-/** Rows shown after it. The list stays a summary, not a full session browser. */
-const EXPANDED_COUNT = 25
+import { Input } from '@/components/ui/input'
+import {
+  flattenAllSessions,
+  HOME_FILTER_MIN_ITEMS,
+  matchesSessionQuery,
+  resolveSessionLabel,
+} from './home-utils'
 
 export const RecentSessionsSection = memo(function RecentSessionsSection() {
   const { data, isLoading } = useAllSessions()
   const storeState = useCanvasStoreState()
+  const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<LabelFilter>(() => new Set<string>())
-  const [expanded, setExpanded] = useState(false)
 
   const rows = useMemo(
     () => flattenAllSessions(data?.entries ?? []),
@@ -57,27 +58,18 @@ export const RecentSessionsSection = memo(function RecentSessionsSection() {
     [filter, labelOptions]
   )
 
-  const visible = useMemo(() => {
-    const matching = rows.filter(row =>
-      sessionMatchesLabelFilter(
-        row.session,
-        activeFilter,
-        storeState.sessionLabels[row.session.id]
-      )
-    )
-    return matching.slice(0, expanded ? EXPANDED_COUNT : COLLAPSED_COUNT)
-  }, [rows, activeFilter, storeState.sessionLabels, expanded])
-
-  const matchCount = useMemo(
+  // Every matching session, newest first. Nothing waits behind a "show more"
+  // step: the column scrolls on its own, and the filter narrows a long list.
+  const visible = useMemo(
     () =>
-      rows.filter(row =>
-        sessionMatchesLabelFilter(
-          row.session,
-          activeFilter,
-          storeState.sessionLabels[row.session.id]
+      rows.filter(row => {
+        const label = resolveSessionLabel(row.session, storeState.sessionLabels)
+        return (
+          matchesSessionQuery(row, query, label) &&
+          sessionMatchesLabelFilter(row.session, activeFilter, label)
         )
-      ).length,
-    [rows, activeFilter, storeState.sessionLabels]
+      }),
+    [rows, query, activeFilter, storeState.sessionLabels]
   )
 
   const handleToggle = useCallback((name: string) => {
@@ -96,24 +88,44 @@ export const RecentSessionsSection = memo(function RecentSessionsSection() {
 
   if (rows.length === 0) return null
 
+  // The field stays while it holds a query, so a filter can never be active
+  // with no visible way to clear it.
+  const showQueryField = rows.length >= HOME_FILTER_MIN_ITEMS || query !== ''
+
   return (
     <HomeSection
       title="Recent sessions"
       action={
-        <LabelFilterChips
-          options={labelOptions}
-          filter={activeFilter}
-          onToggle={handleToggle}
-          onClear={handleClear}
-        />
+        showQueryField ? (
+          <Input
+            placeholder="Filter sessions..."
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+            className="h-8 max-w-[12rem]"
+          />
+        ) : undefined
       }
     >
+      <LabelFilterChips
+        options={labelOptions}
+        filter={activeFilter}
+        onToggle={handleToggle}
+        onClear={handleClear}
+      />
+
       {visible.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No session carries the selected label.
+          {query.trim() ? (
+            <>No sessions match &ldquo;{query.trim()}&rdquo;</>
+          ) : (
+            'No session carries the selected label.'
+          )}
         </p>
       ) : (
-        <ul className="flex flex-col divide-y divide-border/60 rounded-md border bg-muted/20">
+        <ul
+          className="flex flex-col divide-y divide-border/60 rounded-md border bg-muted/20"
+          data-testid="home-recent-sessions"
+        >
           {visible.map(row => (
             <RecentSessionRow
               key={row.session.id}
@@ -122,18 +134,6 @@ export const RecentSessionsSection = memo(function RecentSessionsSection() {
             />
           ))}
         </ul>
-      )}
-
-      {matchCount > COLLAPSED_COUNT && (
-        <button
-          type="button"
-          onClick={() => setExpanded(value => !value)}
-          className="self-start text-xs text-muted-foreground transition-colors hover:text-foreground"
-        >
-          {expanded
-            ? 'Show fewer'
-            : `Show ${Math.min(matchCount, EXPANDED_COUNT) - COLLAPSED_COUNT} more`}
-        </button>
       )}
     </HomeSection>
   )

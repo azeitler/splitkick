@@ -6,6 +6,7 @@ import { useAppDataDir } from '@/services/projects'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Kbd } from '@/components/ui/kbd'
+import { HOME_FILTER_MIN_ITEMS } from '@/components/home/home-utils'
 
 /**
  * The projects section of the Home view.
@@ -84,7 +85,8 @@ export function WelcomeProjectGrid({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-foreground">Projects</h2>
 
-        {projects.length >= 6 && (
+        {/* Stays while it holds a query, so the filter can always be cleared. */}
+        {(projects.length >= HOME_FILTER_MIN_ITEMS || search !== '') && (
           <Input
             placeholder="Filter projects..."
             value={search}

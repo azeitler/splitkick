@@ -7,6 +7,22 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Home: recent sessions list every session and have a filter.** The list
+  showed 8 sessions and a "Show more" button that went up to 25. It now shows
+  all sessions from the start, newest first. In the three-column layout the
+  column scrolls on its own.
+  - A **Filter sessions...** field sits in the section header, like the one
+    for projects. It matches the session name, the project, the worktree and
+    the label, and ignores upper and lower case. Type a project name to see
+    only the sessions of that project.
+  - The field shows once there are 6 sessions, the same point as the projects
+    filter. The label chips moved to their own line below the header.
+  - When nothing matches, the list says so.
+  - In both sections, a filter field that holds text now stays visible, so a
+    filter can always be cleared.
+
 ## [0.1.73-z.6] - 2026-09-10
 
 Built on Jean 0.1.73.

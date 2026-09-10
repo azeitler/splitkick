@@ -65,6 +65,35 @@ function renderHome() {
   )
 }
 
+/** `count` sessions in `jean / main`, then two in a second project. */
+function manySessions(count: number): AllSessionsResponse {
+  return {
+    entries: [
+      {
+        project_id: 'p1',
+        project_name: 'jean',
+        worktree_id: 'w1',
+        worktree_name: 'main',
+        worktree_path: '/tmp/w1',
+        sessions: Array.from({ length: count }, (_, i) =>
+          session(`s${i}`, `session ${i}`, { updated_at: 1000 - i })
+        ),
+      },
+      {
+        project_id: 'p2',
+        project_name: 'paperwork',
+        worktree_id: 'w2',
+        worktree_name: 'main',
+        worktree_path: '/tmp/w2',
+        sessions: [
+          session('pw1', 'invoice run', { updated_at: 10 }),
+          session('pw2', 'tax export', { updated_at: 5 }),
+        ],
+      },
+    ],
+  }
+}
+
 describe('HomeView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -295,5 +324,68 @@ describe('HomeView', () => {
 
     expect(screen.getByText('fix: keep the feed')).toBeInTheDocument()
     expect(screen.queryByText(/Could not load activity/)).toBeNull()
+  })
+
+  it('lists every session at once, with no show-more step', () => {
+    mocks.sessions = manySessions(30)
+    renderHome()
+
+    const list = screen.getByTestId('home-recent-sessions')
+    expect(within(list).getAllByRole('listitem')).toHaveLength(32)
+    expect(screen.queryByRole('button', { name: /^Show / })).toBeNull()
+  })
+
+  it('shows the session filter only once the list is long enough', () => {
+    renderHome()
+    // The default fixture holds two sessions.
+    expect(screen.queryByPlaceholderText('Filter sessions...')).toBeNull()
+  })
+
+  it('filters recent sessions by name', async () => {
+    mocks.sessions = manySessions(6)
+    renderHome()
+
+    await userEvent.type(
+      screen.getByPlaceholderText('Filter sessions...'),
+      'invoice'
+    )
+
+    const list = screen.getByTestId('home-recent-sessions')
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1)
+    expect(within(list).getByText('invoice run')).toBeInTheDocument()
+  })
+
+  it('narrows to one project when its name is typed', async () => {
+    mocks.sessions = manySessions(6)
+    renderHome()
+
+    await userEvent.type(
+      screen.getByPlaceholderText('Filter sessions...'),
+      'paperwork'
+    )
+
+    const list = screen.getByTestId('home-recent-sessions')
+    expect(
+      within(list)
+        .getAllByRole('listitem')
+        .map(
+          item => within(item).getByText(/invoice run|tax export/).textContent
+        )
+    ).toEqual(['invoice run', 'tax export'])
+  })
+
+  it('says so when no session matches the filter', async () => {
+    mocks.sessions = manySessions(6)
+    renderHome()
+
+    await userEvent.type(
+      screen.getByPlaceholderText('Filter sessions...'),
+      'nothing like this'
+    )
+
+    expect(screen.queryByTestId('home-recent-sessions')).toBeNull()
+    expect(
+      screen.getByText(/No sessions match .nothing like this./)
+    ).toBeInTheDocument()
   })
 })

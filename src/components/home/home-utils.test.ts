@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   flattenAllSessions,
+  matchesSessionQuery,
   resolveSessionLabel,
   resolveStarredSessions,
 } from './home-utils'
@@ -161,5 +162,45 @@ describe('resolveStarredSessions', () => {
 
   it('returns nothing before the sessions have loaded', () => {
     expect(resolveStarredSessions([star('a')], [])).toEqual([])
+  })
+})
+
+describe('matchesSessionQuery', () => {
+  const [row] = flattenAllSessions([
+    entry([session({ id: 's', name: 'Fix sidebar naming' })], 'a'),
+  ])
+  if (!row) throw new Error('expected one row')
+
+  it('matches everything while the query is blank', () => {
+    expect(matchesSessionQuery(row, '')).toBe(true)
+    expect(matchesSessionQuery(row, '   ')).toBe(true)
+  })
+
+  it('matches the session name, ignoring case and outer spaces', () => {
+    expect(matchesSessionQuery(row, 'SIDEBAR')).toBe(true)
+    expect(matchesSessionQuery(row, '  naming ')).toBe(true)
+  })
+
+  it('matches the project and the worktree, so a project name narrows the list', () => {
+    expect(matchesSessionQuery(row, 'project a')).toBe(true)
+    expect(matchesSessionQuery(row, 'worktree a')).toBe(true)
+  })
+
+  it('matches the label the row shows', () => {
+    const bug: LabelData = { name: 'Bug', color: '#ef4444' }
+    expect(matchesSessionQuery(row, 'bug', bug)).toBe(true)
+    expect(matchesSessionQuery(row, 'bug')).toBe(false)
+  })
+
+  it('matches a blank name under the word the row shows', () => {
+    const [untitled] = flattenAllSessions([
+      entry([session({ id: 'u', name: '' })]),
+    ])
+    if (!untitled) throw new Error('expected one row')
+    expect(matchesSessionQuery(untitled, 'untitled')).toBe(true)
+  })
+
+  it('rejects a row where nothing matches', () => {
+    expect(matchesSessionQuery(row, 'release')).toBe(false)
   })
 })

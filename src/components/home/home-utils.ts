@@ -2,6 +2,15 @@ import type { AllSessionsEntry, LabelData, Session } from '@/types/chat'
 import type { StarredSessionRef } from '@/store/projects-store'
 import { getSessionActivityTimestamp } from '@/components/projects/worktree-sort-utils'
 
+/**
+ * Lists with fewer items than this get no filter field. Shared by the Projects
+ * and Recent sessions sections, so both show their filter at the same point.
+ */
+export const HOME_FILTER_MIN_ITEMS = 6
+
+/** Shown in place of a blank session name, and matched under that word. */
+const UNTITLED_SESSION_NAME = 'Untitled'
+
 /** One session, with the project and worktree it belongs to. */
 export interface HomeSessionEntry {
   session: Session
@@ -93,4 +102,29 @@ export function resolveStarredSessions(
     if (row) rows.push(row)
   }
   return rows
+}
+
+/**
+ * Whether a Home session row matches the typed filter.
+ *
+ * A case-insensitive substring match, like the Projects filter, over what the
+ * row shows: the session name, its project, its worktree and its label. The
+ * list spans every project, so typing a project name narrows it to that
+ * project's sessions.
+ */
+export function matchesSessionQuery(
+  row: HomeSessionEntry,
+  query: string,
+  /** The label the row shows; the unsaved store label wins over the stored one. */
+  label?: LabelData
+): boolean {
+  const needle = query.trim().toLowerCase()
+  if (!needle) return true
+
+  return [
+    row.session.name || UNTITLED_SESSION_NAME,
+    row.projectName,
+    row.worktreeName,
+    label?.name,
+  ].some(field => field?.toLowerCase().includes(needle))
 }
