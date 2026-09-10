@@ -360,12 +360,19 @@ impl RunLogWriter {
     }
 
     /// Add this run to the activity log that the Home feed reads.
+    ///
+    /// A run is one chat turn, not one session, so this fires on every turn. The
+    /// feed wants the latest outcome per session and nothing more, so the record
+    /// replaces the session's previous one. One key covers all three outcomes:
+    /// a session that finished and was then cancelled reads as cancelled,
+    /// rather than showing both.
     fn record_activity(&self, kind: ActivityKind) {
-        crate::activity::record(
+        crate::activity::record_replacing(
             &self.app,
             kind,
             NewActivity::for_worktree(self.worktree_id.clone())
-                .session(self.session_id.clone(), self.session_name.clone()),
+                .session(self.session_id.clone(), self.session_name.clone())
+                .dedupe_key(format!("run-outcome:{}", self.session_id)),
         );
     }
 }

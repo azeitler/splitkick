@@ -347,6 +347,64 @@ fn has_dedupe_key(path: &PathBuf, key: &str) -> bool {
 /// because the check reads the log itself.
 ///
 /// Returns `true` when a record was written.
+/// Append a record and drop any older one written under the same `dedupe_key`.
+///
+/// For something that happens repeatedly but is only worth one row, where the
+/// newest occurrence is the interesting one. A run finishes once per chat turn,
+/// so a long session would otherwise push every commit, pull request and review
+/// out of a feed that holds [`MAX_EVENTS`] records.
+///
+/// The opposite of [`record_once`], which keeps the first occurrence.
+pub fn record_replacing(app: &AppHandle, kind: ActivityKind, new: NewActivity) {
+    let Some(key) = new.dedupe_key.clone() else {
+        log::warn!("[Activity] record_replacing called without a dedupe key; ignoring {kind:?}");
+        return;
+    };
+
+    if let Ok(path) = activity_path(app) {
+        if let Err(e) = drop_dedupe_key(&path, &key) {
+            // The stale row stays and the new one is still appended, so the
+            // feed is duplicated rather than wrong.
+            log::warn!("[Activity] failed to drop {key}: {e}");
+        }
+    }
+
+    record(app, kind, new);
+}
+
+/// The records not written under `key`.
+fn without_dedupe_key(events: Vec<ActivityEvent>, key: &str) -> Vec<ActivityEvent> {
+    events
+        .into_iter()
+        .filter(|event| event.dedupe_key.as_deref() != Some(key))
+        .collect()
+}
+
+/// Rewrite the log without the records written under `key`.
+fn drop_dedupe_key(path: &PathBuf, key: &str) -> Result<(), String> {
+    let events = read_events(path);
+    let before = events.len();
+    let keep = without_dedupe_key(events, key);
+    if keep.len() == before {
+        return Ok(());
+    }
+
+    let body = keep
+        .iter()
+        .filter_map(|event| serde_json::to_string(event).ok())
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    let temp = path.with_extension(format!("jsonl.tmp{}", std::process::id()));
+    let contents = if body.is_empty() {
+        String::new()
+    } else {
+        format!("{body}\n")
+    };
+    std::fs::write(&temp, contents).map_err(|e| format!("Failed to write activity log: {e}"))?;
+    std::fs::rename(&temp, path).map_err(|e| format!("Failed to replace activity log: {e}"))
+}
+
 pub fn record_once(app: &AppHandle, kind: ActivityKind, new: NewActivity) -> bool {
     let Some(key) = new.dedupe_key.clone() else {
         log::warn!("[Activity] record_once called without a dedupe key; ignoring {kind:?}");
@@ -371,10 +429,21 @@ pub async fn list_recent_activity(
     limit: Option<usize>,
 ) -> Result<Vec<ActivityEvent>, String> {
     let path = activity_path(&app)?;
-    let mut events = read_events(&path);
-    events.sort_by(|a, b| b.at.cmp(&a.at));
+    let mut events = newest_first(read_events(&path));
     events.truncate(limit.unwrap_or(50).min(MAX_EVENTS));
     Ok(events)
+}
+
+/// Order append-ordered records newest first.
+///
+/// `at` has second resolution, so several records routinely share one value -
+/// a commit and the pull request opened from it, for example. Reversing before
+/// the stable sort puts the newest of a tied group on top and keeps it there;
+/// sorting the append order directly would hand back a tied group oldest-first.
+fn newest_first(mut events: Vec<ActivityEvent>) -> Vec<ActivityEvent> {
+    events.reverse();
+    events.sort_by(|a, b| b.at.cmp(&a.at));
+    events
 }
 
 #[cfg(test)]
@@ -398,6 +467,53 @@ mod tests {
             url: None,
             dedupe_key: None,
         }
+    }
+
+    fn keyed(id: &str, at: u64, key: &str) -> ActivityEvent {
+        ActivityEvent {
+            dedupe_key: Some(key.to_string()),
+            ..event(id, at)
+        }
+    }
+
+    #[test]
+    fn records_sharing_one_second_come_back_newest_first() {
+        // Append order, so "b" was written after "a".
+        let ordered = newest_first(vec![event("a", 10), event("b", 10)]);
+
+        let ids: Vec<_> = ordered.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["b", "a"]);
+    }
+
+    #[test]
+    fn newest_first_still_orders_by_timestamp() {
+        let ordered = newest_first(vec![event("old", 1), event("new", 5)]);
+
+        let ids: Vec<_> = ordered.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["new", "old"]);
+    }
+
+    #[test]
+    fn a_replaced_key_leaves_only_the_other_records() {
+        let events = vec![
+            keyed("first-turn", 1, "run-outcome:s1"),
+            event("a-commit", 2),
+            keyed("other-session", 3, "run-outcome:s2"),
+        ];
+
+        let keep = without_dedupe_key(events, "run-outcome:s1");
+
+        let ids: Vec<_> = keep.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["a-commit", "other-session"]);
+    }
+
+    #[test]
+    fn dropping_an_absent_key_keeps_every_record() {
+        let events = vec![event("a", 1), keyed("b", 2, "run-outcome:s1")];
+
+        let keep = without_dedupe_key(events, "run-outcome:missing");
+
+        assert_eq!(keep.len(), 2);
     }
 
     fn body(events: &[ActivityEvent]) -> String {
