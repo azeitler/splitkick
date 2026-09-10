@@ -28,6 +28,14 @@ const fileNode: FileTreeNode = {
   children: [],
 }
 
+const htmlNode: FileTreeNode = {
+  name: 'index.html',
+  relativePath: 'site/index.html',
+  isDir: false,
+  extension: 'html',
+  children: [],
+}
+
 const dirNode: FileTreeNode = {
   name: 'src',
   relativePath: 'src',
@@ -41,6 +49,8 @@ function buildActions(): ReturnType<typeof useFileMenuActions> {
     fileManagerName: 'Finder',
     editorLabel: 'VS Code',
     terminalLabel: 'Terminal',
+    isBrowsable: vi.fn(() => false),
+    handleBrowse: vi.fn(),
     handleReveal: vi.fn(),
     handleOpenInEditor: vi.fn(),
     handleOpenInDefaultApp: vi.fn(),
@@ -124,5 +134,26 @@ describe('FileTreeContextMenu', () => {
 
     await user.click(copyRelative)
     expect(actions.handleCopyRelativePath).toHaveBeenCalledWith(fileNode)
+  })
+
+  it('puts Browse now first for a browsable HTML file', async () => {
+    const user = userEvent.setup()
+    const actions = buildActions()
+    vi.mocked(actions.isBrowsable).mockReturnValue(true)
+    renderMenu(htmlNode, actions)
+
+    const items = await screen.findAllByRole('menuitem')
+    expect(items[0]?.textContent).toBe('Browse now')
+    expect(actions.isBrowsable).toHaveBeenCalledWith(htmlNode)
+
+    await user.click(items[0] as HTMLElement)
+    expect(actions.handleBrowse).toHaveBeenCalledWith(htmlNode)
+  })
+
+  it('leaves Browse now out when the row cannot be browsed', async () => {
+    renderMenu(fileNode)
+
+    await screen.findByRole('menuitem', { name: /^open$/i })
+    expect(screen.queryByRole('menuitem', { name: /browse now/i })).toBe(null)
   })
 })

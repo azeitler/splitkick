@@ -9,6 +9,7 @@ import { useChatStore } from '@/store/chat-store'
 import { isHomeActive } from '@/components/home/useIsHomeActive'
 import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
+import { resolveBrowserSurfaceTarget } from '@/hooks/useBrowserPane'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys } from '@/services/chat'
 import type {
@@ -686,15 +687,12 @@ function executeKeybindingAction(
     }
     case 'toggle_browser': {
       logger.debug('Keybinding: toggle_browser')
-      const uiState = useUIStore.getState()
-      const chatState = useChatStore.getState()
-      if (uiState.sessionChatModalOpen) {
-        const wid =
-          uiState.sessionChatModalWorktreeId ?? chatState.activeWorktreeId
-        if (wid) useBrowserStore.getState().toggleModal(wid)
+      const target = resolveBrowserSurfaceTarget()
+      if (!target) break
+      if (target.surface === 'modal') {
+        useBrowserStore.getState().toggleModal(target.worktreeId)
       } else {
-        const wid = chatState.activeWorktreeId
-        if (wid) useBrowserStore.getState().toggleSidePane(wid)
+        useBrowserStore.getState().toggleSidePane(target.worktreeId)
       }
       break
     }

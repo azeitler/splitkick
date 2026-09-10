@@ -76,3 +76,57 @@ export function joinPaths(root: string, relative: string): string {
   const cleanRelative = relative.replace(/^[\\/]+/, '').replace(/[\\/]+/g, sep)
   return `${cleanRoot}${sep}${cleanRelative}`
 }
+
+/** Extensions a web view renders as a page when it loads the file from disk. */
+const HTML_EXTENSIONS = new Set(['.html', '.htm', '.xhtml', '.xht', '.shtml'])
+
+/**
+ * Whether a path names an HTML document (case-insensitive).
+ *
+ * Covers the extensions WebKit, WebView2 and WebKitGTK render directly.
+ * Template formats (`.ejs`, `.hbs`, `.vue`) and web archives (`.mhtml`) are
+ * excluded: they need a build step or are not supported by every engine.
+ *
+ * @example
+ * isHtmlFile('site/index.HTML') // true
+ * isHtmlFile('page.xhtml') // true
+ * isHtmlFile('App.vue') // false
+ */
+export function isHtmlFile(path: string): boolean {
+  return HTML_EXTENSIONS.has(getExtension(path).toLowerCase())
+}
+
+/**
+ * Convert an absolute filesystem path to a `file://` URL (cross-platform).
+ *
+ * Each path segment is percent-encoded on its own, so separators survive and
+ * relative links inside an HTML page (`css/site.css`) resolve next to it.
+ * `encodeURI` is not enough: it leaves `#` and `?` in place, which would cut
+ * the path into a fragment or a query.
+ *
+ * @example
+ * toFileUrl('/Users/me/my site/index.html') // 'file:///Users/me/my%20site/index.html'
+ * toFileUrl('C:\\site\\index.html') // 'file:///C:/site/index.html'
+ * toFileUrl('\\\\wsl.localhost\\Ubuntu\\x.html') // 'file://wsl.localhost/Ubuntu/x.html'
+ */
+export function toFileUrl(absolutePath: string): string {
+  const normalized = normalizePath(absolutePath)
+  const encodeSegments = (path: string) =>
+    path.split('/').map(encodeURIComponent).join('/')
+
+  // UNC path (//host/share/...): the host goes into the URL authority.
+  if (normalized.startsWith('//')) {
+    const rest = normalized.slice(2)
+    const slash = rest.indexOf('/')
+    const host = slash === -1 ? rest : rest.slice(0, slash)
+    const path = slash === -1 ? '' : rest.slice(slash)
+    return `file://${host}${encodeSegments(path)}`
+  }
+
+  // Windows drive path: keep the drive letter and colon unencoded.
+  if (/^[a-zA-Z]:\//.test(normalized)) {
+    return `file:///${normalized.slice(0, 2)}${encodeSegments(normalized.slice(2))}`
+  }
+
+  return `file://${encodeSegments(normalized)}`
+}

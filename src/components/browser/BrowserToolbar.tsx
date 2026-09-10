@@ -72,13 +72,18 @@ const TabPill = memo(function TabPill({
     [onClose, tab.id]
   )
 
-  let host = ''
+  let urlLabel = ''
   try {
-    host = new URL(tab.url).host
+    const parsed = new URL(tab.url)
+    // file:// pages have no host; show the file name instead of "New Tab".
+    urlLabel =
+      parsed.protocol === 'file:'
+        ? decodeURIComponent(parsed.pathname.split('/').pop() ?? '')
+        : parsed.host
   } catch {
-    host = tab.url
+    urlLabel = tab.url
   }
-  const label = tab.title || host || 'New Tab'
+  const label = tab.title || urlLabel || 'New Tab'
   return (
     <div
       className={cn(

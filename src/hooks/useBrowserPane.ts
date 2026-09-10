@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { invoke, listen } from '@/lib/transport'
 import { isNativeApp } from '@/lib/environment'
 import { isBlankTabUrl, useBrowserStore } from '@/store/browser-store'
+import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import type {
   BrowserClosedEvent,
   BrowserGrabContext,
@@ -260,6 +262,94 @@ export function useAnyBlockingModalOpen(): boolean {
   return isOpen
 }
 
+/**
+ * Navigate an existing tab whose native webview is alive. Module-level so
+ * code outside React (file browser, keybindings) shares the same loading,
+ * watchdog, and error handling as the URL bar.
+ */
+export async function navigateBrowserTab(
+  tabId: string,
+  url: string
+): Promise<void> {
+  if (!isNativeApp()) return
+  const s = useBrowserStore.getState()
+  // Optimistic UI: URL bar shows what user typed, even if load fails.
+  s.setTabUrl(tabId, url)
+  s.setRequestedUrl(tabId, url)
+  s.setTabError(tabId, null)
+  s.setTabLoading(tabId, true)
+  armWatchdog(tabId, url)
+  try {
+    await invoke('browser_navigate', { tabId, url })
+  } catch (err) {
+    clearWatchdog(tabId)
+    const s2 = useBrowserStore.getState()
+    s2.setTabLoading(tabId, false)
+    s2.setTabError(tabId, failureMessage(url))
+    s2.setRequestedUrl(tabId, null)
+    console.error(`[browser] navigate(${url}) failed:`, err)
+  }
+}
+
+export interface BrowserSurfaceTarget {
+  worktreeId: string
+  /** `modal` = the session chat modal's drawer, `side` = main window pane. */
+  surface: 'modal' | 'side'
+}
+
+/**
+ * Which browser the user can see right now: the session chat modal's drawer
+ * when that modal is open, otherwise the main window's side pane for the
+ * active worktree. Null when neither exists (e.g. the project canvas with no
+ * session open). Shared by the toggle-browser keybinding and file browsing.
+ */
+export function resolveBrowserSurfaceTarget(): BrowserSurfaceTarget | null {
+  const ui = useUIStore.getState()
+  const activeWorktreeId = useChatStore.getState().activeWorktreeId
+  if (ui.sessionChatModalOpen) {
+    const worktreeId = ui.sessionChatModalWorktreeId ?? activeWorktreeId
+    return worktreeId ? { worktreeId, surface: 'modal' } : null
+  }
+  return activeWorktreeId
+    ? { worktreeId: activeWorktreeId, surface: 'side' }
+    : null
+}
+
+/**
+ * Show `url` in the embedded browser and bring the browser surface up.
+ *
+ * Reuses a tab that already shows the URL (navigating it again reloads the
+ * page, so edits to a local file appear); otherwise opens a new tab. A new
+ * tab creates its webview on mount with the URL, so no navigate call is
+ * needed for it. Returns false when there is no browser surface to show.
+ */
+export async function openUrlInEmbeddedBrowser(url: string): Promise<boolean> {
+  if (!isNativeApp()) return false
+  const target = resolveBrowserSurfaceTarget()
+  if (!target) return false
+
+  const store = useBrowserStore.getState()
+  const existing = (store.tabs[target.worktreeId] ?? []).find(
+    tab => tab.url === url || tab.lastLoadedUrl === url
+  )
+
+  if (existing) {
+    store.setActiveTab(target.worktreeId, existing.id)
+    if (await browserBackend.hasActive(existing.id)) {
+      await navigateBrowserTab(existing.id, url)
+    }
+  } else {
+    store.addTab(target.worktreeId, url)
+  }
+
+  if (target.surface === 'modal') {
+    useBrowserStore.getState().setModalOpen(target.worktreeId, true)
+  } else {
+    useBrowserStore.getState().setSidePaneOpen(target.worktreeId, true)
+  }
+  return true
+}
+
 interface BrowserActions {
   navigate: (url: string) => Promise<void>
   back: () => Promise<void>
@@ -275,24 +365,8 @@ interface BrowserActions {
 export function useBrowserTabActions(tabId: string | null): BrowserActions {
   const navigate = useCallback(
     async (url: string) => {
-      if (!tabId || !isNativeApp()) return
-      const s = useBrowserStore.getState()
-      // Optimistic UI: URL bar shows what user typed, even if load fails.
-      s.setTabUrl(tabId, url)
-      s.setRequestedUrl(tabId, url)
-      s.setTabError(tabId, null)
-      s.setTabLoading(tabId, true)
-      armWatchdog(tabId, url)
-      try {
-        await invoke('browser_navigate', { tabId, url })
-      } catch (err) {
-        clearWatchdog(tabId)
-        const s2 = useBrowserStore.getState()
-        s2.setTabLoading(tabId, false)
-        s2.setTabError(tabId, failureMessage(url))
-        s2.setRequestedUrl(tabId, null)
-        console.error(`[browser] navigate(${url}) failed:`, err)
-      }
+      if (!tabId) return
+      await navigateBrowserTab(tabId, url)
     },
     [tabId]
   )

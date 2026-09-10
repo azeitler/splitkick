@@ -2,10 +2,12 @@ import { useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { copyToClipboard } from '@/lib/clipboard'
-import { getFilename, joinPaths } from '@/lib/path-utils'
+import { isLocalBackend } from '@/lib/environment'
+import { getFilename, isHtmlFile, joinPaths, toFileUrl } from '@/lib/path-utils'
 import { getFileManagerName } from '@/lib/platform'
 import { generateId } from '@/lib/uuid'
 import { logger } from '@/lib/logger'
+import { openUrlInEmbeddedBrowser } from '@/hooks/useBrowserPane'
 import { usePreferences } from '@/services/preferences'
 import { useRevealPathInFileManager } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
@@ -36,6 +38,29 @@ export function useFileMenuActions(rootPath: string | null) {
     (node: FileTreeNode) =>
       rootPath ? joinPaths(rootPath, node.relativePath) : null,
     [rootPath]
+  )
+
+  /**
+   * HTML files load from disk in the embedded browser. That needs the local
+   * desktop backend: the browser is a native webview, and with a remote
+   * backend the worktree path names a file on the other machine.
+   */
+  const isBrowsable = useCallback(
+    (node: FileTreeNode) =>
+      !node.isDir && isHtmlFile(node.name) && isLocalBackend(),
+    []
+  )
+
+  const handleBrowse = useCallback(
+    async (node: FileTreeNode) => {
+      const path = absolutePathOf(node)
+      if (!path) return
+      const opened = await openUrlInEmbeddedBrowser(toFileUrl(path))
+      if (!opened) {
+        toast.error('Open a session first to browse this file')
+      }
+    },
+    [absolutePathOf]
   )
 
   const handleReveal = useCallback(
@@ -175,6 +200,8 @@ export function useFileMenuActions(rootPath: string | null) {
     fileManagerName: getFileManagerName(),
     editorLabel,
     terminalLabel,
+    isBrowsable,
+    handleBrowse,
     handleReveal,
     handleOpenInEditor,
     handleOpenInDefaultApp,

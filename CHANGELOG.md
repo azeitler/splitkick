@@ -39,6 +39,22 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - Image syntax inside code blocks stays as text. Unsafe sources, such as
     `javascript:`, are still blocked.
   - Web access loads project and worktree images too.
+- **Files sidebar: HTML files open in the embedded browser.** Double-click an
+  HTML file, or select it and press Enter, to show the page in Jean's browser.
+  The context menu of an HTML file now starts with **Browse now**.
+  - `.html`, `.htm`, `.xhtml`, `.xht` and `.shtml` files count as HTML. Upper
+    and lower case do not matter.
+  - The page loads from disk, so its own stylesheets, scripts and images load
+    too.
+  - A single click on an HTML file now only selects it. To read the source,
+    use **Open** in the context menu.
+  - If a browser tab already shows the file, Jean reloads that tab instead of
+    opening a second one. This shows your latest edits.
+  - The browser opens where the browser shortcut opens it: in the session
+    window when one is open, otherwise at the right side of the main window.
+    With no workspace or session open, a message tells you to open one.
+  - This works in the desktop app on this computer only. In web access, and
+    when connected to a remote Jean, HTML files still open in the file viewer.
 
 ## [0.1.73-z.5] - 2026-09-10
 

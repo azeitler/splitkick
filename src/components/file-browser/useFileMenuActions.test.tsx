@@ -14,6 +14,16 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   toastLoading: vi.fn(() => 'toast-id'),
+  openUrlInEmbeddedBrowser: vi.fn(),
+  isLocalBackend: vi.fn(() => true),
+}))
+
+vi.mock('@/hooks/useBrowserPane', () => ({
+  openUrlInEmbeddedBrowser: mocks.openUrlInEmbeddedBrowser,
+}))
+vi.mock('@/lib/environment', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  isLocalBackend: mocks.isLocalBackend,
 }))
 
 vi.mock('@/lib/transport', () => ({ invoke: mocks.invoke }))
@@ -47,6 +57,32 @@ const fileNode: FileTreeNode = {
   isDir: false,
   extension: 'rs',
   children: [],
+}
+
+const htmlNode: FileTreeNode = {
+  name: 'index.html',
+  relativePath: 'my site/index.html',
+  isDir: false,
+  extension: 'html',
+  children: [],
+}
+
+function BrowseHarness({
+  rootPath,
+  node,
+}: {
+  rootPath: string | null
+  node: FileTreeNode
+}) {
+  const actions = useFileMenuActions(rootPath)
+  return (
+    <div>
+      <span data-testid="browsable">{String(actions.isBrowsable(node))}</span>
+      <button type="button" onClick={() => void actions.handleBrowse(node)}>
+        browse
+      </button>
+    </div>
+  )
 }
 
 function Harness({ rootPath }: { rootPath: string | null }) {
@@ -93,6 +129,8 @@ describe('useFileMenuActions', () => {
     mocks.getActiveSession.mockReturnValue('session-1')
     mocks.activeWorktreeId = 'wt-1'
     mocks.toastLoading.mockReturnValue('toast-id')
+    mocks.openUrlInEmbeddedBrowser.mockResolvedValue(true)
+    mocks.isLocalBackend.mockReturnValue(true)
   })
 
   it('reveals the absolute path built from the root', async () => {
@@ -191,6 +229,47 @@ describe('useFileMenuActions', () => {
     expect(mocks.addPendingFile).not.toHaveBeenCalled()
     expect(mocks.toastError).toHaveBeenCalledWith(
       'Open a session first to mention a file'
+    )
+  })
+
+  it('treats an HTML file as browsable on the local desktop backend', () => {
+    render(<BrowseHarness rootPath="/Users/dev/project" node={htmlNode} />)
+    expect(screen.getByTestId('browsable').textContent).toBe('true')
+  })
+
+  it.each([
+    ['a non-HTML file', fileNode, true],
+    ['a folder named like HTML', { ...htmlNode, isDir: true }, true],
+    ['an HTML file on a remote backend', htmlNode, false],
+  ])('does not treat %s as browsable', (_label, node, localBackend) => {
+    mocks.isLocalBackend.mockReturnValue(localBackend)
+    render(<BrowseHarness rootPath="/Users/dev/project" node={node} />)
+    expect(screen.getByTestId('browsable').textContent).toBe('false')
+  })
+
+  it('opens the file URL of the row in the embedded browser', async () => {
+    const user = userEvent.setup()
+    render(<BrowseHarness rootPath="/Users/dev/project" node={htmlNode} />)
+
+    await user.click(screen.getByText('browse'))
+
+    expect(mocks.openUrlInEmbeddedBrowser).toHaveBeenCalledWith(
+      'file:///Users/dev/project/my%20site/index.html'
+    )
+    expect(mocks.toastError).not.toHaveBeenCalled()
+  })
+
+  it('tells the user when no browser surface can show the file', async () => {
+    mocks.openUrlInEmbeddedBrowser.mockResolvedValue(false)
+    const user = userEvent.setup()
+    render(<BrowseHarness rootPath="/Users/dev/project" node={htmlNode} />)
+
+    await user.click(screen.getByText('browse'))
+
+    await waitFor(() =>
+      expect(mocks.toastError).toHaveBeenCalledWith(
+        'Open a session first to browse this file'
+      )
     )
   })
 })

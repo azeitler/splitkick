@@ -4,6 +4,7 @@ import {
   ExternalLink,
   FileText,
   FolderOpen,
+  Globe,
   MessageSquarePlus,
   Terminal,
 } from 'lucide-react'
@@ -37,6 +38,8 @@ export function FileTreeContextMenu({
     fileManagerName,
     editorLabel,
     terminalLabel,
+    isBrowsable,
+    handleBrowse,
     handleReveal,
     handleOpenInEditor,
     handleOpenInDefaultApp,
@@ -54,6 +57,12 @@ export function FileTreeContextMenu({
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent className="w-52">
+        {isBrowsable(node) && (
+          <ContextMenuItem onSelect={() => void handleBrowse(node)}>
+            <Globe className="mr-2 h-4 w-4" />
+            Browse now
+          </ContextMenuItem>
+        )}
         {isFile && (
           <ContextMenuItem onSelect={() => onOpen(node)}>
             <FileText className="mr-2 h-4 w-4" />

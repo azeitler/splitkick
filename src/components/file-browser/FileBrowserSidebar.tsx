@@ -246,16 +246,45 @@ export function FileBrowserSidebar({
     [rootPath, setViewingFilePath, isMobile, setFileBrowserVisible]
   )
 
+  const { isBrowsable, handleBrowse } = menuActions
+
+  // Enter / Space: the primary action. HTML opens in the embedded browser,
+  // the same as a double-click; other files open in the viewer.
   const handleRowActivate = useCallback(
     (node: FileTreeNode) => {
       if (node.isDir) {
         toggleDir(node.relativePath)
         setSelectedPath(node.relativePath)
+      } else if (isBrowsable(node)) {
+        setSelectedPath(node.relativePath)
+        void handleBrowse(node)
       } else {
         openFile(node.relativePath)
       }
     },
-    [openFile, toggleDir]
+    [openFile, toggleDir, isBrowsable, handleBrowse]
+  )
+
+  // A single click on an HTML file only selects it. Opening the source viewer
+  // here would put its modal over the row, so the second click of a
+  // double-click would land on the modal; the modal also hides the native
+  // browser webview. The source viewer stays available as "Open" in the menu.
+  const handleRowClick = useCallback(
+    (node: FileTreeNode) => {
+      if (isBrowsable(node)) {
+        setSelectedPath(node.relativePath)
+        return
+      }
+      handleRowActivate(node)
+    },
+    [isBrowsable, handleRowActivate]
+  )
+
+  const handleRowDoubleClick = useCallback(
+    (node: FileTreeNode) => {
+      if (isBrowsable(node)) void handleBrowse(node)
+    },
+    [isBrowsable, handleBrowse]
   )
 
   const handleOpenFromMenu = useCallback(
@@ -424,13 +453,14 @@ export function FileBrowserSidebar({
                   aria-selected={isSelected}
                   className={cn(
                     // Match projects/worktree list: text-sm row labels
-                    'flex w-full items-center gap-1.5 rounded-sm px-1 py-1 text-left text-sm',
+                    'flex w-full items-center gap-1.5 rounded-sm px-1 py-1 text-left text-sm select-none',
                     'hover:bg-sidebar-accent/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring',
                     isSelected &&
                       'bg-sidebar-accent text-sidebar-accent-foreground'
                   )}
                   style={{ paddingLeft: `${depth * 12 + 4}px` }}
-                  onClick={() => handleRowActivate(node)}
+                  onClick={() => handleRowClick(node)}
+                  onDoubleClick={() => handleRowDoubleClick(node)}
                   onKeyDown={e => handleKeyDown(e, node)}
                   title={node.relativePath}
                 >
