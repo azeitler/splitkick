@@ -20,6 +20,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - The history is kept in memory. It starts again at launch, after Jean
     restores your last view. The buttons are hidden on mobile.
 
+### Changed
+
+- **Sidebar: a pinned session carries a pin on its row.** It sits beside the
+  star of a starred session, under the workspace and in the Starred section.
+  Rows in the Pinned section carry no pin, since every row there is one.
+- **Sidebar: a session's label comes last on its row,** after the activity
+  timestamp.
+
 ### Fixed
 
 - **Sidebar: a project row click always shows the project page.** For some

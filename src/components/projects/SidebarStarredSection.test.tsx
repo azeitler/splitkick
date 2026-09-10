@@ -149,6 +149,30 @@ describe('SidebarStarredSection', () => {
     )
   })
 
+  // A star that is also pinned to its project says so; no row shows a star,
+  // since every row here is one.
+  it('marks a starred session that is also pinned', () => {
+    useProjectsStore.setState({
+      starredSessions: [
+        star('s-1', 'Jean', 'main'),
+        star('s-2', 'Coolify', 'feat/deploy'),
+      ],
+      projectCanvasSettings: {
+        'id-Coolify': {
+          pinnedSessions: [{ sessionId: 's-2', worktreeId: 'id-feat/deploy' }],
+        },
+      },
+    })
+    render(<SidebarStarredSection />)
+
+    const glyphs = screen.getAllByTestId('pinned-glyph')
+    expect(glyphs).toHaveLength(1)
+    expect(
+      screen.getByText('Deploy pipeline').closest('button')
+    ).toContainElement(glyphs[0] ?? null)
+    expect(screen.queryByTestId('starred-glyph')).toBeNull()
+  })
+
   it('offers Unstar on the row menu and removes the star', async () => {
     const user = userEvent.setup()
     useProjectsStore.setState({

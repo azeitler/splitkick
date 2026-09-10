@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor } from '@/test/test-utils'
 import { WorktreeItem } from './WorktreeItem'
@@ -465,6 +465,109 @@ describe('WorktreeItem starred glyph', () => {
     expect(
       screen.getByText('Auth Refactor').closest('[class*="pl-5"]')
     ).toContainElement(glyphs[0] ?? null)
+  })
+})
+
+// A session pinned to the project is visible as such, like a starred one.
+describe('WorktreeItem pinned glyph', () => {
+  beforeEach(() => {
+    mocks.sessions = [
+      session('a', 'Auth Refactor'),
+      session('b', 'Billing'),
+      session('c', 'Checkout'),
+    ]
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(['wt-1']),
+      projectCanvasSettings: {
+        'project-1': {
+          pinnedSessions: [
+            { sessionId: 'b', worktreeId: 'wt-1' },
+            { sessionId: 'c', worktreeId: 'wt-1' },
+          ],
+        },
+      },
+      starredSessions: [
+        { projectId: 'project-1', worktreeId: 'wt-1', sessionId: 'c' },
+      ],
+    })
+  })
+
+  const rowOf = (name: string) =>
+    screen.getByText(name).closest('[class*="pl-5"]') as HTMLElement
+
+  it('marks only the pinned rows', () => {
+    renderItem({})
+
+    expect(screen.getAllByTestId('pinned-glyph')).toHaveLength(2)
+    expect(
+      rowOf('Auth Refactor').querySelector('[data-testid="pinned-glyph"]')
+    ).toBeNull()
+    expect(rowOf('Billing')).toContainElement(
+      rowOf('Billing').querySelector('[data-testid="pinned-glyph"]')
+    )
+  })
+
+  it('shows the pin beside the star on a row that is both', () => {
+    renderItem({})
+
+    const row = rowOf('Checkout')
+    const star = row.querySelector('[data-testid="starred-glyph"]')
+    const pin = row.querySelector('[data-testid="pinned-glyph"]')
+    expect(star).not.toBeNull()
+    expect(pin).not.toBeNull()
+    expect(star?.nextElementSibling).toBe(pin)
+  })
+
+  it('ignores pins of another project', () => {
+    useProjectsStore.setState({
+      projectCanvasSettings: {
+        'project-2': {
+          pinnedSessions: [{ sessionId: 'a', worktreeId: 'wt-1' }],
+        },
+      },
+    })
+    renderItem({})
+
+    expect(screen.queryByTestId('pinned-glyph')).toBeNull()
+  })
+})
+
+// The label closes the row, after the activity timestamp.
+describe('WorktreeItem label position', () => {
+  const DAY = 24 * 60 * 60 * 1000
+
+  beforeEach(() => {
+    mocks.sessions = [
+      session('a', 'Auth Refactor', { last_message_at: Date.now() - 3 * DAY }),
+    ]
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(['wt-1']),
+      projectCanvasSettings: {},
+      starredSessions: [],
+    })
+    useChatStore.setState({
+      sessionLabels: { a: { name: 'Bug', color: '#eab308' } },
+    })
+  })
+
+  afterEach(() => {
+    useChatStore.setState({ sessionLabels: {} })
+  })
+
+  it('puts the label last, after the timestamp', () => {
+    renderItem({})
+
+    const label = screen.getByText('Bug')
+    const row = label.closest('[class*="pl-5"]') as HTMLElement
+    const stamp = Array.from(row.querySelectorAll('span')).find(span =>
+      span.getAttribute('title')?.startsWith('Last active:')
+    )
+
+    expect(stamp).toBeDefined()
+    expect(label.previousElementSibling).toBe(stamp)
+    expect(label.nextElementSibling).toBeNull()
   })
 })
 

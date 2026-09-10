@@ -376,6 +376,21 @@ describe('PinnedSessionsSection', () => {
       }
     })
 
+    // Every row here is a pin, so marking each would be noise.
+    it('does not mark its rows with a pin', () => {
+      useProjectsStore.setState({
+        projectCanvasSettings: {
+          'p-1': {
+            pinnedSessions: [{ sessionId: 's-1', worktreeId: 'wt-s-1' }],
+          },
+        },
+      })
+      renderSidebarRows()
+
+      expect(screen.getByText('Investigation')).toBeInTheDocument()
+      expect(screen.queryByTestId('pinned-glyph')).toBeNull()
+    })
+
     it('adds no nested list on the canvas', () => {
       render(
         <PinnedSessionsSection

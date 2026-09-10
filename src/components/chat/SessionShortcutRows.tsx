@@ -8,6 +8,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import type { Session } from '@/types/chat'
 import { LabelModal } from './LabelModal'
+import { PinGlyph } from './PinGlyph'
 import { StarGlyph } from './StarGlyph'
 import { useSessionRemoval } from './hooks/useSessionArchive'
 import { useSessionRename } from './hooks/useSessionRename'
@@ -37,6 +38,8 @@ interface SessionShortcutRowsProps {
   sidebarRowClassName?: string
   /** Mark starred sessions with a star. Off where every row is a star anyway. */
   showStarGlyph?: boolean
+  /** Mark pinned sessions with a pin. Off where every row is a pin anyway. */
+  showPinGlyph?: boolean
   onOpen: (shortcut: SessionShortcut) => void
 }
 
@@ -54,6 +57,7 @@ export function SessionShortcutRows({
   variant,
   sidebarRowClassName = 'py-1 pl-5 pr-2',
   showStarGlyph = true,
+  showPinGlyph = true,
   onOpen,
 }: SessionShortcutRowsProps) {
   const { data: preferences } = usePreferences()
@@ -81,6 +85,20 @@ export function SessionShortcutRows({
     () => new Set(starredSessions.map(star => star.sessionId)),
     [starredSessions]
   )
+  // Rows can come from several projects (Starred), and a pin belongs to one
+  // project, so the key carries both ids.
+  const projectCanvasSettings = useProjectsStore(
+    state => state.projectCanvasSettings
+  )
+  const pinnedKeys = useMemo(() => {
+    const keys = new Set<string>()
+    for (const [projectId, settings] of Object.entries(projectCanvasSettings)) {
+      for (const pin of settings.pinnedSessions ?? []) {
+        keys.add(`${projectId}/${pin.sessionId}`)
+      }
+    }
+    return keys
+  }, [projectCanvasSettings])
 
   const isSidebar = variant === 'sidebar'
 
@@ -131,6 +149,10 @@ export function SessionShortcutRows({
                 {showStarGlyph && starredIds.has(shortcut.sessionId) && (
                   <StarGlyph />
                 )}
+                {showPinGlyph &&
+                  pinnedKeys.has(
+                    `${shortcut.projectId}/${shortcut.sessionId}`
+                  ) && <PinGlyph />}
                 <span className="shrink-0 truncate text-[10px] text-muted-foreground/70">
                   {shortcut.context}
                 </span>

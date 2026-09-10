@@ -109,6 +109,8 @@ export function PinnedSessionsSection({
             <SessionShortcutRows
               shortcuts={shortcuts}
               variant="sidebar"
+              // Every row here is a pin; marking each would be noise.
+              showPinGlyph={false}
               onOpen={handleOpen}
             />
           </div>
@@ -116,6 +118,7 @@ export function PinnedSessionsSection({
           <SessionShortcutRows
             shortcuts={shortcuts}
             variant="canvas"
+            showPinGlyph={false}
             onOpen={handleOpen}
           />
         ))}

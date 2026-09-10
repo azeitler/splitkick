@@ -47,6 +47,7 @@ import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { useSessionArchive } from '@/components/chat/hooks/useSessionArchive'
 import { useSessionRename } from '@/components/chat/hooks/useSessionRename'
 import { StarGlyph } from '@/components/chat/StarGlyph'
+import { PinGlyph } from '@/components/chat/PinGlyph'
 import { middleClickClose } from '@/lib/middle-click'
 import {
   decideWorktreeMiddleClose,
@@ -405,6 +406,14 @@ export function WorktreeItem({
   const starredIds = useMemo(
     () => new Set(starredSessions.map(star => star.sessionId)),
     [starredSessions]
+  )
+  // Sessions pinned to this project get a pin beside the star, the same way.
+  const pinnedSessions = useProjectsStore(
+    state => state.projectCanvasSettings[projectId]?.pinnedSessions
+  )
+  const pinnedIds = useMemo(
+    () => new Set((pinnedSessions ?? []).map(pin => pin.sessionId)),
+    [pinnedSessions]
   )
 
   // The project row's sort control orders the sessions inside each status
@@ -1155,6 +1164,7 @@ export function WorktreeItem({
                             {card.session.name || 'Untitled'}
                           </span>
                           {starredIds.has(card.session.id) && <StarGlyph />}
+                          {pinnedIds.has(card.session.id) && <PinGlyph />}
                           {/* Issue the workspace was created from. Dropped on a
                               narrow sidebar, where the indented row has no room. */}
                           {!isNarrowSidebar && (
@@ -1162,6 +1172,15 @@ export function WorktreeItem({
                               issueNumber={worktree.issue_number}
                             />
                           )}
+                          {shouldShowLastActive(sessionActivityAt) && (
+                            <span
+                              className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70"
+                              title={`Last active: ${formatMessageTimestamp(sessionActivityAt)}`}
+                            >
+                              {formatRelativeTime(sessionActivityAt)}
+                            </span>
+                          )}
+                          {/* The label comes last, after the timestamp. */}
                           {card.label && (
                             <span
                               className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
@@ -1171,14 +1190,6 @@ export function WorktreeItem({
                               }}
                             >
                               {card.label.name}
-                            </span>
-                          )}
-                          {shouldShowLastActive(sessionActivityAt) && (
-                            <span
-                              className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70"
-                              title={`Last active: ${formatMessageTimestamp(sessionActivityAt)}`}
-                            >
-                              {formatRelativeTime(sessionActivityAt)}
                             </span>
                           )}
                         </>
