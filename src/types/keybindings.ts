@@ -16,6 +16,8 @@ export type KeybindingAction =
   | 'open_new_session_modal'
   | 'next_session'
   | 'previous_session'
+  | 'navigate_back'
+  | 'navigate_forward'
   | 'close_session_or_worktree'
   | 'new_worktree'
   | 'cycle_execution_mode'
@@ -80,6 +82,8 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   open_new_session_modal: 'mod+shift+t',
   next_session: 'mod+alt+arrowright',
   previous_session: 'mod+alt+arrowleft',
+  navigate_back: 'mod+bracketleft',
+  navigate_forward: 'mod+bracketright',
   close_session_or_worktree: 'mod+w',
   new_worktree: 'mod+n',
   cycle_execution_mode: 'shift+tab',
@@ -206,6 +210,20 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     description: 'Switch to the previous chat session',
     default_shortcut: 'mod+alt+arrowleft',
     category: 'chat',
+  },
+  {
+    action: 'navigate_back',
+    label: 'Go back',
+    description: 'Go back to the previous project or session',
+    default_shortcut: 'mod+bracketleft',
+    category: 'navigation',
+  },
+  {
+    action: 'navigate_forward',
+    label: 'Go forward',
+    description: 'Go forward to the next project or session',
+    default_shortcut: 'mod+bracketright',
+    category: 'navigation',
   },
   {
     action: 'close_session_or_worktree',

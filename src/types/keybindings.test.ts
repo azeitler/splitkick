@@ -38,6 +38,8 @@ function keyboardKey(token: string): { key: string; code: string } {
     comma: { key: ',', code: 'Comma' },
     period: { key: '.', code: 'Period' },
     backquote: { key: '`', code: 'Backquote' },
+    bracketleft: { key: '[', code: 'BracketLeft' },
+    bracketright: { key: ']', code: 'BracketRight' },
     enter: { key: 'Enter', code: 'Enter' },
     backspace: { key: 'Backspace', code: 'Backspace' },
     arrowup: { key: 'ArrowUp', code: 'ArrowUp' },

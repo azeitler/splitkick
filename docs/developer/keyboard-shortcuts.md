@@ -24,6 +24,8 @@ preferences pane.
 | `new_session`               | `Cmd+T`           | Create new chat session                 |
 | `next_session`              | `Cmd+Alt+Right`   | Switch to next session tab              |
 | `previous_session`          | `Cmd+Alt+Left`    | Switch to previous session tab          |
+| `navigate_back`             | `Cmd+[`           | Go back to previous project or session  |
+| `navigate_forward`          | `Cmd+]`           | Go forward to next project or session   |
 | `close_session_or_worktree` | `Cmd+W`           | Close session or remove worktree        |
 | `new_worktree`              | `Cmd+N`           | Create new worktree                     |
 | `next_worktree`             | `Cmd+Alt+Down`    | Switch to next worktree                 |

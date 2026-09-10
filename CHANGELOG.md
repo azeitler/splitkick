@@ -7,6 +7,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Back, Go to and Forward in the title bar.** Three buttons follow the
+  connections and usage buttons, after a small gap. Back and Forward work like
+  the buttons of a browser.
+  - Back and Forward step through the places you visited: Home, a project
+    page and a session. A new navigation after Back drops the forward steps.
+  - Go to opens the command palette, so you can jump to a session or project.
+  - `Cmd+[` goes back and `Cmd+]` goes forward. You can change both in
+    Settings → Keybindings.
+  - The history is kept in memory. It starts again at launch, after Jean
+    restores your last view. The buttons are hidden on mobile.
+
 ### Fixed
 
 - **Sidebar: a project row click always shows the project page.** For some

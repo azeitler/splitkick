@@ -29,6 +29,11 @@ import {
   type KeybindingsMap,
 } from '@/types/keybindings'
 import { installWindowKeyboardFocusRestore } from '@/lib/restore-keyboard-focus'
+import {
+  goBack,
+  goForward,
+  installNavigationHistoryRecorder,
+} from '@/lib/navigation-history'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 const PLAN_DIALOG_APPROVAL_ACTIONS = new Set<KeybindingAction>([
@@ -576,6 +581,14 @@ function executeKeybindingAction(
         new CustomEvent('switch-session', { detail: { direction: 'previous' } })
       )
       break
+    case 'navigate_back':
+      logger.debug('Keybinding: navigate_back')
+      goBack()
+      break
+    case 'navigate_forward':
+      logger.debug('Keybinding: navigate_forward')
+      goForward()
+      break
     case 'close_session_or_worktree': {
       // When terminal is focused, CMD+W should close the active terminal tab.
       if (closeActiveTerminalTabForShortcut()) break
@@ -779,6 +792,9 @@ export function useMainWindowEventListeners() {
 
   // Keep keybindings in a ref so the event handler always has the latest
   const keybindingsRef = useRef<KeybindingsMap>(DEFAULT_KEYBINDINGS)
+
+  // Back/Forward history for the title bar buttons and navigate_* keybindings
+  useEffect(() => installNavigationHistoryRecorder(), [])
 
   // Update ref when preferences change
   useEffect(() => {

@@ -12,6 +12,8 @@ import { useUIStore } from '@/store/ui-store'
 import { useIsHomeActive } from '@/components/home/useIsHomeActive'
 import { useCommandContext } from '@/lib/commands'
 import {
+  ArrowLeft,
+  ArrowRight,
   ArrowUpCircle,
   Download,
   FolderTree,
@@ -20,9 +22,12 @@ import {
   Minimize2,
   PanelLeft,
   PanelLeftClose,
+  Search,
   Settings,
   X,
 } from 'lucide-react'
+import { goBack, goForward } from '@/lib/navigation-history'
+import { useNavigationHistoryStore } from '@/store/navigation-history-store'
 import { usePreferences } from '@/services/preferences'
 import {
   Popover,
@@ -189,8 +194,9 @@ export function TitleBar({
                 </kbd>
               </TooltipContent>
             </Tooltip>
-            <UsagePopover />
             {native && <RemoteConnectionsDialog />}
+            <UsagePopover />
+            {!isMobile && <NavigationButtons />}
           </div>
         )}
       </div>
@@ -298,6 +304,97 @@ export function TitleBar({
         )}
         {native && isClientLinux && <LinuxWindowControls />}
       </div>
+    </div>
+  )
+}
+
+/** Back / Go to / Forward, set off from the other left buttons by a fixed gap. */
+function NavigationButtons() {
+  const canGoBack = useNavigationHistoryStore(state => state.index > 0)
+  const canGoForward = useNavigationHistoryStore(
+    state => state.index < state.entries.length - 1
+  )
+  const { data: preferences } = usePreferences()
+  const native = isNativeApp()
+
+  const shortcut = (action: 'navigate_back' | 'navigate_forward') =>
+    formatShortcutDisplay(
+      (preferences?.keybindings?.[action] ||
+        DEFAULT_KEYBINDINGS[action]) as string
+    )
+  const buttonClass =
+    'h-6 w-6 rounded-none text-foreground/70 hover:text-foreground'
+
+  return (
+    <div className="ml-4 flex items-center gap-1">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            onClick={goBack}
+            disabled={!canGoBack}
+            variant="ghost"
+            size="icon"
+            className={buttonClass}
+            aria-label="Go back"
+            data-testid="navigate-back"
+          >
+            <ArrowLeft className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Back
+          {native && (
+            <kbd className="ml-1 text-[0.625rem] opacity-60">
+              {shortcut('navigate_back')}
+            </kbd>
+          )}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            onClick={() => useUIStore.getState().setCommandPaletteOpen(true)}
+            variant="ghost"
+            size="icon"
+            className={buttonClass}
+            aria-label="Go to"
+            data-testid="navigate-goto"
+          >
+            <Search className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Go to…
+          {native && (
+            <kbd className="ml-1 text-[0.625rem] opacity-60">
+              {formatShortcutDisplay('mod+k')}
+            </kbd>
+          )}
+        </TooltipContent>
+      </Tooltip>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            onClick={goForward}
+            disabled={!canGoForward}
+            variant="ghost"
+            size="icon"
+            className={buttonClass}
+            aria-label="Go forward"
+            data-testid="navigate-forward"
+          >
+            <ArrowRight className="size-3.5" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          Forward
+          {native && (
+            <kbd className="ml-1 text-[0.625rem] opacity-60">
+              {shortcut('navigate_forward')}
+            </kbd>
+          )}
+        </TooltipContent>
+      </Tooltip>
     </div>
   )
 }
