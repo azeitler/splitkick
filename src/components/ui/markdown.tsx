@@ -89,7 +89,9 @@ function extractText(node: ReactNode): string {
   return ''
 }
 
-const WINDOWS_DRIVE_RE = /^[a-z]:[\\/]/i
+// Markdown percent-encodes a backslash before URL checks see it, so a
+// drive path can arrive as `C:%5Csite%5Cpage.html`.
+const WINDOWS_DRIVE_RE = /^[a-z]:(?:[\\/]|%5c)/i
 
 function CodeBlock({ children }: { children: ReactNode }) {
   const [copied, setCopied] = useState(false)

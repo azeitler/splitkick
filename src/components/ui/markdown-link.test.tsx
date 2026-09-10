@@ -99,6 +99,18 @@ describe('Markdown links', () => {
     )
   })
 
+  it('keeps Windows backslash paths, which markdown encodes as %5C', () => {
+    render(<Markdown>{'[report](C:\\site\\report.html)'}</Markdown>)
+
+    const link = screen.getByRole('link', { name: 'report' })
+    expect(link.getAttribute('href')).not.toBe('')
+    fireEvent.click(link)
+    expect(openUrlInEmbeddedBrowser).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(openUrlInEmbeddedBrowser).mock.calls[0]?.[0]).toMatch(
+      /^file:\/\/\/C:\/site\/report\.html$/i
+    )
+  })
+
   it('shows no system-browser button in web access', () => {
     setNative(false)
     render(

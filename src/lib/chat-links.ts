@@ -7,7 +7,9 @@ import { openUrlInEmbeddedBrowser } from '@/hooks/useBrowserPane'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 
-const WINDOWS_DRIVE_RE = /^[a-z]:[\\/]/i
+// Markdown percent-encodes a backslash before URL checks see it, so a
+// drive path can arrive as `C:%5Csite%5Cpage.html`.
+const WINDOWS_DRIVE_RE = /^[a-z]:(?:[\\/]|%5c)/i
 const URL_SCHEME_RE = /^[a-z][a-z\d+.-]*:/i
 
 /**
