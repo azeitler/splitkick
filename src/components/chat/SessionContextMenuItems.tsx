@@ -20,6 +20,7 @@ import {
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { copyToClipboard } from '@/lib/clipboard'
+import { queryClient } from '@/lib/query-client'
 import { canReconnectSession, reconnectNativeCliSession } from '@/services/chat'
 import type { Session } from '@/types/chat'
 import { SessionLabelsSubmenu } from './LabelsSubmenu'
@@ -131,6 +132,11 @@ export function SessionContextMenuItems({
                 worktreeId,
                 sessionId: session.id,
               })
+              // The Starred section and Home resolve stars against the
+              // all-sessions cache, which never refreshes on focus. A session
+              // created since the last fetch (here, by an agent, or by another
+              // Jean) is not in it, so its star would never show. Refetch.
+              void queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
             }
           }}
         >

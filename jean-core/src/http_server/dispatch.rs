@@ -1260,6 +1260,10 @@ pub async fn dispatch_command(
                 native_session_id,
             )
             .await?;
+            // Every client's cross-project session list (Starred, Home, the
+            // palette, the unread bell) must learn about the new session,
+            // including sessions an agent creates over Jean MCP.
+            emit_cache_invalidation(app, &["sessions"]);
             to_value(result)
         }
         "rename_session" => {
@@ -1786,7 +1790,8 @@ pub async fn dispatch_command(
         "create_base_session" => {
             let project_id: String = field(&args, "projectId", "project_id")?;
             let result = crate::projects::create_base_session(app.clone(), project_id).await?;
-            emit_cache_invalidation(app, &["projects"]);
+            // Reopening a base session restores its preserved sessions.
+            emit_cache_invalidation(app, &["projects", "sessions"]);
             to_value(result)
         }
         "close_base_session" => {
@@ -4174,5 +4179,27 @@ mod tests {
                 terminal: None,
             }
         );
+    }
+
+    // The cross-project session list only refreshes on a "sessions"
+    // invalidation. Without one, a new session never reached the Starred
+    // section, Home, the palette or the unread bell.
+    #[test]
+    fn commands_that_add_sessions_invalidate_the_session_caches() {
+        let source = include_str!("dispatch.rs");
+        for command in ["create_session", "create_base_session"] {
+            let start = source
+                .find(&format!("\n        \"{command}\" =>"))
+                .unwrap_or_else(|| panic!("{command} arm not found"));
+            let arm = &source[start + 1..];
+            let arm = &arm[..arm.find("\n        \"").unwrap_or(arm.len())];
+            let emits_sessions = arm.lines().any(|line| {
+                line.contains("emit_cache_invalidation") && line.contains("\"sessions\"")
+            });
+            assert!(
+                emits_sessions,
+                "{command} must emit a \"sessions\" invalidation"
+            );
+        }
     }
 }

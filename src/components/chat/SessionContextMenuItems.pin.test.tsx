@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { queryClient } from '@/lib/query-client'
 import type { Session } from '@/types/chat'
 import { SessionContextMenuItems } from './SessionContextMenuItems'
 import type { SessionCardData } from './session-card-utils'
@@ -96,5 +97,55 @@ describe('SessionContextMenuItems — pin to project', () => {
     expect(await screen.findByText('Rename')).toBeInTheDocument()
     expect(screen.queryByText('Pin to Project')).not.toBeInTheDocument()
     expect(screen.queryByText('Unpin from Project')).not.toBeInTheDocument()
+  })
+})
+
+// Stars resolve against the all-sessions cache, which never refreshes on
+// focus. A session created after the last fetch was starred but never shown.
+describe('SessionContextMenuItems — star', () => {
+  beforeEach(() => {
+    useProjectsStore.setState({
+      projectCanvasSettings: {},
+      starredSessions: [],
+    })
+    useChatStore.setState({ sessionLabels: {} })
+    vi.restoreAllMocks()
+  })
+
+  it('refreshes the all-sessions cache when a session is starred', async () => {
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    renderMenu('project-1')
+    const user = await openMenu()
+
+    await user.click(await screen.findByRole('menuitem', { name: 'Star' }))
+
+    expect(useProjectsStore.getState().starredSessions).toEqual([
+      {
+        projectId: 'project-1',
+        worktreeId: 'worktree-1',
+        sessionId: 'session-a',
+      },
+    ])
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['all-sessions'] })
+  })
+
+  it('does not refetch when a session is unstarred', async () => {
+    useProjectsStore.setState({
+      starredSessions: [
+        {
+          projectId: 'project-1',
+          worktreeId: 'worktree-1',
+          sessionId: 'session-a',
+        },
+      ],
+    })
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    renderMenu('project-1')
+    const user = await openMenu()
+
+    await user.click(await screen.findByRole('menuitem', { name: 'Unstar' }))
+
+    expect(useProjectsStore.getState().starredSessions).toEqual([])
+    expect(invalidate).not.toHaveBeenCalled()
   })
 })

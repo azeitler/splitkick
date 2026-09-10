@@ -72,6 +72,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - This works in the desktop app on this computer only. In web access, and
     when connected to a remote Jean, HTML files still open in the file viewer.
 
+### Fixed
+
+- **Starred: a star always shows.** A star on a session that Jean had not
+  listed yet — a new session, one an agent created over Jean MCP, or one from
+  another Jean app on the same data — was saved but never shown in the Starred
+  section or on Home. Starring a session now refreshes the list.
+- **New sessions reach every list at once.** Home, the Starred section, the
+  command palette and the unread bell now learn about a new session as soon as
+  it is created, also when an agent creates it over Jean MCP, and when a base
+  session is reopened with its earlier sessions.
+
 ## [0.1.73-z.5] - 2026-09-10
 
 Built on Jean 0.1.73.
