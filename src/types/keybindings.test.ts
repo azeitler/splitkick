@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_KEYBINDINGS,
   eventToShortcutString,
+  formatShortcutDisplay,
   isModKeyEvent,
   KEYBINDING_DEFINITIONS,
 } from '@/types/keybindings'
@@ -229,5 +230,18 @@ describe('eventToShortcutString', () => {
     )
 
     expect(Object.fromEntries(definitions)).toEqual(DEFAULT_KEYBINDINGS)
+  })
+})
+
+describe('formatShortcutDisplay', () => {
+  it('shows the bracket keys of Back and Forward as brackets', () => {
+    setPlatform({ isClientMacOS: false, isNativeApp: false })
+
+    expect(formatShortcutDisplay(DEFAULT_KEYBINDINGS.navigate_back)).toBe(
+      'Ctrl + ['
+    )
+    expect(formatShortcutDisplay(DEFAULT_KEYBINDINGS.navigate_forward)).toBe(
+      'Ctrl + ]'
+    )
   })
 })

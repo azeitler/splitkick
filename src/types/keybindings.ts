@@ -501,6 +501,10 @@ export function formatShortcutDisplay(
           return 'Esc'
         case 'backquote':
           return '`'
+        case 'bracketleft':
+          return '['
+        case 'bracketright':
+          return ']'
         default:
           return part.toUpperCase()
       }
