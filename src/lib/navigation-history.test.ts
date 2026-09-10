@@ -191,6 +191,9 @@ describe('navigation history recorder', () => {
     expect(entries()).toHaveLength(3)
 
     vi.advanceTimersByTime(2500)
-    expect(entries().at(-1)).toEqual({ kind: 'project', projectId: 'p2' })
+    // p2 takes the slot of the target it replaced; the forward entry stays.
+    expect(entries()).toHaveLength(3)
+    expect(entries()).toContainEqual({ kind: 'project', projectId: 'p2' })
+    expect(entries().at(-1)).toMatchObject({ kind: 'session', sessionId: 's2' })
   })
 })

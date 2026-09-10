@@ -95,14 +95,50 @@ describe('navigation history store', () => {
     expect(history().index).toBe(1)
   })
 
-  it('records normally when the target never arrives', () => {
+  it('puts the place it landed in the slot of a target that never arrives', () => {
     history().record(home, 0)
     history().record(session1, 0)
     history().go(-1, 0)
 
     history().record(projectA, NAVIGATION_ARRIVAL_TIMEOUT_MS)
     expect(history().pendingUntil).toBeNull()
-    expect(history().entries).toEqual([home, projectA])
+    // Forward still reaches session 1.
+    expect(history().entries).toEqual([projectA, session1])
+    expect(history().index).toBe(0)
+  })
+
+  it('does not get stuck on a target that can no longer be opened', () => {
+    const projectB: NavigationLocation = { kind: 'project', projectId: 'b' }
+    // session2 belongs to a workspace that has since been closed.
+    history().record(home, 0)
+    history().record(session1, 0)
+    history().record(session2, 0)
+    history().record(projectB, 0)
+
+    // Back to session2: it cannot open, so the app settles on project A.
+    history().go(-1, 1000)
+    history().record(projectA, 1000 + NAVIGATION_ARRIVAL_TIMEOUT_MS)
+    expect(history().entries).toEqual([home, session1, projectA, projectB])
+
+    // The next Back reaches the entry before the dead one; Forward keeps B.
+    expect(history().go(-1, 5000)).toEqual(session1)
+    history().record(session1, 5100)
+    expect(history().go(1, 6000)).toEqual(projectA)
+    history().record(projectA, 6100)
+    expect(history().go(1, 7000)).toEqual(projectB)
+  })
+
+  it('merges the landing place into a neighbour that shows the same place', () => {
+    history().record(home, 0)
+    history().record(projectA, 0)
+    history().record(session1, 0)
+    history().record(session2, 0)
+
+    // Back to session1 fails and lands on project A, the entry before it.
+    history().go(-1, 1000)
+    history().record(projectA, 1000 + NAVIGATION_ARRIVAL_TIMEOUT_MS)
+    expect(history().entries).toEqual([home, projectA, session2])
+    expect(history().index).toBe(1)
   })
 
   it('keeps at most 100 entries', () => {

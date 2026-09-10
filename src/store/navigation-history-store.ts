@@ -50,6 +50,33 @@ export function isSameLocation(
   }
 }
 
+/**
+ * `entries` with `location` in the slot at `index`, merged into a neighbour
+ * that already shows the same place, so Back never steps to where you are.
+ */
+function replaceAt(
+  entries: NavigationLocation[],
+  index: number,
+  location: NavigationLocation
+): Pick<NavigationHistoryState, 'entries' | 'index' | 'pendingUntil'> {
+  const previous = entries[index - 1]
+  const following = entries[index + 1]
+  let next: NavigationLocation[]
+  let nextIndex = index
+
+  if (previous && isSameLocation(previous, location)) {
+    next = [...entries.slice(0, index), ...entries.slice(index + 1)]
+    nextIndex = index - 1
+  } else if (following && isSameLocation(following, location)) {
+    next = [...entries.slice(0, index), ...entries.slice(index + 1)]
+  } else {
+    next = [...entries]
+    next[index] = location
+  }
+
+  return { entries: next, index: nextIndex, pendingUntil: null }
+}
+
 interface NavigationHistoryState {
   entries: NavigationLocation[]
   /** Index of the current entry; -1 while the history is empty. */
@@ -79,6 +106,16 @@ export const useNavigationHistoryStore = create<NavigationHistoryState>(
           return
         }
         if (now < pendingUntil) return
+
+        // The target never arrived: its workspace was closed, its session
+        // archived, or the user went elsewhere during the wait. Put where the
+        // app actually is into the target's slot. Appending after it would
+        // drop the forward entries and leave the dead target one step back,
+        // so every later Back would try it again and land here again.
+        if (current) {
+          set(replaceAt(entries, index, location))
+          return
+        }
         set({ pendingUntil: null })
       }
 
