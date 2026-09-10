@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.5] - 2026-09-10
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Back, Go to and Forward in the title bar.** Three buttons follow the
@@ -16,12 +20,29 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
     page and a session. A new navigation after Back drops the forward steps.
   - Go to opens the command palette, so you can jump to a session or project.
   - `Cmd+[` goes back and `Cmd+]` goes forward. You can change both in
-    Settings → Keybindings.
+    Settings → Keybindings. The tooltips and the Keybindings pane show them as
+    ⌘ [ and ⌘ ].
+  - A place that can no longer be opened — its workspace was closed or its
+    session archived — is replaced by the place Back actually took you. The
+    next Back goes past it, and Forward still works.
   - The history is kept in memory. It starts again at launch, after Jean
     restores your last view. The buttons are hidden on mobile.
 
 ### Changed
 
+- **Home lays its sections out in columns.** Projects, recent sessions and
+  activity were stacked, so the activity feed sat below the fold.
+  - The columns follow the width of the Home view, not of the window, because
+    the sidebar takes a changing share of it. Wide: three columns, each of
+    which scrolls on its own. Medium: sessions beside activity, with projects
+    below. Narrow: one column.
+  - Rows in the session and activity lists take two lines, so a narrow column
+    does not cut a session name down to a few characters.
+  - The Home row stays at the top of the sidebar when you scroll, and lines up
+    with the section headers and the project folders below it.
+  - The file browser is hidden on Home, where it had nothing to show. Its
+    title bar button and its shortcut do nothing there. Your setting is kept,
+    so the panel comes back with the next project.
 - **Title bar: the Usage button shows how close you are to a plan limit.** It
   was a plain chart icon. It is now a badge with a ring and a percentage: the
   highest session or weekly figure of all signed-in backends (Claude, Codex,
@@ -42,6 +63,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Home: a failed activity load says so.** The feed showed "Nothing yet"
+  when the load failed, and it never tried again. It now shows "Could not load
+  activity" with a Retry button. A refresh that fails after the feed has
+  loaded keeps the events on screen.
 - **Sidebar: a project row click always shows the project page.** For some
   projects the click opened a session instead.
   - With **Restore last session on project switch** on — the default — the
@@ -462,6 +487,7 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.4...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.5...HEAD
+[0.1.73-z.5]: https://github.com/azeitler/jean/compare/v0.1.73-z.4...v0.1.73-z.5
 [0.1.73-z.4]: https://github.com/azeitler/jean/compare/v0.1.73-z.3...v0.1.73-z.4
 [0.1.73-z.3]: https://github.com/azeitler/jean/compare/v0.1.73-z.2...v0.1.73-z.3
