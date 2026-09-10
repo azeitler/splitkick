@@ -442,7 +442,7 @@ pub async fn list_recent_activity(
 /// sorting the append order directly would hand back a tied group oldest-first.
 fn newest_first(mut events: Vec<ActivityEvent>) -> Vec<ActivityEvent> {
     events.reverse();
-    events.sort_by(|a, b| b.at.cmp(&a.at));
+    events.sort_by_key(|event| std::cmp::Reverse(event.at));
     events
 }
 
