@@ -93,39 +93,49 @@ export function convertFileSrc(filePath: string, protocol = 'asset'): string {
   }
 
   // Browser mode: convert server filesystem path to /api/files/ URL
-  const token = getWebBackendToken()
-  const params = token ? `?token=${encodeURIComponent(token)}` : ''
-  const base = getActiveRemoteConnection()?.url ?? ''
+  const relativePath = appDataRelativePath(filePath)
+  if (relativePath !== null) return appDataFileUrl(relativePath)
 
+  // Last resort: return as-is (will likely not render, but won't crash)
+  return filePath
+}
+
+/** Path relative to the server's app data dir, or null when outside it. */
+function appDataRelativePath(filePath: string): string | null {
   // Try exact prefix match with cached app data dir
   if (_appDataDir && filePath.startsWith(_appDataDir)) {
-    const relativePath = filePath.substring(_appDataDir.length)
-    return `${base}/api/files/${encodeURI(relativePath)}${params}`
+    return filePath.substring(_appDataDir.length)
   }
 
   // Fallback: detect app data dir marker in path (works before _appDataDir is set)
   for (const marker of ['com.jean.desktop/', 'com.jean.desktop\\']) {
     const idx = filePath.indexOf(marker)
-    if (idx !== -1) {
-      const relativePath = filePath.substring(idx + marker.length)
-      return `${base}/api/files/${encodeURI(relativePath)}${params}`
-    }
+    if (idx !== -1) return filePath.substring(idx + marker.length)
   }
+  return null
+}
 
-  // Last resort: return as-is (will likely not render, but won't crash)
-  return filePath
+function appDataFileUrl(relativePath: string): string {
+  const token = getWebBackendToken()
+  const params = token ? `?token=${encodeURIComponent(token)}` : ''
+  const base = getActiveRemoteConnection()?.url ?? ''
+  return `${base}/api/files/${encodeURI(relativePath)}${params}`
 }
 
 /**
  * Convert an absolute project/worktree file path to a browser-loadable URL.
  * Native mode can use Tauri's asset protocol directly; browser mode uses the
  * authenticated project-file endpoint, which validates the path against known
- * project/worktree roots before serving it.
+ * project/worktree roots before serving it. App-data paths (pasted images,
+ * cached context images) use the app-data file endpoint instead.
  */
 export function convertProjectFileSrc(filePath: string): string {
   if (!usesWebSocketBackend()) {
     return convertFileSrc(filePath)
   }
+
+  const relativePath = appDataRelativePath(filePath)
+  if (relativePath !== null) return appDataFileUrl(relativePath)
 
   const token = getWebBackendToken()
   const params = token ? `?token=${encodeURIComponent(token)}` : ''

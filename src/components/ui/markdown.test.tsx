@@ -1,8 +1,15 @@
-import { describe, expect, it } from 'vitest'
-import { fireEvent, render, screen } from '@/test/test-utils'
+import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@/test/test-utils'
 import { Markdown } from './markdown'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
+import { invoke } from '@/lib/transport'
+import type * as Transport from '@/lib/transport'
+
+vi.mock('@/lib/transport', async importOriginal => ({
+  ...(await importOriginal<typeof Transport>()),
+  invoke: vi.fn(),
+}))
 
 describe('Markdown', () => {
   it('opens relative file links in the active worktree viewer', () => {
@@ -182,6 +189,101 @@ describe('Markdown', () => {
     expect(image?.getAttribute('src')).toBe(
       '/api/files/linear-context-images/ENG-123/image.png'
     )
+  })
+
+  describe('image embeds', () => {
+    const imageSrc = (markdown: string) =>
+      render(<Markdown>{markdown}</Markdown>)
+        .container.querySelector('img')
+        ?.getAttribute('src')
+
+    it('renders unescaped paths with spaces as images', () => {
+      expect(
+        imageSrc(
+          '![shot](/Users/me/Library/Application Support/com.jean.desktop/pasted-images/a.png)'
+        )
+      ).toBe('/api/files/pasted-images/a.png')
+    })
+
+    it('decodes percent-encoded paths once', () => {
+      expect(
+        imageSrc(
+          '![shot](/Users/me/Library/Application%20Support/com.jean.desktop/pasted-images/my%20shot.png)'
+        )
+      ).toBe('/api/files/pasted-images/my%20shot.png')
+    })
+
+    it('resolves relative paths against the active worktree', () => {
+      useChatStore.setState({ activeWorktreePath: '/repo/worktree' })
+
+      expect(imageSrc('![shot](docs/shot.png)')).toBe(
+        `/api/project-files/${encodeURIComponent('/repo/worktree/docs/shot.png')}`
+      )
+    })
+
+    it('keeps inline data images and remote images', () => {
+      expect(imageSrc('![dot](data:image/png;base64,iVBORw0KGgo=)')).toBe(
+        'data:image/png;base64,iVBORw0KGgo='
+      )
+      expect(imageSrc('![logo](https://example.com/logo.png)')).toBe(
+        'https://example.com/logo.png'
+      )
+    })
+
+    it('shows the alt text instead of an unsafe source', () => {
+      const { container } = render(
+        <Markdown>{'![bad](javascript:alert(1))'}</Markdown>
+      )
+
+      expect(container.querySelector('img')).toBeNull()
+      expect(container.textContent).toContain('bad')
+    })
+
+    it('keeps image syntax inside code blocks as text', () => {
+      const { container } = render(
+        <Markdown>{'```\n![a](/x y/a.png)\n```'}</Markdown>
+      )
+
+      expect(container.querySelector('img')).toBeNull()
+      expect(container.textContent).toContain('![a](/x y/a.png)')
+    })
+
+    it('falls back to read_file_base64 when the file URL fails', async () => {
+      vi.mocked(invoke).mockResolvedValueOnce({
+        mimeType: 'image/png',
+        data: 'AAAA',
+      })
+      const { container } = render(
+        <Markdown>{'![shot](/tmp/shot.png)'}</Markdown>
+      )
+
+      fireEvent.error(container.querySelector('img') as HTMLImageElement)
+
+      expect(invoke).toHaveBeenCalledWith('read_file_base64', {
+        path: '/tmp/shot.png',
+      })
+      await waitFor(() =>
+        expect(container.querySelector('img')?.getAttribute('src')).toBe(
+          'data:image/png;base64,AAAA'
+        )
+      )
+    })
+
+    it('shows a placeholder that opens the file viewer when loading fails', async () => {
+      vi.mocked(invoke).mockRejectedValueOnce(new Error('File not found'))
+      useUIStore.getState().setViewingFilePath(null)
+      const { container } = render(
+        <Markdown>{'![missing shot](/tmp/missing.png)'}</Markdown>
+      )
+
+      fireEvent.error(container.querySelector('img') as HTMLImageElement)
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'missing shot' })
+      )
+
+      expect(container.querySelector('img')).toBeNull()
+      expect(useUIStore.getState().viewingFilePath).toBe('/tmp/missing.png')
+    })
   })
 
   it('preserves spaces from Grok-style word-boundary stream deltas', () => {

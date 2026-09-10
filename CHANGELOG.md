@@ -7,6 +7,24 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Chat: image embeds in responses show as images.** When an agent writes
+  `![alt](path)`, Jean now shows the image in more cases.
+  ([#19](https://github.com/azeitler/jean/issues/19))
+  - A path with spaces (for example `~/Library/Application Support/...`) shows
+    as an image, not as literal text.
+  - A relative path opens from the current worktree, the same way links do.
+    Encoded paths (`%20`), `file://` URLs, Windows drive paths and inline
+    `data:image/...` images also work.
+  - A file outside the folders Jean can serve directly (for example `/tmp`)
+    is read through the file viewer's loader.
+  - If the image cannot load, a small placeholder shows the alt text. Click it
+    to open the file in the viewer.
+  - Image syntax inside code blocks stays as text. Unsafe sources, such as
+    `javascript:`, are still blocked.
+  - Web access loads project and worktree images too.
+
 ## [0.1.73-z.5] - 2026-09-10
 
 Built on Jean 0.1.73.

@@ -12,13 +12,15 @@ import {
   type ReactNode,
   type ReactElement,
 } from 'react'
-import type { Components } from 'react-markdown'
-import ReactMarkdown from 'react-markdown'
+import type { Components, UrlTransform } from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
 import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
 import remend from 'remend'
 import { remarkFixInterruptedLists } from '@/lib/remark-fix-interrupted-lists'
-import { Copy, Check, Table, ListChecks } from 'lucide-react'
+import { escapeMarkdownImageDestinations } from '@/lib/markdown-image-escape'
+import { getFilename } from '@/lib/path-utils'
+import { Copy, Check, Table, ListChecks, ImageOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
 import {
@@ -30,7 +32,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { cn } from '@/lib/utils'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import { convertFileSrc } from '@/lib/transport'
+import { convertProjectFileSrc, invoke } from '@/lib/transport'
 
 interface MarkdownProps {
   children: string
@@ -84,20 +86,41 @@ function extractText(node: ReactNode): string {
   return ''
 }
 
-function openLocalFileLink(href: string | undefined): boolean {
-  if (!href || href.startsWith('#') || /^[a-z][a-z\d+.-]*:/i.test(href)) {
-    return false
+const WINDOWS_DRIVE_RE = /^[a-z]:[\\/]/i
+
+/**
+ * Resolve a markdown link/image reference to a local filesystem path.
+ * Absolute paths (POSIX, Windows drive, file://) are returned decoded;
+ * relative paths resolve against the active worktree. Returns null for
+ * anchors, other URL schemes, or relative paths without a worktree.
+ */
+function resolveLocalPath(ref: string | undefined): string | null {
+  if (!ref || ref.startsWith('#')) return null
+
+  let path = ref
+  if (/^file:/i.test(path)) {
+    path = path.replace(/^file:(\/\/)?/i, '').replace(/^\/(?=[a-z]:)/i, '')
+  } else if (/^[a-z][a-z\d+.-]*:/i.test(path) && !WINDOWS_DRIVE_RE.test(path)) {
+    return null
   }
 
-  const decodedHref = decodeURIComponent(href)
-  const isAbsolute = decodedHref.startsWith('/') || /^[a-z]:[\\/]/i.test(decodedHref)
-  const rootPath = useChatStore.getState().activeWorktreePath
-  if (!isAbsolute && !rootPath) return false
+  try {
+    path = decodeURIComponent(path)
+  } catch {
+    // Malformed percent-encoding: keep the raw reference.
+  }
 
-  const separator = rootPath?.includes('\\') ? '\\' : '/'
-  const path = isAbsolute
-    ? decodedHref
-    : `${rootPath?.replace(/[\\/]+$/, '')}${separator}${decodedHref.replace(/^[\\/]+/, '')}`
+  if (path.startsWith('/') || WINDOWS_DRIVE_RE.test(path)) return path
+
+  const rootPath = useChatStore.getState().activeWorktreePath
+  if (!rootPath) return null
+  const separator = rootPath.includes('\\') ? '\\' : '/'
+  return `${rootPath.replace(/[\\/]+$/, '')}${separator}${path.replace(/^[\\/]+/, '')}`
+}
+
+function openLocalFileLink(href: string | undefined): boolean {
+  const path = resolveLocalPath(href)
+  if (!path) return false
   useUIStore.getState().setViewingFilePath(path)
   return true
 }
@@ -163,10 +186,82 @@ function tableToMarkdown(data: string[][]): string {
   return [headerLine, separator, ...bodyLines].join('\n')
 }
 
-function markdownImageSrc(src: string | undefined): string | undefined {
-  if (!src) return src
-  if (/^(https?:|data:|blob:|asset:|\/api\/|#)/i.test(src)) return src
-  return convertFileSrc(src)
+/**
+ * react-markdown's default transform blanks every scheme except http(s),
+ * mailto, irc(s) and xmpp. For image sources also keep inline data images,
+ * file:// URLs and Windows drive paths, which MarkdownImage resolves itself.
+ * Links and all other URL attributes keep the default filtering.
+ */
+const markdownUrlTransform: UrlTransform = (url, key, node) =>
+  key === 'src' &&
+  node.tagName === 'img' &&
+  (/^(data:image\/|file:)/i.test(url) || WINDOWS_DRIVE_RE.test(url))
+    ? url
+    : defaultUrlTransform(url)
+
+// Sources the webview can load as-is (no local path resolution).
+const DIRECT_IMAGE_SRC_RE = /^(https?:|data:image\/|blob:|asset:|\/api\/)/i
+
+/**
+ * Markdown image. Local paths load through the asset protocol (native) or the
+ * authenticated file endpoints (web access). A path outside those allowlists
+ * falls back to read_file_base64; if that fails too, a placeholder shows the
+ * alt text and opens the file viewer.
+ */
+function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
+  const localPath =
+    src && !DIRECT_IMAGE_SRC_RE.test(src) ? resolveLocalPath(src) : null
+  const [fallbackSrc, setFallbackSrc] = useState<string | null>(null)
+  const [failed, setFailed] = useState(false)
+
+  const handleError = useCallback(() => {
+    if (!localPath || fallbackSrc) {
+      setFailed(true)
+      return
+    }
+    invoke<{ mimeType: string; data: string }>('read_file_base64', {
+      path: localPath,
+    })
+      .then(file => setFallbackSrc(`data:${file.mimeType};base64,${file.data}`))
+      .catch(() => setFailed(true))
+  }, [localPath, fallbackSrc])
+
+  if (failed || !src) {
+    const label = alt || (localPath ? getFilename(localPath) : 'image')
+    const className =
+      'inline-flex items-center gap-1.5 rounded-md bg-muted px-2 py-0.5 text-[0.875em] text-muted-foreground'
+    if (!localPath) {
+      return (
+        <span className={className}>
+          <ImageOff className="size-3.5 shrink-0" />
+          {label}
+        </span>
+      )
+    }
+    return (
+      <button
+        type="button"
+        title={localPath}
+        onClick={() => useUIStore.getState().setViewingFilePath(localPath)}
+        className={cn(className, 'cursor-pointer hover:text-foreground')}
+      >
+        <ImageOff className="size-3.5 shrink-0" />
+        {label}
+      </button>
+    )
+  }
+
+  return (
+    <img
+      src={fallbackSrc ?? (localPath ? convertProjectFileSrc(localPath) : src)}
+      alt={alt || ''}
+      loading="lazy"
+      decoding="async"
+      referrerPolicy="no-referrer"
+      onError={handleError}
+      className="max-w-full h-auto rounded-md my-4"
+    />
+  )
 }
 
 /**
@@ -422,13 +517,8 @@ const components: Components = {
   pre: ({ children }) => <CodeBlock>{children}</CodeBlock>,
 
   // Images
-  img: ({ src, alt }) => (
-    <img
-      src={markdownImageSrc(src)}
-      alt={alt || ''}
-      className="max-w-full h-auto rounded-md my-4"
-    />
-  ),
+  // Keyed by src so a changed source starts with a fresh fallback state.
+  img: ({ src, alt }) => <MarkdownImage key={src} src={src} alt={alt} />,
 
   // Links
   a: ({ href, children }) => (
@@ -614,16 +704,18 @@ const Markdown = memo(function Markdown({
   // markdown. remend strips a single trailing space (incomplete-markdown
   // heuristic) — restore it so space-bearing stream tails don't disappear
   // mid-token when the next delta is delayed.
-  const content = streaming
-    ? (() => {
-        const hadTrailingSpace =
-          children.endsWith(' ') && !children.endsWith('  ')
-        const repaired = remend(children)
-        return hadTrailingSpace && !repaired.endsWith(' ')
-          ? `${repaired} `
-          : repaired
-      })()
-    : children
+  const content = escapeMarkdownImageDestinations(
+    streaming
+      ? (() => {
+          const hadTrailingSpace =
+            children.endsWith(' ') && !children.endsWith('  ')
+          const repaired = remend(children)
+          return hadTrailingSpace && !repaired.endsWith(' ')
+            ? `${repaired} `
+            : repaired
+        })()
+      : children
+  )
 
   const contextValue = useMemo(
     () => ({ messageId: messageId ?? null, sessionId: sessionId ?? null }),
@@ -647,6 +739,7 @@ const Markdown = memo(function Markdown({
           components={componentsToUse}
           remarkPlugins={remarkPlugins}
           rehypePlugins={streaming ? undefined : rehypePlugins}
+          urlTransform={markdownUrlTransform}
         >
           {content}
         </ReactMarkdown>
