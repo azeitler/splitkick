@@ -12,3 +12,11 @@ export function useIsHomeActive(): boolean {
   const noWorktree = useChatStore(state => state.activeWorktreeId === null)
   return noProject && noWorktree
 }
+
+/** The same test outside React, for handlers that read the stores directly. */
+export function isHomeActive(): boolean {
+  return (
+    useProjectsStore.getState().selectedProjectId === null &&
+    useChatStore.getState().activeWorktreeId === null
+  )
+}

@@ -6,6 +6,7 @@ import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { isHomeActive } from '@/components/home/useIsHomeActive'
 import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { projectsQueryKeys } from '@/services/projects'
@@ -402,6 +403,10 @@ function executeKeybindingAction(
     }
     case 'toggle_file_browser': {
       logger.debug('Keybinding: toggle_file_browser')
+      // Home hides the file browser and disables its title bar button. The
+      // shortcut would flip the saved preference with nothing to show for it,
+      // and the next project would open with the panel unexpectedly changed.
+      if (isHomeActive()) break
       const { fileBrowserVisible, setFileBrowserVisible } =
         useUIStore.getState()
       setFileBrowserVisible(!fileBrowserVisible)
