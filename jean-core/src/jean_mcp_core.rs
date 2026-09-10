@@ -1674,8 +1674,11 @@ fn resolve_browser_target(raw: &str, worktree_path: &str) -> Result<BrowserTarge
     } else {
         std::path::Path::new(worktree_path).join(path)
     };
+    // On Windows `canonicalize` returns a verbatim `\\?\C:\...` path, which the
+    // frontend's file URL builder would read as a share on host `?`.
     let path = path
         .canonicalize()
+        .map(crate::projects::git::strip_windows_verbatim_prefix)
         .map_err(|_| ToolError::invalid_params(format!("File not found: {}", path.display())))?;
     if !path.is_file() {
         return Err(ToolError::invalid_params(format!(

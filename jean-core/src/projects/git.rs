@@ -25,7 +25,7 @@ const JEAN_SCRIPT_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// Windows rejects those as `GIT_INDEX_FILE` values (lock creation fails with
 /// "Invalid argument"), so strip the prefix for any path we hand to git env vars
 /// or pass back as a string path for external tools.
-fn strip_windows_verbatim_prefix(path: std::path::PathBuf) -> std::path::PathBuf {
+pub(crate) fn strip_windows_verbatim_prefix(path: std::path::PathBuf) -> std::path::PathBuf {
     let s = path.to_string_lossy();
     if let Some(rest) = s.strip_prefix(r"\\?\UNC\") {
         return std::path::PathBuf::from(format!(r"\\{rest}"));
@@ -172,6 +172,36 @@ pub fn ensure_project_directory(path: &Path) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod verbatim_prefix_tests {
+    use super::strip_windows_verbatim_prefix;
+    use std::path::PathBuf;
+
+    #[test]
+    fn strips_a_verbatim_drive_path() {
+        assert_eq!(
+            strip_windows_verbatim_prefix(PathBuf::from(r"\\?\C:\site\page.html")),
+            PathBuf::from(r"C:\site\page.html")
+        );
+    }
+
+    #[test]
+    fn turns_a_verbatim_unc_path_back_into_a_share() {
+        assert_eq!(
+            strip_windows_verbatim_prefix(PathBuf::from(r"\\?\UNC\server\share\a.html")),
+            PathBuf::from(r"\\server\share\a.html")
+        );
+    }
+
+    #[test]
+    fn leaves_an_ordinary_path_alone() {
+        assert_eq!(
+            strip_windows_verbatim_prefix(PathBuf::from("/tmp/report.html")),
+            PathBuf::from("/tmp/report.html")
+        );
+    }
 }
 
 #[cfg(test)]
