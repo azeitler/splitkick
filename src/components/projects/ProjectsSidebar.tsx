@@ -60,13 +60,15 @@ export function ProjectsSidebar() {
       {/* Content */}
       {/* `scrollbar-gutter: stable` keeps a lane for the scrollbar, so the
           thumb never draws over the session timestamps at the right edge and
-          the tree does not shift sideways when the list starts to overflow. */}
+          the tree does not shift sideways when the list starts to overflow.
+          `scroll-pt-9` clears the sticky Home row, so a row revealed from
+          above lands below it instead of under it. */}
       <div
         ref={scrollRef}
-        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
+        className="min-h-0 flex-1 scroll-pt-9 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
       >
-        {/* Home stays pinned above the tree, so it is reachable from any
-            project without collapsing anything. */}
+        {/* Home sticks to the top while the tree scrolls, so it is one click
+            away from anywhere in a long sidebar. */}
         <SidebarHomeRow />
         <SidebarStarredSection />
 

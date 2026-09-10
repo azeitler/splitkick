@@ -44,12 +44,15 @@ export function useRecentActivity(
 
   return useQuery({
     queryKey: activityQueryKeys.recent(limit),
+    // A failure must surface as an error, not as an empty list: an empty list
+    // reads "Nothing yet", which is false, and it caches as a success, so the
+    // query would never retry.
     queryFn: async (): Promise<ActivityEvent[]> => {
       try {
         return await invoke<ActivityEvent[]>('list_recent_activity', { limit })
       } catch (error) {
         logger.error('Failed to load recent activity', { error })
-        return []
+        throw error
       }
     },
     enabled,

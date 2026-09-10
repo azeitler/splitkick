@@ -70,8 +70,9 @@ export function SidebarStarredSection() {
         count={shortcuts.length}
         expanded={!collapsed}
         onToggle={handleToggle}
-        // Lines up with the Home row and the project rows below it.
-        className="pl-2"
+        // Same inset and gap as the Home row above it: glyph on the section
+        // header column, label on the project-name column.
+        className="gap-1 pl-3"
         testId="sidebar-starred-toggle"
       />
       {!collapsed && (

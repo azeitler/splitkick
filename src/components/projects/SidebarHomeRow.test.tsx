@@ -66,7 +66,9 @@ describe('SidebarHomeRow', () => {
   it('keeps an accessible name when the sidebar is narrow', () => {
     renderRow(120)
     expect(screen.getByRole('button', { name: 'Home' })).toBeInTheDocument()
-    expect(screen.queryByText('Home', { selector: 'span:not(.sr-only)' })).toBeNull()
+    expect(
+      screen.queryByText('Home', { selector: 'span:not(.sr-only)' })
+    ).toBeNull()
   })
 
   it('closes the drawer on mobile', async () => {
@@ -75,5 +77,21 @@ describe('SidebarHomeRow', () => {
 
     await userEvent.click(screen.getByTestId('sidebar-home-row'))
     expect(useUIStore.getState().leftSidebarVisible).toBe(false)
+  })
+
+  it('sticks to the top of the sidebar over an opaque background', () => {
+    renderRow()
+    const wrapper = screen.getByTestId('sidebar-home-row').parentElement
+    // Sticky keeps Home in reach while the tree scrolls; the opaque sidebar
+    // colour stops rows showing through its translucent selected tint.
+    expect(wrapper).toHaveClass('sticky', 'top-0', 'bg-sidebar')
+  })
+
+  it('uses the header inset and the folder glyph size', () => {
+    renderRow()
+    const row = screen.getByTestId('sidebar-home-row')
+    // 12px inset + 14px glyph + 4px gap puts the label on the project-name column.
+    expect(row).toHaveClass('px-3', 'gap-1')
+    expect(row.querySelector('svg')).toHaveClass('size-3.5')
   })
 })

@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useUIStore } from '@/store/ui-store'
+import { useIsHomeActive } from '@/components/home/useIsHomeActive'
 import { useCommandContext } from '@/lib/commands'
 import {
   ArrowUpCircle,
@@ -55,7 +56,11 @@ export function TitleBar({
 }: TitleBarProps) {
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const toggleLeftSidebar = useUIStore(state => state.toggleLeftSidebar)
-  const fileBrowserVisible = useUIStore(state => state.fileBrowserVisible)
+  // Home has nothing to browse and hides the file browser, so the toggle is
+  // disabled there rather than showing "pressed" over an empty space.
+  const isHomeActive = useIsHomeActive()
+  const fileBrowserVisible =
+    useUIStore(state => state.fileBrowserVisible) && !isHomeActive
   const toggleFileBrowser = useUIStore(state => state.toggleFileBrowser)
   const zenMode = useUIStore(state => state.zenMode)
   const toggleZenMode = useUIStore(state => state.toggleZenMode)
@@ -138,6 +143,7 @@ export function TitleBar({
               <TooltipTrigger asChild>
                 <Button
                   onClick={toggleFileBrowser}
+                  disabled={isHomeActive}
                   variant="ghost"
                   size="icon"
                   className={cn(

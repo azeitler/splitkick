@@ -13,10 +13,7 @@ import {
 import { cn } from '@/lib/utils'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { formatRelativeTime } from '@/lib/relative-time'
-import {
-  navigateToProject,
-  navigateToSession,
-} from '@/lib/navigate-to-session'
+import { navigateToProject, navigateToSession } from '@/lib/navigate-to-session'
 import { useRecentActivity } from '@/services/activity'
 import type { ActivityEvent, ActivityKind } from '@/types/activity'
 import { HomeSection } from './RecentSessionsSection'
@@ -72,7 +69,24 @@ const KIND_PRESENTATION: Record<ActivityKind, KindPresentation> = {
 }
 
 export const RecentActivitySection = memo(function RecentActivitySection() {
-  const { data: events = [], isLoading } = useRecentActivity()
+  const { data: events = [], isLoading, isError, refetch } = useRecentActivity()
+
+  if (isError) {
+    return (
+      <HomeSection title="Recent activity">
+        <p className="text-sm text-muted-foreground">
+          Could not load activity.{' '}
+          <button
+            type="button"
+            onClick={() => void refetch()}
+            className="underline underline-offset-2 transition-colors hover:text-foreground"
+          >
+            Retry
+          </button>
+        </p>
+      </HomeSection>
+    )
+  }
 
   if (isLoading) {
     return (
@@ -128,38 +142,38 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
     if (event.url) void openUrl(event.url)
   }, [event])
 
+  // Same two-line grid as the session rows: what happened and when on top,
+  // where it happened underneath.
   return (
     <li>
       <button
         type="button"
         onClick={handleOpen}
-        className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-accent/50"
+        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 px-3 py-2 text-left transition-colors hover:bg-accent/50"
       >
         <Icon
           className={cn('size-3.5 shrink-0', presentation.className)}
           aria-hidden="true"
         />
 
-        <span className="shrink-0 text-sm">{presentation.label}</span>
-
-        {event.title && (
-          <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">
-            {event.title}
-          </span>
-        )}
-
-        <span
-          className={cn(
-            'hidden min-w-0 truncate text-xs text-muted-foreground sm:block sm:max-w-[16rem]',
-            event.title ? 'shrink-0' : 'flex-1'
+        <span className="flex min-w-0 items-baseline gap-1.5 text-sm">
+          <span className="shrink-0">{presentation.label}</span>
+          {event.title && (
+            <span className="min-w-0 truncate text-muted-foreground">
+              {event.title}
+            </span>
           )}
-        >
-          {target}
         </span>
 
-        <span className="w-14 shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+        <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">
           {formatRelativeTime(event.at)}
         </span>
+
+        {target && (
+          <span className="col-start-2 col-end-4 truncate text-xs text-muted-foreground">
+            {target}
+          </span>
+        )}
       </button>
     </li>
   )

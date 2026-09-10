@@ -12,6 +12,8 @@ const bug: LabelData = { name: 'Bug', color: '#ef4444' }
 const mocks = vi.hoisted(() => ({
   sessions: { entries: [] } as AllSessionsResponse,
   activity: [] as ActivityEvent[],
+  activityError: false,
+  refetchActivity: vi.fn(),
   navigateToSession: vi.fn(),
   navigateToProject: vi.fn(),
 }))
@@ -21,7 +23,12 @@ vi.mock('@/services/chat', () => ({
 }))
 
 vi.mock('@/services/activity', () => ({
-  useRecentActivity: () => ({ data: mocks.activity, isLoading: false }),
+  useRecentActivity: () => ({
+    data: mocks.activity,
+    isLoading: false,
+    isError: mocks.activityError,
+    refetch: mocks.refetchActivity,
+  }),
 }))
 
 vi.mock('@/services/projects', () => ({
@@ -60,6 +67,7 @@ function renderHome() {
 describe('HomeView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.activityError = false
     useProjectsStore.setState({ starredSessions: [] })
     mocks.sessions = {
       entries: [
@@ -230,5 +238,41 @@ describe('HomeView', () => {
     expect(
       screen.getByText(/Finished sessions, commits, pull requests, and reviews/)
     ).toBeInTheDocument()
+  })
+
+  it('lays sessions, activity and projects out as three columns', () => {
+    renderHome()
+
+    const sessionsColumn = screen.getByTestId('home-column-sessions')
+    const activityColumn = screen.getByTestId('home-column-activity')
+    const projectsColumn = screen.getByTestId('home-column-projects')
+
+    // Each section lives in its own column, not stacked in one flow.
+    expect(
+      within(sessionsColumn).getByRole('heading', { name: 'Recent sessions' })
+    ).toBeInTheDocument()
+    expect(
+      within(activityColumn).getByRole('heading', { name: 'Recent activity' })
+    ).toBeInTheDocument()
+    expect(
+      within(projectsColumn).getByRole('heading', { name: 'Projects' })
+    ).toBeInTheDocument()
+
+    // Siblings of one grid, in reading order.
+    expect(sessionsColumn.parentElement).toBe(activityColumn.parentElement)
+    expect(activityColumn.nextElementSibling).toBe(projectsColumn)
+  })
+
+  it('reports a failed activity load instead of claiming nothing happened', async () => {
+    mocks.activityError = true
+    renderHome()
+
+    expect(screen.getByText(/Could not load activity/)).toBeInTheDocument()
+    expect(
+      screen.queryByText(/Finished sessions, commits, pull requests/)
+    ).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(mocks.refetchActivity).toHaveBeenCalled()
   })
 })

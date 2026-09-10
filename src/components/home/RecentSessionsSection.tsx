@@ -1,5 +1,4 @@
 import { createElement, memo, useCallback, useMemo, useState } from 'react'
-import { cn } from '@/lib/utils'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { formatRelativeTime } from '@/lib/relative-time'
@@ -163,12 +162,16 @@ export function RecentSessionRow({
     })
   }, [row])
 
+  // Two lines, so the row still reads in a narrow Home column: the name and
+  // the time on top, where the project and the badges would otherwise squeeze
+  // the name to a few characters. The grid keeps line 2 under the name
+  // whatever the status glyph's width.
   return (
     <li>
       <button
         type="button"
         onClick={handleOpen}
-        className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-accent/50"
+        className="grid w-full grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 gap-y-0.5 px-3 py-2 text-left transition-colors hover:bg-accent/50"
       >
         <StatusIndicator
           status={status.indicatorStatus}
@@ -178,35 +181,32 @@ export function RecentSessionRow({
           className="shrink-0"
         />
 
-        <span className="min-w-0 flex-1 truncate text-sm">
+        <span className="truncate text-sm">
           {row.session.name || 'Untitled'}
         </span>
 
-        {label && (
-          <span
-            className="hidden shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium sm:inline"
-            style={{
-              backgroundColor: label.color,
-              color: getLabelTextColor(label.color),
-            }}
-          >
-            {label.name}
-          </span>
-        )}
-
-        <span className="hidden min-w-0 shrink-0 truncate text-xs text-muted-foreground sm:block sm:max-w-[16rem]">
-          {row.projectName} / {row.worktreeName}
+        <span className="w-14 text-right text-xs tabular-nums text-muted-foreground">
+          {formatRelativeTime(row.activityAt)}
         </span>
 
-        <BackendGlyph backend={row.session.backend} />
+        <span className="col-start-2 col-end-4 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate">
+            {row.projectName} / {row.worktreeName}
+          </span>
 
-        <span
-          className={cn(
-            'shrink-0 text-xs tabular-nums text-muted-foreground',
-            'w-14 text-right'
+          {label && (
+            <span
+              className="shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium"
+              style={{
+                backgroundColor: label.color,
+                color: getLabelTextColor(label.color),
+              }}
+            >
+              {label.name}
+            </span>
           )}
-        >
-          {formatRelativeTime(row.activityAt)}
+
+          <BackendGlyph backend={row.session.backend} />
         </span>
       </button>
     </li>
@@ -223,7 +223,7 @@ export function RecentSessionRow({
 function BackendGlyph({ backend }: { backend?: CliBackend }) {
   if (!backend) return null
   return createElement(getBackendIcon(backend), {
-    className: 'hidden size-3.5 shrink-0 text-muted-foreground md:block',
+    className: 'size-3.5 shrink-0',
     'aria-label': getBackendLabel(backend),
   })
 }
@@ -239,7 +239,7 @@ export function HomeSection({
   children: React.ReactNode
 }) {
   return (
-    <section className="flex w-full max-w-4xl flex-col gap-2">
+    <section className="flex w-full min-w-0 flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-foreground">{title}</h2>
         {action}

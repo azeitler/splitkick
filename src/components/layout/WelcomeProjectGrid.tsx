@@ -10,8 +10,9 @@ import { Kbd } from '@/components/ui/kbd'
 /**
  * The projects section of the Home view.
  *
- * It renders as a section, not as a page: `HomeView` owns the page frame and
- * the scrolling, so the recent-session and activity sections can sit below it.
+ * It renders as a section, not as a page: `HomeView` owns the frame, the
+ * columns and the scrolling. In a narrow column the grid falls back to one card
+ * per row on its own.
  */
 interface WelcomeProjectGridProps {
   projects: Project[]
@@ -79,7 +80,7 @@ export function WelcomeProjectGrid({
   }, [projects, search])
 
   return (
-    <section className="flex w-full max-w-4xl flex-col gap-3">
+    <section className="flex w-full min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-sm font-semibold text-foreground">Projects</h2>
 

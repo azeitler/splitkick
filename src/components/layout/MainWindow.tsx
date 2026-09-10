@@ -183,6 +183,7 @@ import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useTerminalThemeSync } from '@/hooks/useTerminalThemeSync'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { useUIStore } from '@/store/ui-store'
+import { useIsHomeActive } from '@/components/home/useIsHomeActive'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
@@ -237,7 +238,11 @@ export function MainWindow() {
   const leftSidebarSize = useUIStore(state => state.leftSidebarSize)
   const setLeftSidebarSize = useUIStore(state => state.setLeftSidebarSize)
   const setLeftSidebarVisible = useUIStore(state => state.setLeftSidebarVisible)
-  const fileBrowserVisible = useUIStore(state => state.fileBrowserVisible)
+  // Home has no project or worktree to browse, so the file browser stays out
+  // of the way there without touching the persisted visibility preference.
+  const isHomeActive = useIsHomeActive()
+  const fileBrowserVisible =
+    useUIStore(state => state.fileBrowserVisible) && !isHomeActive
   const fileBrowserSize = useUIStore(state => state.fileBrowserSize)
   const setFileBrowserSize = useUIStore(state => state.setFileBrowserSize)
   const setFileBrowserVisible = useUIStore(state => state.setFileBrowserVisible)
