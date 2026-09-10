@@ -22,6 +22,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Title bar: the Usage button shows how close you are to a plan limit.** It
+  was a plain chart icon. It is now a badge with a ring and a percentage: the
+  highest session or weekly figure of all signed-in backends (Claude, Codex,
+  Grok). The button also moved after the connections button.
+  - The tooltip names the limit, for example "Claude · Weekly 64%".
+  - The ring is blue below 70%, amber from 70% and red from 90%, the same as
+    the bars in the Usage pane.
+  - Sub-limits, such as Claude Sonnet and Codex Reviews, do not count. The
+    dock badge ignores them too.
+  - With no signed-in backend, or before the figures load, the badge shows the
+    chart icon.
+  - A click still opens the Usage pane in a popover.
 - **Sidebar: a pinned session carries a pin on its row.** It sits beside the
   star of a starred session, under the workspace and in the Starred section.
   Rows in the Pinned section carry no pin, since every row there is one.

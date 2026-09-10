@@ -43,15 +43,28 @@ interface UsageWindow {
   resetsAt: number | null
 }
 
-function clampPercent(value: number): number {
+export function clampPercent(value: number): number {
   return Math.max(0, Math.min(100, value))
 }
 
-function barClass(usedPercent: number): string {
+export type UsageSeverity = 'normal' | 'warning' | 'critical'
+
+/** Shared meter thresholds: amber from 70%, red from 90%. */
+export function usageSeverity(usedPercent: number): UsageSeverity {
   const p = clampPercent(usedPercent)
-  if (p >= 90) return 'bg-destructive'
-  if (p >= 70) return 'bg-amber-500'
-  return 'bg-primary'
+  if (p >= 90) return 'critical'
+  if (p >= 70) return 'warning'
+  return 'normal'
+}
+
+const BAR_CLASS: Record<UsageSeverity, string> = {
+  normal: 'bg-primary',
+  warning: 'bg-amber-500',
+  critical: 'bg-destructive',
+}
+
+function barClass(usedPercent: number): string {
+  return BAR_CLASS[usageSeverity(usedPercent)]
 }
 
 /** Compact duration unit (e.g. `2h`, `7d`). */
