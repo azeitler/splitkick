@@ -3,7 +3,7 @@
  * Usage: import { test, expect } from '../fixtures/tauri-mock'
  */
 
-import { test as base, expect, type Page } from '@playwright/test'
+import { test as base, expect, type Locator, type Page } from '@playwright/test'
 import { defaultResponses } from './invoke-handlers'
 
 interface TauriMockFixtures {
@@ -242,27 +242,58 @@ export const test = base.extend<TauriMockFixtures>({
 export { expect }
 
 /**
- * Helper: open sidebar and click a worktree to activate it.
- * Waits for the chat view to appear.
+ * The app's "mod" key in these tests. The harness runs the web client, and the
+ * web client maps mod to Control even on macOS (see isModKeyEvent); only the
+ * native macOS app maps it to Command.
+ */
+export const MOD = 'Control'
+
+/** The left sidebar. Worktree names also appear on the canvas, so scope to it. */
+export function sidebar(page: Page): Locator {
+  return page.getByTestId('projects-sidebar')
+}
+
+/**
+ * Open the left sidebar when it is closed. Its first row is always Home, so
+ * that row tells whether the sidebar is on screen.
+ */
+export async function ensureSidebarOpen(page: Page): Promise<void> {
+  const home = page.getByTestId('sidebar-home-row')
+  if (!(await home.isVisible().catch(() => false))) {
+    await page.keyboard.press(`${MOD}+b`)
+  }
+  await expect(home).toBeVisible({ timeout: 3000 })
+}
+
+/**
+ * Open a worktree's session modal from its sidebar row.
+ *
+ * A worktree click keeps the project canvas and opens the session modal over
+ * it; there is no separate chat view any more.
  */
 export async function activateWorktree(
   page: Page,
   worktreeName: string
 ): Promise<void> {
-  // Ensure sidebar is visible
-  const projectsHeader = page.getByText('PROJECTS')
-  if (!(await projectsHeader.isVisible().catch(() => false))) {
-    await page.keyboard.press('Meta+b')
-    await page.waitForTimeout(500)
-  }
-  await expect(projectsHeader).toBeVisible({ timeout: 3000 })
+  await ensureSidebarOpen(page)
+  await sidebar(page).getByText(worktreeName, { exact: true }).click()
+  await expect(page.getByTestId('session-chat-modal-swipe')).toBeVisible({
+    timeout: 3000,
+  })
+}
 
-  // Click the worktree
-  await page.getByText(worktreeName).click()
-  await page.waitForTimeout(1000)
-
-  // Wait for chat view (dashboard empty state should be gone)
-  await expect(
-    page.getByText('Your imagination is the only limit')
-  ).not.toBeVisible({ timeout: 3000 })
+/**
+ * Create a Jean Chat session in the open session modal and wait for its tab.
+ *
+ * New session opens a picker (chat, terminal, AI backends); Jean Chat is the
+ * default choice.
+ */
+export async function createChatSession(page: Page): Promise<Locator> {
+  const before = await page.locator('[data-session-id]').count()
+  // The tab bar's + button, or the empty state's button before any session.
+  await page.getByRole('button', { name: 'New session' }).first().click()
+  await page.getByRole('button', { name: 'Jean Chat' }).click()
+  const tabs = page.locator('[data-session-id]')
+  await expect(tabs).toHaveCount(before + 1, { timeout: 3000 })
+  return tabs
 }

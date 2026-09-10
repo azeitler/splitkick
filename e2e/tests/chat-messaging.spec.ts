@@ -1,19 +1,24 @@
-import { test, expect, activateWorktree } from '../fixtures/tauri-mock'
+import {
+  test,
+  expect,
+  activateWorktree,
+  createChatSession,
+} from '../fixtures/tauri-mock'
 
 test.describe('Chat Messaging', () => {
   test('send a message and receive a streamed response', async ({
     mockPage,
     emitEvent,
   }) => {
-    await expect(mockPage.getByText('Test Project')).toBeVisible({
+    await expect(mockPage.getByText('Test Project').first()).toBeVisible({
       timeout: 5000,
     })
 
     await activateWorktree(mockPage, 'fuzzy-tiger')
 
-    // Create a session first
-    await mockPage.locator('button[aria-label="New session"]').click()
-    await mockPage.waitForTimeout(500)
+    // Create a Jean Chat session
+
+    await createChatSession(mockPage)
 
     // Find the chat textarea and send a message
     const textarea = mockPage.locator('textarea').first()
@@ -57,15 +62,15 @@ test.describe('Chat Messaging', () => {
     mockPage,
     emitEvent,
   }) => {
-    await expect(mockPage.getByText('Test Project')).toBeVisible({
+    await expect(mockPage.getByText('Test Project').first()).toBeVisible({
       timeout: 5000,
     })
 
     await activateWorktree(mockPage, 'fuzzy-tiger')
 
-    // Create a session
-    await mockPage.locator('button[aria-label="New session"]').click()
-    await mockPage.waitForTimeout(500)
+    // Create a Jean Chat session
+
+    await createChatSession(mockPage)
 
     const textarea = mockPage.locator('textarea').first()
     await expect(textarea).toBeVisible({ timeout: 3000 })

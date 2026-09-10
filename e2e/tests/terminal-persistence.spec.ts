@@ -18,6 +18,8 @@ import { project, worktree1 } from '../fixtures/invoke-handlers'
  * has live terminals.
  */
 
+// Terminal tabs are clickable <div>s (data-testid="terminal-tab"), not
+// buttons, so every tab lookup below goes through that test id.
 const PERSISTED_TERM_LABELS = {
   shell: 'MyShell',
   dev: 'MyDev',
@@ -101,10 +103,10 @@ test.describe('Terminal session persistence on web refresh', () => {
 
     // Wait for the persisted tabs to render.
     const shellTab = mockPage
-      .locator('button')
+      .getByTestId('terminal-tab')
       .filter({ hasText: PERSISTED_TERM_LABELS.shell })
     const devTab = mockPage
-      .locator('button')
+      .getByTestId('terminal-tab')
       .filter({ hasText: PERSISTED_TERM_LABELS.dev })
 
     await expect(shellTab).toHaveCount(1, { timeout: 10_000 })
@@ -115,7 +117,7 @@ test.describe('Terminal session persistence on web refresh', () => {
     // "MyShell"/"MyDev" — different from the auto-create default "Shell".
     // Match "Shell" but exclude buttons that also contain "MyShell".
     const defaultShellTab = mockPage
-      .locator('button')
+      .getByTestId('terminal-tab')
       .filter({ hasText: 'Shell' })
       .filter({ hasNotText: PERSISTED_TERM_LABELS.shell })
     await expect(defaultShellTab).toHaveCount(0, { timeout: 3_000 })
@@ -176,7 +178,7 @@ test.describe('Terminal session persistence on web refresh', () => {
     // Wait for tabs to render — proves hydration completed.
     await expect(
       mockPage
-        .locator('button')
+        .getByTestId('terminal-tab')
         .filter({ hasText: PERSISTED_TERM_LABELS.shell })
     ).toHaveCount(1, { timeout: 10_000 })
 
@@ -224,11 +226,13 @@ test.describe('Terminal session persistence on web refresh', () => {
     // and TerminalView's auto-create won't re-spawn them.
     await expect(
       mockPage
-        .locator('button')
+        .getByTestId('terminal-tab')
         .filter({ hasText: PERSISTED_TERM_LABELS.shell })
     ).toHaveCount(0, { timeout: 5_000 })
     await expect(
-      mockPage.locator('button').filter({ hasText: PERSISTED_TERM_LABELS.dev })
+      mockPage
+        .getByTestId('terminal-tab')
+        .filter({ hasText: PERSISTED_TERM_LABELS.dev })
     ).toHaveCount(0, { timeout: 5_000 })
 
     // Reload — same invariant must hold (no orphan terminal labels
@@ -239,11 +243,13 @@ test.describe('Terminal session persistence on web refresh', () => {
     })
     await expect(
       mockPage
-        .locator('button')
+        .getByTestId('terminal-tab')
         .filter({ hasText: PERSISTED_TERM_LABELS.shell })
     ).toHaveCount(0, { timeout: 5_000 })
     await expect(
-      mockPage.locator('button').filter({ hasText: PERSISTED_TERM_LABELS.dev })
+      mockPage
+        .getByTestId('terminal-tab')
+        .filter({ hasText: PERSISTED_TERM_LABELS.dev })
     ).toHaveCount(0, { timeout: 5_000 })
   })
 
@@ -299,7 +305,9 @@ test.describe('Terminal session persistence on web refresh', () => {
     ).toBeVisible({ timeout: 10_000 })
 
     // The auto-created default shell tab exists in the DOM.
-    const defaultShell = mockPage.locator('button').filter({ hasText: 'Shell' })
+    const defaultShell = mockPage
+      .getByTestId('terminal-tab')
+      .filter({ hasText: 'Shell' })
     await expect(defaultShell.first()).toBeVisible({ timeout: 10_000 })
 
     // Reload — same invariant must hold.

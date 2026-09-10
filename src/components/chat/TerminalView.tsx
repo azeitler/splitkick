@@ -516,6 +516,7 @@ export function TerminalView({
             return (
               <div
                 key={terminal.id}
+                data-testid="terminal-tab"
                 draggable
                 onDragStart={e => handleTerminalDragStart(e, terminal.id)}
                 onDragOver={handleTerminalDragOver}

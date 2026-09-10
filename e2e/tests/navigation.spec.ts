@@ -1,48 +1,27 @@
-import { test, expect } from '../fixtures/tauri-mock'
+import {
+  test,
+  expect,
+  activateWorktree,
+  ensureSidebarOpen,
+  sidebar,
+} from '../fixtures/tauri-mock'
 
 test.describe('Navigation', () => {
   test('sidebar shows project with worktrees', async ({ mockPage }) => {
-    // Wait for app to load
-    await expect(mockPage.getByText('Test Project')).toBeVisible({
-      timeout: 5000,
-    })
+    await ensureSidebarOpen(mockPage)
 
-    // Open sidebar panel if not visible
-    const projectsHeader = mockPage.getByText('PROJECTS')
-    if (!(await projectsHeader.isVisible().catch(() => false))) {
-      await mockPage.keyboard.press('Meta+b')
-      await mockPage.waitForTimeout(500)
-    }
-
-    // Sidebar should show project and worktrees
-    await expect(projectsHeader).toBeVisible({ timeout: 3000 })
-    await expect(mockPage.getByText('fuzzy-tiger')).toBeVisible({
-      timeout: 3000,
-    })
-    await expect(mockPage.getByText('calm-dolphin')).toBeVisible({
-      timeout: 3000,
-    })
+    const tree = sidebar(mockPage)
+    await expect(tree.getByText('Test Project')).toBeVisible()
+    await expect(tree.getByText('fuzzy-tiger', { exact: true })).toBeVisible()
+    await expect(tree.getByText('calm-dolphin', { exact: true })).toBeVisible()
   })
 
-  test('click worktree navigates to chat view', async ({ mockPage }) => {
-    await expect(mockPage.getByText('Test Project')).toBeVisible({
-      timeout: 5000,
-    })
+  test('click worktree opens its session modal', async ({ mockPage }) => {
+    // A worktree click keeps the project canvas and opens the modal over it.
+    await activateWorktree(mockPage, 'fuzzy-tiger')
 
-    // Open sidebar
-    const projectsHeader = mockPage.getByText('PROJECTS')
-    if (!(await projectsHeader.isVisible().catch(() => false))) {
-      await mockPage.keyboard.press('Meta+b')
-      await mockPage.waitForTimeout(500)
-    }
-
-    // Click a worktree
-    await mockPage.getByText('fuzzy-tiger').click()
-    await mockPage.waitForTimeout(1000)
-
-    // Dashboard empty state should no longer be visible
     await expect(
-      mockPage.getByText('Your imagination is the only limit')
-    ).not.toBeVisible({ timeout: 3000 })
+      mockPage.getByRole('heading', { name: 'Test Project', level: 2 })
+    ).toBeAttached()
   })
 })

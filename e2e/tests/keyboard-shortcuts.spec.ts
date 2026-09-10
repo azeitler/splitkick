@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures/tauri-mock'
+import { test, expect, MOD, ensureSidebarOpen } from '../fixtures/tauri-mock'
 
 test.describe('Keyboard shortcuts', () => {
   test('Cmd+K opens command palette', async ({ mockPage }) => {
@@ -6,36 +6,22 @@ test.describe('Keyboard shortcuts', () => {
       timeout: 5000,
     })
 
-    await mockPage.keyboard.press('Meta+k')
+    await mockPage.keyboard.press(`${MOD}+k`)
 
     const input = mockPage.locator('[cmdk-input]')
     await expect(input).toBeVisible({ timeout: 3000 })
   })
 
   test('Cmd+B toggles sidebar panel', async ({ mockPage }) => {
-    await expect(mockPage.getByText('Test Project')).toBeVisible({
-      timeout: 5000,
-    })
+    // The Home row is the sidebar's first row, so it tells whether it is open.
+    await ensureSidebarOpen(mockPage)
+    const home = mockPage.getByTestId('sidebar-home-row')
 
-    // Toggle sidebar on (may start hidden or visible depending on default)
-    await mockPage.keyboard.press('Meta+b')
-    await mockPage.waitForTimeout(300)
+    await mockPage.keyboard.press(`${MOD}+b`)
+    await expect(home).not.toBeVisible({ timeout: 2000 })
 
-    // Check if PROJECTS header appeared (sidebar panel open)
-    const projectsHeader = mockPage.getByText('PROJECTS')
-    const sidebarVisible = await projectsHeader.isVisible().catch(() => false)
-
-    if (sidebarVisible) {
-      // Sidebar opened — toggle it closed
-      await mockPage.keyboard.press('Meta+b')
-      await mockPage.waitForTimeout(300)
-      await expect(projectsHeader).not.toBeVisible({ timeout: 2000 })
-    } else {
-      // Sidebar was already open and we closed it — toggle it back open
-      await mockPage.keyboard.press('Meta+b')
-      await mockPage.waitForTimeout(300)
-      await expect(projectsHeader).toBeVisible({ timeout: 2000 })
-    }
+    await mockPage.keyboard.press(`${MOD}+b`)
+    await expect(home).toBeVisible({ timeout: 2000 })
   })
 
   test('Escape closes command palette', async ({ mockPage }) => {
@@ -43,7 +29,7 @@ test.describe('Keyboard shortcuts', () => {
       timeout: 5000,
     })
 
-    await mockPage.keyboard.press('Meta+k')
+    await mockPage.keyboard.press(`${MOD}+k`)
     const input = mockPage.locator('[cmdk-input]')
     await expect(input).toBeVisible({ timeout: 3000 })
 

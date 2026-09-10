@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures/tauri-mock'
+import { test, expect, MOD } from '../fixtures/tauri-mock'
 
 test.describe('Preferences', () => {
   const openDialog = async (
@@ -7,7 +7,7 @@ test.describe('Preferences', () => {
     await expect(mockPage.getByText('Test Project')).toBeVisible({
       timeout: 5000,
     })
-    await mockPage.keyboard.press('Meta+,')
+    await mockPage.keyboard.press(`${MOD}+,`)
     const dialog = mockPage.getByRole('dialog')
     await expect(dialog).toBeVisible({ timeout: 3000 })
     return dialog
@@ -68,16 +68,19 @@ test.describe('Preferences', () => {
     await mockPage.setViewportSize({ width: 1280, height: 720 })
     const dialog = await openDialog(mockPage)
     const searchInput = getDesktopHeaderSearchInput(dialog)
-    const desktopHeaderActions = searchInput.locator(
-      'xpath=ancestor::div[contains(@class, "ml-auto") and contains(@class, "md:flex")][1]'
-    )
+    // At desktop width the header's mobile Close button is hidden, so the
+    // only Close button role-visible in the header is the desktop one.
+    const desktopClose = dialog
+      .locator('header')
+      .getByRole('button', { name: 'Close' })
 
     await searchInput.fill('provider')
     await expect(
       dialog.getByRole('option', { name: /Provider/i }).first()
     ).toBeVisible()
 
-    await desktopHeaderActions.getByRole('button', { name: 'Close' }).click()
+    await expect(desktopClose).toHaveCount(1)
+    await desktopClose.click()
 
     await expect(dialog).toBeHidden()
   })

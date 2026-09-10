@@ -1,4 +1,4 @@
-import { test, expect } from '../fixtures/tauri-mock'
+import { test, expect, MOD } from '../fixtures/tauri-mock'
 
 test.describe('Theme Switching', () => {
   test('default theme applies dark or light class to html element', async ({
@@ -21,7 +21,7 @@ test.describe('Theme Switching', () => {
     })
 
     // Open settings
-    await mockPage.keyboard.press('Meta+,')
+    await mockPage.keyboard.press(`${MOD}+,`)
     await mockPage.waitForTimeout(500)
 
     // Click Appearance tab
@@ -52,7 +52,7 @@ test.describe('Theme Switching', () => {
     })
 
     // Open settings
-    await mockPage.keyboard.press('Meta+,')
+    await mockPage.keyboard.press(`${MOD}+,`)
     await mockPage.waitForTimeout(500)
 
     // Click Appearance tab

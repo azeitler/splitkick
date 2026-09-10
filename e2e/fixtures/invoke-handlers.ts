@@ -48,6 +48,9 @@ export const defaultResponses: Record<string, unknown> = {
   list_projects: [project],
   list_worktrees: [worktree1, worktree2],
   add_project: project,
+  // An array: WorktreeContextMenu reads `.length`, and null crashed every
+  // sidebar render into the error boundary.
+  get_run_scripts: [],
 
   // Sessions
   get_sessions: { sessions: [], active_session_id: null },
@@ -58,7 +61,8 @@ export const defaultResponses: Record<string, unknown> = {
     created_at: 0,
     messages: [],
   },
-  list_all_sessions: { worktrees: {} },
+  // Matches the Rust AllSessionsResponse: { entries: AllSessionsEntry[] }.
+  list_all_sessions: { entries: [] },
   create_session: {
     id: 'session-new',
     name: 'New Session',

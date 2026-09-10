@@ -82,6 +82,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   command palette and the unread bell now learn about a new session as soon as
   it is created, also when an agent creates it over Jean MCP, and when a base
   session is reopened with its earlier sessions.
+- **Session tabs work with a screen reader.** The tab bar's + button is named
+  "New session", and the current session tab is marked as current.
 
 ## [0.1.73-z.5] - 2026-09-10
 

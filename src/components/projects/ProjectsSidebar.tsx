@@ -56,7 +56,7 @@ export function ProjectsSidebar() {
   }, [isMobile])
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full flex-col" data-testid="projects-sidebar">
       {/* Content */}
       {/* `scrollbar-gutter: stable` keeps a lane for the scrollbar, so the
           thumb never draws over the session timestamps at the right edge and

@@ -1392,6 +1392,8 @@ export function SessionChatModal({
                         <ContextMenuTrigger asChild>
                           <div
                             data-session-id={session.id}
+                            // The active tab is otherwise only a colour.
+                            aria-current={isActive ? 'true' : undefined}
                             onContextMenuCapture={closeOpenSessionContextMenus}
                             onClick={() => handleTabClick(session.id)}
                             onAuxClick={e => handleTabAuxClick(e, session)}
@@ -1509,6 +1511,8 @@ export function SessionChatModal({
                     variant="ghost"
                     size="sm"
                     className="h-6 w-6 p-0 shrink-0"
+                    // Icon-only: the tooltip is not an accessible name.
+                    aria-label="New session"
                     onClick={handleCreateSession}
                   >
                     <Plus className="h-3 w-3" />
