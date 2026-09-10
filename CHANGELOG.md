@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.6] - 2026-09-10
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Chat: links and HTML files in responses open in the embedded browser.**
@@ -22,7 +26,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - Other file links still open in the file viewer.
   - Agents can open a page themselves with the new Jean MCP tool
     `open_in_browser`. It takes a URL or a file path. When the session's
-    worktree is not on screen, the tab waits in its browser pane.
+    worktree is not on screen, the tab waits in its browser pane. A Jean
+    connected to a remote backend skips a `localhost` URL, which points at the
+    backend's machine.
   - In web access, there is no embedded browser: web links open a new tab and
     HTML files open in the file viewer, as before.
 - **Global search: a matching project jumps to the top of Quick.** When you
@@ -565,7 +571,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.5...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.6...HEAD
+[0.1.73-z.6]: https://github.com/azeitler/jean/compare/v0.1.73-z.5...v0.1.73-z.6
 [0.1.73-z.5]: https://github.com/azeitler/jean/compare/v0.1.73-z.4...v0.1.73-z.5
 [0.1.73-z.4]: https://github.com/azeitler/jean/compare/v0.1.73-z.3...v0.1.73-z.4
 [0.1.73-z.3]: https://github.com/azeitler/jean/compare/v0.1.73-z.2...v0.1.73-z.3
