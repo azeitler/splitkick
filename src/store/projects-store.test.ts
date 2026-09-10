@@ -9,6 +9,8 @@ describe('ProjectsStore', () => {
       expandedProjectIds: new Set<string>(),
       expandedFolderIds: new Set<string>(),
       projectCanvasSettings: {},
+      starredSessions: [],
+      starredSectionCollapsed: false,
       githubDashboardFavoriteProjectIds: [],
       addProjectDialogOpen: false,
       projectSettingsDialogOpen: false,
@@ -326,6 +328,80 @@ describe('ProjectsStore', () => {
       setProjectSessionSort('project-1', 'title', 'desc')
 
       expect(settings()?.sessionSortDirection).toBe('desc')
+    })
+  })
+
+  describe('starred sessions', () => {
+    const star = (sessionId: string, projectId = 'project-1') => ({
+      projectId,
+      worktreeId: `worktree-${sessionId}`,
+      sessionId,
+    })
+
+    it('stars across projects in star order', () => {
+      const { starSession } = useProjectsStore.getState()
+
+      starSession(star('b', 'project-2'))
+      starSession(star('a', 'project-1'))
+
+      expect(
+        useProjectsStore.getState().starredSessions.map(s => s.sessionId)
+      ).toEqual(['b', 'a'])
+    })
+
+    it('keeps the same reference when the session is already starred', () => {
+      const { starSession } = useProjectsStore.getState()
+      starSession(star('a'))
+      const before = useProjectsStore.getState().starredSessions
+
+      starSession(star('a'))
+
+      expect(useProjectsStore.getState().starredSessions).toBe(before)
+    })
+
+    it('unstars by session id', () => {
+      const { starSession, unstarSession } = useProjectsStore.getState()
+      starSession(star('a'))
+      starSession(star('b'))
+
+      unstarSession('a')
+
+      expect(
+        useProjectsStore.getState().starredSessions.map(s => s.sessionId)
+      ).toEqual(['b'])
+    })
+
+    it('keeps the same reference when unstarring something never starred', () => {
+      const before = useProjectsStore.getState().starredSessions
+
+      useProjectsStore.getState().unstarSession('nope')
+
+      expect(useProjectsStore.getState().starredSessions).toBe(before)
+    })
+
+    // A pin is local and a star is global; setting one must not touch the other.
+    it('is independent of pinning', () => {
+      const { pinSessionToProject, starSession, unstarSession } =
+        useProjectsStore.getState()
+      pinSessionToProject('project-1', 'a', 'worktree-a')
+      starSession(star('a'))
+
+      unstarSession('a')
+
+      expect(
+        useProjectsStore.getState().projectCanvasSettings['project-1']
+          ?.pinnedSessions
+      ).toHaveLength(1)
+    })
+
+    it('toggles the section and guards a no-op collapse', () => {
+      const store = useProjectsStore.getState()
+      store.toggleStarredSectionCollapsed()
+      expect(useProjectsStore.getState().starredSectionCollapsed).toBe(true)
+
+      const before = useProjectsStore.getState()
+      useProjectsStore.getState().setStarredSectionCollapsed(true)
+      expect(useProjectsStore.getState()).toBe(before)
     })
   })
 

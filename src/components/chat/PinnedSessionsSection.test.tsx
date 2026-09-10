@@ -77,7 +77,10 @@ describe('PinnedSessionsSection', () => {
     archiveMutate.mockClear()
     closeMutate.mockClear()
     removalBehavior.current = 'archive'
-    useProjectsStore.setState({ projectCanvasSettings: {} })
+    useProjectsStore.setState({
+      projectCanvasSettings: {},
+      starredSessions: [],
+    })
     useChatStore.setState({ sessionLabels: {} })
   })
 
@@ -179,6 +182,19 @@ describe('PinnedSessionsSection', () => {
       expect(
         useProjectsStore.getState().projectCanvasSettings['p-1']?.pinnedSessions
       ).toEqual([])
+    })
+
+    // A pin is local, a star global: starring a pinned row records the row's
+    // own project and worktree, and the row then carries the star.
+    it('stars the row with its project and worktree', async () => {
+      renderRow()
+      const user = await openRowMenu('Investigation')
+      await user.click(await screen.findByRole('menuitem', { name: 'Star' }))
+
+      expect(useProjectsStore.getState().starredSessions).toEqual([
+        { projectId: 'p-1', worktreeId: 'wt-s-1', sessionId: 's-1' },
+      ])
+      expect(await screen.findByTestId('starred-glyph')).toBeInTheDocument()
     })
 
     // The row's own worktree — not some worktree bound once for the section.

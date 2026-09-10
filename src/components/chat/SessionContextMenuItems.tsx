@@ -7,6 +7,8 @@ import {
   PinOff,
   Play,
   RefreshCw,
+  Star,
+  StarOff,
   Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -42,7 +44,7 @@ interface SessionContextMenuItemsProps {
   openInNativeClientDisabled?: boolean
   /** Tailwind width class for the menu content (defaults to w-64). */
   contentClassName?: string
-  /** Project owning the session's worktree. Omit to hide the pin item. */
+  /** Project owning the session's worktree. Omit to hide the pin and star items. */
   projectId?: string
 }
 
@@ -75,6 +77,9 @@ export function SessionContextMenuItems({
           pin => pin.sessionId === session.id
         )
       : false
+  )
+  const isStarred = useProjectsStore(state =>
+    state.starredSessions.some(star => star.sessionId === session.id)
   )
   const resumeCommand = getResumeCommand(session)
 
@@ -109,6 +114,35 @@ export function SessionContextMenuItems({
             <>
               <Pin className="mr-2 h-4 w-4" />
               Pin to Project
+            </>
+          )}
+        </ContextMenuItem>
+      )}
+      {/* A pin is local to one project; a star is global. Both can be set. */}
+      {projectId && (
+        <ContextMenuItem
+          onSelect={() => {
+            const store = useProjectsStore.getState()
+            if (isStarred) {
+              store.unstarSession(session.id)
+            } else {
+              store.starSession({
+                projectId,
+                worktreeId,
+                sessionId: session.id,
+              })
+            }
+          }}
+        >
+          {isStarred ? (
+            <>
+              <StarOff className="mr-2 h-4 w-4" />
+              Unstar
+            </>
+          ) : (
+            <>
+              <Star className="mr-2 h-4 w-4" />
+              Star
             </>
           )}
         </ContextMenuItem>

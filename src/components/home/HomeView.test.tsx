@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, within } from '@/test/test-utils'
 import { HomeView } from './HomeView'
+import { useProjectsStore } from '@/store/projects-store'
 import type { AllSessionsResponse, LabelData, Session } from '@/types/chat'
 import type { ActivityEvent } from '@/types/activity'
 import type { Project } from '@/types/projects'
@@ -44,9 +45,7 @@ function session(id: string, name: string, extra: Partial<Session> = {}) {
   } as unknown as Session
 }
 
-const projects: Project[] = [
-  { id: 'p1', name: 'jean' } as unknown as Project,
-]
+const projects: Project[] = [{ id: 'p1', name: 'jean' } as unknown as Project]
 
 function renderHome() {
   return render(
@@ -61,6 +60,7 @@ function renderHome() {
 describe('HomeView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    useProjectsStore.setState({ starredSessions: [] })
     mocks.sessions = {
       entries: [
         {
@@ -95,7 +95,9 @@ describe('HomeView', () => {
     renderHome()
 
     expect(screen.getByRole('heading', { name: 'Home' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Projects' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Projects' })
+    ).toBeInTheDocument()
     expect(
       screen.getByRole('heading', { name: 'Recent sessions' })
     ).toBeInTheDocument()
@@ -105,6 +107,59 @@ describe('HomeView', () => {
 
     expect(screen.getByText('newest')).toBeInTheDocument()
     expect(screen.getByText('PR merged')).toBeInTheDocument()
+  })
+
+  it('shows no Starred section while nothing is starred', () => {
+    renderHome()
+
+    expect(screen.queryByRole('heading', { name: 'Starred' })).toBeNull()
+  })
+
+  // Star order, not activity order: "oldest" was starred first.
+  it('lists starred sessions above recent ones, in star order', () => {
+    useProjectsStore.setState({
+      starredSessions: [
+        { projectId: 'p1', worktreeId: 'w1', sessionId: 's-old' },
+        { projectId: 'p1', worktreeId: 'w1', sessionId: 's-new' },
+      ],
+    })
+    renderHome()
+
+    const starred = screen.getByTestId('home-starred-sessions')
+    const names = within(starred)
+      .getAllByRole('button')
+      .map(row => row.textContent ?? '')
+    expect(names[0]).toContain('oldest')
+    expect(names[1]).toContain('newest')
+
+    const starredHeading = screen.getByRole('heading', { name: 'Starred' })
+    const recentHeading = screen.getByRole('heading', {
+      name: 'Recent sessions',
+    })
+    expect(
+      starredHeading.compareDocumentPosition(recentHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+  })
+
+  it('opens a starred session through the shared navigation helper', async () => {
+    const user = userEvent.setup()
+    useProjectsStore.setState({
+      starredSessions: [
+        { projectId: 'p1', worktreeId: 'w1', sessionId: 's-old' },
+      ],
+    })
+    renderHome()
+
+    await user.click(
+      within(screen.getByTestId('home-starred-sessions')).getByText('oldest')
+    )
+
+    expect(mocks.navigateToSession).toHaveBeenCalledWith({
+      projectId: 'p1',
+      worktreeId: 'w1',
+      sessionId: 's-old',
+    })
   })
 
   it('sorts recent sessions by activity, newest first', () => {

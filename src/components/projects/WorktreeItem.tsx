@@ -46,6 +46,7 @@ import { useWorktreeMenuActions } from './useWorktreeMenuActions'
 import { CloseWorktreeDialog } from '@/components/chat/CloseWorktreeDialog'
 import { useSessionArchive } from '@/components/chat/hooks/useSessionArchive'
 import { useSessionRename } from '@/components/chat/hooks/useSessionRename'
+import { StarGlyph } from '@/components/chat/StarGlyph'
 import { middleClickClose } from '@/lib/middle-click'
 import {
   decideWorktreeMiddleClose,
@@ -397,6 +398,14 @@ export function WorktreeItem({
   )
   const isFilterActive = !isSessionFilterEmpty(filterCriteria)
   const showSessions = isExpanded || isFilterActive
+
+  // Starred sessions get a small star on their row. Selecting the array keeps
+  // this to one subscription; the Set is rebuilt only when a star changes.
+  const starredSessions = useProjectsStore(state => state.starredSessions)
+  const starredIds = useMemo(
+    () => new Set(starredSessions.map(star => star.sessionId)),
+    [starredSessions]
+  )
 
   // The project row's sort control orders the sessions inside each status
   // group. Two scalar selectors, so the row re-renders only when they change.
@@ -1141,6 +1150,7 @@ export function WorktreeItem({
                           >
                             {card.session.name || 'Untitled'}
                           </span>
+                          {starredIds.has(card.session.id) && <StarGlyph />}
                           {/* Issue the workspace was created from. Dropped on a
                               narrow sidebar, where the indented row has no room. */}
                           {!isNarrowSidebar && (

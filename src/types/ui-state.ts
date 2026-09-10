@@ -12,6 +12,13 @@
 
 import type { LabelData } from '@/types/chat'
 
+/** A starred session (mirrors the Rust StarredSessionEntry). */
+export interface StarredSessionEntry {
+  project_id: string
+  worktree_id: string
+  session_id: string
+}
+
 /** A session pinned to a project root (mirrors the Rust PinnedSessionEntry). */
 export interface PinnedSessionEntry {
   session_id: string
@@ -77,6 +84,10 @@ export interface UIState {
   expanded_worktree_ids?: string[]
   /** Project IDs whose pinned-sessions row is expanded in the sidebar */
   expanded_pinned_project_ids?: string[]
+  /** Starred sessions across every project, in star order */
+  starred_sessions?: StarredSessionEntry[]
+  /** Whether the sidebar's Starred section is collapsed */
+  starred_sessions_collapsed?: boolean
   /** Left sidebar width in pixels, defaults to 250 */
   left_sidebar_size?: number
   /** Left sidebar visibility, defaults to false */
@@ -179,6 +190,8 @@ export const defaultUIState: UIState = {
   expanded_folder_ids: [],
   expanded_worktree_ids: [],
   expanded_pinned_project_ids: [],
+  starred_sessions: [],
+  starred_sessions_collapsed: false,
   left_sidebar_size: 250,
   left_sidebar_visible: false,
   file_browser_size: 280,

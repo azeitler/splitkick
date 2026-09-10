@@ -944,6 +944,8 @@ export function useRenameSession() {
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(worktreeId),
       })
+      // Starred, Home and the palette read names from the cross-project list.
+      queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
     },
     onError: error => {
       if (isWsDisconnectError(error)) return
@@ -1300,6 +1302,8 @@ export function useUnarchiveSession() {
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(worktreeId),
       })
+      // A starred session comes back into the Starred section and onto Home.
+      queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
       toast.success('Session restored')
     },
     onError: error => {

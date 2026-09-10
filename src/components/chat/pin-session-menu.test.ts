@@ -11,7 +11,8 @@ function read(path: string): string {
 const menuConsumers = [
   'src/components/chat/SessionChatModal.tsx',
   'src/components/projects/WorktreeItem.tsx',
-  'src/components/chat/PinnedSessionsSection.tsx',
+  // Hosts the rows of the Pinned and Starred sections.
+  'src/components/chat/SessionShortcutRows.tsx',
 ]
 
 // Both surfaces that render the pinned list.
@@ -52,12 +53,20 @@ describe('pin session to project', () => {
     }
   })
 
-  // The pinned row is the same session as its row under the workspace, so it
-  // must carry the same menu rather than a hand-rolled subset.
-  it('gives the pinned row the shared session menu', () => {
-    const source = read('src/components/chat/PinnedSessionsSection.tsx')
+  // A pinned or starred row is the same session as its row under the
+  // workspace, so it must carry the same menu rather than a hand-rolled subset.
+  it('gives pinned and starred rows the shared session menu', () => {
+    const rows = read('src/components/chat/SessionShortcutRows.tsx')
+    expect(rows).toContain('<SessionContextMenuItems')
+    expect(rows).not.toContain('<ContextMenuContent')
 
-    expect(source).toContain('<SessionContextMenuItems')
-    expect(source).not.toContain('<ContextMenuContent')
+    for (const path of [
+      'src/components/chat/PinnedSessionsSection.tsx',
+      'src/components/projects/SidebarStarredSection.tsx',
+    ]) {
+      const source = read(path)
+      expect(source).toContain('<SessionShortcutRows')
+      expect(source).not.toContain('<ContextMenuContent')
+    }
   })
 })

@@ -3069,6 +3069,16 @@ pub struct UIState {
     #[serde(default)]
     pub project_canvas_settings: std::collections::HashMap<String, ProjectCanvasSettings>,
 
+    /// Starred sessions, across every project, in star order. Unlike a pin a
+    /// star is global, so it is not keyed by project.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub starred_sessions: Vec<StarredSessionEntry>,
+
+    /// Whether the sidebar's Starred section is collapsed. Defaults to open,
+    /// because the point of a star is to keep the session in reach.
+    #[serde(default)]
+    pub starred_sessions_collapsed: bool,
+
     /// Favorited projects shown first in the GitHub Dashboard
     #[serde(default)]
     pub github_dashboard_favorite_project_ids: Vec<String>,
@@ -3137,6 +3147,17 @@ pub struct PendingTextFileDraft {
     pub size: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub content: Option<String>,
+}
+
+/// A session the user starred. A star is global, so the entry carries its
+/// project as well: the sidebar and Home resolve it without knowing which
+/// project is selected. The worktree id opens the session and doubles as the
+/// staleness check, exactly as for a pin.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StarredSessionEntry {
+    pub project_id: String,
+    pub worktree_id: String,
+    pub session_id: String,
 }
 
 /// A session the user pinned to a project root. Sessions live inside worktrees,
@@ -3218,6 +3239,8 @@ impl Default for UIState {
             project_access_timestamps: std::collections::HashMap::new(),
             dashboard_worktree_collapse_overrides: std::collections::HashMap::new(),
             project_canvas_settings: std::collections::HashMap::new(),
+            starred_sessions: Vec::new(),
+            starred_sessions_collapsed: false,
             github_dashboard_favorite_project_ids: Vec::new(),
             last_opened_per_project: std::collections::HashMap::new(),
             seen_failed_workflow_run_ids: Vec::new(),
@@ -4716,6 +4739,55 @@ pub async fn run_server() -> Result<(), String> {
     let _ = opencode_server::shutdown_managed_server();
     chat::codex_server::shutdown_server();
     Ok(())
+}
+
+#[cfg(test)]
+mod starred_sessions_tests {
+    use super::{StarredSessionEntry, UIState};
+
+    #[test]
+    fn stars_round_trip_with_snake_case_keys_in_star_order() {
+        let state = UIState {
+            starred_sessions: vec![
+                StarredSessionEntry {
+                    project_id: "project-1".to_string(),
+                    worktree_id: "worktree-1".to_string(),
+                    session_id: "session-a".to_string(),
+                },
+                StarredSessionEntry {
+                    project_id: "project-2".to_string(),
+                    worktree_id: "worktree-9".to_string(),
+                    session_id: "session-b".to_string(),
+                },
+            ],
+            starred_sessions_collapsed: true,
+            ..UIState::default()
+        };
+
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(json.contains(r#""project_id":"project-1""#));
+        assert!(json.contains(r#""session_id":"session-b""#));
+
+        let parsed: UIState = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.starred_sessions, state.starred_sessions);
+        assert!(parsed.starred_sessions_collapsed);
+    }
+
+    // A state file written before stars existed must load, open, and empty.
+    #[test]
+    fn a_state_file_without_stars_loads_with_none_and_the_section_open() {
+        let parsed: UIState = serde_json::from_str("{}").unwrap();
+
+        assert!(parsed.starred_sessions.is_empty());
+        assert!(!parsed.starred_sessions_collapsed);
+    }
+
+    #[test]
+    fn no_stars_writes_no_key() {
+        let json = serde_json::to_string(&UIState::default()).unwrap();
+
+        assert!(!json.contains("starred_sessions\""));
+    }
 }
 
 #[cfg(test)]

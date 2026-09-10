@@ -13,6 +13,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { ProjectTree } from './ProjectTree'
 import { SidebarHomeRow } from './SidebarHomeRow'
+import { SidebarStarredSection } from './SidebarStarredSection'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
 import { useSidebarReveal } from './useSidebarReveal'
@@ -67,6 +68,7 @@ export function ProjectsSidebar() {
         {/* Home stays pinned above the tree, so it is reachable from any
             project without collapsing anything. */}
         <SidebarHomeRow />
+        <SidebarStarredSection />
 
         {isLoading ? (
           <div className="flex items-center justify-center p-4">

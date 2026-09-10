@@ -997,6 +997,86 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
   })
 
+  it('persists starred sessions with snake_case keys, in star order', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    const store = useProjectsStore.getState()
+    store.starSession({
+      projectId: 'project-2',
+      worktreeId: 'worktree-9',
+      sessionId: 'session-b',
+    })
+    store.toggleStarredSectionCollapsed()
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          starred_sessions: [
+            {
+              project_id: 'project-2',
+              worktree_id: 'worktree-9',
+              session_id: 'session-b',
+            },
+          ],
+          starred_sessions_collapsed: true,
+        })
+      )
+    })
+  })
+
+  it('restores starred sessions and the section state after a reload', async () => {
+    useProjectsStore.setState({
+      starredSessions: [],
+      starredSectionCollapsed: false,
+    })
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({
+        starred_sessions: [
+          {
+            project_id: 'project-1',
+            worktree_id: 'worktree-1',
+            session_id: 'session-a',
+          },
+        ],
+        starred_sessions_collapsed: true,
+      }),
+      isSuccess: true,
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      const state = useProjectsStore.getState()
+      expect(state.starredSessions).toEqual([
+        {
+          projectId: 'project-1',
+          worktreeId: 'worktree-1',
+          sessionId: 'session-a',
+        },
+      ])
+      expect(state.starredSectionCollapsed).toBe(true)
+    })
+  })
+
   it('persists the per-project session sort with snake_case keys', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {

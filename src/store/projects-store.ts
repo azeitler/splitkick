@@ -7,6 +7,16 @@ import type {
   WorktreeSortMode,
 } from '@/types/projects'
 
+/**
+ * A starred session. A star is global, unlike a pin, so it names its project:
+ * the sidebar and Home resolve it without a selected project.
+ */
+export interface StarredSessionRef {
+  projectId: string
+  worktreeId: string
+  sessionId: string
+}
+
 /** A session pinned to a project root. */
 export interface PinnedSessionRef {
   sessionId: string
@@ -38,6 +48,11 @@ interface ProjectsUIState {
   // Project IDs whose pinned-sessions row is expanded in the sidebar tree.
   // The row sits beside the workspace rows, so it keeps its own expansion.
   expandedPinnedProjectIds: Set<string>
+
+  // Starred sessions, across every project, in star order
+  starredSessions: StarredSessionRef[]
+  // Whether the sidebar's Starred section is collapsed
+  starredSectionCollapsed: boolean
 
   // Dashboard worktree collapse overrides (list view): true=collapsed, false=expanded
   dashboardWorktreeCollapseOverrides: Record<string, boolean>
@@ -90,6 +105,13 @@ interface ProjectsUIState {
 
   // Pinned-sessions row expansion, per project
   togglePinnedExpanded: (projectId: string) => void
+
+  // Starred sessions
+  starSession: (star: StarredSessionRef) => void
+  unstarSession: (sessionId: string) => void
+  setStarredSessions: (stars: StarredSessionRef[]) => void
+  toggleStarredSectionCollapsed: () => void
+  setStarredSectionCollapsed: (collapsed: boolean) => void
 
   // Dashboard collapse actions
   toggleDashboardWorktreeCollapsed: (
@@ -161,6 +183,8 @@ export const useProjectsStore = create<ProjectsUIState>()(
       expandedProjectIds: new Set<string>(),
       expandedWorktreeIds: new Set<string>(),
       expandedPinnedProjectIds: new Set<string>(),
+      starredSessions: [],
+      starredSectionCollapsed: false,
       dashboardWorktreeCollapseOverrides: {},
       expandedFolderIds: new Set<string>(),
       projectAccessTimestamps: {},
@@ -272,6 +296,54 @@ export const useProjectsStore = create<ProjectsUIState>()(
           },
           undefined,
           'toggleWorktreeExpanded'
+        ),
+
+      starSession: star =>
+        set(
+          state =>
+            // Guard: already starred, so keep the same reference.
+            state.starredSessions.some(s => s.sessionId === star.sessionId)
+              ? state
+              : { starredSessions: [...state.starredSessions, star] },
+          undefined,
+          'starSession'
+        ),
+
+      unstarSession: sessionId =>
+        set(
+          state => {
+            const next = state.starredSessions.filter(
+              s => s.sessionId !== sessionId
+            )
+            // Guard: nothing was starred under that id.
+            return next.length === state.starredSessions.length
+              ? state
+              : { starredSessions: next }
+          },
+          undefined,
+          'unstarSession'
+        ),
+
+      setStarredSessions: stars =>
+        set({ starredSessions: stars }, undefined, 'setStarredSessions'),
+
+      toggleStarredSectionCollapsed: () =>
+        set(
+          state => ({
+            starredSectionCollapsed: !state.starredSectionCollapsed,
+          }),
+          undefined,
+          'toggleStarredSectionCollapsed'
+        ),
+
+      setStarredSectionCollapsed: collapsed =>
+        set(
+          state =>
+            state.starredSectionCollapsed === collapsed
+              ? state
+              : { starredSectionCollapsed: collapsed },
+          undefined,
+          'setStarredSectionCollapsed'
         ),
 
       togglePinnedExpanded: projectId =>

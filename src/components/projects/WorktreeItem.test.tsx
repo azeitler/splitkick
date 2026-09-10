@@ -441,3 +441,28 @@ describe('WorktreeItem session sort', () => {
     expect(rowNames()).toEqual(['Charlie', 'session 10', 'session 2', 'alpha'])
   })
 })
+
+// A starred session is visible as such without opening its menu.
+describe('WorktreeItem starred glyph', () => {
+  beforeEach(() => {
+    mocks.sessions = [session('a', 'Auth Refactor'), session('b', 'Billing')]
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(['wt-1']),
+      projectCanvasSettings: {},
+      starredSessions: [
+        { projectId: 'project-1', worktreeId: 'wt-1', sessionId: 'a' },
+      ],
+    })
+  })
+
+  it('marks only the starred row', () => {
+    renderItem({})
+
+    const glyphs = screen.getAllByTestId('starred-glyph')
+    expect(glyphs).toHaveLength(1)
+    expect(
+      screen.getByText('Auth Refactor').closest('[class*="pl-5"]')
+    ).toContainElement(glyphs[0] ?? null)
+  })
+})

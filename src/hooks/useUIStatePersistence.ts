@@ -140,6 +140,8 @@ export function useUIStatePersistence() {
       expandedFolderIds,
       expandedWorktreeIds,
       expandedPinnedProjectIds,
+      starredSessions,
+      starredSectionCollapsed,
       selectedProjectId,
       projectAccessTimestamps,
       dashboardWorktreeCollapseOverrides,
@@ -205,6 +207,12 @@ export function useUIStatePersistence() {
       expanded_folder_ids: Array.from(expandedFolderIds),
       expanded_worktree_ids: Array.from(expandedWorktreeIds),
       expanded_pinned_project_ids: Array.from(expandedPinnedProjectIds),
+      starred_sessions: starredSessions.map(star => ({
+        project_id: star.projectId,
+        worktree_id: star.worktreeId,
+        session_id: star.sessionId,
+      })),
+      starred_sessions_collapsed: starredSectionCollapsed,
       left_sidebar_size: leftSidebarSize,
       left_sidebar_visible: leftSidebarVisible,
       file_browser_size: fileBrowserSize,
@@ -346,6 +354,21 @@ export function useUIStatePersistence() {
       useProjectsStore.setState({
         expandedWorktreeIds: new Set(expandedWorktreeIds),
       })
+    }
+
+    // Restore the starred sessions and whether their section is collapsed.
+    const starredSessions = uiState.starred_sessions ?? []
+    if (starredSessions.length > 0) {
+      useProjectsStore.getState().setStarredSessions(
+        starredSessions.map(star => ({
+          projectId: star.project_id,
+          worktreeId: star.worktree_id,
+          sessionId: star.session_id,
+        }))
+      )
+    }
+    if (uiState.starred_sessions_collapsed) {
+      useProjectsStore.getState().setStarredSectionCollapsed(true)
     }
 
     // Restore the expanded pinned-sessions rows, keyed by project id.
@@ -1087,6 +1110,9 @@ export function useUIStatePersistence() {
     let prevExpandedFolderIds = useProjectsStore.getState().expandedFolderIds
     let prevExpandedWorktreeIds =
       useProjectsStore.getState().expandedWorktreeIds
+    let prevStarredSessions = useProjectsStore.getState().starredSessions
+    let prevStarredSectionCollapsed =
+      useProjectsStore.getState().starredSectionCollapsed
     let prevExpandedPinnedProjectIds =
       useProjectsStore.getState().expandedPinnedProjectIds
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
@@ -1149,6 +1175,9 @@ export function useUIStatePersistence() {
       const folderIdsChanged = state.expandedFolderIds !== prevExpandedFolderIds
       const worktreeIdsChanged =
         state.expandedWorktreeIds !== prevExpandedWorktreeIds
+      const starredChanged =
+        state.starredSessions !== prevStarredSessions ||
+        state.starredSectionCollapsed !== prevStarredSectionCollapsed
       const pinnedProjectIdsChanged =
         state.expandedPinnedProjectIds !== prevExpandedPinnedProjectIds
       const selectedProjectChanged =
@@ -1169,6 +1198,7 @@ export function useUIStatePersistence() {
         folderIdsChanged ||
         worktreeIdsChanged ||
         pinnedProjectIdsChanged ||
+        starredChanged ||
         selectedProjectChanged ||
         accessTimestampsChanged ||
         collapseOverridesChanged ||
@@ -1179,6 +1209,8 @@ export function useUIStatePersistence() {
         prevExpandedFolderIds = state.expandedFolderIds
         prevExpandedWorktreeIds = state.expandedWorktreeIds
         prevExpandedPinnedProjectIds = state.expandedPinnedProjectIds
+        prevStarredSessions = state.starredSessions
+        prevStarredSectionCollapsed = state.starredSectionCollapsed
         prevSelectedProjectId = state.selectedProjectId
         prevProjectAccessTimestamps = state.projectAccessTimestamps
         prevDashboardCollapseOverrides =

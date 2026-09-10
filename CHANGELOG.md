@@ -14,6 +14,30 @@ this fork's own and never restarts.
 
 ### Added
 
+- **Star sessions to keep them in reach from anywhere.** Pinning keeps a
+  session under one project's row. A star is the global counterpart: starred
+  sessions sit at the top of the sidebar, right under Home, whatever project is
+  selected.
+  - Star and Unstar sit in the session menu next to Pin to Project. A pin is
+    local and a star is global; a session can carry both, and they are
+    independent.
+  - The sidebar's **Starred** section shows each session with its project and
+    workspace, since the list crosses projects. It collapses like a workspace
+    row, shows a count while collapsed, remembers that across restarts, and
+    disappears while nothing is starred.
+  - The Home view gets a **Starred** section above Recent sessions, with the
+    same rows.
+  - Both lists keep star order, newest star last, so a starred session stays
+    where you left it — Recent sessions already orders by activity.
+  - Starred rows carry the full session menu, like pinned rows: rename,
+    status, labels, pin, archive, delete. A starred session also shows a small
+    star on its row in the tree and in the Pinned block.
+  - A star follows its session when the session moves to another workspace.
+    An archived starred session drops out of the lists but keeps its star, so
+    restoring it brings the row straight back.
+  - Stars are saved with the rest of the sidebar state on this machine, like
+    pins.
+
 - **Sidebar: sort the sessions of a project.** Sessions under a workspace
   always came back in one fixed order, so a long list could only be scanned.
   A sort button now sits on the project row, next to "Filter sessions".
@@ -192,6 +216,12 @@ this fork's own and never restarts.
   - The canvas variant of the block is untouched.
 
 ### Fixed
+
+- **A renamed or restored session updates everywhere at once.** Renaming a
+  session refreshed only its own workspace list, so the Home view's Recent
+  sessions, the command palette and now the Starred section kept the old name
+  for up to five minutes. Restoring an archived session had the same gap.
+  Both now refresh the list those views share.
 
 - **The development build no longer writes to the installed app's data.** The
   data directory stopped following the bundle identifier so that JeanZ and

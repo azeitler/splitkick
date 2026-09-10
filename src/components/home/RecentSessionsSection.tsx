@@ -140,7 +140,8 @@ export const RecentSessionsSection = memo(function RecentSessionsSection() {
   )
 })
 
-function RecentSessionRow({
+/** One Home session row. Shared by the Recent sessions and Starred sections. */
+export function RecentSessionRow({
   row,
   storeState,
 }: {

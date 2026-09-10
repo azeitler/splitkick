@@ -2,6 +2,7 @@ import { memo } from 'react'
 import type { Project } from '@/types/projects'
 import { WelcomeProjectGrid } from '@/components/layout/WelcomeProjectGrid'
 import { RecentSessionsSection } from './RecentSessionsSection'
+import { StarredSessionsSection } from './StarredSessionsSection'
 import { RecentActivitySection } from './RecentActivitySection'
 
 interface HomeViewProps {
@@ -11,8 +12,8 @@ interface HomeViewProps {
 }
 
 /**
- * The landing view: projects, the sessions worked on most recently across every
- * project, and what happened since the last visit.
+ * The landing view: projects, the sessions you starred, the ones worked on most
+ * recently across every project, and what happened since the last visit.
  *
  * Home is the state where no project and no worktree is selected. The sidebar
  * Home row clears both, and the existing UI-state persistence of
@@ -41,6 +42,7 @@ export const HomeView = memo(function HomeView({
         onAddProject={onAddProject}
       />
 
+      <StarredSessionsSection />
       <RecentSessionsSection />
       <RecentActivitySection />
     </div>

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { flattenAllSessions, resolveSessionLabel } from './home-utils'
+import {
+  flattenAllSessions,
+  resolveSessionLabel,
+  resolveStarredSessions,
+} from './home-utils'
 import type { AllSessionsEntry, LabelData, Session } from '@/types/chat'
 
 function session(overrides: Partial<Session>): Session {
@@ -89,5 +93,73 @@ describe('resolveSessionLabel', () => {
 
   it('returns nothing when the session has no label', () => {
     expect(resolveSessionLabel(session({ id: 's' }), {})).toBeUndefined()
+  })
+})
+
+describe('resolveStarredSessions', () => {
+  const star = (sessionId: string, worktree = 'worktree-a') => ({
+    projectId: 'project-a',
+    worktreeId: worktree,
+    sessionId,
+  })
+
+  it('keeps star order, not activity order', () => {
+    const rows = resolveStarredSessions(
+      [star('old'), star('new')],
+      [
+        entry([
+          session({ id: 'new', last_message_at: 9_000 }),
+          session({ id: 'old', last_message_at: 1_000 }),
+        ]),
+      ]
+    )
+
+    expect(rows.map(row => row.session.id)).toEqual(['old', 'new'])
+  })
+
+  it('resolves across projects and carries the owning project', () => {
+    const rows = resolveStarredSessions(
+      [star('in-b')],
+      [
+        entry([session({ id: 'in-a' })], 'a'),
+        entry([session({ id: 'in-b' })], 'b'),
+      ]
+    )
+
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      projectId: 'project-b',
+      projectName: 'Project b',
+      worktreeName: 'Worktree b',
+    })
+  })
+
+  // A star names a worktree, but a session can be moved to another one. The
+  // star must follow the session instead of vanishing.
+  it('follows a session that moved to another workspace', () => {
+    const rows = resolveStarredSessions(
+      [star('moved', 'worktree-a')],
+      [entry([session({ id: 'moved' })], 'b')]
+    )
+
+    expect(rows[0]?.worktreeId).toBe('worktree-b')
+  })
+
+  it('leaves out archived and missing sessions', () => {
+    const rows = resolveStarredSessions(
+      [star('archived'), star('gone'), star('live')],
+      [
+        entry([
+          session({ id: 'archived', archived_at: 5 } as Partial<Session>),
+          session({ id: 'live' }),
+        ]),
+      ]
+    )
+
+    expect(rows.map(row => row.session.id)).toEqual(['live'])
+  })
+
+  it('returns nothing before the sessions have loaded', () => {
+    expect(resolveStarredSessions([star('a')], [])).toEqual([])
   })
 })
