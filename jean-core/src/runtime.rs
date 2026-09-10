@@ -18,6 +18,13 @@ type EventSink = Arc<dyn Fn(&str, &str) -> Result<(), String> + Send + Sync>;
 /// value is the stable Jean identifier, so no existing install has to move.
 pub const DATA_DIR_NAME: &str = "com.jean.desktop";
 
+/// Bundle identifier of the development build (`tauri.conf.dev.json`).
+///
+/// The one identifier that must *not* share [`DATA_DIR_NAME`]. A debug run
+/// would otherwise read and write the installed app's projects, sessions and
+/// CLI logins, and race it over the same unlocked JSON files.
+pub const DEV_IDENTIFIER: &str = "com.jean.desktop.dev";
+
 /// Resolve Jean's data directory, the same way for every host.
 ///
 /// `JEAN_DATA_DIR` overrides it, which is how an isolated profile is made.
@@ -26,6 +33,25 @@ pub fn resolve_data_dir() -> Option<PathBuf> {
     std::env::var_os("JEAN_DATA_DIR")
         .map(PathBuf::from)
         .or_else(|| dirs::data_dir().map(|path| path.join(DATA_DIR_NAME)))
+}
+
+/// Resolve the data directory for a build with this bundle identifier.
+///
+/// Release flavors such as JeanZ share stable Jean's directory on purpose, so
+/// one set of projects, sessions and CLI logins serves every installed build.
+/// The development build is the exception: it gets its own directory, keyed by
+/// [`DEV_IDENTIFIER`], so `bun run tauri dev` never touches real data.
+///
+/// `JEAN_DATA_DIR` still wins over both, for an isolated profile.
+pub fn resolve_data_dir_for(identifier: &str) -> Option<PathBuf> {
+    if let Some(dir) = std::env::var_os("JEAN_DATA_DIR") {
+        return Some(PathBuf::from(dir));
+    }
+    let base = dirs::data_dir()?;
+    if identifier == DEV_IDENTIFIER {
+        return Some(base.join(DEV_IDENTIFIER));
+    }
+    Some(base.join(DATA_DIR_NAME))
 }
 
 #[derive(Clone)]
@@ -317,6 +343,31 @@ mod tests {
         if std::env::var_os("JEAN_DATA_DIR").is_none() {
             assert_eq!(resolve_data_dir(), expected);
         }
+    }
+
+    // A release flavor shares stable Jean's data on purpose. The development
+    // build must not, or `tauri dev` writes to the installed app's projects,
+    // sessions and CLI logins.
+    #[test]
+    fn a_release_flavor_shares_the_stable_data_directory() {
+        if std::env::var_os("JEAN_DATA_DIR").is_some() {
+            return;
+        }
+        let expected = dirs::data_dir().map(|path| path.join(DATA_DIR_NAME));
+
+        assert_eq!(resolve_data_dir_for("com.jean.desktop.jeanz"), expected);
+        assert_eq!(resolve_data_dir_for(DATA_DIR_NAME), expected);
+    }
+
+    #[test]
+    fn the_development_build_gets_its_own_data_directory() {
+        if std::env::var_os("JEAN_DATA_DIR").is_some() {
+            return;
+        }
+        let expected = dirs::data_dir().map(|path| path.join(DEV_IDENTIFIER));
+
+        assert_eq!(resolve_data_dir_for(DEV_IDENTIFIER), expected);
+        assert_ne!(resolve_data_dir_for(DEV_IDENTIFIER), resolve_data_dir());
     }
 
     #[test]

@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 /// Copy stable Jean's WebView store and plugin state into this flavor's
 /// locations, once. Does nothing for stable Jean itself.
 pub fn seed_flavor_state(identifier: &str) {
-    if identifier == jean_core::DATA_DIR_NAME {
+    if !inherits_stable_state(identifier) {
         return;
     }
 
@@ -46,6 +46,17 @@ pub fn seed_flavor_state(identifier: &str) {
             seed_once(&stable.join(name), &flavor.join(name));
         }
     }
+}
+
+/// Whether a build with this identifier copies stable Jean's state on its
+/// first start.
+///
+/// Stable Jean is the source, so it has nothing to inherit. The development
+/// build is held apart as well: it keeps its own data directory, and the
+/// WebView store it would otherwise copy holds the remote-connection list with
+/// its access tokens. Everything left is a release flavor such as JeanZ.
+fn inherits_stable_state(identifier: &str) -> bool {
+    identifier != jean_core::DATA_DIR_NAME && identifier != jean_core::DEV_IDENTIFIER
 }
 
 /// Copy `from` to `to` unless `to` already exists.
@@ -123,9 +134,19 @@ fn copy_tree(from: &Path, to: &Path) -> std::io::Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{copy_tree, seed_once};
+    use super::{copy_tree, inherits_stable_state, seed_once};
     use std::fs;
     use tempfile::tempdir;
+
+    #[test]
+    fn only_a_release_flavor_inherits_stable_state() {
+        assert!(inherits_stable_state("com.jean.desktop.jeanz"));
+        // The source itself.
+        assert!(!inherits_stable_state(jean_core::DATA_DIR_NAME));
+        // Would copy the remote-connection list, tokens included, into the
+        // development build's WebView store.
+        assert!(!inherits_stable_state(jean_core::DEV_IDENTIFIER));
+    }
 
     #[test]
     fn a_whole_tree_is_copied() {
