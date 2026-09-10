@@ -11,7 +11,8 @@ const bug: LabelData = { name: 'Bug', color: '#ef4444' }
 
 const mocks = vi.hoisted(() => ({
   sessions: { entries: [] } as AllSessionsResponse,
-  activity: [] as ActivityEvent[],
+  // undefined = never loaded, as TanStack Query reports a first-load failure.
+  activity: [] as ActivityEvent[] | undefined,
   activityError: false,
   refetchActivity: vi.fn(),
   navigateToSession: vi.fn(),
@@ -68,6 +69,7 @@ describe('HomeView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.activityError = false
+    mocks.activity = []
     useProjectsStore.setState({ starredSessions: [] })
     mocks.sessions = {
       entries: [
@@ -265,6 +267,7 @@ describe('HomeView', () => {
 
   it('reports a failed activity load instead of claiming nothing happened', async () => {
     mocks.activityError = true
+    mocks.activity = undefined
     renderHome()
 
     expect(screen.getByText(/Could not load activity/)).toBeInTheDocument()
@@ -274,5 +277,23 @@ describe('HomeView', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
     expect(mocks.refetchActivity).toHaveBeenCalled()
+  })
+
+  it('keeps the loaded feed when a later refresh fails', () => {
+    // A refetch after `activity:appended` failed; TanStack keeps the old data.
+    mocks.activityError = true
+    mocks.activity = [
+      {
+        id: 'e1',
+        kind: 'commit_created',
+        at: 100,
+        projectName: 'jean',
+        title: 'fix: keep the feed',
+      },
+    ]
+    renderHome()
+
+    expect(screen.getByText('fix: keep the feed')).toBeInTheDocument()
+    expect(screen.queryByText(/Could not load activity/)).toBeNull()
   })
 })

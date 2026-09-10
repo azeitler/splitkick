@@ -69,9 +69,13 @@ const KIND_PRESENTATION: Record<ActivityKind, KindPresentation> = {
 }
 
 export const RecentActivitySection = memo(function RecentActivitySection() {
-  const { data: events = [], isLoading, isError, refetch } = useRecentActivity()
+  const { data, isLoading, isError, refetch } = useRecentActivity()
+  const events = data ?? []
 
-  if (isError) {
+  // A failed refetch keeps the events already loaded, so only a feed that never
+  // loaded shows the error. Every `activity:appended` refetches, and one miss
+  // (a web-access reconnect, say) must not blank a feed that was fine.
+  if (isError && !data) {
     return (
       <HomeSection title="Recent activity">
         <p className="text-sm text-muted-foreground">
