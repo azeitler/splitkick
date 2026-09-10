@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { invoke, listen } from '@/lib/transport'
-import { isNativeApp } from '@/lib/environment'
+import { isLocalBackend, isNativeApp } from '@/lib/environment'
+import { toFileUrl } from '@/lib/path-utils'
 import { isBlankTabUrl, useBrowserStore } from '@/store/browser-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
@@ -9,6 +10,7 @@ import type {
   BrowserGrabContext,
   BrowserGrabContextEvent,
   BrowserNavEvent,
+  BrowserOpenUrlEvent,
   BrowserPageLoadEvent,
   BrowserTab,
   BrowserTitleEvent,
@@ -204,6 +206,19 @@ export function useBrowserEvents(): void {
     )
 
     unlistenPromises.push(
+      listen<BrowserOpenUrlEvent>('browser:open-url', e => {
+        const { worktreeId, url, path } = e.payload
+        if (url) {
+          void openUrlInWorktreeBrowser(worktreeId, url)
+        } else if (path && isLocalBackend()) {
+          // The path names a file on the backend's machine; with a remote
+          // backend it does not exist here.
+          void openUrlInWorktreeBrowser(worktreeId, toFileUrl(path))
+        }
+      })
+    )
+
+    unlistenPromises.push(
       listen<BrowserClosedEvent>('browser:closed', e => {
         // Backend confirms tab closed — store-side removal happened in caller already
         // but if some other path closed it (e.g. window.open intercepted), clean up here.
@@ -348,6 +363,33 @@ export async function openUrlInEmbeddedBrowser(url: string): Promise<boolean> {
     useBrowserStore.getState().setSidePaneOpen(target.worktreeId, true)
   }
   return true
+}
+
+/**
+ * Show `url` in the embedded browser of one worktree (Jean MCP
+ * `open_in_browser`). When that worktree's browser surface is on screen this
+ * is `openUrlInEmbeddedBrowser`; otherwise the tab waits in that worktree's
+ * side pane until the user goes there.
+ */
+export async function openUrlInWorktreeBrowser(
+  worktreeId: string,
+  url: string
+): Promise<void> {
+  if (!isNativeApp()) return
+  if (resolveBrowserSurfaceTarget()?.worktreeId === worktreeId) {
+    await openUrlInEmbeddedBrowser(url)
+    return
+  }
+  const store = useBrowserStore.getState()
+  const existing = (store.tabs[worktreeId] ?? []).find(
+    tab => tab.url === url || tab.lastLoadedUrl === url
+  )
+  if (existing) {
+    store.setActiveTab(worktreeId, existing.id)
+  } else {
+    store.addTab(worktreeId, url)
+  }
+  useBrowserStore.getState().setSidePaneOpen(worktreeId, true)
 }
 
 interface BrowserActions {

@@ -9,6 +9,22 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Chat: links and HTML files in responses open in the embedded browser.**
+  Click a web link or the path of an HTML file in an agent's reply, and Jean
+  shows the page in the browser pane of the session.
+  ([#21](https://github.com/azeitler/jean/issues/21))
+  - Web links (`https://...`, `http://localhost:5173`) open in the embedded
+    browser. A small ↗ button after the link, or Cmd-click (Ctrl-click on
+    Windows and Linux), opens the system browser.
+  - Paths of HTML files are now links: in plain text (`out/report.html`,
+    `/tmp/report.html`), in backticks, and as `file://` URLs. The page loads
+    with its styles, scripts and images. Cmd-click opens it in the default app.
+  - Other file links still open in the file viewer.
+  - Agents can open a page themselves with the new Jean MCP tool
+    `open_in_browser`. It takes a URL or a file path. When the session's
+    worktree is not on screen, the tab waits in its browser pane.
+  - In web access, there is no embedded browser: web links open a new tab and
+    HTML files open in the file viewer, as before.
 - **Global search: a matching project jumps to the top of Quick.** When you
   type the start of a project name in CMD+K, that project now shows first, in
   its own **Go to Project** group, above sessions and commands. Type a few

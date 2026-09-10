@@ -12,6 +12,9 @@ function getAnchorFromEventTarget(
 
 function shouldOpenExternally(anchor: HTMLAnchorElement): boolean {
   if (anchor.hasAttribute('download')) return false
+  // Chat markdown links choose between the embedded and the system browser
+  // themselves (see MarkdownLink).
+  if (anchor.hasAttribute('data-chat-link')) return false
 
   const rawHref = anchor.getAttribute('href')
   if (!rawHref || rawHref.startsWith('#')) return false
@@ -39,7 +42,8 @@ function shouldOpenExternally(anchor: HTMLAnchorElement): boolean {
  * Ensure app-authored external links open in the OS/default browser instead of
  * being handled by the current WebView (which opens an embedded browser on
  * mobile). Programmatic callers should use openExternal() directly; this hook
- * covers raw anchors rendered by Markdown and third-party UI content.
+ * covers raw anchors and third-party UI content. Chat markdown links
+ * (`data-chat-link`) are skipped: they open in the embedded browser.
  */
 export function useExternalLinkInterceptor(): void {
   useEffect(() => {

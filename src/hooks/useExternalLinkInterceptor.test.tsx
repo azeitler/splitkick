@@ -17,6 +17,13 @@ function Harness() {
         Internal route
       </a>
       <a href="mailto:test@example.com">Email</a>
+      <a
+        href="https://example.com/chat"
+        data-chat-link=""
+        onClick={event => event.preventDefault()}
+      >
+        Chat link
+      </a>
     </div>
   )
 }
@@ -73,5 +80,16 @@ describe('useExternalLinkInterceptor', () => {
     await user.click(screen.getByRole('link', { name: 'Email' }))
 
     expect(openSpy).toHaveBeenCalledWith('mailto:test@example.com')
+  })
+
+  it('leaves chat markdown links to their own handler', async () => {
+    const user = userEvent.setup()
+    const openSpy = vi.spyOn(platform, 'openExternal').mockResolvedValue()
+
+    render(<Harness />)
+
+    await user.click(screen.getByRole('link', { name: 'Chat link' }))
+
+    expect(openSpy).not.toHaveBeenCalled()
   })
 })

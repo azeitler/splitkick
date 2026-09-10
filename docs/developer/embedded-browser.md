@@ -37,6 +37,46 @@ To navigate a tab whose webview is alive, use `navigateBrowserTab(tabId, url)`.
 It keeps the URL bar, loading state, watchdog, and error overlay consistent
 with the toolbar.
 
+To open a URL in a given worktree that may not be on screen, use
+`openUrlInWorktreeBrowser(worktreeId, url)`. When that worktree's surface is
+visible it calls `openUrlInEmbeddedBrowser`; otherwise it adds (or activates)
+the tab in that worktree and marks its side pane open, so the page is there
+when the user goes to the worktree.
+
+## Links in chat responses
+
+The markdown renderer sends every link through `MarkdownLink`
+(`src/components/ui/markdown-link.tsx`), which calls `openChatLink()` from
+`src/lib/chat-links.ts`:
+
+| Link                           | Click                        | Cmd/Ctrl-click or ↗ button |
+| ------------------------------ | ---------------------------- | -------------------------- |
+| http(s) URL                    | embedded browser             | system browser             |
+| local HTML file (`isHtmlFile`) | embedded browser (`file://`) | OS default app             |
+| other local file               | file viewer                  | file viewer                |
+
+- In web access (no native webview) web links open a browser tab and local
+  pages open in the file viewer. Without the local backend, local pages also
+  use the file viewer. The ↗ button shows only where the embedded browser is
+  available.
+- When no browser surface exists, the click falls back to the system browser.
+- These anchors carry `data-chat-link`, so `useExternalLinkInterceptor` skips
+  them. Every other anchor in the app still opens in the system browser.
+- `remarkLocalHtmlLinks` (`src/lib/remark-local-html-links.ts`) turns HTML paths
+  in plain text, and inline code that holds exactly one such path, into links.
+  `markdownUrlTransform` keeps `file:` and drive-letter hrefs, which
+  react-markdown would otherwise blank.
+
+## Jean MCP `open_in_browser`
+
+Agents can show a page themselves with the `open_in_browser` tool
+(`jean-core/src/jean_mcp_core.rs`). It takes `url` (http(s) URL, `file://` URL,
+absolute path, or worktree-relative path) and an optional `worktreeId`
+(defaults to the calling session's worktree). Local files must exist; other
+schemes are refused. The tool emits `browser:open-url` with either `url` or
+`path`; `useBrowserEvents` turns a path into a `file://` URL (local backend
+only) and calls `openUrlInWorktreeBrowser`. The tool is rate-limited.
+
 ## Local files
 
 Convert a path with `toFileUrl()` from `src/lib/path-utils.ts`. It encodes each

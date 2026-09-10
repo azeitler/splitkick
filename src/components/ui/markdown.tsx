@@ -18,6 +18,9 @@ import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
 import remend from 'remend'
 import { remarkFixInterruptedLists } from '@/lib/remark-fix-interrupted-lists'
+import { remarkLocalHtmlLinks } from '@/lib/remark-local-html-links'
+import { resolveLocalPath } from '@/lib/chat-links'
+import { MarkdownLink } from '@/components/ui/markdown-link'
 import { escapeMarkdownImageDestinations } from '@/lib/markdown-image-escape'
 import { getFilename } from '@/lib/path-utils'
 import { Copy, Check, Table, ListChecks, ImageOff } from 'lucide-react'
@@ -88,43 +91,6 @@ function extractText(node: ReactNode): string {
 
 const WINDOWS_DRIVE_RE = /^[a-z]:[\\/]/i
 
-/**
- * Resolve a markdown link/image reference to a local filesystem path.
- * Absolute paths (POSIX, Windows drive, file://) are returned decoded;
- * relative paths resolve against the active worktree. Returns null for
- * anchors, other URL schemes, or relative paths without a worktree.
- */
-function resolveLocalPath(ref: string | undefined): string | null {
-  if (!ref || ref.startsWith('#')) return null
-
-  let path = ref
-  if (/^file:/i.test(path)) {
-    path = path.replace(/^file:(\/\/)?/i, '').replace(/^\/(?=[a-z]:)/i, '')
-  } else if (/^[a-z][a-z\d+.-]*:/i.test(path) && !WINDOWS_DRIVE_RE.test(path)) {
-    return null
-  }
-
-  try {
-    path = decodeURIComponent(path)
-  } catch {
-    // Malformed percent-encoding: keep the raw reference.
-  }
-
-  if (path.startsWith('/') || WINDOWS_DRIVE_RE.test(path)) return path
-
-  const rootPath = useChatStore.getState().activeWorktreePath
-  if (!rootPath) return null
-  const separator = rootPath.includes('\\') ? '\\' : '/'
-  return `${rootPath.replace(/[\\/]+$/, '')}${separator}${path.replace(/^[\\/]+/, '')}`
-}
-
-function openLocalFileLink(href: string | undefined): boolean {
-  const path = resolveLocalPath(href)
-  if (!path) return false
-  useUIStore.getState().setViewingFilePath(path)
-  return true
-}
-
 function CodeBlock({ children }: { children: ReactNode }) {
   const [copied, setCopied] = useState(false)
 
@@ -188,16 +154,23 @@ function tableToMarkdown(data: string[][]): string {
 
 /**
  * react-markdown's default transform blanks every scheme except http(s),
- * mailto, irc(s) and xmpp. For image sources also keep inline data images,
- * file:// URLs and Windows drive paths, which MarkdownImage resolves itself.
- * Links and all other URL attributes keep the default filtering.
+ * mailto, irc(s) and xmpp. Image sources and link targets also keep file://
+ * URLs and Windows drive paths, which MarkdownImage and MarkdownLink resolve
+ * themselves; image sources also keep inline data images. All other URL
+ * attributes keep the default filtering.
  */
-const markdownUrlTransform: UrlTransform = (url, key, node) =>
-  key === 'src' &&
-  node.tagName === 'img' &&
-  (/^(data:image\/|file:)/i.test(url) || WINDOWS_DRIVE_RE.test(url))
-    ? url
-    : defaultUrlTransform(url)
+const markdownUrlTransform: UrlTransform = (url, key, node) => {
+  const isImageSrc = key === 'src' && node.tagName === 'img'
+  const isLinkHref = key === 'href' && node.tagName === 'a'
+  if (
+    (isImageSrc || isLinkHref) &&
+    (/^file:/i.test(url) || WINDOWS_DRIVE_RE.test(url))
+  ) {
+    return url
+  }
+  if (isImageSrc && /^data:image\//i.test(url)) return url
+  return defaultUrlTransform(url)
+}
 
 // Sources the webview can load as-is (no local path resolution).
 const DIRECT_IMAGE_SRC_RE = /^(https?:|data:image\/|blob:|asset:|\/api\/)/i
@@ -522,17 +495,7 @@ const components: Components = {
 
   // Links
   a: ({ href, children }) => (
-    <a
-      href={href}
-      onClick={event => {
-        if (openLocalFileLink(href)) event.preventDefault()
-      }}
-      className="underline underline-offset-2 hover:text-foreground"
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      {children}
-    </a>
+    <MarkdownLink href={href}>{children}</MarkdownLink>
   ),
 
   // Lists - generous spacing and indentation
@@ -681,7 +644,12 @@ const compactComponents: Components = {
 // Module-level plugin arrays keep references stable across renders.
 // remarkFixInterruptedLists runs after GFM so task lists are already parsed,
 // then nests orphan sibling ULs under the preceding OL item (issue #200).
-const remarkPlugins = [remarkGfm, remarkFixInterruptedLists]
+// remarkLocalHtmlLinks runs after GFM so web autolinks are already links.
+const remarkPlugins = [
+  remarkGfm,
+  remarkFixInterruptedLists,
+  remarkLocalHtmlLinks,
+]
 // rehype-raw re-parses the full accumulated text as HTML on every render —
 // the dominant per-frame cost while streaming — so streaming mode skips it
 // and only completed (non-streaming) renders apply it.

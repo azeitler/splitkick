@@ -39,6 +39,16 @@ export interface BrowserClosedEvent {
   tabId: string
 }
 
+/**
+ * Jean MCP `open_in_browser`: show a web `url` or a local file `path` (on the
+ * backend's machine) in a worktree's embedded browser. One of the two is set.
+ */
+export interface BrowserOpenUrlEvent {
+  worktreeId: string
+  url?: string
+  path?: string
+}
+
 export interface BrowserGrabContext {
   url: string
   title: string

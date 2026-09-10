@@ -38,6 +38,7 @@ const RATE_LIMITED_TOOLS: &[&str] = &[
     "init_project",
     "merge_pull_request",
     "move_session",
+    "open_in_browser",
     "permanently_delete_worktree",
     "push_worktree",
     "run_review",
@@ -258,6 +259,7 @@ fn tool_registry_session() -> Value {
         {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName. Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
         {"name":"get_run_environments","description":"List Jean Run-command / panel-command dev environments. Returns whether each is running, worktree/base-session identity, startup command, listening/configured ports, and http URL when a port is known. Optional worktreeId or projectId filters. Does not include full-screen CLI session terminals.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Optional worktree id to filter to one worktree or base session."},"projectId":{"type":"string","description":"Optional project id to filter to that project's worktrees."}},"additionalProperties":false}}
         ,{"name":"start_run_environment","description":"Start or reuse a Jean-managed Run environment for a worktree using a run command configured in jean.json. When command is omitted, uses the first configured run command. Returns the environment identity, command, running state, ports, and URL when detected.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Worktree whose configured Run environment should start."},"command":{"type":"string","description":"Optional exact jean.json run command to start. Must be one of the configured run commands."}},"required":["worktreeId"],"additionalProperties":false}}
+        ,{"name":"open_in_browser","description":"Show a web page or local file (HTML report, image, PDF) to the user in Jean's embedded browser, in the worktree's browser pane. Use it after you write an HTML file or start a dev server the user should look at. url accepts an http(s) URL, a file:// URL, an absolute path, or a path relative to the worktree. worktreeId defaults to the calling session's worktree. When that worktree is not on screen, the tab waits in its browser pane. Needs the Jean desktop app; web access clients have no embedded browser.","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"http(s) URL, file:// URL, absolute path, or path relative to the worktree."},"worktreeId":{"type":"string","description":"Optional worktree whose browser pane shows the page. Defaults to the calling session's worktree."}},"required":["url"],"additionalProperties":false}}
     ])
 }
 
@@ -1508,6 +1510,32 @@ async fn run_tool(
                 "environment": environment,
             }))
         }
+        "open_in_browser" => {
+            let raw = require_nonempty_str(&args, "url")?;
+            let worktree_id = match optional_str(&args, "worktreeId") {
+                Some(worktree_id) => worktree_id,
+                None if source == "anon" => {
+                    return Err(ToolError::invalid_params(
+                        "worktreeId is required outside a Jean chat session",
+                    ));
+                }
+                None => resolve_session_worktree(app, source)?.0,
+            };
+            ensure_mcp_worktree_not_archived(app, &worktree_id)?;
+            let worktree_path = resolve_worktree_path(app, &worktree_id)?;
+
+            let (key, value) = match resolve_browser_target(&raw, &worktree_path)? {
+                BrowserTarget::Url(url) => ("url", url),
+                BrowserTarget::File(path) => ("path", path.to_string_lossy().into_owned()),
+            };
+            app.emit_all(
+                "browser:open-url",
+                &json!({ "worktreeId": worktree_id, key: value }),
+            )
+            .map_err(ToolError::internal)?;
+
+            Ok(json!({ "requested": true, "worktreeId": worktree_id, key: value }))
+        }
         "get_current_context" => {
             if source == "anon" {
                 return Err(no_current_context_error(source));
@@ -1597,6 +1625,95 @@ fn optional_str(args: &Value, key: &str) -> Option<String> {
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .map(str::to_string)
+}
+
+/// What `open_in_browser` shows: a web URL, or an existing local file. The
+/// frontend turns a file path into a `file://` URL.
+#[derive(Debug, PartialEq)]
+enum BrowserTarget {
+    Url(String),
+    File(std::path::PathBuf),
+}
+
+/// Resolve the `url` argument of `open_in_browser`. http(s) URLs pass as
+/// they are. `file://` URLs, absolute paths and worktree-relative paths must
+/// name an existing file. Other schemes (`javascript:`, `data:`) are refused.
+fn resolve_browser_target(raw: &str, worktree_path: &str) -> Result<BrowserTarget, ToolError> {
+    let lower = raw.to_ascii_lowercase();
+    if lower.starts_with("http://") || lower.starts_with("https://") {
+        return Ok(BrowserTarget::Url(raw.to_string()));
+    }
+
+    let path = if lower.starts_with("file://") {
+        let rest = &raw["file://".len()..];
+        let rest = rest.strip_prefix("localhost").unwrap_or(rest);
+        let rest = rest.split(['?', '#']).next().unwrap_or(rest);
+        let decoded = percent_decode_path(rest)
+            .ok_or_else(|| ToolError::invalid_params(format!("Invalid file URL: {raw}")))?;
+        // file:///C:/site/index.html names the Windows path C:/site/index.html.
+        let is_drive = decoded.len() > 2
+            && decoded.starts_with('/')
+            && decoded.as_bytes()[1].is_ascii_alphabetic()
+            && decoded.as_bytes()[2] == b':';
+        if is_drive {
+            decoded[1..].to_string()
+        } else {
+            decoded
+        }
+    } else if has_url_scheme(raw) {
+        return Err(ToolError::invalid_params(format!(
+            "Only http(s) URLs, file:// URLs and file paths can open in the browser: {raw}"
+        )));
+    } else {
+        raw.to_string()
+    };
+
+    let path = std::path::PathBuf::from(path);
+    let path = if path.is_absolute() {
+        path
+    } else {
+        std::path::Path::new(worktree_path).join(path)
+    };
+    let path = path
+        .canonicalize()
+        .map_err(|_| ToolError::invalid_params(format!("File not found: {}", path.display())))?;
+    if !path.is_file() {
+        return Err(ToolError::invalid_params(format!(
+            "Not a file: {}",
+            path.display()
+        )));
+    }
+    Ok(BrowserTarget::File(path))
+}
+
+/// A URL scheme has two or more characters, so `C:\site` is a path, not one.
+fn has_url_scheme(value: &str) -> bool {
+    value.split_once(':').is_some_and(|(scheme, _)| {
+        scheme.len() > 1
+            && scheme.starts_with(|c: char| c.is_ascii_alphabetic())
+            && scheme
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '-' | '.'))
+    })
+}
+
+/// Decode `%XX` escapes in a `file://` URL path. None for malformed escapes
+/// or bytes that are not UTF-8.
+fn percent_decode_path(value: &str) -> Option<String> {
+    let bytes = value.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = value.get(i + 1..i + 3)?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
 }
 
 /// Parse the `status` argument of `set_session_status` as a tri-state:
@@ -3025,9 +3142,17 @@ mod tests {
             "move_session",
             "get_run_environments",
             "start_run_environment",
+            "open_in_browser",
         ] {
             assert!(names.contains(expected), "missing MCP tool {expected}");
         }
+
+        let open_in_browser = find_tool(&tools, "open_in_browser");
+        assert_eq!(open_in_browser["inputSchema"]["required"], json!(["url"]));
+        assert!(
+            RATE_LIMITED_TOOLS.contains(&"open_in_browser"),
+            "open_in_browser changes the UI and must be rate-limited"
+        );
 
         for limited in ["archive_session", "unarchive_session", "move_session"] {
             assert!(
@@ -3421,6 +3546,82 @@ mod tests {
         assert!(error.message.contains("Jean-spawned chat sessions"));
         assert!(error.message.contains("list_projects -> list_worktrees"));
         assert!(error.message.contains("get_session_status(sessionId)"));
+    }
+
+    #[test]
+    fn open_in_browser_passes_web_urls_through() {
+        for url in ["https://example.com/a?b=1#c", "HTTP://localhost:5173/"] {
+            assert_eq!(
+                resolve_browser_target(url, "/nowhere").unwrap(),
+                BrowserTarget::Url(url.to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn open_in_browser_resolves_local_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().canonicalize().unwrap();
+        std::fs::create_dir_all(root.join("my site")).unwrap();
+        let page = root.join("my site").join("index.html");
+        std::fs::write(&page, "<p>hi</p>").unwrap();
+        let root_str = root.to_string_lossy().into_owned();
+        let expected = BrowserTarget::File(page.clone());
+
+        // Relative to the worktree, absolute, and as an encoded file:// URL
+        // with a fragment.
+        assert_eq!(
+            resolve_browser_target("my site/index.html", &root_str).unwrap(),
+            expected
+        );
+        assert_eq!(
+            resolve_browser_target(&page.to_string_lossy(), "/nowhere").unwrap(),
+            expected
+        );
+        let file_url = format!("file://{}#top", page.to_string_lossy().replace(' ', "%20"));
+        assert_eq!(
+            resolve_browser_target(&file_url, "/nowhere").unwrap(),
+            expected
+        );
+    }
+
+    #[test]
+    fn open_in_browser_rejects_missing_files_and_other_schemes() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_string_lossy().into_owned();
+
+        let missing = resolve_browser_target("missing.html", &root).unwrap_err();
+        assert!(
+            missing.message.contains("File not found"),
+            "{}",
+            missing.message
+        );
+        let folder = resolve_browser_target(".", &root).unwrap_err();
+        assert!(folder.message.contains("Not a file"), "{}", folder.message);
+
+        for raw in [
+            "javascript:alert(1)",
+            "data:text/html,<p>x</p>",
+            "file:///%zz",
+        ] {
+            assert!(
+                resolve_browser_target(raw, &root).is_err(),
+                "{raw} accepted"
+            );
+        }
+    }
+
+    #[test]
+    fn url_scheme_detection_treats_drive_letters_as_paths() {
+        assert!(has_url_scheme("javascript:alert(1)"));
+        assert!(has_url_scheme("chrome-extension://x"));
+        assert!(!has_url_scheme("C:\\site\\index.html"));
+        assert!(!has_url_scheme("out/report.html"));
+        assert_eq!(
+            percent_decode_path("/a%20b/%C3%A4.html").unwrap(),
+            "/a b/ä.html"
+        );
+        assert!(percent_decode_path("/a%2").is_none());
     }
 
     #[test]
