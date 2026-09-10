@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import { sectionFor, versionsIn } from './changelog-notes.mjs'
+import { sectionFor, summarize, versionsIn } from './changelog-notes.mjs'
 
 const CHANGELOG = `# Changelog
 
@@ -90,4 +90,68 @@ test('the real changelog has a section for the version being released next', () 
     shipped.some(name => name.startsWith(`${version}-z.`)),
     `No CHANGELOG.md section for upstream ${version}; found ${shipped.join(', ')}`
   )
+})
+
+const DETAILED = `Built on Jean 0.1.73.
+
+### Added
+
+- **Chat: links open in the embedded browser.** Click a link in a reply,
+  and Jean shows the page. ([#21](https://github.com/azeitler/jean/issues/21))
+  - Web links open in the embedded browser.
+  - A small button opens the system browser.
+- **Sidebar: a label comes last on its row,** after the activity
+  timestamp.
+
+### Fixed
+
+- **A star always shows.** A star on a new session was saved but never
+  shown.
+`
+
+test('summarize keeps one line per entry under its heading', () => {
+  assert.equal(
+    summarize(DETAILED),
+    [
+      '### Added',
+      '',
+      '- **Chat: links open in the embedded browser.** ([#21](https://github.com/azeitler/jean/issues/21))',
+      '- **Sidebar: a label comes last on its row,** after the activity timestamp.',
+      '',
+      '### Fixed',
+      '',
+      '- **A star always shows.**',
+    ].join('\n')
+  )
+})
+
+test('summarize drops nested details and the preamble', () => {
+  const summary = summarize(DETAILED)
+
+  assert.doesNotMatch(summary, /Built on Jean/)
+  assert.doesNotMatch(summary, /system browser/)
+  // [ \t], not \s: \s also matches the newline before a top-level bullet.
+  assert.doesNotMatch(summary, /^[ \t]+- /m)
+})
+
+test('summarize uses the first sentence when an entry has no bold headline', () => {
+  assert.equal(
+    summarize('### Fixed\n\n- The tab bar is named. It was not before.\n'),
+    '### Fixed\n\n- The tab bar is named.'
+  )
+})
+
+test('every entry of the real release sections becomes one summary line', () => {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+  const markdown = readFileSync(resolve(root, 'CHANGELOG.md'), 'utf8')
+
+  for (const version of versionsIn(markdown).filter(v => v !== 'Unreleased')) {
+    const section = sectionFor(markdown, version)
+    const entries = section.split('\n').filter(line => line.startsWith('- '))
+    const lines = summarize(section)
+      .split('\n')
+      .filter(line => line.startsWith('- '))
+
+    assert.equal(lines.length, entries.length, version)
+  }
 })

@@ -326,9 +326,11 @@ jobs:
             CHANGES="_No change list was available for this build._"
           fi
 
-          COMPARE=""
+          # The notes carry one line per change; the detail stays in
+          # CHANGELOG.md, linked at this tag.
+          LINKS="[Full changelog](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/CHANGELOG.md)"
           if [ -n "$PREVIOUS" ]; then
-            COMPARE="[Compare with $PREVIOUS](https://github.com/${GITHUB_REPOSITORY}/compare/${PREVIOUS}...${TAG})"
+            LINKS="$LINKS · [Compare with $PREVIOUS](https://github.com/${GITHUB_REPOSITORY}/compare/${PREVIOUS}...${TAG})"
           fi
 
           # A heredoc keeps the markdown intact; --notes with an inline string
@@ -336,22 +338,13 @@ jobs:
           cat > release-notes.md <<NOTES
           $CHANGES
 
+          $LINKS
+
           ---
 
-          ### Build
+          Jean $UPSTREAM · commit \`${GITHUB_SHA:0:7}\` · $STATUS · in-app update: $UPDATE
 
-          - Upstream: Jean $UPSTREAM
-          - Commit: \`${GITHUB_SHA:0:7}\`
-          - Signature: $STATUS
-          - In-app update: $UPDATE
-
-          $COMPARE
-
-          ### Install
-
-          Apple Silicon only. Open the DMG and drag JeanZ to Applications. Later builds arrive through the in-app update check.
-
-          JeanZ shares the Jean app-data directory, so projects, sessions and CLI logins carry over. Do not run both apps at the same time.
+          Apple Silicon only. Open the DMG and drag JeanZ to Applications; later builds arrive through the in-app update check. JeanZ shares Jean's app-data directory, so do not run both apps at the same time.
           NOTES
 
           gh release create "$TAG" \
