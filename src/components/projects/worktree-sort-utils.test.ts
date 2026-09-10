@@ -4,12 +4,15 @@ import type { Worktree } from '@/types/projects'
 import {
   LAST_ACTIVE_LABEL_MIN_AGE_MS,
   STALE_ACTIVITY_MS,
+  compareSessionsForSort,
   compareWorktreesForCanvasSort,
+  defaultSessionSortDirection,
   getSessionActivityTimestamp,
   getWorktreeLastActivity,
   isStaleActivity,
   shouldFadeRow,
   shouldShowLastActive,
+  sortSessionGroups,
 } from './worktree-sort-utils'
 
 function worktree(overrides: Partial<Worktree> & { id: string }): Worktree {
@@ -238,5 +241,131 @@ describe('shouldFadeRow', () => {
 
   it('cannot fade live work, whose activity timestamp is the running turn', () => {
     expect(shouldFadeRow(now, false, now)).toBe(false)
+  })
+})
+
+describe('session sort', () => {
+  function named(id: string, name: string, lastMessageAt = 0): Session {
+    return session({ id, name, last_message_at: lastMessageAt })
+  }
+
+  function order(
+    sessions: Session[],
+    mode: 'title' | 'last_activity',
+    direction: 'asc' | 'desc'
+  ): string[] {
+    return [...sessions]
+      .sort((a, b) => compareSessionsForSort(a, b, mode, direction))
+      .map(s => s.name)
+  }
+
+  it('starts activity at newest first and titles at A to Z', () => {
+    expect(defaultSessionSortDirection('last_activity')).toBe('desc')
+    expect(defaultSessionSortDirection('title')).toBe('asc')
+  })
+
+  it('sorts titles case-insensitively', () => {
+    const sessions = [
+      named('a', 'beta'),
+      named('b', 'Alpha'),
+      named('c', 'gamma'),
+    ]
+    expect(order(sessions, 'title', 'asc')).toEqual(['Alpha', 'beta', 'gamma'])
+    expect(order(sessions, 'title', 'desc')).toEqual(['gamma', 'beta', 'Alpha'])
+  })
+
+  // The reason for numeric collation: a plain string compare puts "10" first.
+  it('puts session 2 before session 10', () => {
+    const sessions = [named('a', 'session 10'), named('b', 'session 2')]
+    expect(order(sessions, 'title', 'asc')).toEqual(['session 2', 'session 10'])
+  })
+
+  it('sorts by last activity in both directions', () => {
+    const sessions = [
+      named('a', 'old', 1_000),
+      named('b', 'new', 3_000),
+      named('c', 'mid', 2_000),
+    ]
+    expect(order(sessions, 'last_activity', 'desc')).toEqual([
+      'new',
+      'mid',
+      'old',
+    ])
+    expect(order(sessions, 'last_activity', 'asc')).toEqual([
+      'old',
+      'mid',
+      'new',
+    ])
+  })
+
+  // Older records store seconds, newer ones milliseconds. Unnormalised, a
+  // seconds value would always read as the oldest.
+  it('compares second and millisecond timestamps on one scale', () => {
+    const sessions = [
+      named('a', 'seconds, newer', 2_000_000_000),
+      named('b', 'millis, older', 1_900_000_000_000),
+    ]
+    expect(order(sessions, 'last_activity', 'desc')).toEqual([
+      'seconds, newer',
+      'millis, older',
+    ])
+  })
+
+  it('breaks ties by the other key, then by id, so the order is stable', () => {
+    const sessions = [
+      named('b', 'Same', 5),
+      named('a', 'Same', 5),
+      named('c', 'Same', 9),
+    ]
+    expect(
+      [...sessions]
+        .sort((x, y) => compareSessionsForSort(x, y, 'title', 'asc'))
+        .map(s => s.id)
+    ).toEqual(['c', 'a', 'b'])
+  })
+
+  describe('sortSessionGroups', () => {
+    const groups = [
+      {
+        key: 'inProgress',
+        cards: [
+          { session: named('a', 'zeta', 1) },
+          { session: named('b', 'alpha', 2) },
+        ],
+      },
+      {
+        key: 'idle',
+        cards: [
+          { session: named('c', 'mu', 3) },
+          { session: named('d', 'beta', 4) },
+        ],
+      },
+    ]
+
+    it('leaves the default order exactly as the groups produced it', () => {
+      expect(sortSessionGroups(groups, 'default', 'asc')).toBe(groups)
+    })
+
+    it('sorts inside each group and keeps the groups in place', () => {
+      const sorted = sortSessionGroups(groups, 'title', 'asc')
+
+      expect(sorted.map(group => group.key)).toEqual(['inProgress', 'idle'])
+      expect(sorted[0]?.cards.map(card => card.session.name)).toEqual([
+        'alpha',
+        'zeta',
+      ])
+      expect(sorted[1]?.cards.map(card => card.session.name)).toEqual([
+        'beta',
+        'mu',
+      ])
+    })
+
+    it('does not mutate the groups it was given', () => {
+      sortSessionGroups(groups, 'title', 'asc')
+      expect(groups[0]?.cards.map(card => card.session.name)).toEqual([
+        'zeta',
+        'alpha',
+      ])
+    })
   })
 })

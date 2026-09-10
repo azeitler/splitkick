@@ -265,6 +265,8 @@ export function useUIStatePersistence() {
               session_id: pin.sessionId,
               worktree_id: pin.worktreeId,
             })),
+            session_sort_mode: settings.sessionSortMode,
+            session_sort_direction: settings.sessionSortDirection,
           },
         ])
       ),
@@ -905,6 +907,8 @@ export function useUIStatePersistence() {
                 sessionId: pin.session_id,
                 worktreeId: pin.worktree_id,
               })),
+              sessionSortMode: settings.session_sort_mode,
+              sessionSortDirection: settings.session_sort_direction,
             },
           ])
         )

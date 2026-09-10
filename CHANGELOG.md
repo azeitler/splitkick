@@ -14,6 +14,22 @@ this fork's own and never restarts.
 
 ### Added
 
+- **Sidebar: sort the sessions of a project.** Sessions under a workspace
+  always came back in one fixed order, so a long list could only be scanned.
+  A sort button now sits on the project row, next to "Filter sessions".
+  - **Default** keeps today's order exactly. **Last activity** starts newest
+    first; **Title** starts A → Z, ignores case and compares numbers as numbers,
+    so "session 2" comes before "session 10".
+  - Picking the active mode again flips its direction. The direction is also
+    offered on its own, in words that fit the mode — "Newest first" / "Oldest
+    first", "A → Z" / "Z → A".
+  - The button stays dimmed on the default order and turns full strength with
+    a mode-specific icon otherwise, so a non-default order is never invisible.
+    Its tooltip names the active order.
+  - The sort works inside each status group of each workspace. The groups, the
+    order of the workspaces and the Pinned block are all left as they were.
+  - Each project remembers its own sort across restarts.
+
 - **A Home view collects recent sessions and an activity log.** Jean opened on
   the last thing you had selected, so picking work back up after a break meant
   walking the sidebar project by project to find what had moved.

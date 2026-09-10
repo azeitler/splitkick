@@ -1,12 +1,18 @@
 import {
   isBaseSession,
+  type SessionSortMode,
+  type SortDirection,
   type Worktree,
   type WorktreeSortMode,
 } from '@/types/projects'
 import type { Session } from '@/types/chat'
 import { toMilliseconds } from '@/lib/relative-time'
 
-export type { WorktreeSortMode } from '@/types/projects'
+export type {
+  SessionSortMode,
+  SortDirection,
+  WorktreeSortMode,
+} from '@/types/projects'
 
 export function getSessionActivityTimestamp(session: Session): number {
   return session.last_message_at ?? session.updated_at ?? session.created_at
@@ -128,4 +134,76 @@ export function compareWorktreesForCanvasSort(
   if (sortDiff !== 0) return sortDiff
 
   return b.created_at - a.created_at
+}
+
+/**
+ * The direction a sort mode starts in when it is picked: newest activity
+ * first, titles A to Z. `default` has no direction; `asc` is returned only so
+ * the value is never undefined.
+ */
+export function defaultSessionSortDirection(
+  mode: SessionSortMode
+): SortDirection {
+  return mode === 'last_activity' ? 'desc' : 'asc'
+}
+
+/** Case-insensitive, with numeric runs compared as numbers: "2" before "10". */
+const titleCollator = new Intl.Collator(undefined, {
+  numeric: true,
+  sensitivity: 'base',
+})
+
+function compareTitles(a: Session, b: Session): number {
+  return titleCollator.compare(a.name ?? '', b.name ?? '')
+}
+
+function compareActivity(a: Session, b: Session): number {
+  return (
+    toMilliseconds(getSessionActivityTimestamp(a)) -
+    toMilliseconds(getSessionActivityTimestamp(b))
+  )
+}
+
+/**
+ * Order two sessions by a non-default sort mode.
+ *
+ * Ties fall through to the other key and then to the id, so equal rows keep a
+ * stable order instead of swapping on every render. Timestamps are normalised,
+ * because older records store seconds and newer ones milliseconds.
+ */
+export function compareSessionsForSort(
+  a: Session,
+  b: Session,
+  mode: Exclude<SessionSortMode, 'default'>,
+  direction: SortDirection
+): number {
+  const sign = direction === 'asc' ? 1 : -1
+  const primary = mode === 'title' ? compareTitles(a, b) : compareActivity(a, b)
+  if (primary !== 0) return primary * sign
+
+  const secondary =
+    mode === 'title' ? compareActivity(b, a) : compareTitles(a, b)
+  if (secondary !== 0) return secondary
+
+  return a.id.localeCompare(b.id)
+}
+
+/**
+ * Re-order the cards inside each status group.
+ *
+ * Grouping itself is untouched, and so is the order of the groups. `default`
+ * returns the input as it is, so the order the groups already produce stays
+ * exactly what it was before sorting existed.
+ */
+export function sortSessionGroups<
+  T extends { cards: readonly { session: Session }[] },
+>(groups: T[], mode: SessionSortMode, direction: SortDirection): T[] {
+  if (mode === 'default') return groups
+
+  return groups.map(group => ({
+    ...group,
+    cards: [...group.cards].sort((a, b) =>
+      compareSessionsForSort(a.session, b.session, mode, direction)
+    ),
+  }))
 }

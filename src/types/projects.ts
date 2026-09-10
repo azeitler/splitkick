@@ -8,6 +8,14 @@ export type SessionType = 'worktree' | 'base'
 
 export type WorktreeSortMode = 'created' | 'last_activity' | 'manual'
 
+/**
+ * How the sidebar orders the sessions of each workspace. `default` keeps the
+ * order the status groups already produce.
+ */
+export type SessionSortMode = 'default' | 'last_activity' | 'title'
+
+export type SortDirection = 'asc' | 'desc'
+
 export type WorktreeOrigin = 'manual' | 'auto_fix'
 
 export interface ProjectAutoFixSettings {

@@ -388,3 +388,56 @@ describe('WorktreeItem base session badge', () => {
     expect(screen.queryByTestId('base-session-badge')).toBeNull()
   })
 })
+
+// The project row's sort control orders the rows inside each status group.
+describe('WorktreeItem session sort', () => {
+  const rowNames = () =>
+    ['Charlie', 'alpha', 'session 10', 'session 2']
+      .map(name => ({ name, top: screen.getByText(name) }))
+      .sort((a, b) =>
+        a.top.compareDocumentPosition(b.top) & Node.DOCUMENT_POSITION_FOLLOWING
+          ? -1
+          : 1
+      )
+      .map(entry => entry.name)
+
+  beforeEach(() => {
+    // All idle, so they share one status group and only the sort orders them.
+    mocks.sessions = [
+      session('a', 'Charlie', { created_at: 1, last_message_at: 400 }),
+      session('b', 'alpha', { created_at: 2, last_message_at: 100 }),
+      session('c', 'session 10', { created_at: 3, last_message_at: 300 }),
+      session('d', 'session 2', { created_at: 4, last_message_at: 200 }),
+    ]
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(['wt-1']),
+      projectCanvasSettings: {},
+    })
+  })
+
+  it('keeps the grouped order when the sort is default', () => {
+    renderItem({})
+
+    // The idle group orders by creation, oldest first.
+    expect(rowNames()).toEqual(['Charlie', 'alpha', 'session 10', 'session 2'])
+  })
+
+  it('sorts by title, case-insensitive and numeric', () => {
+    useProjectsStore
+      .getState()
+      .setProjectSessionSort('project-1', 'title', 'asc')
+    renderItem({})
+
+    expect(rowNames()).toEqual(['alpha', 'Charlie', 'session 2', 'session 10'])
+  })
+
+  it('sorts by last activity, newest first', () => {
+    useProjectsStore
+      .getState()
+      .setProjectSessionSort('project-1', 'last_activity', 'desc')
+    renderItem({})
+
+    expect(rowNames()).toEqual(['Charlie', 'session 10', 'session 2', 'alpha'])
+  })
+})

@@ -23,6 +23,8 @@ export interface ProjectCanvasSettingsState {
   pinned_labels?: LabelData[]
   labels?: LabelData[]
   pinned_sessions?: PinnedSessionEntry[]
+  session_sort_mode?: 'default' | 'last_activity' | 'title'
+  session_sort_direction?: 'asc' | 'desc'
 }
 
 export type ModalTerminalDockMode = 'floating' | 'left' | 'right' | 'bottom'

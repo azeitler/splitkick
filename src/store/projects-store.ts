@@ -1,7 +1,11 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
 import type { LabelData } from '@/types/chat'
-import type { WorktreeSortMode } from '@/types/projects'
+import type {
+  SessionSortMode,
+  SortDirection,
+  WorktreeSortMode,
+} from '@/types/projects'
 
 /** A session pinned to a project root. */
 export interface PinnedSessionRef {
@@ -15,6 +19,9 @@ export interface ProjectCanvasSettings {
   labels?: LabelData[]
   /** Sessions pinned to the project root, in pin order. */
   pinnedSessions?: PinnedSessionRef[]
+  /** How the sidebar orders the sessions of each workspace. Unset = default. */
+  sessionSortMode?: SessionSortMode
+  sessionSortDirection?: SortDirection
 }
 
 interface ProjectsUIState {
@@ -130,6 +137,11 @@ interface ProjectsUIState {
     pinnedLabels: LabelData[]
   ) => void
   setProjectCanvasLabels: (projectId: string, labels: LabelData[]) => void
+  setProjectSessionSort: (
+    projectId: string,
+    mode: SessionSortMode,
+    direction: SortDirection
+  ) => void
   pinSessionToProject: (
     projectId: string,
     sessionId: string,
@@ -382,6 +394,34 @@ export const useProjectsStore = create<ProjectsUIState>()(
           },
           undefined,
           'setProjectCanvasLabels'
+        ),
+
+      setProjectSessionSort: (projectId, mode, direction) =>
+        set(
+          state => {
+            const current = state.projectCanvasSettings[projectId]
+            // Guard: an unset mode reads as default, so default-on-unset is a no-op.
+            if (
+              (current?.sessionSortMode ?? 'default') === mode &&
+              (mode === 'default' ||
+                current?.sessionSortDirection === direction)
+            ) {
+              return state
+            }
+
+            return {
+              projectCanvasSettings: {
+                ...state.projectCanvasSettings,
+                [projectId]: {
+                  ...current,
+                  sessionSortMode: mode,
+                  sessionSortDirection: direction,
+                },
+              },
+            }
+          },
+          undefined,
+          'setProjectSessionSort'
         ),
 
       pinSessionToProject: (projectId, sessionId, worktreeId) =>

@@ -997,6 +997,69 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
   })
 
+  it('persists the per-project session sort with snake_case keys', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useProjectsStore
+      .getState()
+      .setProjectSessionSort('project-1', 'title', 'desc')
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          project_canvas_settings: expect.objectContaining({
+            'project-1': expect.objectContaining({
+              session_sort_mode: 'title',
+              session_sort_direction: 'desc',
+            }),
+          }),
+        })
+      )
+    })
+  })
+
+  it('restores the per-project session sort after a reload', async () => {
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({
+        project_canvas_settings: {
+          'project-1': {
+            session_sort_mode: 'last_activity',
+            session_sort_direction: 'asc',
+          },
+        },
+      }),
+      isSuccess: true,
+    })
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      const settings =
+        useProjectsStore.getState().projectCanvasSettings['project-1']
+      expect(settings?.sessionSortMode).toBe('last_activity')
+      expect(settings?.sessionSortDirection).toBe('asc')
+    })
+  })
+
   it('persists pinned sessions with snake_case keys', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {

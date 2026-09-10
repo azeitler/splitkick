@@ -3162,6 +3162,13 @@ pub struct ProjectCanvasSettings {
     /// Sessions pinned to the project root, in pin order.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub pinned_sessions: Vec<PinnedSessionEntry>,
+    /// How the sidebar orders each workspace's sessions: "default",
+    /// "last_activity" or "title". Unset means default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_sort_mode: Option<String>,
+    /// "asc" or "desc". Meaningless while the mode is default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_sort_direction: Option<String>,
 }
 
 impl Default for UIState {
@@ -4735,6 +4742,8 @@ mod project_canvas_settings_tests {
                 session_id: "session-a".to_string(),
                 worktree_id: "worktree-1".to_string(),
             }],
+            session_sort_mode: None,
+            session_sort_direction: None,
         };
 
         let json = serde_json::to_string(&settings).unwrap();
@@ -4763,6 +4772,8 @@ mod project_canvas_settings_tests {
                 pinned: false,
             }],
             pinned_sessions: Vec::new(),
+            session_sort_mode: None,
+            session_sort_direction: None,
         };
 
         let json = serde_json::to_string(&settings).unwrap();
@@ -4799,6 +4810,36 @@ mod project_canvas_settings_tests {
 
         assert_eq!(settings.labels.len(), 1);
         assert_eq!(settings.labels[0].name, "Bug");
+    }
+
+    #[test]
+    fn the_session_sort_survives_a_round_trip() {
+        let settings = ProjectCanvasSettings {
+            session_sort_mode: Some("title".to_string()),
+            session_sort_direction: Some("desc".to_string()),
+            ..ProjectCanvasSettings::default()
+        };
+
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains(r#""session_sort_mode":"title""#));
+        assert!(json.contains(r#""session_sort_direction":"desc""#));
+
+        let parsed: ProjectCanvasSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.session_sort_mode.as_deref(), Some("title"));
+        assert_eq!(parsed.session_sort_direction.as_deref(), Some("desc"));
+    }
+
+    // A project that never touched the sort must not grow two null keys, and a
+    // state file written before the field existed must still load.
+    #[test]
+    fn an_unset_session_sort_is_skipped_and_legacy_files_load() {
+        let json = serde_json::to_string(&ProjectCanvasSettings::default()).unwrap();
+        assert!(!json.contains("session_sort"));
+
+        let legacy: ProjectCanvasSettings =
+            serde_json::from_str(r#"{"worktree_sort_mode":"created"}"#).unwrap();
+        assert!(legacy.session_sort_mode.is_none());
+        assert!(legacy.session_sort_direction.is_none());
     }
 
     #[test]

@@ -11,6 +11,7 @@ import {
 import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import { sidebarRowId } from '@/lib/navigate-to-session'
+import { SessionSortMenu } from './SessionSortMenu'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import type { Project } from '@/types/projects'
 import { isBaseSession } from '@/types/projects'
@@ -484,6 +485,9 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
               <TooltipContent>Filter sessions</TooltipContent>
             </Tooltip>
           )}
+
+          {/* Sort sessions — shown under the same condition as the filter */}
+          {hasWorktrees && <SessionSortMenu projectId={project.id} />}
 
           {/* Settings */}
           <Tooltip>

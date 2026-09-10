@@ -271,6 +271,64 @@ describe('ProjectsStore', () => {
     })
   })
 
+  describe('session sort', () => {
+    const settings = () =>
+      useProjectsStore.getState().projectCanvasSettings['project-1']
+
+    it('stores the mode and direction per project', () => {
+      useProjectsStore
+        .getState()
+        .setProjectSessionSort('project-1', 'title', 'desc')
+
+      expect(settings()?.sessionSortMode).toBe('title')
+      expect(settings()?.sessionSortDirection).toBe('desc')
+      expect(
+        useProjectsStore.getState().projectCanvasSettings['project-2']
+      ).toBeUndefined()
+    })
+
+    it('keeps the other canvas settings of the project', () => {
+      const { pinSessionToProject, setProjectSessionSort } =
+        useProjectsStore.getState()
+      pinSessionToProject('project-1', 'session-a', 'worktree-1')
+
+      setProjectSessionSort('project-1', 'last_activity', 'desc')
+
+      expect(settings()?.pinnedSessions).toHaveLength(1)
+    })
+
+    // An unset mode already reads as default, so writing default must not hand
+    // every subscriber a new settings object.
+    it('treats default on an untouched project as a no-op', () => {
+      const before = useProjectsStore.getState().projectCanvasSettings
+
+      useProjectsStore
+        .getState()
+        .setProjectSessionSort('project-1', 'default', 'asc')
+
+      expect(useProjectsStore.getState().projectCanvasSettings).toBe(before)
+    })
+
+    it('keeps the same reference when nothing changes', () => {
+      const { setProjectSessionSort } = useProjectsStore.getState()
+      setProjectSessionSort('project-1', 'title', 'asc')
+      const before = useProjectsStore.getState().projectCanvasSettings
+
+      setProjectSessionSort('project-1', 'title', 'asc')
+
+      expect(useProjectsStore.getState().projectCanvasSettings).toBe(before)
+    })
+
+    it('records a direction change on the same mode', () => {
+      const { setProjectSessionSort } = useProjectsStore.getState()
+      setProjectSessionSort('project-1', 'title', 'asc')
+
+      setProjectSessionSort('project-1', 'title', 'desc')
+
+      expect(settings()?.sessionSortDirection).toBe('desc')
+    })
+  })
+
   describe('pinned sessions', () => {
     it('pins a session with its worktree id, in pin order', () => {
       const { pinSessionToProject } = useProjectsStore.getState()

@@ -61,10 +61,12 @@ import {
 } from '@/components/chat/session-card-utils'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import {
+  defaultSessionSortDirection,
   getSessionActivityTimestamp,
   getWorktreeLastActivity,
   shouldFadeRow,
   shouldShowLastActive,
+  sortSessionGroups,
 } from './worktree-sort-utils'
 import {
   useGitStatus,
@@ -396,13 +398,39 @@ export function WorktreeItem({
   const isFilterActive = !isSessionFilterEmpty(filterCriteria)
   const showSessions = isExpanded || isFilterActive
 
+  // The project row's sort control orders the sessions inside each status
+  // group. Two scalar selectors, so the row re-renders only when they change.
+  const sessionSortMode = useProjectsStore(
+    state =>
+      state.projectCanvasSettings[projectId]?.sessionSortMode ?? 'default'
+  )
+  const storedSortDirection = useProjectsStore(
+    state => state.projectCanvasSettings[projectId]?.sessionSortDirection
+  )
+  const sessionSortDirection =
+    storedSortDirection ?? defaultSessionSortDirection(sessionSortMode)
+
   const sessionGroups = useMemo(() => {
     if (!showSessions) return []
-    const sessions = filterSessions(sessionsData?.sessions ?? [], filterCriteria)
-    return groupCardsByStatus(
-      sessions.map(s => computeSessionCardData(s, storeState))
+    const sessions = filterSessions(
+      sessionsData?.sessions ?? [],
+      filterCriteria
     )
-  }, [showSessions, filterCriteria, sessionsData?.sessions, storeState])
+    return sortSessionGroups(
+      groupCardsByStatus(
+        sessions.map(s => computeSessionCardData(s, storeState))
+      ),
+      sessionSortMode,
+      sessionSortDirection
+    )
+  }, [
+    showSessions,
+    filterCriteria,
+    sessionsData?.sessions,
+    storeState,
+    sessionSortMode,
+    sessionSortDirection,
+  ])
 
   // Newest interaction across the workspace's sessions, falling back to when
   // the workspace itself was created. Drives both the fade and the "last
