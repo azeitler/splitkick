@@ -7,54 +7,32 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
-### Changed
-
-- **A session that finishes a run is Review, not Completed.** Sessions skipped
-  the review state and landed in Completed on their own, so "Completed" said
-  nothing about whether anyone had looked at the work.
-  - A run that ends cleanly now reports as **Review ready**. `completed` is a
-    manual status only: you pin it from the Set Status menu, or an agent pins it
-    for its own session through the MCP `set_session_status` tool.
-  - The unread bell and the command palette follow the same rule. They read
-    "Review ready" for a finished run and keep the light-blue "Completed" for a
-    pinned one.
-  - A pinned Completed no longer counts toward a worktree's review tally on the
-    project canvas, and no longer pulls the worktree summary back to review. You
-    marked it done, so it is done.
-  - `cancelled`, `crashed` and the live states are untouched.
-
-- **The base session carries a "Base Session" badge everywhere.** A base
-  session is named after the default branch, so the sidebar listed it as an
-  ordinary workspace called `main`, while the project canvas dropped the name
-  and printed `Base Session` in its place. The same session went by two names,
-  and neither surface told you what the other one meant.
-  - Both now show the branch name followed by the same small **Base Session**
-    pill. The sidebar drops the pill below 200px of width, where the row has no
-    room, the way it already drops the last-active time and the labels.
-  - Screen readers keep the wording: the canvas row and its drag handle read
-    "Open main (Base Session)" and "Reorder main (Base Session)".
-
-### Fixed
-
-- **Sidebar: a project row no longer collapses on a click.** Clicking a
-  workspace row left its open/closed state alone — only the chevron changed it
-  — but clicking a project row expanded or collapsed the project. The two row
-  types look the same and sit in the same tree, so the same click gave two
-  different results, and a project collapsed by accident whenever you only
-  meant to click the row.
-  - A click on a project row now opens the project canvas, whether the project
-    has workspaces or not. It was the behavior of an empty project already, and
-    a project that has workspaces had no row to click its way in.
-  - The chevron is the only control for expand and collapse, for projects and
-    for workspaces alike. Double-click to rename and the context menu are
-    unchanged.
-
-## [0.1.73-z.4] - 2026-09-09
+## [0.1.73-z.4] - 2026-09-10
 
 Built on Jean 0.1.73. JeanZ versions carry a `-z.<n>` suffix; the counter is
 this fork's own and never restarts.
 
 ### Added
+
+- **A Home view collects recent sessions and an activity log.** Jean opened on
+  the last thing you had selected, so picking work back up after a break meant
+  walking the sidebar project by project to find what had moved.
+  - **Recent sessions** lists the sessions you touched last, newest first,
+    across every project, with the status dot and the labels each row carries
+    in the sidebar. Click one to open it.
+  - **Recent activity** is a history feed rather than a to-do list: runs that
+    finished, were cancelled or crashed, commits, pull requests opened, merged
+    and closed, and finished AI code reviews. A row that has a URL, such as a
+    pull request, opens it; the rest jump to the session.
+  - The log holds the newest 500 records and is trimmed in place, so it never
+    grows without a bound.
+
+- **An agent can mark its own session complete.** The MCP tool
+  `set_session_status` takes `completed`, so an agent that has finished its work
+  takes the session off Jean's attention list itself, instead of leaving it for
+  you to clear by hand. Omit `sessionId` and it targets the calling session.
+  Live states — running, waiting for input, plan approval, crashed — still win
+  while the session is active; the manual status shows once it goes idle.
 
 - **JeanZ inherits stable Jean's look and client settings on its first start.**
   Jean's own data — projects, sessions, worktrees, preferences, CLI logins —
@@ -132,6 +110,31 @@ this fork's own and never restarts.
 
 ### Changed
 
+- **A session that finishes a run is Review, not Completed.** Sessions skipped
+  the review state and landed in Completed on their own, so "Completed" said
+  nothing about whether anyone had looked at the work.
+  - A run that ends cleanly now reports as **Review ready**. `completed` is a
+    manual status only: you pin it from the Set Status menu, or an agent pins it
+    for its own session through the MCP `set_session_status` tool.
+  - The unread bell and the command palette follow the same rule. They read
+    "Review ready" for a finished run and keep the light-blue "Completed" for a
+    pinned one.
+  - A pinned Completed no longer counts toward a worktree's review tally on the
+    project canvas, and no longer pulls the worktree summary back to review. You
+    marked it done, so it is done.
+  - `cancelled`, `crashed` and the live states are untouched.
+
+- **The base session carries a "Base Session" badge everywhere.** A base
+  session is named after the default branch, so the sidebar listed it as an
+  ordinary workspace called `main`, while the project canvas dropped the name
+  and printed `Base Session` in its place. The same session went by two names,
+  and neither surface told you what the other one meant.
+  - Both now show the branch name followed by the same small **Base Session**
+    pill. The sidebar drops the pill below 200px of width, where the row has no
+    room, the way it already drops the last-active time and the labels.
+  - Screen readers keep the wording: the canvas row and its drag handle read
+    "Open main (Base Session)" and "Reorder main (Base Session)".
+
 - **Session context menu: "Set Status" is now "Status."** The verb added
   nothing next to the neighbouring rows.
 
@@ -173,6 +176,57 @@ this fork's own and never restarts.
   - The canvas variant of the block is untouched.
 
 ### Fixed
+
+- **The development build no longer writes to the installed app's data.** The
+  data directory stopped following the bundle identifier so that JeanZ and
+  stable Jean could share one set of projects, sessions and CLI logins. That
+  swept in `bun run tauri dev`, which had always had its own profile: a debug
+  run read and wrote the real data and raced the installed app over the same
+  unlocked JSON files.
+  - The development identifier is now the one build held apart. Release flavors
+    such as JeanZ still share stable Jean's directory, which is the point.
+  - `JEAN_DATA_DIR` still overrides both, for an isolated profile.
+  - First-start seeding is held apart the same way. The development build had
+    counted as a flavor, so its first launch copied stable Jean's WebView
+    store — which holds the remote-connection list, access tokens included —
+    into its own.
+
+- **The activity feed keeps one row per session instead of one per turn.** A
+  run is one chat turn, not one session, so a long session appended "Session
+  finished" on every turn and pushed the commits, pull requests and reviews the
+  feed exists to show out of the 500-record log within an afternoon.
+  - A session now holds a single row, carrying its latest outcome. A session
+    that finished and was then cancelled reads as cancelled, not both.
+  - Records that share one second are no longer returned oldest-first. A commit
+    and the pull request opened from it are written in the same second, and the
+    feed had shown them in reverse.
+
+- **A server behind TLS is no longer mistaken for an SSO login proxy.** The
+  check treated any redirect that left the origin as a login proxy, and a
+  redirect from `http://host:8080` to `https://host:8080` leaves the origin.
+  A healthy server entered over `http://` was therefore reported as sitting
+  behind a proxy, and — because that verdict blocks saving — could not be added
+  at all.
+  - The host is compared now, not the whole origin. A real login proxy answers
+    from another host, such as `team.cloudflareaccess.com`. A scheme or port
+    change on the same host is an ordinary redirect.
+
+- **Sidebar: a stale row fades after two days, not a week.** The fade is meant
+  to point at work that has gone quiet, and at seven days almost nothing ever
+  reached it.
+
+- **Sidebar: a project row no longer collapses on a click.** Clicking a
+  workspace row left its open/closed state alone — only the chevron changed it
+  — but clicking a project row expanded or collapsed the project. The two row
+  types look the same and sit in the same tree, so the same click gave two
+  different results, and a project collapsed by accident whenever you only
+  meant to click the row.
+  - A click on a project row now opens the project canvas, whether the project
+    has workspaces or not. It was the behavior of an empty project already, and
+    a project that has workspaces had no row to click its way in.
+  - The chevron is the only control for expand and collapse, for projects and
+    for workspaces alike. Double-click to rename and the context menu are
+    unchanged.
 
 - **Context menus: submenu rows now match the rows above and below them.** The
   "Status" and "Labels" rows in the session context menu are submenu triggers,
