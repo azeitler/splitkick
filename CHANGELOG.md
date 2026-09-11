@@ -23,6 +23,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   - In both sections, a filter field that holds text now stays visible, so a
     filter can always be cleared.
 
+### Fixed
+
+- **Chat: relative image and file paths work in a session opened from the
+  project page.** An image such as `![plan](docs/plan.png)` showed as broken,
+  and a link to `docs/notes.md` did not open. The project page clears the
+  active worktree, so Jean had no folder to put before the relative path. The
+  session window now gives its own worktree folder to the images and links in
+  it. ([#19](https://github.com/azeitler/jean/issues/19))
+
 ## [0.1.73-z.6] - 2026-09-10
 
 Built on Jean 0.1.73.

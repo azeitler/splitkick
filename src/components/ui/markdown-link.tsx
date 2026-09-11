@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from 'react'
+import { useContext, type MouseEvent, type ReactNode } from 'react'
 import { ExternalLink } from 'lucide-react'
 import {
   Tooltip,
@@ -8,6 +8,7 @@ import {
 import {
   canOpenInEmbeddedBrowser,
   classifyChatLink,
+  LocalPathRootContext,
   openChatLink,
 } from '@/lib/chat-links'
 
@@ -27,6 +28,7 @@ export function MarkdownLink({
   href?: string
   children: ReactNode
 }) {
+  const rootPath = useContext(LocalPathRootContext)
   const kind = classifyChatLink(href)
   if (!kind) {
     return (
@@ -42,7 +44,9 @@ export function MarkdownLink({
   }
 
   const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (openChatLink(href, { system: event.metaKey || event.ctrlKey })) {
+    if (
+      openChatLink(href, { system: event.metaKey || event.ctrlKey, rootPath })
+    ) {
       event.preventDefault()
     }
   }
@@ -64,7 +68,7 @@ export function MarkdownLink({
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={() => openChatLink(href, { system: true })}
+              onClick={() => openChatLink(href, { system: true, rootPath })}
               aria-label="Open in system browser"
               className="ml-0.5 inline-flex cursor-pointer rounded-sm p-0.5 align-middle text-muted-foreground opacity-60 transition-opacity hover:bg-muted hover:text-foreground hover:opacity-100"
             >

@@ -1,3 +1,4 @@
+import { createContext } from 'react'
 import { toast } from 'sonner'
 import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import { isHtmlFile, toFileUrl } from '@/lib/path-utils'
@@ -27,12 +28,24 @@ function splitSuffix(ref: string): [string, string] {
 }
 
 /**
+ * Worktree path that relative links and images in chat markdown resolve
+ * against. A session opened from the project canvas renders in a modal whose
+ * worktree is not the store's active worktree (the canvas clears it), so the
+ * modal provides its own path here. Null falls back to the active worktree.
+ */
+export const LocalPathRootContext = createContext<string | null>(null)
+
+/**
  * Resolve a markdown link/image reference to a local filesystem path.
  * Absolute paths (POSIX, Windows drive, file://) are returned decoded;
- * relative paths resolve against the active worktree. Returns null for
- * anchors, other URL schemes, or relative paths without a worktree.
+ * relative paths resolve against `rootPath`, or the active worktree when it
+ * is not given. Returns null for anchors, other URL schemes, or relative
+ * paths without a root.
  */
-export function resolveLocalPath(ref: string | undefined): string | null {
+export function resolveLocalPath(
+  ref: string | undefined,
+  rootPath?: string | null
+): string | null {
   if (!ref || ref.startsWith('#')) return null
 
   let path = ref
@@ -50,10 +63,10 @@ export function resolveLocalPath(ref: string | undefined): string | null {
 
   if (path.startsWith('/') || WINDOWS_DRIVE_RE.test(path)) return path
 
-  const rootPath = useChatStore.getState().activeWorktreePath
-  if (!rootPath) return null
-  const separator = rootPath.includes('\\') ? '\\' : '/'
-  return `${rootPath.replace(/[\\/]+$/, '')}${separator}${path.replace(/^[\\/]+/, '')}`
+  const root = rootPath || useChatStore.getState().activeWorktreePath
+  if (!root) return null
+  const separator = root.includes('\\') ? '\\' : '/'
+  return `${root.replace(/[\\/]+$/, '')}${separator}${path.replace(/^[\\/]+/, '')}`
 }
 
 /** Classify a link href without touching any store (safe during render). */
@@ -85,9 +98,12 @@ export function canOpenInEmbeddedBrowser(kind: ChatLinkKind | null): boolean {
 }
 
 /** A local page as `file://` URL, keeping its `?query` / `#fragment`. */
-function resolvePageUrl(href: string): { path: string; url: string } | null {
+function resolvePageUrl(
+  href: string,
+  rootPath: string | null | undefined
+): { path: string; url: string } | null {
   const [ref, suffix] = splitSuffix(href)
-  const path = resolveLocalPath(ref)
+  const path = resolveLocalPath(ref, rootPath)
   return path ? { path, url: `${toFileUrl(path)}${suffix}` } : null
 }
 
@@ -102,14 +118,18 @@ function openPathInSystem(path: string): void {
  * the embedded browser; `system: true` (Cmd/Ctrl-click or the external-link
  * button) opens them in the system browser instead. Other local files open
  * in the file viewer. Where the embedded browser is not available, web links
- * open in the system browser and local pages in the file viewer.
+ * open in the system browser and local pages in the file viewer. Relative
+ * paths resolve against `rootPath` (see `resolveLocalPath`).
  *
  * Returns true when the link was handled (the caller should prevent the
  * default navigation).
  */
 export function openChatLink(
   href: string | undefined,
-  { system = false }: { system?: boolean } = {}
+  {
+    system = false,
+    rootPath,
+  }: { system?: boolean; rootPath?: string | null } = {}
 ): boolean {
   const kind = classifyChatLink(href)
   if (!href || !kind) return false
@@ -129,7 +149,7 @@ export function openChatLink(
   }
 
   if (kind === 'page' && canOpenInEmbeddedBrowser(kind)) {
-    const page = resolvePageUrl(href)
+    const page = resolvePageUrl(href, rootPath)
     if (!page) return false
     if (system) {
       openPathInSystem(page.path)
@@ -141,7 +161,10 @@ export function openChatLink(
     return true
   }
 
-  const path = resolveLocalPath(kind === 'page' ? splitSuffix(href)[0] : href)
+  const path = resolveLocalPath(
+    kind === 'page' ? splitSuffix(href)[0] : href,
+    rootPath
+  )
   if (!path) return false
   useUIStore.getState().setViewingFilePath(path)
   return true

@@ -19,7 +19,7 @@ import remarkGfm from 'remark-gfm'
 import remend from 'remend'
 import { remarkFixInterruptedLists } from '@/lib/remark-fix-interrupted-lists'
 import { remarkLocalHtmlLinks } from '@/lib/remark-local-html-links'
-import { resolveLocalPath } from '@/lib/chat-links'
+import { LocalPathRootContext, resolveLocalPath } from '@/lib/chat-links'
 import { MarkdownLink } from '@/components/ui/markdown-link'
 import { escapeMarkdownImageDestinations } from '@/lib/markdown-image-escape'
 import { getFilename } from '@/lib/path-utils'
@@ -184,8 +184,11 @@ const DIRECT_IMAGE_SRC_RE = /^(https?:|data:image\/|blob:|asset:|\/api\/)/i
  * alt text and opens the file viewer.
  */
 function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
+  const rootPath = useContext(LocalPathRootContext)
   const localPath =
-    src && !DIRECT_IMAGE_SRC_RE.test(src) ? resolveLocalPath(src) : null
+    src && !DIRECT_IMAGE_SRC_RE.test(src)
+      ? resolveLocalPath(src, rootPath)
+      : null
   const [fallbackSrc, setFallbackSrc] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
 

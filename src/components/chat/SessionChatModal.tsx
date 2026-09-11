@@ -72,6 +72,7 @@ import {
 import { isBaseSession } from '@/types/projects'
 import type { Session } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
+import { LocalPathRootContext } from '@/lib/chat-links'
 import { notify } from '@/lib/notifications'
 import { ChatWindow } from './ChatWindow'
 import { ModalTerminalDrawer } from './ModalTerminalDrawer'
@@ -1526,12 +1527,16 @@ export function SessionChatModal({
           <div className="relative min-h-0 flex-1 overflow-hidden">
             {currentSessionId ? (
               <div className="absolute inset-0 z-20 min-h-0 min-w-0">
-                <ChatWindow
-                  key={currentSessionId}
-                  isModal
-                  worktreeId={worktreeId}
-                  worktreePath={worktreePath}
-                />
+                {/* The canvas clears the store's active worktree, so relative
+                    links and images resolve against this modal's worktree. */}
+                <LocalPathRootContext.Provider value={worktreePath || null}>
+                  <ChatWindow
+                    key={currentSessionId}
+                    isModal
+                    worktreeId={worktreeId}
+                    worktreePath={worktreePath}
+                  />
+                </LocalPathRootContext.Provider>
               </div>
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">

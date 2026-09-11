@@ -4,6 +4,7 @@ import { Markdown } from './markdown'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { invoke } from '@/lib/transport'
+import { LocalPathRootContext } from '@/lib/chat-links'
 import type * as Transport from '@/lib/transport'
 
 vi.mock('@/lib/transport', async importOriginal => ({
@@ -21,6 +22,22 @@ describe('Markdown', () => {
 
     expect(useUIStore.getState().viewingFilePath).toBe(
       '/repo/worktree/coolify-sponsors.png'
+    )
+  })
+
+  it('opens relative file links in the provided worktree root', () => {
+    useChatStore.setState({ activeWorktreePath: null })
+    useUIStore.getState().setViewingFilePath(null)
+
+    render(
+      <LocalPathRootContext.Provider value="/repo/modal">
+        <Markdown>{'[notes](docs/notes.md)'}</Markdown>
+      </LocalPathRootContext.Provider>
+    )
+    fireEvent.click(screen.getByRole('link', { name: 'notes' }))
+
+    expect(useUIStore.getState().viewingFilePath).toBe(
+      '/repo/modal/docs/notes.md'
     )
   })
 
@@ -218,6 +235,26 @@ describe('Markdown', () => {
 
       expect(imageSrc('![shot](docs/shot.png)')).toBe(
         `/api/project-files/${encodeURIComponent('/repo/worktree/docs/shot.png')}`
+      )
+    })
+
+    it('resolves relative paths against the session modal worktree', () => {
+      // The project canvas clears the store's active worktree; the session
+      // modal provides its own worktree path instead.
+      useChatStore.setState({ activeWorktreePath: null })
+      const root = '/Users/me/Library/Mobile Documents/com~apple~CloudDocs/Haus'
+      const relative = '07_Ausführung/Technikraum/Datenblätter/nibe-s6.png'
+
+      const { container } = render(
+        <LocalPathRootContext.Provider value={root}>
+          <Markdown>
+            {`![IHB S1156 S. 6 – Installationsfläche](${relative})`}
+          </Markdown>
+        </LocalPathRootContext.Provider>
+      )
+
+      expect(container.querySelector('img')?.getAttribute('src')).toBe(
+        `/api/project-files/${encodeURIComponent(`${root}/${relative}`)}`
       )
     })
 
