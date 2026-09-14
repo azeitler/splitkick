@@ -786,15 +786,6 @@ fn maybe_auto_select_system_cli_preferences(
     changed
 }
 
-fn normalize_parallel_execution_preferences(preferences: &mut AppPreferences) -> bool {
-    if preferences.parallel_execution_prompt_enabled && !preferences.codex_multi_agent_enabled {
-        preferences.codex_multi_agent_enabled = true;
-        return true;
-    }
-
-    false
-}
-
 fn default_codex_model() -> String {
     "gpt-5.6-sol".to_string()
 }
@@ -997,29 +988,17 @@ mod tests {
     }
 
     #[test]
-    fn parallel_prompting_enables_codex_multi_agent_for_existing_preferences() {
-        let mut prefs = AppPreferences {
+    fn parallel_prompting_preserves_explicitly_disabled_codex_multi_agent() {
+        let prefs = AppPreferences {
             parallel_execution_prompt_enabled: true,
             codex_multi_agent_enabled: false,
             ..Default::default()
         };
+        let serialized = serde_json::to_value(prefs).unwrap();
 
-        super::normalize_parallel_execution_preferences(&mut prefs);
+        let loaded: AppPreferences = serde_json::from_value(serialized).unwrap();
 
-        assert!(prefs.codex_multi_agent_enabled);
-    }
-
-    #[test]
-    fn disabled_parallel_prompting_does_not_force_codex_multi_agent() {
-        let mut prefs = AppPreferences {
-            parallel_execution_prompt_enabled: false,
-            codex_multi_agent_enabled: false,
-            ..Default::default()
-        };
-
-        super::normalize_parallel_execution_preferences(&mut prefs);
-
-        assert!(!prefs.codex_multi_agent_enabled);
+        assert!(!loaded.codex_multi_agent_enabled);
     }
 
     #[test]
@@ -3168,7 +3147,6 @@ pub fn load_preferences_sync(app: &AppHandle) -> Result<AppPreferences, String> 
     let mut preferences: AppPreferences = serde_json::from_value(raw_preferences.clone())
         .map_err(|e| format!("Failed to parse preferences: {e}"))?;
     migrate_final_review_preferences(&mut preferences, &raw_preferences);
-    normalize_parallel_execution_preferences(&mut preferences);
     maybe_auto_select_system_cli_preferences(app, &mut preferences, Some(&raw_preferences));
     Ok(preferences)
 }
@@ -3215,8 +3193,6 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
         preferences.selected_model = new_model.to_string();
         needs_resave = true;
     }
-    needs_resave |= normalize_parallel_execution_preferences(&mut preferences);
-
     // Migrate legacy magic-prompt model names ("opus" → "claude-opus-4-8[1m]")
     // and legacy auto-naming models ("haiku" → "sonnet")
     needs_resave |= preferences.magic_prompt_models.migrate_legacy_defaults();
@@ -3286,9 +3262,6 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
 }
 
 async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result<(), String> {
-    let mut preferences = preferences;
-    normalize_parallel_execution_preferences(&mut preferences);
-
     // Validate before this command changes any related persisted state.
     validate_theme(&preferences.theme)?;
 
