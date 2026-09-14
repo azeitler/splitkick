@@ -95,6 +95,14 @@ impl RunLogWriter {
                     metadata.claude_session_id = Some(sid);
                 }
 
+                // A fork's continuation marker is consumed by the first turn that
+                // finishes, not by the first that starts. A cancelled or crashed
+                // first turn leaves it set, so the retry forks again. Clearing it
+                // at the start would drop `--fork-session` while the source's
+                // resume id is still on the session, and the next send would
+                // append the fork's turns to the source transcript.
+                metadata.pending_fork = None;
+
                 Ok(())
             },
         )?;
@@ -475,10 +483,6 @@ pub fn start_run(
             if let Some(ref b) = backend {
                 metadata.backend = b.clone();
             }
-            // A fork's continuation marker is consumed by its first send. Clearing it
-            // here, in the same atomic write that records the run, guarantees the
-            // handoff or `--fork-session` flag fires exactly once.
-            metadata.pending_fork = None;
             metadata.runs.push(run_entry.clone());
             Ok(())
         },
@@ -1590,6 +1594,66 @@ pub fn load_session_messages_window(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::chat::storage::{load_metadata, with_metadata_mut};
+    use crate::chat::types::PendingFork;
+    use crate::runtime::RuntimeContext;
+
+    /// A fork's marker must survive the *start* of its first turn and only go
+    /// when that turn finishes. Cleared at the start, a cancelled first turn
+    /// would lose `--fork-session` while the source's resume id is still on the
+    /// session, and the next send would append to the source transcript.
+    #[test]
+    fn a_pending_fork_survives_a_started_run_and_goes_when_it_completes() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let (session_id, worktree_id, name) = ("session-fork", "worktree-1", "Fork of x");
+
+        with_metadata_mut(&app, session_id, worktree_id, name, 0, |metadata| {
+            metadata.pending_fork = Some(PendingFork::Native);
+            Ok(())
+        })
+        .unwrap();
+
+        let mut writer = start_run(
+            &app,
+            session_id,
+            worktree_id,
+            name,
+            0,
+            "user-1",
+            "go",
+            None,
+            None,
+            None,
+            None,
+            Some(Backend::Claude),
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            load_metadata(&app, session_id)
+                .unwrap()
+                .unwrap()
+                .pending_fork,
+            Some(PendingFork::Native),
+            "the marker must still be there while the turn runs"
+        );
+
+        writer
+            .complete("assistant-1", Some("claude-sid-new"), None)
+            .unwrap();
+
+        assert_eq!(
+            load_metadata(&app, session_id)
+                .unwrap()
+                .unwrap()
+                .pending_fork,
+            None,
+            "a finished turn consumes the marker"
+        );
+    }
 
     fn sample_run() -> RunEntry {
         RunEntry {

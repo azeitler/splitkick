@@ -55,8 +55,11 @@ A message id that matches no run is an error rather than a silent full fork.
 
 A fork shows history the backend has no record of. `PendingFork`, stored on
 `SessionMetadata.pending_fork`, records how the fork's **first send** closes that gap.
-`run_log::start_run` clears it in the same atomic write that records the run, so it
-fires exactly once.
+`run_log::complete` clears it in the same atomic write that records the finished run,
+so it fires exactly once per turn that actually ran. A cancelled or crashed first turn
+keeps it, and the retry forks again — clearing it at the *start* would drop
+`--fork-session` while the source's resume id is still on the session, and the next
+send would append the fork's turns to the source transcript.
 
 `fork_strategy(backend, truncated)` picks between:
 

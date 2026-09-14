@@ -514,7 +514,9 @@ Full details in `docs/developer/session-forking.md`. The parts that bite:
   Put session-copy logic there, not in `projects/commands.rs`.
 - **A fork must regain the backend's context.** Clearing the resume ids is not enough —
   the user sees history the model does not. `SessionMetadata.pending_fork` records which
-  strategy the first send uses, and `run_log::start_run` clears it so it fires once.
+  strategy the first send uses, and `run_log::complete` clears it so it fires
+  once — on the first turn that *finishes*, so a cancelled first turn still
+  forks on retry.
   - Claude, full fork → `PendingFork::Native`: **keep** `claude_session_id` and pass
     `--resume <id> --fork-session`. Claude branches its own transcript.
   - Everything else, and **every truncated fork** → `PendingFork::Handoff`: clear the
