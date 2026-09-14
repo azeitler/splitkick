@@ -100,6 +100,27 @@ a second, four-platform build.
 Every removed platform is commented out in the matrix, not deleted. Restore an
 entry to bring a platform back; all steps are still platform-aware.
 
+## Cutting a release
+
+Write changelog entries under `## [Unreleased]` as you go, then cut them into a
+version right before you push:
+
+```bash
+bun run release:cut          # or --dry-run to see what it would do
+```
+
+`scripts/release-cut.mjs` never takes the version from you. It resolves the
+number the same way CI will, from the tags on `origin`, at the moment of the
+cut, then renames `[Unreleased]` and fixes the link references. It refuses when
+the section is empty, when that version already has a section, and when a CI
+build is already running — that build publishes the number first, so a cut made
+beside it names the wrong release.
+
+That is exactly how z.8 and z.9 lost their notes: the section was written as
+z.8 by hand while a build of an earlier commit was in flight, so the build took
+z.8 and the next push became z.9 with no section of its own. Both releases fell
+back to raw commit subjects.
+
 ## Version numbers
 
 A JeanZ build carries the upstream product version plus this fork's own patch

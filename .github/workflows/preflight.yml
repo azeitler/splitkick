@@ -124,7 +124,7 @@ jobs:
         run: bun run test:jeanz-version
 
       - name: Release notes tests
-        run: bun run test:changelog-notes
+        run: bun run test:changelog-notes && bun run test:release-cut
 
       - name: Web branding tests
         run: bun run test:web-branding

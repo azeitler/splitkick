@@ -57,6 +57,8 @@
     "test:server-ci": "node --test scripts/server-ci-assets.test.mjs",
     "test:jeanz-version": "node --test scripts/jeanz-version.test.mjs",
     "test:changelog-notes": "node --test scripts/changelog-notes.test.mjs",
+    "release:cut": "node scripts/release-cut.mjs",
+    "test:release-cut": "node --test scripts/release-cut.test.mjs",
     "test:web-branding": "node --test scripts/web-branding.test.mjs"
   },
   "dependencies": {
