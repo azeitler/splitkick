@@ -46,8 +46,11 @@ export function sectionFor(markdown, version) {
     .trim()
 }
 
-/** `[#21](https://...)` issue and pull request links inside an entry. */
-const ISSUE_LINK = /\[#\d+\]\([^)\s]+\)/g
+/**
+ * Issue and pull request links inside an entry: `[#21](...)`, and the
+ * qualified form used for another repository, `[azeitler#26](...)`.
+ */
+const ISSUE_LINK = /\[[\w.-]*#\d+\]\([^)\s]+\)/g
 
 /**
  * The one-line form of a changelog entry: its bold headline, or the whole

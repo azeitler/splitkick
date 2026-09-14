@@ -168,3 +168,12 @@ test('summarize ends a headline at a mark followed by a closing quote', () => {
     '### Fixed\n\n- The row says "done."'
   )
 })
+
+test('summarize keeps a qualified issue link from another repository', () => {
+  assert.equal(
+    summarize(
+      '### Added\n\n- **A window per remote.** Switching is a focus.\n  ([azeitler#26](https://github.com/azeitler/jean/issues/26))\n'
+    ),
+    '### Added\n\n- **A window per remote.** ([azeitler#26](https://github.com/azeitler/jean/issues/26))'
+  )
+})
