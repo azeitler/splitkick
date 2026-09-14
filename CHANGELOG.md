@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.8] - 2026-09-14
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **A remote instance now opens in its own window.** Connecting to a remote Jean
@@ -15,7 +19,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   local, each remote gets a window of its own, and switching is a window focus.
   Opening a remote that is already on screen focuses its window. Each window
   remembers its own size and position, and the macOS menu acts on the focused
-  window only. Web Access is unchanged — a browser has one page to work with.
+  window only. A window whose connection you delete closes itself, so it can
+  never fall back to driving the local machine. Web Access is unchanged — a
+  browser has one page to work with.
   ([azeitler#26](https://github.com/azeitler/jean/issues/26))
 
 - **Chat: the right-click menu of a link offers "Open in Default Browser".**
@@ -758,7 +764,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.7...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.8...HEAD
+[0.1.73-z.8]: https://github.com/azeitler/jean/compare/v0.1.73-z.7...v0.1.73-z.8
 [0.1.73-z.7]: https://github.com/azeitler/jean/compare/v0.1.73-z.6...v0.1.73-z.7
 [0.1.73-z.6]: https://github.com/azeitler/jean/compare/v0.1.73-z.5...v0.1.73-z.6
 [0.1.73-z.5]: https://github.com/azeitler/jean/compare/v0.1.73-z.4...v0.1.73-z.5
