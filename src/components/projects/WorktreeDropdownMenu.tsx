@@ -128,7 +128,7 @@ export function WorktreeDropdownMenu({
       Number(favoriteScriptNames.has(b.name)) -
       Number(favoriteScriptNames.has(a.name))
   )
-  const showPackageScripts = !isNativeApp() || isMobile
+  const showPackageScripts = !isNativeApp() && !isMobile
 
   const togglePackageScriptFavorite = (scriptName: string) => {
     const key = `${projectId}:${scriptName}`

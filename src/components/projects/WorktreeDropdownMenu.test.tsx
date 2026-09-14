@@ -197,7 +197,7 @@ describe('WorktreeDropdownMenu', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows scripts on mobile while keeping terminal hidden', async () => {
+  it('hides scripts and terminal from the mobile header menu', async () => {
     const user = userEvent.setup()
     const onToggleTerminal = vi.fn()
     const onToggleBrowser = vi.fn()
@@ -216,7 +216,7 @@ describe('WorktreeDropdownMenu', () => {
 
     await user.click(screen.getByRole('button', { name: 'Actions' }))
     expect(screen.queryByRole('menuitem', { name: 'Terminal' })).toBeNull()
-    expect(screen.getByText('Scripts')).toBeInTheDocument()
+    expect(screen.queryByText('Scripts')).toBeNull()
     await user.click(screen.getByRole('menuitem', { name: 'Browser' }))
     expect(onToggleBrowser).toHaveBeenCalledOnce()
     expect(onToggleTerminal).not.toHaveBeenCalled()
