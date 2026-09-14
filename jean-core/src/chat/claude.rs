@@ -46,9 +46,9 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 - One task per subagent for focused execution\n\
 \n\
 ### 4. Self-Improvement Loop\n\
-- After ANY correction from the user: update '.ai/lessons.md' with the pattern\n\
-- Write rules for yourself that prevent the same mistake\n\
-- Ruthlessly iterate on these lessons until mistake rate drops\n\
+- Only update '.ai/lessons.md' for general, project-wide learning that applies across features\n\
+- Do not add feature-specific, bug-fix-specific, or small/local lessons\n\
+- Remove narrow or specific entries when you detect them\n\
 - Review lessons at session start for relevant project\n\
 - Keep '.ai/lessons.md' concise by merging duplicate rules and removing obsolete entries\n\
 \n\
@@ -79,7 +79,7 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 4. **Track Progress**: Mark items complete as you go\n\
 5. **Explain Changes**: High-level summary at each step\n\
 6. **Document Results**: Add review to '.ai/todo.md'\n\
-7. **Capture Lessons**: Update '.ai/lessons.md' after corrections\n\
+7. **Capture Lessons**: Update '.ai/lessons.md' only for general, project-wide learning; remove narrow entries\n\
 \n\
 ## Core Principles\n\
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.\n\
@@ -2708,9 +2708,13 @@ mod tests {
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains(
             "At the start of a new task, replace '.ai/todo.md' instead of appending to it"
         ));
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains(
-            "Keep '.ai/lessons.md' concise by merging duplicate rules and removing obsolete entries"
-        ));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("Only update '.ai/lessons.md' for general, project-wide learning"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("Do not add feature-specific, bug-fix-specific, or small/local lessons"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("Remove narrow or specific entries when you detect them"));
+        assert!(!DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("After ANY correction from the user"));
     }
 
     #[test]

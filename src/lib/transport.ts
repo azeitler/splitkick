@@ -15,7 +15,10 @@ import {
 } from './environment'
 import { generateId } from './uuid'
 import { isServerWindows } from './platform'
-import { getActiveRemoteConnection } from './remote-connections'
+import {
+  getActiveRemoteConnection,
+  getRemoteConnections,
+} from './remote-connections'
 import { prepareRemoteEditorOpenArgs } from './remote-editor'
 import { warnRemoteVersionMismatch } from './remote-version'
 
@@ -127,6 +130,41 @@ export function convertProjectFileSrc(filePath: string): string {
   const params = token ? `?token=${encodeURIComponent(token)}` : ''
   const base = getActiveRemoteConnection()?.url ?? ''
   return `${base}/api/project-files/${encodeURIComponent(filePath)}${params}`
+}
+
+/** Build an authenticated file URL for a project owned by a specific server. */
+export function convertServerProjectFileSrc(
+  serverId: string | undefined,
+  filePath: string
+): string {
+  if (!serverId || serverId === 'local') return convertProjectFileSrc(filePath)
+
+  const connection = getRemoteConnections().find(item => item.id === serverId)
+  if (!connection) return filePath
+  const base = connection.url.replace(/\/+$/, '')
+  const token = connection.token
+    ? `?token=${encodeURIComponent(connection.token)}`
+    : ''
+  return `${base}/api/project-files/${encodeURIComponent(filePath)}${token}`
+}
+
+/** Build an authenticated app-data file URL for a specific remote server. */
+export function convertServerFileSrc(
+  serverId: string | undefined,
+  filePath: string
+): string {
+  if (!serverId || serverId === 'local') return convertFileSrc(filePath)
+
+  const connection = getRemoteConnections().find(item => item.id === serverId)
+  if (!connection) return filePath
+  const base = connection.url.replace(/\/+$/, '')
+  const token = connection.token
+    ? `?token=${encodeURIComponent(connection.token)}`
+    : ''
+  const encodedPath = /^[/\\]|^[A-Za-z]:[/\\]/.test(filePath)
+    ? encodeURIComponent(filePath)
+    : encodeURI(filePath.replace(/^\/+/, ''))
+  return `${base}/api/files/${encodedPath}${token}`
 }
 
 /** Unlisten function type — compatible with Tauri's UnlistenFn. */
@@ -608,7 +646,7 @@ export class WsTransport {
     if (!this._connectEnabled) return
     // Established connections recover through a full page reload, never a
     // second in-memory WebSocket connection.
-    if (this._hasConnectedOnce && !this._connected) return
+    if (!this.config && this._hasConnectedOnce && !this._connected) return
     if (
       this._connecting ||
       this.ws?.readyState === WebSocket.OPEN ||
@@ -682,7 +720,7 @@ export class WsTransport {
         }
       }
     } catch {
-      if (remote) {
+      if (remote && !this.config) {
         this.setAuthError(
           "Jean could not reach the server's authentication endpoint. Check that the server is running and the URL and port are correct. If the address opens in a browser, update and restart the remote Jean server so it allows desktop connections (CORS)."
         )
@@ -774,7 +812,7 @@ export class WsTransport {
       this.ws = null
 
       this.setConnected(false)
-      if (wasConnected && (this.config || getActiveRemoteConnection())) {
+      if (wasConnected && !this.config && getActiveRemoteConnection()) {
         this.setAuthError('Connection to the selected Jean server was lost.')
       }
 
@@ -795,7 +833,7 @@ export class WsTransport {
       // spawn duplicate CLI processes.
       this.queue = []
 
-      if (!wasConnected && !this._hasConnectedOnce) {
+      if (this.config || (!wasConnected && !this._hasConnectedOnce)) {
         this.scheduleConnectRetry()
       }
     }
@@ -1037,13 +1075,15 @@ export class WsTransport {
   }
 
   private scheduleConnectRetry(): void {
-    if (this.connectRetryTimer || this._hasConnectedOnce) return
+    if (this.connectRetryTimer || (!this.config && this._hasConnectedOnce))
+      return
     // Don't retry if there's an auth error — user needs to fix the token.
     if (this._authError) return
 
     // Exponential backoff while establishing the initial connection.
-    const delay =
-      this.connectRetryAttempt === 0
+    const delay = this.config
+      ? 5_000
+      : this.connectRetryAttempt === 0
         ? 100
         : Math.min(500 * 2 ** (this.connectRetryAttempt - 1), 30_000)
     this.connectRetryAttempt++

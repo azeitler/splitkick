@@ -12,6 +12,7 @@ const {
   setCommandPaletteOpen,
   showToast,
   warnRemoteVersionMismatch,
+  isNativeApp,
 } = vi.hoisted(() => ({
   fetchRemoteServerInfo: vi.fn(async () => ({
     ok: true,
@@ -24,6 +25,7 @@ const {
   setCommandPaletteOpen: vi.fn(),
   showToast: vi.fn(),
   warnRemoteVersionMismatch: vi.fn(() => false),
+  isNativeApp: vi.fn(() => true),
 }))
 
 const remoteConnections = [
@@ -109,6 +111,8 @@ vi.mock('@/lib/remote-version', () => ({
   warnRemoteVersionMismatch,
 }))
 
+vi.mock('@/lib/environment', () => ({ isNativeApp }))
+
 describe('CommandPalette projects', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -118,6 +122,7 @@ describe('CommandPalette projects', () => {
       webBuildId: '0.1.69-test',
     })
     warnRemoteVersionMismatch.mockReturnValue(false)
+    isNativeApp.mockReturnValue(true)
   })
 
   it('does not offer global server switching', () => {
@@ -142,5 +147,14 @@ describe('CommandPalette projects', () => {
     )
     expect(screen.getByText('Open on Local')).toBeInTheDocument()
     expect(screen.getByText('Open on Build server')).toBeInTheDocument()
+  })
+
+  it('does not show a redundant Local server label in Web Access', () => {
+    isNativeApp.mockReturnValue(false)
+
+    render(<CommandPalette />)
+
+    expect(screen.queryByText('Open on Local')).not.toBeInTheDocument()
+    expect(screen.queryByText('Open on Build server')).not.toBeInTheDocument()
   })
 })

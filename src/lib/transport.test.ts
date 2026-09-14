@@ -102,6 +102,7 @@ async function loadRemoteNativeTransportModule(
         url: 'https://jean.example.com',
         token: 'secret',
       },
+    getRemoteConnections: () => (remote ? [remote] : []),
   }))
   if (tauriInvoke) {
     vi.doMock('@tauri-apps/api/core', () => ({ invoke: tauriInvoke }))
@@ -602,6 +603,59 @@ describe('transport bootstrap', () => {
     await flushAsync()
 
     expect(MockWebSocket.instances).toHaveLength(1)
+  })
+
+  it('reconnects a parallel remote adapter five seconds after disconnect', async () => {
+    vi.useFakeTimers()
+    const transport = await loadTransportModule()
+    const adapter = new transport.WsTransport({
+      serverId: 'remote-1',
+      baseUrl: 'https://jean.example.com',
+      getToken: () => 'secret',
+      syncGlobalState: false,
+    })
+
+    adapter.enableConnect()
+    await flushAsync()
+    getWs(0).close()
+
+    await vi.advanceTimersByTimeAsync(4_999)
+    expect(MockWebSocket.instances).toHaveLength(1)
+
+    await vi.advanceTimersByTimeAsync(1)
+    await flushAsync()
+    expect(MockWebSocket.instances).toHaveLength(2)
+  })
+
+  it('builds authenticated project-file URLs for a remote server avatar', async () => {
+    const transport = await loadRemoteNativeTransportModule({
+      id: 'remote-1',
+      name: 'Build server',
+      url: 'https://jean.example.com/',
+      token: 'secret token',
+    })
+
+    expect(
+      transport.convertServerProjectFileSrc(
+        'remote-1',
+        '/home/jean/project/icon.png'
+      )
+    ).toBe(
+      'https://jean.example.com/api/project-files/%2Fhome%2Fjean%2Fproject%2Ficon.png?token=secret%20token'
+    )
+    expect(
+      transport.convertServerFileSrc('remote-1', 'project-avatars/icon.png')
+    ).toBe(
+      'https://jean.example.com/api/files/project-avatars/icon.png?token=secret%20token'
+    )
+    expect(
+      transport.convertServerFileSrc(
+        'remote-1',
+        '/home/jean/.local/share/com.jean.desktop/pasted-images/image.png'
+      )
+    ).toBe(
+      'https://jean.example.com/api/files/%2Fhome%2Fjean%2F.local%2Fshare%2Fcom.jean.desktop%2Fpasted-images%2Fimage.png?token=secret%20token'
+    )
   })
 
   it('notifies established disconnect listeners synchronously', async () => {

@@ -980,8 +980,10 @@ async fn file_handler(
         }
     };
 
-    // Build requested path and canonicalize
-    let requested = app_data_dir.join(&filepath);
+    // Axum wildcard captures include a leading slash. Treat ordinary wildcard
+    // values as app-data-relative, while accepting persisted absolute paths
+    // only when they already point inside this app-data directory.
+    let requested = resolve_app_data_file_path(&app_data_dir, &filepath);
     let canonical = match requested.canonicalize() {
         Ok(p) => p,
         Err(_) => return (StatusCode::NOT_FOUND, "File not found").into_response(),
@@ -1013,6 +1015,18 @@ async fn file_handler(
             .unwrap()
             .into_response(),
         Err(_) => (StatusCode::NOT_FOUND, "Cannot read file").into_response(),
+    }
+}
+
+fn resolve_app_data_file_path(
+    app_data_dir: &std::path::Path,
+    filepath: &str,
+) -> std::path::PathBuf {
+    let candidate = std::path::Path::new(filepath);
+    if candidate.starts_with(app_data_dir) {
+        candidate.to_path_buf()
+    } else {
+        app_data_dir.join(filepath.trim_start_matches(['/', '\\']))
     }
 }
 
@@ -1746,5 +1760,22 @@ mod tests {
             &canonical_sibling,
             &[canonical_root]
         ));
+    }
+
+    #[test]
+    fn app_data_file_path_handles_axum_wildcards_and_persisted_absolute_paths() {
+        let base = std::path::Path::new("/tmp/com.jean.desktop");
+
+        assert_eq!(
+            super::resolve_app_data_file_path(base, "/pasted-images/image.png"),
+            base.join("pasted-images/image.png")
+        );
+        assert_eq!(
+            super::resolve_app_data_file_path(
+                base,
+                "/tmp/com.jean.desktop/pasted-images/image.png"
+            ),
+            base.join("pasted-images/image.png")
+        );
     }
 }

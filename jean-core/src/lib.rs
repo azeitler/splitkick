@@ -980,9 +980,11 @@ mod tests {
         assert!(prompt.contains(
             "At the start of a new task, replace '.ai/todo.md' instead of appending to it"
         ));
-        assert!(prompt.contains(
-            "Keep '.ai/lessons.md' concise by merging duplicate rules and removing obsolete entries"
-        ));
+        assert!(prompt.contains("Only update '.ai/lessons.md' for general, project-wide learning"));
+        assert!(prompt
+            .contains("Do not add feature-specific, bug-fix-specific, or small/local lessons"));
+        assert!(prompt.contains("Remove narrow or specific entries when you detect them"));
+        assert!(!prompt.contains("After ANY correction from the user"));
     }
 
     #[test]
@@ -2165,9 +2167,9 @@ fn default_global_system_prompt() -> String {
 - One task per subagent for focused execution
 
 ### 4. Self-Improvement Loop
-- After ANY correction from the user: update '.ai/lessons.md' with the pattern
-- Write rules for yourself that prevent the same mistake
-- Ruthlessly iterate on these lessons until mistake rate drops
+- Only update '.ai/lessons.md' for general, project-wide learning that applies across features
+- Do not add feature-specific, bug-fix-specific, or small/local lessons
+- Remove narrow or specific entries when you detect them
 - Review lessons at session start for relevant project
 - Keep '.ai/lessons.md' concise by merging duplicate rules and removing obsolete entries
 
@@ -2198,7 +2200,7 @@ fn default_global_system_prompt() -> String {
 4. **Track Progress**: Mark items complete as you go
 5. **Explain Changes**: High-level summary at each step
 6. **Document Results**: Add review to '.ai/todo.md'
-7. **Capture Lessons**: Update '.ai/lessons.md' after corrections
+7. **Capture Lessons**: Update '.ai/lessons.md' only for general, project-wide learning; remove narrow entries
 
 ## Core Principles
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.

@@ -5,9 +5,15 @@ import { usePreferences } from '@/services/preferences'
 import { useProjects, useAppDataDir } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
+import {
+  convertFileSrc,
+  convertProjectFileSrc,
+  convertServerFileSrc,
+  convertServerProjectFileSrc,
+} from '@/lib/transport'
 import { getAllCommands, executeCommand } from '@/lib/commands'
 import { formatShortcutDisplay } from '@/types/keybindings'
+import { isNativeApp } from '@/lib/environment'
 import {
   CommandDialog,
   CommandInput,
@@ -31,6 +37,7 @@ interface ProjectCommand {
 }
 
 export function CommandPalette() {
+  const native = isNativeApp()
   const { commandPaletteOpen, setCommandPaletteOpen } = useUIStore()
   const { data: preferences } = usePreferences()
   const commandContext = useCommandContext(preferences)
@@ -59,14 +66,24 @@ export function CommandPalette() {
       .map(project => ({
         id: `goto-project-${project.id}`,
         label: project.name,
-        description: `Open on ${project.serverName ?? 'Local'}`,
+        description: native
+          ? `Open on ${project.serverName ?? 'Local'}`
+          : undefined,
         serverName: project.serverName ?? 'Local',
-        avatarUrl:
-          !project.serverId && project.avatar_path && appDataDir
-            ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
-            : project.default_avatar_path
-              ? convertProjectFileSrc(project.default_avatar_path)
-              : null,
+        avatarUrl: project.avatar_path
+          ? project.serverId
+            ? convertServerFileSrc(project.serverId, project.avatar_path)
+            : appDataDir
+              ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
+              : null
+          : project.default_avatar_path
+            ? project.serverId
+              ? convertServerProjectFileSrc(
+                  project.serverId,
+                  project.default_avatar_path
+                )
+              : convertProjectFileSrc(project.default_avatar_path)
+            : null,
         avatarFallback: project.name[0]?.toUpperCase() ?? '?',
         group: 'projects',
         keywords: [
@@ -81,7 +98,7 @@ export function CommandPalette() {
           useProjectsStore.getState().selectProject(project.id)
         },
       }))
-  }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId])
+  }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId, native])
 
   // Get all available commands (memoized to prevent re-filtering on every render)
   const commandGroups = useMemo(() => {

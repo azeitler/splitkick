@@ -7,7 +7,12 @@ import {
   MoreHorizontal,
   Plus,
 } from 'lucide-react'
-import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
+import {
+  convertFileSrc,
+  convertProjectFileSrc,
+  convertServerFileSrc,
+  convertServerProjectFileSrc,
+} from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import type { Project } from '@/types/projects'
@@ -93,10 +98,19 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
 
   // Build avatar URL from relative path
   const avatarUrl =
-    !project.serverId && project.avatar_path && appDataDir && !imgError
-      ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
+    project.avatar_path && !imgError
+      ? project.serverId
+        ? convertServerFileSrc(project.serverId, project.avatar_path)
+        : appDataDir
+          ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
+          : null
       : project.default_avatar_path && !imgError
-        ? convertProjectFileSrc(project.default_avatar_path)
+        ? project.serverId
+          ? convertServerProjectFileSrc(
+              project.serverId,
+              project.default_avatar_path
+            )
+          : convertProjectFileSrc(project.default_avatar_path)
         : null
 
   // Fetch git status for all worktrees when project is expanded
@@ -258,7 +272,12 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
       pickRemoteOrRun(async remote => {
         const opToast = dismissibleToast.loading('Pushing changes...')
         try {
-          const result = await gitPush(project.path, undefined, remote, project.id)
+          const result = await gitPush(
+            project.path,
+            undefined,
+            remote,
+            project.id
+          )
           fetchWorktreesStatus(project.id)
           if (result.permissionDenied) {
             opToast.error('Push failed', {
@@ -353,11 +372,6 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
           ) : (
             <span className="flex flex-1 items-center gap-0.5 truncate text-sm">
               <span className="truncate">{project.name}</span>
-              {project.serverName && (
-                <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">
-                  {project.serverName}
-                </span>
-              )}
               {isOffline && (
                 <span className="shrink-0 rounded bg-amber-500/10 px-1 py-0.5 text-[10px] text-amber-600 dark:text-amber-400">
                   Offline

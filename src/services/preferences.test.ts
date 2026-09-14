@@ -256,7 +256,16 @@ describe('model option helpers', () => {
       "At the start of a new task, replace '.ai/todo.md' instead of appending to it"
     )
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      "Keep '.ai/lessons.md' concise by merging duplicate rules and removing obsolete entries"
+      "Only update '.ai/lessons.md' for general, project-wide learning"
+    )
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+      'Do not add feature-specific, bug-fix-specific, or small/local lessons'
+    )
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+      'Remove narrow or specific entries when you detect them'
+    )
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).not.toContain(
+      'After ANY correction from the user'
     )
   })
 

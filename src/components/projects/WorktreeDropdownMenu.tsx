@@ -13,6 +13,7 @@ import {
   Plus,
   Settings,
   ShieldAlert,
+  Star,
   Terminal,
   Trash2,
   X,
@@ -50,7 +51,13 @@ import {
   useRepositoryAdvisories,
   useWorkflowRuns,
 } from '@/services/github'
-import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
+import {
+  canOpenInEditor,
+  canOpenNativeApps,
+  isNativeApp,
+} from '@/lib/environment'
+import { cn } from '@/lib/utils'
+import { usePatchPreferences } from '@/services/preferences'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -108,6 +115,29 @@ export function WorktreeDropdownMenu({
     handleDelete,
   } = useWorktreeMenuActions({ worktree, projectId })
   const isMobile = useIsMobile()
+  const patchPreferences = usePatchPreferences()
+  const favoriteKeys = preferences?.favorite_package_scripts ?? []
+  const favoritePrefix = `${projectId}:`
+  const favoriteScriptNames = new Set(
+    favoriteKeys.flatMap(key =>
+      key.startsWith(favoritePrefix) ? [key.slice(favoritePrefix.length)] : []
+    )
+  )
+  const sortedPackageScripts = [...packageScripts].sort(
+    (a, b) =>
+      Number(favoriteScriptNames.has(b.name)) -
+      Number(favoriteScriptNames.has(a.name))
+  )
+  const showPackageScripts = !isNativeApp() || isMobile
+
+  const togglePackageScriptFavorite = (scriptName: string) => {
+    const key = `${projectId}:${scriptName}`
+    patchPreferences.mutate({
+      favorite_package_scripts: favoriteKeys.includes(key)
+        ? favoriteKeys.filter(favorite => favorite !== key)
+        : [...favoriteKeys, key],
+    })
+  }
   // On native desktop the auth query runs in App.tsx; on web/mobile access it doesn't.
   // Trigger it here on mobile so counts populate without depending on cache.
   useGhCliAuth({ enabled: isMobile })
@@ -249,25 +279,55 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {!isMobile && packageScripts.length > 0 && onRunPackageScript && (
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <Play className="mr-4 h-4 w-4" />
-                Scripts
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent>
-                {packageScripts.map(script => (
-                  <DropdownMenuItem
-                    key={script.name}
-                    onSelect={() => onRunPackageScript(script)}
-                    className="font-mono text-xs"
-                  >
-                    {script.name}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          )}
+          {showPackageScripts &&
+            packageScripts.length > 0 &&
+            onRunPackageScript && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Play className="mr-4 h-4 w-4" />
+                  Scripts
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="max-h-72 min-w-48 overflow-y-auto">
+                  {sortedPackageScripts.map(script => (
+                    <DropdownMenuItem
+                      key={script.name}
+                      onSelect={() => onRunPackageScript(script)}
+                    >
+                      <Play className="h-3.5 w-3.5" />
+                      <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                        {script.name}
+                      </span>
+                      <button
+                        type="button"
+                        className="-my-1 -mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        aria-label={`${favoriteScriptNames.has(script.name) ? 'Unfavorite' : 'Favorite'} ${script.name}`}
+                        aria-pressed={favoriteScriptNames.has(script.name)}
+                        onPointerDown={event => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          togglePackageScriptFavorite(script.name)
+                        }}
+                        onClick={event => {
+                          event.preventDefault()
+                          event.stopPropagation()
+                          if (event.detail === 0) {
+                            togglePackageScriptFavorite(script.name)
+                          }
+                        }}
+                      >
+                        <Star
+                          className={cn(
+                            'h-3.5 w-3.5',
+                            favoriteScriptNames.has(script.name) &&
+                              'fill-yellow-500 text-yellow-500'
+                          )}
+                        />
+                      </button>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            )}
 
           <DropdownMenuItem
             onClick={() =>

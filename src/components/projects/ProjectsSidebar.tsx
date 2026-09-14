@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Plus, Folder, Archive, Briefcase, AlertTriangle } from 'lucide-react'
+import {
+  Plus,
+  Folder,
+  Archive,
+  Briefcase,
+  AlertTriangle,
+  Server,
+} from 'lucide-react'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
   DropdownMenu,
@@ -7,6 +14,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { useProjects, useCreateFolder } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -74,35 +88,37 @@ export function ProjectsSidebar() {
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         {showServerFilter && (
-          <div className="px-2 pb-1 pt-2">
-            <label className="sr-only" htmlFor="project-server-filter">
-              Filter projects by server
-            </label>
-            <select
-              id="project-server-filter"
-              value={serverFilter}
-              onChange={event => setServerFilter(event.target.value)}
-              className="h-7 w-full rounded-md border border-border bg-background px-2 text-xs text-muted-foreground"
-            >
-              <option value={ALL_SERVERS}>All servers</option>
-              {[...new Set(projects.map(projectServerId))].map(serverId => {
-                const snapshot = serverSnapshots.get(serverId)
-                const fallback = projects.find(
-                  project => projectServerId(project) === serverId
-                )?.serverName
-                const status = snapshot?.status
-                const statusLabel =
-                  status && status !== 'local' && status !== 'online'
-                    ? ` (${status})`
-                    : ''
-                return (
-                  <option key={serverId} value={serverId}>
-                    {snapshot?.name ?? fallback ?? 'Local'}
-                    {statusLabel}
-                  </option>
-                )
-              })}
-            </select>
+          <div className="px-3 pb-1 pt-2">
+            <Select value={serverFilter} onValueChange={setServerFilter}>
+              <SelectTrigger
+                size="sm"
+                aria-label="Filter projects by server"
+                className="w-full rounded-lg border-border/50 bg-muted/50 px-2 text-xs text-muted-foreground shadow-none hover:bg-muted/80 hover:text-foreground"
+              >
+                <Server className="size-3.5" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent align="start">
+                <SelectItem value={ALL_SERVERS}>All servers</SelectItem>
+                {[...new Set(projects.map(projectServerId))].map(serverId => {
+                  const snapshot = serverSnapshots.get(serverId)
+                  const fallback = projects.find(
+                    project => projectServerId(project) === serverId
+                  )?.serverName
+                  const status = snapshot?.status
+                  const statusLabel =
+                    status && status !== 'local' && status !== 'online'
+                      ? ` (${status})`
+                      : ''
+                  return (
+                    <SelectItem key={serverId} value={serverId}>
+                      {snapshot?.name ?? fallback ?? 'Local'}
+                      {statusLabel}
+                    </SelectItem>
+                  )
+                })}
+              </SelectContent>
+            </Select>
           </div>
         )}
         {isLoading ? (
@@ -142,7 +158,10 @@ export function ProjectsSidebar() {
             </span>
           </div>
         ) : (
-          <ProjectTree projects={visibleProjects} />
+          <ProjectTree
+            projects={visibleProjects}
+            groupByServer={showServerFilter && serverFilter === ALL_SERVERS}
+          />
         )}
       </div>
 
