@@ -53,18 +53,15 @@ import {
   resolveBackendCliPath,
 } from '@/services/cli-binary'
 import type { StoredReviewResults, Worktree } from '@/types/projects'
-import { preserveQueryCacheOnError } from '@/lib/query-error'
+import {
+  isWsDisconnectError,
+  preserveQueryCacheOnError,
+} from '@/lib/query-error'
 
 /** Default number of recent runs loaded on initial session fetch. */
 export const INITIAL_RUN_LIMIT = 25
 /** Number of older runs to load per scroll-up batch. */
 export const OLDER_RUN_BATCH = 25
-
-/** Check if an error is from a WebSocket disconnect (suppress toasts before reload). */
-function isWsDisconnectError(error: unknown): boolean {
-  const msg = error instanceof Error ? error.message : String(error)
-  return msg.includes('WebSocket disconnected')
-}
 
 export function cleanupSessionTerminalForRemovedSession(
   worktreeId: string,

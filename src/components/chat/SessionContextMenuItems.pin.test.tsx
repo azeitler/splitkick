@@ -1,9 +1,10 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
+import { useUIStore } from '@/store/ui-store'
 import { queryClient } from '@/lib/query-client'
 import type { Session } from '@/types/chat'
 import { SessionContextMenuItems } from './SessionContextMenuItems'
@@ -58,6 +59,8 @@ describe('SessionContextMenuItems — pin to project', () => {
   beforeEach(() => {
     useProjectsStore.setState({ projectCanvasSettings: {} })
     useChatStore.setState({ sessionLabels: {} })
+    // Not hydrated: the toggles skip the immediate save, as on first paint.
+    useUIStore.setState({ uiStateInitialized: false })
   })
 
   it('pins the session to the project with its worktree id', async () => {
@@ -66,10 +69,12 @@ describe('SessionContextMenuItems — pin to project', () => {
 
     await user.click(await screen.findByText('Pin to Project'))
 
-    expect(
-      useProjectsStore.getState().projectCanvasSettings['project-1']
-        ?.pinnedSessions
-    ).toEqual([{ sessionId: 'session-a', worktreeId: 'worktree-1' }])
+    await waitFor(() =>
+      expect(
+        useProjectsStore.getState().projectCanvasSettings['project-1']
+          ?.pinnedSessions
+      ).toEqual([{ sessionId: 'session-a', worktreeId: 'worktree-1' }])
+    )
   })
 
   it('offers unpin once the session is pinned, and unpins it', async () => {
@@ -83,10 +88,12 @@ describe('SessionContextMenuItems — pin to project', () => {
     expect(screen.queryByText('Pin to Project')).not.toBeInTheDocument()
     await user.click(await screen.findByText('Unpin from Project'))
 
-    expect(
-      useProjectsStore.getState().projectCanvasSettings['project-1']
-        ?.pinnedSessions
-    ).toEqual([])
+    await waitFor(() =>
+      expect(
+        useProjectsStore.getState().projectCanvasSettings['project-1']
+          ?.pinnedSessions
+      ).toEqual([])
+    )
   })
 
   it('hides the pin item on surfaces without a project', async () => {
@@ -109,6 +116,7 @@ describe('SessionContextMenuItems — star', () => {
       starredSessions: [],
     })
     useChatStore.setState({ sessionLabels: {} })
+    useUIStore.setState({ uiStateInitialized: false })
     vi.restoreAllMocks()
   })
 
@@ -119,13 +127,15 @@ describe('SessionContextMenuItems — star', () => {
 
     await user.click(await screen.findByRole('menuitem', { name: 'Star' }))
 
-    expect(useProjectsStore.getState().starredSessions).toEqual([
-      {
-        projectId: 'project-1',
-        worktreeId: 'worktree-1',
-        sessionId: 'session-a',
-      },
-    ])
+    await waitFor(() =>
+      expect(useProjectsStore.getState().starredSessions).toEqual([
+        {
+          projectId: 'project-1',
+          worktreeId: 'worktree-1',
+          sessionId: 'session-a',
+        },
+      ])
+    )
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['all-sessions'] })
   })
 
@@ -145,7 +155,9 @@ describe('SessionContextMenuItems — star', () => {
 
     await user.click(await screen.findByRole('menuitem', { name: 'Unstar' }))
 
-    expect(useProjectsStore.getState().starredSessions).toEqual([])
+    await waitFor(() =>
+      expect(useProjectsStore.getState().starredSessions).toEqual([])
+    )
     expect(invalidate).not.toHaveBeenCalled()
   })
 })

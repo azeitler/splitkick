@@ -56,6 +56,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A failed pin or star now says so.** Pinning or starring a session changed
+  the screen and nothing else: the write to disk happened 500 ms later, and a
+  failure only reached the log. The pin looked correct until the next start,
+  when it was gone. This could happen on a disk error, and over Web Access when
+  the connection dropped mid-write.
+  ([#25](https://github.com/azeitler/jean/issues/25))
+  - A pin, unpin, star or unstar now waits for its own write. If the write
+    fails, the value goes back to what is on disk and an error toast names the
+    action, with the reason under it.
+  - A dropped Web Access connection reverts without a toast, because the client
+    reloads from disk anyway.
+  - Every other piece of UI state — sidebar width, expanded rows, drafts —
+    still saves quietly in the background, as before.
+
 - **JeanZ shows its own icon and its own name in the browser tab.** The flavor
   overlay renames the window and swaps the Dock icon, but it cannot reach the
   frontend: Vite builds `index.html` and copies `public/` before Tauri runs. A

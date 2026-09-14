@@ -109,10 +109,19 @@ Session-specific UI state (e.g., answered questions, fixed review findings) must
 
 1. **Add fields to** `src/types/ui-state.ts` (TypeScript interface, use `snake_case`)
 2. **Add fields to** `src-tauri/src/lib.rs` (Rust `UIState` struct with `#[serde(default)]`)
-3. **Update** `src/hooks/useUIStatePersistence.ts`:
-   - Extract state in `getCurrentUIState()` (map camelCase store → snake_case UIState, convert Sets to arrays)
-   - Restore state in initialization effect (map snake_case UIState → camelCase store, convert arrays back to Sets)
+3. **Update** `src/lib/ui-state-snapshot.ts` and `src/hooks/useUIStatePersistence.ts`:
+   - Extract state in `getCurrentUIState()` in `src/lib/ui-state-snapshot.ts` (map camelCase store → snake_case UIState, convert Sets to arrays)
+   - Restore state in the hook's initialization effect (map snake_case UIState → camelCase store, convert arrays back to Sets)
    - Track changes in subscription effect to trigger saves
+
+**Saves are silent by default.** The hook's debounced save (500 ms) writes the
+whole blob and only logs on failure — correct for layout noise (sidebar size,
+expanded rows). A user action that must be confirmed (pin, star) instead awaits
+`flushUIState()` from `src/lib/ui-state-flush.ts`, then reverts its own store
+change and toasts on failure. See `src/components/chat/session-pin-actions.ts`.
+Writes there are serialized, snapshot at write time, and skipped before
+hydration (`useUIStore.uiStateInitialized`) — writing default stores would
+erase the persisted blob.
 
 **Key insight**: The `hasFollowUpMessage` check in `ChatWindow.tsx` (checks if a user message follows an assistant message) is meant as a fallback but may have timing issues with TanStack Query. Persisting state directly provides reliable rendering.
 

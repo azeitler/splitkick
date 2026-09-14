@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
+import { queryClient } from '@/lib/query-client'
 import { logger } from '@/lib/logger'
 import { defaultUIState, type UIState } from '@/types/ui-state'
 
@@ -41,23 +42,34 @@ export function useUIState() {
   })
 }
 
+/**
+ * Write the UI-state blob now, outside the debounced save, and report the
+ * outcome to the caller.
+ *
+ * The debounced `useSaveUIState` path stays silent on failure. A user action
+ * that must be confirmed (pinning or starring a session) awaits this instead,
+ * so it can revert itself and toast. Deliberately not `mutateAsync`: mutations
+ * default to `retry: 1` with backoff, which would delay the error by a second.
+ */
+export async function saveUIStateNow(uiState: UIState): Promise<void> {
+  // Skip persistence when running outside Tauri (e.g., bun run dev in browser)
+  if (!isTauri()) {
+    logger.debug('Not in Tauri context, UI state not persisted to disk')
+    return
+  }
+
+  logger.debug('Saving UI state to backend (immediate)')
+  await invoke('save_ui_state', { uiState })
+  queryClient.setQueryData(uiStateQueryKeys.state(), uiState)
+}
+
 export function useSaveUIState() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: async (uiState: UIState) => {
-      // Skip persistence when running outside Tauri (e.g., bun run dev in browser)
-      if (!isTauri()) {
-        logger.debug('Not in Tauri context, UI state not persisted to disk', {
-          uiState,
-        })
-        return
-      }
-
       try {
-        logger.debug('Saving UI state to backend', { uiState })
-        await invoke('save_ui_state', { uiState })
-        logger.debug('UI state saved successfully')
+        await saveUIStateNow(uiState)
       } catch (error) {
         // Silent fail for UI state saves - don't bother user with errors
         logger.error('Failed to save UI state', { error, uiState })

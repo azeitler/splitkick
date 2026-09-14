@@ -27,10 +27,16 @@ describe('pin session to project', () => {
 
     expect(source).toContain('Pin to Project')
     expect(source).toContain('Unpin from Project')
-    expect(source).toContain(
-      'pinSessionToProject(projectId, session.id, worktreeId)'
+    // The menu delegates to the shared actions, which persist and report
+    // failures; a bare store call here would fail silently again.
+    expect(source).toContain('togglePinnedSession(')
+    expect(source).toContain('toggleStarredSession(')
+
+    const actions = read('src/components/chat/session-pin-actions.ts')
+    expect(actions).toContain(
+      'pinSessionToProject(projectId, sessionId, worktreeId)'
     )
-    expect(source).toContain('unpinSessionFromProject(projectId, session.id)')
+    expect(actions).toContain('unpinSessionFromProject(projectId, sessionId)')
   })
 
   it('passes projectId from every session context menu consumer', () => {
