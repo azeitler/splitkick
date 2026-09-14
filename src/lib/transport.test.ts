@@ -56,6 +56,10 @@ async function loadTransportModule() {
     setWsConnected: setWsConnectedMock,
     setWebAccessEnabled: vi.fn(),
   }))
+  vi.doMock('./remote-connections', () => ({
+    getActiveRemoteConnection: () => null,
+    getRemoteConnections: () => [],
+  }))
   return import('./transport')
 }
 
@@ -252,6 +256,34 @@ describe('transport bootstrap', () => {
       )
     )
     expect(result.current).not.toContain('secret')
+  })
+
+  it('classifies a missing web access token as signed out', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: false } as Response)
+    const transport = await loadTransportModule()
+    const signedOut = renderHook(() => transport.useWsAuthReason())
+
+    transport.connectTransport()
+
+    await waitFor(() => expect(signedOut.result.current).toBe('signed-out'))
+    await flushAsync()
+  })
+
+  it('classifies and clears a refused web access token', async () => {
+    vi.mocked(fetch).mockResolvedValue({ ok: false } as Response)
+    const transport = await loadTransportModule()
+    const rejected = renderHook(() => transport.useWsAuthReason())
+    window.history.replaceState({}, '', '/?token=refused-token')
+
+    transport.connectTransport()
+
+    await waitFor(() =>
+      expect(fetch).toHaveBeenCalledWith(
+        expect.stringContaining('token=refused-token')
+      )
+    )
+    await waitFor(() => expect(rejected.result.current).toBe('rejected'))
+    expect(localStorage.getItem('jean-http-token')).toBeNull()
   })
 
   it('still connects native remotes when appVersion mismatches', async () => {
