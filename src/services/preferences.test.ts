@@ -100,6 +100,10 @@ const createWrapper = (queryClient: QueryClient) => {
 }
 
 describe('model option helpers', () => {
+  it('enables the combined git sync button by default', () => {
+    expect(defaultPreferences.git_sync_button).toBe(true)
+  })
+
   it('enables compact chat view by default', () => {
     expect(defaultPreferences.compact_chat_view_enabled).toBe(true)
   })

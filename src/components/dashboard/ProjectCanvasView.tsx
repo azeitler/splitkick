@@ -3703,7 +3703,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
                         <WorktreeSectionHeader
                           worktree={section.worktree}
                           projectId={projectId}
-                          gitSyncButton={preferences?.git_sync_button ?? false}
+                          gitSyncButton={preferences?.git_sync_button ?? true}
                           defaultBranch={project.default_branch}
                           openPRs={openPRs}
                           cards={section.cards}

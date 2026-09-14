@@ -273,7 +273,7 @@ pub struct AppPreferences {
     #[serde(default = "default_auto_pull_base_branch")]
     pub auto_pull_base_branch: bool, // Auto-pull base branch before creating a new worktree
     /// When true, show a single Sync button instead of separate Pull and Push badges
-    #[serde(default)]
+    #[serde(default = "default_git_sync_button")]
     pub git_sync_button: bool,
     #[serde(default = "default_auto_archive_on_pr_merged")]
     pub auto_archive_on_pr_merged: bool, // Auto-archive worktrees when their PR is merged
@@ -629,6 +629,10 @@ fn default_open_in() -> String {
 
 fn default_git_poll_interval() -> u64 {
     60 // 1 minute default
+}
+
+fn default_git_sync_button() -> bool {
+    true
 }
 
 fn default_remote_poll_interval() -> u64 {
@@ -1187,6 +1191,20 @@ mod tests {
         let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
 
         assert!(prefs.web_access_sounds_enabled);
+    }
+
+    #[test]
+    fn app_preferences_default_git_sync_button_enabled_for_new_and_missing_prefs() {
+        assert!(AppPreferences::default().git_sync_button);
+
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        prefs_json
+            .as_object_mut()
+            .unwrap()
+            .remove("git_sync_button");
+
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+        assert!(prefs.git_sync_button);
     }
 
     #[test]
@@ -2727,7 +2745,7 @@ impl Default for AppPreferences {
             removal_behavior: default_removal_behavior(),
             auto_save_context: default_auto_save_context(),
             auto_pull_base_branch: default_auto_pull_base_branch(),
-            git_sync_button: false,
+            git_sync_button: default_git_sync_button(),
             auto_archive_on_pr_merged: default_auto_archive_on_pr_merged(),
             debug_mode_enabled: false,
             default_effort_level: default_effort_level(),

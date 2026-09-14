@@ -61,7 +61,7 @@ export function resolveProjectRowClickAction(
 export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
   const isMobile = useIsMobile()
   const { data: preferences } = usePreferences()
-  const gitSyncButton = preferences?.git_sync_button ?? false
+  const gitSyncButton = preferences?.git_sync_button ?? true
   const {
     expandedProjectIds,
     selectedProjectId,
