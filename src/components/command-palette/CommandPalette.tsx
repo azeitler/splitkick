@@ -8,19 +8,6 @@ import { useProjectsStore } from '@/store/projects-store'
 import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { getAllCommands, executeCommand } from '@/lib/commands'
 import { formatShortcutDisplay } from '@/types/keybindings'
-import { Monitor, Server } from 'lucide-react'
-import {
-  LOCAL_CONNECTION_ID,
-  getActiveConnectionId,
-  getRemoteConnections,
-  markConnectionSwitch,
-  selectConnection,
-  useRemoteConnections,
-} from '@/lib/remote-connections'
-import {
-  fetchRemoteServerInfo,
-  warnRemoteVersionMismatch,
-} from '@/lib/remote-version'
 import {
   CommandDialog,
   CommandInput,
@@ -35,6 +22,7 @@ interface ProjectCommand {
   id: string
   label: string
   description?: string
+  serverName: string
   avatarUrl: string | null
   avatarFallback: string
   group: string
@@ -42,26 +30,11 @@ interface ProjectCommand {
   execute: () => void
 }
 
-interface ConnectionCommand {
-  id: string
-  connectionId: string
-  label: string
-  description: string
-  local: boolean
-  keywords: string[]
-}
-
-export function CommandPalette({
-  reloadApp = () => window.location.reload(),
-}: {
-  reloadApp?: () => void
-} = {}) {
+export function CommandPalette() {
   const { commandPaletteOpen, setCommandPaletteOpen } = useUIStore()
   const { data: preferences } = usePreferences()
   const commandContext = useCommandContext(preferences)
   const [search, setSearch] = useState('')
-  const remoteConnections = useRemoteConnections()
-  const activeConnectionId = getActiveConnectionId()
 
   // Fetch projects for dynamic commands
   const { data: projects = [] } = useProjects()
@@ -72,37 +45,6 @@ export function CommandPalette({
     state => state.projectAccessTimestamps
   )
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
-
-  const connectionCommands = useMemo((): ConnectionCommand[] => {
-    const connections: ConnectionCommand[] = [
-      {
-        id: `switch-connection-${LOCAL_CONNECTION_ID}`,
-        connectionId: LOCAL_CONNECTION_ID,
-        label: 'Localhost',
-        description: 'This device',
-        local: true,
-        keywords: ['connection', 'switch', 'local', 'localhost', 'device'],
-      },
-      ...remoteConnections.map(connection => ({
-        id: `switch-connection-${connection.id}`,
-        connectionId: connection.id,
-        label: connection.name,
-        description: connection.url,
-        local: false,
-        keywords: [
-          'connection',
-          'switch',
-          'remote',
-          connection.name.toLowerCase(),
-          connection.url.toLowerCase(),
-        ],
-      })),
-    ]
-
-    return connections.filter(
-      connection => connection.connectionId !== activeConnectionId
-    )
-  }, [activeConnectionId, remoteConnections])
 
   // Create dynamic project commands (sorted by last-accessed, most recent first)
   // Current project is excluded so the previous project is first (quick CMD+K → Enter switching)
@@ -117,16 +59,23 @@ export function CommandPalette({
       .map(project => ({
         id: `goto-project-${project.id}`,
         label: project.name,
-        description: 'Open',
+        description: `Open on ${project.serverName ?? 'Local'}`,
+        serverName: project.serverName ?? 'Local',
         avatarUrl:
-          project.avatar_path && appDataDir
+          !project.serverId && project.avatar_path && appDataDir
             ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
             : project.default_avatar_path
               ? convertProjectFileSrc(project.default_avatar_path)
               : null,
         avatarFallback: project.name[0]?.toUpperCase() ?? '?',
         group: 'projects',
-        keywords: ['project', 'switch', 'open', project.name.toLowerCase()],
+        keywords: [
+          'project',
+          'switch',
+          'open',
+          project.name.toLowerCase(),
+          (project.serverName ?? 'local').toLowerCase(),
+        ],
         execute: () => {
           useChatStore.getState().clearActiveWorktree()
           useProjectsStore.getState().selectProject(project.id)
@@ -168,36 +117,6 @@ export function CommandPalette({
       setCommandPaletteOpen(false)
       setSearch('') // Clear search when closing
 
-      // Check connection shortcuts before project and static commands
-      const connectionCmd = connectionCommands.find(
-        command => command.id === commandId
-      )
-      if (connectionCmd) {
-        if (connectionCmd.connectionId !== LOCAL_CONNECTION_ID) {
-          const connection = getRemoteConnections().find(
-            item => item.id === connectionCmd.connectionId
-          )
-          if (!connection) {
-            commandContext.showToast('Remote connection not found.', 'error')
-            return
-          }
-          // Warn on mismatch but still switch; transport re-checks after load.
-          try {
-            const info = await fetchRemoteServerInfo(
-              connection.url,
-              connection.token
-            )
-            warnRemoteVersionMismatch(info.appVersion)
-          } catch {
-            // Unreachable remotes still switch so recovery UI can handle them.
-          }
-        }
-        markConnectionSwitch()
-        selectConnection(connectionCmd.connectionId)
-        reloadApp()
-        return
-      }
-
       const projectCmd = projectCommands.find(c => c.id === commandId)
       if (projectCmd) {
         projectCmd.execute()
@@ -210,13 +129,7 @@ export function CommandPalette({
         commandContext.showToast(result.error, 'error')
       }
     },
-    [
-      commandContext,
-      connectionCommands,
-      projectCommands,
-      reloadApp,
-      setCommandPaletteOpen,
-    ]
+    [commandContext, projectCommands, setCommandPaletteOpen]
   )
 
   // Handle dialog open/close with search clearing
@@ -266,7 +179,7 @@ export function CommandPalette({
             {commandGroups.projectCommands.map(cmd => (
               <CommandItem
                 key={cmd.id}
-                value={`${cmd.label} ${cmd.description ?? ''}`}
+                value={`${cmd.id} ${cmd.label} ${cmd.description ?? ''}`}
                 onSelect={() => handleCommandSelect(cmd.id)}
                 className="items-start"
               >
@@ -290,31 +203,6 @@ export function CommandPalette({
                       {cmd.description}
                     </span>
                   )}
-                </div>
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        )}
-
-        {connectionCommands.length > 0 && (
-          <CommandGroup heading="Connections">
-            {connectionCommands.map(command => (
-              <CommandItem
-                key={command.id}
-                value={`${command.label} ${command.description} ${command.keywords.join(' ')}`}
-                onSelect={() => handleCommandSelect(command.id)}
-                className="items-start"
-              >
-                {command.local ? (
-                  <Monitor className="mt-0.5 size-4 shrink-0" />
-                ) : (
-                  <Server className="mt-0.5 size-4 shrink-0" />
-                )}
-                <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                  <span className="truncate leading-snug">{command.label}</span>
-                  <span className="truncate text-xs leading-snug text-muted-foreground">
-                    {command.description}
-                  </span>
                 </div>
               </CommandItem>
             ))}

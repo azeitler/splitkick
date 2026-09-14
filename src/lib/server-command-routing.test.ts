@@ -1,11 +1,35 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clearServerResourcePaths,
   decorateServerEvent,
   decorateServerResult,
   resolveServerCommand,
+  registerServerResourcePath,
 } from './server-command-routing'
 
 describe('server command routing', () => {
+  it('routes path-only GitHub and Git commands to the owning server', () => {
+    clearServerResourcePaths()
+    registerServerResourcePath('remote', '/srv/jean')
+
+    expect(
+      resolveServerCommand({ projectPath: '/srv/jean', state: 'open' })
+    ).toEqual({
+      serverId: 'remote',
+      args: { projectPath: '/srv/jean', state: 'open' },
+    })
+  })
+
+  it('rejects an ambiguous path instead of using the wrong server', () => {
+    clearServerResourcePaths()
+    registerServerResourcePath('one', '/srv/jean')
+    registerServerResourcePath('two', '/srv/jean')
+
+    expect(() => resolveServerCommand({ repoPath: '/srv/jean' })).toThrow(
+      'ambiguous'
+    )
+  })
+
   it('adds server ownership to resource ids in events', () => {
     expect(
       decorateServerEvent('remote', {

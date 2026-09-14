@@ -12,6 +12,7 @@ const {
   isNativeApp,
   listenLocal,
   setRemoteConnectionEnabled,
+  setLocalDashboardEnabled,
   remoteConnections,
 } = vi.hoisted(() => ({
   addRemoteConnection: vi.fn(() => ({ id: 'remote-1' })),
@@ -29,6 +30,7 @@ const {
     // no-op unsubscribe
   }),
   setRemoteConnectionEnabled: vi.fn(),
+  setLocalDashboardEnabled: vi.fn(),
   remoteConnections: [] as {
     id: string
     name: string
@@ -65,6 +67,8 @@ vi.mock('@/lib/remote-connections', () => ({
   },
   selectConnection,
   setRemoteConnectionEnabled,
+  setLocalDashboardEnabled,
+  useLocalDashboardEnabled: () => true,
   updateRemoteConnection: vi.fn(),
   useRemoteConnections: () => remoteConnections,
 }))
@@ -117,7 +121,7 @@ describe('RemoteConnectionsDialog', () => {
       enabled: true,
     })
     const reloadApp = vi.fn()
-    render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
+    render(<RemoteConnectionsDialog />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
     await waitFor(() => expect(fetchRemoteServerInfo).toHaveBeenCalled())
@@ -131,6 +135,23 @@ describe('RemoteConnectionsDialog', () => {
     expect(reloadApp).not.toHaveBeenCalled()
   })
 
+  it('can exclude Local from the combined dashboard without switching it', () => {
+    isNativeApp.mockReturnValue(true)
+    const reloadApp = vi.fn()
+    render(<RemoteConnectionsDialog />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Include Local in combined dashboard',
+      })
+    )
+
+    expect(setLocalDashboardEnabled).toHaveBeenCalledWith(false)
+    expect(selectConnection).not.toHaveBeenCalled()
+    expect(reloadApp).not.toHaveBeenCalled()
+  })
+
   it('does not expose multi-server dashboard controls in Web Access', async () => {
     remoteConnections.push({
       id: 'remote-1',
@@ -139,7 +160,7 @@ describe('RemoteConnectionsDialog', () => {
       token: 'secret',
       enabled: true,
     })
-    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+    render(<RemoteConnectionsDialog />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
     await waitFor(() => expect(fetchRemoteServerInfo).toHaveBeenCalled())
@@ -151,9 +172,9 @@ describe('RemoteConnectionsDialog', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('adds and selects a remote from a complete Web Access URL', async () => {
+  it('adds a remote without changing the client backend', async () => {
     const reloadApp = vi.fn()
-    render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
+    render(<RemoteConnectionsDialog />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
@@ -178,8 +199,8 @@ describe('RemoteConnectionsDialog', () => {
         sshHost: undefined,
         sshPort: 22,
       })
-      expect(selectConnection).toHaveBeenCalledWith('remote-1')
-      expect(reloadApp).toHaveBeenCalled()
+      expect(selectConnection).not.toHaveBeenCalled()
+      expect(reloadApp).not.toHaveBeenCalled()
     })
   })
 
@@ -192,7 +213,7 @@ describe('RemoteConnectionsDialog', () => {
     warnRemoteVersionMismatch.mockReturnValueOnce(true)
 
     const reloadApp = vi.fn()
-    render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
+    render(<RemoteConnectionsDialog />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
     expect(screen.getByText('v0.1.69')).toBeInTheDocument()
@@ -206,13 +227,13 @@ describe('RemoteConnectionsDialog', () => {
     await waitFor(() => {
       expect(warnRemoteVersionMismatch).toHaveBeenCalledWith('0.2.0')
       expect(addRemoteConnection).toHaveBeenCalled()
-      expect(selectConnection).toHaveBeenCalledWith('remote-1')
-      expect(reloadApp).toHaveBeenCalled()
+      expect(selectConnection).not.toHaveBeenCalled()
+      expect(reloadApp).not.toHaveBeenCalled()
     })
   })
 
   it('saves optional SSH fields when adding a remote URL', async () => {
-    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+    render(<RemoteConnectionsDialog />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
@@ -258,7 +279,7 @@ describe('RemoteConnectionsDialog', () => {
     })
     const reloadApp = vi.fn()
 
-    render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
+    render(<RemoteConnectionsDialog />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
@@ -301,14 +322,14 @@ describe('RemoteConnectionsDialog', () => {
         sshHost: '192.168.1.50',
         sshPort: 22,
       })
-      expect(selectConnection).toHaveBeenCalledWith('remote-1')
-      expect(reloadApp).toHaveBeenCalled()
+      expect(selectConnection).not.toHaveBeenCalled()
+      expect(reloadApp).not.toHaveBeenCalled()
     })
   })
 
   it('can switch from install mode to existing URL mode', () => {
     isNativeApp.mockReturnValue(true)
-    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+    render(<RemoteConnectionsDialog />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))

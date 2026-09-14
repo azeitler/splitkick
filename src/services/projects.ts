@@ -11,6 +11,9 @@ import {
   useWsConnectionStatus,
   setAppDataDir,
 } from '@/lib/transport'
+import { registerServerResourcePath } from '@/lib/server-command-routing'
+import { LOCAL_SERVER_ID } from '@/types/server-resource'
+import { useLocalDashboardEnabled } from '@/lib/remote-connections'
 import { listen, type UnlistenFn } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
@@ -127,6 +130,7 @@ export const projectsQueryKeys = {
  */
 export function useProjects() {
   const native = isNativeApp()
+  const localDashboardEnabled = useLocalDashboardEnabled()
   const remoteProjects = useMultiServerProjects(native)
   const localProjects = useQuery({
     queryKey: projectsQueryKeys.list(),
@@ -138,7 +142,14 @@ export function useProjects() {
 
       try {
         logger.debug('Loading projects from backend')
-        const projects = await invoke<Project[]>('list_projects')
+        const projects = native
+          ? await invokeForServer<Project[]>(LOCAL_SERVER_ID, 'list_projects')
+          : await invoke<Project[]>('list_projects')
+        if (native) {
+          for (const project of projects) {
+            registerServerResourcePath(LOCAL_SERVER_ID, project.path)
+          }
+        }
         logger.info('Projects loaded successfully', { count: projects.length })
         return projects
       } catch (error) {
@@ -154,7 +165,10 @@ export function useProjects() {
     : []
   return {
     ...localProjects,
-    data: [...(localProjects.data ?? []), ...routedRemoteProjects],
+    data: [
+      ...(native && !localDashboardEnabled ? [] : (localProjects.data ?? [])),
+      ...routedRemoteProjects,
+    ],
   }
 }
 

@@ -646,7 +646,12 @@ describe('MagicModal manual PR link', () => {
       'Pushing feature-branch...',
       expect.any(Object)
     )
-    expect(mocks.gitPush).toHaveBeenCalledWith('/repo/worktree', null, 'origin')
+    expect(mocks.gitPush).toHaveBeenCalledWith(
+      '/repo/worktree',
+      null,
+      'origin',
+      'wt-1'
+    )
 
     rerender(<MagicModal />)
     await user.click(screen.getByRole('button', { name: /^commit & push p$/i }))

@@ -114,12 +114,14 @@ export function WorktreeDropdownMenu({
   const authData = queryClient.getQueryData<GhAuthStatus>(ghCliQueryKeys.auth())
   const isGitHubAuthenticated = authData?.authenticated ?? false
   const { data: issueResult } = useGitHubIssues(projectPath, 'open', {
-    enabled: isGitHubAuthenticated,
+    enabled: isGitHubAuthenticated || projectId.includes(':'),
     staleTime: BADGE_STALE_TIME,
+    ownerId: projectId,
   })
   const { data: prs } = useGitHubPRs(projectPath, 'open', {
-    enabled: isGitHubAuthenticated,
+    enabled: isGitHubAuthenticated || projectId.includes(':'),
     staleTime: BADGE_STALE_TIME,
+    ownerId: projectId,
   })
   const { data: alerts } = useDependabotAlerts(projectPath, 'open', {
     enabled: isGitHubAuthenticated,

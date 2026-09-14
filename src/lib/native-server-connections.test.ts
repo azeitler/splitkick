@@ -14,9 +14,7 @@ vi.mock('./server-connections', () => ({
   serverConnectionManager: { sync, dispose },
 }))
 vi.mock('./remote-connections', () => ({
-  LOCAL_CONNECTION_ID: 'local',
   getRemoteConnections: vi.fn(() => []),
-  getActiveConnectionId: vi.fn(() => 'local'),
   subscribeRemoteConnections,
 }))
 vi.mock('./transport', () => ({ getLegacyWsTransport: vi.fn() }))
@@ -44,6 +42,7 @@ describe('native server connection bootstrap', () => {
     cleanup()
 
     expect(sync).toHaveBeenCalledOnce()
+    expect(sync).toHaveBeenCalledWith([], undefined)
     expect(subscribeRemoteConnections).toHaveBeenCalledOnce()
     expect(dispose).toHaveBeenCalledOnce()
   })

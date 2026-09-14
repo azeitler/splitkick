@@ -999,7 +999,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const project = projects.find(p => p.id === projectId)
 
   // Open PRs: used to link a worktree's base_branch to a PR number in row badges
-  const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open')
+  const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open', {
+    ownerId: projectId ?? undefined,
+  })
 
   // Mobile-only: GitHub status counts for project dropdown menu items.
   // Trigger gh auth query directly so it works on web/mobile access (App.tsx
@@ -1010,11 +1012,16 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const { data: mobileIssueResult } = useGitHubIssues(
     project?.path ?? null,
     'open',
-    { enabled: mobileGitHubEnabled, staleTime: BADGE_STALE_TIME }
+    {
+      enabled: mobileGitHubEnabled,
+      staleTime: BADGE_STALE_TIME,
+      ownerId: projectId ?? undefined,
+    }
   )
   const { data: mobileOpenPRs } = useGitHubPRs(project?.path ?? null, 'open', {
     enabled: mobileGitHubEnabled,
     staleTime: BADGE_STALE_TIME,
+    ownerId: projectId ?? undefined,
   })
   const { data: mobileAlerts } = useDependabotAlerts(
     project?.path ?? null,
@@ -1200,10 +1207,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   // Use shared store state hook
   const storeState = useCanvasStoreState()
   const queryClient = useQueryClient()
-  const sessionCardDataCache = useMemo(
-    () => createSessionCardDataCache(),
-    []
-  )
+  const sessionCardDataCache = useMemo(() => createSessionCardDataCache(), [])
 
   const markWorktreeLastUsed = useCallback(
     (worktreeId: string) => {

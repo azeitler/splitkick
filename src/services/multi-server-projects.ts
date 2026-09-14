@@ -7,6 +7,7 @@ import {
   invokeOnServer,
   useServerConnectionSnapshots,
 } from '@/lib/server-connections'
+import { registerServerResourcePath } from '@/lib/server-command-routing'
 
 const CACHE_SCHEMA_VERSION = 1
 const CACHE_PREFIX = 'jean-server-projects:'
@@ -119,23 +120,24 @@ export async function loadProjectsForServers(
   return groups.flat()
 }
 
-export function toRoutedProjects(
-  projects: MultiServerProject[]
-): Project[] {
-  return projects.map(project => ({
-    ...project,
-    id: project.key,
-    resourceId: project.resourceId ?? project.id,
-    parent_id: project.parent_id
-      ? serverResourceKey({
-          serverId: project.serverId,
-          resourceId: project.parent_id,
-        })
-      : undefined,
-    linked_project_ids: project.linked_project_ids?.map(resourceId =>
-      serverResourceKey({ serverId: project.serverId, resourceId })
-    ),
-  }))
+export function toRoutedProjects(projects: MultiServerProject[]): Project[] {
+  return projects.map(project => {
+    registerServerResourcePath(project.serverId, project.path)
+    return {
+      ...project,
+      id: project.key,
+      resourceId: project.resourceId ?? project.id,
+      parent_id: project.parent_id
+        ? serverResourceKey({
+            serverId: project.serverId,
+            resourceId: project.parent_id,
+          })
+        : undefined,
+      linked_project_ids: project.linked_project_ids?.map(resourceId =>
+        serverResourceKey({ serverId: project.serverId, resourceId })
+      ),
+    }
+  })
 }
 
 export function useMultiServerProjects(enabled = true) {

@@ -12,6 +12,9 @@ import {
   removeRemoteConnection,
   selectConnection,
   setRemoteConnectionEnabled,
+  setLocalDashboardEnabled,
+  selectLocalConnectionForNativeClient,
+  getLocalDashboardEnabled,
   subscribeRemoteConnections,
   updateRemoteConnection,
 } from './remote-connections'
@@ -23,6 +26,7 @@ describe('remote connections', () => {
     }
     localStorage.clear()
     sessionStorage.clear()
+    setLocalDashboardEnabled(true)
   })
 
   it('extracts a token from a complete Web Access URL', () => {
@@ -82,6 +86,30 @@ describe('remote connections', () => {
     setRemoteConnectionEnabled(remote.id, false)
 
     expect(getEnabledServerConnections()).toEqual([])
+    expect(getActiveConnectionId()).toBe('local')
+  })
+
+  it('can exclude local from the dashboard without changing selection', () => {
+    selectConnection('local')
+
+    setLocalDashboardEnabled(false)
+
+    expect(getLocalDashboardEnabled()).toBe(false)
+    expect(getActiveConnectionId()).toBe('local')
+  })
+
+  it('migrates the native client backend to Local but leaves Web Access unchanged', () => {
+    const remote = addRemoteConnection({
+      name: 'Build server',
+      url: 'https://jean.example.com',
+      token: 'token',
+    })
+    selectConnection(remote.id)
+
+    selectLocalConnectionForNativeClient(false)
+    expect(getActiveConnectionId()).toBe(remote.id)
+
+    selectLocalConnectionForNativeClient(true)
     expect(getActiveConnectionId()).toBe('local')
   })
 

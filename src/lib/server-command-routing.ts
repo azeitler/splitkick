@@ -24,6 +24,30 @@ const ROUTED_ARGUMENT_KEYS = new Set([
   'active_session_id',
 ])
 
+const PATH_ARGUMENT_KEYS = new Set([
+  'projectPath',
+  'project_path',
+  'worktreePath',
+  'worktree_path',
+  'repoPath',
+  'repo_path',
+])
+const pathOwners = new Map<string, Set<ServerId>>()
+
+export function registerServerResourcePath(
+  serverId: ServerId,
+  path: unknown
+): void {
+  if (typeof path !== 'string' || !path) return
+  const owners = pathOwners.get(path) ?? new Set<ServerId>()
+  owners.add(serverId)
+  pathOwners.set(path, owners)
+}
+
+export function clearServerResourcePaths(): void {
+  pathOwners.clear()
+}
+
 export interface ResolvedServerCommand {
   serverId: ServerId
   args: Record<string, unknown>
@@ -46,6 +70,21 @@ export function resolveServerCommand(
       }
       serverId = reference.serverId
       return reference.resourceId
+    }
+    if (typeof value === 'string' && key && PATH_ARGUMENT_KEYS.has(key)) {
+      const owners = pathOwners.get(value)
+      if (!owners || owners.size === 0) return value
+      if (serverId) {
+        if (!owners.has(serverId)) {
+          throw new Error('The resource path belongs to another Jean server')
+        }
+        return value
+      }
+      if (owners.size > 1) {
+        throw new Error('The resource path is ambiguous across Jean servers')
+      }
+      serverId = [...owners][0] ?? null
+      return value
     }
     if (Array.isArray(value)) return value.map(item => strip(item, key))
     if (value && typeof value === 'object') {
@@ -115,6 +154,7 @@ function decorateSession(serverId: ServerId, value: unknown): unknown {
 function decorateWorktree(serverId: ServerId, value: unknown): unknown {
   if (!value || typeof value !== 'object') return value
   const worktree = value as Record<string, unknown>
+  registerServerResourcePath(serverId, worktree.path)
   return {
     ...worktree,
     id: scopedId(serverId, worktree.id),
@@ -127,6 +167,7 @@ function decorateWorktree(serverId: ServerId, value: unknown): unknown {
 function decorateProject(serverId: ServerId, value: unknown): unknown {
   if (!value || typeof value !== 'object') return value
   const project = value as Record<string, unknown>
+  registerServerResourcePath(serverId, project.path)
   return {
     ...project,
     id: scopedId(serverId, project.id),

@@ -2823,7 +2823,7 @@ function OnboardingDialogContent() {
             {step === 'usage-mode' ? (
               <UsageModeStep onSelect={handleUsageModeSelect} />
             ) : step === 'remote-setup' ? (
-              <RemoteSetupStep />
+              <RemoteSetupStep onComplete={continueAfterLocalChoice} />
             ) : step === 'wsl-setup' ? (
               <WslSetupStep
                 onComplete={() => {

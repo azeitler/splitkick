@@ -7,6 +7,7 @@ export const LOCAL_CONNECTION_ID = LOCAL_SERVER_ID
 const CONNECTIONS_KEY = 'jean-remote-connections'
 const ACTIVE_CONNECTION_KEY = 'jean-active-connection'
 const SWITCHING_CONNECTION_KEY = 'jean-switching-connection-at'
+const LOCAL_DASHBOARD_ENABLED_KEY = 'jean-local-dashboard-enabled'
 
 export interface RemoteConnection {
   id: string
@@ -54,9 +55,13 @@ let activeConnectionSnapshot =
   )
     ? savedActiveConnection
     : LOCAL_CONNECTION_ID
+let localDashboardEnabledSnapshot =
+  storage()?.getItem(LOCAL_DASHBOARD_ENABLED_KEY) !== 'false'
 
 function storage(): Storage | null {
-  return typeof window === 'undefined' ? null : window.localStorage
+  return typeof globalThis.localStorage === 'undefined'
+    ? null
+    : globalThis.localStorage
 }
 
 function normalizeOptionalString(value: unknown): string | undefined {
@@ -231,6 +236,17 @@ export function setRemoteConnectionEnabled(id: string, enabled: boolean): void {
   }
 }
 
+export function getLocalDashboardEnabled(): boolean {
+  return localDashboardEnabledSnapshot
+}
+
+export function setLocalDashboardEnabled(enabled: boolean): void {
+  storage()?.setItem(LOCAL_DASHBOARD_ENABLED_KEY, String(enabled))
+  if (localDashboardEnabledSnapshot === enabled) return
+  localDashboardEnabledSnapshot = enabled
+  for (const subscriber of subscribers) subscriber()
+}
+
 export function removeRemoteConnection(id: string): void {
   writeConnections(
     getRemoteConnections().filter(connection => connection.id !== id)
@@ -262,6 +278,13 @@ export function selectConnection(id: string): void {
   for (const subscriber of subscribers) subscriber()
 }
 
+/** Native Jean always uses its local core; remote profiles are parallel adapters. */
+export function selectLocalConnectionForNativeClient(native: boolean): void {
+  if (native && getActiveConnectionId() !== LOCAL_CONNECTION_ID) {
+    selectConnection(LOCAL_CONNECTION_ID)
+  }
+}
+
 export function markConnectionSwitch(): void {
   if (typeof window !== 'undefined') {
     window.sessionStorage.setItem(SWITCHING_CONNECTION_KEY, String(Date.now()))
@@ -290,6 +313,17 @@ export function useRemoteConnections(): RemoteConnection[] {
     },
     () => connectionsSnapshot,
     () => []
+  )
+}
+
+export function useLocalDashboardEnabled(): boolean {
+  return useSyncExternalStore(
+    callback => {
+      subscribers.add(callback)
+      return () => subscribers.delete(callback)
+    },
+    () => localDashboardEnabledSnapshot,
+    () => true
   )
 }
 

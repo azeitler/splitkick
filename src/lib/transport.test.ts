@@ -163,6 +163,26 @@ describe('transport bootstrap', () => {
     ])
   })
 
+  it('routes path-only Git and GitHub commands to a remote owner', async () => {
+    const invokeOnServer = vi.fn(async () => ({ issues: [], totalCount: 0 }))
+    vi.doMock('./server-connections', () => ({ invokeOnServer }))
+    const transport = await loadNativeTransportModule(vi.fn())
+    const { registerServerResourcePath } =
+      await import('./server-command-routing')
+    registerServerResourcePath('remote-1', '/srv/project')
+
+    await transport.invoke('list_github_issues', {
+      projectPath: '/srv/project',
+      state: 'open',
+    })
+
+    expect(invokeOnServer).toHaveBeenCalledWith(
+      'remote-1',
+      'list_github_issues',
+      { projectPath: '/srv/project', state: 'open' }
+    )
+  })
+
   it('routes native shared commands to the selected remote Jean', async () => {
     const transport = await loadRemoteNativeTransportModule()
 
