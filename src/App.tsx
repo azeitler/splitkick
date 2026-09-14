@@ -728,11 +728,11 @@ function App() {
   // Previously these were sequential (HTTP → then WS), which doubled the
   // "Loading Jean..." wall time on web access.
   useEffect(() => {
-    if (!webBackend) return
-
-    // The main window can delete this connection while the window is open.
-    // Without it we would fall back to the local backend, so close instead —
-    // a remote window must never drive the local machine.
+    // Before the webBackend check, not after: the main window can delete this
+    // connection while the window is open, and a connection window without one
+    // has no web backend left. Behind that check this never ran, so the window
+    // fell through to the local backend — a remote window must never drive the
+    // local machine. Close it instead.
     if (isConnectionWindow() && !getActiveRemoteConnection()) {
       logger.warn('Connection window lost its connection — closing')
       void import('./lib/window-close').then(({ destroyAppWindow }) =>
@@ -740,6 +740,8 @@ function App() {
       )
       return
     }
+
+    if (!webBackend) return
 
     if (!hasStartedTransportRef.current) {
       hasStartedTransportRef.current = true
