@@ -7,6 +7,26 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.9] - 2026-09-14
+
+Built on Jean 0.1.73. Fixes for what 0.1.73-z.8 shipped 30 minutes earlier.
+
+### Fixed
+
+- **A remote window whose connection you delete now closes itself.** The check
+  that should have caught it could never run, so the window stayed open, fell
+  back to the local backend, and drove this machine while looking like the
+  remote one.
+
+- **A cancelled first turn of a fork no longer writes into the original
+  session.** A fork borrows the original's Claude conversation for its first
+  turn and branches it. Cancelling that turn before any reply lost the branch
+  flag while the borrowed id stayed, so the next message continued the
+  original conversation and mixed the two.
+
+- **A vibrancy change now reaches the next window.** Windows opened after the
+  toggle kept the material read at startup.
+
 ## [0.1.73-z.8] - 2026-09-14
 
 Built on Jean 0.1.73.
@@ -19,9 +39,7 @@ Built on Jean 0.1.73.
   local, each remote gets a window of its own, and switching is a window focus.
   Opening a remote that is already on screen focuses its window. Each window
   remembers its own size and position, and the macOS menu acts on the focused
-  window only. A window whose connection you delete closes itself, so it can
-  never fall back to driving the local machine. Web Access is unchanged — a
-  browser has one page to work with.
+  window only. Web Access is unchanged — a browser has one page to work with.
   ([azeitler#26](https://github.com/azeitler/jean/issues/26))
 
 - **Chat: the right-click menu of a link offers "Open in Default Browser".**
@@ -764,7 +782,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.8...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.9...HEAD
+[0.1.73-z.9]: https://github.com/azeitler/jean/compare/v0.1.73-z.8...v0.1.73-z.9
 [0.1.73-z.8]: https://github.com/azeitler/jean/compare/v0.1.73-z.7...v0.1.73-z.8
 [0.1.73-z.7]: https://github.com/azeitler/jean/compare/v0.1.73-z.6...v0.1.73-z.7
 [0.1.73-z.6]: https://github.com/azeitler/jean/compare/v0.1.73-z.5...v0.1.73-z.6
