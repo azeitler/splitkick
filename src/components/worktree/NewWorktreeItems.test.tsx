@@ -54,6 +54,43 @@ beforeEach(() => {
 })
 
 describe('compact issue and PR rows', () => {
+  it('opens a PR in the background with the web Ctrl modifier', async () => {
+    const user = userEvent.setup()
+    const onClick = vi.fn()
+    render(
+      <PRItem
+        pr={{
+          number: 711,
+          title: 'Web access',
+          state: 'OPEN',
+          labels: [],
+          headRefName: 'feat/web-access',
+          baseRefName: 'main',
+          isDraft: false,
+          created_at: '2026-01-01T00:00:00Z',
+          author: { login: 'octocat' },
+        }}
+        index={0}
+        isSelected={false}
+        isCreating={false}
+        isStacking={false}
+        onMouseEnter={vi.fn()}
+        onClick={onClick}
+        onInvestigate={vi.fn()}
+        onStack={vi.fn()}
+        onPreview={vi.fn()}
+      />
+    )
+
+    await user.keyboard('{Control>}')
+    await user.click(
+      screen.getByRole('button', { name: /#711Web access/i })
+    )
+    await user.keyboard('{/Control}')
+
+    expect(onClick).toHaveBeenCalledWith(true)
+  })
+
   it('shows the new-session investigation action on desktop', async () => {
     const user = userEvent.setup()
     const onInvestigateInNewSession = vi.fn()

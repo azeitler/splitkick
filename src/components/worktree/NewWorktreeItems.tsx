@@ -137,7 +137,7 @@ export function IssueItem({
       <div className="flex-1 min-w-0">
         <button
           type="button"
-          onClick={e => onClick(e.metaKey)}
+          onClick={e => onClick(e.metaKey || e.ctrlKey)}
           disabled={isCreating}
           className="w-full min-w-0 text-left focus:outline-none disabled:cursor-not-allowed"
         >
@@ -239,7 +239,7 @@ export function PRItem({
       <div className="flex-1 min-w-0">
         <button
           type="button"
-          onClick={e => onClick(e.metaKey)}
+          onClick={e => onClick(e.metaKey || e.ctrlKey)}
           disabled={busy}
           className="w-full min-w-0 text-left focus:outline-none disabled:cursor-not-allowed"
         >
@@ -329,7 +329,7 @@ export function BranchItem({
       )}
       <button
         type="button"
-        onClick={e => onClick(e.metaKey)}
+        onClick={e => onClick(e.metaKey || e.ctrlKey)}
         disabled={isCreating}
         className="flex-1 min-w-0 text-left focus:outline-none disabled:cursor-not-allowed"
       >
@@ -530,7 +530,7 @@ export function SecurityAlertItem({
       )}
       <button
         type="button"
-        onClick={e => onClick(e.metaKey)}
+        onClick={e => onClick(e.metaKey || e.ctrlKey)}
         disabled={isCreating}
         className="flex-1 min-w-0 text-left focus:outline-none disabled:cursor-not-allowed"
       >
@@ -638,7 +638,7 @@ export function AdvisoryItem({
       )}
       <button
         type="button"
-        onClick={e => onClick(e.metaKey)}
+        onClick={e => onClick(e.metaKey || e.ctrlKey)}
         disabled={isCreating}
         className="flex-1 min-w-0 text-left focus:outline-none disabled:cursor-not-allowed"
       >

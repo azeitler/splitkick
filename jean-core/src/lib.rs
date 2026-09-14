@@ -971,6 +971,8 @@ mod tests {
         assert!(prompt.contains("Jean Run Environment"));
         assert!(prompt.contains("get_run_environments"));
         assert!(prompt.contains("test against its `url`, port, and startup command"));
+        assert!(prompt.contains("use the Agent Browser when it is available"));
+        assert!(prompt.contains("no other browser testing method"));
         assert!(prompt.contains("VERY IMPORTANT: Keep Code Simple"));
         assert!(prompt.contains("Always implement the simplest maintainable solution"));
         assert!(prompt.contains("Clickable References"));
@@ -2175,6 +2177,7 @@ fn default_global_system_prompt() -> String {
 - Ask yourself: "Would a staff engineer approve this?"
 - Run tests, check logs, demonstrate correctness
 - Before UI, HTTP, browser, or end-to-end verification, call Jean MCP `get_run_environments` and test against the returned url/port/command when a Run environment is available.
+- For the current selected project, if there is no other browser testing method, use the Agent Browser when it is available.
 
 ### 6. Demand Elegance (Balanced)
 - For non-trivial changes: pause and ask "is there a more elegant way?"

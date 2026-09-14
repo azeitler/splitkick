@@ -149,6 +149,10 @@ fn should_auto_name_branch(worktree: Option<&Worktree>) -> bool {
                 // Existing-branch worktrees record that branch as their own base.
                 // Its user-selected name must be preserved.
                 && worktree.base_branch.as_deref() != Some(worktree.branch.as_str())
+                // Only Jean's random placeholder names are eligible. Names created
+                // from PRs, issues, alerts, Sentry, or explicit user input already
+                // describe the work and must survive the first prompt.
+                && crate::projects::is_generated_workspace_name(&worktree.name)
         })
         .unwrap_or(true)
 }
@@ -10395,10 +10399,25 @@ mod tests {
     }
 
     #[test]
-    fn newly_created_branch_can_still_be_automatically_named() {
+    fn custom_worktree_name_is_not_automatically_renamed() {
         let worktree = naming_test_worktree("random-workspace", Some("main"));
 
+        assert!(!should_auto_name_branch(Some(&worktree)));
+    }
+
+    #[test]
+    fn generated_workspace_name_can_be_automatically_renamed() {
+        let worktree = naming_test_worktree("fuzzy-tiger", Some("main"));
+
         assert!(should_auto_name_branch(Some(&worktree)));
+    }
+
+    #[test]
+    fn issue_worktree_name_is_not_automatically_renamed() {
+        let mut worktree = naming_test_worktree("issue-42-fix-login", Some("main"));
+        worktree.issue_number = Some(42);
+
+        assert!(!should_auto_name_branch(Some(&worktree)));
     }
 
     #[test]

@@ -58,6 +58,7 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 - Ask yourself: \"Would a staff engineer approve this?\"\n\
 - Run tests, check logs, demonstrate correctness\n\
 - Before UI, HTTP, browser, or end-to-end verification, call Jean MCP `get_run_environments` and test against the returned url/port/command when a Run environment is available.\n\
+- For the current selected project, if there is no other browser testing method, use the Agent Browser when it is available.\n\
 \n\
 ### 6. Demand Elegance (Balanced)\n\
 - For non-trivial changes: pause and ask \"is there a more elegant way?\"\n\
@@ -2697,6 +2698,8 @@ mod tests {
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("get_run_environments"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
             .contains("test against its `url`, port, and startup command"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("use the Agent Browser when it is available"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("no other browser testing method"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("VERY IMPORTANT: Keep Code Simple"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
             .contains("Always implement the simplest maintainable solution"));

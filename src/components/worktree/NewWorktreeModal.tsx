@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getModifierSymbol } from '@/lib/platform'
+import { Kbd } from '@/components/ui/kbd'
 import { useIsMobile } from '@/hooks/use-mobile'
 import {
   Zap,
@@ -596,9 +597,9 @@ export function NewWorktreeModal() {
             <div className="shrink-0 border-t border-border px-3 py-1.5">
               <span className="text-xs text-muted-foreground">
                 Hold{' '}
-                <kbd className="mx-0.5 rounded bg-muted px-1 py-0.5 text-[10px]">
+                <Kbd className="mx-0.5 h-5 min-w-5 px-1 text-[10px]">
                   {getModifierSymbol()}
-                </kbd>{' '}
+                </Kbd>{' '}
                 to open in background
               </span>
             </div>

@@ -124,4 +124,16 @@ describe('server platform detection', () => {
     expect(formatShortcutDisplay('mod+period')).toBe('⌘ + .')
     expect(platform.getModifierSymbol()).toBe('⌘')
   })
+
+  it('uses Ctrl for a Mac web client', async () => {
+    vi.stubGlobal('window', { open: vi.fn() })
+    vi.stubGlobal('navigator', {
+      platform: 'MacIntel',
+      userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
+    })
+
+    const platform = await import('./platform')
+
+    expect(platform.getModifierSymbol()).toBe('⌃')
+  })
 })
