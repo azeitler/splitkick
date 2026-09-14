@@ -156,6 +156,28 @@ export function MobileToolbarMenu({
           </span>
         </DropdownMenuItem>
 
+        <DropdownMenuItem
+          onClick={() => {
+            setMenuOpen(false)
+            window.dispatchEvent(
+              new CustomEvent('magic-command', {
+                detail: { command: 'check-github-issues' },
+              })
+            )
+          }}
+        >
+          <Bug className="h-4 w-4" />
+          Check GitHub Issues
+          <span
+            className={cn(
+              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+              isMobile && 'hidden'
+            )}
+          >
+            Q
+          </span>
+        </DropdownMenuItem>
+
         <DropdownMenuSeparator />
 
         <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">

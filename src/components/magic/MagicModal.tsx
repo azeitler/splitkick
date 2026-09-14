@@ -131,6 +131,7 @@ type MagicOption =
   | 'inject-session'
   | 'linked-projects'
   | 'fork-session'
+  | 'check-github-issues'
   | 'commit'
   | 'commit-and-push'
   | 'pull'
@@ -276,6 +277,12 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           icon: GitBranchPlus,
           key: 'W',
         },
+        {
+          id: 'check-github-issues',
+          label: 'Check GitHub Issues',
+          icon: Bug,
+          key: 'Q',
+        },
       ],
     },
     {
@@ -391,6 +398,7 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   j: 'inject-session',
   k: 'linked-projects',
   w: 'fork-session',
+  q: 'check-github-issues',
   c: 'commit',
   p: 'commit-and-push',
   t: 'sync',

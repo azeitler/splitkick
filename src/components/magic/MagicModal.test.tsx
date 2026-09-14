@@ -601,6 +601,14 @@ describe('MagicModal manual PR link', () => {
     ).toBeInTheDocument()
   })
 
+  it('shows the check GitHub issues magic command', () => {
+    render(<MagicModal />)
+
+    expect(
+      screen.getByRole('button', { name: /check github issues/i })
+    ).toBeInTheDocument()
+  })
+
   it('does not show the removed smoke test magic command', () => {
     render(<MagicModal />)
 

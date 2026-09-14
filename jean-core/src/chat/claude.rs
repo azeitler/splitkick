@@ -87,12 +87,6 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.\n\
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.\n\
 \n\
-## GitHub Issue and Discussion Discovery\n\
-- After making changes and before the final response, search the current repository's existing GitHub issues and discussions for items completely fixed by the changes, related items, and similar reports or discussions.\n\
-- Include the results in both the main response and the `## Recap`, with clickable links when available, and label each item as fully fixed, related, or similar. If no matches are found or the search is unavailable, say so explicitly.\n\
-- For each listed issue, pull request, or discussion, show its current state: open or closed. For pull requests, also show merged when applicable. Always include this state indicator.\n\
-- Do not claim an issue is fixed unless the changes fully satisfy it. Do not close or update issues or discussions unless the user explicitly asks.\n\
-\n\
 ## Jean Worktree Policy\n\
 - Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.\n\
 - If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.\n\
@@ -2717,15 +2711,8 @@ mod tests {
     }
 
     #[test]
-    fn default_global_system_prompt_requires_github_discovery_after_changes() {
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("GitHub Issue and Discussion Discovery"));
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
-            .contains("search the current repository's existing GitHub issues and discussions"));
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
-            .contains("Include the results in both the main response and the `## Recap`"));
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains(
-            "For each listed issue, pull request, or discussion, show its current state"
-        ));
+    fn default_global_system_prompt_does_not_require_github_discovery() {
+        assert!(!DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("GitHub Issue and Discussion Discovery"));
     }
 
     #[test]

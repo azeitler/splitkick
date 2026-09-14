@@ -711,17 +711,21 @@ fn default_cli_source() -> String {
     "jean".to_string()
 }
 
+fn should_auto_select_cli_source(raw_preferences: Option<&Value>, source_key: &str) -> bool {
+    raw_preferences
+        .and_then(Value::as_object)
+        .map(|object| !object.contains_key(source_key))
+        .unwrap_or(true)
+}
+
 fn maybe_auto_select_system_coderabbit(
     app: &AppHandle,
     preferences: &mut AppPreferences,
     raw_preferences: Option<&Value>,
 ) -> bool {
-    let coderabbit_source_missing = raw_preferences
-        .and_then(Value::as_object)
-        .map(|object| !object.contains_key("coderabbit_cli_source"))
-        .unwrap_or(true);
-
-    if coderabbit_source_missing && coderabbit_cli::should_auto_use_system_coderabbit(app) {
+    if should_auto_select_cli_source(raw_preferences, "coderabbit_cli_source")
+        && coderabbit_cli::should_auto_use_system_coderabbit(app)
+    {
         preferences.coderabbit_cli_source = "path".to_string();
         return true;
     }
@@ -736,20 +740,33 @@ fn maybe_auto_select_system_coderabbit(
 /// Runtime `resolve_cli_binary` also falls back to PATH when Jean-managed is
 /// missing; this persists the source so the UI does not show a misleading
 /// "Jean" selection.
-fn maybe_auto_select_system_cli_sources(app: &AppHandle, preferences: &mut AppPreferences) -> bool {
+fn maybe_auto_select_system_cli_sources(
+    app: &AppHandle,
+    preferences: &mut AppPreferences,
+    raw_preferences: Option<&Value>,
+) -> bool {
     let mut changed = false;
 
-    if preferences.claude_cli_source == "jean" && claude_cli::should_auto_use_system(app) {
+    if should_auto_select_cli_source(raw_preferences, "claude_cli_source")
+        && preferences.claude_cli_source == "jean"
+        && claude_cli::should_auto_use_system(app)
+    {
         log::info!("Auto-selecting Claude CLI source=path (Jean-managed missing, system found)");
         preferences.claude_cli_source = "path".to_string();
         changed = true;
     }
-    if preferences.codex_cli_source == "jean" && codex_cli::should_auto_use_system(app) {
+    if should_auto_select_cli_source(raw_preferences, "codex_cli_source")
+        && preferences.codex_cli_source == "jean"
+        && codex_cli::should_auto_use_system(app)
+    {
         log::info!("Auto-selecting Codex CLI source=path (Jean-managed missing, system found)");
         preferences.codex_cli_source = "path".to_string();
         changed = true;
     }
-    if preferences.opencode_cli_source == "jean" && opencode_cli::should_auto_use_system(app) {
+    if should_auto_select_cli_source(raw_preferences, "opencode_cli_source")
+        && preferences.opencode_cli_source == "jean"
+        && opencode_cli::should_auto_use_system(app)
+    {
         log::info!("Auto-selecting OpenCode CLI source=path (Jean-managed missing, system found)");
         preferences.opencode_cli_source = "path".to_string();
         changed = true;
@@ -765,7 +782,7 @@ fn maybe_auto_select_system_cli_preferences(
     raw_preferences: Option<&Value>,
 ) -> bool {
     let mut changed = maybe_auto_select_system_coderabbit(app, preferences, raw_preferences);
-    changed |= maybe_auto_select_system_cli_sources(app, preferences);
+    changed |= maybe_auto_select_system_cli_sources(app, preferences, raw_preferences);
     changed
 }
 
@@ -896,9 +913,27 @@ mod tests {
     use super::{
         default_global_system_prompt, default_model, parse_cli_args_from,
         resolve_headless_bind_host, resolve_headless_token_required, resolve_http_server_bind_host,
-        server_preferences_value, validate_headless_security, AppPreferences,
+        server_preferences_value, should_auto_select_cli_source, validate_headless_security,
+        AppPreferences,
     };
     use serde_json::json;
+
+    #[test]
+    fn cli_source_auto_selection_only_applies_before_a_source_is_saved() {
+        assert!(should_auto_select_cli_source(None, "codex_cli_source"));
+        assert!(should_auto_select_cli_source(
+            Some(&json!({})),
+            "codex_cli_source"
+        ));
+        assert!(!should_auto_select_cli_source(
+            Some(&json!({ "codex_cli_source": "jean" })),
+            "codex_cli_source"
+        ));
+        assert!(!should_auto_select_cli_source(
+            Some(&json!({ "codex_cli_source": "path" })),
+            "codex_cli_source"
+        ));
+    }
 
     #[test]
     fn server_preferences_exclude_client_fields_and_redact_secrets() {
@@ -2171,12 +2206,6 @@ fn default_global_system_prompt() -> String {
 - **Clickable References**: When output mentions issues, PRs, security advisories/alerts, Linear issues, Sentry issues, or other external resources, include clickable links when available so users can open them directly.
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.
-
-## GitHub Issue and Discussion Discovery
-- After making changes and before the final response, search the current repository's existing GitHub issues and discussions for items completely fixed by the changes, related items, and similar reports or discussions.
-- Include the results in both the main response and the `## Recap`, with clickable links when available, and label each item as fully fixed, related, or similar. If no matches are found or the search is unavailable, say so explicitly.
-- For each listed issue, pull request, or discussion, show its current state: open or closed. For pull requests, also show merged when applicable. Always include this state indicator.
-- Do not claim an issue is fixed unless the changes fully satisfy it. Do not close or update issues or discussions unless the user explicitly asks.
 
 ## Jean Worktree Policy
 - Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.

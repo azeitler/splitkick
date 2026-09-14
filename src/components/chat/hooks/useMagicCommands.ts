@@ -22,6 +22,7 @@ interface MagicCommandHandlers {
   handleLoadContext: () => void
   handleLinkedProjects: () => void
   handleForkSession: () => void
+  handleCheckGitHubIssues: () => void
   handleCommit: () => void
   handleCommitAndPush: () => void
   handlePull: () => void
@@ -64,6 +65,7 @@ export function useMagicCommands({
   handleLoadContext,
   handleLinkedProjects,
   handleForkSession,
+  handleCheckGitHubIssues,
   handleCommit,
   handleCommitAndPush,
   handlePull,
@@ -86,6 +88,7 @@ export function useMagicCommands({
     handleLoadContext,
     handleLinkedProjects,
     handleForkSession,
+    handleCheckGitHubIssues,
     handleCommit,
     handleCommitAndPush,
     handlePull,
@@ -109,6 +112,7 @@ export function useMagicCommands({
       handleLoadContext,
       handleLinkedProjects,
       handleForkSession,
+      handleCheckGitHubIssues,
       handleCommit,
       handleCommitAndPush,
       handlePull,
@@ -159,6 +163,9 @@ export function useMagicCommands({
           break
         case 'fork-session':
           handlers.handleForkSession()
+          break
+        case 'check-github-issues':
+          handlers.handleCheckGitHubIssues()
           break
         case 'commit':
           handlers.handleCommit()

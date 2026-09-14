@@ -249,18 +249,9 @@ describe('model option helpers', () => {
     )
   })
 
-  it('requires GitHub issue and discussion discovery after changes', () => {
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+  it('does not require GitHub discovery in every chat', () => {
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).not.toContain(
       'GitHub Issue and Discussion Discovery'
-    )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      "search the current repository's existing GitHub issues and discussions"
-    )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      'Include the results in both the main response and the `## Recap`'
-    )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      'For each listed issue, pull request, or discussion, show its current state'
     )
   })
 })
