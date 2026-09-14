@@ -625,7 +625,7 @@ export function MagicModal() {
                 'commandcode/default')
               : backend === 'kimi'
                 ? (preferences?.selected_kimi_model ?? 'kimi/default')
-                : backend === 'grok'
+              : backend === 'grok'
                   ? (preferences?.selected_grok_model ?? 'grok/grok-4.6')
                   : backend === 'antigravity'
                     ? (preferences?.selected_antigravity_model ??
@@ -661,7 +661,7 @@ export function MagicModal() {
                 'commandcode/default')
               : backend === 'kimi'
                 ? (preferences?.selected_kimi_model ?? 'kimi/default')
-                : backend === 'grok'
+              : backend === 'grok'
                   ? (preferences?.selected_grok_model ?? 'grok/grok-4.6')
                   : backend === 'antigravity'
                     ? (preferences?.selected_antigravity_model ??
@@ -1902,6 +1902,9 @@ ${resolveInstructions}`
                       })
                       queryClient.invalidateQueries({
                         queryKey: ['all-sessions'],
+                      })
+                      queryClient.invalidateQueries({
+                        queryKey: chatQueryKeys.unreadSessionCount(),
                       })
                     })
                     toast.dismiss(toastId)
