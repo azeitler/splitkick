@@ -43,9 +43,11 @@ import {
 } from '@/types/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { clearClientPreferencesForTests } from '@/lib/client-preferences'
+import { SettingsTargetProvider } from '@/lib/settings-target'
 
 vi.mock('@/lib/transport', () => ({
   invoke: vi.fn(),
+  invokeForServer: vi.fn(),
 }))
 
 vi.mock('@/lib/platform', () => ({
@@ -97,6 +99,17 @@ const createWrapper = (queryClient: QueryClient) => {
   const Wrapper = ({ children }: { children: React.ReactNode }) =>
     createElement(QueryClientProvider, { client: queryClient }, children)
   Wrapper.displayName = 'TestQueryClientWrapper'
+  return Wrapper
+}
+
+const createServerWrapper = (queryClient: QueryClient, serverId: string) => {
+  const Wrapper = ({ children }: { children: React.ReactNode }) =>
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(SettingsTargetProvider, { serverId }, children)
+    )
+  Wrapper.displayName = 'TestServerQueryClientWrapper'
   return Wrapper
 }
 
@@ -318,6 +331,42 @@ describe('preferences service', () => {
         )?.has_seen_feature_tour
       ).toBe(true)
     })
+
+    it('patches server-owned settings on the selected remote server', async () => {
+      const { invokeForServer } = await import('@/lib/transport')
+      vi.mocked(invokeForServer)
+        .mockResolvedValueOnce({
+          schemaVersion: 1,
+          revision: 'revision-1',
+          preferences: {},
+        })
+        .mockResolvedValueOnce({
+          schemaVersion: 1,
+          revision: 'revision-2',
+          preferences: { default_backend: 'codex' },
+        })
+      const { result } = renderHook(() => usePatchPreferences(), {
+        wrapper: createServerWrapper(queryClient, 'dev-server'),
+      })
+
+      act(() => result.current.mutate({ default_backend: 'codex' }))
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      expect(invokeForServer).toHaveBeenNthCalledWith(
+        1,
+        'dev-server',
+        'get_server_preferences'
+      )
+      expect(invokeForServer).toHaveBeenNthCalledWith(
+        2,
+        'dev-server',
+        'update_server_preferences',
+        {
+          patch: { default_backend: 'codex' },
+          expectedRevision: 'revision-1',
+        }
+      )
+    })
   })
 
   describe('preferencesQueryKeys', () => {
@@ -331,6 +380,26 @@ describe('preferences service', () => {
   })
 
   describe('usePreferences', () => {
+    it('loads settings from the selected remote server', async () => {
+      const { invokeForServer } = await import('@/lib/transport')
+      vi.mocked(invokeForServer).mockResolvedValueOnce({
+        schemaVersion: 1,
+        revision: 'revision-1',
+        preferences: { selected_model: 'haiku' },
+      })
+
+      const { result } = renderHook(() => usePreferences(), {
+        wrapper: createServerWrapper(queryClient, 'dev-server'),
+      })
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      expect(result.current.data?.selected_model).toBe('haiku')
+      expect(invokeForServer).toHaveBeenCalledWith(
+        'dev-server',
+        'get_server_preferences'
+      )
+    })
+
     it('loads preferences from backend', async () => {
       const { invoke } = await import('@/lib/transport')
       const mockPreferences: AppPreferences = {

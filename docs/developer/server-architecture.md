@@ -44,6 +44,19 @@ fields are read as the legacy protocol version 1.
 Server paths never initialize a graphical toolkit; they only spawn existing host
 tools when the gate above permits it.
 
+## Settings ownership
+
+The native Settings dialog has its own server target. This target does not
+change the application transport or the dashboard scope. `usePreferences()`
+and `usePatchPreferences()` read it from `SettingsTargetProvider` and route
+server-owned preference fields through `get_server_preferences` and
+`update_server_preferences`. Remote writes include the current preference
+revision so concurrent changes fail instead of being overwritten.
+
+Client-only fields are still split by `src/lib/client-preferences.ts` and stay
+in this client's local storage. Browser Web Access does not show the target
+selector and continues to use only its serving server.
+
 ## Required server gates
 
 ```bash
