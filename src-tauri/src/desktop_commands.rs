@@ -84,6 +84,9 @@ pub async fn set_window_vibrancy(
     window: tauri::WebviewWindow,
     enabled: bool,
 ) -> Result<(), String> {
+    // Record it too, or a window opened after the toggle starts with the
+    // material read at launch instead of the one on screen.
+    crate::set_window_vibrancy_preference(enabled);
     apply_window_vibrancy(&window, enabled)
 }
 
