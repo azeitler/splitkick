@@ -210,6 +210,7 @@ import {
 } from '@/services/projects'
 import { isNativeApp } from '@/lib/environment'
 import { useActiveRemoteConnection } from '@/lib/remote-connections'
+import { formatWindowTitle } from '@/lib/window-title'
 import { isLinux, isWindows } from '@/lib/platform'
 
 // Left sidebar resize constraints (pixels)
@@ -317,16 +318,21 @@ export function MainWindow() {
     ? projects?.find(p => p.id === worktree.project_id)
     : null
 
-  // Compute window title based on selected project/worktree
-  // On mobile, show only the project name to fit the compact title bar.
-  const windowTitle = useMemo(() => {
-    if (!project || !worktree) return PRODUCT_NAME
-    if (isMobile) return project.name
-    const branchSuffix =
-      worktree.branch !== worktree.name ? ` (${worktree.branch})` : ''
-
-    return `${project.name} › ${worktree.name}${branchSuffix}`
-  }, [project, worktree, isMobile])
+  // Compute window title based on selected project/worktree, prefixed with the
+  // remote connection name so you always see which machine you drive.
+  const remoteConnection = useActiveRemoteConnection()
+  const windowTitle = useMemo(
+    () =>
+      formatWindowTitle({
+        productName: PRODUCT_NAME,
+        projectName: project?.name,
+        worktreeName: worktree?.name,
+        branch: worktree?.branch,
+        isMobile,
+        remoteName: remoteConnection?.name,
+      }),
+    [project, worktree, isMobile, remoteConnection]
+  )
 
   // Compute polling info - null if no worktree or data not loaded.
   // Must use the worktree's own base_branch (e.g. v4.x), not the project

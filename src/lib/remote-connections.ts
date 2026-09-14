@@ -262,3 +262,21 @@ export function useRemoteConnections(): RemoteConnection[] {
     () => []
   )
 }
+
+/**
+ * The active remote connection, or null while the backend is local.
+ *
+ * Safe as a `useSyncExternalStore` snapshot: `getRemoteConnections()` returns
+ * the cached array, so the found connection keeps a stable reference until a
+ * write notifies the subscribers.
+ */
+export function useActiveRemoteConnection(): RemoteConnection | null {
+  return useSyncExternalStore(
+    callback => {
+      subscribers.add(callback)
+      return () => subscribers.delete(callback)
+    },
+    getActiveRemoteConnection,
+    () => null
+  )
+}

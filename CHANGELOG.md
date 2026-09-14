@@ -35,6 +35,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
     a restart. A search hides it too, and brings it back when the search is
     cleared.
 
+- **The title bar names the remote instance.** A Jean connected to a remote
+  instance showed the same `project › worktree` title as a local one, so the
+  only sign of the remote was a small dot on the server icon in the title bar.
+  The title now starts with the connection name, as in
+  `Build server › jean › my-feature`. With no worktree selected it shows the
+  connection name alone. The name also reaches the browser tab title, and it
+  stays in zen mode and on a phone, where a wrong-machine mistake costs the
+  most. A local Jean keeps the title it had. A browser tab on Web Access
+  carries no connection name, so it keeps its title too.
+
 ### Changed
 
 - **Escape no longer closes a session.** Escape is the reflex for dismissing a

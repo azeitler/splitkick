@@ -1,3 +1,5 @@
+import { renderHook } from '@testing-library/react'
+import { act } from 'react'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   addRemoteConnection,
@@ -11,6 +13,7 @@ import {
   removeRemoteConnection,
   selectConnection,
   updateRemoteConnection,
+  useActiveRemoteConnection,
 } from './remote-connections'
 
 describe('remote connections', () => {
@@ -102,5 +105,22 @@ describe('remote connections', () => {
     expect(updated.sshUser).toBe('deploy')
     // Default SSH port is not stored.
     expect(updated.sshPort).toBeUndefined()
+  })
+
+  it('tracks the active remote connection reactively', () => {
+    const remote = addRemoteConnection({
+      name: 'Build server',
+      url: 'https://jean.example.com',
+      token: 'secret',
+    })
+
+    const { result } = renderHook(() => useActiveRemoteConnection())
+    expect(result.current).toBeNull()
+
+    act(() => selectConnection(remote.id))
+    expect(result.current).toEqual(remote)
+
+    act(() => removeRemoteConnection(remote.id))
+    expect(result.current).toBeNull()
   })
 })
