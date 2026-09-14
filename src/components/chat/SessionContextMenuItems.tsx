@@ -1,6 +1,8 @@
 import {
   Archive,
   Copy,
+  GitBranchPlus,
+  GitFork,
   Pause,
   Pencil,
   Pin,
@@ -28,6 +30,7 @@ import {
   toggleStarredSession,
 } from './session-pin-actions'
 import { SessionStatusMenu } from './SessionStatusMenu'
+import { useSessionFork } from './hooks/useSessionFork'
 import {
   getResumeCommand,
   type ManualSessionStatus,
@@ -73,6 +76,7 @@ export function SessionContextMenuItems({
 }: SessionContextMenuItemsProps) {
   const session = card.session
   const isPausedOverride = card.statusOverride === 'paused'
+  const { forkInPlace, forkToWorktree } = useSessionFork()
   // Select a boolean, not the pins array: the selector must subscribe to the
   // value that decides the label, or the item would not flip after a pin.
   const isPinned = useProjectsStore(state =>
@@ -175,6 +179,23 @@ export function SessionContextMenuItems({
             Mark as Paused
           </>
         )}
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem
+        onSelect={() => {
+          void forkInPlace({ worktreeId, sessionId: session.id })
+        }}
+      >
+        <GitFork className="mr-2 h-4 w-4" />
+        Fork Session (same Worktree)
+      </ContextMenuItem>
+      <ContextMenuItem
+        onSelect={() => {
+          void forkToWorktree({ worktreeId, sessionId: session.id })
+        }}
+      >
+        <GitBranchPlus className="mr-2 h-4 w-4" />
+        Fork Session (new Worktree)
       </ContextMenuItem>
       {resumeCommand && (
         <>

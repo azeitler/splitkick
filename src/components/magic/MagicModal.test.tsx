@@ -588,11 +588,14 @@ describe('MagicModal manual PR link', () => {
     expect(screen.queryByRole('button', { name: /release post/i })).toBeNull()
   })
 
-  it('shows the fork session magic command', () => {
+  it('shows both fork session magic commands', () => {
     render(<MagicModal />)
 
     expect(
-      screen.getByRole('button', { name: /fork session/i })
+      screen.getByRole('button', { name: /fork session \(same worktree\)/i })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /fork session \(new worktree\)/i })
     ).toBeInTheDocument()
   })
 

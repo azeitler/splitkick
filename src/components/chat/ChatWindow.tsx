@@ -50,7 +50,6 @@ import {
   useRunScripts,
   usePackageScripts,
   type PackageScript,
-  projectsQueryKeys,
 } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import type {
@@ -195,11 +194,6 @@ import {
   shouldShowReviewFullWidth,
 } from './session-card-utils'
 
-interface ForkSessionToWorktreeResponse {
-  worktree: Worktree
-  session: Session
-}
-
 // Lazy-loaded heavy modals (code splitting)
 const GitDiffModal = lazy(() =>
   import('./GitDiffModal').then(mod => ({ default: mod.GitDiffModal }))
@@ -244,7 +238,7 @@ import { useActiveTodosAndAgents } from './hooks/useActiveTodosAndAgents'
 import { usePendingAttachments } from './hooks/usePendingAttachments'
 import { dedupeInFlightAssistantMessage } from './in-flight-message-dedupe'
 import { shouldShowPermissionApproval } from './permission-approval-utils'
-import { navigateToForkedSession } from './fork-session-navigation'
+import { useSessionFork } from './hooks/useSessionFork'
 
 /** Below this age the "Last active" badge stays hidden — the session is still warm. */
 const LAST_ACTIVE_MIN_AGE_MS = 60 * 60 * 1000
@@ -2458,77 +2452,35 @@ export function ChatWindow({
     useUIStore.getState().setLinkedProjectsModalOpen(open)
   }, [])
 
-  const handleForkSession = useCallback(async () => {
+  const { forkToWorktree, forkInPlace } = useSessionFork()
+
+  const handleForkSession = useCallback(() => {
     if (!activeWorktreeId || !activeSessionId) {
       toast.error('No active session to fork')
       return
     }
-
-    const toastId = toast.loading('Forking session to a new worktree...')
-    try {
-      const result = await invoke<ForkSessionToWorktreeResponse>(
-        'fork_session_to_worktree',
-        {
-          sourceWorktreeId: activeWorktreeId,
-          sourceSessionId: activeSessionId,
-        }
-      )
-
-      const { worktree: forkedWorktree, session: forkedSession } = result
-      queryClient.setQueryData<Worktree>(
-        [...projectsQueryKeys.all, 'worktree', forkedWorktree.id],
-        forkedWorktree
-      )
-      queryClient.setQueryData<Session>(
-        chatQueryKeys.session(forkedSession.id),
-        forkedSession
-      )
-      queryClient.invalidateQueries({ queryKey: projectsQueryKeys.list() })
-      queryClient.invalidateQueries({
-        queryKey: projectsQueryKeys.worktrees(forkedWorktree.project_id),
-      })
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.sessions(forkedWorktree.id),
-      })
-
-      const projectsStore = useProjectsStore.getState()
-      const chatStore = useChatStore.getState()
-      navigateToForkedSession(
-        forkedWorktree,
-        forkedSession,
-        {
-          activeWorktreePath,
-          sessionChatModalOpen: isModal || sessionModalOpen,
-        },
-        {
-          expandProject: projectsStore.expandProject,
-          selectWorktree: projectsStore.selectWorktree,
-          registerWorktreePath: chatStore.registerWorktreePath,
-          setActiveWorktree: chatStore.setActiveWorktree,
-          setActiveSession: chatStore.setActiveSession,
-          addUserInitiatedSession: chatStore.addUserInitiatedSession,
-          openWorktreeModal: (worktreeId, worktreePath) => {
-            window.dispatchEvent(
-              new CustomEvent('open-worktree-modal', {
-                detail: { worktreeId, worktreePath },
-              })
-            )
-          },
-        }
-      )
-
-      toast.success(`Forked session to ${forkedWorktree.name}`, { id: toastId })
-    } catch (err) {
-      toast.error(`Failed to fork session: ${err}`, { id: toastId })
-    }
+    void forkToWorktree(
+      { worktreeId: activeWorktreeId, sessionId: activeSessionId },
+      { sessionChatModalOpen: isModal || sessionModalOpen }
+    )
   }, [
     activeSessionId,
     activeWorktreeId,
-    activeWorktreePath,
+    forkToWorktree,
     isModal,
-    queryClient,
     sessionModalOpen,
   ])
+
+  const handleForkSessionInPlace = useCallback(() => {
+    if (!activeWorktreeId || !activeSessionId) {
+      toast.error('No active session to fork')
+      return
+    }
+    void forkInPlace({
+      worktreeId: activeWorktreeId,
+      sessionId: activeSessionId,
+    })
+  }, [activeSessionId, activeWorktreeId, forkInPlace])
 
   // Listen for magic-command events from MagicModal
   useMagicCommands({
@@ -2536,6 +2488,7 @@ export function ChatWindow({
     handleLoadContext,
     handleLinkedProjects,
     handleForkSession,
+    handleForkSessionInPlace,
     handleCommit,
     handleCommitAndPush: handleCommitAndPushWithPicker,
     handlePull: handlePullWithPicker,

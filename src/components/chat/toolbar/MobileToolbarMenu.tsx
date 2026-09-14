@@ -10,6 +10,7 @@ import {
   FlaskConical,
   FolderOpen,
   GitBranchPlus,
+  GitFork,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequest,
@@ -167,13 +168,35 @@ export function MobileToolbarMenu({
             setMenuOpen(false)
             window.dispatchEvent(
               new CustomEvent('magic-command', {
+                detail: { command: 'fork-session-in-place' },
+              })
+            )
+          }}
+        >
+          <GitFork className="h-4 w-4" />
+          Fork Session (same Worktree)
+          <span
+            className={cn(
+              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+              isMobile && 'hidden'
+            )}
+          >
+            H
+          </span>
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          onClick={() => {
+            setMenuOpen(false)
+            window.dispatchEvent(
+              new CustomEvent('magic-command', {
                 detail: { command: 'fork-session' },
               })
             )
           }}
         >
           <GitBranchPlus className="h-4 w-4" />
-          Fork Session
+          Fork Session (new Worktree)
           <span
             className={cn(
               'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',

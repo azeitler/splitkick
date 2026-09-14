@@ -5,6 +5,7 @@ import {
   ArrowUpToLine,
   GitCommitHorizontal,
   GitBranchPlus,
+  GitFork,
   GitMerge,
   GitPullRequest,
   GitPullRequestArrow,
@@ -132,6 +133,7 @@ type MagicOption =
   | 'inject-session'
   | 'linked-projects'
   | 'fork-session'
+  | 'fork-session-in-place'
   | 'commit'
   | 'commit-and-push'
   | 'pull'
@@ -277,8 +279,14 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           key: 'K',
         },
         {
+          id: 'fork-session-in-place',
+          label: 'Fork Session (same Worktree)',
+          icon: GitFork,
+          key: 'H',
+        },
+        {
           id: 'fork-session',
-          label: 'Fork Session',
+          label: 'Fork Session (new Worktree)',
           icon: GitBranchPlus,
           key: 'W',
         },
@@ -403,6 +411,7 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
   j: 'inject-session',
   k: 'linked-projects',
   w: 'fork-session',
+  h: 'fork-session-in-place',
   c: 'commit',
   p: 'commit-and-push',
   t: 'sync',

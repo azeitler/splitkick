@@ -9,6 +9,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Chat: fork a session in place, or from any message.** Jean could already fork
+  a session into a new git worktree, but the action was buried in the Magic menu
+  and it was the only shape on offer.
+  ([#105](https://github.com/coollabsio/jean/issues/105))
+  - **Fork Session (same Worktree)** makes a sibling session tab on the same
+    files, for a second line of questions about the same code.
+  - **Fork from here**, in the right-click menu of any message, keeps the
+    conversation up to that point and drops the rest. Right-click an agent answer
+    and the fork ends with it; right-click your own message and the fork stops
+    just before it, so you can ask something different there.
+  - Both fork actions are now in the session right-click menu, next to the
+    renamed **Fork Session (new Worktree)**.
+
 - **Jean MCP: two questions about your sessions, one call each.** An agent
   could not answer "which sessions can I archive?" or "do we have a session
   about X?" without walking `list_projects` → `list_worktrees` →
@@ -90,6 +103,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Chat: a forked session no longer starts with an empty head.** The fork showed
+  the full conversation but the agent had none of it, because Jean cleared the
+  backend resume id and only replayed history when the backend changed. A Claude
+  fork now branches the transcript natively with `--fork-session`; every other
+  backend gets the copied history injected on the first turn.
+- **Chat: an Antigravity fork no longer continues the original conversation.**
+  `antigravity_session_id` was the one resume id the fork did not clear, so the
+  fork resumed the source instead of starting its own branch.
+- **Chat: a fork no longer carries the original's stale run state.** Copied runs
+  kept a checkpoint id pointing at the source worktree, a stale process id, and
+  could stay marked as running — which made the fork refuse its first message.
+  Attached contexts and linked issues or pull requests now follow the fork
+  instead of being left behind.
 - **A failed pin or star now says so.** Pinning or starring a session changed
   the screen and nothing else: the write to disk happened 500 ms later, and a
   failure only reached the log. The pin looked correct until the next start,

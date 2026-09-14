@@ -505,6 +505,33 @@ When adding a backend like Claude, Codex, OpenCode, Cursor, Pi, Command Code, or
 - [ ] Add TS/component/E2E tests for preferences, auth/login UI, execution mode normalization, backend selection, plan approval, cancellation, and magic prompt overrides
 - [ ] Update developer docs, user docs, troubleshooting, and all comments that list supported backends
 
+#### Session Forking
+
+Full details in `docs/developer/session-forking.md`. The parts that bite:
+
+- **Shared core:** `jean-core/src/chat/fork.rs`. Both the worktree fork
+  (`fork_session_to_worktree`) and the in-place fork (`fork_session_in_place`) use it.
+  Put session-copy logic there, not in `projects/commands.rs`.
+- **A fork must regain the backend's context.** Clearing the resume ids is not enough —
+  the user sees history the model does not. `SessionMetadata.pending_fork` records which
+  strategy the first send uses, and `run_log::start_run` clears it so it fires once.
+  - Claude, full fork → `PendingFork::Native`: **keep** `claude_session_id` and pass
+    `--resume <id> --fork-session`. Claude branches its own transcript.
+  - Everything else, and **every truncated fork** → `PendingFork::Handoff`: clear the
+    resume id and prepend a hidden `<jean_fork_handoff>` history block.
+  - A truncated fork can never go native: `--fork-session` branches from the *end* of the
+    transcript, handing the model the turns the fork deliberately dropped.
+- **Precedence:** `resolve_handoff_kind` in `chat/commands.rs`. A provider or profile
+  switch already replays the full history, so it outranks the fork injection.
+- **When adding a resume id for a new backend, clear it in `fork.rs` too.** Missing
+  `antigravity_session_id` there made Antigravity forks resume the source conversation.
+- **Copied runs must be sanitised** (`sanitize_forked_run`): `checkpoint_id` points at
+  the source worktree's checkpoint store, `pid`/`codex_turn_id` are stale, and a
+  `Running` run makes `start_run` refuse the fork's first send.
+- **Session-keyed side data does not follow a session id automatically.** Saved contexts
+  and `git-context/references.json` entries need the explicit copy in
+  `copy_session_side_data`.
+
 #### Per-Project Worktrees Location
 
 Projects have an optional `worktrees_dir: Option<String>` field that overrides the default `~/jean` base directory for worktree creation.
@@ -525,7 +552,12 @@ Projects have an optional `worktrees_dir: Option<String>` field that overrides t
 **Two places to register every command:**
 
 1. **`src-tauri/src/lib.rs`** — `tauri::generate_handler![...]` (native Tauri IPC)
-2. **`src-tauri/src/http_server/dispatch.rs`** — `dispatch_command()` match arms (WebSocket transport)
+2. **`jean-core/src/http_server/dispatch.rs`** — `dispatch_command()` match arms (WebSocket transport)
+
+**Exception — commands that live in `jean-core`:** `generate_handler![]` holds a single
+`dispatch_core_command` that forwards everything to `dispatch_command`, so a new
+`jean-core` command needs **only** the `dispatch.rs` arm. Step 1 applies to commands
+defined in `src-tauri` itself (`desktop_commands::*`), which are listed individually.
 
 **Dispatch pattern:**
 

@@ -1599,6 +1599,21 @@ impl RunEntry {
     }
 }
 
+/// How a forked session must continue its backend conversation on its first send.
+///
+/// Set by `chat::fork` when the fork is created and consumed exactly once by
+/// `send_chat_message`. See `docs/developer/session-forking.md`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PendingFork {
+    /// The backend can branch its own transcript (Claude `--fork-session`).
+    /// The source resume id is kept and the fork flag is passed once.
+    Native,
+    /// The backend cannot branch. The resume id is cleared and the copied Jean
+    /// history is injected as a hidden handoff block on the first send.
+    Handoff,
+}
+
 /// Session metadata - single source of truth for session data and run history
 /// Stored in sessions/data/{session_id}/metadata.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1778,6 +1793,12 @@ pub struct SessionMetadata {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scheduled_wakeup: Option<ScheduledWakeup>,
 
+    /// Session this one was forked from (provenance only; never cleared).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub forked_from_session_id: Option<String>,
+    /// One-shot marker consumed by the fork's first send.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_fork: Option<PendingFork>,
     /// Storage format version for migrations
     #[serde(default = "default_manifest_version")]
     pub version: u32,
@@ -1904,6 +1925,8 @@ impl SessionMetadata {
             terminal_activity_at: None,
             runs: vec![],
             scheduled_wakeup: None,
+            forked_from_session_id: None,
+            pending_fork: None,
             version: 1,
         }
     }

@@ -22,6 +22,7 @@ interface MagicCommandHandlers {
   handleLoadContext: () => void
   handleLinkedProjects: () => void
   handleForkSession: () => void
+  handleForkSessionInPlace: () => void
   handleCommit: () => void
   handleCommitAndPush: () => void
   handlePull: () => void
@@ -65,6 +66,7 @@ export function useMagicCommands({
   handleLoadContext,
   handleLinkedProjects,
   handleForkSession,
+  handleForkSessionInPlace,
   handleCommit,
   handleCommitAndPush,
   handlePull,
@@ -88,6 +90,7 @@ export function useMagicCommands({
     handleLoadContext,
     handleLinkedProjects,
     handleForkSession,
+    handleForkSessionInPlace,
     handleCommit,
     handleCommitAndPush,
     handlePull,
@@ -112,6 +115,7 @@ export function useMagicCommands({
       handleLoadContext,
       handleLinkedProjects,
       handleForkSession,
+      handleForkSessionInPlace,
       handleCommit,
       handleCommitAndPush,
       handlePull,
@@ -163,6 +167,9 @@ export function useMagicCommands({
           break
         case 'fork-session':
           handlers.handleForkSession()
+          break
+        case 'fork-session-in-place':
+          handlers.handleForkSessionInPlace()
           break
         case 'commit':
           handlers.handleCommit()

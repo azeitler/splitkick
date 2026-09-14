@@ -288,6 +288,21 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["projects", "sessions", "session"]);
             to_value(result)
         }
+        "fork_session_in_place" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let from_message_id: Option<String> =
+                field_opt(&args, "fromMessageId", "from_message_id")?;
+            let result = crate::chat::fork_session_in_place(
+                app.clone(),
+                worktree_id,
+                session_id,
+                from_message_id,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["sessions", "session"]);
+            to_value(result)
+        }
         "delete_worktree" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             crate::projects::delete_worktree(app.clone(), worktree_id).await?;
@@ -4195,7 +4210,13 @@ mod tests {
     #[test]
     fn commands_that_add_sessions_invalidate_the_session_caches() {
         let source = include_str!("dispatch.rs");
-        for command in ["create_session", "create_base_session"] {
+        for command in [
+            "create_session",
+            "create_base_session",
+            // A fork adds a session too, so the tab strip must refresh.
+            "fork_session_in_place",
+            "fork_session_to_worktree",
+        ] {
             let start = source
                 .find(&format!("\n        \"{command}\" =>"))
                 .unwrap_or_else(|| panic!("{command} arm not found"));

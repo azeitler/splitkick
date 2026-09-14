@@ -21,7 +21,8 @@ use super::storage::{
 };
 use super::types::{
     AllSessionsEntry, AllSessionsResponse, Backend, ChatMessage, ClaudeContext, EffortLevel,
-    LabelData, MessageRole, RunStatus, Session, ThinkingLevel, WorktreeIndex, WorktreeSessions,
+    LabelData, MessageRole, PendingFork, RunStatus, Session, ThinkingLevel, WorktreeIndex,
+    WorktreeSessions,
 };
 use crate::claude_cli::resolve_cli_binary;
 use crate::http_server::EmitExt;
@@ -550,6 +551,51 @@ fn build_kimi_system_prompt(
 }
 
 /// Get current Unix timestamp in seconds
+/// Which hidden history block, if any, a turn must prepend to the user's message.
+///
+/// The variants are mutually exclusive and ordered by precedence: a provider or
+/// profile switch already injects the full Jean-local history, so a fork's own
+/// injection would double it up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum HandoffKind {
+    None,
+    ProviderSwitch,
+    ClaudeProfile,
+    /// Forked session, first turn, backend cannot branch its own transcript.
+    Fork,
+    /// Forked session, first turn, backend branches natively (Claude `--fork-session`).
+    /// No history injection, and the source resume id is kept.
+    NativeFork,
+}
+
+impl HandoffKind {
+    /// Whether the target backend must start a fresh native session.
+    pub(crate) fn clears_target_resume(self) -> bool {
+        matches!(
+            self,
+            HandoffKind::ProviderSwitch | HandoffKind::ClaudeProfile | HandoffKind::Fork
+        )
+    }
+}
+
+pub(crate) fn resolve_handoff_kind(
+    backend_handoff: bool,
+    profile_handoff: bool,
+    pending_fork: Option<PendingFork>,
+) -> HandoffKind {
+    if backend_handoff {
+        HandoffKind::ProviderSwitch
+    } else if profile_handoff {
+        HandoffKind::ClaudeProfile
+    } else {
+        match pending_fork {
+            Some(PendingFork::Handoff) => HandoffKind::Fork,
+            Some(PendingFork::Native) => HandoffKind::NativeFork,
+            None => HandoffKind::None,
+        }
+    }
+}
+
 fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -3116,6 +3162,8 @@ pub async fn send_chat_message(
         .and_then(super::handoff::latest_completed_custom_profile);
     let backend_handoff =
         super::handoff::should_inject_handoff(previous_backend.as_ref(), &effective_backend);
+    // One-shot marker set by `chat::fork`, consumed by this turn.
+    let pending_fork = previous_metadata.as_ref().and_then(|m| m.pending_fork);
     // Resume Command Code by its native session id, but only when this session
     // already ran a Command Code turn and we're not handing off from a different
     // backend (handoff injects history into the prompt instead, so resuming the
@@ -3137,10 +3185,15 @@ pub async fn send_chat_message(
         previous_custom_profile.as_deref(),
         custom_profile_name.as_deref(),
     );
+    let handoff_kind = resolve_handoff_kind(backend_handoff, profile_handoff, pending_fork);
     // On provider switch, always start a fresh native session for the *target*
     // backend. The previous provider's history is injected via handoff; resuming
     // an old OpenCode/Codex/etc. session would omit that Jean-local context.
-    let clear_target_resume = backend_handoff || profile_handoff;
+    // A native fork is the one case that deliberately keeps its resume id: Claude
+    // branches the transcript itself via `--fork-session`.
+    let clear_target_resume = handoff_kind.clears_target_resume();
+    let claude_fork_session =
+        handoff_kind == HandoffKind::NativeFork && effective_backend == Backend::Claude;
     let message_for_backend = if backend_handoff || profile_handoff {
         let history = super::handoff::build_handoff_history_text(
             &app,
@@ -3183,7 +3236,33 @@ pub async fn send_chat_message(
         } else {
             message.clone()
         }
+    } else if handoff_kind == HandoffKind::Fork {
+        // Forked session, first turn, on a backend that cannot branch its own
+        // transcript. The copied Jean history is the only context the model gets.
+        let history = super::handoff::build_handoff_history_text(
+            &app,
+            &session_id,
+            previous_metadata.as_ref(),
+        );
+        if history.trim().is_empty() {
+            log::warn!(
+                "[SendChat] fork handoff requested but history empty session={session_id} backend={effective_backend:?}"
+            );
+            message.clone()
+        } else {
+            log::info!(
+                "[SendChat] injecting hidden fork handoff session={session_id} backend={effective_backend:?} history_chars={}",
+                history.chars().count()
+            );
+            let fork_prompt = super::handoff::build_fork_handoff_prompt(&history);
+            super::handoff::prepend_hidden_fork_handoff(&message, &fork_prompt)
+        }
     } else {
+        if handoff_kind == HandoffKind::NativeFork {
+            log::info!(
+                "[SendChat] fork resumes natively session={session_id} backend={effective_backend:?} claude_fork_session={claude_fork_session}"
+            );
+        }
         message.clone()
     };
     let claude_session_id = if claude_profile_changed
@@ -3420,6 +3499,7 @@ pub async fn send_chat_message(
     let thread_output_file = output_file.clone();
     let thread_working_dir = context.worktree_path.clone();
     let thread_claude_session_id = claude_session_id.clone();
+    let thread_claude_fork_session = claude_fork_session;
     let thread_codex_thread_id = codex_thread_id.clone();
     let thread_run_id = run_id.clone();
     let thread_opencode_session_id = opencode_session_id.clone();
@@ -3537,6 +3617,7 @@ pub async fn send_chat_message(
                         &thread_output_file,
                         std::path::Path::new(&thread_working_dir),
                         claude_session_id_for_call.as_deref(),
+                        thread_claude_fork_session,
                         thread_model.as_deref(),
                         thread_execution_mode.as_deref(),
                         thread_thinking_level.as_ref(),
@@ -6487,6 +6568,58 @@ fn pasted_text_filename(preferred_name: Option<&str>) -> String {
         sanitized
     };
     format!("{prefix}-{timestamp}-{short_uuid}.txt")
+}
+
+#[cfg(test)]
+mod handoff_kind_tests {
+    use super::*;
+
+    #[test]
+    fn a_provider_switch_outranks_everything_else() {
+        for pending in [None, Some(PendingFork::Handoff), Some(PendingFork::Native)] {
+            assert_eq!(
+                resolve_handoff_kind(true, false, pending),
+                HandoffKind::ProviderSwitch,
+                "the switch already injects the full history; a fork must not double it"
+            );
+            assert_eq!(
+                resolve_handoff_kind(true, true, pending),
+                HandoffKind::ProviderSwitch
+            );
+        }
+    }
+
+    #[test]
+    fn a_profile_switch_outranks_a_pending_fork() {
+        for pending in [None, Some(PendingFork::Handoff), Some(PendingFork::Native)] {
+            assert_eq!(
+                resolve_handoff_kind(false, true, pending),
+                HandoffKind::ClaudeProfile
+            );
+        }
+    }
+
+    #[test]
+    fn a_pending_fork_maps_to_its_strategy() {
+        assert_eq!(
+            resolve_handoff_kind(false, false, Some(PendingFork::Handoff)),
+            HandoffKind::Fork
+        );
+        assert_eq!(
+            resolve_handoff_kind(false, false, Some(PendingFork::Native)),
+            HandoffKind::NativeFork
+        );
+        assert_eq!(resolve_handoff_kind(false, false, None), HandoffKind::None);
+    }
+
+    #[test]
+    fn only_a_native_fork_keeps_its_resume_id() {
+        assert!(!HandoffKind::NativeFork.clears_target_resume());
+        assert!(!HandoffKind::None.clears_target_resume());
+        assert!(HandoffKind::Fork.clears_target_resume());
+        assert!(HandoffKind::ProviderSwitch.clears_target_resume());
+        assert!(HandoffKind::ClaudeProfile.clears_target_resume());
+    }
 }
 
 #[cfg(test)]

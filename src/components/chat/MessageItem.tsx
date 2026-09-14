@@ -6,6 +6,7 @@ import { normalizePath } from '@/lib/path-utils'
 import { copyToClipboard } from '@/lib/clipboard'
 import { Markdown } from '@/components/ui/markdown'
 import { MessageThreadContextMenu } from './message-thread-context-menu'
+import { useSessionFork } from './hooks/useSessionFork'
 import type {
   ChatMessage,
   Question,
@@ -290,6 +291,14 @@ export const MessageItem = memo(function MessageItem({
   const handleCopyToInput = useCallback(() => {
     onCopyToInput?.(message)
   }, [onCopyToInput, message])
+
+  const { forkInPlace } = useSessionFork()
+  // Branch the session at this point into a sibling session. An assistant message
+  // keeps its answer; a user message stops just before that prompt.
+  const handleForkFromHere = useCallback(() => {
+    if (!worktreeId) return
+    void forkInPlace({ worktreeId, sessionId, fromMessageId: message.id })
+  }, [forkInPlace, message.id, sessionId, worktreeId])
 
   const userTurnHasFileEdits = useMemo(() => {
     if (message.role !== 'user' || !getMessages) return false
@@ -971,6 +980,7 @@ export const MessageItem = memo(function MessageItem({
         messageText={displayContent}
         copyMessageLabel="Copy message"
         onCopyMessage={onCopyToInput ? handleCopyToInput : undefined}
+        onForkFromHere={worktreeId ? handleForkFromHere : undefined}
       >
         {messageRow}
       </MessageThreadContextMenu>
@@ -984,6 +994,7 @@ export const MessageItem = memo(function MessageItem({
       onCopyMessage={
         assistantResponse ? handleCopyAssistantResponse : undefined
       }
+      onForkFromHere={worktreeId ? handleForkFromHere : undefined}
     >
       {messageRow}
     </MessageThreadContextMenu>

@@ -118,6 +118,7 @@ Each major system has focused documentation:
 - **[Keyboard Shortcuts](./keyboard-shortcuts.md)** - Native event handling
 - **[Native Menus](./menus.md)** - Cross-platform menu integration
 - **[Data Persistence](./data-persistence.md)** - Disk storage patterns
+- **[Session Forking](./session-forking.md)** - Copying a session's history into a continuable fork
 - **[State Management](./state-management.md)** - Zustand + TanStack Query patterns
 - **[Notifications](./notifications.md)** - Toast and native notifications
 - **[Logging](./logging.md)** - Rust and TypeScript logging

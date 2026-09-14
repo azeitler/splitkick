@@ -1,10 +1,11 @@
 import { useCallback, useState, type ReactElement } from 'react'
-import { Copy } from 'lucide-react'
+import { Copy, GitFork } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -40,6 +41,11 @@ interface MessageThreadContextMenuProps {
    * attachment metadata). Falls back to copying `messageText`.
    */
   onCopyMessage?: () => void | Promise<void>
+  /**
+   * Fork the session, keeping history up to this message. Omit to hide the item —
+   * streaming messages have a run in flight and cannot be forked.
+   */
+  onForkFromHere?: () => void
 }
 
 /**
@@ -52,6 +58,7 @@ export function MessageThreadContextMenu({
   messageText = '',
   copyMessageLabel = 'Copy message',
   onCopyMessage,
+  onForkFromHere,
 }: MessageThreadContextMenuProps) {
   const [selection, setSelection] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
@@ -125,8 +132,17 @@ export function MessageThreadContextMenu({
             {copyMessageLabel}
           </ContextMenuItem>
         )}
-        {!canCopySelection && !canCopyMessage && (
+        {!canCopySelection && !canCopyMessage && !onForkFromHere && (
           <ContextMenuItem disabled>No text to copy</ContextMenuItem>
+        )}
+        {onForkFromHere && (
+          <>
+            {(canCopySelection || canCopyMessage) && <ContextMenuSeparator />}
+            <ContextMenuItem onSelect={onForkFromHere}>
+              <GitFork className="h-4 w-4" />
+              Fork from here
+            </ContextMenuItem>
+          </>
         )}
       </ContextMenuContent>
     </ContextMenu>

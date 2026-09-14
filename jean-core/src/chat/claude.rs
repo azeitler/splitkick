@@ -428,6 +428,27 @@ fn is_running_as_root() -> bool {
     }
 }
 
+/// Push the `--resume` (and optionally `--fork-session`) arguments.
+///
+/// `--fork-session` only works alongside `--resume`/`--continue`: it makes Claude branch
+/// the transcript into a fresh session id rather than appending to the original, so a
+/// forked Jean session can never interleave with its source. Without a resume id there
+/// is nothing to fork, and passing the flag alone would be rejected by the CLI.
+fn push_resume_args(
+    args: &mut Vec<String>,
+    existing_claude_session_id: Option<&str>,
+    fork_session: bool,
+) {
+    let Some(claude_sid) = existing_claude_session_id else {
+        return;
+    };
+    args.push("--resume".to_string());
+    args.push(claude_sid.to_string());
+    if fork_session {
+        args.push("--fork-session".to_string());
+    }
+}
+
 /// Build CLI arguments for Claude CLI.
 ///
 /// Returns a tuple of (args, env_vars) where env_vars are (key, value) pairs.
@@ -437,6 +458,9 @@ fn build_claude_args(
     session_id: &str,
     worktree_id: &str,
     existing_claude_session_id: Option<&str>,
+    // Branch the resumed transcript into a new session id instead of appending to it.
+    // Set once for a forked session's first turn. Ignored without a resume id.
+    fork_session: bool,
     model: Option<&str>,
     execution_mode: Option<&str>,
     thinking_level: Option<&ThinkingLevel>,
@@ -1091,10 +1115,7 @@ fn build_claude_args(
     }
 
     // Resume existing session
-    if let Some(claude_sid) = existing_claude_session_id {
-        args.push("--resume".to_string());
-        args.push(claude_sid.to_string());
-    }
+    push_resume_args(&mut args, existing_claude_session_id, fork_session);
 
     // Disable background tasks - forces all Task subagents to run in foreground.
     // Background tasks are killed when --print mode exits the CLI process.
@@ -1168,6 +1189,7 @@ pub fn execute_claude_detached(
     output_file: &std::path::Path,
     working_dir: &std::path::Path,
     existing_claude_session_id: Option<&str>,
+    fork_session: bool,
     model: Option<&str>,
     execution_mode: Option<&str>,
     thinking_level: Option<&ThinkingLevel>,
@@ -1213,6 +1235,7 @@ pub fn execute_claude_detached(
         session_id,
         worktree_id,
         existing_claude_session_id,
+        fork_session,
         model,
         execution_mode,
         thinking_level,
@@ -2577,6 +2600,31 @@ pub fn tail_claude_output(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resume_args_fork_only_alongside_a_resume_id() {
+        let mut args = Vec::new();
+        push_resume_args(&mut args, Some("sid-1"), true);
+        assert_eq!(args, vec!["--resume", "sid-1", "--fork-session"]);
+
+        let mut args = Vec::new();
+        push_resume_args(&mut args, Some("sid-1"), false);
+        assert_eq!(args, vec!["--resume", "sid-1"]);
+    }
+
+    #[test]
+    fn resume_args_are_empty_without_a_resume_id() {
+        let mut args = Vec::new();
+        push_resume_args(&mut args, None, true);
+        assert!(
+            args.is_empty(),
+            "--fork-session is invalid without --resume: {args:?}"
+        );
+
+        let mut args = Vec::new();
+        push_resume_args(&mut args, None, false);
+        assert!(args.is_empty());
+    }
 
     #[test]
     fn startup_failure_uses_cli_output_when_available() {

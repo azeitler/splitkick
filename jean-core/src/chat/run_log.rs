@@ -475,6 +475,10 @@ pub fn start_run(
             if let Some(ref b) = backend {
                 metadata.backend = b.clone();
             }
+            // A fork's continuation marker is consumed by its first send. Clearing it
+            // here, in the same atomic write that records the run, guarantees the
+            // handoff or `--fork-session` flag fires exactly once.
+            metadata.pending_fork = None;
             metadata.runs.push(run_entry.clone());
             Ok(())
         },

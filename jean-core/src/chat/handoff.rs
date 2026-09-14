@@ -4,6 +4,8 @@ use super::types::{
 
 const HANDOFF_OPEN_TAG: &str = "<jean_provider_switch_handoff>";
 const HANDOFF_CLOSE_TAG: &str = "</jean_provider_switch_handoff>";
+const FORK_OPEN_TAG: &str = "<jean_fork_handoff>";
+const FORK_CLOSE_TAG: &str = "</jean_fork_handoff>";
 const TRUNCATED_HISTORY_MARKER: &str = "[truncated older Jean history]";
 const HANDOFF_HISTORY_RUN_LIMIT: usize = 40;
 const HANDOFF_HISTORY_MAX_CHARS: usize = 60_000;
@@ -375,12 +377,71 @@ pub(crate) fn prepend_hidden_handoff(user_message: &str, handoff_prompt: &str) -
     )
 }
 
+/// Prompt for a forked session's first turn on a backend that cannot branch its own
+/// transcript. The wording is fixed rather than a magic prompt: it is not about
+/// providers, and an editable copy would need preferences UI for no real gain.
+pub(crate) fn build_fork_handoff_prompt(history: &str) -> String {
+    format!(
+        r#"You are continuing a Jean chat session that the user forked from an earlier session.
+
+The history below is that earlier conversation, copied into this new session. Your backend has no server-side record of it, so treat this Jean-local history as the conversation you already had with the user — do not claim you lack prior context.
+
+The user may have forked from the middle of the original session. The history below is therefore the complete context for this fork; anything that happened after it does not apply here.
+
+Read the history carefully, reconstruct the task state, and answer the user's latest message with full continuity. Do not mention this hidden handoff unless it is directly relevant.
+
+<jean_local_history>
+{history}
+</jean_local_history>"#
+    )
+}
+
+pub(crate) fn prepend_hidden_fork_handoff(user_message: &str, fork_prompt: &str) -> String {
+    format!(
+        "{FORK_OPEN_TAG}\n{}\n{FORK_CLOSE_TAG}\n\n{}",
+        fork_prompt.trim(),
+        user_message
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::chat::types::{
         Backend, ChatMessage, ContentBlock, MessageRole, RunEntry, RunStatus, SessionMetadata,
     };
+
+    #[test]
+    fn fork_handoff_prompt_carries_the_copied_history() {
+        let prompt = build_fork_handoff_prompt("### User\nfix the parser");
+
+        assert!(
+            prompt.contains("forked from an earlier session"),
+            "{prompt}"
+        );
+        assert!(prompt.contains("### User\nfix the parser"), "{prompt}");
+        assert!(
+            prompt.contains("<jean_local_history>") && prompt.contains("</jean_local_history>"),
+            "{prompt}"
+        );
+    }
+
+    #[test]
+    fn fork_handoff_is_hidden_in_front_of_the_user_message() {
+        let wrapped = prepend_hidden_fork_handoff("what changed?", "  HANDOFF BODY  ");
+
+        assert!(wrapped.starts_with(FORK_OPEN_TAG), "{wrapped}");
+        assert!(wrapped.ends_with("what changed?"), "{wrapped}");
+        assert!(wrapped.contains(FORK_CLOSE_TAG), "{wrapped}");
+        assert!(
+            wrapped.contains("\nHANDOFF BODY\n"),
+            "the prompt body is trimmed: {wrapped}"
+        );
+        assert!(
+            !wrapped.contains(HANDOFF_OPEN_TAG),
+            "a fork must not masquerade as a provider switch: {wrapped}"
+        );
+    }
 
     fn message(role: MessageRole, content: &str, timestamp: u64) -> ChatMessage {
         ChatMessage {

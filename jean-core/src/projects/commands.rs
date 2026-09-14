@@ -48,7 +48,8 @@ use super::types::{
     WorktreeDeletingEvent, WorktreeOrigin, WorktreePathExistsEvent,
     WorktreePermanentlyDeletedEvent, WorktreeSetupCompleteEvent, WorktreeUnarchivedEvent,
 };
-use crate::chat::types::{LabelData, Session, SessionMetadata, WorktreeSessions};
+use crate::chat::fork;
+use crate::chat::types::{LabelData, Session, WorktreeSessions};
 use crate::claude_cli::resolve_cli_binary;
 use crate::coderabbit_cli::resolve_coderabbit_binary;
 use crate::codex_cli::resolve_cli_binary as resolve_codex_cli_binary;
@@ -1416,144 +1417,6 @@ fn copy_dirty_worktree_state(source_path: &Path, target_path: &Path) -> Result<(
     copy_untracked_files(source_path, target_path)
 }
 
-fn forked_session_name(source_name: &str) -> String {
-    let trimmed = source_name.trim();
-    if trimmed.is_empty() {
-        "Forked Session".to_string()
-    } else if trimmed.starts_with("Fork of ") {
-        trimmed.to_string()
-    } else {
-        format!("Fork of {trimmed}")
-    }
-}
-
-fn clear_session_runtime_state(session: &mut Session) {
-    session.claude_session_id = None;
-    session.codex_thread_id = None;
-    session.codex_goal = None;
-    session.opencode_session_id = None;
-    session.cursor_chat_id = None;
-    session.pi_session_id = None;
-    session.commandcode_session_id = None;
-    session.grok_session_id = None;
-    session.kimi_session_id = None;
-    session.is_reviewing = false;
-    if session.status_override.as_deref() == Some("review") {
-        session.status_override = None;
-    }
-    session.waiting_for_input = false;
-    session.waiting_for_input_type = None;
-    session.pending_permission_denials.clear();
-    session.pending_codex_permission_requests.clear();
-    session.pending_opencode_permission_requests.clear();
-    session.pending_codex_command_approval_requests.clear();
-    session.pending_codex_user_input_requests.clear();
-    session.pending_codex_mcp_elicitation_requests.clear();
-    session.pending_codex_dynamic_tool_call_requests.clear();
-    session.denied_message_context = None;
-    session.queued_messages.clear();
-    session.scheduled_wakeup = None;
-    session.last_run_status = None;
-    session.last_run_execution_mode = None;
-    session.last_run_started_at = None;
-}
-
-fn prepare_forked_session(
-    source: &Session,
-    _new_worktree_id: &str,
-    order: u32,
-    created_at: u64,
-) -> Session {
-    let mut forked = source.clone();
-    forked.id = Uuid::new_v4().to_string();
-    forked.name = forked_session_name(&source.name);
-    forked.order = order;
-    forked.created_at = created_at;
-    forked.updated_at = created_at;
-    forked.last_opened_at = Some(created_at);
-    forked.archived_at = None;
-    forked.archived_by_base_close = None;
-    forked.session_naming_completed = false;
-    clear_session_runtime_state(&mut forked);
-    forked
-}
-
-fn prepare_forked_metadata(
-    source: Option<SessionMetadata>,
-    forked_session: &Session,
-    new_worktree_id: &str,
-) -> SessionMetadata {
-    let mut metadata = source.unwrap_or_else(|| {
-        SessionMetadata::new(
-            forked_session.id.clone(),
-            new_worktree_id.to_string(),
-            forked_session.name.clone(),
-            forked_session.order,
-        )
-    });
-    metadata.id = forked_session.id.clone();
-    metadata.worktree_id = new_worktree_id.to_string();
-    metadata.name = forked_session.name.clone();
-    metadata.order = forked_session.order;
-    metadata.created_at = forked_session.created_at;
-    metadata.claude_session_id = None;
-    metadata.codex_thread_id = None;
-    metadata.codex_goal = None;
-    metadata.opencode_session_id = None;
-    metadata.cursor_chat_id = None;
-    metadata.pi_session_id = None;
-    metadata.commandcode_session_id = None;
-    metadata.grok_session_id = None;
-    metadata.kimi_session_id = None;
-    metadata.session_naming_completed = false;
-    metadata.archived_at = None;
-    metadata.archived_by_base_close = None;
-    metadata.pending_permission_denials.clear();
-    metadata.pending_codex_permission_requests.clear();
-    metadata.pending_opencode_permission_requests.clear();
-    metadata.pending_codex_command_approval_requests.clear();
-    metadata.pending_codex_user_input_requests.clear();
-    metadata.pending_codex_mcp_elicitation_requests.clear();
-    metadata.pending_codex_dynamic_tool_call_requests.clear();
-    metadata.denied_message_context = None;
-    metadata.is_reviewing = false;
-    if metadata.status_override.as_deref() == Some("review") {
-        metadata.status_override = None;
-    }
-    metadata.waiting_for_input = false;
-    metadata.waiting_for_input_type = None;
-    metadata.queued_messages.clear();
-    metadata.scheduled_wakeup = None;
-    metadata
-}
-
-fn copy_session_run_files(
-    app: &AppHandle,
-    source_session_id: &str,
-    target_session_id: &str,
-) -> Result<(), String> {
-    let source_dir = crate::chat::storage::get_session_dir(app, source_session_id)?;
-    if !source_dir.exists() {
-        return Ok(());
-    }
-    let target_dir = crate::chat::storage::get_session_dir(app, target_session_id)?;
-    fs::create_dir_all(&target_dir)
-        .map_err(|e| format!("Failed to create forked session log directory: {e}"))?;
-    for entry in fs::read_dir(&source_dir)
-        .map_err(|e| format!("Failed to read source session log directory: {e}"))?
-    {
-        let entry = entry.map_err(|e| format!("Failed to read source session log entry: {e}"))?;
-        let file_type = entry
-            .file_type()
-            .map_err(|e| format!("Failed to read session log entry type: {e}"))?;
-        if file_type.is_file() {
-            fs::copy(entry.path(), target_dir.join(entry.file_name()))
-                .map_err(|e| format!("Failed to copy session log file: {e}"))?;
-        }
-    }
-    Ok(())
-}
-
 /// Create a new worktree for a project (runs in background)
 ///
 /// This command returns immediately with a "pending" worktree.
@@ -2721,12 +2584,29 @@ pub async fn fork_session_to_worktree(
     let result = (|| -> Result<ForkSessionToWorktreeResponse, String> {
         copy_dirty_worktree_state(source_path, &worktree_path)?;
 
+        // A worktree fork always copies the whole history, so it may use the
+        // backend's own branch support when there is any (Claude --fork-session).
+        let strategy = fork::fork_strategy(&source_session.backend, false);
         let mut forked_session =
-            prepare_forked_session(&source_session, &worktree_id, 0, created_at);
+            fork::prepare_forked_session(&source_session, 0, created_at, strategy);
         let source_metadata = crate::chat::storage::load_metadata(&app, &source_session_id)?;
-        copy_session_run_files(&app, &source_session_id, &forked_session.id)?;
-        let forked_metadata =
-            prepare_forked_metadata(source_metadata, &forked_session, &worktree_id);
+        let mut kept_runs = source_metadata
+            .as_ref()
+            .map(|metadata| metadata.runs.clone())
+            .unwrap_or_default();
+        for run in &mut kept_runs {
+            fork::sanitize_forked_run(run, created_at);
+        }
+        let kept_run_ids: Vec<String> = kept_runs.iter().map(|run| run.run_id.clone()).collect();
+        fork::copy_session_run_files(&app, &source_session_id, &forked_session.id, &kept_run_ids)?;
+        let forked_metadata = fork::prepare_forked_metadata(
+            source_metadata,
+            &forked_session,
+            &source_session_id,
+            &worktree_id,
+            kept_runs,
+            strategy,
+        );
 
         let saved_session = crate::chat::storage::with_sessions_mut(
             &app,
@@ -2740,6 +2620,7 @@ pub async fn fork_session_to_worktree(
             },
         )?;
         crate::chat::storage::save_metadata(&app, &forked_metadata)?;
+        fork::copy_session_side_data(&app, &source_session_id, &forked_session.id);
         forked_session = saved_session;
 
         data.add_worktree(worktree.clone());
@@ -15244,44 +15125,6 @@ Body
         assert!(args
             .windows(2)
             .any(|w| w == ["--json-schema", REVIEW_SCHEMA]));
-    }
-
-    #[test]
-    fn prepare_forked_session_clears_backend_resume_ids_and_runtime_state() {
-        let mut source = Session::new("Build auth".to_string(), 3, Backend::Codex);
-        source.claude_session_id = Some("claude-1".to_string());
-        source.codex_thread_id = Some("codex-1".to_string());
-        source.codex_goal = Some("ship the feature".to_string());
-        source.opencode_session_id = Some("opencode-1".to_string());
-        source.cursor_chat_id = Some("cursor-1".to_string());
-        source.pi_session_id = Some("pi-1".to_string());
-        source.commandcode_session_id = Some("command-1".to_string());
-        source.grok_session_id = Some("grok-1".to_string());
-        source.kimi_session_id = Some("kimi-1".to_string());
-        source.waiting_for_input = true;
-        source.is_reviewing = true;
-
-        let forked = prepare_forked_session(&source, "new-worktree", 0, 1234);
-
-        assert_ne!(forked.id, source.id);
-        assert_eq!(forked.name, "Fork of Build auth");
-        assert_eq!(forked.order, 0);
-        assert_eq!(forked.created_at, 1234);
-        assert_eq!(forked.updated_at, 1234);
-        assert_eq!(forked.backend, Backend::Codex);
-        assert_eq!(forked.claude_session_id, None);
-        assert_eq!(forked.codex_thread_id, None);
-        assert_eq!(forked.codex_goal, None);
-        assert_eq!(forked.opencode_session_id, None);
-        assert_eq!(forked.cursor_chat_id, None);
-        assert_eq!(forked.pi_session_id, None);
-        assert_eq!(forked.commandcode_session_id, None);
-        assert_eq!(forked.grok_session_id, None);
-        assert_eq!(forked.kimi_session_id, None);
-        assert!(!forked.waiting_for_input);
-        assert!(!forked.is_reviewing);
-        assert!(forked.pending_codex_permission_requests.is_empty());
-        assert!(forked.queued_messages.is_empty());
     }
 
     #[test]

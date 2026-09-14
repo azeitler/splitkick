@@ -11,6 +11,7 @@ function renderUseMagicCommands(
     handleLoadContext: vi.fn(),
     handleLinkedProjects: vi.fn(),
     handleForkSession: vi.fn(),
+    handleForkSessionInPlace: vi.fn(),
     handleCommit: vi.fn(),
     handleCommitAndPush: vi.fn(),
     handlePull: vi.fn(),
@@ -47,6 +48,20 @@ describe('useMagicCommands review comments batch', () => {
     )
 
     expect(handlers.handleForkSession).toHaveBeenCalledTimes(1)
+    expect(handlers.handleForkSessionInPlace).not.toHaveBeenCalled()
+  })
+
+  it('dispatches the in-place fork session magic command', () => {
+    const handlers = renderUseMagicCommands()
+
+    window.dispatchEvent(
+      new CustomEvent('magic-command', {
+        detail: { command: 'fork-session-in-place' },
+      })
+    )
+
+    expect(handlers.handleForkSessionInPlace).toHaveBeenCalledTimes(1)
+    expect(handlers.handleForkSession).not.toHaveBeenCalled()
   })
 
   it('dispatches the smoke test magic command', () => {

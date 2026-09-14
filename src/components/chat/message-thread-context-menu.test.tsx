@@ -94,6 +94,55 @@ describe('MessageThreadContextMenu', () => {
     window.getSelection = original
   })
 
+  it('hides Fork from here unless a handler is supplied', async () => {
+    const original = window.getSelection
+    window.getSelection = () => ({ toString: () => '' }) as Selection
+
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <div>message body</div>
+      </MessageThreadContextMenu>
+    )
+
+    fireEvent.contextMenu(screen.getByText('message body'))
+
+    await screen.findByRole('menuitem', { name: /copy message/i })
+    expect(
+      screen.queryByRole('menuitem', { name: /fork from here/i })
+    ).toBeNull()
+
+    window.getSelection = original
+  })
+
+  it('shows Fork from here and calls the handler', async () => {
+    const user = userEvent.setup()
+    const onForkFromHere = vi.fn()
+    const original = window.getSelection
+    window.getSelection = () => ({ toString: () => '' }) as Selection
+
+    render(
+      <MessageThreadContextMenu
+        messageText="Full message body"
+        onForkFromHere={onForkFromHere}
+      >
+        <div>message body</div>
+      </MessageThreadContextMenu>
+    )
+
+    fireEvent.contextMenu(screen.getByText('message body'))
+
+    const item = await screen.findByRole('menuitem', {
+      name: /fork from here/i,
+    })
+    await user.click(item)
+
+    await waitFor(() => {
+      expect(onForkFromHere).toHaveBeenCalledTimes(1)
+    })
+
+    window.getSelection = original
+  })
+
   it('shows Copy for selection and prefers selected text', async () => {
     const user = userEvent.setup()
     const original = window.getSelection
