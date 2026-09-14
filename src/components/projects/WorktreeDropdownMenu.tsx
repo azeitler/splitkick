@@ -7,6 +7,7 @@ import {
   FolderOpen,
   GitBranch,
   GitPullRequestArrow,
+  Globe,
   MoreHorizontal,
   Play,
   Plus,
@@ -55,6 +56,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { countUnreadFailedWorkflowRuns } from '@/components/shared/workflow-run-utils'
 import type { GhAuthStatus } from '@/types/gh-cli'
+import type { PackageScript } from '@/services/projects'
 import { useWorktreeMenuActions } from './useWorktreeMenuActions'
 
 interface WorktreeDropdownMenuProps {
@@ -67,6 +69,10 @@ interface WorktreeDropdownMenuProps {
   branchDiffRemoved?: number
   onUncommittedDiffClick?: () => void
   onBranchDiffClick?: () => void
+  onToggleTerminal?: () => void
+  onToggleBrowser?: () => void
+  packageScripts?: PackageScript[]
+  onRunPackageScript?: (script: PackageScript) => void
 }
 
 const BADGE_STALE_TIME = 5 * 60 * 1000
@@ -81,6 +87,10 @@ export function WorktreeDropdownMenu({
   branchDiffRemoved = 0,
   onUncommittedDiffClick,
   onBranchDiffClick,
+  onToggleTerminal,
+  onToggleBrowser,
+  packageScripts = [],
+  onRunPackageScript,
 }: WorktreeDropdownMenuProps) {
   const queryClient = useQueryClient()
   const {
@@ -144,11 +154,6 @@ export function WorktreeDropdownMenu({
   const hasDiff = uncommittedAdded > 0 || uncommittedRemoved > 0
   const hasBranchDiff = branchDiffAdded > 0 || branchDiffRemoved > 0
   const showMobileGitHubItems = isMobile
-  const hasGitHubStatusItems =
-    showMobileGitHubItems ||
-    securityCount > 0 ||
-    workflowRunCount > 0 ||
-    (isMobile && (hasDiff || hasBranchDiff))
 
   const handleOpenIssues = useCallback(() => {
     useProjectsStore.getState().selectProject(projectId)
@@ -187,6 +192,7 @@ export function WorktreeDropdownMenu({
             size="icon"
             className="h-6 w-6 text-muted-foreground hover:text-foreground"
             onClick={e => e.stopPropagation()}
+            aria-label="Actions"
           >
             <MoreHorizontal className="h-4 w-4" />
           </Button>
@@ -227,6 +233,40 @@ export function WorktreeDropdownMenu({
             </DropdownMenuSub>
           )}
 
+          {onToggleTerminal && (
+            <DropdownMenuItem onClick={onToggleTerminal}>
+              <Terminal className="mr-2 h-4 w-4" />
+              Terminal
+            </DropdownMenuItem>
+          )}
+
+          {onToggleBrowser && (
+            <DropdownMenuItem onClick={onToggleBrowser}>
+              <Globe className="mr-2 h-4 w-4" />
+              Browser
+            </DropdownMenuItem>
+          )}
+
+          {packageScripts.length > 0 && onRunPackageScript && (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <Play className="mr-4 h-4 w-4" />
+                Scripts
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                {packageScripts.map(script => (
+                  <DropdownMenuItem
+                    key={script.name}
+                    onSelect={() => onRunPackageScript(script)}
+                    className="font-mono text-xs"
+                  >
+                    {script.name}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
+
           <DropdownMenuItem
             onClick={() =>
               useProjectsStore.getState().openProjectSettings(projectId)
@@ -236,7 +276,7 @@ export function WorktreeDropdownMenu({
             Project Settings
           </DropdownMenuItem>
 
-          {hasGitHubStatusItems && <DropdownMenuSeparator />}
+          <DropdownMenuSeparator />
 
           {isMobile && hasDiff && (
             <DropdownMenuItem onClick={onUncommittedDiffClick}>
@@ -261,34 +301,28 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {showMobileGitHubItems && (
-            <DropdownMenuItem onClick={handleOpenIssues}>
-              <CircleDot className="mr-2 h-4 w-4 text-green-600" />
-              {issueCount > 0 ? `${issueCount} Issues` : 'Issues'}
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem onClick={handleOpenIssues}>
+            <CircleDot className="mr-2 h-4 w-4 text-green-600" />
+            {issueCount > 0 ? `${issueCount} Issues` : 'Issues'}
+          </DropdownMenuItem>
 
-          {showMobileGitHubItems && (
-            <DropdownMenuItem onClick={handleOpenPRs}>
-              <GitPullRequestArrow className="mr-2 h-4 w-4 text-blue-600" />
-              {prCount > 0 ? `${prCount} PRs` : 'PRs'}
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem onClick={handleOpenPRs}>
+            <GitPullRequestArrow className="mr-2 h-4 w-4 text-blue-600" />
+            {prCount > 0 ? `${prCount} Pull Requests` : 'Pull Requests'}
+          </DropdownMenuItem>
 
-          {(showMobileGitHubItems || workflowRunCount > 0) && (
-            <DropdownMenuItem onClick={handleOpenWorkflowRuns}>
-              {failedWorkflowCount > 0 ? (
-                <AlertCircle className="mr-2 h-4 w-4 text-red-600" />
-              ) : (
-                <Activity className="mr-2 h-4 w-4" />
-              )}
-              {failedWorkflowCount > 0
-                ? `${failedWorkflowCount} Failed Workflows`
-                : workflowRunCount > 0
-                  ? `${workflowRunCount} Workflows`
-                  : 'Workflows'}
-            </DropdownMenuItem>
-          )}
+          <DropdownMenuItem onClick={handleOpenWorkflowRuns}>
+            {failedWorkflowCount > 0 ? (
+              <AlertCircle className="mr-2 h-4 w-4 text-red-600" />
+            ) : (
+              <Activity className="mr-2 h-4 w-4" />
+            )}
+            {failedWorkflowCount > 0
+              ? `${failedWorkflowCount} Failed Workflows`
+              : workflowRunCount > 0
+                ? `${workflowRunCount} Workflows`
+                : 'Workflows'}
+          </DropdownMenuItem>
 
           {(showMobileGitHubItems || securityCount > 0) && (
             <DropdownMenuItem onClick={handleOpenSecurity}>

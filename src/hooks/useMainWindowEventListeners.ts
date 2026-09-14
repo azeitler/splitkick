@@ -250,6 +250,12 @@ export function shouldAllowKeybindingThroughOpenOverlay(
   return action === 'open_in_modal' && uiState.gitDiffModalOpen
 }
 
+export function hasBlockingOpenOverlay(): boolean {
+  return !!document.querySelector(
+    '[role="dialog"][data-state="open"]:not([data-terminal-host]), [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]'
+  )
+}
+
 function getFocusedTerminalElement(): HTMLElement | null {
   const activeElement = document.activeElement
   if (!(activeElement instanceof HTMLElement)) return null
@@ -870,9 +876,7 @@ export function useMainWindowEventListeners() {
       const uiState = useUIStore.getState()
       if (
         !shouldAllowKeybindingThroughOpenOverlay(matchedAction, uiState) &&
-        document.querySelector(
-          '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]'
-        )
+        hasBlockingOpenOverlay()
       )
         return
       if (

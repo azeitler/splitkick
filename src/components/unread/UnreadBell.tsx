@@ -184,13 +184,7 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
       })
       queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
       setFocusedIndex(0)
-      // Snapshot fallback: if popover was opened via command palette / external
-      // event (bypassing handleOpenChange), seed the snapshot here so subsequent
-      // status flips can't drain the rendered list. No-op if already set.
-      setSnapshotItems(prev => prev ?? unreadItems)
     }
-    // unreadItems intentionally omitted: snapshot only on open transition.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, queryClient])
 
   // Invalidate when any session is opened (so the count stays fresh)
@@ -245,6 +239,14 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
     }
     return results.sort((a, b) => b.session.updated_at - a.session.updated_at)
   }, [allSessions])
+
+  // Take the open snapshot only after the on-demand query has data. Taking an
+  // empty snapshot while the query starts makes the first open look empty and
+  // hides data that arrives while the popover is open.
+  useEffect(() => {
+    if (!open || !allSessions) return
+    setSnapshotItems(prev => prev ?? unreadItems)
+  }, [allSessions, open, unreadItems])
 
   // Items rendered inside the popover. While open, prefer the snapshot taken at
   // open time so a queued prompt restarting a session (status flip → unread=false)
@@ -369,17 +371,17 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
         handleSelect(only)
         return
       }
-      setSnapshotItems(unreadItems)
+      if (allSessions) setSnapshotItems(unreadItems)
     },
-    [unreadItems, handleSelect]
+    [allSessions, unreadItems, handleSelect]
   )
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
-      if (next) setSnapshotItems(unreadItems)
+      if (next && allSessions) setSnapshotItems(unreadItems)
       setOpen(next)
     },
-    [unreadItems]
+    [allSessions, unreadItems]
   )
 
   const handleKeyDown = useCallback(

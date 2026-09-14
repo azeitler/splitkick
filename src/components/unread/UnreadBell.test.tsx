@@ -13,7 +13,8 @@ import type { AllSessionsResponse, Session } from '@/types/chat'
 import { UnreadBell } from './UnreadBell'
 
 const invokeMock = vi.fn()
-let allSessions: AllSessionsResponse
+let allSessions: AllSessionsResponse | undefined
+let allSessionsLoading = false
 let unreadCount = 2
 let sendingSessionIds: Record<string, boolean> = {}
 
@@ -25,7 +26,7 @@ vi.mock('@/services/chat', () => ({
   chatQueryKeys: {
     unreadSessionCount: () => ['unread-session-count'],
   },
-  useAllSessions: () => ({ data: allSessions, isLoading: false }),
+  useAllSessions: () => ({ data: allSessions, isLoading: allSessionsLoading }),
 }))
 
 let finishedSessionAnimationEnabled = true
@@ -69,14 +70,17 @@ const clearActiveWorktreeMock = vi.fn()
 const setLastOpenedForProjectMock = vi.fn()
 vi.mock('@/store/chat-store', () => ({
   useChatStore: Object.assign(
-    (selector: (state: { sendingSessionIds: Record<string, boolean> }) => unknown) =>
-      selector({ sendingSessionIds }),
+    (
+      selector: (state: {
+        sendingSessionIds: Record<string, boolean>
+      }) => unknown
+    ) => selector({ sendingSessionIds }),
     {
-    getState: () => ({
-      setActiveSession: setActiveSessionMock,
-      clearActiveWorktree: clearActiveWorktreeMock,
-      setLastOpenedForProject: setLastOpenedForProjectMock,
-    }),
+      getState: () => ({
+        setActiveSession: setActiveSessionMock,
+        clearActiveWorktree: clearActiveWorktreeMock,
+        setLastOpenedForProject: setLastOpenedForProjectMock,
+      }),
     }
   ),
 }))
@@ -122,9 +126,13 @@ function renderWithQueryClient(children: ReactNode) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   })
-  return render(
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  )
+  return render(children, {
+    wrapper: ({ children: wrappedChildren }) => (
+      <QueryClientProvider client={queryClient}>
+        {wrappedChildren}
+      </QueryClientProvider>
+    ),
+  })
 }
 
 async function openDropdown() {
@@ -145,6 +153,7 @@ describe('UnreadBell', () => {
       globalThis as typeof globalThis & { __JEAN_TEST_IS_NATIVE__?: boolean }
     ).__JEAN_TEST_IS_NATIVE__ = true
     unreadCount = 2
+    allSessionsLoading = false
     sendingSessionIds = {}
     finishedSessionAnimationEnabled = true
     allSessions = {
@@ -173,9 +182,27 @@ describe('UnreadBell', () => {
     invokeMock.mockResolvedValue(undefined)
   })
 
+  it('shows sessions that finish loading after the shortcut opens the popover', async () => {
+    const loadedSessions = allSessions
+    allSessions = undefined
+    allSessionsLoading = true
+    const view = renderWithQueryClient(<UnreadBell title="Jean" />)
+
+    fireEvent(window, new CustomEvent('command:open-unread-sessions'))
+
+    expect(
+      screen.getByRole('button', { name: /2 finished sessions/i })
+    ).toBeInTheDocument()
+    allSessions = loadedSessions
+    allSessionsLoading = false
+    view.rerender(<UnreadBell title="Jean" />)
+
+    expect(await screen.findByText('Session one')).toBeInTheDocument()
+  })
+
   it('shows a running Claude session instead of stale waiting state', async () => {
     sendingSessionIds = { 'session-1': true }
-    const firstEntry = allSessions.entries[0]
+    const firstEntry = allSessions?.entries[0]
     if (!firstEntry) throw new Error('Expected an unread session entry')
     firstEntry.sessions[0] = session({
       waiting_for_input: true,

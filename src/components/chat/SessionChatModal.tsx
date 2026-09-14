@@ -62,6 +62,7 @@ import {
   useWorktree,
   useProjects,
   useRunScripts,
+  usePackageScripts,
   type PackageScript,
 } from '@/services/projects'
 import { useGitHubPRs } from '@/services/github'
@@ -265,6 +266,7 @@ export function SessionChatModal({
   )
   const { data: preferences } = usePreferences()
   const { data: runScripts = [] } = useRunScripts(worktreePath)
+  const { data: packageScripts = [] } = usePackageScripts(worktreePath)
   const modalTerminalDockMode = useTerminalStore(
     state => state.modalTerminalDockMode
   )
@@ -993,6 +995,14 @@ export function SessionChatModal({
     [worktreeId]
   )
 
+  const handleToggleModalTerminal = useCallback(() => {
+    useTerminalStore.getState().toggleModalTerminal(worktreeId)
+  }, [worktreeId])
+
+  const handleToggleModalBrowser = useCallback(() => {
+    useBrowserStore.getState().toggleModal(worktreeId)
+  }, [worktreeId])
+
   // Close on Escape key
   const onEscapeClose = useEffectEvent((e: KeyboardEvent) => {
     if (e.key !== 'Escape') return
@@ -1151,7 +1161,7 @@ export function SessionChatModal({
                     />
                   )}
                   {!zenMode && project && (
-                    <div className="hidden items-center gap-2 md:flex">
+                    <div className="hidden items-center gap-2 2xl:flex">
                       <NewIssuesBadge
                         projectPath={project.path}
                         projectId={project.id}
@@ -1174,6 +1184,12 @@ export function SessionChatModal({
                       branchDiffRemoved={isBase ? 0 : branchDiffRemoved}
                       onUncommittedDiffClick={handleUncommittedDiffClick}
                       onBranchDiffClick={handleBranchDiffClick}
+                      onToggleTerminal={handleToggleModalTerminal}
+                      onToggleBrowser={
+                        isNativeApp() ? handleToggleModalBrowser : undefined
+                      }
+                      packageScripts={packageScripts}
+                      onRunPackageScript={handlePackageScript}
                     />
                   )}
                 </div>
@@ -1213,7 +1229,7 @@ export function SessionChatModal({
                   {!zenMode && (
                     <>
                       {/* Desktop: inline action buttons */}
-                      <div className="hidden sm:flex items-center gap-1">
+                      <div className="hidden 2xl:flex items-center gap-1">
                         <OpenInButton
                           worktreePath={worktreePath}
                           branch={worktree?.branch}

@@ -143,9 +143,7 @@ describe('WorktreeDropdownMenu', () => {
     expect(
       screen.getByRole('menuitem', { name: /open in/i })
     ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('menuitem', { name: /finder/i })
-    ).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /finder/i })).toBeNull()
   })
 
   it('shows open-in editor/terminal/finder when the remote backend allows native open', async () => {
@@ -168,5 +166,55 @@ describe('WorktreeDropdownMenu', () => {
 
     const openItems = screen.getAllByRole('menuitem', { name: /open in/i })
     expect(openItems.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('shows issues, pull requests, and workflows on desktop when counts are zero', async () => {
+    const user = userEvent.setup()
+    envMocks.isMobile = false
+
+    render(
+      <WorktreeDropdownMenu
+        worktree={worktree}
+        projectId="project-1"
+        projectPath="/tmp/project"
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Actions' }))
+
+    expect(screen.getByRole('menuitem', { name: 'Issues' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: 'Pull Requests' })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: 'Workflows' })
+    ).toBeInTheDocument()
+  })
+
+  it('shows compact session actions in the existing menu', async () => {
+    const user = userEvent.setup()
+    const onToggleTerminal = vi.fn()
+    const onToggleBrowser = vi.fn()
+
+    render(
+      <WorktreeDropdownMenu
+        worktree={worktree}
+        projectId="project-1"
+        projectPath="/tmp/project"
+        onToggleTerminal={onToggleTerminal}
+        onToggleBrowser={onToggleBrowser}
+        packageScripts={[{ name: 'test', command: 'bun', args: ['test'] }]}
+        onRunPackageScript={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Actions' }))
+    await user.click(screen.getByRole('menuitem', { name: 'Terminal' }))
+    expect(onToggleTerminal).toHaveBeenCalledOnce()
+
+    await user.click(screen.getByRole('button', { name: 'Actions' }))
+    expect(screen.getByText('Scripts')).toBeInTheDocument()
+    await user.click(screen.getByRole('menuitem', { name: 'Browser' }))
+    expect(onToggleBrowser).toHaveBeenCalledOnce()
   })
 })
