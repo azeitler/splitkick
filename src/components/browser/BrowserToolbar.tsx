@@ -18,6 +18,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { toFileUrl } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { isBlankTabUrl, useBrowserStore } from '@/store/browser-store'
 import { browserBackend, useBrowserTabActions } from '@/hooks/useBrowserPane'
@@ -40,6 +41,11 @@ function normalizeUrl(input: string): string {
   const trimmed = input.trim()
   if (!trimmed) return trimmed
   if (/^[a-z]+:\/\//i.test(trimmed)) return trimmed
+  // A path the user typed or pasted. Without this the dot rule below would
+  // read `/Users/me/page.html` as a host name and build `https:///Users/...`.
+  if (trimmed.startsWith('/') || /^[a-z]:[\\/]/i.test(trimmed)) {
+    return toFileUrl(trimmed)
+  }
   // Loopback hosts → http:// (local dev servers usually lack TLS).
   if (
     /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])(:\d+)?(\/|$)/i.test(trimmed)

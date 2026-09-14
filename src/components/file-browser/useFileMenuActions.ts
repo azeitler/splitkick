@@ -3,7 +3,12 @@ import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { copyToClipboard } from '@/lib/clipboard'
 import { isLocalBackend } from '@/lib/environment'
-import { getFilename, isHtmlFile, joinPaths, toFileUrl } from '@/lib/path-utils'
+import {
+  getFilename,
+  isBrowsableFile,
+  joinPaths,
+  toFileUrl,
+} from '@/lib/path-utils'
 import { getFileManagerName } from '@/lib/platform'
 import { generateId } from '@/lib/uuid'
 import { logger } from '@/lib/logger'
@@ -41,13 +46,14 @@ export function useFileMenuActions(rootPath: string | null) {
   )
 
   /**
-   * HTML files load from disk in the embedded browser. That needs the local
+   * Files the web view renders itself — HTML pages, images, PDFs, movies and
+   * plain text — load from disk in the embedded browser. That needs the local
    * desktop backend: the browser is a native webview, and with a remote
    * backend the worktree path names a file on the other machine.
    */
   const isBrowsable = useCallback(
     (node: FileTreeNode) =>
-      !node.isDir && isHtmlFile(node.name) && isLocalBackend(),
+      !node.isDir && isBrowsableFile(node.name) && isLocalBackend(),
     []
   )
 

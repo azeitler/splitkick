@@ -7,7 +7,44 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **The browser pane opens more than HTML now.** Double-click in the Files
+  sidebar, or click a path in a chat answer, and an image, an SVG, a PDF, a
+  movie or a text file opens in the pane beside the chat. Only HTML did before;
+  everything else went to the file viewer. Source files, archives and anything
+  else the web view cannot draw still open there, and "Open" in the right-click
+  menu always uses the file viewer.
+
+  Markdown and plain text are a partial case worth knowing about: the web view
+  shows them as text, but a `file://` text file carries no character set, so the
+  web view reads it as Latin-1 and an em dash in a UTF-8 file shows as `â€"`.
+  The file viewer renders Markdown properly and is one right-click away.
+
 ### Fixed
+
+- **A file the browser pane cannot find now says so.** The pane showed a
+  spinner that never stopped. The web view fails a missing file in a callback
+  Jean never received, so nothing ever ended the load. Jean now checks the file
+  before the pane loads it and shows a message that names it. Any other load
+  that starts and never finishes ends in an error after 20 seconds, instead of
+  spinning for good.
+
+- **A movie no longer spins for ever either.** The web view hands a movie to its
+  own player and then reports the page load as failed, although the player is on
+  screen and playing. The pane counts a movie as loaded as soon as it starts.
+
+- **Chat: a path whose name holds `#`, `?` or letters outside ASCII now becomes
+  a link.** `bericht-übersicht.html` was left as plain text, and `q#1?draft.html`
+  was cut at the `#` and treated as a fragment. Jean now reads a `#` or a `?` as
+  part of the name when the name up to that point is not a file Jean can open.
+  A name with a space is still not linked on its own: nothing tells
+  `open out/report.html` (a command) from `04 report.html` (a name). Write that
+  one as a normal Markdown link.
+
+- **The browser address bar accepts a path.** Pasting `/Users/me/page.html`
+  built `https:///Users/me/page.html` and loaded nothing, because the bar read
+  anything with a dot in it as a web address.
 
 - **Every Jean window now carries its own name.** With one window per remote
   the macOS Window menu, Mission Control and the app switcher listed them all as

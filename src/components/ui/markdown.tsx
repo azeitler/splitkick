@@ -18,7 +18,7 @@ import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
 import remend from 'remend'
 import { remarkFixInterruptedLists } from '@/lib/remark-fix-interrupted-lists'
-import { remarkLocalHtmlLinks } from '@/lib/remark-local-html-links'
+import { remarkLocalFileLinks } from '@/lib/remark-local-file-links'
 import { LocalPathRootContext, resolveLocalPath } from '@/lib/chat-links'
 import { MarkdownLink } from '@/components/ui/markdown-link'
 import { escapeMarkdownImageDestinations } from '@/lib/markdown-image-escape'
@@ -649,11 +649,11 @@ const compactComponents: Components = {
 // Module-level plugin arrays keep references stable across renders.
 // remarkFixInterruptedLists runs after GFM so task lists are already parsed,
 // then nests orphan sibling ULs under the preceding OL item (issue #200).
-// remarkLocalHtmlLinks runs after GFM so web autolinks are already links.
+// remarkLocalFileLinks runs after GFM so web autolinks are already links.
 const remarkPlugins = [
   remarkGfm,
   remarkFixInterruptedLists,
-  remarkLocalHtmlLinks,
+  remarkLocalFileLinks,
 ]
 // rehype-raw re-parses the full accumulated text as HTML on every render —
 // the dominant per-frame cost while streaming — so streaming mode skips it

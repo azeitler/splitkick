@@ -96,6 +96,118 @@ export function isHtmlFile(path: string): boolean {
   return HTML_EXTENSIONS.has(getExtension(path).toLowerCase())
 }
 
+// The sets below are the extensions a web view renders as a document of its
+// own, without HTML around them. Each one was checked with a headless
+// `WKWebView` probe against a local file: all report `canShowMIMEType == true`
+// and paint. See docs/developer/embedded-browser.md for the full table.
+
+const IMAGE_EXTENSIONS = new Set([
+  '.svg',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.avif',
+  '.bmp',
+  '.ico',
+  '.apng',
+])
+const PDF_EXTENSIONS = new Set(['.pdf'])
+
+/**
+ * Plain-text extensions. These become a text document, but WebKit has no
+ * charset for a `file://` text response and falls back to Latin-1, so
+ * non-ASCII characters show as mojibake. The file viewer renders Markdown
+ * properly and stays available as "Open" in the context menu.
+ */
+const TEXT_EXTENSIONS = new Set(['.txt', '.text', '.log', '.md', '.markdown'])
+
+/**
+ * Movie extensions. A movie is special: WebKit replaces the page with a media
+ * document and reports the navigation as *failed*
+ * (`WebKitErrorDomain 204 "Plug-in handled load"`), even though the player
+ * appears and plays. The load therefore never reports "finished" — see
+ * `isVideoFile` for what the browser pane does about it.
+ *
+ * `.mkv` is left out: WebKit cannot play the Matroska container.
+ */
+const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.ogv'])
+
+/**
+ * Whether a movie file is at this path (case-insensitive).
+ *
+ * The browser pane needs this because a movie never reports a finished load.
+ *
+ * @example
+ * isVideoFile('clip.MP4') // true
+ * isVideoFile('poster.png') // false
+ */
+export function isVideoFile(path: string): boolean {
+  return VIDEO_EXTENSIONS.has(getExtension(path).toLowerCase())
+}
+
+/**
+ * Whether the embedded browser can show the file at this path directly.
+ *
+ * True for HTML pages, images (SVG included), PDFs, movies and plain text.
+ * Everything else — source code, archives, binaries — goes to the file
+ * viewer instead.
+ *
+ * @example
+ * isBrowsableFile('report.html') // true
+ * isBrowsableFile('diagram.SVG') // true
+ * isBrowsableFile('clip.mp4') // true
+ * isBrowsableFile('main.rs') // false
+ */
+export function isBrowsableFile(path: string): boolean {
+  const extension = getExtension(path).toLowerCase()
+  return (
+    HTML_EXTENSIONS.has(extension) ||
+    IMAGE_EXTENSIONS.has(extension) ||
+    PDF_EXTENSIONS.has(extension) ||
+    TEXT_EXTENSIONS.has(extension) ||
+    VIDEO_EXTENSIONS.has(extension)
+  )
+}
+
+/**
+ * Split a file reference into its path and its `?query` / `#fragment`.
+ *
+ * `#` and `?` are legal in a file name on every platform Jean runs on, so the
+ * first one is not always the start of a suffix. The extension decides:
+ *
+ * - `report.html#top` → the part before `#` is a page, so `#top` is a suffix.
+ * - `q#1?draft.html` → it is not, but the whole string is a page, so the
+ *   whole string is the name.
+ *
+ * @example
+ * splitFileRefSuffix('report.html#top') // ['report.html', '#top']
+ * splitFileRefSuffix('q#1?draft.html') // ['q#1?draft.html', '']
+ * splitFileRefSuffix('page.html?v=2') // ['page.html', '?v=2']
+ */
+export function splitFileRefSuffix(ref: string): [string, string] {
+  const index = ref.search(/[?#]/)
+  if (index === -1) return [ref, '']
+  const head = ref.slice(0, index)
+  // A suffix on a browsable file is a real suffix.
+  if (isBrowsableFile(head)) return [head, ref.slice(index)]
+  // Otherwise the `#` or `?` may belong to the name itself.
+  if (isBrowsableFile(ref)) return [ref, '']
+  return [head, ref.slice(index)]
+}
+
+/** Every extension the embedded browser opens, without the leading dot. */
+export function browsableExtensions(): string[] {
+  return [
+    ...HTML_EXTENSIONS,
+    ...IMAGE_EXTENSIONS,
+    ...PDF_EXTENSIONS,
+    ...TEXT_EXTENSIONS,
+    ...VIDEO_EXTENSIONS,
+  ].map(extension => extension.slice(1))
+}
+
 /**
  * Convert an absolute filesystem path to a `file://` URL (cross-platform).
  *

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { invoke, listen } from '@/lib/transport'
 import { isLocalBackend, isNativeApp } from '@/lib/environment'
-import { toFileUrl } from '@/lib/path-utils'
+import { isVideoFile, toFileUrl } from '@/lib/path-utils'
 import { isLoopbackHost } from '@/lib/remote-editor'
 import { isBlankTabUrl, useBrowserStore } from '@/store/browser-store'
 import { useChatStore } from '@/store/chat-store'
@@ -138,8 +138,21 @@ export function useBrowserEvents(): void {
       listen<BrowserPageLoadEvent>('browser:loading', e => {
         const { tabId, url } = e.payload
         const s = useBrowserStore.getState()
-        s.setTabLoading(tabId, true)
         const tab = findTab(s, tabId)
+        // A movie becomes a media document: WebKit hands the load to its
+        // player and reports the navigation as failed ("Plug-in handled
+        // load"), so "finished" never arrives. The player is on screen by
+        // now, so the load counts as done here instead.
+        if (isVideoFile(url)) {
+          clearWatchdog(tabId)
+          s.setTabLoading(tabId, false)
+          s.setTabUrl(tabId, url)
+          s.setLastLoadedUrl(tabId, url)
+          s.setTabError(tabId, null)
+          s.setRequestedUrl(tabId, null)
+          return
+        }
+        s.setTabLoading(tabId, true)
         // External nav (link click, JS redirect chain) — no requestedUrl set.
         // Update URL bar with the loading URL when there is no in-flight intent.
         // When requestedUrl is set, navigate() already wrote the URL bar; do not
@@ -147,10 +160,14 @@ export function useBrowserEvents(): void {
         if (!tab?.requestedUrl && !isBlankTabUrl(url)) {
           s.setTabUrl(tabId, url)
         }
-        // Extend watchdog now that WebKit confirms the load actually started.
-        // Cold DNS + TLS + heavy assets routinely exceed the initial budget.
-        if (tab?.requestedUrl && !isBlankTabUrl(url)) {
-          armWatchdog(tabId, tab.requestedUrl)
+        // Watch every started load, not only one the URL bar asked for. A load
+        // that fails after it starts (a dead link clicked inside the page, a
+        // new tab opened straight onto a broken URL) gets no "finished" event
+        // from wry, and without a watchdog the tab spins for ever.
+        // Extending it here also gives a web page the full budget again:
+        // cold DNS + TLS + heavy assets routinely exceed the initial one.
+        if (!isBlankTabUrl(url)) {
+          armWatchdog(tabId, tab?.requestedUrl ?? url)
         }
       })
     )

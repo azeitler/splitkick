@@ -100,6 +100,8 @@ export default tseslint.config(
       'dist/**',
       'src-tauri/dist/**',
       'node_modules/**',
+      // Local scratch reproduction harnesses (git-ignored, not app code).
+      'scratch/**',
       'src-tauri/target/**',
       'src-tauri/gen/**',
       'e2e/**',

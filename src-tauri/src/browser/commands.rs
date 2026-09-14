@@ -238,6 +238,29 @@ fn is_pane_scheme(scheme: &str) -> bool {
     )
 }
 
+/// Reject a `file://` URL that names nothing, before the webview loads it.
+///
+/// WebKit fails such a load in `didFailProvisionalNavigation`, which wry does
+/// not surface — `on_page_load` only reports Started and Finished. The pane
+/// would show Started and never Finished, so the spinner would never stop.
+/// Checking the path here turns that into a message that names the file.
+fn reject_missing_local_file(url: &Url) -> Result<(), String> {
+    if url.scheme() != "file" {
+        return Ok(());
+    }
+    // A URL with a host (a UNC share) is not a path this process can stat.
+    let Ok(path) = url.to_file_path() else {
+        return Ok(());
+    };
+    if path.is_file() {
+        return Ok(());
+    }
+    if path.is_dir() {
+        return Err(format!("Not a file: {}", path.display()));
+    }
+    Err(format!("File not found: {}", path.display()))
+}
+
 /// Hand a URL the pane cannot render to the OS, as a normal browser does.
 fn open_outside_pane(url: &str) {
     if let Err(error) = jean_core::open_url_in_browser(url) {
@@ -268,6 +291,7 @@ pub async fn browser_create(
     }
 
     let parsed = Url::parse(&url).map_err(|e| format!("invalid url: {e}"))?;
+    reject_missing_local_file(&parsed)?;
     let label = label_for_tab(&tab_id);
 
     let app_for_new_tab = app.clone();
@@ -348,6 +372,7 @@ pub async fn browser_navigate(app: AppHandle, tab_id: String, url: String) -> Re
         .get_webview(&label)
         .ok_or_else(|| format!("webview '{label}' not found"))?;
     let parsed = Url::parse(&url).map_err(|e| format!("invalid url: {e}"))?;
+    reject_missing_local_file(&parsed)?;
     webview.navigate(parsed).map_err(|e| e.to_string())
 }
 
@@ -535,6 +560,37 @@ mod tests {
         for scheme in ["mailto", "tel", "sms", "vscode", "slack", "javascript"] {
             assert!(!is_pane_scheme(scheme), "{scheme} should go to the OS");
         }
+    }
+
+    #[test]
+    fn local_file_urls_are_checked_before_the_webview_loads_them() {
+        let dir = std::env::temp_dir().join("jean-browser-local-file-check");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("report.html");
+        std::fs::write(&file, "<h1>ok</h1>").unwrap();
+
+        let ok = Url::from_file_path(&file).unwrap();
+        assert_eq!(reject_missing_local_file(&ok), Ok(()));
+
+        let missing = Url::from_file_path(dir.join("nope.html")).unwrap();
+        assert!(
+            reject_missing_local_file(&missing)
+                .unwrap_err()
+                .starts_with("File not found:"),
+            "a missing file must be named, not left spinning"
+        );
+
+        let directory = Url::from_directory_path(&dir).unwrap();
+        assert!(reject_missing_local_file(&directory)
+            .unwrap_err()
+            .starts_with("Not a file:"));
+
+        // Every other scheme passes through untouched.
+        for url in ["https://example.com", "about:blank", "data:text/html,hi"] {
+            assert_eq!(reject_missing_local_file(&Url::parse(url).unwrap()), Ok(()));
+        }
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     #[test]

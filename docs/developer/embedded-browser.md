@@ -65,11 +65,11 @@ The markdown renderer sends every link through `MarkdownLink`
 (`src/components/ui/markdown-link.tsx`), which calls `openChatLink()` from
 `src/lib/chat-links.ts`:
 
-| Link                           | Click                        | Cmd/Ctrl-click or ↗ button |
-| ------------------------------ | ---------------------------- | -------------------------- |
-| http(s) URL                    | embedded browser             | system browser             |
-| local HTML file (`isHtmlFile`) | embedded browser (`file://`) | OS default app             |
-| other local file               | file viewer                  | file viewer                |
+| Link                         | Click                        | Cmd/Ctrl-click or ↗ button |
+| ---------------------------- | ---------------------------- | -------------------------- |
+| http(s) URL                  | embedded browser             | system browser             |
+| local file the pane can show | embedded browser (`file://`) | OS default app             |
+| other local file             | file viewer                  | file viewer                |
 
 - In web access (no native webview) web links open a browser tab and local
   pages open in the file viewer. Without the local backend, local pages also
@@ -83,10 +83,18 @@ The markdown renderer sends every link through `MarkdownLink`
   against the worktree and not against the app's own origin.
 - These anchors carry `data-chat-link`, so `useExternalLinkInterceptor` skips
   them. Every other anchor in the app still opens in the system browser.
-- `remarkLocalHtmlLinks` (`src/lib/remark-local-html-links.ts`) turns HTML paths
-  in plain text, and inline code that holds exactly one such path, into links.
+- `remarkLocalFileLinks` (`src/lib/remark-local-file-links.ts`) turns paths in
+  plain text, and inline code that holds exactly one path, into links.
   `markdownUrlTransform` keeps `file:` and drive-letter hrefs, which
-  react-markdown would otherwise blank.
+  react-markdown would otherwise blank. Two limits are deliberate:
+  - **No spaces.** Neither prose nor inline code can tell `open a/b.html` (a
+    command) from `04 report.html` (a name). Write a name with a space as a
+    real markdown link: `[04 report.html](<04 report.html>)`.
+  - **`#` and `?` in a name work in inline code only.** `splitFileRefSuffix()`
+    decides whether they start a fragment or belong to the name: if the part
+    before the first one is already browsable it is a suffix, otherwise the
+    whole string is the name. `chat-links.ts` uses the same rule, so the
+    classifier and the opener never disagree.
 
 ## Jean MCP `open_in_browser`
 
@@ -117,5 +125,49 @@ Gate file browsing on `isLocalBackend()`, not `isNativeApp()`. With a remote
 Jean backend, the worktree path names a file on the other machine, and the
 local webview would load the wrong file or nothing.
 
-`isHtmlFile()` in the same module decides which files the Files sidebar opens
-in the browser: `.html`, `.htm`, `.xhtml`, `.xht` and `.shtml`.
+`isBrowsableFile()` in the same module decides which files the Files sidebar
+and chat links open in the browser. `isHtmlFile()` covers the page extensions
+alone (`.html`, `.htm`, `.xhtml`, `.xht`, `.shtml`).
+
+## What the pane renders, and what it reports
+
+Checked with a headless `WKWebView` that loads each type from disk and prints
+`canShowMIMEType`, the navigation callback and `document.contentType`:
+
+| Type                                    | Result                                     |
+| --------------------------------------- | ------------------------------------------ |
+| `.html` `.htm` `.xhtml` `.xht` `.shtml` | page, load finishes normally               |
+| `.pdf`                                  | built-in PDF view, load finishes           |
+| images incl. `.svg`                     | image document, load finishes              |
+| `.txt` `.md` `.log`                     | plain-text document (see the caveat below) |
+| movies                                  | player appears, load reports **failure**   |
+
+Two findings drive code:
+
+- **A movie never finishes.** WebKit replaces the page with a media document
+  and reports `WebKitErrorDomain 204 "Plug-in handled load"`, so `on_page_load`
+  fires Started and never Finished. `useBrowserEvents` therefore treats a
+  `browser:loading` event for an `isVideoFile()` URL as a finished load.
+- **Plain text is decoded as Latin-1.** A `file://` response carries no
+  charset, so `# Notes — draft` in a UTF-8 `.md` shows as `â€"`. HTML is fine,
+  because the document declares its own encoding. The file viewer renders
+  Markdown properly and stays available as "Open" in the context menu.
+
+## Why a load must never hang
+
+wry exposes only Started and Finished. A load that fails after it starts — a
+missing file, a dead link clicked inside a page — produces neither a Finished
+event nor any error callback, so a tab that only listens for Finished spins for
+ever. Three defences, in order of precision:
+
+1. `reject_missing_local_file()` in `src-tauri/src/browser/commands.rs` checks
+   a `file://` path in `browser_create` and `browser_navigate` and returns an
+   error that names the file. `BrowserTabContent` puts a failed `browser_create`
+   into the tab's error overlay instead of only logging it.
+2. `useBrowserEvents` arms the watchdog on **every** started load, not only one
+   the URL bar asked for, so a silent failure becomes an error after 20 s.
+3. The existing about:blank check still catches the redirect-to-blank failures.
+
+Test fixtures for all of this live in `scratch/browser-fixtures/` (git-ignored):
+one page per case, each printing whether its CSS, JS and relative assets
+loaded.

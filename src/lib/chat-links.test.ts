@@ -43,7 +43,24 @@ describe('classifyChatLink', () => {
     expect(classifyChatLink('file:///tmp/a.xhtml')).toBe('page')
     expect(classifyChatLink('C:\\site\\index.html')).toBe('page')
     expect(classifyChatLink('src/main.ts')).toBe('file')
-    expect(classifyChatLink('file:///tmp/notes.md')).toBe('file')
+    expect(classifyChatLink('data/rows.json')).toBe('file')
+  })
+
+  it('sorts the other file types the browser pane can show as pages', () => {
+    for (const href of [
+      'out/chart.svg',
+      'shots/run.PNG',
+      '/tmp/report.pdf',
+      'media/clip.mp4',
+      'file:///tmp/notes.md',
+      'build/output.log',
+    ]) {
+      expect(classifyChatLink(href)).toBe('page')
+    }
+  })
+
+  it('reads # and ? in a file name as part of the name', () => {
+    expect(classifyChatLink('reports/q#1?draft.html')).toBe('page')
   })
 
   it('ignores anchors, mailto and other schemes', () => {

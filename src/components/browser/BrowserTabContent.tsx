@@ -194,6 +194,14 @@ export const BrowserTabContent = memo(function BrowserTabContent({
         }
       } catch (err) {
         console.error(`[browser] init failed for tab ${tabId}:`, err)
+        // The backend refuses a URL it cannot load — a local file that is
+        // missing, for one. Without this the tab would spin for ever, since
+        // no webview exists to report a load that started or finished.
+        const store = useBrowserStore.getState()
+        store.setTabLoading(tabId, false)
+        store.setTabError(tabId, err instanceof Error ? err.message : `${err}`)
+        store.setRequestedUrl(tabId, null)
+        initializedRef.current = true
       }
     }
 

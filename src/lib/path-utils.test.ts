@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { isHtmlFile, toFileUrl } from './path-utils'
+import {
+  browsableExtensions,
+  isBrowsableFile,
+  isHtmlFile,
+  isVideoFile,
+  splitFileRefSuffix,
+  toFileUrl,
+} from './path-utils'
 
 describe('isHtmlFile', () => {
   it.each([
@@ -57,5 +64,73 @@ describe('toFileUrl', () => {
     expect(new URL('css/site.css', page).href).toBe(
       'file:///Users/dev/my%20site/css/site.css'
     )
+  })
+})
+
+describe('isBrowsableFile', () => {
+  it.each([
+    ['report.html', true],
+    ['page.XHTML', true],
+    ['diagram.svg', true],
+    ['shot.PNG', true],
+    ['scan.pdf', true],
+    ['clip.mp4', true],
+    ['clip.MOV', true],
+    ['notes.md', true],
+    ['output.log', true],
+    ['main.rs', false],
+    ['data.json', false],
+    ['bundle.zip', false],
+    ['clip.mkv', false],
+    ['.gitignore', false],
+    ['README', false],
+  ])('%s -> %s', (path, expected) => {
+    expect(isBrowsableFile(path)).toBe(expected)
+  })
+
+  it('accepts every extension it reports', () => {
+    for (const extension of browsableExtensions()) {
+      expect(isBrowsableFile(`file.${extension}`)).toBe(true)
+    }
+  })
+})
+
+describe('isVideoFile', () => {
+  it.each([
+    ['clip.mp4', true],
+    ['clip.M4V', true],
+    ['clip.webm', true],
+    ['poster.png', false],
+    ['page.html', false],
+  ])('%s -> %s', (path, expected) => {
+    expect(isVideoFile(path)).toBe(expected)
+  })
+})
+
+describe('splitFileRefSuffix', () => {
+  it('splits a real fragment or query off a browsable path', () => {
+    expect(splitFileRefSuffix('report.html#top')).toEqual([
+      'report.html',
+      '#top',
+    ])
+    expect(splitFileRefSuffix('page.html?v=2')).toEqual(['page.html', '?v=2'])
+  })
+
+  it('keeps a # or ? that belongs to the file name', () => {
+    expect(splitFileRefSuffix('05-hash#and?query.html')).toEqual([
+      '05-hash#and?query.html',
+      '',
+    ])
+  })
+
+  it('prefers the fragment reading when both parts look browsable', () => {
+    expect(splitFileRefSuffix('a.html#b.html')).toEqual(['a.html', '#b.html'])
+  })
+
+  it('returns no suffix when there is none', () => {
+    expect(splitFileRefSuffix('out/report.html')).toEqual([
+      'out/report.html',
+      '',
+    ])
   })
 })

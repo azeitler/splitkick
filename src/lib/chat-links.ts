@@ -1,7 +1,11 @@
 import { createContext } from 'react'
 import { toast } from 'sonner'
 import { isLocalBackend, isNativeApp } from '@/lib/environment'
-import { isHtmlFile, toFileUrl } from '@/lib/path-utils'
+import {
+  isBrowsableFile,
+  splitFileRefSuffix,
+  toFileUrl,
+} from '@/lib/path-utils'
 import { openExternal } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
 import { openUrlInEmbeddedBrowser } from '@/hooks/useBrowserPane'
@@ -16,16 +20,11 @@ const URL_SCHEME_RE = /^[a-z][a-z\d+.-]*:/i
 /**
  * What a link in a chat response points to.
  * - `web`: an http(s) URL.
- * - `page`: a local HTML file, which the embedded browser renders.
+ * - `page`: a local file the embedded browser renders itself — an HTML page,
+ *   an image, a PDF, a movie or plain text (see `isBrowsableFile`).
  * - `file`: any other local file, which the file viewer shows.
  */
 export type ChatLinkKind = 'web' | 'page' | 'file'
-
-/** Split `report.html#top` into the path and its `?query` / `#fragment`. */
-function splitSuffix(ref: string): [string, string] {
-  const index = ref.search(/[?#]/)
-  return index === -1 ? [ref, ''] : [ref.slice(0, index), ref.slice(index)]
-}
 
 /**
  * Worktree path that relative links and images in chat markdown resolve
@@ -82,7 +81,7 @@ export function classifyChatLink(
   ) {
     return null
   }
-  return isHtmlFile(splitSuffix(href)[0]) ? 'page' : 'file'
+  return isBrowsableFile(splitFileRefSuffix(href)[0]) ? 'page' : 'file'
 }
 
 /**
@@ -102,7 +101,7 @@ function resolvePageUrl(
   href: string,
   rootPath: string | null | undefined
 ): { path: string; url: string } | null {
-  const [ref, suffix] = splitSuffix(href)
+  const [ref, suffix] = splitFileRefSuffix(href)
   const path = resolveLocalPath(ref, rootPath)
   return path ? { path, url: `${toFileUrl(path)}${suffix}` } : null
 }
@@ -162,7 +161,7 @@ export function openChatLink(
   }
 
   const path = resolveLocalPath(
-    kind === 'page' ? splitSuffix(href)[0] : href,
+    kind === 'page' ? splitFileRefSuffix(href)[0] : href,
     rootPath
   )
   if (!path) return false
