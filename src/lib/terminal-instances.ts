@@ -654,8 +654,9 @@ export function shouldSendShiftEnterSequence(event: KeyboardEvent): boolean {
  * ever matters.
  */
 interface TerminalKeyboardState {
-  /** Depth of the kitty keyboard flag stack. */
-  kittyDepth: number
+  kittyFlags: number
+  /** Saved flag values from kitty keyboard protocol pushes. */
+  kittyStack: number[]
   focusReporting: boolean
   /** Trailing partial escape sequence carried over between output chunks. */
   tail: string
@@ -670,11 +671,18 @@ const PRIVATE_MODE_SEQUENCE = /\x1b\[\?([0-9;]+)([hl])/g
 const PARTIAL_TAIL = /\x1b\[?[<>=?]?[0-9;]*$/
 /** A CSI introducer is a handful of bytes; never carry more than this. */
 const MAX_TAIL_LENGTH = 32
+/** Match kitty's requirement that terminals use a bounded flag stack. */
+const MAX_KITTY_STACK_DEPTH = 64
 
 function getKeyboardState(terminalId: string): TerminalKeyboardState {
   const existing = keyboardStates.get(terminalId)
   if (existing) return existing
-  const created = { kittyDepth: 0, focusReporting: false, tail: '' }
+  const created = {
+    kittyFlags: 0,
+    kittyStack: [],
+    focusReporting: false,
+    tail: '',
+  }
   keyboardStates.set(terminalId, created)
   return created
 }
@@ -691,12 +699,25 @@ export function trackTerminalKeyboardMode(
 
   for (const [, kind, params] of text.matchAll(KITTY_KEYBOARD_SEQUENCE)) {
     if (kind === '>') {
-      state.kittyDepth += 1
+      state.kittyStack.push(state.kittyFlags)
+      if (state.kittyStack.length > MAX_KITTY_STACK_DEPTH) {
+        state.kittyStack.shift()
+      }
+      state.kittyFlags = Number(params) || 0
     } else if (kind === '<') {
-      state.kittyDepth = Math.max(0, state.kittyDepth - (Number(params) || 1))
+      const count = Number(params) || 1
+      const restoreCount = Math.min(count, state.kittyStack.length)
+      for (let index = 0; index < restoreCount; index += 1) {
+        state.kittyFlags = state.kittyStack.pop() ?? 0
+      }
+      if (count > restoreCount) state.kittyFlags = 0
     } else {
-      const flags = Number(params?.split(';')[0])
-      state.kittyDepth = flags > 0 ? Math.max(state.kittyDepth, 1) : 0
+      const [flagsParam, modeParam] = (params ?? '').split(';')
+      const flags = Number(flagsParam) || 0
+      const mode = Number(modeParam) || 1
+      if (mode === 2) state.kittyFlags |= flags
+      else if (mode === 3) state.kittyFlags &= ~flags
+      else state.kittyFlags = flags
     }
   }
 
@@ -713,7 +734,8 @@ export function trackTerminalKeyboardMode(
 export function acceptsModifierEncodedKeys(terminalId: string): boolean {
   const state = keyboardStates.get(terminalId)
   if (!state) return false
-  return state.kittyDepth > 0 || state.focusReporting
+  // Disambiguation (bit 1) and report-all-keys (bit 8) encode Shift+Enter.
+  return Boolean(state.kittyFlags & 0b1001) || state.focusReporting
 }
 
 function forgetTerminalKeyboardMode(terminalId: string): void {

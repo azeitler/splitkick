@@ -143,6 +143,55 @@ describe('terminal Shift+Enter', () => {
     expect(acceptsModifierEncodedKeys(id)).toBe(false)
   })
 
+  it('requires kitty flags that encode modified Enter', () => {
+    const noFlags = 'kitty-no-flags'
+    trackTerminalKeyboardMode(noFlags, '\x1b[>0u')
+    expect(acceptsModifierEncodedKeys(noFlags)).toBe(false)
+
+    const releaseEventsOnly = 'kitty-release-events-only'
+    trackTerminalKeyboardMode(releaseEventsOnly, '\x1b[>2u')
+    expect(acceptsModifierEncodedKeys(releaseEventsOnly)).toBe(false)
+
+    const disambiguate = 'kitty-disambiguate'
+    trackTerminalKeyboardMode(disambiguate, '\x1b[>1u')
+    expect(acceptsModifierEncodedKeys(disambiguate)).toBe(true)
+
+    const allKeys = 'kitty-all-keys'
+    trackTerminalKeyboardMode(allKeys, '\x1b[>8u')
+    expect(acceptsModifierEncodedKeys(allKeys)).toBe(true)
+  })
+
+  it('applies kitty flag update modes and restores pushed flags', () => {
+    const id = 'kitty-modes'
+
+    trackTerminalKeyboardMode(id, '\x1b[=1u')
+    expect(acceptsModifierEncodedKeys(id)).toBe(true)
+
+    // Mode 3 clears the listed flags and leaves all other flags unchanged.
+    trackTerminalKeyboardMode(id, '\x1b[=1;3u')
+    expect(acceptsModifierEncodedKeys(id)).toBe(false)
+
+    trackTerminalKeyboardMode(id, '\x1b[>1u')
+    expect(acceptsModifierEncodedKeys(id)).toBe(true)
+    trackTerminalKeyboardMode(id, '\x1b[=0u')
+    expect(acceptsModifierEncodedKeys(id)).toBe(false)
+    trackTerminalKeyboardMode(id, '\x1b[<1u')
+    expect(acceptsModifierEncodedKeys(id)).toBe(false)
+  })
+
+  it('bounds the kitty flag stack', () => {
+    const id = 'kitty-bounded-stack'
+    trackTerminalKeyboardMode(id, '\x1b[=1u')
+    for (let index = 0; index < 65; index += 1) {
+      trackTerminalKeyboardMode(id, '\x1b[>0u')
+    }
+
+    // The protocol requires terminals to evict the oldest entry when their
+    // stack is full. An unbounded parser would restore the initial flag here.
+    trackTerminalKeyboardMode(id, '\x1b[<65u')
+    expect(acceptsModifierEncodedKeys(id)).toBe(false)
+  })
+
   it('trusts focus reporting, including inside a parameter list', () => {
     // Claude Code negotiates no keyboard protocol; focus reporting is the
     // narrowest mode it does enable.
