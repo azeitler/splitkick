@@ -47,6 +47,7 @@ import {
 } from '@/lib/terminal-theme'
 import { isArrowGestureActive } from '@/lib/terminal-arrow-gesture'
 import { resolveSafeTerminalDimensions } from '@/lib/terminal-dimensions'
+import { shouldAutoCloseTerminal } from '@/lib/terminal-lifecycle'
 
 type TerminalRenderer = 'xterm' | 'ghostty-web'
 type EmbeddedTerminal = XtermTerminal | GhosttyWebTerminal
@@ -1116,10 +1117,8 @@ function handleTerminalStopped(event: TerminalStoppedEvent): void {
     inst.onStopped?.(exitCode, signal)
   }
 
-  // Auto-close terminal tab on clean exit:
-  // - code 0 — any terminal
-  // - SIGINT (Ctrl+C) or SIGTERM (graceful stop) — user or system stop
-  // SIGKILL, SIGSEGV, SIGABRT, etc. are NOT clean → mark as failed.
+  // Keep run-command output visible after exit so errors and logs remain
+  // available for inspection. Normal shell tabs still close on a clean exit.
   const storeTerminal =
     inst &&
     (useTerminalStore.getState().terminals[inst.worktreeId] ?? []).find(
@@ -1127,12 +1126,14 @@ function handleTerminalStopped(event: TerminalStoppedEvent): void {
     )
   const isPanel = storeTerminal ? isPanelTerminal(storeTerminal) : true
   const isRunTerminal = inst?.command != null && isPanel
-  const isIntentionalSignal =
-    signal != null &&
-    (signal.includes('Interrupt') || signal.includes('Terminated'))
-  const isCleanExit = exitCode === 0 || isIntentionalSignal
+  const shouldAutoClose = shouldAutoCloseTerminal({
+    exitCode,
+    signal,
+    isPanel,
+    isRunTerminal,
+  })
 
-  if (isCleanExit && inst && isPanel) {
+  if (shouldAutoClose && inst) {
     const wId = inst.worktreeId
     setTimeout(() => {
       if (!instances.has(terminalId)) return // Already disposed
