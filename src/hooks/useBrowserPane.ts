@@ -11,6 +11,7 @@ import type {
   BrowserGrabContext,
   BrowserGrabContextEvent,
   BrowserNavEvent,
+  BrowserNewTabEvent,
   BrowserOpenUrlEvent,
   BrowserPageLoadEvent,
   BrowserTab,
@@ -235,6 +236,18 @@ export function useBrowserEvents(): void {
           // backend it does not exist here.
           void openUrlInWorktreeBrowser(worktreeId, toFileUrl(path))
         }
+      })
+    )
+
+    unlistenPromises.push(
+      listen<BrowserNewTabEvent>('browser:new-tab', e => {
+        const { tabId, url } = e.payload
+        // The opener tab names the worktree whose pane shows the new tab.
+        const store = useBrowserStore.getState()
+        const worktreeId = Object.keys(store.tabs).find(wid =>
+          (store.tabs[wid] ?? []).some(tab => tab.id === tabId)
+        )
+        if (worktreeId) store.addTab(worktreeId, url)
       })
     )
 

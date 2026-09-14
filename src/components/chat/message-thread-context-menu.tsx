@@ -1,5 +1,5 @@
-import { useCallback, useState, type ReactElement } from 'react'
-import { Copy, GitFork } from 'lucide-react'
+import { useCallback, useContext, useState, type ReactElement } from 'react'
+import { Copy, ExternalLink, GitFork } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   ContextMenu,
@@ -9,6 +9,12 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { copyToClipboard } from '@/lib/clipboard'
+import {
+  canOpenInEmbeddedBrowser,
+  classifyChatLink,
+  LocalPathRootContext,
+  openChatLink,
+} from '@/lib/chat-links'
 
 /** Read the current window selection as trimmed plain text. */
 export function getTrimmedSelectionText(): string {
@@ -62,11 +68,17 @@ export function MessageThreadContextMenu({
 }: MessageThreadContextMenuProps) {
   const [selection, setSelection] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
+  const [linkHref, setLinkHref] = useState('')
+  const rootPath = useContext(LocalPathRootContext)
 
   const handleContextMenu = useCallback((event: React.MouseEvent) => {
     const target = event.target
     const link = target instanceof Element ? target.closest('a[href]') : null
-    setLinkUrl(link instanceof HTMLAnchorElement ? link.href : '')
+    const anchor = link instanceof HTMLAnchorElement ? link : null
+    setLinkUrl(anchor ? anchor.href : '')
+    // The raw attribute, not the resolved href: a relative path in a response
+    // resolves against the worktree, not against the app's own origin.
+    setLinkHref(anchor?.getAttribute('href') ?? '')
   }, [])
 
   const handleOpenChange = useCallback((open: boolean) => {
@@ -91,6 +103,10 @@ export function MessageThreadContextMenu({
       .catch(() => toast.error('Failed to copy'))
   }, [linkUrl])
 
+  const handleOpenInDefaultBrowser = useCallback(() => {
+    openChatLink(linkHref, { system: true, rootPath })
+  }, [linkHref, rootPath])
+
   const handleCopyMessage = useCallback(() => {
     if (onCopyMessage) {
       void Promise.resolve(onCopyMessage()).catch(() => {
@@ -105,6 +121,12 @@ export function MessageThreadContextMenu({
       .catch(() => toast.error('Failed to copy'))
   }, [messageText, onCopyMessage])
 
+  // A web link, or a local HTML page this machine can reach. Any other local
+  // file would open in an editor, not a browser, so the item stays hidden.
+  const linkKind = classifyChatLink(linkHref)
+  const canOpenInDefaultBrowser =
+    linkKind === 'web' ||
+    (linkKind === 'page' && canOpenInEmbeddedBrowser(linkKind))
   const canCopyMessage = Boolean(onCopyMessage || messageText.trim())
   const canCopySelection = selection.length > 0
 
@@ -114,6 +136,12 @@ export function MessageThreadContextMenu({
         {children}
       </ContextMenuTrigger>
       <ContextMenuContent className="w-48">
+        {canOpenInDefaultBrowser && (
+          <ContextMenuItem onSelect={handleOpenInDefaultBrowser}>
+            <ExternalLink className="h-4 w-4" />
+            Open in Default Browser
+          </ContextMenuItem>
+        )}
         {linkUrl && (
           <ContextMenuItem onSelect={handleCopyUrl}>
             <Copy className="h-4 w-4" />

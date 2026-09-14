@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Chat: the right-click menu of a link offers "Open in Default Browser".**
+  It shows for a web link, and for a local HTML file when the file is on this
+  machine. Clicking the link itself still uses the embedded browser.
+
 - **Chat: fork a session in place, or from any message.** Jean could already fork
   a session into a new git worktree, but the action was buried in the Magic menu
   and it was the only shape on offer.
@@ -102,6 +106,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   and still closes the dialogs, menus and terminal inside a session.
 
 ### Fixed
+
+- **Embedded browser: links that open a new tab work again.** In a page shown
+  in the browser pane, a link with "open in new tab" behaviour, and any page
+  that calls `window.open`, did nothing at all. Such a link now opens as a new
+  tab beside the current one. A link the pane cannot show (for example
+  `mailto:`) goes to the system default application.
 
 - **Chat: a forked session no longer starts with an empty head.** The fork showed
   the full conversation but the agent had none of it, because Jean cleared the

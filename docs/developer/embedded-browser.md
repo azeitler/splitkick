@@ -43,6 +43,22 @@ visible it calls `openUrlInEmbeddedBrowser`; otherwise it adds (or activates)
 the tab in that worktree and marks its side pane open, so the page is there
 when the user goes to the worktree.
 
+## Links inside a browser tab
+
+`browser_create` gives every tab two handlers, because a tab is a bare child
+webview with no window of its own:
+
+- `on_new_window`: a link with `target="_blank"` and `window.open()` ask WebKit
+  for a window. Jean denies the window and emits `browser:new-tab` with the
+  opener's tab id; `useBrowserEvents` adds the URL as a tab beside the opener.
+  **Without this handler wry denies the request itself and the click does
+  nothing at all** — the tab would look broken on any site whose links open in
+  a new tab.
+- `on_navigation`: a URL the pane cannot render (`mailto:`, `tel:`, an app deep
+  link — see `is_pane_scheme`) is cancelled and handed to the OS with
+  `open_url_in_browser`, as a normal browser does. `http`, `https`, `file`,
+  `about`, `data` and `blob` load in the tab.
+
 ## Links in chat responses
 
 The markdown renderer sends every link through `MarkdownLink`
@@ -60,6 +76,11 @@ The markdown renderer sends every link through `MarkdownLink`
   use the file viewer. The ↗ button shows only where the embedded browser is
   available.
 - When no browser surface exists, the click falls back to the system browser.
+- The message context menu offers **Open in Default Browser** for a web link,
+  and for a local HTML page when the backend is local
+  (`src/components/chat/message-thread-context-menu.tsx`). It reads the raw
+  `href` attribute, not `anchor.href`, because a relative path must resolve
+  against the worktree and not against the app's own origin.
 - These anchors carry `data-chat-link`, so `useExternalLinkInterceptor` skips
   them. Every other anchor in the app still opens in the system browser.
 - `remarkLocalHtmlLinks` (`src/lib/remark-local-html-links.ts`) turns HTML paths

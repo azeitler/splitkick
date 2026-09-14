@@ -24,6 +24,15 @@ pub struct BrowserTitleEvent {
     pub title: String,
 }
 
+/// Event payload for a new-tab request from the page (target="_blank" or
+/// window.open). `tab_id` is the tab that asked.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserNewTabEvent {
+    pub tab_id: String,
+    pub url: String,
+}
+
 /// Event payload for tab close
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

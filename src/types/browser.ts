@@ -40,6 +40,15 @@ export interface BrowserClosedEvent {
 }
 
 /**
+ * A page asked for a new window (`target="_blank"` or `window.open`). The
+ * pane has no windows, so this becomes a new tab beside `tabId`.
+ */
+export interface BrowserNewTabEvent {
+  tabId: string
+  url: string
+}
+
+/**
  * Jean MCP `open_in_browser`: show a web `url` or a local file `path` (on the
  * backend's machine) in a worktree's embedded browser. One of the two is set.
  */

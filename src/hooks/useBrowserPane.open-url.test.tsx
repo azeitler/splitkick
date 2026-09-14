@@ -4,7 +4,7 @@ import { openUrlInWorktreeBrowser, useBrowserEvents } from './useBrowserPane'
 import { useBrowserStore } from '@/store/browser-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
-import type { BrowserOpenUrlEvent } from '@/types/browser'
+import type { BrowserNewTabEvent, BrowserOpenUrlEvent } from '@/types/browser'
 
 const { invokeMock, listenMock, localBackend } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -127,5 +127,43 @@ describe('browser:open-url event', () => {
     await Promise.resolve()
 
     expect(tabUrls('wt-visible')).toEqual([])
+  })
+})
+
+describe('browser:new-tab event', () => {
+  let handler: (event: { payload: BrowserNewTabEvent }) => void
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    invokeMock.mockResolvedValue(false)
+    localBackend.value = true
+    resetStores()
+    listenMock.mockImplementation((name: string, callback: typeof handler) => {
+      if (name === 'browser:new-tab') handler = callback
+      return Promise.resolve(() => undefined)
+    })
+    renderHook(() => useBrowserEvents())
+  })
+
+  it('opens a target="_blank" link as a tab beside the opener', () => {
+    const openerId = useBrowserStore
+      .getState()
+      .addTab('wt-other', 'https://a.test/')
+
+    handler({ payload: { tabId: openerId, url: 'https://b.test/' } })
+
+    expect(tabUrls('wt-other')).toEqual(['https://a.test/', 'https://b.test/'])
+    // The new tab is the active one, as in any browser.
+    const tabs = useBrowserStore.getState().tabs['wt-other'] ?? []
+    expect(useBrowserStore.getState().activeTabIds['wt-other']).toBe(
+      tabs[1]?.id
+    )
+    expect(tabUrls('wt-visible')).toEqual([])
+  })
+
+  it('ignores a request from a tab that no longer exists', () => {
+    handler({ payload: { tabId: 'gone', url: 'https://b.test/' } })
+
+    expect(useBrowserStore.getState().tabs).toEqual({})
   })
 })

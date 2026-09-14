@@ -1,4 +1,4 @@
-use tauri::webview::{PageLoadEvent, WebviewBuilder};
+use tauri::webview::{NewWindowResponse, PageLoadEvent, WebviewBuilder};
 use tauri::{AppHandle, Manager, PhysicalPosition, PhysicalSize, Url, WebviewUrl};
 
 use super::registry::{
@@ -6,11 +6,10 @@ use super::registry::{
 };
 use super::types::{
     BrowserClosedEvent, BrowserGrabContext, BrowserGrabContextEvent, BrowserNavEvent,
-    BrowserPageLoadEvent, BrowserTitleEvent,
+    BrowserNewTabEvent, BrowserPageLoadEvent, BrowserTitleEvent,
 };
 use crate::http_server::EmitExt;
 
-const MAIN_WINDOW: &str = "main";
 const REACT_GRAB_GLOBAL_JS: &str = include_str!("react_grab.global.js");
 const MAX_TEXT_LEN: usize = 10_000;
 const MAX_HTML_LEN: usize = 80_000;
@@ -229,10 +228,32 @@ fn title_observer_script(tab_id: &str) -> String {
     )
 }
 
-/// Create a new browser tab as a child Webview of the main window.
+/// Schemes the pane can load itself. A page that navigates anywhere else
+/// (`mailto:`, `tel:`, an app deep link) would leave WebKit with nothing to
+/// render, so the operating system gets those URLs instead.
+fn is_pane_scheme(scheme: &str) -> bool {
+    matches!(
+        scheme,
+        "http" | "https" | "file" | "about" | "data" | "blob"
+    )
+}
+
+/// Hand a URL the pane cannot render to the OS, as a normal browser does.
+fn open_outside_pane(url: &str) {
+    if let Err(error) = jean_core::open_url_in_browser(url) {
+        log::warn!("browser pane could not open {url} outside the pane: {error}");
+    }
+}
+
+/// Create a new browser tab as a child Webview of the window that asked for it.
+///
+/// Tauri injects `window` from the IPC caller, so a pane opened from a remote
+/// connection window attaches to that window and not to `main`.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 pub async fn browser_create(
     app: AppHandle,
+    window: tauri::Window,
     tab_id: String,
     url: String,
     x: f64,
@@ -249,14 +270,37 @@ pub async fn browser_create(
     let parsed = Url::parse(&url).map_err(|e| format!("invalid url: {e}"))?;
     let label = label_for_tab(&tab_id);
 
-    let main = app
-        .get_window(MAIN_WINDOW)
-        .ok_or_else(|| "main window not found".to_string())?;
-
+    let app_for_new_tab = app.clone();
+    let tab_for_new_tab = tab_id.clone();
     let app_for_load = app.clone();
     let tab_for_load = tab_id.clone();
-    let builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed)).on_page_load(
-        move |webview, payload| {
+    let builder = WebviewBuilder::new(&label, WebviewUrl::External(parsed))
+        // A link with target="_blank", and window.open(), ask WebKit for a new
+        // window. The pane has no windows of its own, so the request becomes a
+        // new tab. Without this handler wry refuses the request and the click
+        // does nothing at all.
+        .on_new_window(move |url, _features| {
+            if is_pane_scheme(url.scheme()) {
+                let _ = app_for_new_tab.emit_all(
+                    "browser:new-tab",
+                    &BrowserNewTabEvent {
+                        tab_id: tab_for_new_tab.clone(),
+                        url: url.to_string(),
+                    },
+                );
+            } else {
+                open_outside_pane(url.as_str());
+            }
+            NewWindowResponse::Deny
+        })
+        .on_navigation(|url| {
+            if is_pane_scheme(url.scheme()) {
+                return true;
+            }
+            open_outside_pane(url.as_str());
+            false
+        })
+        .on_page_load(move |webview, payload| {
             let url_str = payload.url().to_string();
             let event_name = match payload.event() {
                 PageLoadEvent::Started => "browser:loading",
@@ -279,19 +323,19 @@ pub async fn browser_create(
             if matches!(payload.event(), PageLoadEvent::Finished) {
                 let _ = webview.eval(title_observer_script(&tab_for_load));
             }
-        },
-    );
+        });
 
     // Frontend sends PHYSICAL pixels (CSS px × devicePixelRatio).
     // Use PhysicalPosition/PhysicalSize so Tauri stores them as-is — bypassing
     // its scale_factor() conversion, which can disagree with WKWebView's real
     // devicePixelRatio under fractional macOS display scaling.
-    main.add_child(
-        builder,
-        PhysicalPosition::new(x as i32, y as i32),
-        PhysicalSize::new((width.max(1.0)) as u32, (height.max(1.0)) as u32),
-    )
-    .map_err(|e| format!("failed to add child webview: {e}"))?;
+    window
+        .add_child(
+            builder,
+            PhysicalPosition::new(x as i32, y as i32),
+            PhysicalSize::new((width.max(1.0)) as u32, (height.max(1.0)) as u32),
+        )
+        .map_err(|e| format!("failed to add child webview: {e}"))?;
 
     register_tab(tab_id, label.clone());
     Ok(label)
@@ -482,6 +526,16 @@ pub async fn browser_report_grab_context(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn pane_renders_web_and_local_schemes_and_hands_the_rest_to_the_os() {
+        for scheme in ["http", "https", "file", "about", "data", "blob"] {
+            assert!(is_pane_scheme(scheme), "{scheme} should load in the pane");
+        }
+        for scheme in ["mailto", "tel", "sms", "vscode", "slack", "javascript"] {
+            assert!(!is_pane_scheme(scheme), "{scheme} should go to the OS");
+        }
+    }
 
     #[test]
     fn sanitize_grab_context_truncates_large_fields_and_defaults_tag() {

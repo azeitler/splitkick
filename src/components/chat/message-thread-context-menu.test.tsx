@@ -1,6 +1,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
+import type * as ChatLinks from '@/lib/chat-links'
+import type * as Environment from '@/lib/environment'
 import {
   getTrimmedSelectionText,
   MessageThreadContextMenu,
@@ -11,10 +13,23 @@ const mocks = vi.hoisted(() => ({
   copyToClipboard: vi.fn(),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
+  openChatLink: vi.fn(),
+  isLocalBackend: vi.fn(() => true),
 }))
 
 vi.mock('@/lib/clipboard', () => ({
   copyToClipboard: mocks.copyToClipboard,
+}))
+
+vi.mock('@/lib/chat-links', async importOriginal => ({
+  ...(await importOriginal<typeof ChatLinks>()),
+  openChatLink: mocks.openChatLink,
+}))
+
+vi.mock('@/lib/environment', async importOriginal => ({
+  ...(await importOriginal<typeof Environment>()),
+  isNativeApp: () => true,
+  isLocalBackend: () => mocks.isLocalBackend(),
 }))
 
 vi.mock('sonner', () => ({
@@ -65,6 +80,84 @@ describe('MessageThreadContextMenu', () => {
     mocks.toastSuccess.mockReset()
     mocks.toastError.mockReset()
     mocks.copyToClipboard.mockResolvedValue(undefined)
+    mocks.openChatLink.mockReset()
+    mocks.isLocalBackend.mockReturnValue(true)
+  })
+
+  it('opens a web link in the default browser', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <a href="https://example.com/docs">the docs</a>
+      </MessageThreadContextMenu>
+    )
+
+    fireEvent.contextMenu(screen.getByText('the docs'))
+    await user.click(
+      await screen.findByRole('menuitem', { name: /open in default browser/i })
+    )
+
+    expect(mocks.openChatLink).toHaveBeenCalledWith(
+      'https://example.com/docs',
+      expect.objectContaining({ system: true })
+    )
+  })
+
+  it('offers a local HTML page with its raw path, not the resolved href', async () => {
+    const user = userEvent.setup()
+
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <a href="out/report.html">report</a>
+      </MessageThreadContextMenu>
+    )
+
+    fireEvent.contextMenu(screen.getByText('report'))
+    await user.click(
+      await screen.findByRole('menuitem', { name: /open in default browser/i })
+    )
+
+    expect(mocks.openChatLink).toHaveBeenCalledWith(
+      'out/report.html',
+      expect.objectContaining({ system: true })
+    )
+  })
+
+  it('hides the item for a local page the backend does not share', async () => {
+    mocks.isLocalBackend.mockReturnValue(false)
+
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <a href="out/report.html">report</a>
+      </MessageThreadContextMenu>
+    )
+
+    fireEvent.contextMenu(screen.getByText('report'))
+
+    expect(
+      await screen.findByRole('menuitem', { name: /copy url/i })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: /open in default browser/i })
+    ).toBeNull()
+  })
+
+  it('hides the item for a link to a file a browser cannot show', async () => {
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <a href="src/main.ts">source</a>
+      </MessageThreadContextMenu>
+    )
+
+    fireEvent.contextMenu(screen.getByText('source'))
+
+    expect(
+      await screen.findByRole('menuitem', { name: /copy url/i })
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('menuitem', { name: /open in default browser/i })
+    ).toBeNull()
   })
 
   it('shows Copy message and copies full text when nothing is selected', async () => {
