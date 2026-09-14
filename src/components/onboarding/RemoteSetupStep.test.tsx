@@ -114,9 +114,17 @@ describe('RemoteSetupStep', () => {
         userInstall: null,
       })
       expect(addRemoteConnection).toHaveBeenCalled()
-      expect(selectConnection).toHaveBeenCalledWith('remote-1')
-      expect(reloadApp).toHaveBeenCalled()
     })
+
+    // The native shell gives the remote its own window; onboarding stays here.
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('open_connection_window', {
+        connectionId: 'remote-1',
+        title: null,
+      })
+    })
+    expect(selectConnection).not.toHaveBeenCalled()
+    expect(reloadApp).not.toHaveBeenCalled()
   })
 
   it('connects with an existing Web Access URL', async () => {
@@ -141,8 +149,38 @@ describe('RemoteSetupStep', () => {
         sshHost: undefined,
         sshPort: 22,
       })
+    })
+
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('open_connection_window', {
+        connectionId: 'remote-1',
+        title: null,
+      })
+    })
+    expect(selectConnection).not.toHaveBeenCalled()
+    expect(reloadApp).not.toHaveBeenCalled()
+  })
+
+  it('swaps the connection in place in Web Access, which has no windows', async () => {
+    isNativeApp.mockReturnValue(false)
+    const reloadApp = vi.fn()
+    render(<RemoteSetupStep reloadApp={reloadApp} />)
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Build server' },
+    })
+    fireEvent.change(screen.getByLabelText('Web Access URL'), {
+      target: { value: 'https://jean.example.com/?token=secret' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Save & Connect' }))
+
+    await waitFor(() => {
       expect(selectConnection).toHaveBeenCalledWith('remote-1')
       expect(reloadApp).toHaveBeenCalled()
     })
+    expect(invoke).not.toHaveBeenCalledWith(
+      'open_connection_window',
+      expect.anything()
+    )
   })
 })

@@ -262,16 +262,35 @@ describe('RemoteConnectionsDialog', () => {
         sshHost: '192.168.1.50',
         sshPort: 22,
       })
-      expect(selectConnection).toHaveBeenCalledWith('remote-1')
-      expect(reloadApp).toHaveBeenCalled()
+    })
+
+    // The native shell gives the new remote its own window instead of
+    // reloading this one.
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('open_connection_window', {
+        connectionId: 'remote-1',
+        title: null,
+      })
+    })
+    expect(selectConnection).not.toHaveBeenCalled()
+    expect(reloadApp).not.toHaveBeenCalled()
+
+    // The dialog gets out of the way once the window is on its way.
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     })
   })
 
-  it('can switch from install mode to existing URL mode', () => {
+  it('can switch from install mode to existing URL mode', async () => {
     isNativeApp.mockReturnValue(true)
+    invoke.mockResolvedValue([])
     render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    // Opening the dialog asks which connections already have a window.
+    await waitFor(() => {
+      expect(invoke).toHaveBeenCalledWith('list_connection_windows')
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
     fireEvent.click(screen.getByRole('tab', { name: /Existing URL/i }))
 

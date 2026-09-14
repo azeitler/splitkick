@@ -165,6 +165,10 @@ function containNativeUnlisten(
 
 const DESKTOP_ONLY_COMMANDS = new Set([
   'set_window_vibrancy',
+  'open_connection_window',
+  'focus_main_window',
+  'close_connection_window',
+  'list_connection_windows',
   'send_native_notification',
   'read_clipboard_image',
   'write_clipboard_text',
@@ -206,6 +210,12 @@ const DESKTOP_ONLY_COMMANDS = new Set([
 // content is connected to a remote Jean backend.
 const LOCAL_SHELL_COMMANDS = new Set([
   'set_window_vibrancy',
+  // Windows belong to this desktop shell, so a connection window opening
+  // another connection must reach the local process, not its remote.
+  'open_connection_window',
+  'focus_main_window',
+  'close_connection_window',
+  'list_connection_windows',
   'send_native_notification',
   'read_clipboard_image',
   'write_clipboard_text',
@@ -320,6 +330,37 @@ export async function listenLocal<T>(
   if (!isNativeApp()) return listen(event, handler)
   const { listen: tauriListen } = await import('@tauri-apps/api/event')
   const unlisten = await tauriListen<T>(event, handler)
+  return containNativeUnlisten(unlisten)
+}
+
+/** Label of the window this code runs in; empty outside the native shell. */
+function currentWindowLabel(): string {
+  return (
+    (
+      window as unknown as {
+        __TAURI_INTERNALS__?: {
+          metadata?: { currentWindow?: { label?: string } }
+        }
+      }
+    ).__TAURI_INTERNALS__?.metadata?.currentWindow?.label ?? ''
+  )
+}
+
+/**
+ * Listen for a macOS menu event meant for this window only.
+ *
+ * The menu belongs to the application, so Rust sends the event to the focused
+ * window's label. A listener registered without a target matches every emit
+ * regardless of the filter, so the target has to be given here as well.
+ */
+export async function listenMenu(
+  event: string,
+  handler: () => void
+): Promise<() => void> {
+  const label = currentWindowLabel()
+  if (!isNativeApp() || !label) return listenLocal(event, handler)
+  const { listen: tauriListen } = await import('@tauri-apps/api/event')
+  const unlisten = await tauriListen(event, () => handler(), { target: label })
   return containNativeUnlisten(unlisten)
 }
 

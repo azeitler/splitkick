@@ -3,13 +3,18 @@ import { ServerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   LOCAL_CONNECTION_ID,
+  isConnectionWindow,
   markConnectionSwitch,
   selectConnection,
   type RemoteConnection,
 } from '@/lib/remote-connections'
+import { focusMainWindow } from '@/lib/connection-windows'
+import { destroyAppWindow } from '@/lib/window-close'
 import { dismissTransientUi } from '@/lib/dismiss-transient-ui'
 import { isSsoProxyMessage } from '@/lib/remote-version'
 
+/** A reload keeps the query string, so a connection window stays pinned to
+ * `?connection=<id>` across every retry. */
 function reloadPage() {
   window.location.reload()
 }
@@ -30,6 +35,7 @@ export function RemoteConnectionRecovery({
   // An SSO login proxy rejects the desktop client every time, so the usual
   // auto-retry can only loop. Leave the manual Retry button available.
   const permanent = isSsoProxyMessage(error)
+  const connectionWindow = isConnectionWindow()
 
   useEffect(() => {
     if (permanent) return
@@ -68,12 +74,18 @@ export function RemoteConnectionRecovery({
           <Button
             variant="ghost"
             onClick={() => {
+              // A connection window cannot become the local one — local lives
+              // in the main window. Give up on this remote and close.
+              if (isConnectionWindow()) {
+                void focusMainWindow().finally(() => void destroyAppWindow())
+                return
+              }
               markConnectionSwitch()
               selectConnection(LOCAL_CONNECTION_ID)
               reloadPage()
             }}
           >
-            Switch to Local
+            {connectionWindow ? 'Close window' : 'Switch to Local'}
           </Button>
         </div>
       </div>

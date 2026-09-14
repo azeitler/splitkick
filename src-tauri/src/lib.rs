@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
 
 mod browser;
+mod connection_window;
 mod desktop_commands;
 mod http_server;
 mod platform;
@@ -146,25 +147,43 @@ fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error
     Ok(())
 }
 
+/// Frontend event for a menu item id.
+#[cfg(target_os = "macos")]
+fn menu_event_name(id: &str) -> Option<&'static str> {
+    match id {
+        "about" => Some("menu-about"),
+        "check-updates" => Some("menu-check-updates"),
+        "preferences" => Some("menu-preferences"),
+        "toggle-left-sidebar" => Some("menu-toggle-left-sidebar"),
+        "toggle-file-browser" => Some("menu-toggle-file-browser"),
+        "toggle-right-sidebar" => Some("menu-toggle-right-sidebar"),
+        "toggle-terminal" => Some("menu-toggle-terminal"),
+        "toggle-browser" => Some("menu-toggle-browser"),
+        "magic-menu" => Some("menu-magic-menu"),
+        "quick-menu" => Some("menu-quick-menu"),
+        _ => None,
+    }
+}
+
 #[cfg(target_os = "macos")]
 fn install_menu_events(app: &tauri::App) {
     app.on_menu_event(|app, event| {
-        let frontend_event = match event.id().as_ref() {
-            "about" => Some("menu-about"),
-            "check-updates" => Some("menu-check-updates"),
-            "preferences" => Some("menu-preferences"),
-            "toggle-left-sidebar" => Some("menu-toggle-left-sidebar"),
-            "toggle-file-browser" => Some("menu-toggle-file-browser"),
-            "toggle-right-sidebar" => Some("menu-toggle-right-sidebar"),
-            "toggle-terminal" => Some("menu-toggle-terminal"),
-            "toggle-browser" => Some("menu-toggle-browser"),
-            "magic-menu" => Some("menu-magic-menu"),
-            "quick-menu" => Some("menu-quick-menu"),
-            _ => None,
+        let Some(frontend_event) = menu_event_name(event.id().as_ref()) else {
+            return;
         };
-        if let Some(frontend_event) = frontend_event {
-            let _ = app.emit(frontend_event, ());
-        }
+        // The menu belongs to the application, so send the event to the one
+        // window the user is looking at. `listenMenu` in `src/lib/transport.ts`
+        // registers for this label — a listener with no target would receive
+        // every emit regardless of the filter.
+        let label = app
+            .get_focused_window()
+            .map(|window| window.label().to_string())
+            .unwrap_or_else(|| connection_window::MAIN_WINDOW.to_string());
+        let _ = app.emit_to(
+            tauri::EventTarget::webview_window(label),
+            frontend_event,
+            (),
+        );
     });
 }
 
@@ -268,11 +287,8 @@ fn allow_project_assets(app: &AppHandle, core: &jean_core::RuntimeContext) {
 }
 
 #[cfg(target_os = "linux")]
-fn install_linux_file_drop(app: &tauri::App) {
-    let Some(window) = app.get_webview_window("main") else {
-        return;
-    };
-    let drop_app = app.handle().clone();
+fn install_linux_file_drop(window: &tauri::WebviewWindow) {
+    let drop_app = window.app_handle().clone();
     let result = window.with_webview(move |webview| {
         use gtk::prelude::WidgetExt;
         use std::cell::Cell;
@@ -331,6 +347,36 @@ fn install_linux_file_drop(app: &tauri::App) {
     }
 }
 
+/// Last known `window_vibrancy` preference, so a window opened later starts
+/// with the same material as the one the user is looking at. Preferences live
+/// on whichever backend a window talks to, and a connection window reads its
+/// remote's preferences, so this is a starting value and not the final word.
+static WINDOW_VIBRANCY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub(crate) fn set_window_vibrancy_preference(enabled: bool) {
+    WINDOW_VIBRANCY.store(enabled, std::sync::atomic::Ordering::Relaxed);
+}
+
+pub(crate) fn window_vibrancy_preference() -> bool {
+    WINDOW_VIBRANCY.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Everything a Jean window needs beyond what its builder or `tauri.conf.json`
+/// already set. Runs for the config-created `main` window during setup and for
+/// every connection window right after it is built.
+pub(crate) fn configure_app_window(window: &tauri::WebviewWindow) {
+    #[cfg(target_os = "linux")]
+    {
+        let _ = window.set_decorations(false);
+        install_linux_file_drop(window);
+    }
+    if let Err(error) =
+        desktop_commands::apply_window_vibrancy(window, window_vibrancy_preference())
+    {
+        log::warn!("Failed to apply window vibrancy: {error}");
+    }
+}
+
 fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let core = initialize_core(app).map_err(std::io::Error::other)?;
     allow_project_assets(app.handle(), &core);
@@ -360,8 +406,11 @@ fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
             .as_ref()
             .and_then(|value| value.get("window_vibrancy").and_then(Value::as_bool))
             .unwrap_or(false);
-        if let Err(error) = desktop_commands::set_window_vibrancy(desktop_app, vibrancy).await {
-            log::warn!("Failed to apply window vibrancy preference: {error}");
+        set_window_vibrancy_preference(vibrancy);
+        if let Some(window) = desktop_app.get_webview_window(connection_window::MAIN_WINDOW) {
+            if let Err(error) = desktop_commands::apply_window_vibrancy(&window, vibrancy) {
+                log::warn!("Failed to apply window vibrancy preference: {error}");
+            }
         }
         let should_start = preferences
             .as_ref()
@@ -374,12 +423,10 @@ fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
         }
     });
 
-    #[cfg(target_os = "linux")]
-    {
-        if let Some(window) = app.get_webview_window("main") {
-            let _ = window.set_decorations(false);
-        }
-        install_linux_file_drop(app);
+    // The main window comes from `tauri.conf.json`, so it misses the runtime
+    // setup that `open_connection_window` applies to a window it builds itself.
+    if let Some(window) = app.get_webview_window(connection_window::MAIN_WINDOW) {
+        configure_app_window(&window);
     }
 
     #[cfg(target_os = "macos")]
@@ -479,6 +526,10 @@ pub fn run() {
             desktop_commands::start_http_server,
             desktop_commands::stop_http_server,
             desktop_commands::install_remote_jean_server,
+            connection_window::open_connection_window,
+            connection_window::focus_main_window,
+            connection_window::close_connection_window,
+            connection_window::list_connection_windows,
             browser::browser_create,
             browser::browser_navigate,
             browser::browser_back,
@@ -503,8 +554,18 @@ pub fn run() {
             tauri::RunEvent::ExitRequested { api, .. } => {
                 if jean_core::has_nonsurvivable_running_sessions() {
                     api.prevent_exit();
-                    if let Some(window) = app.get_webview_window("main") {
+                    // Hide every window, not just `main` — the last one closed
+                    // may have been a connection window, and `main` may be
+                    // gone. Keeping a hidden window means the user can get the
+                    // app back.
+                    let windows = app.webview_windows();
+                    for window in windows.values() {
                         let _ = window.hide();
+                    }
+                    if windows.is_empty() {
+                        if let Err(error) = connection_window::recreate_main_window(app) {
+                            log::warn!("Failed to keep a window for the running sessions: {error}");
+                        }
                     }
                 } else {
                     jean_core::shutdown_runtime();
@@ -512,9 +573,21 @@ pub fn run() {
             }
             #[cfg(target_os = "macos")]
             tauri::RunEvent::Reopen { .. } => {
-                if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.show();
-                    let _ = window.set_focus();
+                let windows = app.webview_windows();
+                if windows.is_empty() {
+                    if let Err(error) = connection_window::recreate_main_window(app) {
+                        log::warn!("Failed to reopen the main window: {error}");
+                    }
+                } else {
+                    for window in windows.values() {
+                        let _ = window.show();
+                    }
+                    let focus_target = app
+                        .get_webview_window(connection_window::MAIN_WINDOW)
+                        .or_else(|| windows.values().next().cloned());
+                    if let Some(window) = focus_target {
+                        let _ = window.set_focus();
+                    }
                 }
             }
             _ => {}
@@ -549,5 +622,34 @@ mod tests {
             bundle_name_from_exe(Path::new("/repo/src-tauri/target/debug/jean")),
             None
         );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn every_menu_item_has_a_frontend_event() {
+        for id in [
+            "about",
+            "check-updates",
+            "preferences",
+            "toggle-left-sidebar",
+            "toggle-file-browser",
+            "toggle-right-sidebar",
+            "toggle-terminal",
+            "toggle-browser",
+            "magic-menu",
+            "quick-menu",
+        ] {
+            assert_eq!(
+                super::menu_event_name(id),
+                Some(format!("menu-{id}").as_str()),
+                "no event for {id}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn an_unknown_menu_item_emits_nothing() {
+        assert_eq!(super::menu_event_name("copy"), None);
     }
 }

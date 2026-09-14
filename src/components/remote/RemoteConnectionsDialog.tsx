@@ -37,7 +37,6 @@ import {
   parseOptionalSshPort,
   parseRemoteConnectionInput,
   removeRemoteConnection,
-  selectConnection,
   updateRemoteConnection,
   useRemoteConnections,
   type RemoteConnection,
@@ -52,6 +51,12 @@ import {
   warnRemoteVersionMismatch,
 } from '@/lib/remote-version'
 import { invoke, listenLocal } from '@/lib/transport'
+import {
+  activateConnection,
+  closeConnectionWindow,
+  listConnectionWindows,
+  openConnectionWindow,
+} from '@/lib/connection-windows'
 
 const EMPTY_URL_FORM = {
   name: '',
@@ -93,8 +98,13 @@ export function RemoteConnectionsDialog({
   reloadApp?: () => void
 }) {
   const connections = useRemoteConnections()
+  // The connection this window drives. On the desktop this is `local` in the
+  // main window and the pinned remote in a connection window.
   const activeId = getActiveConnectionId()
   const remoteActive = activeId !== LOCAL_CONNECTION_ID
+  // Connections that already have a window. A row is "open" when any window
+  // shows it, which is what the user sees on screen.
+  const [openIds, setOpenIds] = useState<string[]>([])
   const localVersion = getLocalJeanVersion()
   const native = isNativeApp()
   const [open, setOpen] = useState(false)
@@ -163,6 +173,20 @@ export function RemoteConnectionsDialog({
 
     setVersions(Object.fromEntries(results))
   }, [])
+
+  const refreshOpenWindows = useCallback(async () => {
+    try {
+      setOpenIds(await listConnectionWindows())
+    } catch {
+      // Web Access has no windows, and a failed lookup only costs a marker.
+    }
+  }, [])
+
+  useEffect(() => {
+    // Only the desktop shell has windows to report.
+    if (!open || !native) return
+    void refreshOpenWindows()
+  }, [open, native, refreshOpenWindows])
 
   useEffect(() => {
     if (!open || editingId) return
@@ -268,33 +292,27 @@ export function RemoteConnectionsDialog({
   }
 
   const switchTo = async (id: string) => {
-    if (id === activeId || connectingId) return
-
-    if (id === LOCAL_CONNECTION_ID) {
-      markConnectionSwitch()
-      selectConnection(id)
-      reloadApp()
+    if (connectingId) return
+    if (id === LOCAL_CONNECTION_ID && activeId === LOCAL_CONNECTION_ID) return
+    if (id !== LOCAL_CONNECTION_ID && !connections.some(item => item.id === id))
       return
-    }
-
-    const connection = connections.find(item => item.id === id)
-    if (!connection) return
 
     setConnectingId(id)
     setError(null)
     try {
-      // Best-effort probe so the user sees a version toast before reload;
-      // transport re-checks after connect. Failures do not block switching.
-      const info = await fetchRemoteServerInfo(connection.url, connection.token)
-      warnRemoteVersionMismatch(info.appVersion)
-    } catch {
-      // Unreachable remotes still switch so recovery UI can handle them.
+      // On the desktop this opens or focuses the connection's own window, so
+      // there is nothing to probe first — the new window reports a version
+      // mismatch itself once its transport connects. Web Access still swaps
+      // the connection in place and reloads.
+      await activateConnection(id, reloadApp)
+      setOpen(false)
+    } catch (switchError) {
+      setError(
+        switchError instanceof Error ? switchError.message : String(switchError)
+      )
+    } finally {
+      setConnectingId(null)
     }
-
-    markConnectionSwitch()
-    selectConnection(id)
-    reloadApp()
-    setConnectingId(null)
   }
 
   const handleUrlSubmit = async (event: FormEvent) => {
@@ -324,13 +342,13 @@ export function RemoteConnectionsDialog({
           }
         }
         const connection = addRemoteConnection(input)
-        markConnectionSwitch()
-        selectConnection(connection.id)
-        reloadApp()
+        await activateConnection(connection.id, reloadApp)
+        setOpen(false)
         return
       }
       if (editingId) {
-        if (editingId === activeId) {
+        const showing = editingId === activeId || openIds.includes(editingId)
+        if (showing) {
           try {
             const info = await fetchRemoteServerInfo(
               normalized.url,
@@ -345,6 +363,14 @@ export function RemoteConnectionsDialog({
             }
           }
           updateRemoteConnection(editingId, input)
+          if (native && editingId !== activeId) {
+            // Another window shows this connection with the old URL or token.
+            // Rebuild it so it picks up the edit.
+            await closeConnectionWindow(editingId)
+            await openConnectionWindow(editingId)
+            setEditingId(null)
+            return
+          }
           markConnectionSwitch()
           reloadApp()
           return
@@ -422,9 +448,8 @@ export function RemoteConnectionsDialog({
         sshHost: host,
         sshPort,
       })
-      markConnectionSwitch()
-      selectConnection(connection.id)
-      reloadApp()
+      await activateConnection(connection.id, reloadApp)
+      setOpen(false)
     } catch (installError) {
       setError(
         installError instanceof Error
@@ -439,7 +464,13 @@ export function RemoteConnectionsDialog({
   const handleDelete = (id: string) => {
     const wasActive = id === activeId
     removeRemoteConnection(id)
-    if (wasActive) {
+    if (native) {
+      // Close the window the deleted connection had, if any. Its boot guard
+      // would close it on the next reload anyway; do it now so no window is
+      // left pointing at a connection the user removed.
+      void closeConnectionWindow(id).then(() => void refreshOpenWindows())
+    }
+    if (wasActive && !native) {
       markConnectionSwitch()
       reloadApp()
     }
@@ -786,7 +817,10 @@ export function RemoteConnectionsDialog({
                   detail={connection.url}
                   versionLabel={versionLabel}
                   versionWarning={mismatch}
-                  active={activeId === connection.id}
+                  active={
+                    activeId === connection.id ||
+                    openIds.includes(connection.id)
+                  }
                   connecting={connectingId === connection.id}
                   onSelect={() => void switchTo(connection.id)}
                   onEdit={() => beginEdit(connection)}

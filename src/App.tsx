@@ -107,7 +107,10 @@ import {
   clearConnectionSwitch,
   getActiveRemoteConnection,
   isConnectionSwitchPending,
+  isConnectionWindow,
+  takeMigratedRemoteConnectionId,
 } from './lib/remote-connections'
+import { openConnectionWindow } from './lib/connection-windows'
 import { RemoteConnectionRecovery } from './components/remote/RemoteConnectionRecovery'
 import { getStartupOnboardingAction } from './lib/startup-onboarding'
 import { dismissTransientUi } from './lib/dismiss-transient-ui'
@@ -727,6 +730,17 @@ function App() {
   useEffect(() => {
     if (!webBackend) return
 
+    // The main window can delete this connection while the window is open.
+    // Without it we would fall back to the local backend, so close instead —
+    // a remote window must never drive the local machine.
+    if (isConnectionWindow() && !getActiveRemoteConnection()) {
+      logger.warn('Connection window lost its connection — closing')
+      void import('./lib/window-close').then(({ destroyAppWindow }) =>
+        destroyAppWindow()
+      )
+      return
+    }
+
     if (!hasStartedTransportRef.current) {
       hasStartedTransportRef.current = true
       connectTransport()
@@ -753,6 +767,18 @@ function App() {
         setIsPreloading(false)
       })
   }, [queryClient, seedCache, webBackend])
+
+  // One-shot migration: before connection windows the desktop shell kept the
+  // active remote in localStorage and swapped it into this window. Reopen that
+  // remote in a window of its own so the first start after the update lands
+  // where the user left off.
+  useEffect(() => {
+    const migrated = takeMigratedRemoteConnectionId()
+    if (!migrated) return
+    void openConnectionWindow(migrated).catch(error => {
+      logger.warn('Failed to reopen the previously active remote', { error })
+    })
+  }, [])
 
   // Global safety net for uncaught async errors / promise rejections.
   // Without this, a thrown invoke() (e.g. auth/network failure) can leave the

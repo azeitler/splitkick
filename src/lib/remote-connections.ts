@@ -40,17 +40,76 @@ export function parseOptionalSshPort(raw: string): number | undefined {
   return port
 }
 
+/** Label prefix of a connection window. Mirrors `REMOTE_LABEL_PREFIX` in
+ * `src-tauri/src/connection_window.rs`. */
+export const CONNECTION_WINDOW_LABEL_PREFIX = 'remote-'
+
+/**
+ * The connection this window is pinned to, or null in the main window.
+ *
+ * Rust opens a connection window at `index.html?connection=<id>`. This value
+ * has to be readable synchronously while the module loads, because
+ * `getActiveRemoteConnection()` is called from synchronous call sites all over
+ * the app — a query parameter is the only channel that qualifies.
+ *
+ * The window label is a second source, so the pin survives a
+ * `history.replaceState` (`transport.ts` uses one to strip `?token=`). Losing
+ * the pin would point a remote window at the local backend.
+ */
+function readWindowConnection(): string | null {
+  if (typeof window === 'undefined') return null
+  const search = window.location?.search
+  const fromUrl = search
+    ? new URLSearchParams(search).get('connection')
+    : null
+  if (fromUrl) return fromUrl
+  const label = (
+    window as unknown as {
+      __TAURI_INTERNALS__?: {
+        metadata?: { currentWindow?: { label?: string } }
+      }
+    }
+  ).__TAURI_INTERNALS__?.metadata?.currentWindow?.label
+  return typeof label === 'string' &&
+    label.startsWith(CONNECTION_WINDOW_LABEL_PREFIX)
+    ? label.slice(CONNECTION_WINDOW_LABEL_PREFIX.length)
+    : null
+}
+
 const subscribers = new Set<() => void>()
 let connectionsSnapshot: RemoteConnection[] = readConnections()
-const savedActiveConnection =
-  storage()?.getItem(ACTIVE_CONNECTION_KEY) || LOCAL_CONNECTION_ID
-let activeConnectionSnapshot =
-  savedActiveConnection === LOCAL_CONNECTION_ID ||
-  connectionsSnapshot.some(
-    connection => connection.id === savedActiveConnection
+const windowConnection = readWindowConnection()
+
+/** Whether this window was opened for one remote connection. */
+export function isConnectionWindow(): boolean {
+  return windowConnection !== null
+}
+
+/** Inlined rather than imported from `environment.ts`, which imports this file. */
+function isNativeShell(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof (window as unknown as { __TAURI_INTERNALS__?: { invoke?: unknown } })
+      .__TAURI_INTERNALS__?.invoke === 'function'
   )
-    ? savedActiveConnection
+}
+
+function initialActiveConnection(): string {
+  // The desktop shell gives every remote a window of its own, so the main
+  // window is always local and never reads the saved id. Web Access has no
+  // windows to open and still swaps the connection in place.
+  if (isNativeShell()) return LOCAL_CONNECTION_ID
+  const saved = storage()?.getItem(ACTIVE_CONNECTION_KEY) || LOCAL_CONNECTION_ID
+  return saved === LOCAL_CONNECTION_ID ||
+    connectionsSnapshot.some(connection => connection.id === saved)
+    ? saved
     : LOCAL_CONNECTION_ID
+}
+
+// A pinned id is deliberately not checked against the saved list. Falling back
+// to `local` would make a window whose connection was deleted drive the local
+// machine; `App.tsx` closes the window instead.
+let activeConnectionSnapshot = windowConnection ?? initialActiveConnection()
 
 function storage(): Storage | null {
   return typeof window === 'undefined' ? null : window.localStorage
@@ -222,6 +281,9 @@ export function getActiveRemoteConnection(): RemoteConnection | null {
 }
 
 export function selectConnection(id: string): void {
+  // A connection window is pinned by its URL. It must never rewrite the key
+  // that decides which backend the main window talks to.
+  if (windowConnection !== null) return
   const selected =
     id === LOCAL_CONNECTION_ID ||
     getRemoteConnections().some(connection => connection.id === id)
@@ -279,4 +341,17 @@ export function useActiveRemoteConnection(): RemoteConnection | null {
     getActiveRemoteConnection,
     () => null
   )
+}
+
+/**
+ * The remote the desktop shell was on before connection windows existed.
+ *
+ * Read and cleared once, so the first start after the update reopens that
+ * remote in a window of its own instead of dropping the user on local.
+ */
+export function takeMigratedRemoteConnectionId(): string | null {
+  if (!isNativeShell() || windowConnection !== null) return null
+  const saved = storage()?.getItem(ACTIVE_CONNECTION_KEY)
+  storage()?.removeItem(ACTIVE_CONNECTION_KEY)
+  return saved && saved !== LOCAL_CONNECTION_ID ? saved : null
 }

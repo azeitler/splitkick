@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { isNativeApp } from '@/lib/environment'
 import { logger } from '@/lib/logger'
+import { isConnectionWindow } from '@/lib/remote-connections'
 
 /**
  * Register a production-only close handler that always finishes quit via
@@ -15,6 +16,10 @@ export function useNativeWindowCloseGuard(): void {
     // Dev mode allows immediate quit without confirmation.
     if (import.meta.env.DEV) return
     if (!isNativeApp()) return
+    // A connection window only shows a remote server. Its sessions keep
+    // running there after the window closes, so there is nothing to confirm —
+    // and the quit path would take the whole application down.
+    if (isConnectionWindow()) return
 
     let unlisten: (() => void) | null = null
     let cleaned = false

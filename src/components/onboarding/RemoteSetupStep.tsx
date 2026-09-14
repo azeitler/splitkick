@@ -14,11 +14,10 @@ import { isNativeApp } from '@/lib/environment'
 import { cn } from '@/lib/utils'
 import {
   addRemoteConnection,
-  markConnectionSwitch,
   parseOptionalSshPort,
   parseRemoteConnectionInput,
-  selectConnection,
 } from '@/lib/remote-connections'
+import { activateConnection } from '@/lib/connection-windows'
 import {
   fetchRemoteServerInfo,
   isBlockingProbeError,
@@ -116,9 +115,7 @@ export function RemoteSetupStep({
       }
 
       const connection = addRemoteConnection(input)
-      markConnectionSwitch()
-      selectConnection(connection.id)
-      reloadApp()
+      await activateConnection(connection.id, reloadApp)
     } catch (submitError) {
       setError(
         submitError instanceof Error ? submitError.message : String(submitError)
@@ -185,9 +182,7 @@ export function RemoteSetupStep({
         sshHost: host,
         sshPort,
       })
-      markConnectionSwitch()
-      selectConnection(connection.id)
-      reloadApp()
+      await activateConnection(connection.id, reloadApp)
     } catch (installError) {
       setError(
         installError instanceof Error

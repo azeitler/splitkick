@@ -246,27 +246,20 @@ describe('CommandPalette connections', () => {
     expect(fetchRemoteServerInfo).not.toHaveBeenCalled()
   })
 
-  it('warns on version mismatch but still switches from the palette', async () => {
-    fetchRemoteServerInfo.mockResolvedValueOnce({
-      ok: true,
-      appVersion: '0.2.0',
-      webBuildId: '0.2.0-test',
-    })
-    warnRemoteVersionMismatch.mockReturnValueOnce(true)
-
+  it('switches to a remote without probing it first', async () => {
     render(<CommandPalette reloadApp={reloadApp} />)
 
     fireEvent.click(screen.getByText('Build server'))
 
     await waitFor(() => {
-      expect(fetchRemoteServerInfo).toHaveBeenCalledWith(
-        'https://build.example.com',
-        'build-token'
-      )
-      expect(warnRemoteVersionMismatch).toHaveBeenCalledWith('0.2.0')
       expect(selectConnection).toHaveBeenCalledWith('remote-2')
       expect(reloadApp).toHaveBeenCalledOnce()
     })
+    // The target reports a version mismatch itself once its transport
+    // connects, so the palette no longer waits on a probe that can hang for
+    // 12 seconds before anything happens.
+    expect(fetchRemoteServerInfo).not.toHaveBeenCalled()
+    expect(warnRemoteVersionMismatch).not.toHaveBeenCalled()
     expect(showToast).not.toHaveBeenCalled()
   })
 })

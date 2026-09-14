@@ -173,9 +173,11 @@ Additional systems (no dedicated docs yet):
   panel/side/drawer and modal terminals survive a full browser refresh. Three
   pieces cooperate:
 
-  **Native remote UI.** When the desktop app selects a remote Jean, it keeps
-  running its bundled React UI and routes shared backend commands and events to
-  that server over authenticated HTTP/WebSocket transport. Local shell
+  **Native remote UI.** When the desktop app selects a remote Jean, it opens a
+  window of its own for that connection and keeps the main window on the local
+  backend (see `docs/developer/connection-windows.md`). The new window runs the
+  same bundled React UI and routes shared backend commands and events to that
+  server over authenticated HTTP/WebSocket transport. Local shell
   operations such as clipboard access, external URL opening, native menus, and
   notifications continue to use the local Tauri runtime. When the preferred
   editor is Zed, "Open in Editor" also stays local: Jean rewrites the remote

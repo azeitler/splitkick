@@ -34,14 +34,9 @@ import {
   LOCAL_CONNECTION_ID,
   getActiveConnectionId,
   getRemoteConnections,
-  markConnectionSwitch,
-  selectConnection,
   useRemoteConnections,
 } from '@/lib/remote-connections'
-import {
-  fetchRemoteServerInfo,
-  warnRemoteVersionMismatch,
-} from '@/lib/remote-version'
+import { activateConnection } from '@/lib/connection-windows'
 import {
   CommandDialog,
   CommandInput,
@@ -284,28 +279,25 @@ export function CommandPalette({
         command => command.id === commandId
       )
       if (connectionCmd) {
-        if (connectionCmd.connectionId !== LOCAL_CONNECTION_ID) {
-          const connection = getRemoteConnections().find(
+        if (
+          connectionCmd.connectionId !== LOCAL_CONNECTION_ID &&
+          !getRemoteConnections().some(
             item => item.id === connectionCmd.connectionId
           )
-          if (!connection) {
-            commandContext.showToast('Remote connection not found.', 'error')
-            return
-          }
-          // Warn on mismatch but still switch; transport re-checks after load.
-          try {
-            const info = await fetchRemoteServerInfo(
-              connection.url,
-              connection.token
-            )
-            warnRemoteVersionMismatch(info.appVersion)
-          } catch {
-            // Unreachable remotes still switch so recovery UI can handle them.
-          }
+        ) {
+          commandContext.showToast('Remote connection not found.', 'error')
+          return
         }
-        markConnectionSwitch()
-        selectConnection(connectionCmd.connectionId)
-        reloadApp()
+        // On the desktop this opens or focuses the connection's own window.
+        // Web Access swaps the connection in place and reloads.
+        try {
+          await activateConnection(connectionCmd.connectionId, reloadApp)
+        } catch (error) {
+          commandContext.showToast(
+            error instanceof Error ? error.message : String(error),
+            'error'
+          )
+        }
         return
       }
 

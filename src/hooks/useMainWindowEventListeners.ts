@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { listen, listenLocal, invoke } from '@/lib/transport'
+import { listen, listenMenu, invoke } from '@/lib/transport'
 import { isNativeApp, hasBackend } from '@/lib/environment'
 import { notify } from '@/lib/notifications'
 import { PRODUCT_NAME } from '@/lib/build-info'
@@ -1064,7 +1064,7 @@ export function useMainWindowEventListeners() {
           store.setWaitingForInput(sessionId, true)
         }),
 
-        listenLocal('menu-about', async () => {
+        listenMenu('menu-about', async () => {
           logger.debug('About menu event received')
           if (!isNativeApp()) return
           const [{ getVersion }, { message }] = await Promise.all([
@@ -1079,7 +1079,7 @@ export function useMainWindowEventListeners() {
           )
         }),
 
-        listenLocal('menu-check-updates', async () => {
+        listenMenu('menu-check-updates', async () => {
           logger.debug('Check for updates menu event received')
           if (!isNativeApp()) return
           const ui = useUIStore.getState()
@@ -1120,26 +1120,26 @@ export function useMainWindowEventListeners() {
           }
         }),
 
-        listenLocal('menu-preferences', () => {
+        listenMenu('menu-preferences', () => {
           logger.debug('Preferences menu event received')
           commandContext.openPreferences()
         }),
 
-        listenLocal('menu-toggle-left-sidebar', () => {
+        listenMenu('menu-toggle-left-sidebar', () => {
           logger.debug('Toggle left sidebar menu event received')
           const { leftSidebarVisible, setLeftSidebarVisible } =
             useUIStore.getState()
           setLeftSidebarVisible(!leftSidebarVisible)
         }),
 
-        listenLocal('menu-toggle-file-browser', () => {
+        listenMenu('menu-toggle-file-browser', () => {
           logger.debug('Toggle file browser menu event received')
           const { fileBrowserVisible, setFileBrowserVisible } =
             useUIStore.getState()
           setFileBrowserVisible(!fileBrowserVisible)
         }),
 
-        listenLocal('menu-toggle-right-sidebar', () => {
+        listenMenu('menu-toggle-right-sidebar', () => {
           logger.debug('Toggle right sidebar menu event received')
           const { selectedWorktreeId } = useProjectsStore.getState()
           if (selectedWorktreeId) {
@@ -1149,7 +1149,7 @@ export function useMainWindowEventListeners() {
           }
         }),
 
-        listenLocal('menu-magic-menu', () => {
+        listenMenu('menu-magic-menu', () => {
           logger.debug('Magic menu event received from native menu')
           executeKeybindingAction(
             'open_magic_modal',
@@ -1158,7 +1158,7 @@ export function useMainWindowEventListeners() {
           )
         }),
 
-        listenLocal('menu-toggle-terminal', () => {
+        listenMenu('menu-toggle-terminal', () => {
           logger.debug('Toggle terminal menu event received from native menu')
           executeKeybindingAction(
             'toggle_terminal',
@@ -1167,12 +1167,12 @@ export function useMainWindowEventListeners() {
           )
         }),
 
-        listenLocal('menu-toggle-browser', () => {
+        listenMenu('menu-toggle-browser', () => {
           logger.debug('Toggle browser menu event received from native menu')
           executeKeybindingAction('toggle_browser', commandContext, queryClient)
         }),
 
-        listenLocal('menu-quick-menu', () => {
+        listenMenu('menu-quick-menu', () => {
           logger.debug('Quick menu event received from native menu')
           executeKeybindingAction(
             'open_quick_menu',

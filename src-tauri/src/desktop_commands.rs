@@ -25,57 +25,66 @@ fn open_url(url: String) -> Result<(), String> {
     jean_core::open_url_in_browser(&url)
 }
 
-/// Toggle macOS window vibrancy (translucent sidebar material).
+/// Toggle macOS window vibrancy (translucent sidebar material) on one window.
 ///
 /// Jean starts **opaque by default** (`transparent: false`, no window effects
 /// in `tauri.conf.json`) so text stays sharp on external monitors. Enabling
 /// vibrancy is an explicit Appearance preference that opts into translucent
 /// compositing at runtime.
-#[tauri::command]
-pub async fn set_window_vibrancy(app: AppHandle, enabled: bool) -> Result<(), String> {
+///
+/// Takes the window, not the app handle: a remote connection window must apply
+/// the preference to itself and leave the other windows alone.
+pub fn apply_window_vibrancy(window: &tauri::WebviewWindow, enabled: bool) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         use objc2_app_kit::{NSColor, NSWindow};
         use tauri::window::Effect;
 
-        if let Some(window) = app.get_webview_window("main") {
-            let ns_window = window.ns_window().map_err(|error| error.to_string())?;
-            if ns_window.is_null() {
-                return Err("ns_window pointer is null".to_string());
-            }
-            let pointer = ns_window as usize;
+        let ns_window = window.ns_window().map_err(|error| error.to_string())?;
+        if ns_window.is_null() {
+            return Err("ns_window pointer is null".to_string());
+        }
+        let pointer = ns_window as usize;
+        window
+            .run_on_main_thread(move || unsafe {
+                let ns_window: &NSWindow = &*(pointer as *const NSWindow);
+                ns_window.setOpaque(!enabled);
+                let color = if enabled {
+                    NSColor::clearColor()
+                } else {
+                    NSColor::windowBackgroundColor()
+                };
+                ns_window.setBackgroundColor(Some(&color));
+            })
+            .map_err(|error| error.to_string())?;
+
+        if enabled {
             window
-                .run_on_main_thread(move || unsafe {
-                    let ns_window: &NSWindow = &*(pointer as *const NSWindow);
-                    ns_window.setOpaque(!enabled);
-                    let color = if enabled {
-                        NSColor::clearColor()
-                    } else {
-                        NSColor::windowBackgroundColor()
-                    };
-                    ns_window.setBackgroundColor(Some(&color));
+                .set_effects(tauri::utils::config::WindowEffectsConfig {
+                    effects: vec![Effect::Sidebar],
+                    radius: Some(12.0),
+                    state: Some(tauri::window::EffectState::Active),
+                    color: None,
                 })
                 .map_err(|error| error.to_string())?;
-
-            if enabled {
-                window
-                    .set_effects(tauri::utils::config::WindowEffectsConfig {
-                        effects: vec![Effect::Sidebar],
-                        radius: Some(12.0),
-                        state: Some(tauri::window::EffectState::Active),
-                        color: None,
-                    })
-                    .map_err(|error| error.to_string())?;
-            } else {
-                window
-                    .set_effects(None)
-                    .map_err(|error| error.to_string())?;
-            }
+        } else {
+            window
+                .set_effects(None)
+                .map_err(|error| error.to_string())?;
         }
     }
     #[cfg(not(target_os = "macos"))]
-    let _ = (app, enabled);
+    let _ = (window, enabled);
     Ok(())
+}
+
+/// Apply the vibrancy preference to the window that asked for it.
+#[tauri::command]
+pub async fn set_window_vibrancy(
+    window: tauri::WebviewWindow,
+    enabled: bool,
+) -> Result<(), String> {
+    apply_window_vibrancy(&window, enabled)
 }
 
 #[tauri::command]
