@@ -557,6 +557,19 @@ export interface CancelledEvent {
 }
 
 /**
+ * Event payload sent when the backend throws a cancelled turn away.
+ * The run made no output, so the turn is not in the chat history and the
+ * prompt goes back into the chat input.
+ */
+export interface UndoSendEvent {
+  session_id: string
+  worktree_id: string
+  run_id: string
+  /** The message as it was sent, including attachment markers. */
+  user_message: string
+}
+
+/**
  * Event payload for tool block position from Rust
  * Signals where a tool_use block appears in the content stream
  */

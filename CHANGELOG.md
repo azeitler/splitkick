@@ -16,6 +16,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   worktree it shows — and a connection window carries its remote's name from the
   moment it appears.
 
+- **A cancelled prompt now comes back into the chat input.** If you stopped a
+  turn after it started but before the first word of the answer, Jean threw the
+  turn away and left the input empty, so the text was gone from both places and
+  you had to type it again. The backend now reports when it discards a turn, and
+  the input gets the prompt and its attachments back. A turn that already
+  produced an answer still keeps that answer in the history and leaves the input
+  empty. Text you typed after cancelling is never overwritten.
+
 ## [0.1.73-z.9] - 2026-09-14
 
 Built on Jean 0.1.73. Fixes for what 0.1.73-z.8 shipped 30 minutes earlier.

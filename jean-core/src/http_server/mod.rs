@@ -50,6 +50,7 @@ fn is_replayable_chat_event(event: &str) -> bool {
             | "chat:codex_dynamic_tool_call_request"
             | "chat:done"
             | "chat:cancelled"
+            | "chat:undo-send"
             | "chat:error"
     )
 }

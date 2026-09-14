@@ -197,6 +197,18 @@ pub struct CancelledEvent {
     pub run_id: Option<String>,
 }
 
+/// Payload sent when the backend throws a cancelled turn away.
+/// The run made no output, so the turn is not kept in the chat history and the
+/// frontend puts `user_message` back into the chat input.
+#[derive(serde::Serialize, Clone)]
+pub struct UndoSendEvent {
+    pub session_id: String,
+    pub worktree_id: String,
+    pub run_id: String,
+    /// The message as it was sent, including attachment markers.
+    pub user_message: String,
+}
+
 /// Payload for tool block position events sent to frontend
 /// Signals where a tool_use block appears in the content stream
 #[derive(serde::Serialize, Clone)]

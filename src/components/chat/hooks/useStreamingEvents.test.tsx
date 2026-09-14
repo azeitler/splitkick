@@ -1048,6 +1048,192 @@ describe('useStreamingEvents cancellation sanitization', () => {
     )
   })
 
+  describe('chat:undo-send', () => {
+    const sentImage = {
+      id: 'img-1',
+      path: '/tmp/pasted/shot.png',
+      filename: 'shot.png',
+    }
+
+    function seedDiscardedTurn(
+      queryClient: QueryClient,
+      overrides: Partial<{
+        inputDraft: string
+        lastSentMessage: string | undefined
+        queued: boolean
+      }> = {}
+    ) {
+      queryClient.setQueryData(['chat', 'session', 'session-1'], {
+        id: 'session-1',
+        name: 'Test',
+        order: 0,
+        created_at: 1,
+        updated_at: 1,
+        messages: [
+          {
+            id: 'old-user',
+            session_id: 'session-1',
+            role: 'user',
+            content: 'old prompt',
+            timestamp: 1,
+            tool_calls: [],
+          },
+          {
+            id: 'old-assistant',
+            session_id: 'session-1',
+            role: 'assistant',
+            content: 'old answer',
+            timestamp: 2,
+            tool_calls: [],
+          },
+          {
+            id: 'current-user',
+            session_id: 'session-1',
+            role: 'user',
+            content: 'cancel this',
+            timestamp: 3,
+            tool_calls: [],
+          },
+          {
+            id: 'cancelled-session-1-2000',
+            session_id: 'session-1',
+            role: 'assistant',
+            content: '',
+            timestamp: 2000,
+            tool_calls: [],
+            content_blocks: [],
+            cancelled: true,
+          },
+        ],
+      })
+
+      useChatStore.setState({
+        sessionWorktreeMap: { 'session-1': 'worktree-1' },
+        worktreePaths: { 'worktree-1': '/tmp/worktree' },
+        lastSentMessages:
+          'lastSentMessage' in overrides
+            ? overrides.lastSentMessage === undefined
+              ? {}
+              : { 'session-1': overrides.lastSentMessage }
+            : { 'session-1': 'cancel this' },
+        lastSentAttachments: {
+          'session-1': {
+            images: [sentImage],
+            files: [],
+            textFiles: [],
+            skills: [],
+          },
+        },
+        inputDrafts: { 'session-1': overrides.inputDraft ?? '' },
+        pendingImages: {},
+        messageQueues: overrides.queued
+          ? {
+              'session-1': [
+                {
+                  id: 'queued-1',
+                  message: 'next prompt',
+                  pendingImages: [],
+                  pendingFiles: [],
+                  pendingSkills: [],
+                  pendingTextFiles: [],
+                  model: 'sonnet',
+                  provider: null,
+                  executionMode: 'yolo',
+                  thinkingLevel: 'off',
+                  queuedAt: 1,
+                },
+              ],
+            }
+          : {},
+      })
+    }
+
+    async function emitUndoSend(userMessage = 'cancel this') {
+      await waitFor(() =>
+        expect(registeredListeners.has('chat:undo-send')).toBe(true)
+      )
+      registeredListeners.get('chat:undo-send')?.({
+        payload: {
+          session_id: 'session-1',
+          worktree_id: 'worktree-1',
+          run_id: 'run-1',
+          user_message: userMessage,
+        },
+      })
+    }
+
+    it('restores the prompt and its attachments when the backend discarded the turn', async () => {
+      const queryClient = createQueryClient()
+      const wrapper = createWrapper(queryClient)
+      seedDiscardedTurn(queryClient)
+
+      renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+      await emitUndoSend()
+
+      const store = useChatStore.getState()
+      expect(store.inputDrafts['session-1']).toBe('cancel this')
+      expect(store.pendingImages['session-1']).toEqual([sentImage])
+      expect(store.lastSentMessages['session-1']).toBeUndefined()
+      expect(store.lastSentAttachments['session-1']).toBeUndefined()
+
+      // Both halves of the discarded turn leave the timeline, so the prompt is
+      // not shown in the history and in the input at the same time.
+      const session = queryClient.getQueryData<{
+        messages: { id: string }[]
+      }>(['chat', 'session', 'session-1'])
+      expect(session?.messages.map(message => message.id)).toEqual([
+        'old-user',
+        'old-assistant',
+      ])
+    })
+
+    it('does not overwrite a draft the user typed after cancelling', async () => {
+      const queryClient = createQueryClient()
+      const wrapper = createWrapper(queryClient)
+      seedDiscardedTurn(queryClient, { inputDraft: 'something else' })
+
+      renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+      await emitUndoSend()
+
+      const store = useChatStore.getState()
+      expect(store.inputDrafts['session-1']).toBe('something else')
+      expect(store.pendingImages['session-1']).toBeUndefined()
+      expect(store.lastSentMessages['session-1']).toBeUndefined()
+      expect(store.lastSentAttachments['session-1']).toBeUndefined()
+    })
+
+    it('does not restore while a queued message waits (Skip to Next)', async () => {
+      const queryClient = createQueryClient()
+      const wrapper = createWrapper(queryClient)
+      seedDiscardedTurn(queryClient, { queued: true })
+
+      renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+      await emitUndoSend()
+
+      const store = useChatStore.getState()
+      expect(store.inputDrafts['session-1']).toBe('')
+      expect(store.pendingImages['session-1']).toBeUndefined()
+      expect(store.lastSentMessages['session-1']).toBeUndefined()
+    })
+
+    it('falls back to the stored message without its markers after a reload', async () => {
+      const queryClient = createQueryClient()
+      const wrapper = createWrapper(queryClient)
+      // lastSentMessages is in-memory only, so it is empty after a reload or
+      // when another client issued the cancel.
+      seedDiscardedTurn(queryClient, { lastSentMessage: undefined })
+
+      renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+      await emitUndoSend(
+        'cancel this\n\n[Image attached: /tmp/pasted/shot.png - Use the Read tool to view this image]'
+      )
+
+      expect(useChatStore.getState().inputDrafts['session-1']).toBe(
+        'cancel this'
+      )
+    })
+  })
+
   it('hydrates persisted cancelled output without clearing a newer input draft', async () => {
     const queryClient = createQueryClient()
     const wrapper = createWrapper(queryClient)

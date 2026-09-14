@@ -5507,6 +5507,22 @@ pub async fn send_chat_message(
             Ok(())
         })?;
 
+        // The turn is now gone from the chat history: the run log carries
+        // `assistant_message_id = None`, so it is not renderable, and the user
+        // message was popped above. Tell the frontend, so it can put the prompt
+        // back into the input. This is the only reliable signal — `undo_send` on
+        // `chat:cancelled` only covers a prompt that never started, and the
+        // frontend cannot tell on its own whether the backend kept the turn.
+        let _ = app.emit_all(
+            "chat:undo-send",
+            &super::claude::UndoSendEvent {
+                session_id: session_id.clone(),
+                worktree_id: worktree_id.clone(),
+                run_id: run_id.clone(),
+                user_message: message.clone(),
+            },
+        );
+
         log::info!("[SendChat] EXIT session={session_id} reason=cancelled_no_content");
         trigger_backend_queue_drain(
             app.clone(),

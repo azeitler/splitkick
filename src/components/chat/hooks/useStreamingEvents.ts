@@ -43,6 +43,7 @@ import type {
   DoneEvent,
   ErrorEvent,
   CancelledEvent,
+  UndoSendEvent,
   ThinkingEvent,
   PermissionDeniedEvent,
   CodexCommandApprovalRequestEvent,
@@ -66,6 +67,7 @@ import type {
   ChatMessage,
 } from '@/types/chat'
 import { persistEnqueue, saveCancelledMessage } from '@/services/chat'
+import { stripAllMarkers } from '@/components/chat/message-content-utils'
 import {
   applySessionSettingToSession,
   type SessionSettingKey,
@@ -2170,6 +2172,98 @@ export default function useStreamingEvents({
       }
     )
 
+    // Handle an undone send. The backend emits this from the one place that
+    // actually throws a cancelled turn away (send_chat_message, cancelled with
+    // no output): the run gets assistant_message_id = None, so it is no longer
+    // renderable, and the user message is popped. Without this the prompt is
+    // lost from both the history and the input.
+    //
+    // Do not try to infer this from chat:cancelled. `undo_send` there only
+    // covers a prompt that never started, and `hasContent` is a frontend guess
+    // that is false while the backend still holds output the frontend never
+    // received. Acting on that guess duplicates the prompt (issue #671).
+    const unlistenUndoSend = listen<UndoSendEvent>(
+      'chat:undo-send',
+      event => {
+        const { session_id, user_message } = event.payload
+        const store = useChatStore.getState()
+
+        const dropSentState = () => {
+          store.clearLastSentAttachments(session_id)
+          store.clearLastSentMessage(session_id)
+        }
+
+        // Queued messages mean the user chose "Skip to Next". The queue
+        // processor drives the next prompt; keep the input clear.
+        if ((store.messageQueues[session_id] ?? []).length > 0) {
+          dropSentState()
+          return
+        }
+
+        // Never overwrite text the user typed after cancelling.
+        if ((store.inputDrafts[session_id] ?? '').trim()) {
+          dropSentState()
+          return
+        }
+
+        // lastSentMessages holds the raw typed text. It is in-memory only, so
+        // it is missing after a reload, or when another client or the MCP tool
+        // issued the cancel. Fall back to the message the backend stored, minus
+        // its attachment markers.
+        const text =
+          store.lastSentMessages[session_id] ??
+          stripAllMarkers(user_message ?? '').trim()
+        if (!text) {
+          dropSentState()
+          return
+        }
+
+        store.setInputDraft(session_id, text)
+        if (store.lastSentAttachments[session_id]) {
+          store.restoreAttachments(session_id)
+        }
+        store.clearLastSentMessage(session_id)
+
+        // Drop the turn from the cache now. The chat:cancelled handler appended
+        // an empty `cancelled-<session>-<ts>` placeholder, and the user message
+        // is still there. Leaving them shows the prompt in the history and in
+        // the input at the same time until the refetch lands.
+        queryClient.setQueryData<Session>(
+          chatQueryKeys.session(session_id),
+          old => {
+            if (!old) return old
+            const messages = [...old.messages]
+            const last = messages.at(-1)
+            if (
+              last?.role === 'assistant' &&
+              last.cancelled === true &&
+              last.id.startsWith(`cancelled-${session_id}-`) &&
+              !last.content.trim() &&
+              (last.tool_calls?.length ?? 0) === 0 &&
+              (last.content_blocks?.length ?? 0) === 0
+            ) {
+              messages.pop()
+            }
+            if (messages.at(-1)?.role === 'user') {
+              messages.pop()
+            }
+            if (messages.length === old.messages.length) return old
+            return { ...old, messages }
+          }
+        )
+        useChatStore
+          .getState()
+          .setSessionReviewing(
+            session_id,
+            (queryClient.getQueryData<Session>(
+              chatQueryKeys.session(session_id)
+            )?.messages.length ?? 0) > 0
+          )
+
+        toast.info('Message restored to input')
+      }
+    )
+
     // Handle context compaction events
     const unlistenCompacting = listen<CompactingEvent>(
       'chat:compacting',
@@ -2393,6 +2487,7 @@ export default function useStreamingEvents({
       unlistenDone.then(f => f())
       unlistenError.then(f => f())
       unlistenCancelled.then(f => f())
+      unlistenUndoSend.then(f => f())
       unlistenCompacting.then(f => f())
       unlistenCompacted.then(f => f())
       unlistenWakeupScheduled.then(f => f())
