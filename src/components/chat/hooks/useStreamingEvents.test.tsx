@@ -898,7 +898,7 @@ describe('useStreamingEvents cancellation sanitization', () => {
     expect(useChatStore.getState().isSessionReviewing('session-1')).toBe(true)
   })
 
-  it('restores input when cancelling an already-running prompt with no streamed content yet', async () => {
+  it('does not restore text or images after an already-running prompt is cancelled', async () => {
     const queryClient = createQueryClient()
     const wrapper = createWrapper(queryClient)
     const hiddenRunSession = {
@@ -944,6 +944,21 @@ describe('useStreamingEvents cancellation sanitization', () => {
       sessionWorktreeMap: { 'session-1': 'worktree-1' },
       worktreePaths: { 'worktree-1': '/tmp/worktree' },
       lastSentMessages: { 'session-1': 'already running' },
+      lastSentAttachments: {
+        'session-1': {
+          images: [
+            {
+              id: 'image-1',
+              path: '/tmp/image.png',
+              filename: 'image.png',
+            },
+          ],
+          files: [],
+          textFiles: [],
+          skills: [],
+        },
+      },
+      pendingImages: {},
       inputDrafts: { 'session-1': '' },
     })
 
@@ -966,12 +981,14 @@ describe('useStreamingEvents cancellation sanitization', () => {
       messages: { id: string; role: string; content: string }[]
     }>(['chat', 'session', 'session-1'])
 
-    // Live cancel with no assistant output — backend hides the run, so restore
-    // the prompt to the composer instead of leaving an empty cancelled turn.
-    expect(session?.messages.map(message => message.id)).toEqual([])
-    expect(useChatStore.getState().inputDrafts['session-1']).toBe(
-      'already running'
+    expect(session?.messages.map(message => message.id)).toContain(
+      'current-user'
     )
+    expect(useChatStore.getState().inputDrafts['session-1']).toBe('')
+    expect(useChatStore.getState().pendingImages['session-1']).toBeUndefined()
+    expect(
+      useChatStore.getState().lastSentAttachments['session-1']
+    ).toBeUndefined()
     expect(useChatStore.getState().lastSentMessages['session-1']).toBe(
       undefined
     )
@@ -982,12 +999,10 @@ describe('useStreamingEvents cancellation sanitization', () => {
         worktreePath: '/tmp/worktree',
       })
     )
-    expect(useChatStore.getState().inputDrafts['session-1']).toBe(
-      'already running'
-    )
+    expect(useChatStore.getState().inputDrafts['session-1']).toBe('')
   })
 
-  it('clears a restored draft when backend hydrates a persisted cancelled turn', async () => {
+  it('hydrates a persisted cancelled turn without restoring the sent prompt', async () => {
     const queryClient = createQueryClient()
     const wrapper = createWrapper(queryClient)
     const hydratedSession = {
@@ -1074,9 +1089,7 @@ describe('useStreamingEvents cancellation sanitization', () => {
       },
     })
 
-    expect(useChatStore.getState().inputDrafts['session-1']).toBe(
-      'already running'
-    )
+    expect(useChatStore.getState().inputDrafts['session-1']).toBe('')
 
     await waitFor(() => {
       const session = queryClient.getQueryData<{
@@ -1139,6 +1152,21 @@ describe('useStreamingEvents cancellation sanitization', () => {
       sessionWorktreeMap: { 'session-1': 'worktree-1' },
       worktreePaths: { 'worktree-1': '/tmp/worktree' },
       lastSentMessages: { 'session-1': 'cancel this' },
+      lastSentAttachments: {
+        'session-1': {
+          images: [
+            {
+              id: 'image-1',
+              path: '/tmp/image.png',
+              filename: 'image.png',
+            },
+          ],
+          files: [],
+          textFiles: [],
+          skills: [],
+        },
+      },
+      pendingImages: {},
       inputDrafts: { 'session-1': '' },
     })
 
@@ -1166,6 +1194,13 @@ describe('useStreamingEvents cancellation sanitization', () => {
       'old-assistant',
     ])
     expect(useChatStore.getState().inputDrafts['session-1']).toBe('cancel this')
+    expect(useChatStore.getState().pendingImages['session-1']).toEqual([
+      {
+        id: 'image-1',
+        path: '/tmp/image.png',
+        filename: 'image.png',
+      },
+    ])
     expect(useChatStore.getState().lastSentMessages['session-1']).toBe(
       undefined
     )
