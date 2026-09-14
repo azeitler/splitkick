@@ -5,7 +5,12 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query'
-import { invoke, useWsConnectionStatus, setAppDataDir } from '@/lib/transport'
+import {
+  invoke,
+  invokeForServer,
+  useWsConnectionStatus,
+  setAppDataDir,
+} from '@/lib/transport'
 import { listen, type UnlistenFn } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
@@ -40,7 +45,7 @@ import { useBrowserStore } from '@/store/browser-store'
 
 import type { AppPreferences } from '@/types/preferences'
 import type { AdvisoryContext } from '@/types/github'
-import { hasBackend, hasBackendTransport } from '@/lib/environment'
+import { hasBackend, hasBackendTransport, isNativeApp } from '@/lib/environment'
 import { openExternal, preOpenWindow } from '@/lib/platform'
 import { shouldSuppressAutoFixConflictNotification } from './worktree-conflict-events'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
@@ -48,6 +53,10 @@ import {
   mergeWorktreesPreservingOptimistic,
   removePendingWorktree,
 } from '@/lib/worktree-list-cache'
+import {
+  toRoutedProjects,
+  useMultiServerProjects,
+} from './multi-server-projects'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -68,7 +77,9 @@ function clearLocalWorktreeState(
     clearSessionScrollState(sessionId)
   }
   disposeAllWorktreeTerminals(worktreeId)
-  const browserTabIds = useBrowserStore.getState().clearWorktreeState(worktreeId)
+  const browserTabIds = useBrowserStore
+    .getState()
+    .clearWorktreeState(worktreeId)
   for (const tabId of browserTabIds) {
     void browserBackend.close(tabId)
   }
@@ -115,7 +126,9 @@ export const projectsQueryKeys = {
  * Hook to list all projects
  */
 export function useProjects() {
-  return useQuery({
+  const native = isNativeApp()
+  const remoteProjects = useMultiServerProjects(native)
+  const localProjects = useQuery({
     queryKey: projectsQueryKeys.list(),
     queryFn: async (): Promise<Project[]> => {
       if (!hasBackendTransport()) {
@@ -136,6 +149,13 @@ export function useProjects() {
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
   })
+  const routedRemoteProjects = native
+    ? toRoutedProjects(remoteProjects.data ?? [])
+    : []
+  return {
+    ...localProjects,
+    data: [...(localProjects.data ?? []), ...routedRemoteProjects],
+  }
 }
 
 /** One-shot project open payload (worktrees + session lists with counts). */
@@ -222,7 +242,10 @@ export function useProjectBootstrap(projectId: string | null) {
             projectsQueryKeys.worktrees(projectId)
           )
           const merged = mergeWorktreesPreservingOptimistic(worktrees, previous)
-          queryClient.setQueryData(projectsQueryKeys.worktrees(projectId), merged)
+          queryClient.setQueryData(
+            projectsQueryKeys.worktrees(projectId),
+            merged
+          )
           return merged
         } catch (fallbackError) {
           logger.error('Failed to load canvas worktrees', {
@@ -399,21 +422,29 @@ export function useAddProject() {
     mutationFn: async ({
       path,
       parentId,
+      serverId,
     }: {
       path: string
       parentId?: string
+      serverId?: string
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
       }
 
       logger.debug('Adding project', { path, parentId })
-      const project = await invoke<Project>('add_project', { path, parentId })
+      const project = serverId
+        ? await invokeForServer<Project>(serverId, 'add_project', {
+            path,
+            parentId,
+          })
+        : await invoke<Project>('add_project', { path, parentId })
       logger.info('Project added successfully', { project })
       return project
     },
     onSuccess: (project, { parentId }) => {
       queryClient.invalidateQueries({ queryKey: projectsQueryKeys.list() })
+      queryClient.invalidateQueries({ queryKey: ['multi-server', 'projects'] })
       toast.success(`Added project: ${project.name}`)
 
       // Auto-expand the new project and parent folder if applicable
@@ -455,21 +486,29 @@ export function useInitProject() {
     mutationFn: async ({
       path,
       parentId,
+      serverId,
     }: {
       path: string
       parentId?: string
+      serverId?: string
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
       }
 
       logger.debug('Initializing new project', { path, parentId })
-      const project = await invoke<Project>('init_project', { path, parentId })
+      const project = serverId
+        ? await invokeForServer<Project>(serverId, 'init_project', {
+            path,
+            parentId,
+          })
+        : await invoke<Project>('init_project', { path, parentId })
       logger.info('Project initialized successfully', { project })
       return project
     },
     onSuccess: (project, { parentId }) => {
       queryClient.invalidateQueries({ queryKey: projectsQueryKeys.list() })
+      queryClient.invalidateQueries({ queryKey: ['multi-server', 'projects'] })
       toast.success(`Created project: ${project.name}`)
 
       // Auto-expand the new project and parent folder if applicable
@@ -542,26 +581,31 @@ export function useCloneProject() {
       url,
       path,
       parentId,
+      serverId,
     }: {
       url: string
       path: string
       parentId?: string
+      serverId?: string
     }): Promise<Project> => {
       if (!isTauri()) {
         throw new Error('Not in Tauri context')
       }
 
       logger.debug('Cloning project', { url, path, parentId })
-      const project = await invoke<Project>('clone_project', {
-        url,
-        path,
-        parentId,
-      })
+      const project = serverId
+        ? await invokeForServer<Project>(serverId, 'clone_project', {
+            url,
+            path,
+            parentId,
+          })
+        : await invoke<Project>('clone_project', { url, path, parentId })
       logger.info('Project cloned successfully', { project })
       return project
     },
     onSuccess: (project, { parentId }) => {
       queryClient.invalidateQueries({ queryKey: projectsQueryKeys.list() })
+      queryClient.invalidateQueries({ queryKey: ['multi-server', 'projects'] })
       toast.success(`Cloned project: ${project.name}`)
 
       // Auto-expand the new project and parent folder if applicable

@@ -39,9 +39,6 @@ import {
 import { DismissButton } from '@/components/ui/dismiss-button'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
-import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
-import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
-import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { useChatStore } from '@/store/chat-store'
@@ -686,6 +683,12 @@ export function SessionChatModal({
 
   const handleClearContext = useCallback(() => {
     if (!currentSessionId || clearSessionHistory.isPending) return
+    if (useChatStore.getState().isSending(currentSessionId)) {
+      toast.info(
+        'Wait for the current session to finish before clearing context.'
+      )
+      return
+    }
     clearSessionHistory.mutate(
       {
         worktreeId,
@@ -878,7 +881,8 @@ export function SessionChatModal({
           const result = await gitPush(
             worktreePath,
             worktree?.pr_number,
-            remote
+            remote,
+            worktree?.id
           )
           triggerImmediateGitPoll()
           if (project) fetchWorktreesStatus(project.id)
@@ -1159,19 +1163,6 @@ export function SessionChatModal({
                       onDiffClick={handleUncommittedDiffClick}
                       onBranchDiffClick={handleBranchDiffClick}
                     />
-                  )}
-                  {!zenMode && project && (
-                    <div className="hidden items-center gap-2 2xl:flex">
-                      <NewIssuesBadge
-                        projectPath={project.path}
-                        projectId={project.id}
-                      />
-                      <OpenPRsBadge
-                        projectPath={project.path}
-                        projectId={project.id}
-                      />
-                      <FailedRunsBadge projectPath={project.path} />
-                    </div>
                   )}
                   {!zenMode && worktree && project && (
                     <WorktreeDropdownMenu

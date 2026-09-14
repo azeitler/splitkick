@@ -38,6 +38,8 @@ pub struct CodexResponse {
     pub cancelled: bool,
     /// Whether a chat:error event was emitted during execution
     pub error_emitted: bool,
+    /// Whether the completed turn must wait for plan approval
+    pub waiting_for_plan: bool,
     /// Token usage for this response
     pub usage: Option<UsageData>,
 }
@@ -1433,13 +1435,18 @@ fn append_codex_thread_snapshot_to_history_file(
     Ok(())
 }
 
-fn emit_codex_done(app: &tauri::AppHandle, session_id: &str, worktree_id: &str) {
+fn emit_codex_done(
+    app: &tauri::AppHandle,
+    session_id: &str,
+    worktree_id: &str,
+    waiting_for_plan: bool,
+) {
     let _ = app.emit_all(
         "chat:done",
         &DoneEvent {
             session_id: session_id.to_string(),
             worktree_id: worktree_id.to_string(),
-            waiting_for_plan: false,
+            waiting_for_plan,
         },
     );
 }
@@ -1653,6 +1660,10 @@ pub fn resume_codex_after_crash(
                     }
                 }
 
+                if !response.cancelled && !response.error_emitted {
+                    emit_codex_done(app, session_id, worktree_id, response.waiting_for_plan);
+                }
+
                 return Ok(true);
             }
 
@@ -1715,7 +1726,7 @@ pub fn resume_codex_after_crash(
                         );
                     }
                 }
-                emit_codex_done(app, session_id, worktree_id);
+                emit_codex_done(app, session_id, worktree_id, false);
                 return Ok(true);
             }
 
@@ -1732,7 +1743,7 @@ pub fn resume_codex_after_crash(
                         log::error!("Failed to persist Codex recovered completion state: {e}");
                     }
                 }
-                emit_codex_done(app, session_id, worktree_id);
+                emit_codex_done(app, session_id, worktree_id, false);
                 return Ok(true);
             }
 
@@ -1767,7 +1778,7 @@ pub fn resume_codex_after_crash(
                         );
                     }
                 }
-                emit_codex_done(app, session_id, worktree_id);
+                emit_codex_done(app, session_id, worktree_id, false);
                 return Ok(true);
             }
 
@@ -1782,7 +1793,7 @@ pub fn resume_codex_after_crash(
                     log::error!("Failed to persist Codex recovered completion state: {e}");
                 }
             }
-            emit_codex_done(app, session_id, worktree_id);
+            emit_codex_done(app, session_id, worktree_id, false);
             Ok(true)
         }
     }
@@ -2320,24 +2331,19 @@ fn process_turn_events(
         enrich_thin_codex_plan(&mut tool_calls, &mut content_blocks, &full_content);
     }
 
-    // Emit chat:done unless error was emitted
-    if !cancelled && !error_emitted {
-        let has_plan_tool = has_codex_plan_tool(&tool_calls);
+    let waiting_for_plan = !cancelled
+        && !error_emitted
+        && is_plan_mode
+        && (has_codex_plan_tool(&tool_calls) || detected_plain_text_plan);
 
+    // The caller emits chat:done after it persists the run and session state.
+    // If this event is early, a client refetch can restore a stale running state.
+    if !cancelled && !error_emitted {
         // Write result marker for crash-recovery compatibility
         // (jsonl_has_result_line() in run_log.rs checks for this)
         if let Some(ref mut writer) = output_writer {
             let _ = writeln!(writer, r#"{{"type":"result"}}"#);
         }
-
-        let _ = app.emit_all(
-            "chat:done",
-            &DoneEvent {
-                session_id: session_id.to_string(),
-                worktree_id: worktree_id.to_string(),
-                waiting_for_plan: is_plan_mode && (has_plan_tool || detected_plain_text_plan),
-            },
-        );
     } else if server_interrupted && !error_emitted {
         // Server-initiated interruption (e.g., Codex ended the turn while an
         // approval request was still pending). User-initiated cancellation is
@@ -2368,6 +2374,7 @@ fn process_turn_events(
         content_blocks,
         cancelled,
         error_emitted,
+        waiting_for_plan,
         usage,
     }
 }

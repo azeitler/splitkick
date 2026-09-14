@@ -47,6 +47,14 @@ export function isBaseSession(worktree: Worktree): boolean {
  * A git project that has been added to Jean, or a folder for organizing projects
  */
 export interface Project {
+  /** Client-only owning server for native multi-server views. */
+  serverId?: string
+  /** Original server-side ID when `id` is a composite client identity. */
+  resourceId?: string
+  /** Client-only display name for the owning server. */
+  serverName?: string
+  /** Client-only marker for a read-only cached server snapshot. */
+  offline?: boolean
   /** Unique identifier (UUID v4) */
   id: string
   /** Display name (derived from repo directory name, or folder name) */
@@ -126,6 +134,10 @@ export function isFolder(project: Project): boolean {
  * A git worktree created for a project
  */
 export interface Worktree {
+  /** Client-only owning server for native multi-server views. */
+  serverId?: string
+  /** Original server-side ID when `id` is a composite client identity. */
+  resourceId?: string
   /** Unique identifier (UUID v4) */
   id: string
   /** Foreign key to Project */

@@ -8,8 +8,13 @@ describe('SessionChatModal responsive header actions', () => {
     'utf8'
   )
 
-  it('keeps badges and inline actions for extra-wide windows only', () => {
-    expect(source).toMatch(/hidden items-center gap-2 2xl:flex/)
+  it('does not duplicate GitHub status badges in the desktop header', () => {
+    expect(source).not.toContain('@/components/shared/NewIssuesBadge')
+    expect(source).not.toContain('@/components/shared/OpenPRsBadge')
+    expect(source).not.toContain('@/components/shared/FailedRunsBadge')
+  })
+
+  it('keeps inline actions for extra-wide windows only', () => {
     expect(source).toMatch(/hidden 2xl:flex items-center gap-1/)
   })
 

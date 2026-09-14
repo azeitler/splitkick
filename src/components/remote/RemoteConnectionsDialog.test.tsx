@@ -11,6 +11,8 @@ const {
   invoke,
   isNativeApp,
   listenLocal,
+  setRemoteConnectionEnabled,
+  remoteConnections,
 } = vi.hoisted(() => ({
   addRemoteConnection: vi.fn(() => ({ id: 'remote-1' })),
   selectConnection: vi.fn(),
@@ -26,6 +28,14 @@ const {
   listenLocal: vi.fn(async () => () => {
     // no-op unsubscribe
   }),
+  setRemoteConnectionEnabled: vi.fn(),
+  remoteConnections: [] as {
+    id: string
+    name: string
+    url: string
+    token: string
+    enabled: boolean
+  }[],
 }))
 
 vi.mock('@/lib/remote-connections', () => ({
@@ -54,8 +64,9 @@ vi.mock('@/lib/remote-connections', () => ({
     }
   },
   selectConnection,
+  setRemoteConnectionEnabled,
   updateRemoteConnection: vi.fn(),
-  useRemoteConnections: () => [],
+  useRemoteConnections: () => remoteConnections,
 }))
 
 vi.mock('@/lib/remote-version', () => ({
@@ -93,6 +104,51 @@ describe('RemoteConnectionsDialog', () => {
     })
     warnRemoteVersionMismatch.mockReturnValue(false)
     isNativeApp.mockReturnValue(false)
+    remoteConnections.length = 0
+  })
+
+  it('changes combined dashboard inclusion without reloading', async () => {
+    isNativeApp.mockReturnValue(true)
+    remoteConnections.push({
+      id: 'remote-1',
+      name: 'Build server',
+      url: 'https://jean.example.com',
+      token: 'secret',
+      enabled: true,
+    })
+    const reloadApp = vi.fn()
+    render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    await waitFor(() => expect(fetchRemoteServerInfo).toHaveBeenCalled())
+    fireEvent.click(
+      screen.getByRole('checkbox', {
+        name: 'Include Build server in combined dashboard',
+      })
+    )
+
+    expect(setRemoteConnectionEnabled).toHaveBeenCalledWith('remote-1', false)
+    expect(reloadApp).not.toHaveBeenCalled()
+  })
+
+  it('does not expose multi-server dashboard controls in Web Access', async () => {
+    remoteConnections.push({
+      id: 'remote-1',
+      name: 'Build server',
+      url: 'https://jean.example.com',
+      token: 'secret',
+      enabled: true,
+    })
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    await waitFor(() => expect(fetchRemoteServerInfo).toHaveBeenCalled())
+
+    expect(
+      screen.queryByRole('checkbox', {
+        name: 'Include Build server in combined dashboard',
+      })
+    ).not.toBeInTheDocument()
   })
 
   it('adds and selects a remote from a complete Web Access URL', async () => {

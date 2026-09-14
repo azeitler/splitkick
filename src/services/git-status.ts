@@ -461,7 +461,12 @@ export async function performGitSync(opts: GitSyncOptions): Promise<void> {
   if (!shouldPush) return
 
   try {
-    const result = await gitPush(pull.worktreePath, prNumber, pushRemote)
+    const result = await gitPush(
+      pull.worktreePath,
+      prNumber,
+      pushRemote,
+      pull.worktreeId || pull.projectId
+    )
     await triggerImmediateGitPoll()
     if (pull.projectId) fetchWorktreesStatus(pull.projectId)
     if (result.permissionDenied) {
@@ -495,7 +500,8 @@ export async function performGitSync(opts: GitSyncOptions): Promise<void> {
 export async function gitPush(
   worktreePath: string,
   prNumber?: number,
-  remote?: string
+  remote?: string,
+  ownerId?: string
 ): Promise<GitPushResponse> {
   if (!isTauri()) {
     throw new Error('Git push only available in Tauri')
@@ -504,6 +510,7 @@ export async function gitPush(
     worktreePath,
     prNumber: prNumber ?? null,
     remote: remote ?? null,
+    worktreeId: ownerId,
   })
 }
 

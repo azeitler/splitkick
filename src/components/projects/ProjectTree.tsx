@@ -152,7 +152,7 @@ function SortableItem({
 
   useEffect(() => {
     const element = elementRef.current
-    if (!element) return
+    if (!element || item.serverId || item.offline) return
 
     return combine(
       draggable({
@@ -222,7 +222,9 @@ function SortableItem({
         style={style}
         className={cn(
           'relative transition-opacity',
-          activeId === item.id ? 'cursor-grabbing' : 'cursor-grab'
+          !item.serverId &&
+            !item.offline &&
+            (activeId === item.id ? 'cursor-grabbing' : 'cursor-grab')
         )}
       >
         <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />
@@ -250,7 +252,9 @@ function SortableItem({
       style={style}
       className={cn(
         'relative transition-opacity',
-        activeId === item.id ? 'cursor-grabbing' : 'cursor-grab'
+        !item.serverId &&
+          !item.offline &&
+          (activeId === item.id ? 'cursor-grabbing' : 'cursor-grab')
       )}
     >
       <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />

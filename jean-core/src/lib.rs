@@ -3496,7 +3496,22 @@ pub struct MagicPromptCapability {
 pub struct ServerCapabilitiesEnvelope {
     pub schema_version: u32,
     pub app_version: String,
+    pub api_protocol: u32,
+    pub api_protocol_min: u32,
+    pub capabilities: std::collections::BTreeMap<String, u32>,
+    pub feature_surfaces: Vec<FeatureSurfaceManifestEntry>,
     pub magic_prompts: Vec<MagicPromptCapability>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FeatureSurfaceManifestEntry {
+    pub id: String,
+    pub label: String,
+    pub entry_url: String,
+    pub feature_version: u32,
+    pub bridge_version: u32,
+    pub permissions: Vec<String>,
 }
 
 pub async fn get_server_capabilities() -> Result<ServerCapabilitiesEnvelope, String> {
@@ -3524,6 +3539,17 @@ pub async fn get_server_capabilities() -> Result<ServerCapabilitiesEnvelope, Str
     Ok(ServerCapabilitiesEnvelope {
         schema_version: 1,
         app_version: app_version().to_string(),
+        api_protocol: 1,
+        api_protocol_min: 1,
+        capabilities: std::collections::BTreeMap::from([("multiServerTransport".to_string(), 1)]),
+        feature_surfaces: vec![FeatureSurfaceManifestEntry {
+            id: "server-info".to_string(),
+            label: "Server information".to_string(),
+            entry_url: "/api/features/server-info".to_string(),
+            feature_version: 1,
+            bridge_version: 1,
+            permissions: vec!["clipboard.write".to_string(), "context.read".to_string()],
+        }],
         magic_prompts: prompts
             .into_iter()
             .map(|(id, label, default_prompt)| MagicPromptCapability {
@@ -3533,6 +3559,21 @@ pub async fn get_server_capabilities() -> Result<ServerCapabilitiesEnvelope, Str
             })
             .collect(),
     })
+}
+
+#[cfg(test)]
+mod server_capabilities_tests {
+    #[tokio::test]
+    async fn server_capabilities_publish_protocol_contract() {
+        let value = serde_json::to_value(super::get_server_capabilities().await.unwrap()).unwrap();
+
+        assert_eq!(value["apiProtocol"], 1);
+        assert_eq!(value["apiProtocolMin"], 1);
+        assert_eq!(value["capabilities"]["multiServerTransport"], 1);
+        assert_eq!(value["featureSurfaces"][0]["id"], "server-info");
+        assert_eq!(value["featureSurfaces"][0]["bridgeVersion"], 1);
+        assert!(value.get("magicPrompts").is_some());
+    }
 }
 
 async fn set_window_vibrancy(_app: AppHandle, _enabled: bool) -> Result<(), String> {

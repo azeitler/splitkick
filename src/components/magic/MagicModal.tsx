@@ -1123,7 +1123,8 @@ export function MagicModal() {
               const result = await gitPush(
                 worktree.path,
                 worktree.pr_number,
-                remote
+                remote,
+                worktree.id
               )
               triggerImmediateGitPoll()
               if (worktree.project_id) fetchWorktreesStatus(worktree.project_id)

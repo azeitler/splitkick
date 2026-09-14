@@ -1,20 +1,26 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   addRemoteConnection,
   clearConnectionSwitch,
   getActiveConnectionId,
   getActiveRemoteConnection,
+  getEnabledServerConnections,
   getRemoteConnections,
   isConnectionSwitchPending,
   markConnectionSwitch,
   parseRemoteConnectionInput,
   removeRemoteConnection,
   selectConnection,
+  setRemoteConnectionEnabled,
+  subscribeRemoteConnections,
   updateRemoteConnection,
 } from './remote-connections'
 
 describe('remote connections', () => {
   beforeEach(() => {
+    for (const connection of getRemoteConnections()) {
+      removeRemoteConnection(connection.id)
+    }
     localStorage.clear()
     sessionStorage.clear()
   })
@@ -60,6 +66,56 @@ describe('remote connections', () => {
     removeRemoteConnection(remote.id)
     expect(getRemoteConnections()).toEqual([])
     expect(getActiveConnectionId()).toBe('local')
+  })
+
+  it('enables new connections by default and can exclude them', () => {
+    const remote = addRemoteConnection({
+      name: 'Build server',
+      url: 'https://jean.example.com',
+      token: 'token',
+    })
+
+    expect(remote.enabled).toBe(true)
+    expect(getEnabledServerConnections()).toEqual([remote])
+
+    selectConnection(remote.id)
+    setRemoteConnectionEnabled(remote.id, false)
+
+    expect(getEnabledServerConnections()).toEqual([])
+    expect(getActiveConnectionId()).toBe('local')
+  })
+
+  it('keeps enabled state when editing a connection', () => {
+    const remote = addRemoteConnection({
+      name: 'Build server',
+      url: 'https://jean.example.com',
+      token: 'token',
+    })
+    setRemoteConnectionEnabled(remote.id, false)
+
+    const updated = updateRemoteConnection(remote.id, {
+      name: 'Renamed server',
+      url: remote.url,
+      token: remote.token,
+    })
+
+    expect(updated.enabled).toBe(false)
+  })
+
+  it('notifies an imperative connection subscriber', () => {
+    const subscriber = vi.fn()
+    const unsubscribe = subscribeRemoteConnections(subscriber)
+
+    const remote = addRemoteConnection({
+      name: 'Build server',
+      url: 'https://jean.example.com',
+      token: 'token',
+    })
+
+    expect(subscriber).toHaveBeenCalledOnce()
+    unsubscribe()
+    removeRemoteConnection(remote.id)
+    expect(subscriber).toHaveBeenCalledOnce()
   })
 
   it('marks an intentional switch so unload cleanup can be skipped', () => {

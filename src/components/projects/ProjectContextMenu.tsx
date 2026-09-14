@@ -73,6 +73,8 @@ export function ProjectContextMenu({
   )
   const isNested = project.parent_id !== undefined
 
+  if (project.offline) return <>{children}</>
+
   const handleOpenInFinder = () => {
     openInFinder.mutate(project.path)
   }

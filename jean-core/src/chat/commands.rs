@@ -4153,7 +4153,7 @@ pub async fn send_chat_message(
                             tool_calls: response.tool_calls,
                             content_blocks: response.content_blocks,
                             cancelled: response.cancelled,
-                            waiting_for_plan: false,
+                            waiting_for_plan: response.waiting_for_plan,
                             error_emitted: response.error_emitted,
                             usage: response.usage,
                             backend: Backend::Codex,
@@ -5667,6 +5667,19 @@ pub async fn send_chat_message(
     // Emit cache invalidation so all clients (native + web) refetch authoritative state
     emit_sessions_cache_invalidation(&app);
 
+    // Codex delays its completion event until the run log and session metadata
+    // are authoritative. This prevents a refetch from restoring `running`.
+    if response_backend == Backend::Codex && !was_cancelled {
+        let _ = app.emit_all(
+            "chat:done",
+            &serde_json::json!({
+                "session_id": session_id,
+                "worktree_id": worktree_id,
+                "waiting_for_plan": is_plan_mode_with_content,
+            }),
+        );
+    }
+
     if was_cancelled {
         log::info!("[SendChat] EXIT session={session_id} reason=cancelled_with_content");
     } else {
@@ -5691,6 +5704,10 @@ pub async fn clear_session_history(
     session_id: String,
 ) -> Result<(), String> {
     log::trace!("Clearing chat history for session: {session_id}");
+
+    if super::registry::is_session_actively_managed(&session_id) {
+        return Err("Cannot clear context while the session is running".to_string());
+    }
 
     // Delete NDJSON run data first (outside lock - separate file)
     if let Err(e) = delete_session_data(&app, &session_id) {

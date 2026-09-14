@@ -604,7 +604,8 @@ export function useGitOperations({
         const result = await gitPush(
           activeWorktreePath,
           worktree?.pr_number,
-          remote
+          remote,
+          activeWorktreeId ?? undefined
         )
         triggerImmediateGitPoll()
         if (result.permissionDenied) {

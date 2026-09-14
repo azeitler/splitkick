@@ -14,6 +14,14 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { ProjectTree } from './ProjectTree'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
+import { ServerFeatureSurfaces } from '@/components/remote/ServerFeatureSurfaces'
+import { isNativeApp } from '@/lib/environment'
+import { useServerConnectionSnapshots } from '@/lib/server-connections'
+import {
+  ALL_SERVERS,
+  filterProjectsByServer,
+  projectServerId,
+} from './server-filter'
 
 /** Close the mobile projects drawer when leaving into a dialog/modal. */
 function closeMobileSidebarIfNeeded(isMobile: boolean) {
@@ -35,6 +43,13 @@ export function ProjectsSidebar() {
   const sidebarWidth = useSidebarWidth()
   const isMobile = useIsMobile()
   const [backendCheckReady, setBackendCheckReady] = useState(false)
+  const [serverFilter, setServerFilter] = useState(ALL_SERVERS)
+  const serverSnapshots = useServerConnectionSnapshots()
+  const showServerFilter =
+    isNativeApp() && new Set(projects.map(projectServerId)).size > 1
+  const visibleProjects = showServerFilter
+    ? filterProjectsByServer(projects, serverFilter)
+    : projects
   useEffect(() => scheduleIdleWork(() => setBackendCheckReady(true), 1500), [])
   const { installedBackends } = useInstalledBackends({
     enabled: backendCheckReady,
@@ -58,6 +73,38 @@ export function ProjectsSidebar() {
     <div className="flex h-full flex-col">
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        {showServerFilter && (
+          <div className="px-2 pb-1 pt-2">
+            <label className="sr-only" htmlFor="project-server-filter">
+              Filter projects by server
+            </label>
+            <select
+              id="project-server-filter"
+              value={serverFilter}
+              onChange={event => setServerFilter(event.target.value)}
+              className="h-7 w-full rounded-md border border-border bg-background px-2 text-xs text-muted-foreground"
+            >
+              <option value={ALL_SERVERS}>All servers</option>
+              {[...new Set(projects.map(projectServerId))].map(serverId => {
+                const snapshot = serverSnapshots.get(serverId)
+                const fallback = projects.find(
+                  project => projectServerId(project) === serverId
+                )?.serverName
+                const status = snapshot?.status
+                const statusLabel =
+                  status && status !== 'local' && status !== 'online'
+                    ? ` (${status})`
+                    : ''
+                return (
+                  <option key={serverId} value={serverId}>
+                    {snapshot?.name ?? fallback ?? 'Local'}
+                    {statusLabel}
+                  </option>
+                )
+              })}
+            </select>
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center p-4">
             <span className="text-sm text-muted-foreground">Loading...</span>
@@ -95,7 +142,7 @@ export function ProjectsSidebar() {
             </span>
           </div>
         ) : (
-          <ProjectTree projects={projects} />
+          <ProjectTree projects={visibleProjects} />
         )}
       </div>
 
@@ -104,6 +151,7 @@ export function ProjectsSidebar() {
       <div
         className={`flex gap-1 p-1.5 pb-[calc(var(--safe-area-bottom)+1.25rem)] ${isNarrow ? 'flex-col' : 'items-center'}`}
       >
+        <ServerFeatureSurfaces />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button

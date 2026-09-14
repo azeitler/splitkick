@@ -187,4 +187,26 @@ describe('ProjectTreeItem', () => {
       name: 'jean-app',
     })
   })
+
+  it('shows server identity and keeps cached offline projects read-only', async () => {
+    mocks.worktrees = []
+    useProjectsStore.setState({ selectedProjectId: null })
+    const user = userEvent.setup()
+    render(
+      <ProjectTreeItem
+        project={{
+          ...project,
+          id: 'remote:project-1',
+          serverId: 'remote',
+          serverName: 'Build',
+          offline: true,
+        }}
+      />
+    )
+
+    expect(screen.getByText('Build')).toBeInTheDocument()
+    expect(screen.getByText('Offline')).toBeInTheDocument()
+    await user.click(screen.getByTestId('project-row-remote:project-1'))
+    expect(useProjectsStore.getState().selectedProjectId).toBeNull()
+  })
 })

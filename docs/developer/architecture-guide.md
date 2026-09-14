@@ -181,6 +181,13 @@ Additional systems (no dedicated docs yet):
   filesystem path to `ssh://[user@]host[:port]/path` and launches the local
   `zed` CLI (SSH fields live on the remote connection profile).
 
+  **Native multi-server scope.** The desktop client can create independent
+  background transports for enabled remote profiles. Each transport is
+  isolated by server ID. Browser Web Access does not use this manager and
+  continues to access only its serving Jean instance. New global client state
+  must use a composite `(serverId, resourceId)` identity; raw server resource
+  IDs are not globally unique.
+
   When an established WebSocket disconnects, the frontend reloads the page
   instead of repairing stale in-memory state. The normal
   HTTP bootstrap then restores current persisted state, while backend-owned

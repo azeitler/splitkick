@@ -191,7 +191,7 @@ describe('WorktreeDropdownMenu', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows compact session actions in the existing menu', async () => {
+  it('hides terminal and scripts on mobile while keeping browser available', async () => {
     const user = userEvent.setup()
     const onToggleTerminal = vi.fn()
     const onToggleBrowser = vi.fn()
@@ -209,12 +209,33 @@ describe('WorktreeDropdownMenu', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Actions' }))
-    await user.click(screen.getByRole('menuitem', { name: 'Terminal' }))
-    expect(onToggleTerminal).toHaveBeenCalledOnce()
-
-    await user.click(screen.getByRole('button', { name: 'Actions' }))
-    expect(screen.getByText('Scripts')).toBeInTheDocument()
+    expect(screen.queryByRole('menuitem', { name: 'Terminal' })).toBeNull()
+    expect(screen.queryByText('Scripts')).toBeNull()
     await user.click(screen.getByRole('menuitem', { name: 'Browser' }))
     expect(onToggleBrowser).toHaveBeenCalledOnce()
+    expect(onToggleTerminal).not.toHaveBeenCalled()
+  })
+
+  it('shows terminal and scripts on desktop', async () => {
+    const user = userEvent.setup()
+    const onToggleTerminal = vi.fn()
+    envMocks.isMobile = false
+
+    render(
+      <WorktreeDropdownMenu
+        worktree={worktree}
+        projectId="project-1"
+        projectPath="/tmp/project"
+        onToggleTerminal={onToggleTerminal}
+        packageScripts={[{ name: 'test', command: 'bun', args: ['test'] }]}
+        onRunPackageScript={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'Actions' }))
+    expect(
+      screen.getByRole('menuitem', { name: 'Terminal' })
+    ).toBeInTheDocument()
+    expect(screen.getByText('Scripts')).toBeInTheDocument()
   })
 })

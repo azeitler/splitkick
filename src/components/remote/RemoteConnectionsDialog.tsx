@@ -10,6 +10,7 @@ import {
   Trash2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -33,6 +34,7 @@ import {
   parseRemoteConnectionInput,
   removeRemoteConnection,
   selectConnection,
+  setRemoteConnectionEnabled,
   updateRemoteConnection,
   useRemoteConnections,
   type RemoteConnection,
@@ -106,9 +108,7 @@ export function RemoteConnectionsDialog({
 
   const refreshVersions = useCallback(async (items: RemoteConnection[]) => {
     if (items.length === 0) {
-      setVersions(current =>
-        Object.keys(current).length === 0 ? current : {}
-      )
+      setVersions(current => (Object.keys(current).length === 0 ? current : {}))
       return
     }
 
@@ -281,10 +281,7 @@ export function RemoteConnectionsDialog({
     try {
       // Best-effort probe so the user sees a version toast before reload;
       // transport re-checks after connect. Failures do not block switching.
-      const info = await fetchRemoteServerInfo(
-        connection.url,
-        connection.token
-      )
+      const info = await fetchRemoteServerInfo(connection.url, connection.token)
       warnRemoteVersionMismatch(info.appVersion)
     } catch {
       // Unreachable remotes still switch so recovery UI can handle them.
@@ -462,10 +459,7 @@ export function RemoteConnectionsDialog({
         </Button>
       </DialogTrigger>
       {/* Above RemoteConnectionRecovery (z-100) so Edit connection works while offline. */}
-      <DialogContent
-        className="sm:max-w-md z-[110]"
-        overlayClassName="z-[110]"
-      >
+      <DialogContent className="sm:max-w-md z-[110]" overlayClassName="z-[110]">
         <DialogHeader>
           <DialogTitle>Jean connections</DialogTitle>
           <DialogDescription>
@@ -787,6 +781,13 @@ export function RemoteConnectionsDialog({
                   onSelect={() => void switchTo(connection.id)}
                   onEdit={() => beginEdit(connection)}
                   onDelete={() => handleDelete(connection.id)}
+                  enabled={native ? connection.enabled : undefined}
+                  onEnabledChange={
+                    native
+                      ? enabled =>
+                          setRemoteConnectionEnabled(connection.id, enabled)
+                      : undefined
+                  }
                 />
               )
             })}
@@ -869,6 +870,8 @@ function ConnectionRow({
   onSelect,
   onEdit,
   onDelete,
+  enabled,
+  onEnabledChange,
 }: {
   name: string
   detail: string
@@ -879,6 +882,8 @@ function ConnectionRow({
   onSelect: () => void
   onEdit?: () => void
   onDelete?: () => void
+  enabled?: boolean
+  onEnabledChange?: (enabled: boolean) => void
 }) {
   const hasActions = Boolean(onEdit || onDelete)
 
@@ -906,9 +911,7 @@ function ConnectionRow({
               : 'text-muted-foreground'
           }`}
           title={
-            versionWarning
-              ? 'Remote version differs from this app'
-              : undefined
+            versionWarning ? 'Remote version differs from this app' : undefined
           }
         >
           {versionLabel}
@@ -956,6 +959,16 @@ function ConnectionRow({
           </div>
         )}
       </div>
+      {onEnabledChange && (
+        <label className="ml-4 mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
+          <Checkbox
+            checked={enabled}
+            onCheckedChange={checked => onEnabledChange(checked === true)}
+            aria-label={`Include ${name} in combined dashboard`}
+          />
+          Include in combined dashboard
+        </label>
+      )}
     </div>
   )
 }

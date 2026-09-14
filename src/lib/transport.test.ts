@@ -136,6 +136,31 @@ describe('transport bootstrap', () => {
     vi.doUnmock('@tauri-apps/api/core')
     vi.doUnmock('@tauri-apps/api/event')
     vi.doUnmock('./remote-connections')
+    vi.doUnmock('./server-connections')
+  })
+
+  it('routes composite resource commands to their owning server', async () => {
+    const invokeOnServer = vi.fn(async () => [{ id: 'w1', project_id: 'p1' }])
+    vi.doMock('./server-connections', () => ({ invokeOnServer }))
+    const transport = await loadNativeTransportModule(vi.fn())
+
+    const result = await transport.invoke('list_worktrees', {
+      projectId: 'remote%3Aone:project%2F1',
+    })
+
+    expect(invokeOnServer).toHaveBeenCalledWith(
+      'remote:one',
+      'list_worktrees',
+      { projectId: 'project/1' }
+    )
+    expect(result).toEqual([
+      {
+        id: 'remote%3Aone:w1',
+        project_id: 'remote%3Aone:p1',
+        serverId: 'remote:one',
+        resourceId: 'w1',
+      },
+    ])
   })
 
   it('routes native shared commands to the selected remote Jean', async () => {

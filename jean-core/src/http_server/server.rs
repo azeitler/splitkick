@@ -228,6 +228,10 @@ pub async fn start_server(
         .route("/api/commit-jobs", post(start_commit_job_handler))
         .route("/api/init", get(init_handler))
         .route("/api/version", get(version_handler))
+        .route(
+            "/api/features/server-info",
+            get(server_info_feature_handler),
+        )
         .route("/api/files/{*filepath}", get(file_handler))
         .route("/api/project-files/{*filepath}", get(project_file_handler))
         .fallback(get(static_handler))
@@ -450,6 +454,32 @@ async fn version_handler(
     }
 
     Json(read_web_build_info(&state.dist_path).await).into_response()
+}
+
+async fn server_info_feature_handler(
+    headers: HeaderMap,
+    Query(params): Query<WsAuth>,
+    State(state): State<AppState>,
+) -> Response {
+    if state.token_required
+        && !request_is_authorized(params.token.as_deref(), &headers, &state.token)
+    {
+        return (StatusCode::UNAUTHORIZED, "Invalid token").into_response();
+    }
+
+    let version = crate::app_version();
+    let html = format!(
+        r#"<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'"><style>body{{font:14px system-ui;margin:0;padding:16px;color:#222}}button{{padding:6px 10px}}</style></head><body><h2>Jean server</h2><p>Version <strong>{version}</strong></p><button id="copy">Copy version</button><script>let channel='';addEventListener('message',e=>{{if(e.data?.type==='jean:init')channel=e.data.channel}});document.getElementById('copy').onclick=()=>parent.postMessage({{type:'jean:bridge',channel,requestId:String(Date.now()),permission:'clipboard.write',payload:{{text:'{version}'}}}},'*')</script></body></html>"#
+    );
+    (
+        [
+            (header::CONTENT_TYPE, "text/html; charset=utf-8"),
+            (header::CACHE_CONTROL, "no-store"),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        ],
+        html,
+    )
+        .into_response()
 }
 
 /// Maximum number of chat messages loaded per active session at init.

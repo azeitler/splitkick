@@ -233,7 +233,7 @@ export function WorktreeDropdownMenu({
             </DropdownMenuSub>
           )}
 
-          {onToggleTerminal && (
+          {!isMobile && onToggleTerminal && (
             <DropdownMenuItem onClick={onToggleTerminal}>
               <Terminal className="mr-2 h-4 w-4" />
               Terminal
@@ -247,7 +247,7 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {packageScripts.length > 0 && onRunPackageScript && (
+          {!isMobile && packageScripts.length > 0 && onRunPackageScript && (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
                 <Play className="mr-4 h-4 w-4" />
