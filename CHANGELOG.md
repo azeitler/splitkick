@@ -35,6 +35,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
     a restart. A search hides it too, and brings it back when the search is
     cleared.
 
+### Changed
+
+- **Escape no longer closes a session.** Escape is the reflex for dismissing a
+  popover, a menu or an autocomplete, and every miss threw the open session
+  back to the project page, mid-sentence. Close a session with **Cmd/Ctrl+W**
+  (rebindable in Settings → Keyboard), the close button on the tab, or the
+  close control in the session header. Escape still cancels a session rename,
+  and still closes the dialogs, menus and terminal inside a session.
+
 ## [0.1.73-z.7] - 2026-09-11
 
 Built on Jean 0.1.73.

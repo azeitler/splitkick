@@ -1,7 +1,6 @@
 import {
   useCallback,
   useEffect,
-  useEffectEvent,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -983,39 +982,16 @@ export function SessionChatModal({
     [worktreeId]
   )
 
-  // Close on Escape key
-  const onEscapeClose = useEffectEvent((e: KeyboardEvent) => {
-    if (e.key !== 'Escape') return
-    const target = e.target as HTMLElement
-    const portalAncestor = target?.closest?.(
-      '[data-slot="dialog-portal"], [data-slot="alert-dialog-portal"], [data-slot="sheet-portal"]'
-    )
-    const terminalAncestor = target?.closest?.('[data-terminal-root="true"]')
-    const { planDialogOpen, gitDiffModalOpen, contextViewerOpen } =
-      useUIStore.getState()
-
-    // Don't close if PlanDialog is open — let it handle ESC
-    if (planDialogOpen) return
-    // Don't close if GitDiffModal is open — let it handle ESC
-    if (gitDiffModalOpen) return
-    // Don't close if ContextViewerDialog is open — let it handle ESC
-    if (contextViewerOpen) return
-    // Don't close if CloseWorktreeDialog is open — let it handle ESC
-    if (closeConfirmOpen) return
-    // Don't close if ESC originated inside a child dialog/sheet portal
-    if (portalAncestor) return
-    // Don't close if ESC originated inside the pinned terminal
-    if (terminalAncestor) return
-
-    handleClose()
-  })
-
-  useEffect(() => {
-    if (!isOpen) return
-    const handleKeyDown = (e: KeyboardEvent) => onEscapeClose(e)
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isOpen])
+  // Escape does not close the session.
+  //
+  // It used to, and it cost work: Escape is the reflex for dismissing a
+  // popover, a menu or an autocomplete, and every miss threw the whole session
+  // back to the project page mid-sentence. The guard list it needed - plan
+  // dialog, diff modal, context viewer, close dialog, any portal, the terminal
+  // - shows how many things Escape already means inside a session.
+  //
+  // Closing is `close_session_or_worktree` (Cmd/Ctrl+W by default, and
+  // rebindable in Settings), the tab close button, and the back arrow.
 
   if (!isOpen || !worktreeId) return null
 
