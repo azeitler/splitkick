@@ -27,6 +27,7 @@ import {
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { invoke, listen } from '@/lib/transport'
 import { hydrateRunningSnapshot } from '@/lib/hydrate-running-snapshot'
+import { generateId } from '@/lib/uuid'
 import { GitBranch, GitMerge, Layers, Loader2 } from 'lucide-react'
 import {
   useSession,
@@ -2270,7 +2271,7 @@ export function ChatWindow({
 
   const handleCheckGitHubIssues = useCallback(() => {
     sendMessageNow({
-      id: crypto.randomUUID(),
+      id: generateId(),
       message: CHECK_GITHUB_ISSUES_PROMPT,
       pendingImages: [],
       pendingFiles: [],

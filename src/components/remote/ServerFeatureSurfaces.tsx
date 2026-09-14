@@ -12,6 +12,7 @@ import { getRemoteConnections } from '@/lib/remote-connections'
 import { useServerConnectionSnapshots } from '@/lib/server-connections'
 import type { FeatureSurfaceManifestEntry } from '@/types/server-capabilities'
 import { notify } from '@/lib/notifications'
+import { generateId } from '@/lib/uuid'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -54,7 +55,7 @@ export function ServerFeatureSurfaces() {
   const [documentHtml, setDocumentHtml] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const channel = useMemo(() => crypto.randomUUID(), [selected])
+  const channel = useMemo(() => generateId(), [selected])
   const handledRequests = useRef(new Set<string>())
   const surfaces = [...snapshots.values()].flatMap(snapshot =>
     snapshot.status === 'online'
