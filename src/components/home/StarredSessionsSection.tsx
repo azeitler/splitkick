@@ -3,7 +3,8 @@ import { useAllSessions } from '@/services/chat'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { useProjectsStore } from '@/store/projects-store'
 import { resolveStarredSessions } from './home-utils'
-import { HomeSection, RecentSessionRow } from './RecentSessionsSection'
+import { HomeSection } from './HomeSection'
+import { RecentSessionRow } from './RecentSessionsSection'
 
 /**
  * The starred sessions on the Home view, in star order.

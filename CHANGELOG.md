@@ -7,6 +7,34 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Project page: a Home-style overview beside the worktrees.** The project
+  page now answers, for one project, the questions the Home view answers for
+  everything: what you did last, what you can act on, and what is waiting.
+  ([#23](https://github.com/azeitler/jean/issues/23))
+  - Three equal columns on a wide window: **Recent sessions** with **Recent
+    activity** under it, then **Worktrees**, then **Open issues**. It is the
+    same container-query grid as Home, so the two pages read the same way. The
+    columns split at a wider point than Home's, because a worktree row carries
+    the branch, git badges, diff stats and PR state.
+  - **Recent sessions** lists every session of the project, across all its
+    worktrees, newest first. It has the filter field and the label chips from
+    Home. The field appears from two sessions on, where Home waits for six,
+    because the list is already narrowed to one project. A project with no
+    sessions keeps the heading and says so.
+  - **Recent activity** shows only that project's events. Jean now filters the
+    activity log in the backend, before the row limit, so a busy project can no
+    longer push a quiet one out of its own feed.
+  - **Open issues** lists the open GitHub issues, newest first, with their
+    labels and a **new** mark for the last 24 hours. Click a row for the
+    preview. Long lists stop at 20 rows and offer the full list. The section
+    stays away for a project with no GitHub remote, and for one where the
+    GitHub CLI is not signed in.
+  - A button in the project header hides the overview, and the choice survives
+    a restart. A search hides it too, and brings it back when the search is
+    cleared.
+
 ## [0.1.73-z.7] - 2026-09-11
 
 Built on Jean 0.1.73.

@@ -142,6 +142,7 @@ export function useUIStatePersistence() {
       expandedPinnedProjectIds,
       starredSessions,
       starredSectionCollapsed,
+      projectRailHidden,
       selectedProjectId,
       projectAccessTimestamps,
       dashboardWorktreeCollapseOverrides,
@@ -213,6 +214,7 @@ export function useUIStatePersistence() {
         session_id: star.sessionId,
       })),
       starred_sessions_collapsed: starredSectionCollapsed,
+      project_rail_hidden: projectRailHidden,
       left_sidebar_size: leftSidebarSize,
       left_sidebar_visible: leftSidebarVisible,
       file_browser_size: fileBrowserSize,
@@ -369,6 +371,9 @@ export function useUIStatePersistence() {
     }
     if (uiState.starred_sessions_collapsed) {
       useProjectsStore.getState().setStarredSectionCollapsed(true)
+    }
+    if (uiState.project_rail_hidden) {
+      useProjectsStore.getState().setProjectRailHidden(true)
     }
 
     // Restore the expanded pinned-sessions rows, keyed by project id.
@@ -1113,6 +1118,7 @@ export function useUIStatePersistence() {
     let prevStarredSessions = useProjectsStore.getState().starredSessions
     let prevStarredSectionCollapsed =
       useProjectsStore.getState().starredSectionCollapsed
+    let prevProjectRailHidden = useProjectsStore.getState().projectRailHidden
     let prevExpandedPinnedProjectIds =
       useProjectsStore.getState().expandedPinnedProjectIds
     let prevSelectedProjectId = useProjectsStore.getState().selectedProjectId
@@ -1178,6 +1184,8 @@ export function useUIStatePersistence() {
       const starredChanged =
         state.starredSessions !== prevStarredSessions ||
         state.starredSectionCollapsed !== prevStarredSectionCollapsed
+      const projectRailChanged =
+        state.projectRailHidden !== prevProjectRailHidden
       const pinnedProjectIdsChanged =
         state.expandedPinnedProjectIds !== prevExpandedPinnedProjectIds
       const selectedProjectChanged =
@@ -1199,6 +1207,7 @@ export function useUIStatePersistence() {
         worktreeIdsChanged ||
         pinnedProjectIdsChanged ||
         starredChanged ||
+        projectRailChanged ||
         selectedProjectChanged ||
         accessTimestampsChanged ||
         collapseOverridesChanged ||
@@ -1211,6 +1220,7 @@ export function useUIStatePersistence() {
         prevExpandedPinnedProjectIds = state.expandedPinnedProjectIds
         prevStarredSessions = state.starredSessions
         prevStarredSectionCollapsed = state.starredSectionCollapsed
+        prevProjectRailHidden = state.projectRailHidden
         prevSelectedProjectId = state.selectedProjectId
         prevProjectAccessTimestamps = state.projectAccessTimestamps
         prevDashboardCollapseOverrides =

@@ -20,6 +20,7 @@ import {
   type LabelFilter,
 } from '@/lib/label-filter'
 import { Input } from '@/components/ui/input'
+import { HomeSection } from './HomeSection'
 import {
   flattenAllSessions,
   HOME_FILTER_MIN_ITEMS,
@@ -27,16 +28,26 @@ import {
   resolveSessionLabel,
 } from './home-utils'
 
-export const RecentSessionsSection = memo(function RecentSessionsSection() {
+interface RecentSessionsSectionProps {
+  /**
+   * Narrow the list to one project. Home passes nothing and lists every
+   * project; the project home passes its own id.
+   */
+  projectId?: string
+}
+
+export const RecentSessionsSection = memo(function RecentSessionsSection({
+  projectId,
+}: RecentSessionsSectionProps = {}) {
   const { data, isLoading } = useAllSessions()
   const storeState = useCanvasStoreState()
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<LabelFilter>(() => new Set<string>())
 
-  const rows = useMemo(
-    () => flattenAllSessions(data?.entries ?? []),
-    [data?.entries]
-  )
+  const rows = useMemo(() => {
+    const all = flattenAllSessions(data?.entries ?? [])
+    return projectId ? all.filter(row => row.projectId === projectId) : all
+  }, [data?.entries, projectId])
 
   const labelOptions = useMemo(
     () =>
@@ -86,11 +97,26 @@ export const RecentSessionsSection = memo(function RecentSessionsSection() {
     )
   }
 
-  if (rows.length === 0) return null
+  if (rows.length === 0) {
+    // On Home an empty list means an empty app, and a heading over nothing is
+    // noise. A project with no sessions yet is ordinary, and its column must
+    // still say what belongs there.
+    if (!projectId) return null
+    return (
+      <HomeSection title="Recent sessions">
+        <p className="text-sm text-muted-foreground">
+          No sessions yet. Open a worktree to start one.
+        </p>
+      </HomeSection>
+    )
+  }
 
+  // A project list is already narrowed to one project, so it is shorter and the
+  // filter earns its place sooner than it does on Home.
+  const filterThreshold = projectId ? 2 : HOME_FILTER_MIN_ITEMS
   // The field stays while it holds a query, so a filter can never be active
   // with no visible way to clear it.
-  const showQueryField = rows.length >= HOME_FILTER_MIN_ITEMS || query !== ''
+  const showQueryField = rows.length >= filterThreshold || query !== ''
 
   return (
     <HomeSection
@@ -131,6 +157,7 @@ export const RecentSessionsSection = memo(function RecentSessionsSection() {
               key={row.session.id}
               row={row}
               storeState={storeState}
+              hideProjectName={!!projectId}
             />
           ))}
         </ul>
@@ -143,9 +170,12 @@ export const RecentSessionsSection = memo(function RecentSessionsSection() {
 export function RecentSessionRow({
   row,
   storeState,
+  hideProjectName = false,
 }: {
   row: ReturnType<typeof flattenAllSessions>[number]
   storeState: ReturnType<typeof useCanvasStoreState>
+  /** Drop the project name from line 2. Set where every row is one project. */
+  hideProjectName?: boolean
 }) {
   const card = useMemo(
     () => computeSessionCardData(row.session, storeState),
@@ -191,7 +221,9 @@ export function RecentSessionRow({
 
         <span className="col-start-2 col-end-4 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
           <span className="min-w-0 flex-1 truncate">
-            {row.projectName} / {row.worktreeName}
+            {hideProjectName
+              ? row.worktreeName
+              : `${row.projectName} / ${row.worktreeName}`}
           </span>
 
           {label && (
@@ -226,25 +258,4 @@ function BackendGlyph({ backend }: { backend?: CliBackend }) {
     className: 'size-3.5 shrink-0',
     'aria-label': getBackendLabel(backend),
   })
-}
-
-/** Shared frame for the Home sections. */
-export function HomeSection({
-  title,
-  action,
-  children,
-}: {
-  title: string
-  action?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <section className="flex w-full min-w-0 flex-col gap-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-foreground">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
-  )
 }

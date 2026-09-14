@@ -3079,6 +3079,11 @@ pub struct UIState {
     #[serde(default)]
     pub starred_sessions_collapsed: bool,
 
+    /// Whether the project canvas hides its Home rail (recent sessions, recent
+    /// activity, open issues). Defaults to shown.
+    #[serde(default)]
+    pub project_rail_hidden: bool,
+
     /// Favorited projects shown first in the GitHub Dashboard
     #[serde(default)]
     pub github_dashboard_favorite_project_ids: Vec<String>,
@@ -3241,6 +3246,7 @@ impl Default for UIState {
             project_canvas_settings: std::collections::HashMap::new(),
             starred_sessions: Vec::new(),
             starred_sessions_collapsed: false,
+            project_rail_hidden: false,
             github_dashboard_favorite_project_ids: Vec::new(),
             last_opened_per_project: std::collections::HashMap::new(),
             seen_failed_workflow_run_ids: Vec::new(),
@@ -4780,6 +4786,23 @@ mod starred_sessions_tests {
 
         assert!(parsed.starred_sessions.is_empty());
         assert!(!parsed.starred_sessions_collapsed);
+    }
+
+    #[test]
+    fn the_project_rail_round_trips_and_defaults_to_shown() {
+        let hidden = UIState {
+            project_rail_hidden: true,
+            ..UIState::default()
+        };
+        let json = serde_json::to_string(&hidden).unwrap();
+        assert!(json.contains(r#""project_rail_hidden":true"#));
+
+        let parsed: UIState = serde_json::from_str(&json).unwrap();
+        assert!(parsed.project_rail_hidden);
+
+        // A state file written before the rail existed must load with it shown.
+        let old: UIState = serde_json::from_str("{}").unwrap();
+        assert!(!old.project_rail_hidden);
     }
 
     #[test]

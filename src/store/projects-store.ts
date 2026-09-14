@@ -54,6 +54,10 @@ interface ProjectsUIState {
   // Whether the sidebar's Starred section is collapsed
   starredSectionCollapsed: boolean
 
+  // Whether the project canvas hides its Home rail (recent sessions, activity,
+  // open issues). Defaults to shown; the rail is the point of the project view.
+  projectRailHidden: boolean
+
   // Dashboard worktree collapse overrides (list view): true=collapsed, false=expanded
   dashboardWorktreeCollapseOverrides: Record<string, boolean>
 
@@ -112,6 +116,8 @@ interface ProjectsUIState {
   setStarredSessions: (stars: StarredSessionRef[]) => void
   toggleStarredSectionCollapsed: () => void
   setStarredSectionCollapsed: (collapsed: boolean) => void
+  toggleProjectRailHidden: () => void
+  setProjectRailHidden: (hidden: boolean) => void
 
   // Dashboard collapse actions
   toggleDashboardWorktreeCollapsed: (
@@ -185,6 +191,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       expandedPinnedProjectIds: new Set<string>(),
       starredSessions: [],
       starredSectionCollapsed: false,
+      projectRailHidden: false,
       dashboardWorktreeCollapseOverrides: {},
       expandedFolderIds: new Set<string>(),
       projectAccessTimestamps: {},
@@ -344,6 +351,23 @@ export const useProjectsStore = create<ProjectsUIState>()(
               : { starredSectionCollapsed: collapsed },
           undefined,
           'setStarredSectionCollapsed'
+        ),
+
+      toggleProjectRailHidden: () =>
+        set(
+          state => ({ projectRailHidden: !state.projectRailHidden }),
+          undefined,
+          'toggleProjectRailHidden'
+        ),
+
+      setProjectRailHidden: hidden =>
+        set(
+          state =>
+            state.projectRailHidden === hidden
+              ? state
+              : { projectRailHidden: hidden },
+          undefined,
+          'setProjectRailHidden'
         ),
 
       togglePinnedExpanded: projectId =>

@@ -88,6 +88,8 @@ export interface UIState {
   starred_sessions?: StarredSessionEntry[]
   /** Whether the sidebar's Starred section is collapsed */
   starred_sessions_collapsed?: boolean
+  /** Whether the project canvas hides its Home rail */
+  project_rail_hidden?: boolean
   /** Left sidebar width in pixels, defaults to 250 */
   left_sidebar_size?: number
   /** Left sidebar visibility, defaults to false */
@@ -192,6 +194,7 @@ export const defaultUIState: UIState = {
   expanded_pinned_project_ids: [],
   starred_sessions: [],
   starred_sessions_collapsed: false,
+  project_rail_hidden: false,
   left_sidebar_size: 250,
   left_sidebar_visible: false,
   file_browser_size: 280,

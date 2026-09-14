@@ -174,7 +174,9 @@ pub async fn dispatch_command(
         // =====================================================================
         "list_recent_activity" => {
             let limit: Option<usize> = from_field_opt(&args, "limit")?;
-            let result = crate::activity::list_recent_activity(app.clone(), limit).await?;
+            let project_id: Option<String> = field_opt(&args, "projectId", "project_id")?;
+            let result =
+                crate::activity::list_recent_activity(app.clone(), limit, project_id).await?;
             to_value(result)
         }
 

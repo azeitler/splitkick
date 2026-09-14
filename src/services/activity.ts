@@ -5,7 +5,8 @@ import { logger } from '@/lib/logger'
 import type { ActivityEvent } from '@/types/activity'
 
 export const activityQueryKeys = {
-  recent: (limit: number) => ['recent-activity', limit] as const,
+  recent: (limit: number, projectId?: string) =>
+    ['recent-activity', limit, projectId ?? 'all'] as const,
 }
 
 /** Rows the Home feed asks for by default. */
@@ -17,11 +18,19 @@ export const DEFAULT_ACTIVITY_LIMIT = 30
  * The backend appends a record when the event happens, so this is real history
  * rather than a guess made from the current state of a session. The query is
  * refreshed by the `activity:appended` event, not by polling.
+ *
+ * `projectId` narrows the feed to one project. The backend filters before it
+ * applies the limit, so a quiet project still fills its own feed.
  */
-export function useRecentActivity(
+export function useRecentActivity({
   limit = DEFAULT_ACTIVITY_LIMIT,
-  enabled = true
-) {
+  enabled = true,
+  projectId,
+}: {
+  limit?: number
+  enabled?: boolean
+  projectId?: string
+} = {}) {
   const queryClient = useQueryClient()
 
   useEffect(() => {
@@ -43,13 +52,16 @@ export function useRecentActivity(
   }, [enabled, queryClient])
 
   return useQuery({
-    queryKey: activityQueryKeys.recent(limit),
+    queryKey: activityQueryKeys.recent(limit, projectId),
     // A failure must surface as an error, not as an empty list: an empty list
     // reads "Nothing yet", which is false, and it caches as a success, so the
     // query would never retry.
     queryFn: async (): Promise<ActivityEvent[]> => {
       try {
-        return await invoke<ActivityEvent[]>('list_recent_activity', { limit })
+        return await invoke<ActivityEvent[]>('list_recent_activity', {
+          limit,
+          projectId,
+        })
       } catch (error) {
         logger.error('Failed to load recent activity', { error })
         throw error

@@ -49,9 +49,16 @@ import {
   Terminal,
   Trash2,
   GripVertical,
+  PanelRightClose,
+  PanelRightOpen,
   Tag,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -125,6 +132,11 @@ import { countUnreadFailedWorkflowRuns } from '@/components/shared/workflow-run-
 import { SecurityAlertsBadge } from '@/components/shared/SecurityAlertsBadge'
 import { PlanDialog } from '@/components/chat/PlanDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
+import {
+  ProjectIssuesColumn,
+  ProjectOverviewColumn,
+} from './ProjectHomeColumns'
+import { HomeSection } from '@/components/home/HomeSection'
 import {
   getStackedBaseBranch,
   resolveStackedOnPr,
@@ -958,6 +970,7 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const projectLabels = useProjectsStore(
     state => state.projectCanvasSettings[projectId]?.labels ?? EMPTY_LABELS
   )
+  const projectRailHidden = useProjectsStore(state => state.projectRailHidden)
 
   // Project action mutations
   const createBaseSession = useCreateBaseSession()
@@ -3141,6 +3154,18 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     canvasFilterTabs.find(tab => tab.value === activeFilterTab)?.label ?? 'All'
   const hasAnyVisibleWorktrees = filterTabCounts.all > 0
 
+  // A search is a narrowing gesture: the overview columns would sit beside the
+  // results unchanged and read as noise.
+  const showHomeColumns = !projectRailHidden && !searchQuery.trim()
+  // Nothing on the canvas but the "Start Building" panel, which fills it and
+  // supplies its own spacing. With the overview columns up the canvas is never
+  // bare, and it keeps its padding.
+  const isBareCanvas =
+    !showHomeColumns &&
+    worktreeSections.length === 0 &&
+    !searchQuery &&
+    pinnedRows.length === 0
+
   // Track global card index for refs
   let cardIndex = 0
 
@@ -3507,6 +3532,35 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
             {/* OpenInButton always visible on desktop (grid column 3) */}
             {!isMobile && (
               <div className="flex items-center gap-2 shrink-0 justify-end col-start-3">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0 text-muted-foreground"
+                      onClick={() =>
+                        useProjectsStore.getState().toggleProjectRailHidden()
+                      }
+                      aria-label={
+                        projectRailHidden
+                          ? 'Show project overview'
+                          : 'Hide project overview'
+                      }
+                      aria-pressed={!projectRailHidden}
+                    >
+                      {projectRailHidden ? (
+                        <PanelRightOpen className="h-4 w-4" />
+                      ) : (
+                        <PanelRightClose className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    {projectRailHidden
+                      ? 'Show recent sessions, activity and issues'
+                      : 'Hide recent sessions, activity and issues'}
+                  </TooltipContent>
+                </Tooltip>
                 <OpenInButton worktreePath={project.path} />
                 <ScriptsButton
                   projectId={project.id}
@@ -3653,152 +3707,188 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
           </div>
         </div>
 
-        {/* Canvas View */}
-        <div
-          className={`flex-1 pb-16 ${worktreeSections.length === 0 && !searchQuery && pinnedRows.length === 0 ? '' : 'pt-5 px-4'}`}
-        >
-          {/* Pinned sessions sit above the worktree sections and outside the
+        {/* The project home, in the reading order Home uses: what you did,
+            what you can act on, what is waiting. Three equal columns on a wide
+            canvas, from the same container-query grid as the Home view.
+
+            The columns split later than Home's (@4xl / @7xl rather than @2xl /
+            @4xl) because a worktree row carries branch, git badges, diff stats
+            and PR state, and needs more width than a session row. */}
+        <div className="@container flex-1">
+          <div
+            className={cn(
+              // min-h-full so a short canvas still fills the view: the
+              // empty states centre themselves with h-full inside their cell.
+              'grid min-h-full gap-x-6 gap-y-8 pb-16',
+              showHomeColumns && '@4xl:grid-cols-2 @7xl:grid-cols-3',
+              isBareCanvas ? '' : 'px-4 pt-5'
+            )}
+          >
+            {showHomeColumns && <ProjectOverviewColumn projectId={projectId} />}
+
+            <div className="flex min-w-0 flex-col">
+              <WorktreeColumnFrame labelled={showHomeColumns}>
+                {/* Pinned sessions sit above the worktree sections and outside the
               empty-state branch, and stay visible on every filter tab. They are
               hidden during a search, where un-matching rows would be noise. */}
-          {!searchQuery.trim() && (
-            <PinnedSessionsSection
-              rows={pinnedRows}
-              variant="canvas"
-              projectId={projectId}
-              onOpen={handleOpenPinnedSession}
-            />
-          )}
-          {worktreeSections.length === 0 ? (
-            searchQuery ? (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                No {activeFilterLabel.toLowerCase()} worktrees or sessions match
-                your search
-              </div>
-            ) : activeFilterTab === 'all' && !hasAnyVisibleWorktrees ? (
-              <EmptyDashboardTabs
-                projectId={projectId}
-                projectPath={project?.path ?? null}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-muted-foreground">
-                No {activeFilterLabel.toLowerCase()} worktrees
-              </div>
-            )
-          ) : (
-            <div
-              className="group/canvas-list flex flex-col gap-1"
-              onDragOver={handleNativeCanvasDragOver}
-              onDrop={handleNativeCanvasDrop}
-              onDragEnd={handleNativeCanvasDragEnd}
-            >
-              {(() => {
-                let shortcutNum = 0
-                return worktreeSections.map(section => {
-                  const currentIndex = cardIndex++
-                  const isReorderDisabled =
-                    !canvasReorderEnabled ||
-                    reorderWorktrees.isPending ||
-                    !canManuallyReorderWorktree(section.worktree)
-
-                  if (section.isPending) {
-                    return (
-                      <SortableCanvasWorktreeSection
-                        key={section.worktree.id}
-                        section={section}
-                        disabled={true}
-                        isDragging={
-                          canvasDragState.draggingId === section.worktree.id
-                        }
-                        closestEdge={
-                          canvasDragState.targetId === section.worktree.id
-                            ? canvasDragState.closestEdge
-                            : null
-                        }
-                        projectId={projectId}
-                      >
-                        <WorktreeSetupCard
-                          ref={el => {
-                            cardRefs.current[currentIndex] = el
-                          }}
-                          worktree={section.worktree}
-                          layout="list"
-                          isSelected={selectedIndex === currentIndex}
-                          onSelect={() =>
-                            handleSelectedIndexChange(currentIndex)
-                          }
-                        />
-                      </SortableCanvasWorktreeSection>
-                    )
-                  }
-                  const thisShortcut =
-                    ++shortcutNum <= 9 ? shortcutNum : undefined
-                  return (
-                    <SortableCanvasWorktreeSection
-                      key={section.worktree.id}
-                      section={section}
-                      disabled={isReorderDisabled}
-                      isDragging={
-                        canvasDragState.draggingId === section.worktree.id
-                      }
-                      closestEdge={
-                        canvasDragState.targetId === section.worktree.id
-                          ? canvasDragState.closestEdge
-                          : null
-                      }
+                {!searchQuery.trim() && (
+                  <PinnedSessionsSection
+                    rows={pinnedRows}
+                    variant="canvas"
+                    projectId={projectId}
+                    onOpen={handleOpenPinnedSession}
+                  />
+                )}
+                {worktreeSections.length === 0 ? (
+                  searchQuery ? (
+                    <div className="flex h-full items-center justify-center text-muted-foreground">
+                      No {activeFilterLabel.toLowerCase()} worktrees or sessions
+                      match your search
+                    </div>
+                  ) : activeFilterTab === 'all' && !hasAnyVisibleWorktrees ? (
+                    <EmptyDashboardTabs
                       projectId={projectId}
-                    >
-                      <div
-                        ref={el => {
-                          cardRefs.current[currentIndex] = el
-                        }}
-                      >
-                        <WorktreeSectionHeader
-                          worktree={section.worktree}
-                          projectId={projectId}
-                          defaultBranch={project.default_branch}
-                          openPRs={openPRs}
-                          cards={section.cards}
-                          showDetails={true}
-                          isSelected={selectedIndex === currentIndex}
-                          shortcutNumber={thisShortcut}
-                          onRowClick={() => {
-                            handleSelectedIndexChange(currentIndex)
-                            handleWorktreeClick(
-                              section.worktree.id,
-                              section.worktree.path
-                            )
-                          }}
-                          onDiffClick={setCanvasDiffRequest}
-                          onSetLabels={
-                            showWorktreeLabelContextMenu
-                              ? () => openWorktreeLabelModal(section.worktree)
-                              : undefined
-                          }
-                          assignedLabels={
-                            showWorktreeLabelContextMenu
-                              ? resolveWorktreeLabels(section.worktree)
-                              : undefined
-                          }
-                          availableLabels={labelCatalog}
-                          onLabelsChange={
-                            showWorktreeLabelContextMenu
-                              ? next =>
-                                  void applyWorktreeLabels(
-                                    section.worktree.id,
-                                    next
-                                  )
-                              : undefined
-                          }
-                          onResolveConflicts={handleCanvasResolveConflicts}
-                          disableTextSelection={disableWorktreeTextSelection}
-                        />
-                      </div>
-                    </SortableCanvasWorktreeSection>
+                      projectPath={project?.path ?? null}
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-muted-foreground">
+                      No {activeFilterLabel.toLowerCase()} worktrees
+                    </div>
                   )
-                })
-              })()}
+                ) : (
+                  <div
+                    className="group/canvas-list flex flex-col gap-1"
+                    onDragOver={handleNativeCanvasDragOver}
+                    onDrop={handleNativeCanvasDrop}
+                    onDragEnd={handleNativeCanvasDragEnd}
+                  >
+                    {(() => {
+                      let shortcutNum = 0
+                      return worktreeSections.map(section => {
+                        const currentIndex = cardIndex++
+                        const isReorderDisabled =
+                          !canvasReorderEnabled ||
+                          reorderWorktrees.isPending ||
+                          !canManuallyReorderWorktree(section.worktree)
+
+                        if (section.isPending) {
+                          return (
+                            <SortableCanvasWorktreeSection
+                              key={section.worktree.id}
+                              section={section}
+                              disabled={true}
+                              isDragging={
+                                canvasDragState.draggingId ===
+                                section.worktree.id
+                              }
+                              closestEdge={
+                                canvasDragState.targetId === section.worktree.id
+                                  ? canvasDragState.closestEdge
+                                  : null
+                              }
+                              projectId={projectId}
+                            >
+                              <WorktreeSetupCard
+                                ref={el => {
+                                  cardRefs.current[currentIndex] = el
+                                }}
+                                worktree={section.worktree}
+                                layout="list"
+                                isSelected={selectedIndex === currentIndex}
+                                onSelect={() =>
+                                  handleSelectedIndexChange(currentIndex)
+                                }
+                              />
+                            </SortableCanvasWorktreeSection>
+                          )
+                        }
+                        const thisShortcut =
+                          ++shortcutNum <= 9 ? shortcutNum : undefined
+                        return (
+                          <SortableCanvasWorktreeSection
+                            key={section.worktree.id}
+                            section={section}
+                            disabled={isReorderDisabled}
+                            isDragging={
+                              canvasDragState.draggingId === section.worktree.id
+                            }
+                            closestEdge={
+                              canvasDragState.targetId === section.worktree.id
+                                ? canvasDragState.closestEdge
+                                : null
+                            }
+                            projectId={projectId}
+                          >
+                            <div
+                              ref={el => {
+                                cardRefs.current[currentIndex] = el
+                              }}
+                            >
+                              <WorktreeSectionHeader
+                                worktree={section.worktree}
+                                projectId={projectId}
+                                defaultBranch={project.default_branch}
+                                openPRs={openPRs}
+                                cards={section.cards}
+                                showDetails={true}
+                                isSelected={selectedIndex === currentIndex}
+                                shortcutNumber={thisShortcut}
+                                onRowClick={() => {
+                                  handleSelectedIndexChange(currentIndex)
+                                  handleWorktreeClick(
+                                    section.worktree.id,
+                                    section.worktree.path
+                                  )
+                                }}
+                                onDiffClick={setCanvasDiffRequest}
+                                onSetLabels={
+                                  showWorktreeLabelContextMenu
+                                    ? () =>
+                                        openWorktreeLabelModal(section.worktree)
+                                    : undefined
+                                }
+                                assignedLabels={
+                                  showWorktreeLabelContextMenu
+                                    ? resolveWorktreeLabels(section.worktree)
+                                    : undefined
+                                }
+                                availableLabels={labelCatalog}
+                                onLabelsChange={
+                                  showWorktreeLabelContextMenu
+                                    ? next =>
+                                        void applyWorktreeLabels(
+                                          section.worktree.id,
+                                          next
+                                        )
+                                    : undefined
+                                }
+                                onResolveConflicts={
+                                  handleCanvasResolveConflicts
+                                }
+                                disableTextSelection={
+                                  disableWorktreeTextSelection
+                                }
+                              />
+                            </div>
+                          </SortableCanvasWorktreeSection>
+                        )
+                      })
+                    })()}
+                  </div>
+                )}
+              </WorktreeColumnFrame>
             </div>
-          )}
+
+            {showHomeColumns && (
+              <ProjectIssuesColumn
+                projectId={projectId}
+                projectPath={project.path}
+                // Two columns leave an odd cell: the issues run full width
+                // under the other two rather than beside a gap.
+                className="@4xl:col-span-2 @7xl:col-span-1"
+              />
+            )}
+          </div>
         </div>
       </div>
 
@@ -3937,6 +4027,33 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
         />
       </Suspense>
     </div>
+  )
+}
+
+/**
+ * The worktree column, with the same heading as the columns beside it.
+ *
+ * The heading appears only when the overview columns are up. On its own the
+ * worktree list is the whole canvas, and the project name in the header above
+ * already names it.
+ *
+ * `flex-1` keeps the column full height either way, so the empty states inside
+ * still centre themselves with `h-full`.
+ */
+function WorktreeColumnFrame({
+  labelled,
+  children,
+}: {
+  labelled: boolean
+  children: React.ReactNode
+}) {
+  if (!labelled)
+    return <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+
+  return (
+    <HomeSection title="Worktrees" className="min-h-0 flex-1">
+      {children}
+    </HomeSection>
   )
 }
 

@@ -16,7 +16,7 @@ import { formatRelativeTime } from '@/lib/relative-time'
 import { navigateToProject, navigateToSession } from '@/lib/navigate-to-session'
 import { useRecentActivity } from '@/services/activity'
 import type { ActivityEvent, ActivityKind } from '@/types/activity'
-import { HomeSection } from './RecentSessionsSection'
+import { HomeSection } from './HomeSection'
 
 interface KindPresentation {
   icon: LucideIcon
@@ -68,8 +68,18 @@ const KIND_PRESENTATION: Record<ActivityKind, KindPresentation> = {
   },
 }
 
-export const RecentActivitySection = memo(function RecentActivitySection() {
-  const { data, isLoading, isError, refetch } = useRecentActivity()
+interface RecentActivitySectionProps {
+  /**
+   * Narrow the feed to one project. The backend filters before it applies the
+   * limit, so a quiet project still fills its own feed.
+   */
+  projectId?: string
+}
+
+export const RecentActivitySection = memo(function RecentActivitySection({
+  projectId,
+}: RecentActivitySectionProps = {}) {
+  const { data, isLoading, isError, refetch } = useRecentActivity({ projectId })
   const events = data ?? []
 
   // A failed refetch keeps the events already loaded, so only a feed that never
@@ -115,18 +125,29 @@ export const RecentActivitySection = memo(function RecentActivitySection() {
     <HomeSection title="Recent activity">
       <ul className="flex flex-col divide-y divide-border/60 rounded-md border bg-muted/20">
         {events.map(event => (
-          <ActivityRow key={event.id} event={event} />
+          <ActivityRow
+            key={event.id}
+            event={event}
+            hideProjectName={!!projectId}
+          />
         ))}
       </ul>
     </HomeSection>
   )
 })
 
-function ActivityRow({ event }: { event: ActivityEvent }) {
+function ActivityRow({
+  event,
+  hideProjectName = false,
+}: {
+  event: ActivityEvent
+  /** Drop the project name from line 2. Set where every row is one project. */
+  hideProjectName?: boolean
+}) {
   const presentation = KIND_PRESENTATION[event.kind]
   const Icon = presentation.icon
 
-  const target = describeTarget(event)
+  const target = describeTarget(event, hideProjectName)
 
   const handleOpen = useCallback(() => {
     // A session is the most useful place to land. Fall back to the project, and
@@ -184,8 +205,14 @@ function ActivityRow({ event }: { event: ActivityEvent }) {
 }
 
 /** "project / worktree", skipping whichever part the record lacks. */
-function describeTarget(event: ActivityEvent): string {
-  return [event.projectName, event.sessionName ?? event.worktreeName]
+function describeTarget(
+  event: ActivityEvent,
+  hideProjectName: boolean
+): string {
+  return [
+    hideProjectName ? undefined : event.projectName,
+    event.sessionName ?? event.worktreeName,
+  ]
     .filter(Boolean)
     .join(' / ')
 }

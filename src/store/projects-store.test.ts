@@ -11,6 +11,7 @@ describe('ProjectsStore', () => {
       projectCanvasSettings: {},
       starredSessions: [],
       starredSectionCollapsed: false,
+      projectRailHidden: false,
       githubDashboardFavoriteProjectIds: [],
       addProjectDialogOpen: false,
       projectSettingsDialogOpen: false,
@@ -401,6 +402,23 @@ describe('ProjectsStore', () => {
 
       const before = useProjectsStore.getState()
       useProjectsStore.getState().setStarredSectionCollapsed(true)
+      expect(useProjectsStore.getState()).toBe(before)
+    })
+  })
+
+  describe('project overview rail', () => {
+    it('starts shown, because the rail is the point of the project view', () => {
+      expect(useProjectsStore.getState().projectRailHidden).toBe(false)
+    })
+
+    it('toggles the rail and guards a no-op write', () => {
+      useProjectsStore.getState().toggleProjectRailHidden()
+      expect(useProjectsStore.getState().projectRailHidden).toBe(true)
+
+      // Every set() notifies every subscriber, so an unchanged value must
+      // return the same state object.
+      const before = useProjectsStore.getState()
+      useProjectsStore.getState().setProjectRailHidden(true)
       expect(useProjectsStore.getState()).toBe(before)
     })
   })

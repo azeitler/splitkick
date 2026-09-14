@@ -1077,6 +1077,53 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
   })
 
+  it('persists and restores the project overview rail', async () => {
+    useProjectsStore.setState({ projectRailHidden: false })
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useProjectsStore.getState().toggleProjectRailHidden()
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({ project_rail_hidden: true })
+      )
+    })
+
+    // And the saved value comes back on the next load.
+    useProjectsStore.setState({ projectRailHidden: false })
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({ project_rail_hidden: true }),
+      isSuccess: true,
+    })
+    useUIStore.setState({ uiStateInitialized: false })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(
+        new QueryClient({
+          defaultOptions: {
+            queries: { retry: false },
+            mutations: { retry: false },
+          },
+        })
+      ),
+    })
+
+    await waitFor(() => {
+      expect(useProjectsStore.getState().projectRailHidden).toBe(true)
+    })
+  })
+
   it('persists the per-project session sort with snake_case keys', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {

@@ -424,14 +424,36 @@ pub fn record_once(app: &AppHandle, kind: ActivityKind, new: NewActivity) -> boo
 
 /// The newest records first, capped at `limit` (default 50, maximum
 /// [`MAX_EVENTS`]).
+///
+/// `project_id` narrows the feed to one project. The filter runs before the
+/// cap, so a quiet project still fills its own feed: capping first would let a
+/// busy project push every other project out of the window.
 pub async fn list_recent_activity(
     app: AppHandle,
     limit: Option<usize>,
+    project_id: Option<String>,
 ) -> Result<Vec<ActivityEvent>, String> {
     let path = activity_path(&app)?;
-    let mut events = newest_first(read_events(&path));
+    Ok(select_recent(
+        read_events(&path),
+        project_id.as_deref(),
+        limit,
+    ))
+}
+
+/// Order, filter, then cap. Split out from [`list_recent_activity`] so the
+/// order of those three steps can be tested without an `AppHandle`.
+fn select_recent(
+    events: Vec<ActivityEvent>,
+    project_id: Option<&str>,
+    limit: Option<usize>,
+) -> Vec<ActivityEvent> {
+    let mut events = newest_first(events);
+    if let Some(project_id) = project_id {
+        events.retain(|event| event.project_id.as_deref() == Some(project_id));
+    }
     events.truncate(limit.unwrap_or(50).min(MAX_EVENTS));
-    Ok(events)
+    events
 }
 
 /// Order append-ordered records newest first.
@@ -467,6 +489,68 @@ mod tests {
             url: None,
             dedupe_key: None,
         }
+    }
+
+    fn in_project(id: &str, at: u64, project_id: &str) -> ActivityEvent {
+        ActivityEvent {
+            project_id: Some(project_id.to_string()),
+            ..event(id, at)
+        }
+    }
+
+    #[test]
+    fn a_project_feed_holds_only_that_project() {
+        let events = vec![
+            in_project("a", 1, "p1"),
+            in_project("b", 2, "p2"),
+            event("no-project", 3),
+        ];
+
+        let picked = select_recent(events, Some("p1"), None);
+
+        let ids: Vec<_> = picked.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["a"]);
+    }
+
+    #[test]
+    fn no_project_id_keeps_every_record() {
+        let events = vec![in_project("a", 1, "p1"), in_project("b", 2, "p2")];
+
+        let picked = select_recent(events, None, None);
+
+        assert_eq!(picked.len(), 2);
+    }
+
+    #[test]
+    fn a_quiet_project_is_not_capped_out_by_a_busy_one() {
+        // The busy project alone fills the limit, and it is newer.
+        let mut events = vec![in_project("quiet", 1, "p1")];
+        for i in 0..50 {
+            events.push(in_project(&format!("busy{i}"), 10 + i, "p2"));
+        }
+
+        let picked = select_recent(events, Some("p1"), Some(5));
+
+        let ids: Vec<_> = picked.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            ["quiet"],
+            "the filter must run before the cap, or a quiet project reads empty"
+        );
+    }
+
+    #[test]
+    fn a_project_feed_stays_newest_first_and_capped() {
+        let events = vec![
+            in_project("old", 1, "p1"),
+            in_project("mid", 2, "p1"),
+            in_project("new", 3, "p1"),
+        ];
+
+        let picked = select_recent(events, Some("p1"), Some(2));
+
+        let ids: Vec<_> = picked.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, ["new", "mid"]);
     }
 
     fn keyed(id: &str, at: u64, key: &str) -> ActivityEvent {
@@ -620,6 +704,43 @@ mod tests {
             "a different state of the same pull request is still loggable"
         );
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// The web-access transport must reach the project filter too. A command
+    /// that only works over native Tauri IPC leaves web access with the global
+    /// feed and no sign of it.
+    #[test]
+    fn web_access_dispatch_narrows_the_feed_to_one_project() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let path = activity_path(&app).unwrap();
+        append_event(&path, &in_project("mine", 1, "p1")).unwrap();
+        append_event(&path, &in_project("theirs", 2, "p2")).unwrap();
+
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        let all = runtime
+            .block_on(crate::http_server::dispatch::dispatch_command(
+                &app,
+                "list_recent_activity",
+                serde_json::json!({}),
+            ))
+            .unwrap();
+        assert_eq!(all.as_array().unwrap().len(), 2);
+
+        let mine = runtime
+            .block_on(crate::http_server::dispatch::dispatch_command(
+                &app,
+                "list_recent_activity",
+                serde_json::json!({ "projectId": "p1" }),
+            ))
+            .unwrap();
+        let mine = mine.as_array().unwrap();
+        assert_eq!(mine.len(), 1);
+        assert_eq!(mine[0]["id"], "mine");
     }
 
     #[test]
