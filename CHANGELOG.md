@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.7] - 2026-09-11
+
+Built on Jean 0.1.73.
+
 ### Changed
 
 - **Home: recent sessions list every session and have a filter.** The list
@@ -448,10 +452,6 @@ this fork's own and never restarts.
     from another host, such as `team.cloudflareaccess.com`. A scheme or port
     change on the same host is an ordinary redirect.
 
-- **Sidebar: a stale row fades after two days, not a week.** The fade is meant
-  to point at work that has gone quiet, and at seven days almost nothing ever
-  reached it.
-
 - **Sidebar: a project row no longer collapses on a click.** Clicking a
   workspace row left its open/closed state alone — only the chevron changed it
   — but clicking a project row expanded or collapsed the project. The two row
@@ -596,7 +596,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.6...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.7...HEAD
+[0.1.73-z.7]: https://github.com/azeitler/jean/compare/v0.1.73-z.6...v0.1.73-z.7
 [0.1.73-z.6]: https://github.com/azeitler/jean/compare/v0.1.73-z.5...v0.1.73-z.6
 [0.1.73-z.5]: https://github.com/azeitler/jean/compare/v0.1.73-z.4...v0.1.73-z.5
 [0.1.73-z.4]: https://github.com/azeitler/jean/compare/v0.1.73-z.3...v0.1.73-z.4
