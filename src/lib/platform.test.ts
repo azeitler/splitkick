@@ -133,7 +133,9 @@ describe('server platform detection', () => {
     })
 
     const platform = await import('./platform')
+    const { formatShortcutDisplay } = await import('@/types/keybindings')
 
-    expect(platform.getModifierSymbol()).toBe('⌃')
+    expect(platform.getModifierSymbol()).toBe('Ctrl')
+    expect(formatShortcutDisplay('mod+period')).toBe('Ctrl + .')
   })
 })

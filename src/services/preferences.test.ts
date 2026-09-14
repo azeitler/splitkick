@@ -11,6 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import {
   usePreferences,
+  usePatchPreferences,
   useSavePreferences,
   preferencesQueryKeys,
 } from './preferences'
@@ -285,6 +286,28 @@ describe('preferences service', () => {
         disconnect = vi.fn()
       },
       configurable: true,
+    })
+  })
+
+  describe('usePatchPreferences', () => {
+    it('updates cached client preferences before startup effects can reopen UI', () => {
+      queryClient.setQueryData(preferencesQueryKeys.preferences(), {
+        ...defaultPreferences,
+        has_seen_feature_tour: false,
+      })
+      const { result } = renderHook(() => usePatchPreferences(), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      act(() => {
+        result.current.mutate({ has_seen_feature_tour: true })
+      })
+
+      expect(
+        queryClient.getQueryData<AppPreferences>(
+          preferencesQueryKeys.preferences()
+        )?.has_seen_feature_tour
+      ).toBe(true)
     })
   })
 
