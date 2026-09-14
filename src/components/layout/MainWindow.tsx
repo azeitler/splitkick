@@ -211,6 +211,7 @@ import {
 import { isNativeApp } from '@/lib/environment'
 import { useActiveRemoteConnection } from '@/lib/remote-connections'
 import { formatWindowTitle } from '@/lib/window-title'
+import { useWindowTitle } from '@/hooks/use-window-title'
 import { isLinux, isWindows } from '@/lib/platform'
 
 // Left sidebar resize constraints (pixels)
@@ -423,12 +424,7 @@ export function MainWindow() {
   // Handle CMD+N keybinding to create new worktree
   useCreateWorktreeKeybinding()
 
-  // Set browser tab title in web mode (native app sets window title via Tauri)
-  useEffect(() => {
-    if (!isNativeApp()) {
-      document.title = windowTitle
-    }
-  }, [windowTitle])
+  useWindowTitle(windowTitle)
 
   // Handle custom resize for left sidebar (pixel-based)
   // Uses direct DOM manipulation during drag for smooth performance,

@@ -29,6 +29,7 @@ const {
 }))
 
 vi.mock('@/lib/remote-connections', () => ({
+  getRemoteConnections: () => [],
   LOCAL_CONNECTION_ID: 'local',
   addRemoteConnection,
   markConnectionSwitch,

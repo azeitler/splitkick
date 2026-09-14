@@ -1,17 +1,24 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-const { invoke, isNativeApp, markConnectionSwitch, selectConnection } =
-  vi.hoisted(() => ({
-    invoke: vi.fn(async () => undefined),
-    isNativeApp: vi.fn(() => true),
-    markConnectionSwitch: vi.fn(),
-    selectConnection: vi.fn(),
-  }))
+const {
+  invoke,
+  isNativeApp,
+  getRemoteConnections,
+  markConnectionSwitch,
+  selectConnection,
+} = vi.hoisted(() => ({
+  invoke: vi.fn(async () => undefined),
+  isNativeApp: vi.fn(() => true),
+  getRemoteConnections: vi.fn(() => [] as { id: string; name: string }[]),
+  markConnectionSwitch: vi.fn(),
+  selectConnection: vi.fn(),
+}))
 
 vi.mock('./transport', () => ({ invoke }))
 vi.mock('./environment', () => ({ isNativeApp: () => isNativeApp() }))
 vi.mock('./remote-connections', () => ({
   LOCAL_CONNECTION_ID: 'local',
+  getRemoteConnections: () => getRemoteConnections(),
   markConnectionSwitch,
   selectConnection,
 }))
@@ -20,6 +27,7 @@ import {
   activateConnection,
   closeConnectionWindow,
   listConnectionWindows,
+  openConnectionWindow,
 } from './connection-windows'
 
 describe('activateConnection', () => {
@@ -29,13 +37,16 @@ describe('activateConnection', () => {
   })
 
   it('gives a remote its own window on the desktop', async () => {
+    getRemoteConnections.mockReturnValue([
+      { id: 'remote-1', name: 'build-box' },
+    ])
     const reloadApp = vi.fn()
 
     await activateConnection('remote-1', reloadApp)
 
     expect(invoke).toHaveBeenCalledWith('open_connection_window', {
       connectionId: 'remote-1',
-      title: null,
+      title: 'build-box',
     })
     expect(reloadApp).not.toHaveBeenCalled()
     expect(selectConnection).not.toHaveBeenCalled()
@@ -60,6 +71,37 @@ describe('activateConnection', () => {
     expect(selectConnection).toHaveBeenCalledWith('remote-1')
     expect(reloadApp).toHaveBeenCalledOnce()
     expect(invoke).not.toHaveBeenCalled()
+  })
+})
+
+describe('openConnectionWindow', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    isNativeApp.mockReturnValue(true)
+  })
+
+  it('names the window after its connection', async () => {
+    // The window carries this name in the macOS Window menu until MainWindow
+    // mounts, which waits for the remote to answer.
+    getRemoteConnections.mockReturnValue([
+      { id: 'remote-1', name: 'build-box' },
+    ])
+
+    await openConnectionWindow('remote-1')
+
+    expect(invoke).toHaveBeenCalledWith('open_connection_window', {
+      connectionId: 'remote-1',
+      title: 'build-box',
+    })
+  })
+
+  it('leaves the name to the backend when the connection is unknown', async () => {
+    await openConnectionWindow('remote-9')
+
+    expect(invoke).toHaveBeenCalledWith('open_connection_window', {
+      connectionId: 'remote-9',
+      title: null,
+    })
   })
 })
 

@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every Jean window now carries its own name.** With one window per remote
+  the macOS Window menu, Mission Control and the app switcher listed them all as
+  "Jean", because nothing ever set the window's own title. Each window is now
+  named after the breadcrumb in its title bar — the instance, project and
+  worktree it shows — and a connection window carries its remote's name from the
+  moment it appears.
+
 ## [0.1.73-z.9] - 2026-09-14
 
 Built on Jean 0.1.73. Fixes for what 0.1.73-z.8 shipped 30 minutes earlier.

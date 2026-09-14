@@ -60,6 +60,25 @@ handler, the vibrancy preference — lives in `configure_app_window()` in
 `src-tauri/src/lib.rs`, which runs for `main` during setup and for every
 connection window right after it is built.
 
+## Window titles
+
+The title bar draws its own breadcrumb and the window is built with
+`hiddenTitle`, so the window's **native** title is never on screen inside the
+app — it is what the macOS Window menu, Mission Control and the app switcher
+read. Before connection windows there was one window and nothing set it, so it
+stayed "Jean" from `tauri.conf.json`. With several windows they would all read
+the same thing.
+
+`useWindowTitle()` (`src/hooks/use-window-title.ts`) applies the same string
+`TitleBar` shows: `getCurrentWindow().setTitle()` on the desktop,
+`document.title` in a browser. It needs `core:window:allow-set-title`, which
+`core:window:default` does **not** include.
+
+`openConnectionWindow()` also passes the connection name to the builder, so the
+window is named from the moment it appears. `MainWindow` only mounts once the
+remote has answered, and until then the window would sit in the Window menu
+unnamed.
+
 ## Menu events
 
 The macOS menu belongs to the application, so `install_menu_events` sends each

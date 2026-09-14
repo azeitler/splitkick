@@ -14,6 +14,7 @@
 import { isNativeApp } from './environment'
 import {
   LOCAL_CONNECTION_ID,
+  getRemoteConnections,
   markConnectionSwitch,
   selectConnection,
 } from './remote-connections'
@@ -23,9 +24,14 @@ export async function openConnectionWindow(
   connectionId: string,
   title?: string
 ): Promise<void> {
+  // Name the window at creation. MainWindow keeps the title in step afterwards,
+  // but it only mounts once the remote has answered, and until then every
+  // window would sit in the macOS Window menu as "Jean".
+  const named =
+    title ?? getRemoteConnections().find(item => item.id === connectionId)?.name
   await invoke('open_connection_window', {
     connectionId,
-    title: title ?? null,
+    title: named ?? null,
   })
 }
 
