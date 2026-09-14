@@ -1699,6 +1699,11 @@ export interface SessionSearchHit {
   /** How many messages matched, not how many times */
   match_count: number
   updated_at: number
+  /**
+   * The query matched the session name. Only the MCP search asks for name
+   * matching, so the palette never sees this.
+   */
+  name_match?: boolean
 }
 
 /** Response from the search_session_messages Tauri command */

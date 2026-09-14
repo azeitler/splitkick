@@ -10,6 +10,7 @@ use once_cell::sync::Lazy;
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
+use crate::chat::overview::SessionOverviewOptions;
 use crate::chat::types::LabelData;
 use crate::http_server::dispatch::dispatch_command;
 use crate::http_server::EmitExt;
@@ -88,16 +89,150 @@ pub fn next_depth() -> u32 {
     current_depth().saturating_add(1)
 }
 
+/// Sent to the client on `initialize`, which usually puts it in the model's
+/// system prompt. It is in the context of every session that enables this
+/// server, so keep it short: each line has to prevent a fan-out of calls or a
+/// wrong-id error to earn its place.
+const JEAN_MCP_INSTRUCTIONS: &str = concat!(
+    "Jean manages git worktrees and AI chat sessions across your projects.\n\n",
+    "- get_current_context tells you which session, worktree and project you are in.\n",
+    "- list_all_sessions gives a cross-project overview (status, idle days, labels, linked PR) ",
+    "and search_sessions finds a session by topic or name. Both answer in one call. ",
+    "Do not loop list_sessions over every worktree.\n",
+    "- read_session_messages reads one session. Pass role \"user\" or excludeTools true to keep the output small.\n",
+    "- sessionId, worktreeId and projectId are Jean ids, not git branch or directory names. ",
+    "Take them from the list and search tools.\n",
+    "- Archiving and deleting cannot be undone from here. Show the user what you propose and wait for a yes."
+);
+
 pub fn initialize_result() -> Value {
     json!({
         "protocolVersion": MCP_PROTOCOL_VERSION,
-        "capabilities": { "tools": {} },
+        "capabilities": { "tools": {}, "prompts": {} },
         "serverInfo": { "name": "jean", "version": env!("CARGO_PKG_VERSION") },
+        "instructions": JEAN_MCP_INSTRUCTIONS,
     })
 }
 
 pub fn tools_list_result() -> Value {
     json!({ "tools": tool_registry() })
+}
+
+/// The workflows an agent should follow for the two questions the session
+/// tools exist for.
+///
+/// These are MCP prompts rather than a Claude Code skill on purpose: Jean runs
+/// many backends, a prompt is backend-neutral and user-invocable, and its text
+/// only enters the context when someone asks for it. The content is static, so
+/// the stdio child answers `prompts/list` and `prompts/get` by itself and never
+/// has to reach the app.
+pub fn prompts_list_result() -> Value {
+    json!({
+        "prompts": [
+            {
+                "name": "review_sessions_for_archiving",
+                "description": "Review Jean sessions across projects and recommend which ones can be archived.",
+                "arguments": [
+                    {"name": "projectId", "description": "Only review this project.", "required": false},
+                    {"name": "idleForDays", "description": "Ignore sessions that were active in the last N days. Default 14.", "required": false}
+                ],
+            },
+            {
+                "name": "find_session",
+                "description": "Find the Jean session(s) about a topic.",
+                "arguments": [
+                    {"name": "topic", "description": "What the session was about.", "required": true},
+                    {"name": "projectId", "description": "Only search this project.", "required": false}
+                ],
+            }
+        ]
+    })
+}
+
+fn prompt_argument(params: &Value, key: &str) -> Option<String> {
+    params
+        .get("arguments")
+        .and_then(|arguments| arguments.get(key))
+        .and_then(|value| match value {
+            Value::String(text) => Some(text.trim().to_string()),
+            Value::Number(number) => Some(number.to_string()),
+            _ => None,
+        })
+        .filter(|text| !text.is_empty())
+}
+
+pub fn prompts_get_result(params: &Value) -> Result<Value, ToolError> {
+    let name = params
+        .get("name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ToolError::invalid_params("missing 'name'"))?;
+    let project_id = prompt_argument(params, "projectId");
+
+    let (description, text) = match name {
+        "review_sessions_for_archiving" => {
+            let idle_for_days = prompt_argument(params, "idleForDays")
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(14);
+            let scope = project_id
+                .as_ref()
+                .map(|id| format!(" in project {id}"))
+                .unwrap_or_default();
+            let project_filter = project_id
+                .as_ref()
+                .map(|id| format!(", projectId: \"{id}\""))
+                .unwrap_or_default();
+            (
+                "Review Jean sessions and recommend which ones can be archived.",
+                format!(
+                    "Help me decide which Jean sessions I can archive{scope}.\n\n\
+1. Call list_all_sessions with {{ idleForDays: {idle_for_days}, sort: \"stale\", includeRecap: true{project_filter} }}.\n\
+2. Sort the result into three groups:\n\
+\u{20}  - Safe to archive: the work is finished or merged, manualStatus is \"completed\", there is no open PR, and nothing is uncommitted or unpushed.\n\
+\u{20}  - Needs a look: an open PR, uncommitted or unpushed work, waitingForInput, or a recap that does not say whether the work is done.\n\
+\u{20}  - Keep: pinned, starred, or status \"running\" or \"resumable\".\n\
+\u{20}  Call list_all_sessions again with includeOpenWork true for the candidates when you need the git counts.\n\
+3. When a recap does not say enough, call read_session_messages with role \"user\" and limit 10 before you judge.\n\
+4. Show me one table: session, workspace, idle days, status, a one-line recap, and your recommendation.\n\
+5. Archive nothing yet. Wait for my confirmation, then call archive_session for the sessions I approve."
+                ),
+            )
+        }
+        "find_session" => {
+            let topic = prompt_argument(params, "topic")
+                .ok_or_else(|| ToolError::invalid_params("missing required argument 'topic'"))?;
+            let scope = project_id
+                .as_ref()
+                .map(|id| format!(" in project {id}"))
+                .unwrap_or_default();
+            let project_filter = project_id
+                .as_ref()
+                .map(|id| format!(", projectId: \"{id}\""))
+                .unwrap_or_default();
+            (
+                "Find the Jean session(s) about a topic.",
+                format!(
+                    "Find the Jean session(s) about \"{topic}\"{scope}.\n\n\
+1. Call search_sessions with {{ query: \"{topic}\"{project_filter}, includeArchived: true }}.\n\
+2. If nothing comes back, try again with a shorter or more distinctive query, such as a file name, an error string or an issue number, before you decide the session does not exist.\n\
+3. For the best matches, call read_session_messages with role \"user\" and limit 10 to see what was actually asked.\n\
+4. Report each match as: session name, workspace, project, when it was last active, and one line about what it covered. If there is no such session, say so plainly instead of guessing."
+                ),
+            )
+        }
+        other => {
+            return Err(ToolError::invalid_params(format!(
+                "Unknown prompt: {other}"
+            )))
+        }
+    };
+
+    Ok(json!({
+        "description": description,
+        "messages": [{
+            "role": "user",
+            "content": { "type": "text", "text": text },
+        }],
+    }))
 }
 
 #[derive(Debug)]
@@ -183,6 +318,11 @@ pub fn handle_protocol_message(
         "initialize" => Some(jsonrpc_ok(id, initialize_result())),
         "notifications/initialized" => None,
         "tools/list" => Some(jsonrpc_ok(id, tools_list_result())),
+        "prompts/list" => Some(jsonrpc_ok(id, prompts_list_result())),
+        "prompts/get" => Some(match prompts_get_result(&params) {
+            Ok(result) => jsonrpc_ok(id, result),
+            Err(e) => jsonrpc_error(id, e.code, &e.message),
+        }),
         "tools/call" => Some(
             match extract_tool_call(params)
                 .map_err(|e| e.message)
@@ -243,6 +383,8 @@ fn tool_registry_core() -> Value {
 fn tool_registry_session() -> Value {
     json!([
         {"name":"list_sessions","description":"List chat sessions in a worktree without loading full message history. Use before creating a session to avoid duplicates.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"includeArchived":{"type":"boolean","default":false}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"list_all_sessions","description":"One call that lists every Jean session in every project, with effective status, idle days, manual status, labels, pins/stars and the linked issue/PR. Prefer this over list_projects -> list_worktrees -> list_sessions when the question is about more than one worktree, such as \"which sessions can I archive?\" or \"what is still open?\". includeRecap and includeOpenWork read run logs and run git, so they are slower; turn them on only when you need them. Never archive or delete anything without asking the user first.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Only sessions in this project."},"includeArchived":{"type":"boolean","default":false,"description":"Also include archived sessions and sessions inside an archived worktree."},"idleForDays":{"type":"integer","minimum":0,"description":"Only sessions with no activity for at least this many days."},"status":{"type":["array","string"],"items":{"type":"string","enum":["idle","running","resumable","cancelled","error"]},"description":"Keep only these effective statuses. This is the live run state; the user's own status (completed, paused, review) is reported as manualStatus."},"sort":{"type":"string","enum":["recent","stale"],"default":"recent","description":"stale puts the oldest sessions first, which is what an archiving review wants."},"limit":{"type":"integer","minimum":1,"maximum":100,"default":100},"offset":{"type":"integer","minimum":0,"default":0,"description":"Pass back the nextOffset of the previous page."},"includeRecap":{"type":"boolean","default":false,"description":"Add the last \"## Recap\" block of each returned session. Usually enough to decide whether the work is finished."},"includeOpenWork":{"type":"boolean","default":false,"description":"Add uncommitted file and unpushed commit counts per worktree. Caps the page at 50."},"verbose":{"type":"boolean","default":false,"description":"Also return backend, model, provider, execution mode and timestamps."}},"additionalProperties":false}},
+        {"name":"search_sessions","description":"Find a Jean session by topic. Searches message text and session names across every project in one call, newest first. Use this instead of reading sessions one by one to answer \"do we have a session about X?\". The query must be at least 3 characters.","inputSchema":{"type":"object","properties":{"query":{"type":"string","minLength":3,"description":"Text to look for in message content and session names."},"projectId":{"type":"string","description":"Only search this project."},"includeArchived":{"type":"boolean","default":false},"limit":{"type":"integer","minimum":1,"maximum":50,"default":20}},"required":["query"],"additionalProperties":false}},
         {"name":"create_session","description":"Create a new chat session in an existing non-archived worktree. Returns the session id needed for send_chat_message. Fails if the worktree is archived — call unarchive_worktree first.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"name":{"type":"string"},"backend":{"type":"string","enum":["claude","codex","cursor","opencode"]}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"send_chat_message","description":"Send a message to an existing non-archived session. Fire-and-forget: returns immediately as the session begins processing. Fails immediately if the session or its worktree is archived — call unarchive_session / unarchive_worktree first. Use this to kick off investigations. When model/executionMode are omitted, Jean uses the session's selected model and execution mode (set via set_session_model or the Jean UI). Pass model for a one-shot override of this turn only.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"message":{"type":"string"},"model":{"type":"string","description":"Optional one-shot model override. When omitted, uses the session selected model (set_session_model / UI)."},"executionMode":{"type":"string","enum":["plan","build","yolo"],"description":"Optional one-shot execution mode. When omitted, uses the session selected execution mode."}},"required":["sessionId","message"],"additionalProperties":false}},
         {"name":"archive_session","description":"Archive a chat session (hide it from the active session list). Prefer this over delete when history may still be useful. Cannot run send_chat_message on an archived session until unarchive_session is called.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
@@ -250,7 +392,7 @@ fn tool_registry_session() -> Value {
         {"name":"move_session","description":"Move a Jean session to another active worktree while preserving its session id, complete message/run history, attachments, settings, and backend resume context. An idle session moves immediately. A running session is scheduled to move automatically after its current turn finishes; do not cancel the run or retry the move.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"targetWorktreeId":{"type":"string"}},"required":["sessionId","targetWorktreeId"],"additionalProperties":false}},
         {"name":"get_session_status","description":"Get whether a Jean session is idle/running/resumable/cancelled/error plus latest run metadata. Use after send_chat_message to poll fire-and-forget work.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"cancel_session_run","description":"Cancel the currently running request for a session. Returns whether Jean found an active process/turn/flag to cancel.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
-        {"name":"read_session_messages","description":"Read recent messages from a session (most recent first). Use limit to cap returned messages.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":50}},"required":["sessionId"],"additionalProperties":false}},
+        {"name":"read_session_messages","description":"Read the most recent messages of one session, in chronological order. Keep the output small: role \"user\" returns only the user prompts (the cheapest way to see what a session was for), excludeTools drops tool calls, and maxCharsPerMessage cuts long messages. Use list_all_sessions or search_sessions first to pick the session.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":50,"description":"Maximum number of messages returned, counted from the end of the session."},"role":{"type":"string","enum":["user","assistant","all"],"default":"all","description":"user reads the prompts from session metadata and never touches a run log."},"excludeTools":{"type":"boolean","default":false,"description":"Drop tool calls. Tool payloads are most of the bytes in a normal session."},"maxCharsPerMessage":{"type":"integer","minimum":100,"maximum":20000,"description":"Cut each message to this many characters."}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"set_session_model","description":"Persist the selected model (and optionally backend) on a Jean session without sending a message. Prefer this when switching models for later turns; pass model on send_chat_message for a one-shot override only. When backend is omitted, Jean infers it from the model id when possible (e.g. grok/*, gpt-*, cursor/*). Returns sessionId, model, backend.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"model":{"type":"string","description":"Model id as used in Jean (e.g. claude-sonnet-4-6[1m], gpt-5.6-sol, grok/grok-4.6)."},"backend":{"type":"string","enum":["claude","codex","cursor","opencode","pi","commandcode","grok","kimi","antigravity"],"description":"Optional backend override. Inferred from model when omitted."}},"required":["sessionId","model"],"additionalProperties":false}},
         {"name":"set_session_status","description":"Set or clear the manual status on a Jean session. Use \"completed\" after you finish the work in the current session so it leaves Jean's unread/attention list. Omit sessionId to target the calling session. Live automatic states (running, waiting for input, plan approval, crashed) still take priority while the session is active; the manual status shows once the session goes idle. Sending a new message clears \"paused\" and \"review\" automatically. Pass status null to clear. Returns sessionId and status.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"status":{"type":["string","null"],"enum":["idle","review","paused","completed","cancelled",null],"description":"Manual status to pin, or null to clear it."}},"required":["status"],"additionalProperties":false}},
         {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Jean Settings → Usage). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
@@ -1088,8 +1230,55 @@ async fn run_tool(
                 .and_then(|v| v.as_u64())
                 .unwrap_or(50)
                 .min(200) as usize;
-            let (worktree_id, worktree_path) = resolve_session_worktree(app, &session_id)?;
-            dispatch_command(app, "get_session", json!({ "sessionId": session_id, "worktreeId": worktree_id, "worktreePath": worktree_path, "limit": limit })).await.map_err(ToolError::internal)
+            let role = parse_message_role_arg(&args)?;
+            let exclude_tools = args
+                .get("excludeTools")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let max_chars = args
+                .get("maxCharsPerMessage")
+                .and_then(|v| v.as_u64())
+                .map(|v| v.clamp(100, 20_000) as usize);
+            read_session_messages(app, &session_id, limit, role, exclude_tools, max_chars)
+        }
+        "list_all_sessions" => {
+            let options = parse_session_overview_args(&args)?;
+            let result = crate::chat::overview::session_overview(app, options)
+                .await
+                .map_err(ToolError::internal)?;
+            serde_json::to_value(result)
+                .map_err(|e| ToolError::internal(format!("serialize sessions: {e}")))
+        }
+        "search_sessions" => {
+            let query = require_nonempty_str(&args, "query")?;
+            if query.chars().count() < crate::chat::search::MIN_QUERY_LEN {
+                // Returning zero hits here would read as "no such session".
+                return Err(ToolError::invalid_params(format!(
+                    "'query' must be at least {} characters",
+                    crate::chat::search::MIN_QUERY_LEN
+                )));
+            }
+            let limit = args
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(20)
+                .clamp(1, 50) as usize;
+            let options = crate::chat::search::SessionSearchOptions {
+                project_id: optional_str(&args, "projectId"),
+                include_archived: args
+                    .get("includeArchived")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
+                // Unlike the command palette, an agent looking for a session by
+                // topic wants a title hit too.
+                match_names: true,
+                limit: Some(limit),
+            };
+            let response =
+                crate::chat::search::search_session_messages(app.clone(), query, options)
+                    .await
+                    .map_err(ToolError::internal)?;
+            Ok(search_sessions_result(&response))
         }
         "set_session_model" => {
             let session_id = require_str(&args, "sessionId")?;
@@ -1599,6 +1788,263 @@ fn get_project_context(app: &AppHandle, project_id: &str) -> Result<Value, ToolE
             "archivedWorktrees": worktrees.iter().filter(|w| w.archived_at.is_some()).count(),
         },
     }))
+}
+
+/// Which messages `read_session_messages` returns.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum MessageRoleFilter {
+    User,
+    Assistant,
+    All,
+}
+
+fn parse_message_role_arg(args: &Value) -> Result<MessageRoleFilter, ToolError> {
+    match optional_str(args, "role").as_deref() {
+        None | Some("all") => Ok(MessageRoleFilter::All),
+        Some("user") => Ok(MessageRoleFilter::User),
+        Some("assistant") => Ok(MessageRoleFilter::Assistant),
+        Some(other) => Err(ToolError::invalid_params(format!(
+            "'role' must be user, assistant or all, got {other:?}"
+        ))),
+    }
+}
+
+/// One message, small enough to read a whole session without filling a context
+/// window.
+///
+/// Tool payloads are most of the bytes in a normal session, so they are never
+/// returned: a message reports how many tool calls it made, and the caller uses
+/// `get_worktree_diff` or `get_worktree_changes` when it needs the detail.
+/// Thinking blocks are dropped for the same reason.
+fn shape_message(
+    message: &crate::chat::types::ChatMessage,
+    exclude_tools: bool,
+    max_chars: Option<usize>,
+) -> Value {
+    use crate::chat::types::{ContentBlock, MessageRole};
+
+    let texts: Vec<&str> = message
+        .content_blocks
+        .iter()
+        .filter_map(|block| match block {
+            ContentBlock::Text { text } if !text.trim().is_empty() => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    let text = if texts.is_empty() {
+        message.content.clone()
+    } else {
+        texts.join("\n\n")
+    };
+
+    let cut = max_chars.map(|max| crate::chat::recap::truncate_chars(&text, max));
+    let truncated = cut
+        .as_ref()
+        .is_some_and(|cut| cut.chars().count() < text.chars().count());
+    let text = cut.unwrap_or(text);
+
+    let mut shaped = json!({
+        "id": message.id,
+        "role": match message.role {
+            MessageRole::User => "user",
+            MessageRole::Assistant => "assistant",
+        },
+        "timestamp": message.timestamp,
+        "text": text,
+    });
+    let map = shaped.as_object_mut().expect("shaped message is an object");
+    if truncated {
+        map.insert("truncated".to_string(), Value::Bool(true));
+    }
+    if !exclude_tools && !message.tool_calls.is_empty() {
+        map.insert("toolCalls".to_string(), json!(message.tool_calls.len()));
+    }
+    if message.cancelled {
+        map.insert("cancelled".to_string(), Value::Bool(true));
+    }
+    shaped
+}
+
+/// Read the tail of one session.
+///
+/// Goes straight to the session's own metadata and run logs instead of through
+/// `get_session`, which loads every session in the worktree just to find one.
+///
+/// `role: "user"` costs a single metadata read: Jean stores the user prompt on
+/// the run entry, so no run log is opened at all. That is the path a
+/// drill-down should take.
+fn read_session_messages(
+    app: &AppHandle,
+    session_id: &str,
+    limit: usize,
+    role: MessageRoleFilter,
+    exclude_tools: bool,
+    max_chars: Option<usize>,
+) -> Result<Value, ToolError> {
+    use crate::chat::types::MessageRole;
+
+    let metadata = crate::chat::storage::load_metadata(app, session_id)
+        .map_err(ToolError::internal)?
+        .ok_or_else(|| ToolError::invalid_params(format!("Unknown sessionId: {session_id}")))?;
+    let total_runs = metadata.runs.len();
+
+    let messages: Vec<Value> = if role == MessageRoleFilter::User {
+        let prompts: Vec<&crate::chat::types::RunEntry> = metadata
+            .runs
+            .iter()
+            .filter(|run| run.is_renderable_in_chat_history())
+            .collect();
+        let start = prompts.len().saturating_sub(limit);
+        prompts[start..]
+            .iter()
+            .map(|run| {
+                let text = max_chars
+                    .map(|max| crate::chat::recap::truncate_chars(&run.user_message, max))
+                    .unwrap_or_else(|| run.user_message.clone());
+                let truncated = text.chars().count() < run.user_message.chars().count();
+                let mut shaped = json!({
+                    "id": run.user_message_id,
+                    "role": "user",
+                    "timestamp": run.started_at,
+                    "text": text,
+                });
+                if truncated {
+                    shaped["truncated"] = Value::Bool(true);
+                }
+                shaped
+            })
+            .collect()
+    } else {
+        // The window is counted in runs, and a run renders up to two messages,
+        // so ask for `limit` runs and then keep the last `limit` messages.
+        let loaded =
+            crate::chat::run_log::load_session_messages_window(app, session_id, Some(limit), None)
+                .map_err(ToolError::internal)?;
+        let filtered: Vec<&crate::chat::types::ChatMessage> = loaded
+            .messages
+            .iter()
+            .filter(|message| match role {
+                MessageRoleFilter::Assistant => message.role == MessageRole::Assistant,
+                _ => true,
+            })
+            .collect();
+        let start = filtered.len().saturating_sub(limit);
+        filtered[start..]
+            .iter()
+            .map(|message| shape_message(message, exclude_tools, max_chars))
+            .collect()
+    };
+
+    Ok(json!({
+        "sessionId": session_id,
+        "worktreeId": metadata.worktree_id,
+        "totalRuns": total_runs,
+        "returned": messages.len(),
+        "messages": messages,
+    }))
+}
+
+fn parse_session_overview_args(args: &Value) -> Result<SessionOverviewOptions, ToolError> {
+    let sort = match optional_str(args, "sort") {
+        None => crate::chat::overview::OverviewSort::default(),
+        Some(value) => crate::chat::overview::OverviewSort::parse(&value).ok_or_else(|| {
+            ToolError::invalid_params(format!("'sort' must be recent or stale, got {value:?}"))
+        })?,
+    };
+
+    // Agents pass `status: "idle"` as often as they pass an array.
+    let statuses: Vec<String> = match args.get("status") {
+        None | Some(Value::Null) => vec![],
+        Some(Value::String(one)) => vec![one.clone()],
+        Some(Value::Array(many)) => {
+            many.iter()
+                .map(|value| {
+                    value.as_str().map(str::to_string).ok_or_else(|| {
+                        ToolError::invalid_params("'status' entries must be strings")
+                    })
+                })
+                .collect::<Result<_, _>>()?
+        }
+        Some(_) => {
+            return Err(ToolError::invalid_params(
+                "'status' must be a string or an array of strings",
+            ))
+        }
+    };
+    for status in &statuses {
+        if !crate::chat::overview::OVERVIEW_STATUSES.contains(&status.as_str()) {
+            return Err(ToolError::invalid_params(format!(
+                "unknown status {status:?}; expected one of {}",
+                crate::chat::overview::OVERVIEW_STATUSES.join(", ")
+            )));
+        }
+    }
+
+    Ok(SessionOverviewOptions {
+        project_id: optional_str(args, "projectId"),
+        include_archived: args
+            .get("includeArchived")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        idle_for_days: args.get("idleForDays").and_then(|v| v.as_u64()),
+        statuses,
+        sort,
+        limit: args
+            .get("limit")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(crate::chat::overview::DEFAULT_OVERVIEW_LIMIT as u64)
+            .clamp(1, crate::chat::overview::DEFAULT_OVERVIEW_LIMIT as u64) as usize,
+        offset: args.get("offset").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
+        include_recap: args
+            .get("includeRecap")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        include_open_work: args
+            .get("includeOpenWork")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+        verbose: args
+            .get("verbose")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false),
+    })
+}
+
+/// Reshape search hits for a model.
+///
+/// `SessionSearchHit` serialises in snake_case for the frontend, while every
+/// Jean MCP tool speaks camelCase. The worktree path is dropped because the
+/// worktree id is what the other tools take.
+fn search_sessions_result(response: &crate::chat::search::SessionSearchResponse) -> Value {
+    let results: Vec<Value> = response
+        .hits
+        .iter()
+        .map(|hit| {
+            let mut result = json!({
+                "sessionId": hit.session_id,
+                "sessionName": hit.session_name,
+                "projectId": hit.project_id,
+                "projectName": hit.project_name,
+                "worktreeId": hit.worktree_id,
+                "worktreeName": hit.worktree_name,
+                "updatedAt": hit.updated_at,
+                "matchCount": hit.match_count,
+            });
+            let map = result.as_object_mut().expect("hit is an object");
+            if !hit.snippet.is_empty() {
+                map.insert("snippet".to_string(), json!(hit.snippet));
+            }
+            if let Some(message_id) = &hit.message_id {
+                map.insert("messageId".to_string(), json!(message_id));
+            }
+            if hit.name_match {
+                map.insert("nameMatch".to_string(), Value::Bool(true));
+            }
+            result
+        })
+        .collect();
+
+    json!({ "results": results, "truncated": response.truncated })
 }
 
 fn require_str(args: &Value, key: &str) -> Result<String, ToolError> {
@@ -3747,5 +4193,688 @@ mod tests {
         let twice = apply_yolo_investigation_fix_directive(&once, "yolo");
         assert_eq!(once, twice);
         assert_eq!(once.matches(YOLO_INVESTIGATION_FIX_MARKER).count(), 1);
+    }
+    #[test]
+    fn tool_registry_includes_the_cross_project_session_tools() {
+        let tools = tool_registry();
+        let names: std::collections::HashSet<&str> = tools
+            .as_array()
+            .expect("tools array")
+            .iter()
+            .filter_map(|item| item.get("name").and_then(|name| name.as_str()))
+            .collect();
+
+        for expected in ["list_all_sessions", "search_sessions"] {
+            assert!(names.contains(expected), "missing MCP tool {expected}");
+        }
+
+        let search = find_tool(&tools, "search_sessions");
+        assert_eq!(search["inputSchema"]["required"], json!(["query"]));
+        assert_eq!(search["inputSchema"]["additionalProperties"], json!(false));
+        assert_eq!(search["inputSchema"]["properties"]["query"]["minLength"], 3);
+        assert_eq!(search["inputSchema"]["properties"]["limit"]["maximum"], 50);
+
+        let overview = find_tool(&tools, "list_all_sessions");
+        assert_eq!(
+            overview["inputSchema"]["additionalProperties"],
+            json!(false)
+        );
+        assert_eq!(
+            overview["inputSchema"]["properties"]["limit"]["maximum"],
+            100
+        );
+        assert_eq!(
+            overview["inputSchema"]["properties"]["sort"]["enum"],
+            json!(["recent", "stale"])
+        );
+        // The description has to steer the model away from the fan-out.
+        assert!(overview["description"]
+            .as_str()
+            .expect("description")
+            .contains("Prefer this over"));
+    }
+
+    #[test]
+    fn the_new_session_tools_are_read_only() {
+        for name in [
+            "list_all_sessions",
+            "search_sessions",
+            "read_session_messages",
+        ] {
+            assert!(
+                !RATE_LIMITED_TOOLS.contains(&name),
+                "{name} reads only and must not be rate limited"
+            );
+        }
+    }
+
+    #[test]
+    fn read_session_messages_schema_exposes_the_cheap_output_modes() {
+        let tool = find_tool(&tool_registry(), "read_session_messages");
+
+        assert_eq!(
+            tool["inputSchema"]["properties"]["role"]["enum"],
+            json!(["user", "assistant", "all"])
+        );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["excludeTools"]["type"],
+            json!("boolean")
+        );
+        assert_eq!(
+            tool["inputSchema"]["properties"]["maxCharsPerMessage"]["maximum"],
+            json!(20000)
+        );
+        // The loader returns chronological order; the old text said otherwise.
+        let description = tool["description"].as_str().expect("description");
+        assert!(!description.contains("most recent first"));
+        assert!(description.contains("chronological"));
+    }
+
+    #[test]
+    fn initialize_advertises_instructions_and_prompts() {
+        let result = initialize_result();
+
+        assert_eq!(result["capabilities"]["prompts"], json!({}));
+        let instructions = result["instructions"].as_str().expect("instructions");
+        assert!(instructions.contains("list_all_sessions"));
+        assert!(instructions.contains("search_sessions"));
+        assert!(instructions.contains("wait for a yes"));
+    }
+
+    #[test]
+    fn prompts_list_names_both_workflows_with_their_arguments() {
+        let prompts = prompts_list_result();
+        let names: Vec<&str> = prompts["prompts"]
+            .as_array()
+            .expect("prompts array")
+            .iter()
+            .filter_map(|prompt| prompt.get("name").and_then(|name| name.as_str()))
+            .collect();
+
+        assert_eq!(names, vec!["review_sessions_for_archiving", "find_session"]);
+
+        let find = &prompts["prompts"][1];
+        assert_eq!(find["arguments"][0]["name"], "topic");
+        assert_eq!(find["arguments"][0]["required"], json!(true));
+        assert_eq!(find["arguments"][1]["required"], json!(false));
+    }
+
+    fn prompt_text(params: Value) -> String {
+        prompts_get_result(&params).expect("prompt")["messages"][0]["content"]["text"]
+            .as_str()
+            .expect("text")
+            .to_string()
+    }
+
+    #[test]
+    fn archiving_prompt_defaults_the_idle_window_and_never_archives_by_itself() {
+        let text = prompt_text(json!({ "name": "review_sessions_for_archiving" }));
+
+        assert!(text.contains("idleForDays: 14"));
+        assert!(!text.contains("projectId:"));
+        assert!(text.contains("Archive nothing yet"));
+    }
+
+    #[test]
+    fn archiving_prompt_substitutes_the_project_and_the_idle_window() {
+        let text = prompt_text(json!({
+            "name": "review_sessions_for_archiving",
+            "arguments": { "projectId": "p1", "idleForDays": 30 },
+        }));
+
+        assert!(text.contains("in project p1"));
+        assert!(text.contains("idleForDays: 30"));
+        assert!(text.contains("projectId: \"p1\""));
+    }
+
+    #[test]
+    fn find_session_prompt_needs_a_topic() {
+        let text = prompt_text(json!({
+            "name": "find_session",
+            "arguments": { "topic": "login redirect" },
+        }));
+        assert!(text.contains("query: \"login redirect\""));
+
+        let error = prompts_get_result(&json!({ "name": "find_session" })).unwrap_err();
+        assert_eq!(error.code, -32602);
+        assert!(error.message.contains("topic"));
+    }
+
+    #[test]
+    fn an_unknown_prompt_is_an_invalid_params_error() {
+        let error = prompts_get_result(&json!({ "name": "nope" })).unwrap_err();
+
+        assert_eq!(error.code, -32602);
+        assert!(error.message.contains("Unknown prompt"));
+    }
+
+    #[test]
+    fn role_argument_parses_and_rejects() {
+        assert_eq!(
+            parse_message_role_arg(&json!({})).unwrap(),
+            MessageRoleFilter::All
+        );
+        assert_eq!(
+            parse_message_role_arg(&json!({ "role": "user" })).unwrap(),
+            MessageRoleFilter::User
+        );
+        assert_eq!(
+            parse_message_role_arg(&json!({ "role": "assistant" })).unwrap(),
+            MessageRoleFilter::Assistant
+        );
+        assert_eq!(
+            parse_message_role_arg(&json!({ "role": "tool" }))
+                .unwrap_err()
+                .code,
+            -32602
+        );
+    }
+
+    fn assistant_message(text: &str) -> crate::chat::types::ChatMessage {
+        crate::chat::types::ChatMessage {
+            id: "m1".to_string(),
+            role: crate::chat::types::MessageRole::Assistant,
+            content: text.to_string(),
+            timestamp: 42,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn shaped_messages_report_tool_call_counts_not_payloads() {
+        let mut message = assistant_message("Edited the router.");
+        message.tool_calls = vec![crate::chat::types::ToolCall {
+            id: "t1".to_string(),
+            name: "Edit".to_string(),
+            input: json!({ "file_path": "/secret/very/long/path.rs" }),
+            output: Some("a".repeat(50_000)),
+            parent_tool_use_id: None,
+        }];
+
+        let shaped = shape_message(&message, false, None);
+        assert_eq!(shaped["toolCalls"], json!(1));
+        assert!(!shaped.to_string().contains("path.rs"));
+
+        let without = shape_message(&message, true, None);
+        assert!(without.get("toolCalls").is_none());
+    }
+
+    #[test]
+    fn shaped_messages_prefer_text_blocks_and_drop_thinking() {
+        let mut message = assistant_message("stale content");
+        message.content_blocks = vec![
+            crate::chat::types::ContentBlock::Thinking {
+                thinking: "private reasoning".to_string(),
+            },
+            crate::chat::types::ContentBlock::Text {
+                text: "the answer".to_string(),
+            },
+        ];
+
+        let shaped = shape_message(&message, false, None);
+
+        assert_eq!(shaped["text"], "the answer");
+        assert!(!shaped.to_string().contains("private reasoning"));
+    }
+
+    #[test]
+    fn max_chars_per_message_cuts_on_a_char_boundary_and_says_so() {
+        let message = assistant_message("日本語テキストです");
+
+        let shaped = shape_message(&message, false, Some(100));
+        assert!(shaped.get("truncated").is_none());
+
+        let shaped = shape_message(&message, false, Some(3));
+        assert_eq!(shaped["text"], "日本語…");
+        assert_eq!(shaped["truncated"], json!(true));
+    }
+
+    #[test]
+    fn overview_args_default_to_a_cheap_recent_listing() {
+        let options = parse_session_overview_args(&json!({})).unwrap();
+
+        assert_eq!(options.sort, crate::chat::overview::OverviewSort::Recent);
+        assert_eq!(options.limit, 100);
+        assert_eq!(options.offset, 0);
+        assert!(!options.include_recap);
+        assert!(!options.include_open_work);
+        assert!(!options.include_archived);
+        assert!(options.statuses.is_empty());
+    }
+
+    #[test]
+    fn overview_args_accept_a_bare_status_string() {
+        let options = parse_session_overview_args(&json!({ "status": "idle" })).unwrap();
+        assert_eq!(options.statuses, vec!["idle".to_string()]);
+
+        let options = parse_session_overview_args(&json!({ "status": ["idle", "error"] })).unwrap();
+        assert_eq!(
+            options.statuses,
+            vec!["idle".to_string(), "error".to_string()]
+        );
+    }
+
+    #[test]
+    fn overview_args_reject_an_unknown_status_or_sort() {
+        let error = parse_session_overview_args(&json!({ "status": "completed" })).unwrap_err();
+        assert_eq!(error.code, -32602);
+        // "completed" is a manual status, not a run state; say what is allowed.
+        assert!(error.message.contains("idle"));
+
+        let error = parse_session_overview_args(&json!({ "sort": "oldest" })).unwrap_err();
+        assert_eq!(error.code, -32602);
+    }
+
+    #[test]
+    fn overview_args_clamp_the_limit() {
+        assert_eq!(
+            parse_session_overview_args(&json!({ "limit": 5000 }))
+                .unwrap()
+                .limit,
+            100
+        );
+        assert_eq!(
+            parse_session_overview_args(&json!({ "limit": 0 }))
+                .unwrap()
+                .limit,
+            1
+        );
+    }
+
+    #[test]
+    fn search_results_are_camel_case_and_omit_empty_fields() {
+        let response = crate::chat::search::SessionSearchResponse {
+            hits: vec![
+                crate::chat::search::SessionSearchHit {
+                    session_id: "s1".to_string(),
+                    session_name: "Fix login redirect".to_string(),
+                    project_id: "p1".to_string(),
+                    project_name: "jean".to_string(),
+                    worktree_id: "w1".to_string(),
+                    worktree_name: "fuzzy-tiger".to_string(),
+                    worktree_path: "/tmp/w1".to_string(),
+                    snippet: "…the redirect loop…".to_string(),
+                    message_id: Some("m1".to_string()),
+                    match_count: 3,
+                    updated_at: 100,
+                    name_match: false,
+                },
+                crate::chat::search::SessionSearchHit {
+                    session_id: "s2".to_string(),
+                    session_name: "redirect notes".to_string(),
+                    project_id: "p1".to_string(),
+                    project_name: "jean".to_string(),
+                    worktree_id: "w1".to_string(),
+                    worktree_name: "fuzzy-tiger".to_string(),
+                    worktree_path: "/tmp/w1".to_string(),
+                    snippet: String::new(),
+                    message_id: None,
+                    match_count: 0,
+                    updated_at: 90,
+                    name_match: true,
+                },
+            ],
+            truncated: true,
+        };
+
+        let result = search_sessions_result(&response);
+
+        assert_eq!(result["truncated"], json!(true));
+        assert_eq!(result["results"][0]["sessionId"], "s1");
+        assert_eq!(result["results"][0]["matchCount"], 3);
+        assert!(result["results"][0].get("nameMatch").is_none());
+        // The worktree path is noise; the other tools take the id.
+        assert!(result["results"][0].get("worktreePath").is_none());
+
+        assert_eq!(result["results"][1]["nameMatch"], json!(true));
+        assert!(result["results"][1].get("snippet").is_none());
+        assert!(result["results"][1].get("messageId").is_none());
+    }
+    /// A data directory with one session whose three user prompts live in
+    /// metadata and whose run logs were never written.
+    fn session_with_prompts_but_no_run_logs() -> (tempfile::TempDir, AppHandle) {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+
+        crate::chat::storage::with_sessions_mut(&app, "", "mcp-read-wt", |stored| {
+            stored.sessions.clear();
+            let mut session = crate::chat::types::Session::new(
+                "reader".to_string(),
+                0,
+                crate::chat::types::Backend::Claude,
+            );
+            session.id = "mcp-read-s1".to_string();
+            stored.sessions.push(session);
+            Ok(())
+        })
+        .unwrap();
+
+        crate::chat::storage::with_existing_metadata_mut(&app, "mcp-read-s1", |metadata| {
+            for index in 0..3 {
+                metadata.runs.push(
+                    serde_json::from_value(json!({
+                        "run_id": format!("run-{index}"),
+                        "user_message_id": format!("u{index}"),
+                        "user_message": format!("prompt {index}"),
+                        "started_at": index,
+                        "status": "completed",
+                        "assistant_message_id": format!("a{index}"),
+                    }))
+                    .unwrap(),
+                );
+            }
+        })
+        .unwrap();
+
+        (temp, app)
+    }
+
+    /// The same session, plus a run log for the last run so the assistant side
+    /// has something to parse.
+    fn session_with_one_assistant_reply() -> (tempfile::TempDir, AppHandle) {
+        let (temp, app) = session_with_prompts_but_no_run_logs();
+        let path = crate::chat::run_log::get_run_log_path(&app, "mcp-read-s1", "run-2").unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let line = json!({
+            "type": "assistant",
+            "message": { "content": [{ "type": "text", "text": "The answer." }] },
+        });
+        std::fs::write(&path, format!("{line}\n")).unwrap();
+        (temp, app)
+    }
+
+    #[test]
+    fn reading_every_role_returns_the_parsed_conversation() {
+        let (_temp, app) = session_with_one_assistant_reply();
+
+        let result =
+            read_session_messages(&app, "mcp-read-s1", 50, MessageRoleFilter::All, false, None)
+                .unwrap();
+
+        let messages = result["messages"].as_array().unwrap();
+        let roles: Vec<&str> = messages
+            .iter()
+            .map(|m| m["role"].as_str().unwrap())
+            .collect();
+        // Chronological, as the description now says.
+        assert_eq!(roles.last(), Some(&"assistant"));
+        assert_eq!(messages.last().unwrap()["text"], "The answer.");
+        assert!(roles.contains(&"user"));
+    }
+
+    #[test]
+    fn the_assistant_filter_drops_the_prompts() {
+        let (_temp, app) = session_with_one_assistant_reply();
+
+        let result = read_session_messages(
+            &app,
+            "mcp-read-s1",
+            50,
+            MessageRoleFilter::Assistant,
+            false,
+            None,
+        )
+        .unwrap();
+
+        let messages = result["messages"].as_array().unwrap();
+        assert!(messages
+            .iter()
+            .all(|message| message["role"] == "assistant"));
+        // Three runs, so three assistant turns. The two whose run log is gone
+        // come back as the same explicit note the chat window shows: an agent
+        // has to see that a turn happened and its output was lost, not
+        // silently miss the turn.
+        assert_eq!(messages.len(), 3);
+        assert!(messages[0]["text"]
+            .as_str()
+            .expect("text")
+            .contains("not captured"));
+        assert_eq!(messages[2]["text"], "The answer.");
+    }
+
+    #[test]
+    fn reading_user_prompts_never_opens_a_run_log() {
+        // The run logs do not exist on disk at all, so a path that parsed them
+        // would come back empty. The prompts live on the run entries.
+        let (_temp, app) = session_with_prompts_but_no_run_logs();
+
+        let result = read_session_messages(
+            &app,
+            "mcp-read-s1",
+            50,
+            MessageRoleFilter::User,
+            false,
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(result["worktreeId"], "mcp-read-wt");
+        assert_eq!(result["totalRuns"], 3);
+        assert_eq!(result["returned"], 3);
+        assert_eq!(result["messages"][0]["text"], "prompt 0");
+        assert_eq!(result["messages"][0]["role"], "user");
+        assert_eq!(result["messages"][2]["text"], "prompt 2");
+    }
+
+    #[test]
+    fn the_limit_counts_messages_from_the_end_of_the_session() {
+        let (_temp, app) = session_with_prompts_but_no_run_logs();
+
+        let result =
+            read_session_messages(&app, "mcp-read-s1", 2, MessageRoleFilter::User, false, None)
+                .unwrap();
+
+        assert_eq!(result["returned"], 2);
+        assert_eq!(result["messages"][0]["text"], "prompt 1");
+        assert_eq!(result["messages"][1]["text"], "prompt 2");
+    }
+
+    #[test]
+    fn user_prompts_honour_max_chars_per_message() {
+        let (_temp, app) = session_with_prompts_but_no_run_logs();
+
+        let result = read_session_messages(
+            &app,
+            "mcp-read-s1",
+            1,
+            MessageRoleFilter::User,
+            false,
+            Some(100),
+        )
+        .unwrap();
+        assert!(result["messages"][0].get("truncated").is_none());
+
+        let result = read_session_messages(
+            &app,
+            "mcp-read-s1",
+            1,
+            MessageRoleFilter::User,
+            false,
+            Some(3),
+        )
+        .unwrap();
+        assert_eq!(result["messages"][0]["text"], "pro…");
+        assert_eq!(result["messages"][0]["truncated"], json!(true));
+    }
+
+    #[test]
+    fn an_unknown_session_id_is_an_invalid_params_error() {
+        let (_temp, app) = session_with_prompts_but_no_run_logs();
+
+        let error = read_session_messages(&app, "nope", 50, MessageRoleFilter::All, false, None)
+            .unwrap_err();
+
+        assert_eq!(error.code, -32602);
+        assert!(error.message.contains("Unknown sessionId"));
+    }
+    #[test]
+    fn the_protocol_router_answers_prompts_without_touching_the_app() {
+        // The stdio child proxies tools/call to the app over a socket, but the
+        // prompts are static, so it must answer them by itself.
+        let never_called =
+            |_: ToolCallRequest| -> Result<Value, String> { panic!("no tool call expected") };
+
+        let listed = handle_protocol_message(
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "prompts/list" }),
+            never_called,
+        )
+        .expect("a response");
+        assert_eq!(
+            listed["result"]["prompts"][0]["name"],
+            "review_sessions_for_archiving"
+        );
+
+        let fetched = handle_protocol_message(
+            json!({
+                "jsonrpc": "2.0", "id": 2, "method": "prompts/get",
+                "params": { "name": "find_session", "arguments": { "topic": "redirect" } },
+            }),
+            never_called,
+        )
+        .expect("a response");
+        assert!(fetched["result"]["messages"][0]["content"]["text"]
+            .as_str()
+            .expect("text")
+            .contains("redirect"));
+
+        let failed = handle_protocol_message(
+            json!({
+                "jsonrpc": "2.0", "id": 3, "method": "prompts/get",
+                "params": { "name": "nope" },
+            }),
+            never_called,
+        )
+        .expect("a response");
+        assert_eq!(failed["error"]["code"], -32602);
+    }
+
+    /// A data directory with one project, one worktree and one session named
+    /// "redirect notes".
+    fn tool_fixture() -> (tempfile::TempDir, AppHandle) {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let worktree_path = temp.path().join("tool-wt");
+        std::fs::create_dir_all(&worktree_path).unwrap();
+
+        let data: crate::projects::types::ProjectsData = serde_json::from_value(json!({
+            "projects": [{
+                "id": "tool-p1",
+                "name": "jean",
+                "path": temp.path().join("repo"),
+                "default_branch": "main",
+                "added_at": 0,
+                "order": 0,
+            }],
+            "worktrees": [{
+                "id": "tool-wt",
+                "project_id": "tool-p1",
+                "name": "fuzzy-tiger",
+                "path": worktree_path,
+                "branch": "feature",
+                "created_at": 0,
+            }],
+        }))
+        .unwrap();
+        crate::projects::storage::save_projects_data(&app, &data).unwrap();
+
+        crate::chat::storage::with_sessions_mut(&app, "", "tool-wt", |stored| {
+            stored.sessions.clear();
+            let mut session = crate::chat::types::Session::new(
+                "redirect notes".to_string(),
+                0,
+                crate::chat::types::Backend::Claude,
+            );
+            session.id = "tool-s1".to_string();
+            stored.sessions.push(session);
+            Ok(())
+        })
+        .unwrap();
+
+        (temp, app)
+    }
+
+    fn call(app: &AppHandle, name: &str, args: Value) -> Result<Value, ToolError> {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(run_tool(app, name, args, "anon"))
+    }
+
+    #[test]
+    fn list_all_sessions_returns_one_camel_case_page() {
+        let (_temp, app) = tool_fixture();
+
+        let result = call(&app, "list_all_sessions", json!({})).unwrap();
+
+        assert_eq!(result["total"], 1);
+        assert_eq!(result["truncated"], json!(false));
+        assert!(result.get("nextOffset").is_none());
+        let session = &result["sessions"][0];
+        assert_eq!(session["id"], "tool-s1");
+        assert_eq!(session["projectName"], "jean");
+        assert_eq!(session["worktreeName"], "fuzzy-tiger");
+        assert_eq!(session["status"], "idle");
+        // Nothing opted in, so nothing expensive was read.
+        assert!(session.get("lastRecap").is_none());
+        assert!(session.get("openWork").is_none());
+    }
+
+    #[test]
+    fn search_sessions_matches_the_session_name() {
+        let (_temp, app) = tool_fixture();
+
+        let result = call(&app, "search_sessions", json!({ "query": "redirect" })).unwrap();
+
+        assert_eq!(result["truncated"], json!(false));
+        assert_eq!(result["results"][0]["sessionId"], "tool-s1");
+        assert_eq!(result["results"][0]["nameMatch"], json!(true));
+    }
+
+    #[test]
+    fn search_sessions_refuses_a_query_that_is_too_short() {
+        let (_temp, app) = tool_fixture();
+
+        // Silently returning nothing would read as "there is no such session".
+        let error = call(&app, "search_sessions", json!({ "query": "re" })).unwrap_err();
+
+        assert_eq!(error.code, -32602);
+        assert!(error.message.contains("at least 3"));
+    }
+
+    #[test]
+    fn call_tool_wraps_the_new_tools_as_mcp_text_content() {
+        // run_tool returns bare JSON; call_tool is what an MCP client sees. It
+        // also gates on the preference and on the rate limiter, so the whole
+        // in-process chain is exercised here.
+        let (_temp, app) = tool_fixture();
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        for (name, args) in [
+            ("list_all_sessions", json!({})),
+            ("search_sessions", json!({ "query": "redirect" })),
+        ] {
+            let wrapped = runtime
+                .block_on(call_tool(&app, name, args, "anon", 0))
+                .unwrap_or_else(|e| panic!("{name}: {}", e.message));
+
+            assert_eq!(wrapped["isError"], json!(false));
+            assert_eq!(wrapped["content"][0]["type"], "text");
+            let text = wrapped["content"][0]["text"].as_str().expect("text");
+            let parsed: Value = serde_json::from_str(text).expect("valid JSON payload");
+            assert!(parsed.is_object(), "{name} returned {text}");
+        }
+    }
+
+    #[test]
+    fn list_all_sessions_rejects_a_manual_status_in_the_run_state_filter() {
+        let (_temp, app) = tool_fixture();
+
+        let error = call(&app, "list_all_sessions", json!({ "status": "completed" })).unwrap_err();
+
+        assert_eq!(error.code, -32602);
     }
 }

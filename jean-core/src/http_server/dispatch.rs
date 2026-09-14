@@ -1129,9 +1129,15 @@ pub async fn dispatch_command(
         }
         "search_session_messages" => {
             let query: String = from_field(&args, "query")?;
-            let limit: Option<usize> = from_field_opt(&args, "limit")?;
+            let options = crate::chat::search::SessionSearchOptions {
+                project_id: field_opt(&args, "projectId", "project_id")?,
+                include_archived: field_opt(&args, "includeArchived", "include_archived")?
+                    .unwrap_or(false),
+                match_names: field_opt(&args, "matchNames", "match_names")?.unwrap_or(false),
+                limit: from_field_opt(&args, "limit")?,
+            };
             let result =
-                crate::chat::search::search_session_messages(app.clone(), query, limit).await?;
+                crate::chat::search::search_session_messages(app.clone(), query, options).await?;
             to_value(result)
         }
         "start_background_investigation" => {

@@ -275,6 +275,68 @@ async fn handle_socket_request(app: &AppHandle, expected_token: &str, line: &str
 mod tests {
     use std::path::Path;
 
+    /// Drive one tool call over a real Unix socket, the way the stdio child
+    /// talks to the running app. Covers the transport the MCP tools actually
+    /// travel over, including the token check.
+    #[cfg(unix)]
+    #[test]
+    fn a_tool_call_round_trips_over_the_local_socket() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        let temp = tempfile::tempdir().unwrap();
+        let app = tauri::AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let socket = temp.path().join("test-mcp.sock");
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let handle = super::start_socket_server(app.clone(), socket.clone(), "secret".into())
+                .await
+                .expect("socket server");
+
+            let ask = |token: &'static str| {
+                let socket = socket.clone();
+                async move {
+                    let stream = tokio::net::UnixStream::connect(&socket).await.unwrap();
+                    let (read_half, mut write_half) = stream.into_split();
+                    let request = serde_json::json!({
+                        "token": token,
+                        "source": "anon",
+                        "depth": 0,
+                        "name": "list_all_sessions",
+                        "arguments": {},
+                    });
+                    write_half
+                        .write_all(format!("{request}\n").as_bytes())
+                        .await
+                        .unwrap();
+                    write_half.shutdown().await.unwrap();
+
+                    let mut line = String::new();
+                    BufReader::new(read_half)
+                        .read_line(&mut line)
+                        .await
+                        .unwrap();
+                    serde_json::from_str::<serde_json::Value>(&line).unwrap()
+                }
+            };
+
+            let ok = ask("secret").await;
+            let text = ok["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or_else(|| panic!("no content in {ok}"));
+            let payload: serde_json::Value = serde_json::from_str(text).unwrap();
+            assert!(payload["sessions"].is_array(), "{payload}");
+
+            assert_eq!(ask("wrong").await["error"], "unauthorized");
+
+            let _ = handle.shutdown_tx.send(());
+        });
+    }
+
     #[test]
     fn windows_pipe_path_is_stable_and_named_pipe_safe() {
         let one =

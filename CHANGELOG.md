@@ -9,6 +9,40 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
+- **Jean MCP: two questions about your sessions, one call each.** An agent
+  could not answer "which sessions can I archive?" or "do we have a session
+  about X?" without walking `list_projects` → `list_worktrees` →
+  `list_sessions` → `read_session_messages`. Ten projects with five worktrees
+  is more than 60 calls before a single message is read, and the listing left
+  out the manual status, labels, pins, stars and the linked issue or PR — the
+  very signals the answer depends on.
+  ([#24](https://github.com/azeitler/jean/issues/24))
+  - **`list_all_sessions`** returns every session of every project as one flat
+    page: effective status, days idle, the status you set by hand, the session
+    label and the worktree labels, pinned and starred, the linked issue and the
+    pull request with its cached state. Filter by project, by days idle or by
+    status; sort `stale` to put the best archive candidates first; page with
+    `limit` and `offset`. Absent values are left out rather than sent as
+    `null`.
+  - **`search_sessions`** searches message text **and** session names across
+    every project, so a session found by its title alone still appears. Narrow
+    it to one project, and include archived sessions when you want them.
+  - **Two opt-in extras, priced honestly.** `includeRecap` returns the last
+    `## Recap` block each session wrote — a summary by the agent that did the
+    work, at no inference cost. `includeOpenWork` returns uncommitted file and
+    unpushed commit counts per worktree. Both run only over the page that is
+    returned, and neither ever reaches the network.
+  - **`read_session_messages` can be cheap now.** `role: "user"` returns only
+    your prompts and opens no run log at all; `excludeTools` drops tool
+    payloads and reports a count instead; `maxCharsPerMessage` cuts each
+    message. Messages come back in the order they were written, and `limit`
+    now means messages rather than turns.
+  - **Guidance for every backend, not only Claude.** The server sends MCP
+    `instructions` when a client connects, and serves two prompts,
+    `review_sessions_for_archiving` and `find_session`. Both say to show you
+    the proposal and wait, and to archive nothing on their own. Nothing is
+    written into your `~/.claude`.
+
 - **Project page: a Home-style overview beside the worktrees.** The project
   page now answers, for one project, the questions the Home view answers for
   everything: what you did last, what you can act on, and what is waiting.

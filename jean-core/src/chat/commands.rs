@@ -731,6 +731,24 @@ pub async fn list_sessions_summary(
     }))
 }
 
+/// The effective status of a session, as every Jean MCP tool reports it.
+///
+/// `get_session_status` and `chat::overview` both call this, so the two can
+/// never disagree about what "idle" means. A live run always wins: a manual
+/// status (`status_override`) is reported separately and only describes what
+/// the user decided, not what the session is doing.
+pub fn run_status_label(actively_managed: bool, latest: Option<&RunStatus>) -> &'static str {
+    if actively_managed {
+        return "running";
+    }
+    match latest {
+        Some(RunStatus::Running) | Some(RunStatus::Resumable) => "resumable",
+        Some(RunStatus::Cancelled) => "cancelled",
+        Some(RunStatus::Crashed) => "error",
+        Some(RunStatus::Completed) | None => "idle",
+    }
+}
+
 /// Get the latest run/session status for polling background work.
 pub async fn get_session_status(
     app: AppHandle,
@@ -740,16 +758,7 @@ pub async fn get_session_status(
         .ok_or_else(|| format!("Unknown sessionId: {session_id}"))?;
     let latest_run = metadata.runs.last();
     let actively_managed = crate::chat::registry::is_session_actively_managed(&session_id);
-    let status = if actively_managed {
-        "running"
-    } else {
-        match latest_run.map(|run| &run.status) {
-            Some(RunStatus::Running) | Some(RunStatus::Resumable) => "resumable",
-            Some(RunStatus::Cancelled) => "cancelled",
-            Some(RunStatus::Crashed) => "error",
-            Some(RunStatus::Completed) | None => "idle",
-        }
-    };
+    let status = run_status_label(actively_managed, latest_run.map(|run| &run.status));
 
     Ok(serde_json::json!({
         "sessionId": session_id,
