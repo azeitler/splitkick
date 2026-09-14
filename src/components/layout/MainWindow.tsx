@@ -9,6 +9,7 @@ import {
   type CSSProperties,
 } from 'react'
 import { cn } from '@/lib/utils'
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { TitleBar } from '@/components/titlebar/TitleBar'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsTouchDevice } from '@/hooks/use-touch-device'
@@ -208,6 +209,7 @@ import {
   useWorktreeEvents,
 } from '@/services/projects'
 import { isNativeApp } from '@/lib/environment'
+import { useActiveRemoteConnection } from '@/lib/remote-connections'
 import { isLinux, isWindows } from '@/lib/platform'
 
 // Left sidebar resize constraints (pixels)
@@ -318,7 +320,7 @@ export function MainWindow() {
   // Compute window title based on selected project/worktree
   // On mobile, show only the project name to fit the compact title bar.
   const windowTitle = useMemo(() => {
-    if (!project || !worktree) return 'Jean'
+    if (!project || !worktree) return PRODUCT_NAME
     if (isMobile) return project.name
     const branchSuffix =
       worktree.branch !== worktree.name ? ` (${worktree.branch})` : ''

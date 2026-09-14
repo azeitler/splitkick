@@ -3,6 +3,12 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import { execSync } from 'child_process'
+import {
+  PRODUCT_NAME,
+  resolveWebIcons,
+  rewriteIndexHtml,
+  writeWebIcons,
+} from './scripts/web-branding.mjs'
 import { mkdirSync, readFileSync, writeFileSync } from 'fs'
 
 const host = process.env.TAURI_DEV_HOST
@@ -54,11 +60,38 @@ function jeanWebBuildInfoPlugin(): Plugin {
   }
 }
 
+function jeanWebBrandingPlugin(): Plugin {
+  let icons: ReturnType<typeof resolveWebIcons> = []
+  return {
+    name: 'jean-web-branding',
+    // Dev serves the plain files straight out of public/, so there is no
+    // hashed name to resolve there.
+    apply: 'build',
+    buildStart() {
+      icons = resolveWebIcons()
+    },
+    transformIndexHtml(html) {
+      return rewriteIndexHtml(html, icons)
+    },
+    writeBundle(options) {
+      writeWebIcons(path.resolve(String(options.dir ?? 'dist')), icons)
+    },
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(async () => ({
-  plugins: [react(), tailwindcss(), jeanWebBuildInfoPlugin()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    jeanWebBuildInfoPlugin(),
+    jeanWebBrandingPlugin(),
+  ],
   define: {
     __JEAN_WEB_BUILD_INFO__: JSON.stringify(webBuildInfo),
+    // The frontend cannot read the Tauri productName, and it also runs in a
+    // browser through Web Access, so the flavor name is baked in at build time.
+    __JEAN_PRODUCT_NAME__: JSON.stringify(PRODUCT_NAME),
   },
   resolve: {
     alias: {

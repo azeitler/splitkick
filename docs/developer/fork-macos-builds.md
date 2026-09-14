@@ -15,12 +15,16 @@ the flavor lives in a separate file that upstream never touches.
 | ------------------------------------ | --------------------------------------------------------------------- |
 | `src-tauri/tauri.fork.conf.json`     | The overlay: name, window title, icons, updater and signing overrides |
 | `src-tauri/icons-fork/`              | The JeanZ icon set                                                    |
-| `scripts/generate-fork-icon.mjs`     | Regenerates that icon set                                             |
+| `src-tauri/icons-fork/web/`          | The JeanZ favicon and apple-touch-icon                                |
+| `scripts/generate-fork-icon.mjs`     | Regenerates both icon sets                                            |
+| `scripts/web-branding.mjs`           | Product name and hashed web icons for the flavor being built          |
 | `scripts/build-fork-macos.sh`        | Local build, identical to CI                                          |
 | `scripts/jeanz-version.mjs`          | Resolves the next release version                                     |
 | `src/lib/release-url.ts`             | Points the title bar version badge at the right repository            |
+| `src/lib/build-info.ts`              | Exposes `PRODUCT_NAME` to the frontend                                |
 | `.github/workflows/preflight.yml`    | Build, sign, notarize and publish                                     |
 | `src/test/tauri-fork-config.test.ts` | Guards the overlay against dropped fields                             |
+| `scripts/web-branding.test.mjs`      | Guards the artwork, the hashed filenames and the product name         |
 
 Two rules apply to the overlay:
 
@@ -28,6 +32,47 @@ Two rules apply to the overlay:
   block for that reason. `tauri.windows.conf.json` does the same.
 - **Do not rename the overlay to `tauri.macos.conf.json`.** Tauri applies that
   filename automatically to every macOS build, including the official one.
+
+## The frontend branding is not in the overlay
+
+The overlay names the window and the Dock icon. It cannot reach the favicon, the
+apple-touch-icon, the browser tab title or any product name in the React code,
+because those are frontend assets that Vite produces before Tauri runs. Most of
+them only show up in Web Access - a browser tab, or the page added to a phone
+home screen - since the macOS webview has no tab strip.
+
+`JEAN_FLAVOR=jeanz` covers them instead. Both `scripts/build-fork-macos.sh` and
+the **Build JeanZ bundle** step export it, and Tauri passes it to Vite through
+`beforeBuildCommand`. `scripts/web-branding.mjs` then:
+
+- reads the icons from `src-tauri/icons-fork/web/` rather than `public/`
+- rewrites `<title>` and `apple-mobile-web-app-title` in `index.html`
+- resolves `PRODUCT_NAME`, which `vite.config.ts` bakes in as
+  `__JEAN_PRODUCT_NAME__` and `src/lib/build-info.ts` re-exports
+
+Use `PRODUCT_NAME` from `src/lib/build-info.ts` in user-visible text instead of
+writing "Jean". It is a build-time constant, so it works in the native app and
+in a browser alike - the browser loads the same bundle the app serves. The
+rewrite of `index.html` throws when an expected anchor is gone, so rewording that
+file fails the build instead of quietly shipping the upstream name.
+
+One thing is deliberately left alone: the version row in Preferences → General
+reads `CLIENT_BUILD_INFO.appVersion`, which comes from `package.json` and never
+carries the `-z.N` suffix. Naming it "JeanZ" would put the fork name next to the
+upstream version number. Fix the version source first.
+
+**The emitted filename carries a content hash, and it has to stay that way.**
+The HTTP server sends every static asset except `index.html` and
+`jean-build.json` with `public, max-age=31536000, immutable`
+(`try_static_filesystem_response` in `jean-core/src/http_server/server.rs`). A
+browser that once loaded `/favicon.png` will not ask for it again for a year, so
+new bytes at that URL would never arrive. `index.html` is sent `no-store`, so
+rewriting its `href` to `/favicon-<hash>.png` reaches every existing instance on
+its next load. Putting the icons back on a fixed filename would break the
+upstream flavor in the same way.
+
+`bun run dev` is unaffected: the plugin is `apply: 'build'`, so the dev server
+keeps serving plain `/favicon.png` out of `public/`.
 
 ## Which workflows run
 

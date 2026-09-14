@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react'
 import { listen, listenLocal, invoke } from '@/lib/transport'
 import { isNativeApp, hasBackend } from '@/lib/environment'
 import { notify } from '@/lib/notifications'
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -1041,9 +1042,8 @@ export function useMainWindowEventListeners() {
     const setupMenuListeners = async () => {
       logger.debug('Setting up menu event listeners')
       const unlisteners = await Promise.all([
-        listen<RunEnvironmentStartedEvent>(
-          'run-environment:started',
-          event => handleRunEnvironmentStarted(event.payload)
+        listen<RunEnvironmentStartedEvent>('run-environment:started', event =>
+          handleRunEnvironmentStarted(event.payload)
         ),
         listen<{ sessionId: string }>('terminal:working', event => {
           const sessionId = event.payload?.sessionId
@@ -1074,8 +1074,8 @@ export function useMainWindowEventListeners() {
           // Show simple about dialog with dynamic version
           const appVersion = await getVersion()
           await message(
-            `Jean\n\nVersion: ${appVersion}\n\nBuilt with Tauri v2 + React + TypeScript`,
-            { title: 'About Jean', kind: 'info' }
+            `${PRODUCT_NAME}\n\nVersion: ${appVersion}\n\nBuilt with Tauri v2 + React + TypeScript`,
+            { title: `About ${PRODUCT_NAME}`, kind: 'info' }
           )
         }),
 

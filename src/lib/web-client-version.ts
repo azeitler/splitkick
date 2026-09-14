@@ -1,5 +1,9 @@
 import { toast } from 'sonner'
-import { CLIENT_BUILD_INFO, CLIENT_WEB_BUILD_ID } from '@/lib/build-info'
+import {
+  CLIENT_BUILD_INFO,
+  CLIENT_WEB_BUILD_ID,
+  PRODUCT_NAME,
+} from '@/lib/build-info'
 import { isNativeApp } from '@/lib/environment'
 import { logger } from '@/lib/logger'
 
@@ -30,10 +34,10 @@ export function checkWebClientVersion(serverInfo: ServerBuildInfo): boolean {
     serverVersion: serverInfo.appVersion,
   })
 
-  toast.warning('Jean was updated', {
+  toast.warning(`${PRODUCT_NAME} was updated`, {
     id: 'web-client-stale',
     description: serverInfo.appVersion
-      ? `Reload Web Access to use Jean ${serverInfo.appVersion} and the latest features.`
+      ? `Reload Web Access to use ${PRODUCT_NAME} ${serverInfo.appVersion} and the latest features.`
       : 'Reload Web Access to use the latest features.',
     duration: Infinity,
     closeButton: false,

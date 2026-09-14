@@ -126,6 +126,9 @@ jobs:
       - name: Release notes tests
         run: bun run test:changelog-notes
 
+      - name: Web branding tests
+        run: bun run test:web-branding
+
       - name: Rust tests
         run: bun run rust:test
 
@@ -139,6 +142,10 @@ jobs:
       - name: Build JeanZ bundle
         if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
         env:
+          # Picked up by Vite through beforeBuildCommand: swaps in the amber
+          # favicon and apple-touch-icon from src-tauri/icons-fork/web/, and
+          # names the product JeanZ in index.html and the frontend.
+          JEAN_FLAVOR: jeanz
           CERT: ${{ secrets.APPLE_CERTIFICATE }}
           CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}

@@ -19,6 +19,7 @@ vi.mock('@/lib/remote-connections', async importOriginal => ({
 vi.mock('@/lib/build-info', () => ({
   CLIENT_BUILD_INFO: { appVersion: 'test' },
   CLIENT_WEB_BUILD_ID: 'test',
+  PRODUCT_NAME: 'Jean',
 }))
 
 vi.mock('@/lib/environment', async importOriginal => ({

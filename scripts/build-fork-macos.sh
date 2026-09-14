@@ -7,6 +7,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# Reaches Vite through beforeBuildCommand, which picks the amber favicon and
+# apple-touch-icon out of src-tauri/icons-fork/web/ and names the product JeanZ
+# in index.html and the frontend.
+export JEAN_FLAVOR=jeanz
+
 exec bun run tauri build --ci \
   --target aarch64-apple-darwin \
   --bundles app,dmg \

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * Generates the JeanZ icon set in src-tauri/icons-fork/.
+ * Generates the JeanZ icon set in src-tauri/icons-fork/, plus the web icons
+ * (favicon, apple-touch-icon) in src-tauri/icons-fork/web/.
  *
  * Source of truth is src-tauri/icons-fork/app-icon.png. When that file is
  * missing (or --force is passed) it is derived from the upstream icon by
@@ -19,6 +20,13 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const forkDir = resolve(root, 'src-tauri/icons-fork')
 const appIcon = resolve(forkDir, 'app-icon.png')
 const upstreamIcon = resolve(root, 'src-tauri/icons/icon.png')
+const webDir = resolve(forkDir, 'web')
+
+// The browser tab and the phone home screen use these, not the Tauri icon set.
+// They are rotated from public/ rather than cut down from app-icon.png, because
+// the favicon is a bare transparent glyph while the app icon sits on a rounded
+// square - the two artworks are not interchangeable.
+const WEB_ICONS = ['favicon.png', 'apple-touch-icon.png']
 
 // -modulate brightness,saturation,hue — hue is a percentage where 100 is no
 // change and each 1% is 1.8 degrees. 175 rotates purple to amber.
@@ -57,6 +65,22 @@ run('bunx', ['tauri', 'icon', appIcon, '-o', forkDir])
 // repository does not carry hundreds of unused files.
 for (const mobileDir of ['android', 'ios']) {
   rmSync(resolve(forkDir, mobileDir), { recursive: true, force: true })
+}
+
+// `tauri icon` writes into forkDir itself, so the web icons live in a
+// subdirectory it never touches.
+mkdirSync(webDir, { recursive: true })
+// -strip drops the timestamp chunks ImageMagick writes by default. Without it
+// every regeneration produces different bytes, which would churn the content
+// hash in the filename even when the artwork did not change.
+for (const icon of WEB_ICONS) {
+  run('magick', [
+    resolve(root, 'public', icon),
+    '-modulate',
+    `100,110,${HUE}`,
+    '-strip',
+    resolve(webDir, icon),
+  ])
 }
 
 console.log('\nFork icon set written to src-tauri/icons-fork/')

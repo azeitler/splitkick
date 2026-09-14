@@ -1,6 +1,7 @@
 import type React from 'react'
 import { useState, useEffect, useCallback } from 'react'
 import { cn } from '@/lib/utils'
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { isClientLinux, isClientMacOS, openExternal } from '@/lib/platform'
 import { Button } from '@/components/ui/button'
 import {
@@ -56,7 +57,7 @@ interface TitleBarProps {
 
 export function TitleBar({
   className,
-  title = 'Jean',
+  title = PRODUCT_NAME,
   hideTitle = false,
 }: TitleBarProps) {
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)

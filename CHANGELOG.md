@@ -44,6 +44,28 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   close control in the session header. Escape still cancels a session rename,
   and still closes the dialogs, menus and terminal inside a session.
 
+### Fixed
+
+- **JeanZ shows its own icon and its own name in the browser tab.** The flavor
+  overlay renames the window and swaps the Dock icon, but it cannot reach the
+  frontend: Vite builds `index.html` and copies `public/` before Tauri runs. A
+  JeanZ app therefore served Jean's purple favicon and the title "Jean" over Web
+  Access. The macOS webview has no tab strip, so this only ever showed in a
+  browser or on a phone home screen.
+  - The favicon, the apple-touch-icon, the browser tab title and the home-screen
+    name now follow the flavor.
+  - **The icons ship under a content-hashed filename, and stable Jean gets this
+    too.** Every static asset except `index.html` is served with a one-year
+    `immutable` cache, so new bytes at `/favicon.png` would never have reached a
+    browser that already loaded it. `index.html` is served `no-store`, so the new
+    name arrives on the next load. Any future icon change now reaches open tabs
+    by itself.
+  - The About dialog, the title bar and the "was updated" notice read the product
+    name instead of spelling out "Jean".
+  - The version row in Settings → General still says "Jean". It shows the version
+    from `package.json`, which never carries the `-z.<n>` suffix, so naming it
+    JeanZ would put the fork name beside the upstream version.
+
 ## [0.1.73-z.7] - 2026-09-11
 
 Built on Jean 0.1.73.

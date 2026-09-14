@@ -56,7 +56,8 @@
     "release:assert-version": "node scripts/assert-release-version.js",
     "test:server-ci": "node --test scripts/server-ci-assets.test.mjs",
     "test:jeanz-version": "node --test scripts/jeanz-version.test.mjs",
-    "test:changelog-notes": "node --test scripts/changelog-notes.test.mjs"
+    "test:changelog-notes": "node --test scripts/changelog-notes.test.mjs",
+    "test:web-branding": "node --test scripts/web-branding.test.mjs"
   },
   "dependencies": {
     "@atlaskit/pragmatic-drag-and-drop": "^1.8.1",
