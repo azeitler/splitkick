@@ -64,12 +64,15 @@ function summarizeEntry(lines) {
 
   const lead = /^\*\*(.+?)\*\*/.exec(paragraph)
   let summary
-  if (lead && /[.!?]$/.test(lead[1])) {
+  // A closing quote or bracket may follow the mark: **"Set Status" is "Status."**
+  if (lead && /[.!?]["'”’)\]]*$/.test(lead[1])) {
     summary = lead[0]
   } else {
     const start = lead ? lead[0].length : 0
-    const end = paragraph.slice(start).search(/[.!?](\s|$)/)
-    summary = end === -1 ? paragraph : paragraph.slice(0, start + end + 1)
+    const end = /[.!?]["'”’)\]]*(?=\s|$)/.exec(paragraph.slice(start))
+    summary = end
+      ? paragraph.slice(0, start + end.index + end[0].length)
+      : paragraph
   }
 
   const links = [...new Set(lines.join(' ').match(ISSUE_LINK) ?? [])].filter(

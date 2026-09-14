@@ -155,3 +155,16 @@ test('every entry of the real release sections becomes one summary line', () => 
     assert.equal(lines.length, entries.length, version)
   }
 })
+
+test('summarize ends a headline at a mark followed by a closing quote', () => {
+  assert.equal(
+    summarize(
+      '### Changed\n\n- **"Set Status" is now "Status."** The verb added\n  nothing.\n'
+    ),
+    '### Changed\n\n- **"Set Status" is now "Status."**'
+  )
+  assert.equal(
+    summarize('### Fixed\n\n- The row says "done." It did not.\n'),
+    '### Fixed\n\n- The row says "done."'
+  )
+})
