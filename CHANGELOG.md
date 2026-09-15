@@ -23,6 +23,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A URL in backticks is a link now.** An agent that wrote a dev-server
+  address as code — `` `http://localhost:5174/#/demo` `` — left you with text
+  to copy by hand, while the same address in a sentence was a link. Inline
+  code that holds exactly one web address is now a link and opens in the
+  embedded browser, like a file path in backticks already did. Code with
+  anything else in it, and an address of another kind (`postgres://`), stay
+  code.
+
 - **A file the browser pane cannot find now says so.** The pane showed a
   spinner that never stopped. The web view fails a missing file in a callback
   Jean never received, so nothing ever ended the load. Jean now checks the file

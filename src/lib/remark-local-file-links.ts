@@ -6,6 +6,11 @@
  * stay plain text. This plugin splits them out of text nodes into `link`
  * nodes, which the markdown link renderer then opens in the embedded browser.
  *
+ * It also links a web URL inside inline code. GFM never autolinks inside a
+ * code span, so `` `http://localhost:5174/#/demo` `` — the form agents use
+ * for a dev-server address — stayed plain text while the same URL in prose
+ * became a link.
+ *
  * Only paths the browser can show are matched (`isBrowsableFile`): HTML
  * pages, images, PDFs, movies and plain text. Code blocks, existing links and
  * raw HTML are left alone.
@@ -65,19 +70,24 @@ const SKIP = new Set([
 ])
 
 /**
- * Whether inline code holds exactly one local file path.
+ * Whether inline code holds exactly one link: a local file path, or a web
+ * URL.
  *
  * Looser than the prose pattern in one way only: the backticks delimit the
- * path, so a `#` or a `?` inside the name is safe. Whitespace still is not,
- * because a shell command (`open out/report.html`) reads the same as a name
- * with a space. A URL of any other scheme is rejected as well.
+ * reference, so a `#` or a `?` inside a file name is safe. Whitespace still
+ * is not, because a shell command (`open out/report.html`) reads the same as
+ * a name with a space.
+ *
+ * A web URL needs no extension test — every http(s) address opens in the
+ * pane. Other schemes (`ssh://`, `postgres://`) are left as code.
  */
-function isLocalFilePath(text: string): boolean {
+function inlineCodeLinkTarget(text: string): string | null {
   const value = text.trim()
-  if (!value || /\s/.test(value)) return false
-  // `https://x/y.html` is a web link; the markdown renderer handles it.
-  if (/^(?!file:)[a-z][a-z\d+.-]*:\/\//i.test(value)) return false
-  return isBrowsableFile(splitFileRefSuffix(value)[0])
+  if (!value || /\s/.test(value)) return null
+  if (/^https?:\/\//i.test(value)) return value
+  // Any other scheme except file:// is not a link Jean can open.
+  if (/^(?!file:)[a-z][a-z\d+.-]*:\/\//i.test(value)) return null
+  return isBrowsableFile(splitFileRefSuffix(value)[0]) ? value : null
 }
 
 function linkTo(url: string, child: MdastNode): MdastNode {
@@ -115,14 +125,13 @@ function visit(node: MdastNode): void {
         changed = true
         continue
       }
-    } else if (
-      child.type === 'inlineCode' &&
-      value !== null &&
-      isLocalFilePath(value)
-    ) {
-      next.push(linkTo(value.trim(), child))
-      changed = true
-      continue
+    } else if (child.type === 'inlineCode' && value !== null) {
+      const url = inlineCodeLinkTarget(value)
+      if (url) {
+        next.push(linkTo(url, child))
+        changed = true
+        continue
+      }
     } else {
       visit(child)
     }

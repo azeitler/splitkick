@@ -88,6 +88,17 @@ describe('Markdown links', () => {
     expect(screen.queryByRole('link', { name: 'src/app.ts' })).toBeNull()
   })
 
+  it('links a dev-server URL in backticks, which GFM leaves as code', () => {
+    const url = 'http://localhost:5174/#/demo/sidebarWidgets'
+    render(<Markdown>{`Open \`${url}\` in the browser`}</Markdown>)
+
+    const link = screen.getByRole('link', { name: url })
+    expect(link.querySelector('code')).not.toBeNull()
+    fireEvent.click(link)
+
+    expect(openUrlInEmbeddedBrowser).toHaveBeenCalledWith(url)
+  })
+
   it('keeps file:// link targets instead of blanking them', () => {
     render(<Markdown>{'[report](file:///tmp/report.html)'}</Markdown>)
 

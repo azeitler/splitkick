@@ -128,6 +128,23 @@ describe('remarkLocalFileLinks', () => {
     })
   })
 
+  it('wraps inline code that is exactly one web URL', () => {
+    const nodes = run(
+      paragraph(
+        { type: 'inlineCode', value: 'http://localhost:5174/#/demo/widgets' },
+        { type: 'text', value: ' and ' },
+        { type: 'inlineCode', value: 'curl http://localhost:5174/' },
+        { type: 'text', value: ' and ' },
+        { type: 'inlineCode', value: 'postgres://user@db/jean' }
+      )
+    )
+
+    expect(linkUrls(nodes)).toEqual(['http://localhost:5174/#/demo/widgets'])
+    expect(nodes[0]?.children).toEqual([
+      { type: 'inlineCode', value: 'http://localhost:5174/#/demo/widgets' },
+    ])
+  })
+
   it('leaves existing links, code blocks and raw HTML alone', () => {
     const link: MdastNode = {
       type: 'link',
