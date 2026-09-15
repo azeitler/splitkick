@@ -19,6 +19,21 @@ fn spawn(command: &str, args: &[String]) -> Result<(), String> {
         .map_err(|error| format!("Failed to launch {command}: {error}"))
 }
 
+#[cfg(any(target_os = "macos", test))]
+fn macos_terminal_ssh_args(application: &str, ssh_args: Vec<String>) -> Vec<String> {
+    let mut args = vec![
+        "-na".to_string(),
+        application.to_string(),
+        "--args".to_string(),
+    ];
+    if application == "Ghostty" {
+        args.push("-e".to_string());
+    }
+    args.push("ssh".to_string());
+    args.extend(ssh_args);
+    args
+}
+
 fn open_url(url: String) -> Result<(), String> {
     // Shared helper applies CREATE_NO_WINDOW on Windows so the cmd.exe
     // intermediary for `start` never flashes a console (issue #588).
@@ -269,13 +284,7 @@ pub async fn open_worktree_in_terminal(
                 );
                 return spawn("osascript", &["-e".to_string(), script]);
             }
-            let mut args = vec![
-                "-na".to_string(),
-                application.to_string(),
-                "--args".to_string(),
-                "ssh".to_string(),
-            ];
-            args.extend(ssh_args);
+            let args = macos_terminal_ssh_args(application, ssh_args);
             spawn("open", &args)
         } else {
             spawn(
@@ -410,4 +419,30 @@ pub async fn install_remote_jean_server(
     })
     .await
     .map_err(|error| format!("Remote install task failed: {error}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::macos_terminal_ssh_args;
+
+    #[test]
+    fn ghostty_uses_execute_flag_for_remote_ssh() {
+        let args = macos_terminal_ssh_args(
+            "Ghostty",
+            vec!["-t".to_string(), "root@devserver".to_string()],
+        );
+
+        assert_eq!(
+            args,
+            vec![
+                "-na",
+                "Ghostty",
+                "--args",
+                "-e",
+                "ssh",
+                "-t",
+                "root@devserver"
+            ]
+        );
+    }
 }
