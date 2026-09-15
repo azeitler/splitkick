@@ -117,7 +117,10 @@ import { OpenCodePermissionsRequest } from './OpenCodePermissionsRequest'
 import { CodexMcpElicitationRequest as CodexMcpElicitationRequestCard } from './CodexMcpElicitationRequest'
 import { CodexDynamicToolCallRequest as CodexDynamicToolCallRequestCard } from './CodexDynamicToolCallRequest'
 import { SetupScriptOutput } from './SetupScriptOutput'
-import { selectSessionRenderTarget } from './session-render-target'
+import {
+  selectSessionRenderTarget,
+  shouldClearStaleSessionStream,
+} from './session-render-target'
 import { isFirstWorktreeSession } from './setup-script-visibility'
 import { TodoWidget } from './TodoWidget'
 import { AgentWidget } from './AgentWidget'
@@ -464,6 +467,26 @@ export function ChatWindow({
     sessionRenderTarget.worktreeId,
     sessionRenderTarget.worktreePath
   )
+
+  // A background remote socket reconnects without reloading the desktop UI.
+  // If chat:done was missed during that gap, persisted history is complete but
+  // the old Zustand stream remains mounted. Reconcile it when the authoritative
+  // session response proves that the assistant turn finished.
+  useEffect(() => {
+    if (!deferredSessionId || !session || isSessionSwitching) return
+    const lastMessage = session.messages.at(-1)
+    const store = useChatStore.getState()
+    if (
+      shouldClearStaleSessionStream({
+        isSending: !!store.sendingSessionIds[deferredSessionId],
+        lastRunStatus: session.last_run_status,
+        lastMessageRole: lastMessage?.role,
+        lastMessageId: lastMessage?.id,
+      })
+    ) {
+      store.completeSession(deferredSessionId)
+    }
+  }, [deferredSessionId, session, isSessionSwitching])
 
   const hasReviewResults = useChatStore(state =>
     deferredSessionId ? !!state.reviewResults[deferredSessionId] : false

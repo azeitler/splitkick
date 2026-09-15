@@ -15,3 +15,14 @@ export function selectSessionRenderTarget(
 ): SessionRenderTarget {
   return active.worktreeId === deferred.worktreeId ? deferred : active
 }
+
+export function shouldClearStaleSessionStream(input: {
+  isSending: boolean
+  lastRunStatus: string | null | undefined
+  lastMessageRole: string | undefined
+  lastMessageId: string | undefined
+}): boolean {
+  if (!input.isSending || input.lastMessageRole !== 'assistant') return false
+  if (input.lastMessageId?.startsWith('running-')) return false
+  return !['running', 'resumable'].includes(input.lastRunStatus ?? '')
+}

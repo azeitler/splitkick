@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { selectSessionRenderTarget } from './session-render-target'
+import {
+  selectSessionRenderTarget,
+  shouldClearStaleSessionStream,
+} from './session-render-target'
 
 describe('selectSessionRenderTarget', () => {
   it('does not keep the previous session when the worktree changes', () => {
@@ -45,5 +48,40 @@ describe('selectSessionRenderTarget', () => {
     }
 
     expect(selectSessionRenderTarget(active, deferred)).toBe(deferred)
+  })
+})
+
+describe('shouldClearStaleSessionStream', () => {
+  it('clears a missed WebSocket completion after completed history loads', () => {
+    expect(
+      shouldClearStaleSessionStream({
+        isSending: true,
+        lastRunStatus: 'completed',
+        lastMessageRole: 'assistant',
+        lastMessageId: 'persisted-assistant',
+      })
+    ).toBe(true)
+  })
+
+  it('keeps a new send whose persisted status still describes the prior run', () => {
+    expect(
+      shouldClearStaleSessionStream({
+        isSending: true,
+        lastRunStatus: 'completed',
+        lastMessageRole: 'user',
+        lastMessageId: 'optimistic-user',
+      })
+    ).toBe(false)
+  })
+
+  it('keeps a restored running snapshot', () => {
+    expect(
+      shouldClearStaleSessionStream({
+        isSending: true,
+        lastRunStatus: 'running',
+        lastMessageRole: 'assistant',
+        lastMessageId: 'running-run-1',
+      })
+    ).toBe(false)
   })
 })
