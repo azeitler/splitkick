@@ -11,6 +11,9 @@ describe('SessionChatModal removal behavior', () => {
     const canvasSource = readSource(
       'src/components/dashboard/ProjectCanvasView.tsx'
     )
+    const mainWindowSource = readSource(
+      'src/components/layout/MainWindowContent.tsx'
+    )
 
     expect(modalSource).toMatch(
       /interface SessionChatModalProps \{[\s\S]*worktree: Worktree/
@@ -22,6 +25,8 @@ describe('SessionChatModal removal behavior', () => {
     expect(modalSource).not.toContain('useProjects()')
     expect(canvasSource).toContain('worktree={selectedModalWorktree}')
     expect(canvasSource).toContain('project={project ?? null}')
+    expect(canvasSource).not.toContain('useProjects()')
+    expect(mainWindowSource).toContain('project={selectedProject}')
   })
 
   it('listens for command-palette session rename requests', () => {

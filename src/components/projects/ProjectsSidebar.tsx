@@ -202,7 +202,7 @@ export function ProjectsSidebar() {
       {/* Footer - transparent button with hover background.
           Extra bottom padding (plus safe-area) lifts controls off the screen edge. */}
       <div
-        className="flex items-center justify-center p-1.5 pb-[calc(var(--safe-area-bottom)+1.25rem)]"
+        className="flex items-center justify-start p-1.5 pb-[calc(var(--safe-area-bottom)+1.25rem)]"
       >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

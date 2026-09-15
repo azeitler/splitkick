@@ -1491,6 +1491,17 @@ export function SessionChatModal({
                           </div>
                         </ContextMenuTrigger>
                         <ContextMenuContent className="w-64">
+                          <SessionStatusMenu
+                            statusOverride={card.statusOverride}
+                            automaticStatus={card.automaticStatus}
+                            onSetStatusOverride={(
+                              next: ManualSessionStatus | null
+                            ) => {
+                              useChatStore
+                                .getState()
+                                .setSessionStatusOverride(session.id, next)
+                            }}
+                          />
                           <ContextMenuItem
                             onSelect={() =>
                               handleStartRename(session.id, session.name)
@@ -1508,17 +1519,6 @@ export function SessionChatModal({
                             <Tag className="mr-2 h-4 w-4" />
                             {sessionLabel ? 'Remove Label' : 'Add Label'}
                           </ContextMenuItem>
-                          <SessionStatusMenu
-                            statusOverride={card.statusOverride}
-                            automaticStatus={card.automaticStatus}
-                            onSetStatusOverride={(
-                              next: ManualSessionStatus | null
-                            ) => {
-                              useChatStore
-                                .getState()
-                                .setSessionStatusOverride(session.id, next)
-                            }}
-                          />
                           {resumeCommand && (
                             <>
                               <ContextMenuItem

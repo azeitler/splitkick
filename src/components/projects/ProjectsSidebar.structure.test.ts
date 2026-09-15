@@ -44,6 +44,7 @@ describe('ProjectsSidebar server filter', () => {
 
     expect(source).toContain('aria-label="New"')
     expect(source).toContain('<Plus className="size-4" />')
+    expect(source).toContain('flex items-center justify-start p-1.5')
     expect(source).not.toContain('command:open-archived-modal')
     expect(source).not.toContain('Archived')
   })

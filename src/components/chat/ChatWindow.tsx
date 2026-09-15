@@ -117,6 +117,7 @@ import { OpenCodePermissionsRequest } from './OpenCodePermissionsRequest'
 import { CodexMcpElicitationRequest as CodexMcpElicitationRequestCard } from './CodexMcpElicitationRequest'
 import { CodexDynamicToolCallRequest as CodexDynamicToolCallRequestCard } from './CodexDynamicToolCallRequest'
 import { SetupScriptOutput } from './SetupScriptOutput'
+import { selectSessionRenderTarget } from './session-render-target'
 import { isFirstWorktreeSession } from './setup-script-visibility'
 import { TodoWidget } from './TodoWidget'
 import { AgentWidget } from './AgentWidget'
@@ -437,18 +438,31 @@ export function ChatWindow({
       sessionsData.active_session_id ?? sessionsData.sessions[0]?.id
   }
 
-  // PERFORMANCE: Defer the session ID used for content rendering
-  // This allows React to show old session content while rendering new session in background
-  // The activeSessionId is used for immediate feedback (tab highlighting, sending messages)
-  // The deferredSessionId is used for content that can be rendered concurrently
-  const deferredSessionId = useDeferredValue(activeSessionId)
-  const isSessionSwitching = deferredSessionId !== activeSessionId
+  // Defer tab changes only inside one worktree. Deferring the session ID alone
+  // combined the prior server's session with the newly selected worktree and
+  // path during a sidebar change. That could route an invalid mixed-server
+  // request and keep the previous transcript visible from the query cache.
+  const activeSessionTarget = useMemo(
+    () => ({
+      sessionId: activeSessionId ?? null,
+      worktreeId: activeWorktreeId,
+      worktreePath: activeWorktreePath,
+    }),
+    [activeSessionId, activeWorktreeId, activeWorktreePath]
+  )
+  const deferredSessionTarget = useDeferredValue(activeSessionTarget)
+  const sessionRenderTarget = selectSessionRenderTarget(
+    activeSessionTarget,
+    deferredSessionTarget
+  )
+  const deferredSessionId = sessionRenderTarget.sessionId
+  const isSessionSwitching = sessionRenderTarget !== activeSessionTarget
 
   // Load the active session's messages (uses deferred ID for concurrent rendering)
   const { data: session, isLoading } = useSession(
-    deferredSessionId ?? null,
-    activeWorktreeId,
-    activeWorktreePath
+    deferredSessionId,
+    sessionRenderTarget.worktreeId,
+    sessionRenderTarget.worktreePath
   )
 
   const hasReviewResults = useChatStore(state =>
@@ -929,7 +943,7 @@ export function ChatWindow({
   // Fetches from ALL installed backends so toolbar shows grouped sections
   const { availableMcpServers, enabledMcpServers } = useMcpServerResolution({
     activeWorktreePath,
-    deferredSessionId,
+    deferredSessionId: deferredSessionId ?? undefined,
     project,
     preferences,
     selectedBackend,
@@ -3642,6 +3656,7 @@ export function ChatWindow({
                             <ImagePreview
                               images={currentPendingImages}
                               onRemove={handleRemovePendingImage}
+                              sessionId={activeSessionId}
                             />
 
                             {/* Pending text file preview */}

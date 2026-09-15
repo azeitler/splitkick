@@ -82,7 +82,6 @@ import { Spinner } from '@/components/ui/spinner'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import {
   useProjectBootstrap,
-  useProjects,
   useJeanConfig,
   isTauri,
   useCreateBaseSession,
@@ -110,7 +109,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
-import { isBaseSession, type Worktree } from '@/types/projects'
+import { isBaseSession, type Project, type Worktree } from '@/types/projects'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import type { LabelData, Session, WorktreeSessions } from '@/types/chat'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
@@ -235,6 +234,7 @@ import { getCanvasDiffRequest } from './canvas-diff-request'
 
 interface ProjectCanvasViewProps {
   projectId: string
+  project: Project
 }
 
 const EMPTY_PINNED_LABELS: LabelData[] = []
@@ -955,7 +955,10 @@ function WorktreeSectionHeader({
   )
 }
 
-export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
+export function ProjectCanvasView({
+  projectId,
+  project,
+}: ProjectCanvasViewProps) {
   const { data: preferences } = usePreferences()
   const worktreeSortMode = useProjectsStore(
     state =>
@@ -993,10 +996,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
   const disableWorktreeTextSelection = shouldDisableWorktreeTextSelection({
     isMobile,
   })
-
-  // Get project info
-  const { data: projects = [], isLoading: projectsLoading } = useProjects()
-  const project = projects.find(p => p.id === projectId)
 
   // Open PRs: used to link a worktree's base_branch to a PR number in row badges
   const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open', {
@@ -3085,7 +3084,6 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
   // Check if loading
   const isLoading =
-    projectsLoading ||
     worktreesLoading ||
     (readyWorktrees.length > 0 &&
       readyWorktrees.some(wt => !sessionsByWorktreeId.has(wt.id)))
