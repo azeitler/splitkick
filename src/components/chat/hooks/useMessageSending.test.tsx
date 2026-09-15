@@ -601,9 +601,10 @@ describe('useMessageSending Codex auto-steer', () => {
     })
   })
 
-  it('steers the running codex turn instead of queueing by default', async () => {
+  it('steers the running codex turn when auto-steer is enabled', async () => {
     vi.mocked(steerCodexTurn).mockResolvedValue(undefined)
     const { result, sendMessage } = renderUseMessageSending({
+      autoSteer: true,
       inputValue: 'also check the tests',
     })
 
@@ -630,6 +631,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { result, sendMessage } = renderUseMessageSending({
       selectedBackend: 'pi',
       selectedModel: 'pi/openai-codex/gpt-5.5',
+      piAutoSteer: true,
       inputValue: 'also inspect pi',
     })
 
@@ -656,6 +658,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { result, sendMessage } = renderUseMessageSending({
       selectedBackend: 'grok',
       selectedModel: 'grok/grok-4.5',
+      grokAutoSteer: true,
       inputValue: 'also inspect grok',
     })
 
@@ -677,11 +680,12 @@ describe('useMessageSending Codex auto-steer', () => {
     expect(sendMessage.mutate).not.toHaveBeenCalled()
   })
 
-  it('steers the running opencode turn instead of queueing by default', async () => {
+  it('steers the running opencode turn when auto-steer is enabled', async () => {
     vi.mocked(steerOpencodeTurn).mockResolvedValue(undefined)
     const { result, sendMessage } = renderUseMessageSending({
       selectedBackend: 'opencode',
       selectedModel: 'opencode/gpt-5.5',
+      opencodeAutoSteer: true,
       inputValue: 'also inspect opencode',
     })
 
@@ -707,6 +711,7 @@ describe('useMessageSending Codex auto-steer', () => {
   it('steers codex attachments instead of queueing when auto-steer is enabled', async () => {
     vi.mocked(steerCodexTurn).mockResolvedValue(undefined)
     const { result } = renderUseMessageSending({
+      autoSteer: true,
       inputValue: 'please inspect',
     })
     useChatStore.setState({
@@ -738,9 +743,8 @@ describe('useMessageSending Codex auto-steer', () => {
     expect(persistEnqueue).not.toHaveBeenCalled()
   })
 
-  it('queues instead of steering when auto-steer is disabled', async () => {
+  it('queues instead of steering by default', async () => {
     const { result } = renderUseMessageSending({
-      autoSteer: false,
       inputValue: 'also check the tests',
     })
 
@@ -820,6 +824,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { result } = renderUseMessageSending({
       selectedBackend: 'grok',
       selectedModel: 'grok/grok-4.5',
+      grokAutoSteer: true,
       inputValue: 'also inspect grok',
     })
     useChatStore.setState({
@@ -851,6 +856,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { result } = renderUseMessageSending({
       selectedBackend: 'grok',
       selectedModel: 'grok/grok-4.5',
+      grokAutoSteer: true,
       inputValue: 'check this paste',
     })
     useChatStore.setState({
@@ -888,6 +894,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { result } = renderUseMessageSending({
       selectedBackend: 'grok',
       selectedModel: 'grok/grok-4.5',
+      grokAutoSteer: true,
       inputValue:
         'i dont think we need to change the @AppServiceProvider.php as it worked before without it',
     })
@@ -945,6 +952,7 @@ describe('useMessageSending Codex auto-steer', () => {
   it('falls back to queueing when steering fails', async () => {
     vi.mocked(steerCodexTurn).mockRejectedValue(new Error('turn ended'))
     const { result } = renderUseMessageSending({
+      autoSteer: true,
       inputValue: 'also check the tests',
     })
 

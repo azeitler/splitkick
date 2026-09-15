@@ -1253,10 +1253,10 @@ export interface AppPreferences {
   codex_goal_execution_mode: CodexGoalExecutionMode // Execution mode used when starting a Codex /goal
   codex_multi_agent_enabled: boolean // Enable Codex multi-agent collaboration (experimental)
   codex_max_agent_threads: number // Max concurrent agent threads (1-8) when multi-agent is enabled
-  codex_auto_steer_enabled: boolean // Steer prompts into a running Codex turn instead of queueing (default: true)
-  opencode_auto_steer_enabled: boolean // Steer prompts into a running OpenCode turn instead of queueing (default: true)
-  pi_auto_steer_enabled: boolean // Steer prompts into a running PI turn instead of queueing (default: true)
-  grok_auto_steer_enabled: boolean // Steer prompts into a running Grok turn instead of queueing (default: true)
+  codex_auto_steer_enabled: boolean // Steer prompts into a running Codex turn instead of queueing (default: false)
+  opencode_auto_steer_enabled: boolean // Steer prompts into a running OpenCode turn instead of queueing (default: false)
+  pi_auto_steer_enabled: boolean // Steer prompts into a running PI turn instead of queueing (default: false)
+  grok_auto_steer_enabled: boolean // Steer prompts into a running Grok turn instead of queueing (default: false)
   kimi_auto_steer_enabled?: boolean // Reserved for Kimi Code steering support
   antigravity_auto_steer_enabled?: boolean // Reserved until Antigravity headless mode supports steering
   restore_last_session: boolean // Restore last session when switching projects (default: true)
@@ -2385,10 +2385,10 @@ export const defaultPreferences: AppPreferences = {
   codex_goal_execution_mode: 'build', // Default: build mode for goals
   codex_multi_agent_enabled: true, // Default: enabled to match parallel execution prompting
   codex_max_agent_threads: 3, // Default: 3 threads
-  codex_auto_steer_enabled: true, // Default: steer Codex running turn instead of queueing
-  opencode_auto_steer_enabled: true, // Default: steer OpenCode running turn instead of queueing
-  pi_auto_steer_enabled: true, // Default: steer PI running turn instead of queueing
-  grok_auto_steer_enabled: true, // Default: steer Grok running turn instead of queueing
+  codex_auto_steer_enabled: false, // Default: queue while Codex is running
+  opencode_auto_steer_enabled: false, // Default: queue while OpenCode is running
+  pi_auto_steer_enabled: false, // Default: queue while PI is running
+  grok_auto_steer_enabled: false, // Default: queue while Grok is running
   kimi_auto_steer_enabled: false,
   antigravity_auto_steer_enabled: false,
   restore_last_session: true, // Default: enabled

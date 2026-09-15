@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Plus,
   AlertTriangle,
@@ -59,7 +59,10 @@ export function ProjectsSidebar() {
   )
   const [connectionsOpen, setConnectionsOpen] = useState(false)
   const serverSnapshots = useServerConnectionSnapshots()
-  const serverIds = [...new Set(projects.map(projectServerId))]
+  const serverIds = useMemo(
+    () => [...new Set(projects.map(projectServerId))],
+    [projects]
+  )
   const showServerMenu = isNativeApp()
   const showServerFilter = showServerMenu && serverIds.length > 1
   const visibleProjects = showServerFilter

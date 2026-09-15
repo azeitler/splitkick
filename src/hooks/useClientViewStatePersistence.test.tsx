@@ -45,12 +45,20 @@ describe('useClientViewStatePersistence', () => {
     useProjectsStore
       .getState()
       .setProjectCanvasActiveFilter('server:project-1', 'issues')
+    useProjectsStore
+      .getState()
+      .setProjectCanvasWorktreeSortMode('server:project-1', 'last_activity')
 
     expect(
       JSON.parse(storage.get(CLIENT_VIEW_STATE_STORAGE_KEY) ?? '{}')
     ).toMatchObject({
       project_canvas_active_filters: {
         'server:project-1': 'issues',
+      },
+      project_canvas_settings: {
+        'server:project-1': {
+          worktree_sort_mode: 'last_activity',
+        },
       },
     })
   })

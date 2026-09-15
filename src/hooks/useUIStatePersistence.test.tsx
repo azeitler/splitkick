@@ -115,7 +115,7 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     useProjectsStore.setState({ projectCanvasSettings: {} })
   })
 
-  it('saves a scoped project worktree sort selection', async () => {
+  it('does not send client-only project canvas settings to the server', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -134,20 +134,8 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
       .getState()
       .setProjectCanvasWorktreeSortMode('server-1:project-1', 'last_activity')
 
-    await waitFor(
-      () => {
-        expect(mockSaveUIState).toHaveBeenCalledWith(
-          expect.objectContaining({
-            project_canvas_settings: {
-              'server-1:project-1': {
-                worktree_sort_mode: 'last_activity',
-              },
-            },
-          })
-        )
-      },
-      { timeout: 1500 }
-    )
+    await new Promise(resolve => setTimeout(resolve, 600))
+    expect(mockSaveUIState).not.toHaveBeenCalled()
   })
 
   it('restores unsent input drafts for every session', async () => {
@@ -377,7 +365,7 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     )
   })
 
-  it('debounces persistence when zen mode changes', async () => {
+  it('does not send client-only zen mode to the server', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -394,11 +382,8 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
 
     useUIStore.getState().setZenMode(true)
 
-    await waitFor(() => {
-      expect(mockSaveUIState).toHaveBeenCalledWith(
-        expect.objectContaining({ zen_mode: true })
-      )
-    })
+    await new Promise(resolve => setTimeout(resolve, 600))
+    expect(mockSaveUIState).not.toHaveBeenCalled()
   })
 
   it('debounces persistence when pending images or text files change', async () => {

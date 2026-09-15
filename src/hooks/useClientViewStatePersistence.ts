@@ -10,8 +10,14 @@ import {
 import {
   applyClientViewState,
   captureClientViewState,
+  scopeClientViewStateResources,
 } from '@/lib/client-view-state-store'
 import { loadProjectCanvasSortModes } from '@/lib/project-canvas-settings'
+import { isNativeApp } from '@/lib/environment'
+import {
+  getActiveConnectionId,
+  LOCAL_CONNECTION_ID,
+} from '@/lib/remote-connections'
 
 export function useClientViewStatePersistence(isInitialized: boolean): void {
   useEffect(() => {
@@ -36,10 +42,25 @@ export function useClientViewStatePersistence(isInitialized: boolean): void {
           ),
         }))
       }
-      saveClientViewState(captureClientViewState())
+      let migrated = captureClientViewState()
+      if (isNativeApp()) {
+        const serverId = getActiveConnectionId()
+        if (serverId !== LOCAL_CONNECTION_ID) {
+          migrated = scopeClientViewStateResources(migrated, serverId)
+          applyClientViewState(migrated)
+        }
+      }
+      saveClientViewState(migrated)
     }
 
-    const save = () => saveClientViewState(captureClientViewState())
+    let previous = JSON.stringify(captureClientViewState())
+    const save = () => {
+      const next = captureClientViewState()
+      const serialized = JSON.stringify(next)
+      if (serialized === previous) return
+      previous = serialized
+      saveClientViewState(next)
+    }
     const unsubProjects = useProjectsStore.subscribe(save)
     const unsubUI = useUIStore.subscribe(save)
     const unsubTerminal = useTerminalStore.subscribe(save)

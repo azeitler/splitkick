@@ -2,6 +2,7 @@ import { useBrowserStore } from '@/store/browser-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { useUIStore } from '@/store/ui-store'
+import { parseServerResourceKey, serverResourceKey } from './server-resource'
 import {
   CLIENT_VIEW_STATE_VERSION,
   type ClientViewState,
@@ -115,4 +116,42 @@ export function applyClientViewState(state: ClientViewState): void {
     bottomPanelOpen: state.browser_bottom_panel_open,
     bottomPanelHeight: state.browser_bottom_panel_height,
   })
+}
+
+/** Add the active server owner to raw IDs from legacy server UI state. */
+export function scopeClientViewStateResources(
+  state: ClientViewState,
+  serverId: string
+): ClientViewState {
+  const scope = (id: string) =>
+    parseServerResourceKey(id)
+      ? id
+      : serverResourceKey({ serverId, resourceId: id })
+  const scopeKeys = <T>(record: Record<string, T>): Record<string, T> =>
+    Object.fromEntries(
+      Object.entries(record).map(([id, value]) => [scope(id), value])
+    )
+
+  return {
+    ...state,
+    project_canvas_settings: scopeKeys(state.project_canvas_settings),
+    project_canvas_active_filters: scopeKeys(
+      state.project_canvas_active_filters
+    ),
+    expanded_project_ids: state.expanded_project_ids.map(scope),
+    expanded_folder_ids: state.expanded_folder_ids.map(scope),
+    expanded_worktree_ids: state.expanded_worktree_ids.map(scope),
+    project_access_timestamps: scopeKeys(state.project_access_timestamps),
+    dashboard_worktree_collapse_overrides: scopeKeys(
+      state.dashboard_worktree_collapse_overrides
+    ),
+    github_dashboard_favorite_project_ids:
+      state.github_dashboard_favorite_project_ids.map(scope),
+    terminal_visible_by_worktree: scopeKeys(state.terminal_visible_by_worktree),
+    terminal_panel_open: scopeKeys(state.terminal_panel_open),
+    modal_terminal_open: scopeKeys(state.modal_terminal_open),
+    browser_side_pane_open: scopeKeys(state.browser_side_pane_open),
+    browser_modal_open: scopeKeys(state.browser_modal_open),
+    browser_bottom_panel_open: scopeKeys(state.browser_bottom_panel_open),
+  }
 }

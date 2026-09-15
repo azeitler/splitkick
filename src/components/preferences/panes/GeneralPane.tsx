@@ -3198,7 +3198,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               description="Prompts sent while Codex is working are injected into the current turn instead of queued"
             >
               <Switch
-                checked={preferences?.codex_auto_steer_enabled ?? true}
+                checked={preferences?.codex_auto_steer_enabled ?? false}
                 onCheckedChange={handleCodexAutoSteerToggle}
               />
             </InlineField>
@@ -3305,7 +3305,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               description="Text-only prompts sent while OpenCode is working are injected into the current turn instead of queued (attachments always queue)"
             >
               <Switch
-                checked={preferences?.opencode_auto_steer_enabled ?? true}
+                checked={preferences?.opencode_auto_steer_enabled ?? false}
                 onCheckedChange={handleOpenCodeAutoSteerToggle}
               />
             </InlineField>
@@ -3464,7 +3464,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               description="Text-only prompts sent while PI is working are injected into the current turn instead of queued (attachments always queue)"
             >
               <Switch
-                checked={preferences?.pi_auto_steer_enabled ?? true}
+                checked={preferences?.pi_auto_steer_enabled ?? false}
                 onCheckedChange={handlePiAutoSteerToggle}
               />
             </InlineField>
@@ -3667,7 +3667,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                 description="Text-only prompts sent while Grok is working are injected into the current turn instead of queued (attachments always queue)"
               >
                 <Switch
-                  checked={preferences?.grok_auto_steer_enabled ?? true}
+                  checked={preferences?.grok_auto_steer_enabled ?? false}
                   onCheckedChange={handleGrokAutoSteerToggle}
                 />
               </InlineField>

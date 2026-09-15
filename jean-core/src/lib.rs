@@ -354,13 +354,13 @@ pub struct AppPreferences {
     #[serde(default = "default_codex_multi_agent_enabled")]
     pub codex_multi_agent_enabled: bool, // Enable multi-agent collaboration (experimental)
     #[serde(default = "default_codex_auto_steer")]
-    pub codex_auto_steer_enabled: bool, // Steer prompts into a running Codex turn instead of queueing (default: true)
+    pub codex_auto_steer_enabled: bool, // Steer prompts into a running Codex turn instead of queueing (default: false)
     #[serde(default = "default_opencode_auto_steer")]
-    pub opencode_auto_steer_enabled: bool, // Steer prompts into a running OpenCode session instead of queueing (default: true)
+    pub opencode_auto_steer_enabled: bool, // Steer prompts into a running OpenCode session instead of queueing (default: false)
     #[serde(default = "default_pi_auto_steer")]
-    pub pi_auto_steer_enabled: bool, // Steer prompts into a running PI turn instead of queueing (default: true)
+    pub pi_auto_steer_enabled: bool, // Steer prompts into a running PI turn instead of queueing (default: false)
     #[serde(default = "default_grok_auto_steer")]
-    pub grok_auto_steer_enabled: bool, // Steer prompts into a running Grok turn instead of queueing (default: true)
+    pub grok_auto_steer_enabled: bool, // Steer prompts into a running Grok turn instead of queueing (default: false)
     #[serde(default)]
     pub kimi_auto_steer_enabled: bool,
     #[serde(default, alias = "gemini_auto_steer_enabled")]
@@ -462,19 +462,19 @@ fn default_restore_last_session() -> bool {
 }
 
 fn default_codex_auto_steer() -> bool {
-    true
+    false
 }
 
 fn default_opencode_auto_steer() -> bool {
-    true
+    false
 }
 
 fn default_pi_auto_steer() -> bool {
-    true
+    false
 }
 
 fn default_grok_auto_steer() -> bool {
-    true
+    false
 }
 
 fn default_terminal_background() -> String {
@@ -1279,6 +1279,29 @@ mod tests {
 
         let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
         assert_eq!(prefs.font_weight, "normal");
+    }
+
+    #[test]
+    fn app_preferences_disable_steering_for_new_and_missing_preferences() {
+        let preferences = AppPreferences::default();
+
+        assert!(!preferences.codex_auto_steer_enabled);
+        assert!(!preferences.opencode_auto_steer_enabled);
+        assert!(!preferences.pi_auto_steer_enabled);
+        assert!(!preferences.grok_auto_steer_enabled);
+
+        let mut prefs_json = serde_json::to_value(preferences).unwrap();
+        let prefs = prefs_json.as_object_mut().unwrap();
+        prefs.remove("codex_auto_steer_enabled");
+        prefs.remove("opencode_auto_steer_enabled");
+        prefs.remove("pi_auto_steer_enabled");
+        prefs.remove("grok_auto_steer_enabled");
+
+        let preferences: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+        assert!(!preferences.codex_auto_steer_enabled);
+        assert!(!preferences.opencode_auto_steer_enabled);
+        assert!(!preferences.pi_auto_steer_enabled);
+        assert!(!preferences.grok_auto_steer_enabled);
     }
 
     #[test]

@@ -5,7 +5,9 @@ import { useUIStore } from '@/store/ui-store'
 import {
   applyClientViewState,
   captureClientViewState,
+  scopeClientViewStateResources,
 } from './client-view-state-store'
+import { defaultClientViewState } from './client-view-state'
 
 describe('client view state store bridge', () => {
   beforeEach(() => {
@@ -20,6 +22,31 @@ describe('client view state store bridge', () => {
       githubDashboardFavoriteProjectIds: [],
       sidebarServerFilter: null,
     })
+  })
+
+  it('adds the active server to raw legacy resource IDs', () => {
+    const scoped = scopeClientViewStateResources(
+      {
+        ...defaultClientViewState,
+        project_canvas_settings: { project: {} },
+        expanded_project_ids: ['project', 'other:project'],
+        expanded_worktree_ids: ['worktree'],
+        terminal_visible_by_worktree: { worktree: true },
+        browser_modal_open: { worktree: true },
+      },
+      'remote-1'
+    )
+
+    expect(scoped.project_canvas_settings).toEqual({ 'remote-1:project': {} })
+    expect(scoped.expanded_project_ids).toEqual([
+      'remote-1:project',
+      'other:project',
+    ])
+    expect(scoped.expanded_worktree_ids).toEqual(['remote-1:worktree'])
+    expect(scoped.terminal_visible_by_worktree).toEqual({
+      'remote-1:worktree': true,
+    })
+    expect(scoped.browser_modal_open).toEqual({ 'remote-1:worktree': true })
   })
 
   it('captures and restores scoped client display state', () => {

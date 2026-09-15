@@ -2130,7 +2130,7 @@ fn process_turn_events(
                             }
                         }
                         // Steer any prompts that were queued before the turn
-                        // became steerable (auto-steer preference, default on).
+                        // became steerable (auto-steer preference, default off).
                         super::commands::trigger_codex_queue_steer(
                             app.clone(),
                             worktree_id.to_string(),

@@ -9763,13 +9763,13 @@ async fn steer_text_into_pi_turn(
 }
 
 /// Drain steerable queued messages straight into the running Codex turn
-/// (when the `codex_auto_steer_enabled` preference is on, default true).
+/// (when the `codex_auto_steer_enabled` preference is on; default is off).
 /// Pops from the queue front in FIFO order and stops at the first message
 /// that can't be steered (attachments) so queue order is preserved.
 async fn drain_queue_into_codex_turn(app: &AppHandle, worktree_id: &str, session_id: &str) {
     let auto_steer = crate::load_preferences_sync(app)
         .map(|p| p.codex_auto_steer_enabled)
-        .unwrap_or(true);
+        .unwrap_or(false);
     if !auto_steer {
         return;
     }
@@ -9858,7 +9858,7 @@ pub(crate) fn trigger_codex_queue_steer(app: AppHandle, worktree_id: String, ses
 }
 
 /// Drain steerable queued messages into a running OpenCode session via
-/// `prompt_async` (when `opencode_auto_steer_enabled` is on, default true).
+/// `prompt_async` (when `opencode_auto_steer_enabled` is on; default is off).
 async fn drain_queue_into_opencode_turn(
     app: &AppHandle,
     worktree_id: &str,
@@ -9867,7 +9867,7 @@ async fn drain_queue_into_opencode_turn(
 ) {
     let auto_steer = crate::load_preferences_sync(app)
         .map(|p| p.opencode_auto_steer_enabled)
-        .unwrap_or(true);
+        .unwrap_or(false);
     if !auto_steer {
         return;
     }
@@ -9971,7 +9971,7 @@ pub(crate) fn trigger_opencode_queue_steer(
 async fn drain_queue_into_pi_turn(app: &AppHandle, worktree_id: &str, session_id: &str) {
     let auto_steer = crate::load_preferences_sync(app)
         .map(|p| p.pi_auto_steer_enabled)
-        .unwrap_or(true);
+        .unwrap_or(false);
     if !auto_steer {
         return;
     }
@@ -10056,11 +10056,11 @@ async fn drain_queue_into_pi_turn(app: &AppHandle, worktree_id: &str, session_id
 }
 
 /// Drain steerable queued messages into a running Grok ACP turn via
-/// `_x.ai/interject` (when `grok_auto_steer_enabled` is on, default true).
+/// `_x.ai/interject` (when `grok_auto_steer_enabled` is on; default is off).
 async fn drain_queue_into_grok_turn(app: &AppHandle, worktree_id: &str, session_id: &str) {
     let auto_steer = crate::load_preferences_sync(app)
         .map(|p| p.grok_auto_steer_enabled)
-        .unwrap_or(true);
+        .unwrap_or(false);
     if !auto_steer {
         return;
     }

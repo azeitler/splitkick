@@ -78,8 +78,8 @@ export interface UIState {
   active_worktree_path: string | null
   last_active_worktree_id: string | null
   active_project_id: string | null
-  expanded_project_ids: string[]
-  expanded_folder_ids: string[]
+  expanded_project_ids?: string[]
+  expanded_folder_ids?: string[]
   /** Left sidebar width in pixels, defaults to 250 */
   left_sidebar_size?: number
   /** Left sidebar visibility, defaults to false */
