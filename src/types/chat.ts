@@ -1322,6 +1322,14 @@ export interface SaveImageResponse {
   path: string
 }
 
+/** Raw image data read from the local native clipboard. */
+export interface ClipboardImageData {
+  /** Base64-encoded image bytes without a data URL prefix. */
+  data: string
+  /** MIME type for the encoded image. */
+  mimeType: string
+}
+
 // ============================================================================
 // Text Paste Types (for large text pastes in chat)
 // ============================================================================

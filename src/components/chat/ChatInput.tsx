@@ -14,6 +14,7 @@ import type {
   PendingFile,
   PendingSkill,
   ClaudeCommand,
+  ClipboardImageData,
   SaveImageResponse,
   SaveTextResponse,
   ReadTextResponse,
@@ -942,10 +943,19 @@ export const ChatInput = memo(function ChatInput({
           loading: true,
         })
         try {
-          const result = await invoke<SaveImageResponse | null>(
+          const clipboardImage = await invoke<ClipboardImageData | null>(
             'read_clipboard_image'
           )
-          if (result) {
+          if (clipboardImage) {
+            // Clipboard access stays on the native client. Save the bytes via
+            // the active backend so the resulting path exists on that server.
+            const result = await invoke<SaveImageResponse>(
+              'save_pasted_image',
+              {
+                data: clipboardImage.data,
+                mimeType: clipboardImage.mimeType,
+              }
+            )
             updatePendingImage(activeSessionId, placeholderId, {
               id: result.id,
               path: result.path,

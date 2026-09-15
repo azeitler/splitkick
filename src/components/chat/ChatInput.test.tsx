@@ -27,6 +27,8 @@ const storeState = {
   addPendingFile: vi.fn(),
   addPendingSkill: vi.fn(),
   addPendingImage: vi.fn(),
+  updatePendingImage: vi.fn(),
+  removePendingImage: vi.fn(),
   addPendingTextFile: vi.fn(),
 }
 
@@ -97,6 +99,8 @@ describe('ChatInput attachments', () => {
     storeState.addPendingFile.mockReset()
     storeState.addPendingSkill.mockReset()
     storeState.addPendingImage.mockReset()
+    storeState.updatePendingImage.mockReset()
+    storeState.removePendingImage.mockReset()
     storeState.addPendingTextFile.mockReset()
     storeState.inputDrafts = {}
     slashPopoverMock.mockClear()
@@ -480,6 +484,44 @@ describe('ChatInput attachments', () => {
     await waitFor(() => {
       expect(invokeMock).not.toHaveBeenCalledWith('read_clipboard_image')
     })
+  })
+
+  it('uploads a native clipboard image to the active remote backend', async () => {
+    nativeState.value = true
+    invokeMock
+      .mockResolvedValueOnce({ data: 'clipboard-png', mimeType: 'image/png' })
+      .mockResolvedValueOnce({
+        id: 'remote-image',
+        path: '/remote/pasted-images/image.png',
+        filename: 'image.png',
+      })
+    const textarea = renderInput()
+
+    fireEvent.paste(textarea, {
+      clipboardData: {
+        getData: () => '',
+        items: [],
+        files: [],
+      },
+    })
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenNthCalledWith(1, 'read_clipboard_image')
+      expect(invokeMock).toHaveBeenNthCalledWith(2, 'save_pasted_image', {
+        data: 'clipboard-png',
+        mimeType: 'image/png',
+      })
+    })
+    expect(storeState.updatePendingImage).toHaveBeenCalledWith(
+      'session-1',
+      expect.any(String),
+      {
+        id: 'remote-image',
+        path: '/remote/pasted-images/image.png',
+        filename: 'image.png',
+        loading: false,
+      }
+    )
   })
 
   it('saves large text as an attachment when pasted with an image', async () => {
