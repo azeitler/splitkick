@@ -65,13 +65,13 @@ vi.mock('@/store/chat-store', () => ({
 }))
 
 describe('ChatInput attachments', () => {
-  const renderInput = () => {
+  const renderInput = (activeSessionId = 'session-1') => {
     const formRef = createRef<HTMLFormElement>()
     const inputRef = createRef<HTMLTextAreaElement>()
 
     render(
       <ChatInput
-        activeSessionId="session-1"
+        activeSessionId={activeSessionId}
         activeWorktreePath="/tmp/worktree"
         isSending={false}
         executionMode="build"
@@ -464,10 +464,7 @@ describe('ChatInput attachments', () => {
     await waitFor(() => {
       expect(processAttachmentFile).toHaveBeenCalledTimes(1)
     })
-    expect(processAttachmentFile).toHaveBeenCalledWith(
-      itemImage,
-      'session-1'
-    )
+    expect(processAttachmentFile).toHaveBeenCalledWith(itemImage, 'session-1')
   })
 
   it('does not request the desktop clipboard for an empty web paste', async () => {
@@ -495,7 +492,7 @@ describe('ChatInput attachments', () => {
         path: '/remote/pasted-images/image.png',
         filename: 'image.png',
       })
-    const textarea = renderInput()
+    const textarea = renderInput('remote-a:session-1')
 
     fireEvent.paste(textarea, {
       clipboardData: {
@@ -510,10 +507,11 @@ describe('ChatInput attachments', () => {
       expect(invokeMock).toHaveBeenNthCalledWith(2, 'save_pasted_image', {
         data: 'clipboard-png',
         mimeType: 'image/png',
+        sessionId: 'remote-a:session-1',
       })
     })
     expect(storeState.updatePendingImage).toHaveBeenCalledWith(
-      'session-1',
+      'remote-a:session-1',
       expect.any(String),
       {
         id: 'remote-image',
@@ -552,6 +550,7 @@ describe('ChatInput attachments', () => {
       expect(processAttachmentFile).toHaveBeenCalledWith(image, 'session-1')
       expect(invokeMock).toHaveBeenCalledWith('save_pasted_text', {
         content: largeText,
+        sessionId: 'session-1',
       })
       expect(storeState.addPendingTextFile).toHaveBeenCalledWith(
         'session-1',

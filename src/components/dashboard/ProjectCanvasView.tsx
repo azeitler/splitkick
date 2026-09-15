@@ -1698,6 +1698,11 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
     worktreeId: string
     worktreePath: string
   } | null>(null)
+  const selectedModalWorktree = selectedWorktreeModal
+    ? (worktrees.find(
+        worktree => worktree.id === selectedWorktreeModal.worktreeId
+      ) ?? null)
+    : null
 
   useEffect(() => {
     const reloadState = consumeWebReloadState(projectId)
@@ -3841,7 +3846,9 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
       <SessionChatModal
         worktreeId={selectedWorktreeModal?.worktreeId ?? ''}
         worktreePath={selectedWorktreeModal?.worktreePath ?? ''}
-        isOpen={!!selectedWorktreeModal}
+        worktree={selectedModalWorktree}
+        project={project ?? null}
+        isOpen={!!selectedWorktreeModal && !!selectedModalWorktree && !!project}
         onClose={() => setSelectedWorktreeModal(null)}
         onRequestCloseWorktree={() => {
           if (selectedWorktreeModal) {

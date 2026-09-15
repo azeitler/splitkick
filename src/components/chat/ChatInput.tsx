@@ -712,6 +712,7 @@ export const ChatInput = memo(function ChatInput({
         try {
           const result = await invoke<SaveTextResponse>('save_pasted_text', {
             content: text,
+            sessionId: activeSessionId,
           })
 
           useChatStore.getState().addPendingTextFile(activeSessionId, {
@@ -954,6 +955,7 @@ export const ChatInput = memo(function ChatInput({
               {
                 data: clipboardImage.data,
                 mimeType: clipboardImage.mimeType,
+                sessionId: activeSessionId,
               }
             )
             updatePendingImage(activeSessionId, placeholderId, {

@@ -267,6 +267,48 @@ describe('CompactMessageList', () => {
     expect(screen.queryByText('Polling VM.')).not.toBeInTheDocument()
   })
 
+  it('keeps pre-tool assistant prose in its timeline position after reload', () => {
+    renderCompact([
+      message('user-1', 'user', 100, 'fix the terminal'),
+      message(
+        'assistant-1',
+        'assistant',
+        104,
+        'I will trace the remote terminal command.',
+        {
+          tool_calls: [
+            {
+              id: 'tool-1',
+              name: 'FileChange',
+              input: [{ path: 'src/store/terminal-store.ts' }],
+              output: 'done',
+            },
+          ],
+          content_blocks: [
+            {
+              type: 'text',
+              text: 'I will trace the remote terminal command.',
+            },
+            { type: 'tool_use', tool_call_id: 'tool-1' },
+          ],
+        }
+      ),
+    ])
+
+    expect(
+      screen.queryByText('I will trace the remote terminal command.')
+    ).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /FileChange/ }))
+
+    expect(
+      screen.getAllByText('I will trace the remote terminal command.')
+    ).toHaveLength(1)
+    expect(
+      screen.getByText('I will trace the remote terminal command.')
+    ).toBeVisible()
+  })
+
   it('shows edited files after an externally surfaced recap', () => {
     renderCompact([
       message('user-1', 'user', 100, 'make the change'),

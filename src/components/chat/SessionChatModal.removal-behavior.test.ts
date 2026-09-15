@@ -6,6 +6,24 @@ const readSource = (path: string) =>
   readFileSync(join(process.cwd(), path), 'utf8')
 
 describe('SessionChatModal removal behavior', () => {
+  it('receives complete header data from the loaded project canvas', () => {
+    const modalSource = readSource('src/components/chat/SessionChatModal.tsx')
+    const canvasSource = readSource(
+      'src/components/dashboard/ProjectCanvasView.tsx'
+    )
+
+    expect(modalSource).toMatch(
+      /interface SessionChatModalProps \{[\s\S]*worktree: Worktree/
+    )
+    expect(modalSource).toMatch(
+      /interface SessionChatModalProps \{[\s\S]*project: Project/
+    )
+    expect(modalSource).not.toContain('useWorktree(worktreeId)')
+    expect(modalSource).not.toContain('useProjects()')
+    expect(canvasSource).toContain('worktree={selectedModalWorktree}')
+    expect(canvasSource).toContain('project={project ?? null}')
+  })
+
   it('listens for command-palette session rename requests', () => {
     const source = readSource('src/components/chat/SessionChatModal.tsx')
 

@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   Plus,
   Folder,
-  Archive,
   Briefcase,
   AlertTriangle,
   ChevronDown,
@@ -77,18 +76,10 @@ export function ProjectsSidebar() {
   })
   const setupIncomplete = installedBackends.length === 0
 
-  // Responsive layout threshold
-  const isNarrow = sidebarWidth < 180
-
   const handleNewProject = useCallback(() => {
     closeMobileSidebarIfNeeded(isMobile)
     setAddProjectDialogOpen(true)
   }, [isMobile, setAddProjectDialogOpen])
-
-  const handleOpenArchived = useCallback(() => {
-    closeMobileSidebarIfNeeded(isMobile)
-    window.dispatchEvent(new CustomEvent('command:open-archived-modal'))
-  }, [isMobile])
 
   return (
     <div className="flex h-full flex-col">
@@ -208,19 +199,19 @@ export function ProjectsSidebar() {
         )}
       </div>
 
-      {/* Footer - transparent buttons with hover background.
+      {/* Footer - transparent button with hover background.
           Extra bottom padding (plus safe-area) lifts controls off the screen edge. */}
       <div
-        className={`flex gap-1 p-1.5 pb-[calc(var(--safe-area-bottom)+1.25rem)] ${isNarrow ? 'flex-col' : 'items-center'}`}
+        className="flex items-center justify-center p-1.5 pb-[calc(var(--safe-area-bottom)+1.25rem)]"
       >
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+              aria-label="New"
+              className="flex size-9 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
             >
-              {!isNarrow && <Plus className="size-3.5" />}
-              New
+              <Plus className="size-4" />
             </button>
           </DropdownMenuTrigger>
           <DropdownMenuContent
@@ -242,14 +233,6 @@ export function ProjectsSidebar() {
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
-        <button
-          type="button"
-          className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-sm text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
-          onClick={handleOpenArchived}
-        >
-          {!isNarrow && <Archive className="size-3.5" />}
-          Archived
-        </button>
       </div>
     </div>
   )

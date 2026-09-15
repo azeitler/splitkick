@@ -56,8 +56,6 @@ import {
 import { resolveBackendCliPath } from '@/services/cli-binary'
 import { usePreferences } from '@/services/preferences'
 import {
-  useWorktree,
-  useProjects,
   useRunScripts,
   usePackageScripts,
   type PackageScript,
@@ -71,7 +69,7 @@ import {
   performGitPull,
   performGitSync,
 } from '@/services/git-status'
-import { isBaseSession } from '@/types/projects'
+import { isBaseSession, type Project, type Worktree } from '@/types/projects'
 import type { Session } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
 import { isImeComposingEvent } from '@/lib/ime-composition'
@@ -190,6 +188,8 @@ function useOffScreenWaiting(
 interface SessionChatModalProps {
   worktreeId: string
   worktreePath: string
+  worktree: Worktree | null
+  project: Project | null
   isOpen: boolean
   onClose: () => void
   onRequestCloseWorktree: () => void
@@ -198,6 +198,8 @@ interface SessionChatModalProps {
 export function SessionChatModal({
   worktreeId,
   worktreePath,
+  worktree,
+  project,
   isOpen,
   onClose,
   onRequestCloseWorktree,
@@ -362,12 +364,9 @@ export function SessionChatModal({
     return () => cancelAnimationFrame(scrollId)
   }, [isOpen, currentSessionId, sessions.length, currentSessionStatus])
 
-  // Git status for header badges
-  const { data: worktree } = useWorktree(worktreeId)
-  const { data: projects } = useProjects()
-  const project = worktree
-    ? projects?.find(p => p.id === worktree.project_id)
-    : null
+  // The canvas already loaded the complete worktree and project records. Use
+  // that snapshot for the first modal paint instead of issuing another query,
+  // which briefly rendered an incomplete header on remote servers.
   const stackedBaseBranch = getStackedBaseBranch(
     worktree?.base_branch,
     worktree?.branch,
