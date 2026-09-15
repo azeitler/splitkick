@@ -75,8 +75,10 @@ describe('resolveModalSessionId', () => {
     )
   })
 
-  it('falls back to the first session when active is missing from a non-empty list', () => {
-    expect(resolveModalSessionId('gone', ['first', 'second'])).toBe('first')
+  it('keeps the active session when a refetch temporarily omits it', () => {
+    expect(resolveModalSessionId('active-1', ['first', 'second'])).toBe(
+      'active-1'
+    )
   })
 
   it('returns null when there is no active session and no sessions', () => {

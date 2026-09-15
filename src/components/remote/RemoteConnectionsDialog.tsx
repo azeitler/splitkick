@@ -80,12 +80,30 @@ type VersionState =
   | { status: 'ready'; version: string | null }
   | { status: 'error'; message: string }
 
-export function RemoteConnectionsDialog() {
+interface RemoteConnectionsDialogProps {
+  open?: boolean
+  onOpenChange?: (open: boolean) => void
+  showTrigger?: boolean
+}
+
+export function RemoteConnectionsDialog({
+  open: controlledOpen,
+  onOpenChange,
+  showTrigger = true,
+}: RemoteConnectionsDialogProps = {}) {
   const connections = useRemoteConnections()
   const localVersion = getLocalJeanVersion()
   const native = isNativeApp()
   const localDashboardEnabled = useLocalDashboardEnabled()
-  const [open, setOpen] = useState(false)
+  const [internalOpen, setInternalOpen] = useState(false)
+  const open = controlledOpen ?? internalOpen
+  const setOpen = useCallback(
+    (nextOpen: boolean) => {
+      if (controlledOpen === undefined) setInternalOpen(nextOpen)
+      onOpenChange?.(nextOpen)
+    },
+    [controlledOpen, onOpenChange]
+  )
   const [editingId, setEditingId] = useState<EditorMode>(null)
   const [addMode, setAddMode] = useState<AddMode>('url')
   const [form, setForm] = useState(EMPTY_URL_FORM)
@@ -384,17 +402,19 @@ export function RemoteConnectionsDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button
-          aria-label="Jean connections"
-          title="Jean connections"
-          variant="ghost"
-          size="icon"
-          className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
-        >
-          <Server className="size-3.5" />
-        </Button>
-      </DialogTrigger>
+      {showTrigger && (
+        <DialogTrigger asChild>
+          <Button
+            aria-label="Jean connections"
+            title="Jean connections"
+            variant="ghost"
+            size="icon"
+            className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
+          >
+            <Server className="size-3.5" />
+          </Button>
+        </DialogTrigger>
+      )}
       {/* Above RemoteConnectionRecovery (z-100) so Edit connection works while offline. */}
       <DialogContent className="sm:max-w-md z-[110]" overlayClassName="z-[110]">
         <DialogHeader>

@@ -1315,8 +1315,8 @@ export default function useStreamingEvents({
                   }
                 : old
           )
-          queryClient.setQueryData<WorktreeSessions>(
-            chatQueryKeys.sessions(worktreeId),
+          queryClient.setQueriesData<WorktreeSessions>(
+            { queryKey: chatQueryKeys.sessions(worktreeId) },
             old => {
               if (!old) return old
               return {
@@ -1361,8 +1361,8 @@ export default function useStreamingEvents({
                 }
               : old
         )
-        queryClient.setQueryData<WorktreeSessions>(
-          chatQueryKeys.sessions(worktreeId),
+        queryClient.setQueriesData<WorktreeSessions>(
+          { queryKey: chatQueryKeys.sessions(worktreeId) },
           old => {
             if (!old) return old
             return {
@@ -1480,8 +1480,8 @@ export default function useStreamingEvents({
                   }
                 : old
           )
-          queryClient.setQueryData<WorktreeSessions>(
-            chatQueryKeys.sessions(worktreeId),
+          queryClient.setQueriesData<WorktreeSessions>(
+            { queryKey: chatQueryKeys.sessions(worktreeId) },
             old => {
               if (!old) return old
               return {
@@ -1534,8 +1534,8 @@ export default function useStreamingEvents({
                   }
                 : old
           )
-          queryClient.setQueryData<WorktreeSessions>(
-            chatQueryKeys.sessions(worktreeId),
+          queryClient.setQueriesData<WorktreeSessions>(
+            { queryKey: chatQueryKeys.sessions(worktreeId) },
             old => {
               if (!old) return old
               return {
@@ -1621,8 +1621,8 @@ export default function useStreamingEvents({
                 }
               : old
         )
-        queryClient.setQueryData<WorktreeSessions>(
-          chatQueryKeys.sessions(worktreeId),
+        queryClient.setQueriesData<WorktreeSessions>(
+          { queryKey: chatQueryKeys.sessions(worktreeId) },
           old => {
             if (!old) return old
             return {
@@ -1801,8 +1801,8 @@ export default function useStreamingEvents({
         old => (old ? { ...old, last_run_status: 'crashed' as const } : old)
       )
       if (sessionWorktreeId) {
-        queryClient.setQueryData<WorktreeSessions>(
-          chatQueryKeys.sessions(sessionWorktreeId),
+        queryClient.setQueriesData<WorktreeSessions>(
+          { queryKey: chatQueryKeys.sessions(sessionWorktreeId) },
           old => {
             if (!old) return old
             return {
@@ -1984,8 +1984,8 @@ export default function useStreamingEvents({
           old => (old ? { ...old, last_run_status: 'cancelled' } : old)
         )
         if (sessionWorktreeId) {
-          queryClient.setQueryData<WorktreeSessions>(
-            chatQueryKeys.sessions(sessionWorktreeId),
+          queryClient.setQueriesData<WorktreeSessions>(
+            { queryKey: chatQueryKeys.sessions(sessionWorktreeId) },
             old => {
               if (!old) return old
               return {

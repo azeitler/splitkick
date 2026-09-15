@@ -15,7 +15,6 @@ export function normalizeServerCompatibility(
     apiProtocol: envelope.apiProtocol ?? 1,
     apiProtocolMin: envelope.apiProtocolMin ?? 1,
     capabilities: envelope.capabilities ?? {},
-    featureSurfaces: envelope.featureSurfaces ?? [],
   }
 }
 

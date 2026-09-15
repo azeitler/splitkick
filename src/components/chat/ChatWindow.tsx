@@ -3149,13 +3149,13 @@ export function ChatWindow({
                               activeWorktreeId &&
                               isFirstSession &&
                               !isSetupScriptDismissed && (
-                              <SetupScriptOutput
-                                result={setupScriptResult}
-                                onDismiss={() =>
-                                  dismissSetupScript(activeWorktreeId)
-                                }
-                              />
-                            )}
+                                <SetupScriptOutput
+                                  result={setupScriptResult}
+                                  onDismiss={() =>
+                                    dismissSetupScript(activeWorktreeId)
+                                  }
+                                />
+                              )}
                             <CodexGoalBanner
                               sessionId={activeSessionId ?? null}
                               worktreeId={activeWorktreeId ?? null}
@@ -3398,6 +3398,7 @@ export function ChatWindow({
                                   restoredExecutionMode={
                                     session?.last_run_execution_mode
                                   }
+                                  completedDurationMs={completedDurationMs}
                                 />
                               </div>
                             )}

@@ -5,10 +5,7 @@ import { WsTransport } from './transport'
 import { decorateServerEvent } from './server-command-routing'
 import type { ServerId } from '@/types/server-resource'
 import { LOCAL_SERVER_ID } from '@/types/server-resource'
-import type {
-  FeatureSurfaceManifestEntry,
-  ServerCapabilitiesEnvelope,
-} from '@/types/server-capabilities'
+import type { ServerCapabilitiesEnvelope } from '@/types/server-capabilities'
 
 const CLIENT_API_PROTOCOL = 1
 
@@ -28,7 +25,6 @@ export interface ServerConnectionSnapshot {
   error: string | null
   appVersion: string | null
   capabilities: Readonly<Record<string, number>>
-  featureSurfaces: readonly FeatureSurfaceManifestEntry[]
 }
 
 export interface ServerAdapter {
@@ -253,7 +249,6 @@ export class ServerConnectionManager {
       error: null,
       appVersion: null,
       capabilities: {},
-      featureSurfaces: [],
     })
     for (const [serverId, managed] of this.remotes) {
       const error = managed.adapter.authError
@@ -272,7 +267,6 @@ export class ServerConnectionManager {
         error,
         appVersion: managed.capabilities?.appVersion ?? null,
         capabilities: managed.capabilities?.capabilities ?? {},
-        featureSurfaces: managed.capabilities?.featureSurfaces ?? [],
       })
     }
     if (JSON.stringify([...this.snapshot]) === JSON.stringify([...next])) return
@@ -308,7 +302,6 @@ export class ServerConnectionManager {
           apiProtocol: value.apiProtocol,
           apiProtocolMin: value.apiProtocolMin,
           capabilities: value.capabilities ?? {},
-          featureSurfaces: value.featureSurfaces ?? [],
           magicPrompts: value.magicPrompts ?? [],
         }
         managed.compatibility =

@@ -39,7 +39,6 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
 import { applyServerUpdate } from '@/hooks/useServerUpdateCheck'
 import { LinuxWindowControls } from './LinuxWindowControls'
-import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
 import { useRemoteConnections } from '@/lib/remote-connections'
 import { useProjectsStore } from '@/store/projects-store'
 import { resolveHeaderServerLabel } from './server-context'
@@ -208,7 +207,6 @@ export function TitleBar({
                 <TooltipContent>GitHub</TooltipContent>
               </Tooltip>
             )}
-            {native && <RemoteConnectionsDialog />}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button

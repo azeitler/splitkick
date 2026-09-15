@@ -18,10 +18,7 @@ const {
   mockListen: vi.fn(),
   mockSaveWorktreePr: vi.fn(),
   mockPlayNotificationSound: vi.fn(),
-  registeredListeners: new Map<
-    string,
-    (event: { payload: unknown }) => void
-  >(),
+  registeredListeners: new Map<string, (event: { payload: unknown }) => void>(),
 }))
 
 vi.mock('@/lib/transport', () => ({
@@ -550,7 +547,6 @@ describe('useStreamingEvents cancellation sanitization', () => {
         },
       ],
     })
-
     useChatStore.setState({
       streamingContents: { 'session-1': 'Hello. What would you like to do?' },
       streamingContentBlocks: {
@@ -658,6 +654,24 @@ describe('useStreamingEvents cancellation sanitization', () => {
         },
       ],
     })
+    queryClient.setQueryData(
+      ['chat', 'sessions', 'worktree-1', 'with-counts'],
+      {
+        worktree_id: 'worktree-1',
+        sessions: [
+          {
+            id: 'normal-session',
+            name: 'Normal session',
+            order: 0,
+            created_at: 1,
+            updated_at: 1,
+            messages: [],
+            is_reviewing: false,
+            last_run_status: 'running',
+          },
+        ],
+      }
+    )
 
     useChatStore.setState({
       streamingContents: { 'normal-session': 'Done.' },
@@ -704,6 +718,13 @@ describe('useStreamingEvents cancellation sanitization', () => {
     expect(
       useChatStore.getState().reviewingSessions['normal-session']
     ).toBeUndefined()
+    const canvasSessionsCache = queryClient.getQueryData<{
+      sessions: { id: string; last_run_status?: string }[]
+    }>(['chat', 'sessions', 'worktree-1', 'with-counts'])
+    expect(
+      canvasSessionsCache?.sessions.find(s => s.id === 'normal-session')
+        ?.last_run_status
+    ).toBe('completed')
   })
 
   it('keeps the prompt and the partial assistant output (incl tool calls) when cancelling a partial response', async () => {
@@ -1516,8 +1537,12 @@ describe('useStreamingEvents cancellation sanitization', () => {
       },
     })
 
-    expect(useChatStore.getState().sendingSessionIds['session-1']).toBeUndefined()
-    expect(useChatStore.getState().streamingContents['session-1']).toBeUndefined()
+    expect(
+      useChatStore.getState().sendingSessionIds['session-1']
+    ).toBeUndefined()
+    expect(
+      useChatStore.getState().streamingContents['session-1']
+    ).toBeUndefined()
   })
 
   it('continues ignoring cancelled run chunks after accepting a new run chunk', async () => {
@@ -1928,11 +1953,13 @@ describe('useStreamingEvents replay dedupe', () => {
       },
     })
 
-    expect(useChatStore.getState().streamingContentBlocks['session-1']).toEqual([
-      { type: 'text', text: 'Before steering.' },
-      { type: 'user_input', text: 'Also fix the header.' },
-      { type: 'text', text: 'After steering.' },
-    ])
+    expect(useChatStore.getState().streamingContentBlocks['session-1']).toEqual(
+      [
+        { type: 'text', text: 'Before steering.' },
+        { type: 'user_input', text: 'Also fix the header.' },
+        { type: 'text', text: 'After steering.' },
+      ]
+    )
     expect(
       useChatStore.getState().streamingReplayContentBlocks['session-1']
     ).toBeUndefined()

@@ -5,22 +5,21 @@ import {
   Archive,
   Briefcase,
   AlertTriangle,
+  ChevronDown,
   Server,
+  Settings2,
 } from 'lucide-react'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
+import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
 import { useProjects, useCreateFolder } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -28,7 +27,6 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { ProjectTree } from './ProjectTree'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
-import { ServerFeatureSurfaces } from '@/components/remote/ServerFeatureSurfaces'
 import { isNativeApp } from '@/lib/environment'
 import { useServerConnectionSnapshots } from '@/lib/server-connections'
 import {
@@ -58,12 +56,21 @@ export function ProjectsSidebar() {
   const isMobile = useIsMobile()
   const [backendCheckReady, setBackendCheckReady] = useState(false)
   const [serverFilter, setServerFilter] = useState(ALL_SERVERS)
+  const [connectionsOpen, setConnectionsOpen] = useState(false)
   const serverSnapshots = useServerConnectionSnapshots()
-  const showServerFilter =
-    isNativeApp() && new Set(projects.map(projectServerId)).size > 1
+  const serverIds = [...new Set(projects.map(projectServerId))]
+  const showServerMenu = isNativeApp()
+  const showServerFilter = showServerMenu && serverIds.length > 1
   const visibleProjects = showServerFilter
     ? filterProjectsByServer(projects, serverFilter)
     : projects
+  const selectedServerLabel =
+    serverFilter === ALL_SERVERS
+      ? 'All servers'
+      : (serverSnapshots.get(serverFilter)?.name ??
+        projects.find(project => projectServerId(project) === serverFilter)
+          ?.serverName ??
+        'Local')
   useEffect(() => scheduleIdleWork(() => setBackendCheckReady(true), 1500), [])
   const { installedBackends } = useInstalledBackends({
     enabled: backendCheckReady,
@@ -87,38 +94,74 @@ export function ProjectsSidebar() {
     <div className="flex h-full flex-col">
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-        {showServerFilter && (
+        {showServerMenu && (
           <div className="px-3 pb-1 pt-2">
-            <Select value={serverFilter} onValueChange={setServerFilter}>
-              <SelectTrigger
-                size="sm"
-                aria-label="Filter projects by server"
-                className="w-full rounded-lg border-border/50 bg-muted/50 px-2 text-xs text-muted-foreground shadow-none hover:bg-muted/80 hover:text-foreground"
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Filter projects by server"
+                  className="flex h-7 w-full items-center gap-2 rounded-md border border-transparent bg-transparent px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <Server className="size-3.5" />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {selectedServerLabel}
+                  </span>
+                  <ChevronDown className="size-3.5 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="border-border/60 bg-popover/95 shadow-lg backdrop-blur-sm"
+                style={{ width: sidebarWidth - 24 }}
               >
-                <Server className="size-3.5" />
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="start">
-                <SelectItem value={ALL_SERVERS}>All servers</SelectItem>
-                {[...new Set(projects.map(projectServerId))].map(serverId => {
-                  const snapshot = serverSnapshots.get(serverId)
-                  const fallback = projects.find(
-                    project => projectServerId(project) === serverId
-                  )?.serverName
-                  const status = snapshot?.status
-                  const statusLabel =
-                    status && status !== 'local' && status !== 'online'
-                      ? ` (${status})`
-                      : ''
-                  return (
-                    <SelectItem key={serverId} value={serverId}>
-                      {snapshot?.name ?? fallback ?? 'Local'}
-                      {statusLabel}
-                    </SelectItem>
-                  )
-                })}
-              </SelectContent>
-            </Select>
+                <DropdownMenuRadioGroup
+                  value={serverFilter}
+                  onValueChange={setServerFilter}
+                >
+                  <DropdownMenuRadioItem
+                    value={ALL_SERVERS}
+                    className="text-xs"
+                  >
+                    All servers
+                  </DropdownMenuRadioItem>
+                  {serverIds.map(serverId => {
+                    const snapshot = serverSnapshots.get(serverId)
+                    const fallback = projects.find(
+                      project => projectServerId(project) === serverId
+                    )?.serverName
+                    const status = snapshot?.status
+                    const statusLabel =
+                      status && status !== 'local' && status !== 'online'
+                        ? ` (${status})`
+                        : ''
+                    return (
+                      <DropdownMenuRadioItem
+                        key={serverId}
+                        value={serverId}
+                        className="text-xs"
+                      >
+                        {snapshot?.name ?? fallback ?? 'Local'}
+                        {statusLabel}
+                      </DropdownMenuRadioItem>
+                    )
+                  })}
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-xs text-muted-foreground"
+                  onSelect={() => setConnectionsOpen(true)}
+                >
+                  <Settings2 className="size-3.5" />
+                  Jean connections
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <RemoteConnectionsDialog
+              open={connectionsOpen}
+              onOpenChange={setConnectionsOpen}
+              showTrigger={false}
+            />
           </div>
         )}
         {isLoading ? (
@@ -170,7 +213,6 @@ export function ProjectsSidebar() {
       <div
         className={`flex gap-1 p-1.5 pb-[calc(var(--safe-area-bottom)+1.25rem)] ${isNarrow ? 'flex-col' : 'items-center'}`}
       >
-        <ServerFeatureSurfaces />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button

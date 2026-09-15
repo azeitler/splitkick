@@ -16,7 +16,6 @@ describe('server compatibility', () => {
       apiProtocol: 1,
       apiProtocolMin: 1,
       capabilities: {},
-      featureSurfaces: [],
     })
   })
 

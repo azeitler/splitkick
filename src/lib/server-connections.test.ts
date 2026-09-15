@@ -94,7 +94,6 @@ describe('ServerConnectionManager', () => {
       apiProtocol: 3,
       apiProtocolMin: 2,
       capabilities: {},
-      featureSurfaces: [],
       magicPrompts: [],
     })
     const manager = new ServerConnectionManager({
