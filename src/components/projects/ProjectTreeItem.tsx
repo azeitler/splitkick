@@ -21,6 +21,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
 import {
   useAppDataDir,
@@ -63,8 +64,24 @@ export function resolveProjectRowClickAction(
   return hasWorktrees ? 'toggle-expand' : 'open-canvas'
 }
 
+const STATUS_BADGES_MIN_SIDEBAR_WIDTH = 320
+
+export function shouldShowProjectStatusBadges(
+  sidebarWidth: number,
+  isMobile: boolean,
+  isExpanded: boolean,
+  isSelected: boolean
+): boolean {
+  return (
+    !isMobile &&
+    sidebarWidth >= STATUS_BADGES_MIN_SIDEBAR_WIDTH &&
+    (isExpanded || isSelected)
+  )
+}
+
 export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
   const isMobile = useIsMobile()
+  const sidebarWidth = useSidebarWidth()
   const isOffline = project.offline === true
   const { data: preferences } = usePreferences()
   const gitSyncButton = preferences?.git_sync_button ?? true
@@ -141,7 +158,12 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
 
   // Project is only selected if it's the selected project AND no worktree is active
   const isSelected = selectedProjectId === project.id && !activeWorktreeId
-  const showStatusBadges = !isMobile && (isExpanded || isSelected)
+  const showStatusBadges = shouldShowProjectStatusBadges(
+    sidebarWidth,
+    isMobile,
+    isExpanded,
+    isSelected
+  )
 
   // Inline rename (double-click), matching folder/worktree patterns
   const [isEditing, setIsEditing] = useState(false)
@@ -480,7 +502,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
           )}
 
           {!isOffline && showStatusBadges && (
-            <div className="hidden items-center gap-1 sm:flex">
+            <div className="flex items-center gap-1">
               <NewIssuesBadge
                 projectPath={project.path}
                 projectId={project.id}
