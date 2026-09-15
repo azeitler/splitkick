@@ -27,6 +27,7 @@ import type {
   PendingTextFileDraft,
   UIState,
 } from '@/types/ui-state'
+import { registerUIStateRelaunchSaver } from '@/lib/ui-state-relaunch'
 
 /** Serialize ready (non-loading) pending images for UI-state persistence. */
 function serializePendingImages(
@@ -115,7 +116,7 @@ function debounce<T extends (...args: Parameters<T>) => void>(
 export function useUIStatePersistence() {
   const { data: uiState, isSuccess: uiStateLoaded } = useUIState()
   const { data: projects = [], isSuccess: projectsLoaded } = useProjects()
-  const { mutate: saveUIState } = useSaveUIState()
+  const { mutateAsync: saveUIState } = useSaveUIState()
   const [isInitialized, setIsInitialized] = useState(false)
 
   // Create stable debounced save function
@@ -127,7 +128,7 @@ export function useUIStatePersistence() {
   useEffect(() => {
     debouncedSaveRef.current = debounce((state: UIState) => {
       logger.debug('Saving UI state (debounced)')
-      saveUIState(state)
+      void saveUIState(state)
     }, 500)
 
     return () => {
@@ -261,6 +262,15 @@ export function useUIStatePersistence() {
       version: 1, // Reset for first release
     }
   }, [])
+
+  useEffect(() => {
+    registerUIStateRelaunchSaver(async () => {
+      debouncedSaveRef.current?.cancel()
+      await saveUIState(getCurrentUIState())
+    })
+
+    return () => registerUIStateRelaunchSaver(null)
+  }, [getCurrentUIState, saveUIState])
 
   // Step 1: Initialize stores from persisted state (once, when projects are loaded)
   useEffect(() => {

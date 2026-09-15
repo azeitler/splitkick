@@ -95,7 +95,7 @@ export function ProjectsSidebar() {
     <div className="flex h-full flex-col">
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-        <div className="border-b border-border/40 pb-2">
+        <div className="border-b border-border/40 pb-2 pt-[3px]">
           {showServerMenu && (
             <div className="px-3 pb-1 pt-2">
               <DropdownMenu>

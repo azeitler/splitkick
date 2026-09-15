@@ -8,13 +8,19 @@ import { describe, expect, it } from 'vitest'
  * freezes when alt-tabbing on Windows (issue #575).
  */
 describe('AddProjectDialog structure', () => {
-  it('subscribes to the active Jean instance for its default target', () => {
-    expect(source).toContain('useActiveConnectionId()')
-  })
   const source = readFileSync(
     resolve(__dirname, 'AddProjectDialog.tsx'),
     'utf8'
   )
+  const cloneSource = readFileSync(
+    resolve(__dirname, 'CloneProjectModal.tsx'),
+    'utf8'
+  )
+
+  it('uses the selected project owner as the current Jean instance', () => {
+    expect(source).toContain('selectedProjectId')
+    expect(cloneSource).toContain('selectedProjectId')
+  })
 
   it('does not nest DirectoryBrowser inside the New Project Dialog', () => {
     // DirectoryBrowser must be a sibling fragment child, not under <Dialog>.

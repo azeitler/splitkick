@@ -54,6 +54,7 @@ vi.mock('@/lib/terminal-instances', () => ({
 }))
 
 import { useUIStatePersistence } from './useUIStatePersistence'
+import { flushUIStateBeforeRelaunch } from '@/lib/ui-state-relaunch'
 
 function createWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: PropsWithChildren) {
@@ -83,7 +84,7 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
       isSuccess: true,
     })
     mockUseProjects.mockReturnValue({ data: [], isSuccess: true })
-    mockUseSaveUIState.mockReturnValue({ mutate: mockSaveUIState })
+    mockUseSaveUIState.mockReturnValue({ mutateAsync: mockSaveUIState })
 
     useTerminalStore.setState({
       terminals: {},
@@ -136,6 +137,36 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
 
     await new Promise(resolve => setTimeout(resolve, 600))
     expect(mockSaveUIState).not.toHaveBeenCalled()
+  })
+
+  it('saves the latest active session before a native relaunch', async () => {
+    nativeApp = true
+    mockSaveUIState.mockResolvedValue(undefined)
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    const { unmount } = renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+    useChatStore.getState().setActiveSession('worktree-1', 'session-latest', {
+      markOpened: false,
+    })
+
+    await flushUIStateBeforeRelaunch()
+
+    expect(mockSaveUIState).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        active_session_ids: { 'worktree-1': 'session-latest' },
+      })
+    )
+    unmount()
   })
 
   it('restores unsent input drafts for every session', async () => {

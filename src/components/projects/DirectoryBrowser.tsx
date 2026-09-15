@@ -35,6 +35,7 @@ interface DirectoryBrowserProps {
   title?: string
   description?: string
   defaultName?: string
+  initialPath?: string
   serverId?: string
 }
 
@@ -53,6 +54,7 @@ export function DirectoryBrowser({
   title,
   description,
   defaultName,
+  initialPath,
   serverId,
 }: DirectoryBrowserProps) {
   const [result, setResult] = useState<BrowseDirectoryResult | null>(null)
@@ -103,8 +105,8 @@ export function DirectoryBrowser({
 
   useEffect(() => {
     if (!open) return
-    void loadDirectory()
-  }, [loadDirectory, open])
+    void loadDirectory(initialPath)
+  }, [initialPath, loadDirectory, open])
 
   const visibleEntries = useMemo(
     () =>

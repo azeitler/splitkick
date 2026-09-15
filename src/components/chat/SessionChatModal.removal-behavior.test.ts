@@ -139,7 +139,7 @@ describe('SessionChatModal removal behavior', () => {
 
     expect(source).toContain('flex min-w-max items-center gap-0 py-0 px-0')
     expect(source).toContain(
-      'group/tab flex shrink-0 items-center gap-1.5 border-r border-border px-3 py-1.5 text-xs transition-colors whitespace-nowrap'
+      'group/tab flex shrink-0 items-center gap-1.5 border-r border-border/40 px-3 py-1.5 text-xs transition-colors whitespace-nowrap'
     )
     expect(source).not.toContain('group/tab flex rounded items-center')
   })

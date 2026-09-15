@@ -72,6 +72,7 @@ import { useExternalDisplayZoomTip } from './hooks/use-external-display-zoom-tip
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
 import { useServerUpdateCheck } from './hooks/useServerUpdateCheck'
+import { useServerQuerySync } from './hooks/useServerQuerySync'
 import { useQueueProcessor } from './hooks/useQueueProcessor'
 import { useBackgroundInvestigation } from './hooks/useBackgroundInvestigation'
 import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
@@ -104,6 +105,7 @@ import { RemoteConnectionRecovery } from './components/remote/RemoteConnectionRe
 import { getStartupOnboardingAction } from './lib/startup-onboarding'
 import { dismissTransientUi } from './lib/dismiss-transient-ui'
 import { JeanLoadingScreen } from './components/shared/JeanLoadingScreen'
+import { relaunchAfterUIStateSave } from './lib/ui-state-relaunch'
 
 interface AutoFixStoppedEvent {
   projectId: string
@@ -144,6 +146,7 @@ function WsAuthErrorOverlay() {
 }
 
 function App() {
+  useServerQuerySync()
   const webBackend = usesWebSocketBackend()
   const wsAuthError = useWsAuthError()
   // Track preloading state for web view
@@ -233,7 +236,7 @@ function App() {
 
   const relaunchApp = useCallback(async () => {
     const { relaunch } = await import('@tauri-apps/plugin-process')
-    await relaunch()
+    await relaunchAfterUIStateSave(relaunch)
   }, [])
 
   const installAppUpdate = useCallback(

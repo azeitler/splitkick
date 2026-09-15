@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useEffectEvent, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useState,
+} from 'react'
 import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
 import { FolderOpen, FolderPlus, Globe } from 'lucide-react'
@@ -17,11 +23,17 @@ import { ServerTargetSelect } from './ServerTargetSelect'
 import { LOCAL_SERVER_ID } from '@/types/server-resource'
 import { parseServerResourceKey } from '@/lib/server-resource'
 import { useActiveConnectionId } from '@/lib/remote-connections'
+import {
+  buildProjectDestination,
+  getLastProjectDestination,
+  rememberProjectDestination,
+} from '@/lib/project-destination'
 
 export function AddProjectDialog() {
   const {
     addProjectDialogOpen,
     addProjectParentFolderId,
+    selectedProjectId,
     setAddProjectDialogOpen,
   } = useProjectsStore()
   const addProject = useAddProject()
@@ -31,16 +43,25 @@ export function AddProjectDialog() {
     ? parseServerResourceKey(addProjectParentFolderId)?.serverId
     : undefined
   const activeConnectionId = useActiveConnectionId()
+  const selectedProjectServerId = selectedProjectId
+    ? parseServerResourceKey(selectedProjectId)?.serverId
+    : undefined
+  const currentServerId =
+    parentServerId ?? selectedProjectServerId ?? activeConnectionId
   const [targetServerId, setTargetServerId] = useState(
-    parentServerId ?? activeConnectionId ?? LOCAL_SERVER_ID
+    currentServerId ?? LOCAL_SERVER_ID
   )
   const effectiveServerId = parentServerId ?? targetServerId
+  const lastDestination = useMemo(
+    () => getLastProjectDestination(effectiveServerId),
+    [addProjectDialogOpen, effectiveServerId]
+  )
 
   useEffect(() => {
     if (addProjectDialogOpen) {
-      setTargetServerId(parentServerId ?? activeConnectionId)
+      setTargetServerId(currentServerId)
     }
-  }, [activeConnectionId, addProjectDialogOpen, parentServerId])
+  }, [addProjectDialogOpen, currentServerId])
 
   const handleCloneRemote = useCallback(() => {
     const { openCloneModal } = useProjectsStore.getState()
@@ -121,10 +142,13 @@ export function AddProjectDialog() {
       const { save } = await import('@tauri-apps/plugin-dialog')
       const selected = await save({
         title: 'Create new project',
-        defaultPath: 'my-project',
+        defaultPath: lastDestination
+          ? buildProjectDestination(lastDestination, 'my-project')
+          : 'my-project',
       })
 
       if (selected && typeof selected === 'string') {
+        rememberProjectDestination(effectiveServerId, selected)
         // Check if git identity is configured before init (commit requires it)
         try {
           const identity = await invoke<{
@@ -198,6 +222,7 @@ export function AddProjectDialog() {
       }
 
       if (browserMode === 'save') {
+        rememberProjectDestination(effectiveServerId, selected)
         try {
           const identity = await invoke<{
             name: string | null
@@ -370,6 +395,7 @@ export function AddProjectDialog() {
             : 'Choose an existing git repository folder.'
         }
         defaultName={browserMode === 'save' ? 'my-project' : undefined}
+        initialPath={browserMode === 'save' ? lastDestination : undefined}
         serverId={isNativeApp() ? effectiveServerId : undefined}
       />
     </>

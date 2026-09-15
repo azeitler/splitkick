@@ -1057,7 +1057,7 @@ export function SessionChatModal({
         <ModalBrowserDrawer worktreeId={worktreeId} dockMode="left" />
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {!zenMode && (
-            <div className="shrink-0 border-b sm:text-left">
+            <div className="shrink-0 border-b border-border/40 sm:text-left">
               <div
                 className={cn(
                   'flex items-center justify-between gap-2 px-4 py-2',
@@ -1203,7 +1203,7 @@ export function SessionChatModal({
           {!zenMode && sessions.length > 0 && (
             <div
               className={cn(
-                'relative flex shrink-0 items-center gap-0.5 border-b pr-4',
+                'relative flex shrink-0 items-center gap-0.5 border-b border-border/40 pr-4',
                 MODAL_TERMINAL_SECONDARY_ROW_CLASS
               )}
             >
@@ -1251,7 +1251,7 @@ export function SessionChatModal({
                               )
                             }
                             className={cn(
-                              'group/tab flex shrink-0 items-center gap-1.5 border-r border-border px-3 py-1.5 text-xs transition-colors whitespace-nowrap cursor-pointer',
+                              'group/tab flex shrink-0 items-center gap-1.5 border-r border-border/40 px-3 py-1.5 text-xs transition-colors whitespace-nowrap cursor-pointer',
                               isActive
                                 ? 'bg-muted text-foreground'
                                 : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
