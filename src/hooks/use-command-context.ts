@@ -688,7 +688,7 @@ export function useCommandContext(
       return
     }
 
-    const { addTerminal, setTerminalPanelOpen, setTerminalVisible } =
+    const { addTerminal, setTerminalPanelOpen, setTerminalVisibleForWorktree } =
       useTerminalStore.getState()
     const terminals = useTerminalStore
       .getState()
@@ -701,7 +701,7 @@ export function useCommandContext(
     } else {
       // Just show the panel
       setTerminalPanelOpen(selectedWorktreeId, true)
-      setTerminalVisible(true)
+      setTerminalVisibleForWorktree(selectedWorktreeId, true)
     }
   }, [])
 

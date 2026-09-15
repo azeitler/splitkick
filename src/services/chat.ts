@@ -49,6 +49,7 @@ import {
 } from '@/services/cli-binary'
 import type { StoredReviewResults, Worktree } from '@/types/projects'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
+import { useConsolidatedAllSessions } from './multi-server-sessions'
 
 /** Default number of recent runs loaded on initial session fetch. */
 export const INITIAL_RUN_LIMIT = 10
@@ -611,25 +612,7 @@ export async function prefetchSessions(
  * Used by Load Context modal to show sessions from anywhere
  */
 export function useAllSessions(enabled = true) {
-  return useQuery({
-    queryKey: ['all-sessions'],
-    queryFn: async (): Promise<AllSessionsResponse> => {
-      try {
-        logger.debug('Loading all sessions')
-        const response = await invoke<AllSessionsResponse>('list_all_sessions')
-        logger.info('All sessions loaded', {
-          entryCount: response.entries.length,
-        })
-        return response
-      } catch (error) {
-        logger.error('Failed to load all sessions', { error })
-        return { entries: [] }
-      }
-    },
-    enabled,
-    staleTime: 1000 * 60 * 5, // 5 minutes
-    gcTime: 1000 * 60 * 2,
-  })
+  return useConsolidatedAllSessions(enabled)
 }
 
 /**

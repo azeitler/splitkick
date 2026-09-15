@@ -58,7 +58,12 @@ export function CommandPalette() {
     state => state.projectAccessTimestamps
   )
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
-  const activeServerId = getActiveConnectionId()
+  const selectedProject = projects.find(
+    project => project.id === selectedProjectId
+  )
+  const activeServerId = selectedProject
+    ? (selectedProject.serverId ?? LOCAL_SERVER_ID)
+    : getActiveConnectionId()
 
   // Create dynamic project commands (sorted by last-accessed, most recent first)
   // Current project is excluded so the previous project is first (quick CMD+K → Enter switching)

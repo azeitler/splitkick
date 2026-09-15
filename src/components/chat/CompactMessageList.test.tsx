@@ -383,6 +383,32 @@ describe('CompactMessageList', () => {
     ).toBeTruthy()
   })
 
+  it('keeps edited files visible when the response is cancelled', () => {
+    renderCompact([
+      message('user-1', 'user', 100, 'make the change'),
+      message('assistant-1', 'assistant', 104, '', {
+        cancelled: true,
+        tool_calls: [
+          {
+            id: 'tool-1',
+            name: 'FileChange',
+            input: [
+              {
+                path: 'src/components/chat/CompactMessageList.tsx',
+                diff: '@@ -1 +1 @@\n-old\n+new\n',
+              },
+            ],
+          },
+        ],
+        content_blocks: [{ type: 'tool_use', tool_call_id: 'tool-1' }],
+      }),
+    ])
+
+    expect(screen.getByText('(cancelled)')).toBeVisible()
+    expect(screen.getByText('Edited 1 file:')).toBeVisible()
+    expect(screen.getByText('CompactMessageList.tsx')).toBeVisible()
+  })
+
   it('summarizes fragmented PI text deltas as one meaningful line', () => {
     renderCompact([
       message('user-1', 'user', 100, 'create and edit a file'),

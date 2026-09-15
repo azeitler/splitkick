@@ -1148,7 +1148,9 @@ function handleTerminalStopped(event: TerminalStoppedEvent): void {
       ).filter(isPanelTerminal)
       if (remaining.length === 0) {
         setTerminalPanelOpen(wId, false)
-        useTerminalStore.getState().setTerminalVisible(false)
+        useTerminalStore
+          .getState()
+          .setTerminalVisibleForWorktree(wId, false)
         useTerminalStore.getState().setModalTerminalOpen(wId, false)
       }
     }, 0)

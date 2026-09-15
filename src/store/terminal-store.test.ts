@@ -16,6 +16,7 @@ describe('TerminalStore', () => {
       runningTerminals: new Set(),
       failedTerminals: new Set(),
       terminalVisible: false,
+      terminalVisibleByWorktree: {},
       terminalPanelOpen: {},
       terminalHeight: 30,
       modalTerminalOpen: {},
@@ -60,6 +61,19 @@ describe('TerminalStore', () => {
 
       toggleTerminal(worktreeId)
       expect(useTerminalStore.getState().terminalVisible).toBe(false)
+    })
+
+    it('preserves terminal visibility independently across server worktrees', () => {
+      const { setTerminalVisibleForWorktree, isTerminalVisible } =
+        useTerminalStore.getState()
+
+      setTerminalVisibleForWorktree('local-worktree', true)
+      setTerminalVisibleForWorktree('remote-one:worktree', false)
+      setTerminalVisibleForWorktree('remote-two:worktree', true)
+
+      expect(isTerminalVisible('local-worktree')).toBe(true)
+      expect(isTerminalVisible('remote-one:worktree')).toBe(false)
+      expect(isTerminalVisible('remote-two:worktree')).toBe(true)
     })
 
     it('sets terminal height', () => {

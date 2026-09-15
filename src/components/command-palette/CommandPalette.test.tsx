@@ -14,6 +14,7 @@ const {
   warnRemoteVersionMismatch,
   isNativeApp,
   getActiveConnectionId,
+  projectStoreState,
 } = vi.hoisted(() => ({
   fetchRemoteServerInfo: vi.fn(async () => ({
     ok: true,
@@ -28,6 +29,10 @@ const {
   warnRemoteVersionMismatch: vi.fn(() => false),
   isNativeApp: vi.fn(() => true),
   getActiveConnectionId: vi.fn(() => 'remote-1'),
+  projectStoreState: {
+    projectAccessTimestamps: {} as Record<string, number>,
+    selectedProjectId: null as string | null,
+  },
 }))
 
 const remoteConnections = [
@@ -111,7 +116,7 @@ vi.mock('@/store/chat-store', () => ({
 vi.mock('@/store/projects-store', () => ({
   useProjectsStore: Object.assign(
     (selector: (state: unknown) => unknown) =>
-      selector({ projectAccessTimestamps: {}, selectedProjectId: null }),
+      selector(projectStoreState),
     { getState: () => ({ selectProject }) }
   ),
 }))
@@ -148,6 +153,7 @@ describe('CommandPalette projects', () => {
     warnRemoteVersionMismatch.mockReturnValue(false)
     isNativeApp.mockReturnValue(true)
     getActiveConnectionId.mockReturnValue('remote-1')
+    projectStoreState.selectedProjectId = null
   })
 
   it('does not offer global server switching', () => {
@@ -210,5 +216,14 @@ describe('CommandPalette projects', () => {
     const firstProject = screen.getAllByRole('option')[0]
 
     expect(firstProject).toHaveTextContent('Jean')
+  })
+
+  it('uses the selected project owner as the active instance', () => {
+    getActiveConnectionId.mockReturnValue('local')
+    projectStoreState.selectedProjectId = 'remote-2:project-1'
+
+    render(<CommandPalette />)
+
+    expect(screen.getAllByRole('option')[0]).toHaveTextContent('Build Tool')
   })
 })

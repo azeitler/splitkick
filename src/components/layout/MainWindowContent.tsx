@@ -60,7 +60,11 @@ export function MainWindowContent({
       ? (state.terminalPanelOpen[activeWorktreeId] ?? false)
       : false
   )
-  const terminalVisible = useTerminalStore(state => state.terminalVisible)
+  const terminalVisible = useTerminalStore(state =>
+    activeWorktreeId
+      ? (state.terminalVisibleByWorktree[activeWorktreeId] ?? false)
+      : false
+  )
   const isPanelTerminalOpen =
     !!activeWorktreeId && terminalPanelOpen && terminalVisible
 

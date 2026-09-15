@@ -341,7 +341,7 @@ export function closeActiveTerminalTabForShortcut(): boolean {
   ).filter(isPanelTerminal)
   if (remaining.length === 0) {
     terminalStore.setTerminalPanelOpen(worktreeId, false)
-    terminalStore.setTerminalVisible(false)
+    terminalStore.setTerminalVisibleForWorktree(worktreeId, false)
     terminalStore.setModalTerminalOpen(worktreeId, false)
   }
 
@@ -1029,9 +1029,8 @@ export function useMainWindowEventListeners() {
     const setupMenuListeners = async () => {
       logger.debug('Setting up menu event listeners')
       const unlisteners = await Promise.all([
-        listen<RunEnvironmentStartedEvent>(
-          'run-environment:started',
-          event => handleRunEnvironmentStarted(event.payload)
+        listen<RunEnvironmentStartedEvent>('run-environment:started', event =>
+          handleRunEnvironmentStarted(event.payload)
         ),
         listen<{ sessionId: string }>('terminal:working', event => {
           const sessionId = event.payload?.sessionId

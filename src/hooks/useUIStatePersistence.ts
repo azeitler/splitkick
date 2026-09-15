@@ -643,6 +643,12 @@ export function useUIStatePersistence() {
           ...persistedModalOpen,
         },
         terminalVisible: uiState.terminal_visible ?? state.terminalVisible,
+        terminalVisibleByWorktree: Object.fromEntries(
+          Object.keys(persistedPanelOpen).map(worktreeId => [
+            worktreeId,
+            uiState.terminal_visible ?? false,
+          ])
+        ),
         terminalHeight: uiState.terminal_height ?? state.terminalHeight,
       }))
 
@@ -715,6 +721,7 @@ export function useUIStatePersistence() {
           modalTerminalOpen: {},
           terminalPanelOpen: {},
           terminalVisible: false,
+          terminalVisibleByWorktree: {},
         })
         // Clear any persisted session-terminal mappings — those PTYs are dead.
         // Drop both `sessionTerminalIds[sessionId]` and `sessionPrimarySurface`
@@ -852,6 +859,12 @@ export function useUIStatePersistence() {
         runningTerminals: new Set(restoredTerminalIds),
         terminalPanelOpen: restoredPanelOpen,
         terminalVisible: uiState.terminal_visible ?? state.terminalVisible,
+        terminalVisibleByWorktree: Object.fromEntries(
+          Object.keys(restoredPanelOpen).map(worktreeId => [
+            worktreeId,
+            uiState.terminal_visible ?? false,
+          ])
+        ),
         terminalHeight: uiState.terminal_height ?? state.terminalHeight,
         modalTerminalOpen: restoredModalOpen,
       }))

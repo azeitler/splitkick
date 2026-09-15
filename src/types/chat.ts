@@ -1675,6 +1675,10 @@ export interface AllSessionsEntry {
   worktree_name: string
   worktree_path: string
   sessions: Session[]
+  /** Owning Jean instance. Present on native multi-server results. */
+  serverId?: string
+  /** Display name of the owning Jean instance. */
+  serverName?: string
 }
 
 /**

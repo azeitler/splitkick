@@ -13,6 +13,7 @@ import type { AllSessionsResponse, Session } from '@/types/chat'
 import { UnreadBell } from './UnreadBell'
 
 const invokeMock = vi.fn()
+const invokeForServerMock = vi.fn()
 let allSessions: AllSessionsResponse | undefined
 let allSessionsLoading = false
 let unreadCount = 2
@@ -20,6 +21,7 @@ let sendingSessionIds: Record<string, boolean> = {}
 
 vi.mock('@/lib/transport', () => ({
   invoke: (...args: unknown[]) => invokeMock(...args),
+  invokeForServer: (...args: unknown[]) => invokeForServerMock(...args),
 }))
 
 vi.mock('@/services/chat', () => ({
@@ -180,6 +182,7 @@ describe('UnreadBell', () => {
       ],
     }
     invokeMock.mockResolvedValue(undefined)
+    invokeForServerMock.mockResolvedValue(undefined)
   })
 
   it('shows sessions that finish loading after the shortcut opens the popover', async () => {
@@ -231,6 +234,51 @@ describe('UnreadBell', () => {
     })
     expect(screen.queryByText('Session two')).not.toBeInTheDocument()
     expect(screen.getByText('Session one')).toBeInTheDocument()
+  })
+
+  it('marks all sessions read on their owning instances', async () => {
+    allSessions = {
+      entries: [
+        {
+          project_id: 'project-1',
+          project_name: 'Jean',
+          worktree_id: 'worktree-1',
+          worktree_name: 'main',
+          worktree_path: '/repo',
+          serverId: 'local',
+          serverName: 'Local',
+          sessions: [session({ id: 'session-1' })],
+        },
+        {
+          project_id: 'remote-1:project-2',
+          project_name: 'API',
+          worktree_id: 'remote-1:worktree-2',
+          worktree_name: 'feature',
+          worktree_path: '/api',
+          serverId: 'remote-1',
+          serverName: 'Build box',
+          sessions: [
+            session({ id: 'remote-1:session-2', name: 'Remote session' }),
+          ],
+        },
+      ],
+    }
+
+    const user = await openDropdown()
+    await user.click(screen.getByRole('button', { name: 'Mark all read' }))
+
+    await waitFor(() => {
+      expect(invokeForServerMock).toHaveBeenCalledWith(
+        'local',
+        'set_session_last_opened',
+        { sessionId: 'session-1' }
+      )
+      expect(invokeForServerMock).toHaveBeenCalledWith(
+        'remote-1',
+        'set_session_last_opened',
+        { sessionId: 'session-2' }
+      )
+    })
   })
 
   it('shows an R keyboard affordance on the focused unread row', async () => {

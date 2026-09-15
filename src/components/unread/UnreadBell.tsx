@@ -15,7 +15,8 @@ import {
 } from '@/components/ui/popover'
 import { Kbd } from '@/components/ui/kbd'
 import { cn } from '@/lib/utils'
-import { invoke } from '@/lib/transport'
+import { invoke, invokeForServer } from '@/lib/transport'
+import { parseServerResourceKey } from '@/lib/server-resource'
 import { useQueryClient } from '@tanstack/react-query'
 import { chatQueryKeys, useAllSessions } from '@/services/chat'
 import { usePreferences } from '@/services/preferences'
@@ -49,6 +50,8 @@ interface UnreadItem {
   worktreeId: string
   worktreeName: string
   worktreePath: string
+  serverId?: string
+  serverName?: string
 }
 
 function getSessionStatus(session: Session, isSending: boolean) {
@@ -233,6 +236,8 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
             worktreeId: entry.worktree_id,
             worktreeName: entry.worktree_name,
             worktreePath: entry.worktree_path,
+            serverId: entry.serverId,
+            serverName: entry.serverName,
           })
         }
       }
@@ -278,8 +283,14 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
   )
 
   const markSessionsOpened = useCallback(
-    async (sessionIds: string[]) => {
-      const ids = [...new Set(sessionIds)].filter(Boolean)
+    async (items: UnreadItem[]) => {
+      const uniqueItems = items.filter(
+        (item, index) =>
+          item.session.id &&
+          items.findIndex(other => other.session.id === item.session.id) ===
+            index
+      )
+      const ids = uniqueItems.map(item => item.session.id)
       if (ids.length === 0) return
 
       const idSet = new Set(ids)
@@ -289,13 +300,34 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
       markSessionsReadOptimistically(ids)
 
       try {
-        if (ids.length === 1) {
-          await invoke('set_session_last_opened', {
-            sessionId: ids[0],
-          })
-        } else {
-          await invoke('set_sessions_last_opened_bulk', { sessionIds: ids })
+        const groups = new Map<string, UnreadItem[]>()
+        for (const item of uniqueItems) {
+          const serverId = item.serverId ?? ''
+          groups.set(serverId, [...(groups.get(serverId) ?? []), item])
         }
+        await Promise.all(
+          [...groups].map(async ([serverId, serverItems]) => {
+            const resourceIds = serverItems.map(item => {
+              const parsed = parseServerResourceKey(item.session.id)
+              return parsed?.serverId === serverId
+                ? parsed.resourceId
+                : item.session.id
+            })
+            const command =
+              resourceIds.length === 1
+                ? 'set_session_last_opened'
+                : 'set_sessions_last_opened_bulk'
+            const args =
+              resourceIds.length === 1
+                ? { sessionId: resourceIds[0] }
+                : { sessionIds: resourceIds }
+            if (serverId) {
+              await invokeForServer(serverId, command, args)
+            } else {
+              await invoke(command, args)
+            }
+          })
+        )
       } catch {
         // Cache invalidation below will reconcile optimistic state.
       } finally {
@@ -312,13 +344,12 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
   )
 
   const handleMarkAllRead = useCallback(async () => {
-    const ids = displayItems.map(item => item.session.id)
-    await markSessionsOpened(ids)
+    await markSessionsOpened(displayItems)
   }, [displayItems, markSessionsOpened])
 
   const handleMarkOneRead = useCallback(
     async (item: UnreadItem) => {
-      await markSessionsOpened([item.session.id])
+      await markSessionsOpened([item])
       // Adjust focus: stay at same index or move up if at end
       setFocusedIndex(i => {
         const newTotal = displayItems.length - 1
@@ -354,7 +385,7 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
 
       // Mark read AFTER auto-open is queued so unreadCount->0 unmount can't race
       // the modal-open path. Bell popover closes via the unreadCount===0 check.
-      void markSessionsOpened([item.session.id])
+      void markSessionsOpened([item])
       setOpen(false)
     },
     [markSessionsOpened]
@@ -542,6 +573,11 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
                       <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50 shrink-0">
                         {item.projectName}
                       </span>
+                      {item.serverName && (
+                        <span className="truncate text-[11px] text-muted-foreground/50">
+                          · {item.serverName}
+                        </span>
+                      )}
                       <span className="text-[11px] text-muted-foreground/40 shrink-0 ml-auto">
                         {formatRelativeTime(item.session.updated_at)}
                       </span>

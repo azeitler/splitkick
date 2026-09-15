@@ -339,7 +339,11 @@ export function ChatWindow({
   // Review sidebar state
   const reviewSidebarVisible = useChatStore(state => state.reviewSidebarVisible)
   // Terminal panel visibility (per-worktree)
-  const terminalVisible = useTerminalStore(state => state.terminalVisible)
+  const terminalVisible = useTerminalStore(state =>
+    activeWorktreeId
+      ? (state.terminalVisibleByWorktree[activeWorktreeId] ?? false)
+      : false
+  )
   const terminalPanelOpen = useTerminalStore(state =>
     activeWorktreeId
       ? (state.terminalPanelOpen[activeWorktreeId] ?? false)
@@ -353,7 +357,7 @@ export function ChatWindow({
   const sessionTerminalId = useUIStore(state =>
     activeSessionId ? state.sessionTerminalIds[activeSessionId] : undefined
   )
-  const { setTerminalVisible } = useTerminalStore.getState()
+  const { setTerminalVisibleForWorktree } = useTerminalStore.getState()
 
   // Sync terminal panel with terminalVisible state
   useEffect(() => {
@@ -369,12 +373,16 @@ export function ChatWindow({
 
   // Terminal panel collapse/expand handlers
   const handleTerminalCollapse = useCallback(() => {
-    setTerminalVisible(false)
-  }, [setTerminalVisible])
+    if (activeWorktreeId) {
+      setTerminalVisibleForWorktree(activeWorktreeId, false)
+    }
+  }, [activeWorktreeId, setTerminalVisibleForWorktree])
 
   const handleTerminalExpand = useCallback(() => {
-    setTerminalVisible(true)
-  }, [setTerminalVisible])
+    if (activeWorktreeId) {
+      setTerminalVisibleForWorktree(activeWorktreeId, true)
+    }
+  }, [activeWorktreeId, setTerminalVisibleForWorktree])
 
   // Review sidebar collapse/expand handlers
   const handleReviewSidebarCollapse = useCallback(() => {

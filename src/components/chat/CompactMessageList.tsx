@@ -1210,7 +1210,8 @@ export const CompactMessageList = memo(
               Boolean(item.latestText) &&
               !(latestTextIsRecap && latestRunHasPlan)
             const surfaceRecap = latestTextIsRecap && showLatestText
-            const surfacedLatestToolCalls = showLatestText
+            const surfacedLatestToolCalls =
+              isLatestCompact && (showLatestText || hasCancelledMessage)
               ? item.messages.flatMap(({ message }) => message.tool_calls ?? [])
               : []
             return (
@@ -1223,15 +1224,17 @@ export const CompactMessageList = memo(
                   durationFor={durationFor}
                   recapShownExternally={surfaceRecap}
                 />
-                {showLatestText && (
+                {(showLatestText || surfacedLatestToolCalls.length > 0) && (
                   <div className="pb-4">
-                    <Markdown
-                      streaming={false}
-                      messageId={item.key}
-                      sessionId={sessionId}
-                    >
-                      {item.latestText ?? ''}
-                    </Markdown>
+                    {showLatestText && (
+                      <Markdown
+                        streaming={false}
+                        messageId={item.key}
+                        sessionId={sessionId}
+                      >
+                        {item.latestText ?? ''}
+                      </Markdown>
+                    )}
                     {surfacedLatestToolCalls.length > 0 && (
                       <EditedFilesDisplay
                         toolCalls={surfacedLatestToolCalls}

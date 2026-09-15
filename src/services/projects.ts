@@ -201,6 +201,17 @@ export async function fetchAndSeedProjectBootstrap(
     previous
   )
   queryClient.setQueryData(projectsQueryKeys.worktrees(projectId), merged)
+  for (const worktree of merged) {
+    const worktreeKey = [
+      ...projectsQueryKeys.all,
+      'worktree',
+      worktree.id,
+    ] as const
+    queryClient.setQueryData(worktreeKey, {
+      ...worktree,
+      status: worktree.status ?? 'ready',
+    })
+  }
 
   const sessionsByWorktree = bootstrap.sessionsByWorktree ?? {}
   for (const [worktreeId, sessions] of Object.entries(sessionsByWorktree)) {
