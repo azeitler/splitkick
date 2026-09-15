@@ -303,8 +303,7 @@ export async function invoke<T>(
             remote
           )
           if (remapped) {
-            const { invoke: tauriInvoke } =
-              await import('@tauri-apps/api/core')
+            const { invoke: tauriInvoke } = await import('@tauri-apps/api/core')
             return tauriInvoke<T>(command, remapped)
           }
         }
@@ -348,6 +347,17 @@ export async function invoke<T>(
     })
   }
   return wsTransport.invoke<T>(command, args)
+}
+
+/** Invoke through the active transport unless a specific server owns the request. */
+export function invokeForOptionalServer<T>(
+  serverId: string | undefined,
+  command: string,
+  args?: Record<string, unknown>
+): Promise<T> {
+  return serverId
+    ? invokeForServer<T>(serverId, command, args)
+    : invoke<T>(command, args)
 }
 
 /** Invoke a server command when no resource id can carry its ownership. */
