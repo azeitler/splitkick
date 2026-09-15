@@ -35,7 +35,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import { getFileManagerName } from '@/lib/platform'
-import { isNativeApp } from '@/lib/environment'
+import { canOpenInFinder } from '@/lib/environment'
 
 interface ProjectContextMenuProps {
   project: Project
@@ -148,7 +148,7 @@ export function ProjectContextMenu({
           Open in {getEditorLabel(preferences?.editor)}
         </ContextMenuItem>
 
-        {isNativeApp() && (
+        {canOpenInFinder() && (
           <ContextMenuItem onClick={handleOpenInFinder}>
             <FolderOpen className="mr-2 h-4 w-4" />
             Open in {getFileManagerName()}

@@ -12,7 +12,7 @@ vi.mock('@/hooks/use-theme', () => ({ useTheme: () => ({ theme: 'light' }) }))
 vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({ data: undefined }),
 }))
-vi.mock('@/lib/environment', () => ({ canOpenInEditor: () => false }))
+vi.mock('@/lib/environment', () => ({ canOpenInEditor: () => true }))
 vi.mock('@/hooks/useSyntaxHighlighting', () => ({
   useSyntaxHighlighting: () => ({ html: '', isLoading: false, error: null }),
 }))
@@ -27,10 +27,7 @@ describe('FileContentModal', () => {
 
   it('opens a loaded text file in view mode', async () => {
     render(
-      <FileContentModal
-        filePath="/project/README.txt"
-        onClose={vi.fn()}
-      />
+      <FileContentModal filePath="/project/README.txt" onClose={vi.fn()} />
     )
 
     expect(await screen.findByText('local contents')).toBeInTheDocument()
@@ -58,5 +55,18 @@ describe('FileContentModal', () => {
       'read_file_content',
       expect.anything()
     )
+    expect(
+      screen.queryByRole('button', { name: 'Open in Editor' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('offers the external editor for a local file', async () => {
+    render(
+      <FileContentModal filePath="/project/README.txt" onClose={vi.fn()} />
+    )
+
+    expect(
+      await screen.findByRole('button', { name: 'Open in Editor' })
+    ).toBeInTheDocument()
   })
 })

@@ -28,7 +28,11 @@ import {
 } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { getOpenInDefaultLabel } from '@/types/preferences'
-import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
+import {
+  canOpenInEditor,
+  canOpenInFinder,
+  canOpenInTerminal,
+} from '@/lib/environment'
 import { useUIStore } from '@/store/ui-store'
 
 interface OpenInButtonProps {
@@ -49,8 +53,9 @@ export function OpenInButton({
   const openInFinder = useOpenWorktreeInFinder()
   const openOnGitHub = useOpenBranchOnGitHub()
 
-  const canNative = canOpenNativeApps()
+  const canFinder = canOpenInFinder()
   const canEditor = canOpenInEditor()
+  const canTerminal = canOpenInTerminal()
 
   const openAction = useCallback(
     (target: string) => {
@@ -90,15 +95,17 @@ export function OpenInButton({
   const effectiveDefault =
     preferred === 'editor' && canEditor
       ? 'editor'
-      : (preferred === 'terminal' || preferred === 'finder') && canNative
+      : preferred === 'terminal' && canTerminal
         ? preferred
-        : preferred === 'github' && branch
-          ? 'github'
-          : canEditor
-            ? 'editor'
-            : branch
-              ? 'github'
-              : 'editor'
+        : preferred === 'finder' && canFinder
+          ? preferred
+          : preferred === 'github' && branch
+            ? 'github'
+            : canEditor
+              ? 'editor'
+              : branch
+                ? 'github'
+                : 'editor'
 
   const defaultLabel = getOpenInDefaultLabel(
     effectiveDefault,
@@ -106,7 +113,7 @@ export function OpenInButton({
     preferences?.terminal
   )
 
-  if (!canEditor && !canNative) return null
+  if (!canEditor && !canTerminal && !canFinder) return null
 
   return (
     <div
@@ -146,7 +153,7 @@ export function OpenInButton({
               )}
             </DropdownMenuItem>
           )}
-          {canNative && (
+          {canTerminal && (
             <DropdownMenuItem onSelect={() => openAction('terminal')}>
               <Terminal className="h-4 w-4" />
               {getOpenInDefaultLabel(
@@ -156,7 +163,7 @@ export function OpenInButton({
               )}
             </DropdownMenuItem>
           )}
-          {canNative && (
+          {canFinder && (
             <DropdownMenuItem onSelect={() => openAction('finder')}>
               <FolderOpen className="h-4 w-4" />
               Finder

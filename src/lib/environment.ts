@@ -58,12 +58,22 @@ export const canOpenRemoteEditorLocally = (): boolean =>
   getActiveRemoteConnection() !== null &&
   !isNativeOpenAllowed()
 
+/** Native desktop can open a local terminal that connects to the remote host. */
+export const canOpenRemoteTerminalLocally = (): boolean =>
+  canOpenRemoteEditorLocally()
+
 /**
  * Show Open in Editor: full host-native open, or remote Jean + local Zed CLI.
  * Finder/terminal still use `canOpenNativeApps()`.
  */
 export const canOpenInEditor = (): boolean =>
   canOpenNativeApps() || canOpenRemoteEditorLocally()
+
+export const canOpenInTerminal = (): boolean =>
+  canOpenNativeApps() || canOpenRemoteTerminalLocally()
+
+/** A file manager can only browse paths owned by the local desktop backend. */
+export const canOpenInFinder = (): boolean => isLocalBackend()
 
 /** A backend is available (either Tauri IPC, WebSocket connection, or E2E mock). */
 export const hasBackend = (): boolean => {

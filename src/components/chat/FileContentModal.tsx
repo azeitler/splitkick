@@ -367,7 +367,7 @@ export function FileContentModal({
                       <span className="hidden sm:inline">Edit</span>
                     </Button>
                   )}
-                  {canOpenInEditor() && (
+                  {(!serverId || serverId === 'local') && canOpenInEditor() && (
                     <Button
                       variant="ghost"
                       size="sm"

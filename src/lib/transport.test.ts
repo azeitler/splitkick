@@ -350,6 +350,35 @@ describe('transport bootstrap', () => {
     })
   })
 
+  it('opens remote worktrees in a local terminal through SSH', async () => {
+    const tauriInvoke = vi.fn().mockResolvedValue(undefined)
+    const transport = await loadRemoteNativeTransportModule(
+      {
+        id: 'remote-1',
+        name: 'Server',
+        url: 'https://jean.example.com',
+        token: 'secret',
+        sshUser: 'ubuntu',
+        sshHost: '192.168.1.50',
+        sshPort: 2222,
+      },
+      tauriInvoke
+    )
+
+    await transport.invoke('open_worktree_in_terminal', {
+      worktreePath: '/home/ubuntu/jean/app/feature',
+      terminal: 'ghostty',
+    })
+
+    expect(tauriInvoke).toHaveBeenCalledWith('open_worktree_in_terminal', {
+      worktreePath: '/home/ubuntu/jean/app/feature',
+      terminal: 'ghostty',
+      sshUser: 'ubuntu',
+      sshHost: '192.168.1.50',
+      sshPort: 2222,
+    })
+  })
+
   it('opens an owned remote worktree in local Zed instead of its headless server', async () => {
     const tauriInvoke = vi.fn().mockResolvedValue(undefined)
     const invokeOnServer = vi.fn()
@@ -367,10 +396,7 @@ describe('transport bootstrap', () => {
     )
     const { registerServerResourcePath } =
       await import('./server-command-routing')
-    registerServerResourcePath(
-      'remote-1',
-      '/home/ubuntu/jean/app/feature'
-    )
+    registerServerResourcePath('remote-1', '/home/ubuntu/jean/app/feature')
 
     await transport.invoke('open_worktree_in_editor', {
       worktreePath: '/home/ubuntu/jean/app/feature',

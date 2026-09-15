@@ -53,7 +53,8 @@ import {
 } from '@/services/github'
 import {
   canOpenInEditor,
-  canOpenNativeApps,
+  canOpenInFinder,
+  canOpenInTerminal,
   isNativeApp,
 } from '@/lib/environment'
 import { cn } from '@/lib/utils'
@@ -393,7 +394,7 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {(canOpenInEditor() || canOpenNativeApps()) && (
+          {(canOpenInEditor() || canOpenInTerminal() || canOpenInFinder()) && (
             <DropdownMenuSeparator />
           )}
 
@@ -404,14 +405,14 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {canOpenNativeApps() && (
+          {canOpenInFinder() && (
             <DropdownMenuItem onClick={handleOpenInFinder}>
               <FolderOpen className="mr-2 h-4 w-4" />
               Open in Finder
             </DropdownMenuItem>
           )}
 
-          {canOpenNativeApps() && (
+          {canOpenInTerminal() && (
             <DropdownMenuItem onClick={handleOpenInTerminal}>
               <Terminal className="mr-2 h-4 w-4" />
               Open in {getTerminalLabel(preferences?.terminal)}

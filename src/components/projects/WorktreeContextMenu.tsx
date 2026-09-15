@@ -28,7 +28,11 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
-import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
+import {
+  canOpenInEditor,
+  canOpenInFinder,
+  canOpenInTerminal,
+} from '@/lib/environment'
 import { getFileManagerName } from '@/lib/platform'
 import type { useWorktreeMenuActions } from './useWorktreeMenuActions'
 
@@ -88,7 +92,7 @@ export function WorktreeContextMenu({
           </ContextMenuSub>
         )}
 
-        {(canOpenInEditor() || canOpenNativeApps()) && (
+        {(canOpenInEditor() || canOpenInTerminal() || canOpenInFinder()) && (
           <ContextMenuSeparator />
         )}
 
@@ -99,14 +103,14 @@ export function WorktreeContextMenu({
           </ContextMenuItem>
         )}
 
-        {canOpenNativeApps() && (
+        {canOpenInFinder() && (
           <ContextMenuItem onClick={handleOpenInFinder}>
             <FolderOpen className="mr-2 h-4 w-4" />
             Open in {getFileManagerName()}
           </ContextMenuItem>
         )}
 
-        {canOpenNativeApps() && (
+        {canOpenInTerminal() && (
           <ContextMenuItem onClick={handleOpenInTerminal}>
             <Terminal className="mr-2 h-4 w-4" />
             Open in {getTerminalLabel(preferences?.terminal)}

@@ -19,7 +19,10 @@ import {
   getActiveRemoteConnection,
   getRemoteConnections,
 } from './remote-connections'
-import { prepareRemoteEditorOpenArgs } from './remote-editor'
+import {
+  prepareRemoteEditorOpenArgs,
+  prepareRemoteTerminalOpenArgs,
+} from './remote-editor'
 import { warnRemoteVersionMismatch } from './remote-version'
 
 /**
@@ -297,11 +300,9 @@ export async function invoke<T>(
           connection => connection.id === routed.serverId
         )
         if (remote) {
-          const remapped = prepareRemoteEditorOpenArgs(
-            command,
-            routed.args,
-            remote
-          )
+          const remapped =
+            prepareRemoteEditorOpenArgs(command, routed.args, remote) ??
+            prepareRemoteTerminalOpenArgs(command, routed.args, remote)
           if (remapped) {
             const { invoke: tauriInvoke } = await import('@tauri-apps/api/core')
             return tauriInvoke<T>(command, remapped)
@@ -325,7 +326,9 @@ export async function invoke<T>(
   if (isNativeApp() && usesWebSocketBackend() && !isNativeOpenAllowed()) {
     const remote = getActiveRemoteConnection()
     if (remote) {
-      const remapped = prepareRemoteEditorOpenArgs(command, args, remote)
+      const remapped =
+        prepareRemoteEditorOpenArgs(command, args, remote) ??
+        prepareRemoteTerminalOpenArgs(command, args, remote)
       if (remapped) {
         const { invoke: tauriInvoke } = await import('@tauri-apps/api/core')
         return tauriInvoke<T>(command, remapped)

@@ -22,7 +22,11 @@ import {
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
-import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
+import {
+  canOpenInEditor,
+  canOpenInFinder,
+  canOpenInTerminal,
+} from '@/lib/environment'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import {
   Search,
@@ -996,8 +1000,9 @@ export function ProjectCanvasView({
       (state.projectCanvasActiveFilters[projectId] ?? 'all') as CanvasFilterTab
   )
   const isMobile = useIsMobile()
-  const canOpenLocally = canOpenNativeApps()
+  const canOpenFinder = canOpenInFinder()
   const canOpenEditor = canOpenInEditor()
+  const canOpenTerminal = canOpenInTerminal()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const showWorktreeLabelContextMenu = shouldShowWorktreeLabelContextMenu({
     isMobile,
@@ -3265,7 +3270,7 @@ export function ProjectCanvasView({
                       </>
                     )}
 
-                    {(canOpenEditor || canOpenLocally) && (
+                    {(canOpenEditor || canOpenTerminal || canOpenFinder) && (
                       <>
                         <DropdownMenuSeparator />
 
@@ -3283,7 +3288,7 @@ export function ProjectCanvasView({
                           </DropdownMenuItem>
                         )}
 
-                        {canOpenLocally && (
+                        {canOpenFinder && (
                           <DropdownMenuItem
                             onSelect={() => openInFinder.mutate(project.path)}
                           >
@@ -3292,7 +3297,7 @@ export function ProjectCanvasView({
                           </DropdownMenuItem>
                         )}
 
-                        {canOpenLocally && (
+                        {canOpenTerminal && (
                           <DropdownMenuItem
                             onSelect={() =>
                               openInTerminal.mutate({
@@ -3306,7 +3311,7 @@ export function ProjectCanvasView({
                           </DropdownMenuItem>
                         )}
 
-                        {canOpenLocally && (
+                        {canOpenFinder && (
                           <>
                             <DropdownMenuSeparator />
 
@@ -3323,7 +3328,7 @@ export function ProjectCanvasView({
                       </>
                     )}
 
-                    {!canOpenEditor && !canOpenLocally && (
+                    {!canOpenEditor && !canOpenTerminal && !canOpenFinder && (
                       <DropdownMenuSeparator />
                     )}
 

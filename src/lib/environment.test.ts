@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   canOpenInEditor,
+  canOpenInFinder,
+  canOpenInTerminal,
   canOpenNativeApps,
   canOpenRemoteEditorLocally,
   hasBackend,
@@ -70,6 +72,8 @@ describe('environment detection', () => {
     expect(canOpenNativeApps()).toBe(false)
     expect(canOpenRemoteEditorLocally()).toBe(true)
     expect(canOpenInEditor()).toBe(true)
+    expect(canOpenInTerminal()).toBe(true)
+    expect(canOpenInFinder()).toBe(false)
   })
 
   it('allows host-native open when the server reports nativeOpenAllowed', () => {

@@ -9,6 +9,8 @@ const envMocks = vi.hoisted(() => ({
   isNativeApp: false,
   isLocalBackend: false,
   canOpenNativeApps: false,
+  canOpenInTerminal: false,
+  canOpenInFinder: false,
   canOpenInEditor: false,
   isMobile: true,
 }))
@@ -29,6 +31,8 @@ vi.mock('@/lib/environment', async importOriginal => ({
   isNativeApp: () => envMocks.isNativeApp,
   isLocalBackend: () => envMocks.isLocalBackend,
   canOpenNativeApps: () => envMocks.canOpenNativeApps,
+  canOpenInTerminal: () => envMocks.canOpenInTerminal,
+  canOpenInFinder: () => envMocks.canOpenInFinder,
   canOpenInEditor: () => envMocks.canOpenInEditor,
 }))
 
@@ -82,6 +86,8 @@ describe('WorktreeDropdownMenu', () => {
     envMocks.isNativeApp = false
     envMocks.isLocalBackend = false
     envMocks.canOpenNativeApps = false
+    envMocks.canOpenInTerminal = false
+    envMocks.canOpenInFinder = false
     envMocks.canOpenInEditor = false
     envMocks.isMobile = true
     actionMocks.runScripts = ['bun run dev']
@@ -134,6 +140,7 @@ describe('WorktreeDropdownMenu', () => {
     envMocks.isLocalBackend = false
     envMocks.canOpenNativeApps = false
     envMocks.canOpenInEditor = true
+    envMocks.canOpenInTerminal = true
     envMocks.isMobile = false
 
     render(
@@ -147,16 +154,21 @@ describe('WorktreeDropdownMenu', () => {
     await user.click(screen.getByRole('button'))
 
     expect(
-      screen.getByRole('menuitem', { name: /open in/i })
+      screen.getByRole('menuitem', { name: /open in editor/i })
+    ).toBeInTheDocument()
+    expect(
+      screen.getByRole('menuitem', { name: /open in terminal/i })
     ).toBeInTheDocument()
     expect(screen.queryByRole('menuitem', { name: /finder/i })).toBeNull()
   })
 
-  it('shows open-in editor/terminal/finder when the remote backend allows native open', async () => {
+  it('hides Finder when the remote backend allows native open', async () => {
     const user = userEvent.setup()
     envMocks.isNativeApp = true
     envMocks.isLocalBackend = false
     envMocks.canOpenNativeApps = true
+    envMocks.canOpenInTerminal = true
+    envMocks.canOpenInFinder = false
     envMocks.canOpenInEditor = true
     envMocks.isMobile = false
 
@@ -172,6 +184,7 @@ describe('WorktreeDropdownMenu', () => {
 
     const openItems = screen.getAllByRole('menuitem', { name: /open in/i })
     expect(openItems.length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByRole('menuitem', { name: /finder/i })).toBeNull()
   })
 
   it('shows issues, pull requests, and workflows on desktop when counts are zero', async () => {

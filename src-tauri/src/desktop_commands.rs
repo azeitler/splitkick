@@ -220,7 +220,27 @@ pub async fn open_project_worktrees_folder(
 pub async fn open_worktree_in_terminal(
     worktree_path: String,
     terminal: Option<String>,
+    ssh_user: Option<String>,
+    ssh_host: Option<String>,
+    ssh_port: Option<u16>,
 ) -> Result<(), String> {
+    let ssh_args = ssh_host.map(|host| {
+        let destination = ssh_user
+            .filter(|user| !user.trim().is_empty())
+            .map(|user| format!("{user}@{host}"))
+            .unwrap_or(host);
+        let mut args = vec!["-t".to_string()];
+        if let Some(port) = ssh_port.filter(|port| *port != 22) {
+            args.extend(["-p".to_string(), port.to_string()]);
+        }
+        args.push(destination);
+        args.push(format!(
+            "cd -- {} && exec \"${{SHELL:-/bin/sh}}\" -l",
+            shell_quote(&worktree_path)
+        ));
+        args
+    });
+
     #[cfg(target_os = "windows")]
     let _ = terminal;
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -233,14 +253,46 @@ pub async fn open_worktree_in_terminal(
             "iterm2" => "iTerm",
             _ => "Terminal",
         };
-        spawn(
-            "open",
-            &["-a".to_string(), application.to_string(), worktree_path],
-        )
+        if let Some(ssh_args) = ssh_args {
+            if application == "Terminal" {
+                let command = format!(
+                    "ssh {}",
+                    ssh_args
+                        .iter()
+                        .map(|arg| shell_quote(arg))
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                );
+                let script = format!(
+                    "tell application \"Terminal\" to do script \"{}\"",
+                    command.replace('\\', "\\\\").replace('"', "\\\"")
+                );
+                return spawn("osascript", &["-e".to_string(), script]);
+            }
+            let mut args = vec![
+                "-na".to_string(),
+                application.to_string(),
+                "--args".to_string(),
+                "ssh".to_string(),
+            ];
+            args.extend(ssh_args);
+            spawn("open", &args)
+        } else {
+            spawn(
+                "open",
+                &["-a".to_string(), application.to_string(), worktree_path],
+            )
+        }
     }
     #[cfg(target_os = "windows")]
     {
-        spawn("wt", &["-d".to_string(), worktree_path])
+        if let Some(ssh_args) = ssh_args {
+            let mut args = vec!["ssh".to_string()];
+            args.extend(ssh_args);
+            spawn("wt", &args)
+        } else {
+            spawn("wt", &["-d".to_string(), worktree_path])
+        }
     }
     #[cfg(target_os = "linux")]
     {
@@ -249,12 +301,21 @@ pub async fn open_worktree_in_terminal(
         } else {
             "x-terminal-emulator"
         };
-        Command::new(binary)
-            .current_dir(worktree_path)
+        let mut command = Command::new(binary);
+        if let Some(ssh_args) = ssh_args {
+            command.arg("-e").arg("ssh").args(ssh_args);
+        } else {
+            command.current_dir(worktree_path);
+        }
+        command
             .spawn()
             .map(|_| ())
             .map_err(|error| error.to_string())
     }
+}
+
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 #[tauri::command]
