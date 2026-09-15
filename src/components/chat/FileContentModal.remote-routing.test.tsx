@@ -1,5 +1,5 @@
-import { render, waitFor } from '@/test/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { render, screen, waitFor } from '@/test/test-utils'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FileContentModal } from './FileContentModal'
 
 const { invoke, invokeForServer } = vi.hoisted(() => ({
@@ -20,7 +20,24 @@ vi.mock('@/components/ui/code-editor', () => ({
   default: () => <div data-testid="code-editor" />,
 }))
 
-describe('FileContentModal remote routing', () => {
+describe('FileContentModal', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('opens a loaded text file in view mode', async () => {
+    render(
+      <FileContentModal
+        filePath="/project/README.txt"
+        onClose={vi.fn()}
+      />
+    )
+
+    expect(await screen.findByText('local contents')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Edit' })).toBeInTheDocument()
+    expect(screen.queryByTestId('code-editor')).not.toBeInTheDocument()
+  })
+
   it('loads file content from the specified Jean server', async () => {
     render(
       <FileContentModal
