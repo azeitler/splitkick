@@ -15,6 +15,11 @@ import { getAllCommands, executeCommand } from '@/lib/commands'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
 import {
+  getActiveConnectionId,
+  useRemoteConnections,
+} from '@/lib/remote-connections'
+import { LOCAL_SERVER_ID } from '@/types/server-resource'
+import {
   CommandDialog,
   CommandInput,
   CommandList,
@@ -38,6 +43,7 @@ interface ProjectCommand {
 
 export function CommandPalette() {
   const native = isNativeApp()
+  useRemoteConnections()
   const { commandPaletteOpen, setCommandPaletteOpen } = useUIStore()
   const { data: preferences } = usePreferences()
   const commandContext = useCommandContext(preferences)
@@ -52,6 +58,7 @@ export function CommandPalette() {
     state => state.projectAccessTimestamps
   )
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
+  const activeServerId = getActiveConnectionId()
 
   // Create dynamic project commands (sorted by last-accessed, most recent first)
   // Current project is excluded so the previous project is first (quick CMD+K → Enter switching)
@@ -59,6 +66,10 @@ export function CommandPalette() {
     return projects
       .filter(p => !p.is_folder && p.id !== selectedProjectId)
       .sort((a, b) => {
+        const aIsActive = (a.serverId ?? LOCAL_SERVER_ID) === activeServerId
+        const bIsActive = (b.serverId ?? LOCAL_SERVER_ID) === activeServerId
+        if (aIsActive !== bIsActive) return aIsActive ? -1 : 1
+
         const aTime = projectAccessTimestamps[a.id] ?? 0
         const bTime = projectAccessTimestamps[b.id] ?? 0
         return bTime - aTime
@@ -98,7 +109,14 @@ export function CommandPalette() {
           useProjectsStore.getState().selectProject(project.id)
         },
       }))
-  }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId, native])
+  }, [
+    projects,
+    appDataDir,
+    projectAccessTimestamps,
+    selectedProjectId,
+    native,
+    activeServerId,
+  ])
 
   // Get all available commands (memoized to prevent re-filtering on every render)
   const commandGroups = useMemo(() => {

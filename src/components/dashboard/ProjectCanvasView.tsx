@@ -405,6 +405,12 @@ export function getCanvasHighlight(
   }
 }
 
+export function shouldWaitForCanvasRestorePreferences(
+  preferences: { restore_last_session: boolean } | undefined
+): boolean {
+  return preferences === undefined
+}
+
 type ActiveStatus =
   | 'waiting'
   | 'planning'
@@ -2082,6 +2088,10 @@ export function ProjectCanvasView({
   // Auto-select session when dashboard opens (visual selection only, no modal unless restore_last_session is on)
   // Prefers last opened per project, then persisted active session per worktree, falls back to first card
   useEffect(() => {
+    // The canvas data can already be cached when the user returns from a
+    // remote project. Do not make the one-time reopen decision before local
+    // preferences have loaded, or `restore_last_session` is treated as false.
+    if (shouldWaitForCanvasRestorePreferences(preferences)) return
     if (selectedIndex !== null || selectedWorktreeModal) return
     if (flatCards.length === 0) return
 

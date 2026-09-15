@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { CommandPalette } from './CommandPalette'
 
@@ -13,6 +13,7 @@ const {
   showToast,
   warnRemoteVersionMismatch,
   isNativeApp,
+  getActiveConnectionId,
 } = vi.hoisted(() => ({
   fetchRemoteServerInfo: vi.fn(async () => ({
     ok: true,
@@ -26,6 +27,7 @@ const {
   showToast: vi.fn(),
   warnRemoteVersionMismatch: vi.fn(() => false),
   isNativeApp: vi.fn(() => true),
+  getActiveConnectionId: vi.fn(() => 'remote-1'),
 }))
 
 const remoteConnections = [
@@ -75,6 +77,28 @@ vi.mock('@/services/projects', () => ({
         serverId: 'remote-2',
         serverName: 'Build server',
       },
+      {
+        id: 'remote-1:project-2',
+        name: 'Active Tool',
+        path: '/projects/active-tool',
+        is_folder: false,
+        serverId: 'remote-1',
+        serverName: 'Active server',
+      },
+      {
+        id: 'remote-2:project-2',
+        name: 'Build Tool',
+        path: '/projects/build-tool',
+        is_folder: false,
+        serverId: 'remote-2',
+        serverName: 'Build server',
+      },
+      {
+        id: 'project-2',
+        name: 'Local Tool',
+        path: '/projects/local-tool',
+        is_folder: false,
+      },
     ],
   }),
   useAppDataDir: () => ({ data: undefined }),
@@ -99,7 +123,7 @@ vi.mock('@/lib/commands', () => ({
 
 vi.mock('@/lib/remote-connections', () => ({
   LOCAL_CONNECTION_ID: 'local',
-  getActiveConnectionId: () => 'remote-1',
+  getActiveConnectionId,
   getRemoteConnections: () => remoteConnections,
   markConnectionSwitch,
   selectConnection,
@@ -123,6 +147,7 @@ describe('CommandPalette projects', () => {
     })
     warnRemoteVersionMismatch.mockReturnValue(false)
     isNativeApp.mockReturnValue(true)
+    getActiveConnectionId.mockReturnValue('remote-1')
   })
 
   it('does not offer global server switching', () => {
@@ -145,8 +170,8 @@ describe('CommandPalette projects', () => {
     expect(projectRows[0]?.getAttribute('data-value')).not.toBe(
       projectRows[1]?.getAttribute('data-value')
     )
-    expect(screen.getByText('Open on Local')).toBeInTheDocument()
-    expect(screen.getByText('Open on Build server')).toBeInTheDocument()
+    expect(screen.getAllByText('Open on Local')).not.toHaveLength(0)
+    expect(screen.getAllByText('Open on Build server')).not.toHaveLength(0)
   })
 
   it('does not show a redundant Local server label in Web Access', () => {
@@ -156,5 +181,34 @@ describe('CommandPalette projects', () => {
 
     expect(screen.queryByText('Open on Local')).not.toBeInTheDocument()
     expect(screen.queryByText('Open on Build server')).not.toBeInTheDocument()
+  })
+
+  it('shows projects from the active instance first before and after filtering', () => {
+    render(<CommandPalette />)
+
+    const visibleProjectNames = () =>
+      screen.getAllByRole('option').map(row => row.textContent)
+
+    expect(visibleProjectNames()[0]).toContain('Active Tool')
+
+    fireEvent.change(screen.getByPlaceholderText('Type a command or search...'), {
+      target: { value: 'tool' },
+    })
+
+    expect(
+      visibleProjectNames().map(name =>
+        name?.replace(/^./, '').replace(/Open on .*/, '')
+      )
+    )
+      .toEqual(['Active Tool', 'Build Tool', 'Local Tool'])
+  })
+
+  it('treats unscoped projects as local when local is active', () => {
+    getActiveConnectionId.mockReturnValue('local')
+
+    render(<CommandPalette />)
+    const firstProject = screen.getAllByRole('option')[0]
+
+    expect(firstProject).toHaveTextContent('Jean')
   })
 })
