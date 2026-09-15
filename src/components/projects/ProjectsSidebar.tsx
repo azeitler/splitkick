@@ -51,7 +51,12 @@ export function ProjectsSidebar() {
   const sidebarWidth = useSidebarWidth()
   const isMobile = useIsMobile()
   const [backendCheckReady, setBackendCheckReady] = useState(false)
-  const [serverFilter, setServerFilter] = useState(ALL_SERVERS)
+  const serverFilter = useProjectsStore(
+    state => state.sidebarServerFilter ?? ALL_SERVERS
+  )
+  const setServerFilter = useProjectsStore(
+    state => state.setSidebarServerFilter
+  )
   const [connectionsOpen, setConnectionsOpen] = useState(false)
   const serverSnapshots = useServerConnectionSnapshots()
   const serverIds = [...new Set(projects.map(projectServerId))]
@@ -60,6 +65,11 @@ export function ProjectsSidebar() {
   const visibleProjects = showServerFilter
     ? filterProjectsByServer(projects, serverFilter)
     : projects
+  useEffect(() => {
+    if (serverFilter !== ALL_SERVERS && !serverIds.includes(serverFilter)) {
+      setServerFilter(ALL_SERVERS)
+    }
+  }, [serverFilter, serverIds, setServerFilter])
   const selectedServerLabel =
     serverFilter === ALL_SERVERS
       ? 'All servers'

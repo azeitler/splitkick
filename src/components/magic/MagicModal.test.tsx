@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { render, screen, waitFor } from '@/test/test-utils'
+import { act, render, screen, waitFor } from '@/test/test-utils'
 import { MagicModal } from './MagicModal'
 
 const mocks = vi.hoisted(() => {
@@ -328,6 +328,20 @@ describe('MagicModal manual PR link', () => {
     })
   })
 
+  it('opens Link PR from the mobile Magic option event', async () => {
+    render(<MagicModal />)
+
+    act(() => {
+      window.dispatchEvent(
+        new CustomEvent('magic-option', { detail: 'link-pr' })
+      )
+    })
+
+    expect(
+      await screen.findByRole('dialog', { name: /link pull request/i })
+    ).toBeInTheDocument()
+  })
+
   it('opens a Link PR dialog and links the selected PR number', async () => {
     const user = userEvent.setup()
     render(<MagicModal />)
@@ -593,12 +607,15 @@ describe('MagicModal manual PR link', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows the inject session magic command', () => {
+  it('shows one inject context command instead of load context', () => {
     render(<MagicModal />)
 
     expect(
-      screen.getByRole('button', { name: /inject session/i })
+      screen.getByRole('button', { name: /inject context/i })
     ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /load context/i })
+    ).not.toBeInTheDocument()
   })
 
   it('shows the check GitHub issues magic command', () => {

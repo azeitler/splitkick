@@ -190,6 +190,7 @@ import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners
 import { useGlobalInputSanitizer } from '@/hooks/useGlobalInputSanitizer'
 import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
 import { useUIStatePersistence } from '@/hooks/useUIStatePersistence'
+import { useClientViewStatePersistence } from '@/hooks/useClientViewStatePersistence'
 import { useSessionStatePersistence } from '@/hooks/useSessionStatePersistence'
 import { useRestoreLastArchived } from '@/hooks/useRestoreLastArchived'
 import { useArchiveCleanup } from '@/hooks/useArchiveCleanup'
@@ -342,6 +343,7 @@ export function MainWindow() {
 
   // Persist UI state (last opened worktree, expanded projects)
   const { isInitialized } = useUIStatePersistence()
+  useClientViewStatePersistence(isInitialized)
 
   // Persist session-specific state (answered questions, fixed findings, etc.)
   useSessionStatePersistence()
@@ -583,7 +585,7 @@ export function MainWindow() {
             tabIndex={-1}
             aria-orientation="vertical"
             aria-label="Resize left sidebar"
-            className="relative h-full w-px bg-border"
+            className="relative h-full w-px bg-border/40"
             onMouseDown={handleResizeStart}
           >
             {/* Invisible wider hit area for easier clicking */}
@@ -611,7 +613,7 @@ export function MainWindow() {
             tabIndex={-1}
             aria-orientation="vertical"
             aria-label="Resize file browser"
-            className="relative h-full w-px bg-border"
+            className="relative h-full w-px bg-border/40"
             onMouseDown={handleFileBrowserResizeStart}
           >
             <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />

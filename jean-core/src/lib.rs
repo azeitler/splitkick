@@ -2903,6 +2903,14 @@ pub struct UIState {
     #[serde(default)]
     pub pending_text_files: std::collections::HashMap<String, Vec<PendingTextFileDraft>>,
 
+    /// Unsent regular file and directory attachments per session
+    #[serde(default)]
+    pub pending_files: std::collections::HashMap<String, Vec<PendingFileDraft>>,
+
+    /// Unsent skill attachments per session
+    #[serde(default)]
+    pub pending_skills: std::collections::HashMap<String, Vec<PendingSkillDraft>>,
+
     /// Worktree IDs whose setup-script status card was dismissed
     #[serde(default)]
     pub dismissed_setup_scripts: Vec<String>,
@@ -3081,6 +3089,27 @@ pub struct PendingTextFileDraft {
     pub content: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingFileDraft {
+    pub id: String,
+    pub relative_path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_root_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_project_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_project_name: Option<String>,
+    pub extension: String,
+    pub is_directory: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PendingSkillDraft {
+    pub id: String,
+    pub name: String,
+    pub path: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ProjectCanvasSettings {
     #[serde(default)]
@@ -3107,6 +3136,8 @@ impl Default for UIState {
             input_drafts: std::collections::HashMap::new(),
             pending_images: std::collections::HashMap::new(),
             pending_text_files: std::collections::HashMap::new(),
+            pending_files: std::collections::HashMap::new(),
+            pending_skills: std::collections::HashMap::new(),
             dismissed_setup_scripts: Vec::new(),
             review_sidebar_visible: None,
             modal_terminal_open: std::collections::HashMap::new(),

@@ -34,6 +34,10 @@ import type { LinearIssue, LoadedLinearIssueContext } from '@/types/linear'
 import type { SentryIssue, SentryIssueContext } from '@/types/sentry'
 import type { MagicPromptProviders } from '@/types/preferences'
 import type { SessionWithContext } from '../LoadContextItems'
+import {
+  deleteSavedContextFile,
+  readSavedContextFile,
+} from '@/services/saved-contexts'
 
 interface LinearIssueContextContent {
   identifier: string
@@ -719,13 +723,13 @@ export function useLoadContextHandlers({
     async (e: React.MouseEvent, context: SavedContext) => {
       e.stopPropagation()
       try {
-        await invoke('delete_context_file', { path: context.path })
+        await deleteSavedContextFile(context.path, projectId)
         refetchContexts()
       } catch (err) {
         console.error('Failed to delete context:', err)
       }
     },
-    [refetchContexts]
+    [projectId, refetchContexts]
   )
 
   const handleAttachContext = useCallback(
@@ -802,21 +806,22 @@ export function useLoadContextHandlers({
     [activeSessionId]
   )
 
-  const handleViewContext = useCallback(async (ctx: SavedContext) => {
-    try {
-      const content = await invoke<string>('read_context_file', {
-        path: ctx.path,
-      })
-      setViewingContext({
-        type: 'saved',
-        slug: ctx.slug,
-        title: ctx.name || ctx.slug || 'Untitled',
-        content,
-      })
-    } catch (error) {
-      toast.error(`Failed to load context: ${error}`)
-    }
-  }, [])
+  const handleViewContext = useCallback(
+    async (ctx: SavedContext) => {
+      try {
+        const content = await readSavedContextFile(ctx.path, projectId)
+        setViewingContext({
+          type: 'saved',
+          slug: ctx.slug,
+          title: ctx.name || ctx.slug || 'Untitled',
+          content,
+        })
+      } catch (error) {
+        toast.error(`Failed to load context: ${error}`)
+      }
+    },
+    [projectId]
+  )
 
   const handleStartEdit = useCallback(
     (e: React.MouseEvent, context: SavedContext) => {

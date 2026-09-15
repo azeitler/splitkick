@@ -991,7 +991,10 @@ export function ProjectCanvasView({
   const openInEditor = useOpenWorktreeInEditor()
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [activeFilterTab, setActiveFilterTab] = useState<CanvasFilterTab>('all')
+  const activeFilterTab = useProjectsStore(
+    state =>
+      (state.projectCanvasActiveFilters[projectId] ?? 'all') as CanvasFilterTab
+  )
   const isMobile = useIsMobile()
   const canOpenLocally = canOpenNativeApps()
   const canOpenEditor = canOpenInEditor()
@@ -1115,8 +1118,8 @@ export function ProjectCanvasView({
   useEffect(() => {
     if (!isLabelFilterTab(activeFilterTab)) return
     if (pinnedLabelTabs.some(tab => tab.value === activeFilterTab)) return
-    setActiveFilterTab('all')
-  }, [activeFilterTab, pinnedLabelTabs])
+    useProjectsStore.getState().setProjectCanvasActiveFilter(projectId, 'all')
+  }, [activeFilterTab, pinnedLabelTabs, projectId])
 
   const assignedWorktreeLabels = useMemo(() => {
     const labels: LabelData[] = []
@@ -2340,9 +2343,9 @@ export function ProjectCanvasView({
     (value: CanvasFilterTab) => {
       if (value === activeFilterTab) return
       suppressNextRestoreAutoOpenRef.current = true
-      setActiveFilterTab(value)
+      useProjectsStore.getState().setProjectCanvasActiveFilter(projectId, value)
     },
-    [activeFilterTab]
+    [activeFilterTab, projectId]
   )
 
   const handleFilterTabKeyboardNav = useCallback(

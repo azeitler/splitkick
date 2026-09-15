@@ -1,6 +1,5 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useAllSessions } from '@/services/chat'
 import {
@@ -39,7 +38,11 @@ import {
   useLoadedSentryContexts,
   useSentryIssues,
 } from '@/services/sentry'
-import type { SavedContextsResponse } from '@/types/chat'
+import {
+  listSavedContexts,
+  renameSavedContext,
+  savedContextsQueryKey,
+} from '@/services/saved-contexts'
 
 interface UseLoadContextDataOptions {
   open: boolean
@@ -176,8 +179,8 @@ export function useLoadContextData({
     error: contextsError,
     refetch: refetchContexts,
   } = useQuery({
-    queryKey: ['session-context'],
-    queryFn: () => invoke<SavedContextsResponse>('list_saved_contexts'),
+    queryKey: savedContextsQueryKey(projectId),
+    queryFn: () => listSavedContexts(projectId),
     enabled: open,
     staleTime: 1000 * 60 * 5,
   })
@@ -380,7 +383,7 @@ export function useLoadContextData({
       filename: string
       newName: string
     }) => {
-      await invoke('rename_saved_context', { filename, newName })
+      await renameSavedContext(filename, newName, projectId)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-context'] })

@@ -13,7 +13,6 @@ import {
   MessageSquare,
   Wand2,
   BookmarkPlus,
-  FolderOpen,
   Bug,
   RefreshCw,
   Undo2,
@@ -254,14 +253,8 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
           key: 'S',
         },
         {
-          id: 'load-context',
-          label: 'Load Context',
-          icon: FolderOpen,
-          key: 'L',
-        },
-        {
           id: 'inject-session',
-          label: 'Inject Session',
+          label: 'Inject Context',
           icon: MessageSquare,
           key: 'J',
         },
@@ -394,7 +387,6 @@ function buildMagicColumns(hasOpenPr: boolean): MagicColumns {
 /** Keyboard shortcut to option ID mapping */
 const KEY_TO_OPTION: Record<string, MagicOption> = {
   s: 'save-context',
-  l: 'load-context',
   j: 'inject-session',
   k: 'linked-projects',
   w: 'fork-session',
@@ -2371,6 +2363,15 @@ ${resolveInstructions}`
       detectLinkPrForCurrentBranch,
     ]
   )
+
+  useEffect(() => {
+    const handleMagicOption = (event: Event) => {
+      void executeAction((event as CustomEvent<MagicOption>).detail)
+    }
+
+    window.addEventListener('magic-option', handleMagicOption)
+    return () => window.removeEventListener('magic-option', handleMagicOption)
+  }, [executeAction])
 
   // Handle keyboard navigation
   const handleKeyDown = useCallback(

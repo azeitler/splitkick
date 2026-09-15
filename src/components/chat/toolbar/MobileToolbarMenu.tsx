@@ -7,7 +7,6 @@ import {
   Bug,
   Eye,
   FileText,
-  FolderOpen,
   GitBranchPlus,
   GitCommitHorizontal,
   GitMerge,
@@ -16,6 +15,7 @@ import {
   Link2,
   MessageSquare,
   RefreshCw,
+  ShieldAlert,
   Undo2,
   Wand2,
 } from 'lucide-react'
@@ -36,6 +36,7 @@ interface MobileToolbarMenuProps {
   hasIssueContexts: boolean
   hasSentryContexts?: boolean
   hasPrContexts: boolean
+  hasAdvisoryContexts?: boolean
 
   onSaveContext: () => void
   onLoadContext: () => void
@@ -57,6 +58,7 @@ export function MobileToolbarMenu({
   hasIssueContexts,
   hasSentryContexts = false,
   hasPrContexts,
+  hasAdvisoryContexts = false,
   onSaveContext,
   onLoadContext,
   onCommit,
@@ -108,15 +110,15 @@ export function MobileToolbarMenu({
           </span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onLoadContext}>
-          <FolderOpen className="h-4 w-4" />
-          Load Context
+          <MessageSquare className="h-4 w-4" />
+          Inject Context
           <span
             className={cn(
               'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
               isMobile && 'hidden'
             )}
           >
-            L
+            J
           </span>
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -287,6 +289,25 @@ export function MobileToolbarMenu({
             O
           </span>
         </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            setMenuOpen(false)
+            window.dispatchEvent(
+              new CustomEvent('magic-option', { detail: 'link-pr' })
+            )
+          }}
+        >
+          <Link2 className="h-4 w-4" />
+          Link PR
+          <span
+            className={cn(
+              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+              isMobile && 'hidden'
+            )}
+          >
+            B
+          </span>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={onReview}>
           <Eye className="h-4 w-4" />
           Review
@@ -348,7 +369,7 @@ export function MobileToolbarMenu({
           }}
         >
           <FileText className="h-4 w-4" />
-          Release Notes
+          Generate Release Notes
           <span
             className={cn(
               'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
@@ -365,7 +386,7 @@ export function MobileToolbarMenu({
           }}
         >
           <RefreshCw className="h-4 w-4" />
-          PR Description
+          Generate PR Description
           <span
             className={cn(
               'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
@@ -428,6 +449,29 @@ export function MobileToolbarMenu({
             )}
           >
             A
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!hasAdvisoryContexts}
+          onClick={() => {
+            if (!hasAdvisoryContexts) return
+            setMenuOpen(false)
+            window.dispatchEvent(
+              new CustomEvent('magic-command', {
+                detail: { command: 'investigate', type: 'advisory' },
+              })
+            )
+          }}
+        >
+          <ShieldAlert className="h-4 w-4" />
+          Advisory
+          <span
+            className={cn(
+              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+              isMobile && 'hidden'
+            )}
+          >
+            Y
           </span>
         </DropdownMenuItem>
 

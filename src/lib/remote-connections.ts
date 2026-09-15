@@ -316,6 +316,17 @@ export function useRemoteConnections(): RemoteConnection[] {
   )
 }
 
+export function useActiveConnectionId(): string {
+  return useSyncExternalStore(
+    callback => {
+      subscribers.add(callback)
+      return () => subscribers.delete(callback)
+    },
+    () => activeConnectionSnapshot,
+    () => LOCAL_CONNECTION_ID
+  )
+}
+
 export function useLocalDashboardEnabled(): boolean {
   return useSyncExternalStore(
     callback => {

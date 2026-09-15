@@ -16,7 +16,9 @@ import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import type { BrowserTab } from '@/types/browser'
 import type {
+  PendingFile,
   PendingImage,
+  PendingSkill,
   PendingTextFile,
   ReadTextResponse,
 } from '@/types/chat'
@@ -164,6 +166,8 @@ export function useUIStatePersistence() {
       inputDrafts,
       pendingImages,
       pendingTextFiles,
+      pendingFiles,
+      pendingSkills,
       dismissedSetupScripts,
       reviewSidebarVisible,
       lastOpenedPerProject,
@@ -243,6 +247,21 @@ export function useUIStatePersistence() {
       input_drafts: inputDrafts,
       pending_images: serializePendingImages(pendingImages),
       pending_text_files: serializePendingTextFiles(pendingTextFiles),
+      pending_files: Object.fromEntries(
+        Object.entries(pendingFiles).map(([sessionId, files]) => [
+          sessionId,
+          files.map(file => ({
+            id: file.id,
+            relative_path: file.relativePath,
+            source_root_path: file.sourceRootPath,
+            source_project_id: file.sourceProjectId,
+            source_project_name: file.sourceProjectName,
+            extension: file.extension,
+            is_directory: file.isDirectory,
+          })),
+        ])
+      ),
+      pending_skills: pendingSkills,
       dismissed_setup_scripts: Object.keys(dismissedSetupScripts),
       // Review sidebar visibility
       review_sidebar_visible: reviewSidebarVisible,
@@ -472,6 +491,39 @@ export function useUIStatePersistence() {
         true,
       ])
     )
+
+    const restoredFiles: Record<string, PendingFile[]> = {}
+    for (const [sessionId, files] of Object.entries(
+      uiState.pending_files ?? {}
+    )) {
+      const valid = files.flatMap(file =>
+        file.id && file.relative_path
+          ? [
+              {
+                id: file.id,
+                relativePath: file.relative_path,
+                sourceRootPath: file.source_root_path,
+                sourceProjectId: file.source_project_id,
+                sourceProjectName: file.source_project_name,
+                extension: file.extension,
+                isDirectory: file.is_directory,
+              },
+            ]
+          : []
+      )
+      if (valid.length > 0) restoredFiles[sessionId] = valid
+    }
+    const restoredSkills: Record<string, PendingSkill[]> = {}
+    for (const [sessionId, skills] of Object.entries(
+      uiState.pending_skills ?? {}
+    )) {
+      const valid = skills.filter(skill => skill.id && skill.name && skill.path)
+      if (valid.length > 0) restoredSkills[sessionId] = valid
+    }
+    useChatStore.setState({
+      pendingFiles: restoredFiles,
+      pendingSkills: restoredSkills,
+    })
     if (Object.keys(dismissedSetupScripts).length > 0) {
       useChatStore.setState({ dismissedSetupScripts })
     }
@@ -1121,6 +1173,8 @@ export function useUIStatePersistence() {
     let prevInputDrafts = useChatStore.getState().inputDrafts
     let prevPendingImages = useChatStore.getState().pendingImages
     let prevPendingTextFiles = useChatStore.getState().pendingTextFiles
+    let prevPendingFiles = useChatStore.getState().pendingFiles
+    let prevPendingSkills = useChatStore.getState().pendingSkills
     let prevDismissedSetupScripts =
       useChatStore.getState().dismissedSetupScripts
     let prevReviewSidebarVisible = useChatStore.getState().reviewSidebarVisible
@@ -1244,6 +1298,8 @@ export function useUIStatePersistence() {
       const pendingImagesChanged = state.pendingImages !== prevPendingImages
       const pendingTextFilesChanged =
         state.pendingTextFiles !== prevPendingTextFiles
+      const pendingFilesChanged = state.pendingFiles !== prevPendingFiles
+      const pendingSkillsChanged = state.pendingSkills !== prevPendingSkills
       const dismissedSetupScriptsChanged =
         state.dismissedSetupScripts !== prevDismissedSetupScripts
       const reviewSidebarChanged =
@@ -1257,6 +1313,8 @@ export function useUIStatePersistence() {
         inputDraftsChanged ||
         pendingImagesChanged ||
         pendingTextFilesChanged ||
+        pendingFilesChanged ||
+        pendingSkillsChanged ||
         dismissedSetupScriptsChanged ||
         reviewSidebarChanged ||
         lastOpenedChanged
@@ -1268,6 +1326,8 @@ export function useUIStatePersistence() {
         prevInputDrafts = state.inputDrafts
         prevPendingImages = state.pendingImages
         prevPendingTextFiles = state.pendingTextFiles
+        prevPendingFiles = state.pendingFiles
+        prevPendingSkills = state.pendingSkills
         prevDismissedSetupScripts = state.dismissedSetupScripts
         prevReviewSidebarVisible = state.reviewSidebarVisible
         prevLastOpenedPerProject = state.lastOpenedPerProject

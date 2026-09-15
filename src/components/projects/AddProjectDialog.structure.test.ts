@@ -8,6 +8,9 @@ import { describe, expect, it } from 'vitest'
  * freezes when alt-tabbing on Windows (issue #575).
  */
 describe('AddProjectDialog structure', () => {
+  it('subscribes to the active Jean instance for its default target', () => {
+    expect(source).toContain('useActiveConnectionId()')
+  })
   const source = readFileSync(
     resolve(__dirname, 'AddProjectDialog.tsx'),
     'utf8'
@@ -19,9 +22,7 @@ describe('AddProjectDialog structure', () => {
       /return \(\s*<>[\s\S]*<Dialog[\s\S]*<\/Dialog>[\s\S]*<DirectoryBrowser/
     )
     // Guard against re-introducing nested-dialog markup.
-    expect(source).not.toMatch(
-      /<Dialog[^>]*>[\s\S]*<>[\s\S]*<DirectoryBrowser/
-    )
+    expect(source).not.toMatch(/<Dialog[^>]*>[\s\S]*<>[\s\S]*<DirectoryBrowser/)
   })
 
   it('keeps New Project open under the remote directory browser', () => {

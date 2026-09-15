@@ -90,6 +90,15 @@ partitions updates: client keys never cross the backend transport, while server
 keys continue to use backend persistence. New code can use
 `useClientPreferences()` directly.
 
+Project and worktree display state uses the same ownership rule through the
+versioned `jean-client-view-state-v1` browser storage record. This includes
+canvas sorting and filters, tree expansion, dashboard favorites, sidebar
+layout, and browser/terminal layout. Resource-keyed values must use scoped
+server resource IDs. `useClientViewStatePersistence()` migrates the legacy
+server UI-state values on first load and then makes the client record
+authoritative. Keep session data, running terminal metadata, drafts, and other
+operational state in the backend persistence paths.
+
 Servers expose `get_server_preferences`, `update_server_preferences`, and
 `get_server_capabilities`. Server preference responses omit client fields and
 redact secrets to configured flags. Updates use an opaque revision string to

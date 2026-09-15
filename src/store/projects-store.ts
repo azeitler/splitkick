@@ -31,6 +31,8 @@ interface ProjectsUIState {
 
   // Project canvas settings per project
   projectCanvasSettings: Record<string, ProjectCanvasSettings>
+  projectCanvasActiveFilters: Record<string, string>
+  sidebarServerFilter: string | null
 
   // Favorited projects shown first in the GitHub Dashboard filter and sections
   githubDashboardFavoriteProjectIds: string[]
@@ -115,6 +117,8 @@ interface ProjectsUIState {
     pinnedLabels: LabelData[]
   ) => void
   setProjectCanvasLabels: (projectId: string, labels: LabelData[]) => void
+  setProjectCanvasActiveFilter: (projectId: string, filter: string) => void
+  setSidebarServerFilter: (serverId: string | null) => void
   setGitHubDashboardFavoriteProjectIds: (projectIds: string[]) => void
   toggleGitHubDashboardFavoriteProject: (projectId: string) => void
 }
@@ -131,6 +135,8 @@ export const useProjectsStore = create<ProjectsUIState>()(
       expandedFolderIds: new Set<string>(),
       projectAccessTimestamps: {},
       projectCanvasSettings: {},
+      projectCanvasActiveFilters: {},
+      sidebarServerFilter: null,
       githubDashboardFavoriteProjectIds: [],
       addProjectDialogOpen: false,
       addProjectParentFolderId: null,
@@ -269,10 +275,28 @@ export const useProjectsStore = create<ProjectsUIState>()(
 
       setProjectCanvasSettings: settings =>
         set(
-          state =>
-            state.projectCanvasSettings === settings
-              ? state
-              : { projectCanvasSettings: settings },
+          state => {
+            const mergedSettings: Record<string, ProjectCanvasSettings> =
+              Object.fromEntries(
+                Object.entries(settings).map(([projectId, projectSettings]) => [
+                  projectId,
+                  {
+                    ...projectSettings,
+                    worktreeSortMode:
+                      state.projectCanvasSettings[projectId]
+                        ?.worktreeSortMode ?? projectSettings.worktreeSortMode,
+                  },
+                ])
+              )
+            for (const [projectId, projectSettings] of Object.entries(
+              state.projectCanvasSettings
+            )) {
+              if (!(projectId in mergedSettings)) {
+                mergedSettings[projectId] = projectSettings
+              }
+            }
+            return { projectCanvasSettings: mergedSettings }
+          },
           undefined,
           'setProjectCanvasSettings'
         ),
@@ -345,6 +369,31 @@ export const useProjectsStore = create<ProjectsUIState>()(
           },
           undefined,
           'setProjectCanvasLabels'
+        ),
+
+      setProjectCanvasActiveFilter: (projectId, filter) =>
+        set(
+          state =>
+            state.projectCanvasActiveFilters[projectId] === filter
+              ? state
+              : {
+                  projectCanvasActiveFilters: {
+                    ...state.projectCanvasActiveFilters,
+                    [projectId]: filter,
+                  },
+                },
+          undefined,
+          'setProjectCanvasActiveFilter'
+        ),
+
+      setSidebarServerFilter: serverId =>
+        set(
+          state =>
+            state.sidebarServerFilter === serverId
+              ? state
+              : { sidebarServerFilter: serverId },
+          undefined,
+          'setSidebarServerFilter'
         ),
 
       setGitHubDashboardFavoriteProjectIds: projectIds =>

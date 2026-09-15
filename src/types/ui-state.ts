@@ -57,6 +57,22 @@ export interface PendingTextFileDraft {
   content?: string
 }
 
+export interface PendingFileDraft {
+  id: string
+  relative_path: string
+  source_root_path?: string
+  source_project_id?: string
+  source_project_name?: string
+  extension: string
+  is_directory: boolean
+}
+
+export interface PendingSkillDraft {
+  id: string
+  name: string
+  path: string
+}
+
 export interface UIState {
   active_worktree_id: string | null
   active_worktree_path: string | null
@@ -88,6 +104,10 @@ export interface UIState {
    * Content is optional in persistence; restore re-reads from disk when missing.
    */
   pending_text_files?: Record<string, PendingTextFileDraft[]>
+  /** Unsent regular file and directory attachments per session */
+  pending_files?: Record<string, PendingFileDraft[]>
+  /** Unsent skill attachments per session */
+  pending_skills?: Record<string, PendingSkillDraft[]>
   /** Worktrees whose setup-script status card was dismissed */
   dismissed_setup_scripts?: string[]
   /** Whether the review sidebar is visible */
@@ -173,6 +193,8 @@ export const defaultUIState: UIState = {
   input_drafts: {},
   pending_images: {},
   pending_text_files: {},
+  pending_files: {},
+  pending_skills: {},
   dismissed_setup_scripts: [],
   modal_terminal_open: {},
   modal_terminal_dock_mode: 'floating',

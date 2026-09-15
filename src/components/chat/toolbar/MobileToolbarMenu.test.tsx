@@ -96,6 +96,12 @@ describe('MobileToolbarMenu', () => {
     await user.click(screen.getByRole('button', { name: /more actions/i }))
 
     expect(screen.getByText('Save Context')).toBeInTheDocument()
+    expect(screen.getByText('Inject Context')).toBeInTheDocument()
+    expect(screen.queryByText('Load Context')).not.toBeInTheDocument()
+    expect(screen.getByText('Link PR')).toBeInTheDocument()
+    expect(screen.getByText('Advisory')).toBeInTheDocument()
+    expect(screen.getByText('Generate Release Notes')).toBeInTheDocument()
+    expect(screen.getByText('Generate PR Description')).toBeInTheDocument()
     expect(screen.getByText('Commit & Push')).toBeInTheDocument()
     expect(screen.getByRole('menuitem', { name: /sync/i })).toBeInTheDocument()
     expect(screen.getByText('Pull')).toBeInTheDocument()
@@ -189,6 +195,50 @@ describe('MobileToolbarMenu', () => {
       expect.objectContaining({
         type: 'magic-command',
         detail: { command: 'investigate', type: 'issue' },
+      })
+    )
+
+    dispatchSpy.mockRestore()
+  })
+
+  it('dispatches Link PR and advisory actions', async () => {
+    const user = userEvent.setup()
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent')
+
+    render(
+      <MobileToolbarMenu
+        isDisabled={false}
+        hasOpenPr={false}
+        hasIssueContexts={false}
+        hasPrContexts={false}
+        hasAdvisoryContexts={true}
+        onSaveContext={vi.fn()}
+        onLoadContext={vi.fn()}
+        onCommit={vi.fn()}
+        onCommitAndPush={vi.fn()}
+        onRevertLastCommit={vi.fn()}
+        onOpenPr={vi.fn()}
+        onReview={vi.fn()}
+        onMerge={vi.fn()}
+        onMergePr={vi.fn()}
+        handleSyncClick={vi.fn()}
+        handlePullClick={vi.fn()}
+        handlePushClick={vi.fn()}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: /more actions/i }))
+    await user.click(screen.getByText('Link PR'))
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'magic-option', detail: 'link-pr' })
+    )
+
+    await user.click(screen.getByRole('button', { name: /more actions/i }))
+    await user.click(screen.getByText('Advisory'))
+    expect(dispatchSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'magic-command',
+        detail: { command: 'investigate', type: 'advisory' },
       })
     )
 

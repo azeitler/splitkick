@@ -1,5 +1,12 @@
 import { isNativeApp } from '@/lib/environment'
 import { useServerConnectionSnapshots } from '@/lib/server-connections'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 
 interface ServerTargetSelectProps {
   value: string
@@ -26,19 +33,18 @@ export function ServerTargetSelect({
       <label htmlFor={id} className="text-xs font-medium">
         Jean server
       </label>
-      <select
-        id={id}
-        value={value}
-        onChange={event => onChange(event.target.value)}
-        disabled={disabled}
-        className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-      >
-        {writable.map(snapshot => (
-          <option key={snapshot.serverId} value={snapshot.serverId}>
-            {snapshot.name}
-          </option>
-        ))}
-      </select>
+      <Select value={value} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger id={id} className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {writable.map(snapshot => (
+            <SelectItem key={snapshot.serverId} value={snapshot.serverId}>
+              {snapshot.name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
     </div>
   )
 }

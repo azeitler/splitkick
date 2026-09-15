@@ -63,8 +63,7 @@ static DETACHED_SESSIONS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new
 ///
 /// Values are generation tokens so an early cancel release cannot be clobbered
 /// by a later `Drop` from the cancelled claim after a new claim was acquired.
-static ACTIVE_SENDS: Lazy<Mutex<HashMap<String, u64>>> =
-    Lazy::new(|| Mutex::new(HashMap::new()));
+static ACTIVE_SENDS: Lazy<Mutex<HashMap<String, u64>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static SEND_CLAIM_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 /// RAII claim on a session's send slot — released on drop (any return path).
@@ -101,7 +100,10 @@ impl Drop for SendClaim {
 /// prompt is not rejected with "Session already has an active request" while
 /// the cancelled worker finishes teardown (#329).
 pub fn release_active_send(session_id: &str) {
-    if lock_recover(&ACTIVE_SENDS, "ACTIVE_SENDS").remove(session_id).is_some() {
+    if lock_recover(&ACTIVE_SENDS, "ACTIVE_SENDS")
+        .remove(session_id)
+        .is_some()
+    {
         log::info!("[SendChat] released active send claim after cancel session={session_id}");
     }
 }

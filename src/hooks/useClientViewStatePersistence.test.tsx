@@ -1,0 +1,57 @@
+import { renderHook, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  CLIENT_VIEW_STATE_STORAGE_KEY,
+  defaultClientViewState,
+} from '@/lib/client-view-state'
+import { useProjectsStore } from '@/store/projects-store'
+import { useClientViewStatePersistence } from './useClientViewStatePersistence'
+
+describe('useClientViewStatePersistence', () => {
+  const storage = new Map<string, string>()
+
+  beforeEach(() => {
+    storage.clear()
+    vi.mocked(localStorage.getItem).mockImplementation(
+      key => storage.get(key) ?? null
+    )
+    vi.mocked(localStorage.setItem).mockImplementation((key, value) => {
+      storage.set(key, value)
+    })
+    useProjectsStore.setState({
+      expandedWorktreeIds: new Set(),
+      projectCanvasActiveFilters: {},
+    })
+  })
+
+  it('restores client-owned state and saves later changes synchronously', async () => {
+    storage.set(
+      CLIENT_VIEW_STATE_STORAGE_KEY,
+      JSON.stringify({
+        ...defaultClientViewState,
+        expanded_worktree_ids: ['server:worktree-1'],
+        project_canvas_active_filters: { 'server:project-1': 'manual' },
+      })
+    )
+
+    renderHook(() => useClientViewStatePersistence(true))
+
+    await waitFor(() => {
+      expect(useProjectsStore.getState().expandedWorktreeIds).toEqual(
+        new Set(['server:worktree-1'])
+      )
+    })
+
+    useProjectsStore
+      .getState()
+      .setProjectCanvasActiveFilter('server:project-1', 'issues')
+
+    expect(
+      JSON.parse(storage.get(CLIENT_VIEW_STATE_STORAGE_KEY) ?? '{}')
+    ).toMatchObject({
+      project_canvas_active_filters: {
+        'server:project-1': 'issues',
+      },
+    })
+  })
+})

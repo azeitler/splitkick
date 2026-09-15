@@ -19,7 +19,7 @@ import { toast } from 'sonner'
 import { ServerTargetSelect } from './ServerTargetSelect'
 import { LOCAL_SERVER_ID } from '@/types/server-resource'
 import { parseServerResourceKey } from '@/lib/server-resource'
-import { getActiveConnectionId } from '@/lib/remote-connections'
+import { useActiveConnectionId } from '@/lib/remote-connections'
 
 /** Extract a repository name from a git URL (strips .git suffix) */
 function extractRepoName(url: string): string {
@@ -45,8 +45,9 @@ export function CloneProjectModal() {
   const parentServerId = addProjectParentFolderId
     ? parseServerResourceKey(addProjectParentFolderId)?.serverId
     : undefined
+  const activeConnectionId = useActiveConnectionId()
   const [targetServerId, setTargetServerId] = useState(
-    parentServerId ?? getActiveConnectionId() ?? LOCAL_SERVER_ID
+    parentServerId ?? activeConnectionId ?? LOCAL_SERVER_ID
   )
   const effectiveServerId = parentServerId ?? targetServerId
 
@@ -54,16 +55,15 @@ export function CloneProjectModal() {
 
   // Reset state when modal closes
   useEffect(() => {
-    if (!cloneModalOpen) {
+    if (cloneModalOpen) {
+      setTargetServerId(parentServerId ?? activeConnectionId)
+    } else {
       setUrl('')
       setDestination('')
       setError(null)
       setBrowserOpen(false)
-      setTargetServerId(
-        parentServerId ?? getActiveConnectionId() ?? LOCAL_SERVER_ID
-      )
     }
-  }, [cloneModalOpen, parentServerId])
+  }, [activeConnectionId, cloneModalOpen, parentServerId])
 
   const handleOpenChange = useCallback(
     (open: boolean) => {

@@ -9,6 +9,8 @@ describe('ProjectsStore', () => {
       expandedProjectIds: new Set<string>(),
       expandedFolderIds: new Set<string>(),
       projectCanvasSettings: {},
+      projectCanvasActiveFilters: {},
+      sidebarServerFilter: null,
       githubDashboardFavoriteProjectIds: [],
       addProjectDialogOpen: false,
       projectSettingsDialogOpen: false,
@@ -234,6 +236,18 @@ describe('ProjectsStore', () => {
   })
 
   describe('project canvas settings', () => {
+    it('stores client view filters by scoped owner', () => {
+      const state = useProjectsStore.getState()
+
+      state.setProjectCanvasActiveFilter('server-1:project-1', 'manual')
+      state.setSidebarServerFilter('server-1')
+
+      expect(useProjectsStore.getState().projectCanvasActiveFilters).toEqual({
+        'server-1:project-1': 'manual',
+      })
+      expect(useProjectsStore.getState().sidebarServerFilter).toBe('server-1')
+    })
+
     it('stores worktree sort mode per project', () => {
       const { setProjectCanvasWorktreeSortMode } = useProjectsStore.getState()
 

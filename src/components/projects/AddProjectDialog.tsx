@@ -16,7 +16,7 @@ import { DirectoryBrowser } from '@/components/projects/DirectoryBrowser'
 import { ServerTargetSelect } from './ServerTargetSelect'
 import { LOCAL_SERVER_ID } from '@/types/server-resource'
 import { parseServerResourceKey } from '@/lib/server-resource'
-import { getActiveConnectionId } from '@/lib/remote-connections'
+import { useActiveConnectionId } from '@/lib/remote-connections'
 
 export function AddProjectDialog() {
   const {
@@ -30,10 +30,17 @@ export function AddProjectDialog() {
   const parentServerId = addProjectParentFolderId
     ? parseServerResourceKey(addProjectParentFolderId)?.serverId
     : undefined
+  const activeConnectionId = useActiveConnectionId()
   const [targetServerId, setTargetServerId] = useState(
-    parentServerId ?? getActiveConnectionId() ?? LOCAL_SERVER_ID
+    parentServerId ?? activeConnectionId ?? LOCAL_SERVER_ID
   )
   const effectiveServerId = parentServerId ?? targetServerId
+
+  useEffect(() => {
+    if (addProjectDialogOpen) {
+      setTargetServerId(parentServerId ?? activeConnectionId)
+    }
+  }, [activeConnectionId, addProjectDialogOpen, parentServerId])
 
   const handleCloneRemote = useCallback(() => {
     const { openCloneModal } = useProjectsStore.getState()
