@@ -14,6 +14,7 @@ import type {
   PiReleaseInfo,
 } from '@/types/pi-cli'
 import { hasBackendTransport } from '@/lib/environment'
+import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 
@@ -124,12 +125,16 @@ export function useAvailablePiVersions(options?: { enabled?: boolean }) {
 }
 
 export function useAvailablePiModels(options?: { enabled?: boolean }) {
+  const serverId = useOptionalSettingsTargetServerId()
   const queryClient = useQueryClient()
   const query = useQuery({
-    queryKey: piCliQueryKeys.models(),
+    queryKey: [...piCliQueryKeys.models(), serverId ?? 'local'],
     queryFn: async (): Promise<PiModelInfo[]> => {
       if (!isTauri()) return []
-      return await invoke<PiModelInfo[]>('list_pi_models')
+      return await invokeForOptionalServer<PiModelInfo[]>(
+        serverId,
+        'list_pi_models'
+      )
     },
     enabled: options?.enabled ?? true,
     staleTime: 1000 * 60 * 5,

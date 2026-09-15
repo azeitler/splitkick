@@ -12,6 +12,7 @@ import type {
   CursorModelInfo,
 } from '@/types/cursor-cli'
 import { hasBackendTransport } from '@/lib/environment'
+import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 
 const isTauri = hasBackendTransport
 
@@ -121,13 +122,17 @@ export function useCursorCliAuth(options?: { enabled?: boolean }) {
 }
 
 export function useAvailableCursorModels(options?: { enabled?: boolean }) {
+  const serverId = useOptionalSettingsTargetServerId()
   return useQuery({
-    queryKey: cursorCliQueryKeys.models(),
+    queryKey: [...cursorCliQueryKeys.models(), serverId ?? 'local'],
     queryFn: async (): Promise<CursorModelInfo[]> => {
       if (!isTauri()) return []
 
       try {
-        return await invoke<CursorModelInfo[]>('list_cursor_models')
+        return await invokeForOptionalServer<CursorModelInfo[]>(
+          serverId,
+          'list_cursor_models'
+        )
       } catch (error) {
         logger.error('Failed to list Cursor models', { error })
         return []

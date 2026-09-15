@@ -71,6 +71,8 @@ import { useLoadedSentryContexts } from '@/services/sentry'
 import { useChatStore, DEFAULT_THINKING_LEVEL } from '@/store/chat-store'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
 import { getLabelTextColor } from '@/lib/label-colors'
+import { parseServerResourceKey } from '@/lib/server-resource'
+import { SettingsTargetProvider } from '@/lib/settings-target'
 import {
   DEFAULT_PARALLEL_EXECUTION_PROMPT,
   PREDEFINED_CLI_PROFILES,
@@ -279,7 +281,21 @@ interface ChatWindowProps {
   worktreePath?: string
 }
 
-export function ChatWindow({
+export function ChatWindow(props: ChatWindowProps = {}) {
+  const storeWorktreeId = useChatStore(state => state.activeWorktreeId)
+  const worktreeId = props.worktreeId ?? storeWorktreeId
+  const serverId = worktreeId
+    ? (parseServerResourceKey(worktreeId)?.serverId ?? 'local')
+    : 'local'
+
+  return (
+    <SettingsTargetProvider serverId={serverId}>
+      <ChatWindowContent {...props} />
+    </SettingsTargetProvider>
+  )
+}
+
+function ChatWindowContent({
   isModal = false,
   worktreeId: propWorktreeId,
   worktreePath: propWorktreePath,
@@ -847,7 +863,12 @@ export function ChatWindow({
     zustandProvider !== undefined ? zustandProvider : session?.selected_provider
 
   // Installed backends (only these should be selectable)
-  const { installedBackends } = useInstalledBackends()
+  const targetServerId = activeWorktreeId
+    ? parseServerResourceKey(activeWorktreeId)?.serverId
+    : undefined
+  const { installedBackends } = useInstalledBackends({
+    serverId: targetServerId,
+  })
   const { data: availablePiModels } = useAvailablePiModels({
     enabled: installedBackends.includes('pi'),
   })
@@ -981,7 +1002,7 @@ export function ChatWindow({
   })
 
   // CLI version for adaptive thinking feature detection
-  const { data: cliStatus } = useClaudeCliStatus()
+  const { data: cliStatus } = useClaudeCliStatus({ serverId: targetServerId })
   const { data: modelCatalog } = useModelCatalog()
   const selectedModelReasoning = getCatalogModelReasoning(
     modelCatalog,

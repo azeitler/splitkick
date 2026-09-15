@@ -5,6 +5,7 @@ import { invoke, invokeForOptionalServer } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import { toast } from 'sonner'
 import { hasBackendTransport } from '@/lib/environment'
+import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 import type {
   AntigravityAuthStatus,
   AntigravityCliStatus,
@@ -118,14 +119,16 @@ export function useAntigravityCliAuth(options?: { enabled?: boolean }) {
 }
 
 export function useAvailableAntigravityModels(options?: { enabled?: boolean }) {
+  const serverId = useOptionalSettingsTargetServerId()
   return useQuery({
-    queryKey: antigravityCliQueryKeys.models(),
+    queryKey: [...antigravityCliQueryKeys.models(), serverId ?? 'local'],
     queryFn: async (): Promise<AntigravityModelInfo[]> => {
       if (!isTauri()) {
         return [{ id: 'default', label: 'Configured default', isDefault: true }]
       }
       try {
-        const models = await invoke<AntigravityModelInfo[]>(
+        const models = await invokeForOptionalServer<AntigravityModelInfo[]>(
+          serverId,
           'list_antigravity_models'
         )
         return models.length

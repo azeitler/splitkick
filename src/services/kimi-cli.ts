@@ -7,6 +7,7 @@ import { invoke, invokeForOptionalServer } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import { toast } from 'sonner'
 import { hasBackendTransport } from '@/lib/environment'
+import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 import type {
   KimiAuthStatus,
   KimiCliStatus,
@@ -119,14 +120,18 @@ export function useKimiCliAuth(options?: { enabled?: boolean }) {
 }
 
 export function useAvailableKimiModels(options?: { enabled?: boolean }) {
+  const serverId = useOptionalSettingsTargetServerId()
   return useQuery({
-    queryKey: kimiCliQueryKeys.models(),
+    queryKey: [...kimiCliQueryKeys.models(), serverId ?? 'local'],
     queryFn: async (): Promise<KimiModelInfo[]> => {
       if (!isTauri()) {
         return [{ id: 'default', label: 'Configured default', isDefault: true }]
       }
       try {
-        const models = await invoke<KimiModelInfo[]>('list_kimi_models')
+        const models = await invokeForOptionalServer<KimiModelInfo[]>(
+          serverId,
+          'list_kimi_models'
+        )
         return models.length
           ? models
           : [{ id: 'default', label: 'Configured default', isDefault: true }]

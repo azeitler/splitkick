@@ -15,6 +15,7 @@ import type {
   OpencodeReleaseInfo,
 } from '@/types/opencode-cli'
 import { hasBackendTransport } from '@/lib/environment'
+import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 
 const isTauri = hasBackendTransport
 
@@ -153,12 +154,16 @@ export function useAvailableOpencodeVersions(options?: { enabled?: boolean }) {
 export const useAvailableOpenCodeVersions = useAvailableOpencodeVersions
 
 export function useAvailableOpencodeModels(options?: { enabled?: boolean }) {
+  const serverId = useOptionalSettingsTargetServerId()
   return useQuery({
-    queryKey: opencodeCliQueryKeys.models(),
+    queryKey: [...opencodeCliQueryKeys.models(), serverId ?? 'local'],
     queryFn: async (): Promise<string[]> => {
       if (!isTauri()) return []
       try {
-        return await invoke<string[]>('list_opencode_models')
+        return await invokeForOptionalServer<string[]>(
+          serverId,
+          'list_opencode_models'
+        )
       } catch (error) {
         logger.error('Failed to list OpenCode models', { error })
         throw error

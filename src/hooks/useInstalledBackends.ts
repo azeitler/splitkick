@@ -52,17 +52,21 @@ function resolvedAuth(
  * and shown in backend settings — hiding unauthenticated backends made defaults
  * and model pickers look broken when auth probes false-negative (issue #627/#649).
  */
-export function useInstalledBackends(options?: { enabled?: boolean }) {
+export function useInstalledBackends(options?: {
+  enabled?: boolean
+  serverId?: string
+}) {
   const enabled = options?.enabled ?? true
-  const claude = useClaudeCliStatus({ enabled })
-  const codex = useCodexCliStatus({ enabled })
-  const opencode = useOpencodeCliStatus({ enabled })
-  const cursor = useCursorCliStatus({ enabled })
-  const pi = usePiCliStatus({ enabled })
-  const commandcode = useCommandCodeCliStatus({ enabled })
-  const grok = useGrokCliStatus({ enabled })
-  const kimi = useKimiCliStatus({ enabled })
-  const antigravity = useAntigravityCliStatus({ enabled })
+  const serverId = options?.serverId
+  const claude = useClaudeCliStatus({ enabled, serverId })
+  const codex = useCodexCliStatus({ enabled, serverId })
+  const opencode = useOpencodeCliStatus({ enabled, serverId })
+  const cursor = useCursorCliStatus({ enabled, serverId })
+  const pi = usePiCliStatus({ enabled, serverId })
+  const commandcode = useCommandCodeCliStatus({ enabled, serverId })
+  const grok = useGrokCliStatus({ enabled, serverId })
+  const kimi = useKimiCliStatus({ enabled, serverId })
+  const antigravity = useAntigravityCliStatus({ enabled, serverId })
 
   const installedBackends = useMemo(() => {
     const backends: CliBackend[] = []

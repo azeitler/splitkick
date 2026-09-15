@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
 import { invoke, invokeForOptionalServer } from '@/lib/transport'
 import { logger } from '@/lib/logger'
+import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 import type {
   CommandCodeAuthStatus,
   CommandCodeCliStatus,
@@ -114,12 +115,16 @@ export function useCommandCodeCliAuth(options?: { enabled?: boolean }) {
 }
 
 export function useAvailableCommandCodeModels(options?: { enabled?: boolean }) {
+  const serverId = useOptionalSettingsTargetServerId()
   return useQuery({
-    queryKey: commandcodeCliQueryKeys.models(),
+    queryKey: [...commandcodeCliQueryKeys.models(), serverId ?? 'local'],
     queryFn: async (): Promise<CommandCodeModelInfo[]> => {
       if (!isTauri()) return []
       try {
-        return await invoke<CommandCodeModelInfo[]>('list_commandcode_models')
+        return await invokeForOptionalServer<CommandCodeModelInfo[]>(
+          serverId,
+          'list_commandcode_models'
+        )
       } catch (error) {
         logger.error('Failed to list Command Code models', { error })
         return []

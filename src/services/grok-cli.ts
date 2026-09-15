@@ -7,6 +7,7 @@ import { invoke, invokeForOptionalServer } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import { toast } from 'sonner'
 import { hasBackendTransport } from '@/lib/environment'
+import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 import type {
   GrokAuthStatus,
   GrokCliStatus,
@@ -153,8 +154,9 @@ export function useGrokUsage(options?: { enabled?: boolean }) {
 }
 
 export function useAvailableGrokModels(options?: { enabled?: boolean }) {
+  const serverId = useOptionalSettingsTargetServerId()
   return useQuery({
-    queryKey: grokCliQueryKeys.models(),
+    queryKey: [...grokCliQueryKeys.models(), serverId ?? 'local'],
     queryFn: async (): Promise<GrokModelInfo[]> => {
       if (!isTauri()) {
         return [
@@ -171,7 +173,10 @@ export function useAvailableGrokModels(options?: { enabled?: boolean }) {
         ]
       }
       try {
-        return await invoke<GrokModelInfo[]>('list_grok_models')
+        return await invokeForOptionalServer<GrokModelInfo[]>(
+          serverId,
+          'list_grok_models'
+        )
       } catch (error) {
         logger.error('Failed to list Grok models', { error })
         return [
