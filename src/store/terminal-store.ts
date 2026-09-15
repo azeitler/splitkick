@@ -1,5 +1,9 @@
 import { create } from 'zustand'
 import { getFilename } from '@/lib/path-utils'
+import {
+  parseServerResourceKey,
+  serverResourceKey,
+} from '@/lib/server-resource'
 import { generateId } from '@/lib/uuid'
 import type { ModalTerminalDockMode } from '@/types/ui-state'
 import { useBrowserStore } from './browser-store'
@@ -105,8 +109,12 @@ interface TerminalState {
   closePanelTerminals: (worktreeId: string) => string[]
 }
 
-function generateTerminalId(): string {
-  return generateId()
+function generateTerminalId(worktreeId: string): string {
+  const worktree = parseServerResourceKey(worktreeId)
+  const id = generateId()
+  return worktree
+    ? serverResourceKey({ serverId: worktree.serverId, resourceId: id })
+    : id
 }
 
 /** Close every browser surface for this worktree — terminal modal and
@@ -229,7 +237,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     ),
 
   addTerminal: (worktreeId, command = null, label, options) => {
-    const id = generateTerminalId()
+    const id = generateTerminalId(worktreeId)
     const kind = options?.kind ?? 'panel'
     const activate = options?.activate ?? kind === 'panel'
     const openPanel = options?.openPanel ?? kind === 'panel'

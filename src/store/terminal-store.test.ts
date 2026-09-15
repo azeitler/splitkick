@@ -99,6 +99,14 @@ describe('TerminalStore', () => {
   })
 
   describe('terminal instance management', () => {
+    it('scopes a terminal ID to the worktree server', () => {
+      const { addTerminal } = useTerminalStore.getState()
+
+      const id = addTerminal('remote%3Adev:worktree-1')
+
+      expect(id).toMatch(/^remote%3Adev:/)
+    })
+
     it('registers a run terminal started outside the UI', () => {
       useTerminalStore
         .getState()

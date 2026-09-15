@@ -44,6 +44,18 @@ describe('server command routing', () => {
     })
   })
 
+  it('routes terminal commands and gives remote terminal events the same id', () => {
+    expect(
+      resolveServerCommand({ terminalId: 'remote%3Adev:terminal%2F1' })
+    ).toEqual({
+      serverId: 'remote:dev',
+      args: { terminalId: 'terminal/1' },
+    })
+    expect(
+      decorateServerEvent('remote:dev', { terminal_id: 'terminal/1' })
+    ).toEqual({ terminal_id: 'remote%3Adev:terminal%2F1' })
+  })
+
   it('extracts one server and restores backend resource ids', () => {
     expect(
       resolveServerCommand({
