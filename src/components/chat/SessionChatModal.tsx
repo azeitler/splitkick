@@ -12,7 +12,6 @@ import {
 } from 'react'
 import {
   Archive,
-  ChevronDown,
   Copy,
   GitBranchPlus,
   GitPullRequestArrow,
@@ -21,8 +20,6 @@ import {
   Pencil,
   RefreshCw,
   Tag,
-  Terminal,
-  Globe,
   Play,
   Plus,
   Trash2,
@@ -42,7 +39,7 @@ import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area'
 import { CloseWorktreeDialog } from './CloseWorktreeDialog'
 import { useChatStore } from '@/store/chat-store'
-import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
+import { useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { useUIStore } from '@/store/ui-store'
 import {
@@ -55,11 +52,7 @@ import {
 } from '@/services/chat'
 import { resolveBackendCliPath } from '@/services/cli-binary'
 import { usePreferences } from '@/services/preferences'
-import {
-  useRunScripts,
-  usePackageScripts,
-  type PackageScript,
-} from '@/services/projects'
+import { usePackageScripts, type PackageScript } from '@/services/projects'
 import { useGitHubPRs } from '@/services/github'
 import {
   useGitStatus,
@@ -73,7 +66,6 @@ import { isBaseSession, type Project, type Worktree } from '@/types/projects'
 import type { Session } from '@/types/chat'
 import { isNativeApp } from '@/lib/environment'
 import { isImeComposingEvent } from '@/lib/ime-composition'
-import { notify } from '@/lib/notifications'
 import { copyToClipboard } from '@/lib/clipboard'
 import { toast } from 'sonner'
 import { ChatWindow } from './ChatWindow'
@@ -82,12 +74,6 @@ import { ModalBrowserDrawer } from '@/components/browser/ModalBrowserDrawer'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { ScriptsButton } from '@/components/open-in/ScriptsButton'
 import { DevToolsDropdown } from './DevToolsDropdown'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
 import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import {
   buildNativeClientSessionInput,
@@ -265,7 +251,6 @@ export function SessionChatModal({
     [sessionsData?.sessions]
   )
   const { data: preferences } = usePreferences()
-  const { data: runScripts = [] } = useRunScripts(worktreePath)
   const { data: packageScripts = [] } = usePackageScripts(worktreePath)
   const modalTerminalDockMode = useTerminalStore(
     state => state.modalTerminalDockMode
@@ -279,25 +264,6 @@ export function SessionChatModal({
   const hasBottomBrowser =
     isBrowserModalOpen && browserModalDockMode === 'bottom'
   const hasBottomDock = hasBottomTerminal || hasBottomBrowser
-  const hasRunningTerminal = useTerminalStore(state => {
-    const terminals = state.terminals[worktreeId] ?? []
-    return terminals.some(
-      t => isPanelTerminal(t) && state.runningTerminals.has(t.id)
-    )
-  })
-  const hasFailedTerminal = useTerminalStore(state => {
-    const terminals = state.terminals[worktreeId] ?? []
-    return terminals.some(
-      t => isPanelTerminal(t) && !!t.command && state.failedTerminals.has(t.id)
-    )
-  })
-  const terminalShortcut = formatShortcutDisplay(
-    preferences?.keybindings?.toggle_terminal ??
-      DEFAULT_KEYBINDINGS.toggle_terminal
-  )
-  const runShortcut = formatShortcutDisplay(
-    preferences?.keybindings?.execute_run ?? DEFAULT_KEYBINDINGS.execute_run
-  )
   // Horizontal scroll on session tabs
   const modalTabScrollRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
@@ -969,26 +935,6 @@ export function SessionChatModal({
     )
   }, [])
 
-  const handleRun = useCallback(() => {
-    const first = runScripts[0]
-    if (!first) {
-      notify('No run script configured in jean.json', undefined, {
-        type: 'error',
-      })
-      return
-    }
-    useTerminalStore.getState().startRun(worktreeId, first)
-    useTerminalStore.getState().setModalTerminalOpen(worktreeId, true)
-  }, [worktreeId, runScripts])
-
-  const handleRunCommand = useCallback(
-    (cmd: string) => {
-      useTerminalStore.getState().startRun(worktreeId, cmd)
-      useTerminalStore.getState().setModalTerminalOpen(worktreeId, true)
-    },
-    [worktreeId]
-  )
-
   const handlePackageScript = useCallback(
     (script: PackageScript) => {
       useTerminalStore
@@ -1224,7 +1170,7 @@ export function SessionChatModal({
                   )}
                   {!zenMode && (
                     <>
-                      {/* Desktop: inline action buttons */}
+                      {/* Desktop: secondary tools that are not in the menu */}
                       <div className="hidden 2xl:flex items-center gap-1">
                         <OpenInButton
                           worktreePath={worktreePath}
@@ -1242,128 +1188,6 @@ export function SessionChatModal({
                             worktreePath={worktreePath}
                             session={currentSession}
                           />
-                        )}
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-7 px-2 text-xs"
-                              aria-label="Toggle terminal"
-                              onClick={() => {
-                                useTerminalStore
-                                  .getState()
-                                  .toggleModalTerminal(worktreeId)
-                              }}
-                            >
-                              <Terminal className="h-3 w-3" />
-                            </Button>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            Terminal{' '}
-                            <kbd className="ml-1 text-[0.625rem] opacity-60">
-                              {terminalShortcut}
-                            </kbd>
-                          </TooltipContent>
-                        </Tooltip>
-                        {isNativeApp() && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-xs"
-                                aria-label="Toggle browser"
-                                onClick={() => {
-                                  useBrowserStore
-                                    .getState()
-                                    .toggleModal(worktreeId)
-                                }}
-                              >
-                                <Globe className="h-3 w-3" />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>Browser</TooltipContent>
-                          </Tooltip>
-                        )}
-                        {runScripts.length === 1 && (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-7 px-2 text-xs"
-                                aria-label="Run"
-                                onClick={handleRun}
-                              >
-                                <Play
-                                  className={`h-3 w-3 ${hasFailedTerminal ? 'text-red-500' : hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
-                                />
-                              </Button>
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              {hasFailedTerminal
-                                ? 'Crashed'
-                                : hasRunningTerminal
-                                  ? 'Running'
-                                  : 'Run'}{' '}
-                              <kbd className="ml-1 text-[0.625rem] opacity-60">
-                                {runShortcut}
-                              </kbd>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                        {runScripts.length > 1 && (
-                          <div className="flex items-center">
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 rounded-r-none px-2 text-xs"
-                                  aria-label="Run first command"
-                                  onClick={handleRun}
-                                >
-                                  <Play
-                                    className={`h-3 w-3 ${hasFailedTerminal ? 'text-red-500' : hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
-                                  />
-                                </Button>
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                {hasFailedTerminal
-                                  ? 'Crashed'
-                                  : hasRunningTerminal
-                                    ? 'Running'
-                                    : 'Run first command'}{' '}
-                                <kbd className="ml-1 text-[0.625rem] opacity-60">
-                                  {runShortcut}
-                                </kbd>
-                              </TooltipContent>
-                            </Tooltip>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-7 rounded-l-none border-l border-border/50 px-1 text-xs"
-                                  aria-label="Choose run command"
-                                >
-                                  <ChevronDown className="h-3 w-3" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {runScripts.map(cmd => (
-                                  <DropdownMenuItem
-                                    key={cmd}
-                                    onSelect={() => handleRunCommand(cmd)}
-                                    className="font-mono text-xs"
-                                  >
-                                    {cmd}
-                                  </DropdownMenuItem>
-                                ))}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
                         )}
                       </div>
                       <ModalCloseButton onClick={handleClose} />

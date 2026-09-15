@@ -14,8 +14,12 @@ describe('SessionChatModal responsive header actions', () => {
     expect(source).not.toContain('@/components/shared/FailedRunsBadge')
   })
 
-  it('keeps inline actions for extra-wide windows only', () => {
-    expect(source).toMatch(/hidden 2xl:flex items-center gap-1/)
+  it('does not duplicate terminal, browser, or run actions in the desktop header', () => {
+    expect(source).not.toContain('aria-label="Toggle terminal"')
+    expect(source).not.toContain('aria-label="Toggle browser"')
+    expect(source).not.toContain('aria-label="Run"')
+    expect(source).not.toContain('aria-label="Run first command"')
+    expect(source).not.toContain('aria-label="Choose run command"')
   })
 
   it('routes compact terminal and browser actions through the worktree menu', () => {
