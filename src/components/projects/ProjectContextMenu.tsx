@@ -148,7 +148,7 @@ export function ProjectContextMenu({
           Open in {getEditorLabel(preferences?.editor)}
         </ContextMenuItem>
 
-        {canOpenInFinder() && (
+        {canOpenInFinder(project.serverId) && (
           <ContextMenuItem onClick={handleOpenInFinder}>
             <FolderOpen className="mr-2 h-4 w-4" />
             Open in {getFileManagerName()}

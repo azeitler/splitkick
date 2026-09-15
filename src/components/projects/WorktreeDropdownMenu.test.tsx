@@ -32,7 +32,8 @@ vi.mock('@/lib/environment', async importOriginal => ({
   isLocalBackend: () => envMocks.isLocalBackend,
   canOpenNativeApps: () => envMocks.canOpenNativeApps,
   canOpenInTerminal: () => envMocks.canOpenInTerminal,
-  canOpenInFinder: () => envMocks.canOpenInFinder,
+  canOpenInFinder: (serverId?: string) =>
+    envMocks.canOpenInFinder && (!serverId || serverId === 'local'),
   canOpenInEditor: () => envMocks.canOpenInEditor,
 }))
 
@@ -184,6 +185,28 @@ describe('WorktreeDropdownMenu', () => {
 
     const openItems = screen.getAllByRole('menuitem', { name: /open in/i })
     expect(openItems.length).toBeGreaterThanOrEqual(1)
+    expect(screen.queryByRole('menuitem', { name: /finder/i })).toBeNull()
+  })
+
+  it('hides Finder for a remote-owned worktree in the local aggregate view', async () => {
+    const user = userEvent.setup()
+    envMocks.isNativeApp = true
+    envMocks.isLocalBackend = true
+    envMocks.canOpenInFinder = true
+    envMocks.canOpenInEditor = true
+    envMocks.canOpenInTerminal = true
+    envMocks.isMobile = false
+
+    render(
+      <WorktreeDropdownMenu
+        worktree={{ ...worktree, serverId: 'remote-1' }}
+        projectId="remote-1:project-1"
+        projectPath="/tmp/project"
+      />
+    )
+
+    await user.click(screen.getByRole('button'))
+
     expect(screen.queryByRole('menuitem', { name: /finder/i })).toBeNull()
   })
 

@@ -37,12 +37,14 @@ import { useUIStore } from '@/store/ui-store'
 
 interface OpenInButtonProps {
   worktreePath: string
+  serverId?: string
   branch?: string | null
   className?: string
 }
 
 export function OpenInButton({
   worktreePath,
+  serverId,
   branch,
   className,
 }: OpenInButtonProps) {
@@ -53,7 +55,7 @@ export function OpenInButton({
   const openInFinder = useOpenWorktreeInFinder()
   const openOnGitHub = useOpenBranchOnGitHub()
 
-  const canFinder = canOpenInFinder()
+  const canFinder = canOpenInFinder(serverId)
   const canEditor = canOpenInEditor()
   const canTerminal = canOpenInTerminal()
 

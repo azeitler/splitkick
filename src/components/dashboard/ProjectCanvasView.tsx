@@ -1000,7 +1000,6 @@ export function ProjectCanvasView({
       (state.projectCanvasActiveFilters[projectId] ?? 'all') as CanvasFilterTab
   )
   const isMobile = useIsMobile()
-  const canOpenFinder = canOpenInFinder()
   const canOpenEditor = canOpenInEditor()
   const canOpenTerminal = canOpenInTerminal()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
@@ -3270,7 +3269,9 @@ export function ProjectCanvasView({
                       </>
                     )}
 
-                    {(canOpenEditor || canOpenTerminal || canOpenFinder) && (
+                    {(canOpenEditor ||
+                      canOpenTerminal ||
+                      canOpenInFinder(project.serverId)) && (
                       <>
                         <DropdownMenuSeparator />
 
@@ -3288,7 +3289,7 @@ export function ProjectCanvasView({
                           </DropdownMenuItem>
                         )}
 
-                        {canOpenFinder && (
+                        {canOpenInFinder(project.serverId) && (
                           <DropdownMenuItem
                             onSelect={() => openInFinder.mutate(project.path)}
                           >
@@ -3311,7 +3312,7 @@ export function ProjectCanvasView({
                           </DropdownMenuItem>
                         )}
 
-                        {canOpenFinder && (
+                        {canOpenInFinder(project.serverId) && (
                           <>
                             <DropdownMenuSeparator />
 
@@ -3328,9 +3329,11 @@ export function ProjectCanvasView({
                       </>
                     )}
 
-                    {!canOpenEditor && !canOpenTerminal && !canOpenFinder && (
-                      <DropdownMenuSeparator />
-                    )}
+                    {!canOpenEditor &&
+                      !canOpenTerminal &&
+                      !canOpenInFinder(project.serverId) && (
+                        <DropdownMenuSeparator />
+                      )}
 
                     <DropdownMenuItem
                       onSelect={() => openOnGitHub.mutate(projectId)}
@@ -3495,7 +3498,10 @@ export function ProjectCanvasView({
             {/* OpenInButton always visible on desktop (grid column 3) */}
             {!isMobile && (
               <div className="flex items-center gap-2 shrink-0 justify-end col-start-3">
-                <OpenInButton worktreePath={project.path} />
+                <OpenInButton
+                  worktreePath={project.path}
+                  serverId={project.serverId}
+                />
                 <ScriptsButton
                   projectId={project.id}
                   worktreePath={project.path}

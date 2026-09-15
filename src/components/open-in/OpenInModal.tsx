@@ -109,9 +109,16 @@ export function OpenInModal() {
   // Finder/terminal: backend host can launch apps (local desktop, WSL headless,
   // or --allow-native-open). Editor also works from the native shell against a
   // remote Jean via local Zed + ssh://.
-  const canOpenFinder = canOpenInFinder()
   const canOpenEditor = canOpenInEditor()
   const canOpenTerminal = canOpenInTerminal()
+
+  const selectedProject = useMemo(
+    () => projects?.find(project => project.id === selectedProjectId),
+    [projects, selectedProjectId]
+  )
+  const canOpenFinder = canOpenInFinder(
+    worktree?.serverId ?? selectedProject?.serverId
+  )
 
   const targetPath = useMemo(() => {
     if (worktree?.path) return worktree.path
@@ -119,12 +126,9 @@ export function OpenInModal() {
       const path = useChatStore.getState().getWorktreePath(selectedWorktreeId)
       if (path) return path
     }
-    if (selectedProjectId && projects) {
-      const project = projects.find(p => p.id === selectedProjectId)
-      if (project) return project.path
-    }
+    if (selectedProject) return selectedProject.path
     return null
-  }, [worktree?.path, selectedWorktreeId, selectedProjectId, projects])
+  }, [worktree?.path, selectedWorktreeId, selectedProject])
 
   const { data: ports } = usePorts(targetPath)
 

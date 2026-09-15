@@ -16,7 +16,11 @@ import {
   Save,
   ExternalLink,
 } from 'lucide-react'
-import { invoke, invokeForServer } from '@/lib/transport'
+import {
+  invoke,
+  invokeForOptionalServer,
+  invokeForServer,
+} from '@/lib/transport'
 import {
   Dialog,
   DialogContent,
@@ -276,7 +280,7 @@ export function FileContentModal({
     if (!filePath) return
 
     try {
-      await invoke('open_file_in_default_app', {
+      await invokeForOptionalServer(serverId, 'open_file_in_default_app', {
         path: filePath,
         editor: preferences?.editor,
       })
@@ -284,7 +288,7 @@ export function FileContentModal({
       const message = err instanceof Error ? err.message : String(err)
       toast.error(`Failed to open: ${message}`)
     }
-  }, [filePath, preferences?.editor])
+  }, [filePath, preferences?.editor, serverId])
 
   // Toggle edit mode
   const handleToggleEdit = useCallback(() => {
@@ -367,7 +371,7 @@ export function FileContentModal({
                       <span className="hidden sm:inline">Edit</span>
                     </Button>
                   )}
-                  {(!serverId || serverId === 'local') && canOpenInEditor() && (
+                  {canOpenInEditor() && (
                     <Button
                       variant="ghost"
                       size="sm"

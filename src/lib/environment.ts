@@ -73,7 +73,8 @@ export const canOpenInTerminal = (): boolean =>
   canOpenNativeApps() || canOpenRemoteTerminalLocally()
 
 /** A file manager can only browse paths owned by the local desktop backend. */
-export const canOpenInFinder = (): boolean => isLocalBackend()
+export const canOpenInFinder = (serverId?: string): boolean =>
+  isLocalBackend() && (!serverId || serverId === 'local')
 
 /** A backend is available (either Tauri IPC, WebSocket connection, or E2E mock). */
 export const hasBackend = (): boolean => {

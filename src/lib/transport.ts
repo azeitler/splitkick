@@ -370,6 +370,22 @@ export async function invokeForServer<T>(
   args?: Record<string, unknown>
 ): Promise<T> {
   if (!isNativeApp()) return invoke<T>(command, args)
+
+  if (serverId !== 'local' && !isNativeOpenAllowed()) {
+    const remote = getRemoteConnections().find(
+      connection => connection.id === serverId
+    )
+    if (remote) {
+      const remapped =
+        prepareRemoteEditorOpenArgs(command, args, remote) ??
+        prepareRemoteTerminalOpenArgs(command, args, remote)
+      if (remapped) {
+        const { invoke: tauriInvoke } = await import('@tauri-apps/api/core')
+        return tauriInvoke<T>(command, remapped)
+      }
+    }
+  }
+
   const { invokeOnServer } = await import('./server-connections')
   let value: T
   try {

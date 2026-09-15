@@ -1174,6 +1174,7 @@ export function SessionChatModal({
                       <div className="hidden 2xl:flex items-center gap-1">
                         <OpenInButton
                           worktreePath={worktreePath}
+                          serverId={worktree?.serverId}
                           branch={worktree?.branch}
                         />
                         <ScriptsButton

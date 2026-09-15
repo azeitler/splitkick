@@ -82,6 +82,17 @@ describe('environment detection', () => {
     expect(canOpenInEditor()).toBe(true)
   })
 
+  it('does not open remote-owned paths in the local file manager', () => {
+    Object.defineProperty(window, '__TAURI_INTERNALS__', {
+      configurable: true,
+      value: { invoke: vi.fn() },
+    })
+
+    expect(canOpenInFinder()).toBe(true)
+    expect(canOpenInFinder('local')).toBe(true)
+    expect(canOpenInFinder('remote-1')).toBe(false)
+  })
+
   it('prefers host-native open over local ssh:// remap when remote allows it', () => {
     Object.defineProperty(window, '__TAURI_INTERNALS__', {
       configurable: true,

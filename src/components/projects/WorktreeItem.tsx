@@ -682,7 +682,7 @@ export function WorktreeItem({
 
   return (
     <div>
-      <WorktreeContextMenu actions={menuActions}>
+      <WorktreeContextMenu actions={menuActions} serverId={worktree.serverId}>
         <div
           role="button"
           tabIndex={0}

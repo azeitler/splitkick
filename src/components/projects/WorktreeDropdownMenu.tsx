@@ -394,9 +394,9 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {(canOpenInEditor() || canOpenInTerminal() || canOpenInFinder()) && (
-            <DropdownMenuSeparator />
-          )}
+          {(canOpenInEditor() ||
+            canOpenInTerminal() ||
+            canOpenInFinder(worktree.serverId)) && <DropdownMenuSeparator />}
 
           {canOpenInEditor() && (
             <DropdownMenuItem onClick={handleOpenInEditor}>
@@ -405,7 +405,7 @@ export function WorktreeDropdownMenu({
             </DropdownMenuItem>
           )}
 
-          {canOpenInFinder() && (
+          {canOpenInFinder(worktree.serverId) && (
             <DropdownMenuItem onClick={handleOpenInFinder}>
               <FolderOpen className="mr-2 h-4 w-4" />
               Open in Finder

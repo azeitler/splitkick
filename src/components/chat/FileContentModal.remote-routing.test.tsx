@@ -1,13 +1,19 @@
 import { render, screen, waitFor } from '@/test/test-utils'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { FileContentModal } from './FileContentModal'
 
-const { invoke, invokeForServer } = vi.hoisted(() => ({
+const { invoke, invokeForOptionalServer, invokeForServer } = vi.hoisted(() => ({
   invoke: vi.fn().mockResolvedValue('local contents'),
+  invokeForOptionalServer: vi.fn().mockResolvedValue(undefined),
   invokeForServer: vi.fn().mockResolvedValue('remote contents'),
 }))
 
-vi.mock('@/lib/transport', () => ({ invoke, invokeForServer }))
+vi.mock('@/lib/transport', () => ({
+  invoke,
+  invokeForOptionalServer,
+  invokeForServer,
+}))
 vi.mock('@/hooks/use-theme', () => ({ useTheme: () => ({ theme: 'light' }) }))
 vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({ data: undefined }),
@@ -55,9 +61,14 @@ describe('FileContentModal', () => {
       'read_file_content',
       expect.anything()
     )
-    expect(
-      screen.queryByRole('button', { name: 'Open in Editor' })
-    ).not.toBeInTheDocument()
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Open in Editor' })
+    )
+    expect(invokeForOptionalServer).toHaveBeenCalledWith(
+      'remote-one',
+      'open_file_in_default_app',
+      { path: '/srv/project/sponsors.json', editor: undefined }
+    )
   })
 
   it('offers the external editor for a local file', async () => {

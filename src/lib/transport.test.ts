@@ -350,6 +350,36 @@ describe('transport bootstrap', () => {
     })
   })
 
+  it('opens an explicitly owned remote file in local Zed via ssh', async () => {
+    const tauriInvoke = vi.fn().mockResolvedValue(undefined)
+    const invokeOnServer = vi.fn()
+    vi.doMock('./server-connections', () => ({ invokeOnServer }))
+    const transport = await loadRemoteNativeTransportModule(
+      {
+        id: 'remote-1',
+        name: 'Server',
+        url: 'https://jean.example.com',
+        token: 'secret',
+        sshUser: 'ubuntu',
+        sshHost: '192.168.1.50',
+      },
+      tauriInvoke
+    )
+
+    await transport.invokeForServer('remote-1', 'open_file_in_default_app', {
+      path: '/home/ubuntu/jean/app/src/main.ts',
+      editor: 'zed',
+    })
+
+    expect(tauriInvoke).toHaveBeenCalledWith('open_file_in_default_app', {
+      path: 'ssh://ubuntu@192.168.1.50/home/ubuntu/jean/app/src/main.ts',
+      editor: 'zed',
+      line: undefined,
+      column: undefined,
+    })
+    expect(invokeOnServer).not.toHaveBeenCalled()
+  })
+
   it('opens remote worktrees in a local terminal through SSH', async () => {
     const tauriInvoke = vi.fn().mockResolvedValue(undefined)
     const transport = await loadRemoteNativeTransportModule(
