@@ -350,6 +350,40 @@ describe('transport bootstrap', () => {
     })
   })
 
+  it('opens an owned remote worktree in local Zed instead of its headless server', async () => {
+    const tauriInvoke = vi.fn().mockResolvedValue(undefined)
+    const invokeOnServer = vi.fn()
+    vi.doMock('./server-connections', () => ({ invokeOnServer }))
+    const transport = await loadRemoteNativeTransportModule(
+      {
+        id: 'remote-1',
+        name: 'Server',
+        url: 'https://jean.example.com',
+        token: 'secret',
+        sshUser: 'ubuntu',
+        sshHost: '192.168.1.50',
+      },
+      tauriInvoke
+    )
+    const { registerServerResourcePath } =
+      await import('./server-command-routing')
+    registerServerResourcePath(
+      'remote-1',
+      '/home/ubuntu/jean/app/feature'
+    )
+
+    await transport.invoke('open_worktree_in_editor', {
+      worktreePath: '/home/ubuntu/jean/app/feature',
+      editor: 'zed',
+    })
+
+    expect(tauriInvoke).toHaveBeenCalledWith('open_worktree_in_editor', {
+      worktreePath: 'ssh://ubuntu@192.168.1.50/home/ubuntu/jean/app/feature',
+      editor: 'zed',
+    })
+    expect(invokeOnServer).not.toHaveBeenCalled()
+  })
+
   it('prefers backend native-open over ssh:// remap when the remote allows it', async () => {
     // WSL/--allow-native-open headless: editor must go through WebSocket
     // dispatch (same as Finder/Terminal), not local Windows-side ssh://.

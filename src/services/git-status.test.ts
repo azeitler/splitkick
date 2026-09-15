@@ -18,6 +18,7 @@ import {
   getGitDiff,
   areGitStatusValuesEqual,
   useGitStatus,
+  useGitStatusEvents,
   useAppFocusTracking,
   useWorktreePolling,
   performGitPull,
@@ -117,11 +118,16 @@ describe('git-status service', () => {
       value: 1024,
     })
     mockToast.loading.mockReturnValue('toast-1')
+    mockListen.mockResolvedValue(vi.fn())
     mockIsWorktreeRunningNonPlan.mockReturnValue(false)
     mockWsConnected = true
     // Mock Tauri environment
     const { isTauri } = vi.mocked(await import('@/services/projects'))
     isTauri.mockReturnValue(true)
+    const { updateWorktreeCachedStatus } = vi.mocked(
+      await import('@/services/projects')
+    )
+    updateWorktreeCachedStatus.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -627,6 +633,39 @@ describe('git-status service', () => {
 
       expect(result.current.data?.behind_count).toBe(5)
       expect(result.current.data?.ahead_count).toBe(2)
+    })
+  })
+
+  describe('useGitStatusEvents', () => {
+    it('updates the live UI cache for status already persisted by the backend', async () => {
+      const staleStatus = createGitStatus({ uncommitted_added: 12 })
+      const freshStatus = createGitStatus({
+        uncommitted_added: 0,
+        cache_persisted: true,
+      })
+      queryClient.setQueryData(
+        gitStatusQueryKeys.worktree('wt-123'),
+        staleStatus
+      )
+
+      renderHook(() => useGitStatusEvents(), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      await waitFor(() => expect(mockListen).toHaveBeenCalled())
+      const statusHandler = mockListen.mock.calls.find(
+        ([eventName]) => eventName === 'git:status-update'
+      )?.[1] as (event: { payload: GitStatusEvent }) => void
+
+      statusHandler({ payload: freshStatus })
+
+      expect(
+        queryClient.getQueryData(gitStatusQueryKeys.worktree('wt-123'))
+      ).toEqual(freshStatus)
+      const { updateWorktreeCachedStatus } = vi.mocked(
+        await import('@/services/projects')
+      )
+      expect(updateWorktreeCachedStatus).not.toHaveBeenCalled()
     })
   })
 

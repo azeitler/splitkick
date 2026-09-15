@@ -178,6 +178,7 @@ import { MobileLeftSidebar } from './MobileLeftSidebar'
 import { BrowserSidePane } from '@/components/browser/BrowserSidePane'
 import { BrowserPanel } from '@/components/browser/BrowserPanel'
 import { useBrowserEvents } from '@/hooks/useBrowserPane'
+import { parseServerResourceKey } from '@/lib/server-resource'
 import { useToasterOffset } from '@/hooks/useToasterOffset'
 import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useTerminalThemeSync } from '@/hooks/useTerminalThemeSync'
@@ -242,6 +243,8 @@ export function MainWindow() {
   const setFileBrowserVisible = useUIStore(state => state.setFileBrowserVisible)
   const viewingFilePath = useUIStore(state => state.viewingFilePath)
   const setViewingFilePath = useUIStore(state => state.setViewingFilePath)
+  const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
+  const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const preferencesOpen = useUIStore(state => state.preferencesOpen)
   const commitModalOpen = useUIStore(state => state.commitModalOpen)
   const onboardingOpen = useUIStore(state => state.onboardingOpen)
@@ -662,6 +665,10 @@ export function MainWindow() {
       <Suspense fallback={null}>
         <FileContentModal
           filePath={viewingFilePath}
+          serverId={
+            parseServerResourceKey(activeWorktreeId ?? selectedProjectId ?? '')
+              ?.serverId
+          }
           onClose={() => setViewingFilePath(null)}
         />
       </Suspense>

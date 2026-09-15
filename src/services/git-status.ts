@@ -763,7 +763,7 @@ export function useGitStatusEvents(
           !existingStatus || !areGitStatusValuesEqual(existingStatus, status)
 
         // Avoid notifying every status subscriber when only checked_at changed.
-        if (statusChanged && !status.cache_persisted) {
+        if (statusChanged) {
           queryClient.setQueryData(
             gitStatusQueryKeys.worktree(status.worktree_id),
             status
@@ -812,7 +812,7 @@ export function useGitStatusEvents(
 
         // Persist only meaningful changes (fire and forget). The backend also
         // guards its full-file write for races with other status listeners.
-        if (statusChanged) {
+        if (statusChanged && !status.cache_persisted) {
           updateWorktreeCachedStatus(
             status.worktree_id,
             status.current_branch,

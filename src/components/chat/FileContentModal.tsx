@@ -16,7 +16,7 @@ import {
   Save,
   ExternalLink,
 } from 'lucide-react'
-import { invoke } from '@/lib/transport'
+import { invoke, invokeForServer } from '@/lib/transport'
 import {
   Dialog,
   DialogContent,
@@ -53,6 +53,8 @@ function isImageFile(filename: string | null | undefined): boolean {
 interface FileContentModalProps {
   /** File path to display, or null to close the modal */
   filePath: string | null
+  /** Jean server that owns the file path. */
+  serverId?: string
   /** Callback when modal is closed */
   onClose: () => void
 }
@@ -110,7 +112,11 @@ interface FileBase64Content {
   mimeType: string
 }
 
-export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
+export function FileContentModal({
+  filePath,
+  serverId,
+  onClose,
+}: FileContentModalProps) {
   const [content, setContent] = useState<string | null>(null)
   const [editedContent, setEditedContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -156,7 +162,11 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
       setEditorEpoch(e => e + 1)
 
       try {
-        const fileContent = await invoke<string>('read_file_content', { path })
+        const fileContent = serverId
+          ? await invokeForServer<string>(serverId, 'read_file_content', {
+              path,
+            })
+          : await invoke<string>('read_file_content', { path })
         if (signal.cancelled) return
         setContent(fileContent)
         setEditedContent(fileContent)
@@ -169,7 +179,7 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
         if (!signal.cancelled) setIsLoading(false)
       }
     },
-    []
+    [serverId]
   )
 
   // Load images through the backend so remote/web and paths outside project
@@ -184,9 +194,13 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
       setImageSrc(null)
 
       try {
-        const result = await invoke<FileBase64Content>('read_file_base64', {
-          path,
-        })
+        const result = serverId
+          ? await invokeForServer<FileBase64Content>(
+              serverId,
+              'read_file_base64',
+              { path }
+            )
+          : await invoke<FileBase64Content>('read_file_base64', { path })
         if (signal.cancelled) return
         setImageSrc(`data:${result.mimeType};base64,${result.data}`)
       } catch (err) {
@@ -197,7 +211,7 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
         if (!signal.cancelled) setIsLoading(false)
       }
     },
-    []
+    [serverId]
   )
 
   useEffect(() => {
@@ -243,10 +257,12 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
 
     setIsSaving(true)
     try {
-      await invoke('write_file_content', {
-        path: filePath,
-        content: editedContent,
-      })
+      const args = { path: filePath, content: editedContent }
+      if (serverId) {
+        await invokeForServer(serverId, 'write_file_content', args)
+      } else {
+        await invoke('write_file_content', args)
+      }
       setContent(editedContent)
       toast.success('File saved')
     } catch (err) {
@@ -255,7 +271,7 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
     } finally {
       setIsSaving(false)
     }
-  }, [filePath, editedContent])
+  }, [filePath, editedContent, serverId])
 
   // Handle open in external editor
   const handleOpenExternal = useCallback(async () => {

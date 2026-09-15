@@ -1299,6 +1299,7 @@ export function GitDiffModal({
           {activeDiffType === 'commits' && diffRequest && (
             <CommitsTabView
               worktreePath={diffRequest.worktreePath}
+              worktreeId={diffRequest.worktreeId}
               baseBranch={diffRequest.baseBranch}
               diffStyle={diffStyle}
               onAddToPrompt={onAddToPrompt}
@@ -1524,6 +1525,7 @@ export function GitDiffModal({
                               fileDiff={selectedFile.fileDiff}
                               fileName={selectedFile.fileName}
                               rootPath={diffRequest?.worktreePath}
+                              resourceOwnerId={diffRequest?.worktreeId}
                               isBinary={selectedFile.isBinary}
                               annotations={getAnnotationsForFile(
                                 selectedFile.fileName
@@ -1732,6 +1734,7 @@ export function GitDiffModal({
                                 fileDiff={selectedFile.fileDiff}
                                 fileName={selectedFile.fileName}
                                 rootPath={diffRequest?.worktreePath}
+                                resourceOwnerId={diffRequest?.worktreeId}
                                 isBinary={selectedFile.isBinary}
                                 annotations={getAnnotationsForFile(
                                   selectedFile.fileName

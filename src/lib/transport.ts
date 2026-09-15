@@ -290,6 +290,25 @@ export async function invoke<T>(
       await import('./server-command-routing')
     const routed = resolveServerCommand(args)
     if (routed) {
+      // Editor opens are local desktop actions even when path ownership routes
+      // the remaining worktree commands to a remote Jean server.
+      if (routed.serverId !== 'local' && !isNativeOpenAllowed()) {
+        const remote = getRemoteConnections().find(
+          connection => connection.id === routed.serverId
+        )
+        if (remote) {
+          const remapped = prepareRemoteEditorOpenArgs(
+            command,
+            routed.args,
+            remote
+          )
+          if (remapped) {
+            const { invoke: tauriInvoke } =
+              await import('@tauri-apps/api/core')
+            return tauriInvoke<T>(command, remapped)
+          }
+        }
+      }
       const { invokeOnServer } = await import('./server-connections')
       const result = await invokeOnServer<T>(
         routed.serverId,
