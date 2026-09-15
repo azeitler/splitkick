@@ -57,7 +57,7 @@ describe('OpenCode model refresh', () => {
   })
 
   it('uses the strict refresh command so refresh failures are propagated', async () => {
-    invokeMock.mockRejectedValue(new Error('refresh failed'))
+    invokeForOptionalServerMock.mockRejectedValue(new Error('refresh failed'))
     const queryClient = new QueryClient({
       defaultOptions: { mutations: { retry: false } },
     })
@@ -69,6 +69,9 @@ describe('OpenCode model refresh', () => {
     await expect(
       act(async () => await result.current.mutateAsync())
     ).rejects.toThrow('refresh failed')
-    expect(invokeMock).toHaveBeenCalledWith('refresh_opencode_models')
+    expect(invokeForOptionalServerMock).toHaveBeenCalledWith(
+      undefined,
+      'refresh_opencode_models'
+    )
   })
 })

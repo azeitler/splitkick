@@ -154,16 +154,19 @@ export function useAvailablePiModels(options?: { enabled?: boolean }) {
     let cancelled = false
     async function syncPiDefaultModel() {
       try {
-        const preferences = await invoke<AppPreferences>('load_preferences')
+        const preferences = await invokeForOptionalServer<AppPreferences>(
+          serverId,
+          'load_preferences'
+        )
         if (cancelled) return
         const selected = preferences.selected_pi_model
         if (selected && availableValues.includes(selected)) return
-        await invoke('patch_preferences', {
+        await invokeForOptionalServer(serverId, 'patch_preferences', {
           patch: { selected_pi_model: preferred },
         })
         if (!cancelled) {
           queryClient.invalidateQueries({
-            queryKey: preferencesQueryKeys.preferences(),
+            queryKey: preferencesQueryKeys.preferences(serverId ?? 'local'),
           })
         }
       } catch (error) {
@@ -177,7 +180,7 @@ export function useAvailablePiModels(options?: { enabled?: boolean }) {
     return () => {
       cancelled = true
     }
-  }, [query.data, queryClient])
+  }, [query.data, queryClient, serverId])
 
   return query
 }

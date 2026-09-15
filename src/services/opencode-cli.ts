@@ -181,19 +181,24 @@ export function useAvailableOpencodeModels(options?: { enabled?: boolean }) {
  */
 export function useRefreshOpencodeModels() {
   const queryClient = useQueryClient()
+  const serverId = useOptionalSettingsTargetServerId()
+  const queryKey = [...opencodeCliQueryKeys.models(), serverId ?? 'local']
 
   return useMutation({
     mutationFn: async (): Promise<string[]> => {
       if (!isTauri()) return []
       try {
-        return await invoke<string[]>('refresh_opencode_models')
+        return await invokeForOptionalServer<string[]>(
+          serverId,
+          'refresh_opencode_models'
+        )
       } catch (error) {
         logger.error('Failed to refresh OpenCode models', { error })
         throw error
       }
     },
     onSuccess: models => {
-      queryClient.setQueryData(opencodeCliQueryKeys.models(), models)
+      queryClient.setQueryData(queryKey, models)
     },
   })
 }
