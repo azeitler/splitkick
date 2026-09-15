@@ -18,3 +18,18 @@ export function resolveHeaderServerLabel(
       ?.name ?? reference.serverId
   )
 }
+
+export function resolveHeaderRemoteServer(
+  selectedProjectId: string | null,
+  connections: RemoteConnection[]
+): { serverId: string; name: string } | null {
+  if (!selectedProjectId) return null
+  const reference = parseServerResourceKey(selectedProjectId)
+  if (!reference || reference.serverId === 'local') return null
+  return {
+    serverId: reference.serverId,
+    name:
+      connections.find(connection => connection.id === reference.serverId)
+        ?.name ?? reference.serverId,
+  }
+}

@@ -32,6 +32,9 @@ const PATH_ARGUMENT_KEYS = new Set([
   'repoPath',
   'repo_path',
 ])
+// These values are persisted client data. Resource-shaped fields inside them
+// can refer to several servers and are not command routing targets.
+const OPAQUE_ARGUMENT_KEYS = new Set(['uiState'])
 const pathOwners = new Map<string, Set<ServerId>>()
 
 export function registerServerResourcePath(
@@ -60,6 +63,7 @@ export function resolveServerCommand(
   let serverId: ServerId | null = null
 
   const strip = (value: unknown, key?: string): unknown => {
+    if (key && OPAQUE_ARGUMENT_KEYS.has(key)) return value
     if (typeof value === 'string' && key && ROUTED_ARGUMENT_KEYS.has(key)) {
       const reference = parseServerResourceKey(value)
       if (!reference) return value

@@ -39,6 +39,7 @@ import { reorderWithClosestEdge } from '@/lib/drag-and-drop/reorder'
 import { announceDrag } from '@/lib/drag-and-drop/live-region'
 import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
 import { groupProjectsByServer } from './project-server-sections'
+import { RemoteServerRefreshButton } from '@/components/remote/RemoteServerRefreshButton'
 
 const MAX_NESTING_DEPTH = 3
 
@@ -795,7 +796,12 @@ export function ProjectTree({
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
               {section.title}
             </span>
-            {(!groupByServer || section.id === 'local') && (
+            {groupByServer && section.id !== 'local' ? (
+              <RemoteServerRefreshButton
+                serverId={section.id}
+                serverName={section.title}
+              />
+            ) : (
               <div className="flex items-center gap-1">
                 <Tooltip>
                   <TooltipTrigger asChild>

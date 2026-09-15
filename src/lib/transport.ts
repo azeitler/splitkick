@@ -617,6 +617,7 @@ export class WsTransport {
   >()
   private connectRetryAttempt = 0
   private connectRetryTimer: ReturnType<typeof setTimeout> | null = null
+  private manualReconnectPending = false
   private connectWatchdog: ReturnType<typeof setTimeout> | null = null
   /** Periodic check that we're seeing inbound traffic from the server.
    *  The server sends app-level heartbeats every 20s because browser JS cannot
@@ -754,6 +755,26 @@ export class WsTransport {
   enableConnect(): void {
     if (this._connectEnabled) return
     this._connectEnabled = true
+    this.connect()
+  }
+
+  reconnect(): void {
+    if (!this._connectEnabled) {
+      this.enableConnect()
+      return
+    }
+
+    this.setAuthError(null)
+    if (this.connectRetryTimer) clearTimeout(this.connectRetryTimer)
+    this.connectRetryTimer = null
+    this.connectRetryAttempt = 0
+
+    if (this.ws) {
+      this.manualReconnectPending = true
+      this.ws.close()
+      return
+    }
+
     this.connect()
   }
 
@@ -908,7 +929,10 @@ export class WsTransport {
       // spawn duplicate CLI processes.
       this.queue = []
 
-      if (this.config || (!wasConnected && !this._hasConnectedOnce)) {
+      if (this.manualReconnectPending) {
+        this.manualReconnectPending = false
+        this.connect()
+      } else if (this.config || (!wasConnected && !this._hasConnectedOnce)) {
         this.scheduleConnectRetry()
       }
     }

@@ -82,6 +82,20 @@ describe('server command routing', () => {
     ).toThrow('several Jean servers')
   })
 
+  it('does not route resource ids stored inside UI state', () => {
+    expect(
+      resolveServerCommand({
+        uiState: {
+          active_project_id: 'one:p1',
+          active_worktree_id: 'one:w1',
+          last_opened_per_project: {
+            'two:p2': { worktree_id: 'two:w2', session_id: 'two:s2' },
+          },
+        },
+      })
+    ).toBeNull()
+  })
+
   it('decorates project and worktree response identities', () => {
     expect(
       decorateServerResult('r1', 'bootstrap_project', {

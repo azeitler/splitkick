@@ -17,6 +17,7 @@ function adapter() {
     connected: true,
     authError: null,
     enableConnect: vi.fn(),
+    reconnect: vi.fn(),
     invoke: vi.fn(async (): Promise<unknown> => 'ok'),
     listen: vi.fn(
       (_event: string, _handler: (event: { payload: unknown }) => void) => () =>
@@ -54,6 +55,21 @@ describe('ServerConnectionManager', () => {
     expect([...manager.getSnapshot().values()]).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ token: 'r2-token' })])
     )
+  })
+
+  it('manually reconnects only the requested remote server', () => {
+    const adapters = { r1: adapter(), r2: adapter() }
+    const manager = new ServerConnectionManager({
+      isNative: () => true,
+      invokeLocal: vi.fn(),
+      createRemote: connection => adapters[connection.id as 'r1' | 'r2'],
+    })
+
+    manager.sync([remote('r1'), remote('r2')])
+    manager.reconnect('r2')
+
+    expect(adapters.r1.reconnect).not.toHaveBeenCalled()
+    expect(adapters.r2.reconnect).toHaveBeenCalledOnce()
   })
 
   it('does not create remote adapters in Web Access', () => {

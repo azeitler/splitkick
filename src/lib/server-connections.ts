@@ -31,6 +31,7 @@ export interface ServerAdapter {
   readonly connected: boolean
   readonly authError: string | null
   enableConnect(): void
+  reconnect(): void
   invoke(command: string, args?: Record<string, unknown>): Promise<unknown>
   listen<T>(event: string, handler: (event: { payload: T }) => void): () => void
   subscribe(callback: () => void): () => void
@@ -164,6 +165,15 @@ export class ServerConnectionManager {
       )
     }
     return managed.adapter.invoke(command, args) as Promise<T>
+  }
+
+  reconnect(serverId: ServerId): void {
+    const managed = this.remotes.get(serverId)
+    if (!managed) throw new Error(`Jean server '${serverId}' is not connected`)
+    managed.compatibility = 'unchecked'
+    managed.capabilities = null
+    managed.adapter.reconnect()
+    this.rebuildSnapshot()
   }
 
   listen<T>(
@@ -328,6 +338,10 @@ export function invokeOnServer<T>(
   args?: Record<string, unknown>
 ): Promise<T> {
   return serverConnectionManager.invoke<T>(serverId, command, args)
+}
+
+export function reconnectRemoteServer(serverId: ServerId): void {
+  serverConnectionManager.reconnect(serverId)
 }
 
 export function listenOnServer<T>(
