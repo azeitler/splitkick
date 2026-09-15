@@ -1101,12 +1101,10 @@ export function SessionChatModal({
                     <GitStatusBadges
                       behindCount={behindCount}
                       unpushedCount={unpushedCount}
-                      diffAdded={isMobile ? 0 : uncommittedAdded}
-                      diffRemoved={isMobile ? 0 : uncommittedRemoved}
-                      branchDiffAdded={isBase || isMobile ? 0 : branchDiffAdded}
-                      branchDiffRemoved={
-                        isBase || isMobile ? 0 : branchDiffRemoved
-                      }
+                      diffAdded={uncommittedAdded}
+                      diffRemoved={uncommittedRemoved}
+                      branchDiffAdded={isBase ? 0 : branchDiffAdded}
+                      branchDiffRemoved={isBase ? 0 : branchDiffRemoved}
                       syncMode={gitSyncButton}
                       onPull={handlePull}
                       onPush={handlePush}

@@ -28,4 +28,15 @@ describe('SessionChatModal responsive header actions', () => {
       /onToggleBrowser=\{\s*isNativeApp\(\) \? handleToggleModalBrowser : undefined\s*\}/
     )
   })
+
+  it('shows git diff stats beside the title at mobile and desktop widths', () => {
+    expect(source).toContain('diffAdded={uncommittedAdded}')
+    expect(source).toContain('diffRemoved={uncommittedRemoved}')
+    expect(source).toContain('branchDiffAdded={isBase ? 0 : branchDiffAdded}')
+    expect(source).toContain(
+      'branchDiffRemoved={isBase ? 0 : branchDiffRemoved}'
+    )
+    expect(source).not.toContain('diffAdded={isMobile ? 0 : uncommittedAdded}')
+    expect(source).not.toContain('isBase || isMobile')
+  })
 })
