@@ -14003,38 +14003,65 @@ pub async fn set_project_avatar(_app: AppHandle, _project_id: String) -> Result<
     Err("Project avatar file selection is only available in the desktop app".to_string())
 }
 
+fn project_avatar_destination_name(project_id: &str, extension: &str) -> String {
+    format!("{project_id}-{}.{}", Uuid::new_v4(), extension)
+}
+
+fn is_project_avatar_file(file_name: &str, project_id: &str) -> bool {
+    if file_name.starts_with(&format!("{project_id}.")) {
+        return true;
+    }
+
+    file_name
+        .strip_prefix(&format!("{project_id}-"))
+        .and_then(|suffix| suffix.rsplit_once('.'))
+        .is_some_and(|(id, _)| Uuid::parse_str(id).is_ok())
+}
+
 pub async fn set_project_avatar_from_path(
     app: AppHandle,
     project_id: String,
     source_path: PathBuf,
 ) -> Result<Project, String> {
+    let mut data = load_projects_data(&app)?;
+    if data.find_project(&project_id).is_none() {
+        return Err(format!("Project not found: {project_id}"));
+    }
+
     let extension = source_path
         .extension()
         .and_then(|extension| extension.to_str())
         .unwrap_or("png")
         .to_lowercase();
     let avatars_dir = get_avatars_dir(&app)?;
-    let destination_name = format!("{project_id}.{extension}");
+    let destination_name = project_avatar_destination_name(&project_id, &extension);
     let destination_path = avatars_dir.join(&destination_name);
-
-    for extension in ["png", "jpg", "jpeg", "webp", "gif"] {
-        let old_file = avatars_dir.join(format!("{project_id}.{extension}"));
-        if old_file.exists() {
-            let _ = std::fs::remove_file(old_file);
-        }
-    }
 
     std::fs::copy(&source_path, &destination_path)
         .map_err(|error| format!("Failed to copy avatar file: {error}"))?;
 
-    let mut data = load_projects_data(&app)?;
     let project = data
         .find_project_mut(&project_id)
-        .ok_or_else(|| format!("Project not found: {project_id}"))?;
+        .expect("project existence checked above");
     project.avatar_path = Some(format!("avatars/{destination_name}"));
     project.default_avatar_path = None;
     let updated_project = project.clone();
-    save_projects_data(&app, &data)?;
+    if let Err(error) = save_projects_data(&app, &data) {
+        let _ = std::fs::remove_file(&destination_path);
+        return Err(error);
+    }
+
+    if let Ok(entries) = std::fs::read_dir(&avatars_dir) {
+        for entry in entries.flatten() {
+            let file_name = entry.file_name();
+            if entry.path() != destination_path
+                && is_project_avatar_file(&file_name.to_string_lossy(), &project_id)
+            {
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+
     Ok(updated_project)
 }
 
@@ -14154,6 +14181,7 @@ pub async fn revert_last_local_commit(
 mod tests {
     use super::*;
     use crate::chat::types::Backend;
+    use crate::projects::types::ProjectsData;
     use std::path::Path;
 
     #[test]
@@ -15245,6 +15273,75 @@ mod tests {
         attach_default_avatar(&mut project);
 
         assert_eq!(project.default_avatar_path, None);
+    }
+
+    #[test]
+    fn project_avatar_replacements_get_a_fresh_file_name() {
+        let first = project_avatar_destination_name("project-1", "png");
+        let second = project_avatar_destination_name("project-1", "png");
+
+        assert_ne!(first, second);
+        assert!(is_project_avatar_file(&first, "project-1"));
+        assert!(is_project_avatar_file("project-1.png", "project-1"));
+        assert!(!is_project_avatar_file(&first, "project-10"));
+    }
+
+    #[tokio::test]
+    async fn failed_project_avatar_copy_keeps_the_previous_file() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let app = crate::RuntimeContext::new(temp.path().into(), temp.path().into())
+            .expect("runtime context");
+        let avatars_dir = temp.path().join("avatars");
+        std::fs::create_dir_all(&avatars_dir).expect("create avatars dir");
+        let previous_avatar = avatars_dir.join("project-1.png");
+        std::fs::write(&previous_avatar, "previous avatar").expect("write previous avatar");
+
+        let project = Project {
+            id: "project-1".to_string(),
+            name: "Project".to_string(),
+            path: temp.path().display().to_string(),
+            default_branch: "main".to_string(),
+            added_at: 0,
+            order: 0,
+            parent_id: None,
+            is_folder: false,
+            avatar_path: Some("avatars/project-1.png".to_string()),
+            default_avatar_path: None,
+            enabled_mcp_servers: None,
+            known_mcp_servers: Vec::new(),
+            custom_system_prompt: None,
+            default_provider: None,
+            default_backend: None,
+            worktrees_dir: None,
+            linear_api_key: None,
+            linear_team_id: None,
+            sentry_auth_token: None,
+            sentry_organization_slug: None,
+            sentry_project_slug: None,
+            linked_project_ids: Vec::new(),
+            auto_fix_settings: None,
+        };
+        save_projects_data(
+            &app,
+            &ProjectsData {
+                projects: vec![project],
+                worktrees: Vec::new(),
+            },
+        )
+        .expect("save projects");
+
+        let result = set_project_avatar_from_path(
+            app,
+            "project-1".to_string(),
+            temp.path().join("missing.png"),
+        )
+        .await;
+
+        assert!(result.is_err());
+        assert_eq!(
+            std::fs::read_to_string(previous_avatar).expect("previous avatar remains"),
+            "previous avatar"
+        );
     }
 
     #[test]
