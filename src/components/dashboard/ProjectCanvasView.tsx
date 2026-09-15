@@ -231,6 +231,7 @@ import {
 } from '@/lib/drag-and-drop/worktree-reorder-ux'
 import { openCanvasConflictResolution } from './conflict-resolution-navigation'
 import { getCanvasDiffRequest } from './canvas-diff-request'
+import { resolveModalWorktreeSnapshot } from './modal-worktree-snapshot'
 
 interface ProjectCanvasViewProps {
   projectId: string
@@ -1703,11 +1704,13 @@ export function ProjectCanvasView({
     worktreeId: string
     worktreePath: string
   } | null>(null)
-  const selectedModalWorktree = selectedWorktreeModal
-    ? (worktrees.find(
-        worktree => worktree.id === selectedWorktreeModal.worktreeId
-      ) ?? null)
-    : null
+  const selectedModalWorktreeSnapshotRef = useRef<Worktree | null>(null)
+  const selectedModalWorktree = resolveModalWorktreeSnapshot(
+    selectedWorktreeModal?.worktreeId ?? null,
+    worktrees,
+    selectedModalWorktreeSnapshotRef.current
+  )
+  selectedModalWorktreeSnapshotRef.current = selectedModalWorktree
 
   useEffect(() => {
     const reloadState = consumeWebReloadState(projectId)

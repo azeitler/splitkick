@@ -789,13 +789,8 @@ export function ProjectTree({
           <Separator />
         </div>
       )}
-      {projectSections.map((section, sectionIndex) => (
+      {projectSections.map(section => (
         <div key={section.id}>
-          {sectionIndex > 0 && (
-            <div className="px-3 py-2">
-              <Separator />
-            </div>
-          )}
           <div className="group/header flex items-center justify-between pl-3 pr-2 pb-1 pt-2">
             <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
               {section.title}

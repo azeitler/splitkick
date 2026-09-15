@@ -14,7 +14,7 @@ describe('groupProjectsByServer', () => {
     ])
 
     expect(sections.map(section => section.title)).toEqual([
-      'Projects',
+      'Local',
       'Dev Server',
     ])
     expect(sections[1]?.projects.map(item => item.id)).toEqual([

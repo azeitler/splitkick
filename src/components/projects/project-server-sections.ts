@@ -21,7 +21,7 @@ export function groupProjectsByServer(
 
     sections.set(id, {
       id,
-      title: project.serverName ?? 'Projects',
+      title: project.serverName ?? 'Local',
       projects: [project],
     })
   }

@@ -405,8 +405,8 @@ export function RemoteConnectionsDialog({
       {showTrigger && (
         <DialogTrigger asChild>
           <Button
-            aria-label="Jean connections"
-            title="Jean connections"
+            aria-label="Connections"
+            title="Connections"
             variant="ghost"
             size="icon"
             className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
@@ -418,7 +418,7 @@ export function RemoteConnectionsDialog({
       {/* Above RemoteConnectionRecovery (z-100) so Edit connection works while offline. */}
       <DialogContent className="sm:max-w-md z-[110]" overlayClassName="z-[110]">
         <DialogHeader>
-          <DialogTitle>Jean connections</DialogTitle>
+          <DialogTitle>Connections</DialogTitle>
           <DialogDescription>
             Manage the Jean servers used by the combined dashboard.
           </DialogDescription>

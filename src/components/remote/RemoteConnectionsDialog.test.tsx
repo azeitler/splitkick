@@ -123,7 +123,7 @@ describe('RemoteConnectionsDialog', () => {
     const reloadApp = vi.fn()
     render(<RemoteConnectionsDialog />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }))
     await waitFor(() => expect(fetchRemoteServerInfo).toHaveBeenCalled())
     fireEvent.click(
       screen.getByRole('checkbox', {
@@ -140,7 +140,7 @@ describe('RemoteConnectionsDialog', () => {
     const reloadApp = vi.fn()
     render(<RemoteConnectionsDialog />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }))
     fireEvent.click(
       screen.getByRole('checkbox', {
         name: 'Include Local in combined dashboard',
@@ -162,7 +162,7 @@ describe('RemoteConnectionsDialog', () => {
     })
     render(<RemoteConnectionsDialog />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }))
     await waitFor(() => expect(fetchRemoteServerInfo).toHaveBeenCalled())
 
     expect(
@@ -176,7 +176,7 @@ describe('RemoteConnectionsDialog', () => {
     const reloadApp = vi.fn()
     render(<RemoteConnectionsDialog />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Build server' },
@@ -215,7 +215,7 @@ describe('RemoteConnectionsDialog', () => {
     const reloadApp = vi.fn()
     render(<RemoteConnectionsDialog />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }))
     expect(screen.getByText('v0.1.69')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
@@ -235,7 +235,7 @@ describe('RemoteConnectionsDialog', () => {
   it('saves optional SSH fields when adding a remote URL', async () => {
     render(<RemoteConnectionsDialog />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Build server' },
@@ -281,7 +281,7 @@ describe('RemoteConnectionsDialog', () => {
 
     render(<RemoteConnectionsDialog />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
 
     expect(
@@ -331,7 +331,7 @@ describe('RemoteConnectionsDialog', () => {
     isNativeApp.mockReturnValue(true)
     render(<RemoteConnectionsDialog />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
     fireEvent.click(screen.getByRole('tab', { name: /Existing URL/i }))
 
