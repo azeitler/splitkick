@@ -119,7 +119,11 @@ const EVENT_RESOURCE_KEYS = new Set([
 ])
 
 /** Add server ownership before a backend event enters shared client state. */
-export function decorateServerEvent<T>(serverId: ServerId, value: T): T {
+export function decorateServerEvent<T>(
+  serverId: ServerId,
+  value: T,
+  event?: string
+): T {
   const decorate = (current: unknown, key?: string): unknown => {
     if (typeof current === 'string' && key && EVENT_RESOURCE_KEYS.has(key)) {
       return scopedId(serverId, current)
@@ -135,7 +139,30 @@ export function decorateServerEvent<T>(serverId: ServerId, value: T): T {
     }
     return current
   }
-  return decorate(value) as T
+  if (
+    event?.startsWith('worktree:') &&
+    value &&
+    typeof value === 'object' &&
+    'worktree' in value
+  ) {
+    const { worktree, ...payload } = value as Record<string, unknown>
+    return {
+      ...(decorate(payload) as Record<string, unknown>),
+      worktree: decorateWorktree(serverId, worktree),
+    } as T
+  }
+
+  const decorated = decorate(value)
+  if (!event?.startsWith('worktree:') || !decorated || typeof decorated !== 'object') {
+    return decorated as T
+  }
+
+  const payload = decorated as Record<string, unknown>
+  registerServerResourcePath(serverId, payload.path)
+  return {
+    ...payload,
+    id: scopedId(serverId, payload.id),
+  } as T
 }
 
 function decorateSession(serverId: ServerId, value: unknown): unknown {
@@ -236,6 +263,18 @@ export function decorateServerResult<T>(
     ['get_session', 'create_session', 'unarchive_session'].includes(command)
   ) {
     return decorateSession(serverId, value) as T
+  }
+  if (
+    command === 'start_background_investigation' &&
+    value &&
+    typeof value === 'object'
+  ) {
+    const result = value as Record<string, unknown>
+    return {
+      ...result,
+      sessionId: scopedId(serverId, result.sessionId),
+      worktreeId: scopedId(serverId, result.worktreeId),
+    } as T
   }
   if (command === 'list_archived_sessions' && Array.isArray(value)) {
     return value.map(item => decorateSession(serverId, item)) as T

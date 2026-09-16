@@ -72,6 +72,24 @@ export function useBackgroundInvestigation(): void {
       state.autoInvestigateSentryIssueWorktreeIds.size > 0
   )
 
+  // A ready worktree can replace its pending TanStack Query entry without
+  // changing any Zustand state. Subscribe while work is pending so the
+  // investigation starts immediately instead of waiting for navigation or the
+  // fallback timer to cause an unrelated render.
+  const [worktreeCacheTick, setWorktreeCacheTick] = useState(0)
+  useEffect(() => {
+    if (!hasAutoInvestigate) return
+    return queryClient.getQueryCache().subscribe(event => {
+      const key = event.query.queryKey
+      if (
+        key[0] === projectsQueryKeys.all[0] &&
+        (key[1] === 'worktree' || key[1] === 'worktrees')
+      ) {
+        setWorktreeCacheTick(tick => tick + 1)
+      }
+    })
+  }, [hasAutoInvestigate, queryClient])
+
   // Re-trigger effect when new worktree paths are registered.
   // Without this, the effect runs when the flag is set (before the worktree is ready),
   // skips because worktreePaths[id] is undefined, and never re-runs.
@@ -283,7 +301,13 @@ export function useBackgroundInvestigation(): void {
       disposed = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasAutoInvestigate, worktreePathCount, queryClient, retryTick])
+  }, [
+    hasAutoInvestigate,
+    worktreePathCount,
+    worktreeCacheTick,
+    queryClient,
+    retryTick,
+  ])
 }
 
 /**

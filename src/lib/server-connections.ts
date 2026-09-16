@@ -204,7 +204,7 @@ export class ServerConnectionManager {
         const unlisten = managed.adapter.listen<T>(event, incoming => {
           handler({
             serverId,
-            payload: decorateServerEvent(serverId, incoming.payload),
+            payload: decorateServerEvent(serverId, incoming.payload, event),
           })
         })
         unlisteners.set(serverId, unlisten)

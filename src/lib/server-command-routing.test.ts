@@ -44,6 +44,40 @@ describe('server command routing', () => {
     })
   })
 
+  it('decorates worktree lifecycle events with their remote owner', () => {
+    expect(
+      decorateServerEvent(
+        'remote',
+        {
+          worktree: {
+            id: 'wt-1',
+            project_id: 'project-1',
+            path: '/srv/project/wt-1',
+          },
+          autoOpenInJean: false,
+        },
+        'worktree:created'
+      )
+    ).toEqual({
+      worktree: {
+        id: 'remote:wt-1',
+        project_id: 'remote:project-1',
+        path: '/srv/project/wt-1',
+        serverId: 'remote',
+        resourceId: 'wt-1',
+      },
+      autoOpenInJean: false,
+    })
+
+    expect(
+      decorateServerEvent(
+        'remote',
+        { id: 'wt-1', project_id: 'project-1' },
+        'worktree:setup_complete'
+      )
+    ).toEqual({ id: 'remote:wt-1', project_id: 'remote:project-1' })
+  })
+
   it('routes terminal commands and gives remote terminal events the same id', () => {
     expect(
       resolveServerCommand({ terminalId: 'remote%3Adev:terminal%2F1' })
@@ -133,6 +167,20 @@ describe('server command routing', () => {
       parent_session_id: 'r1:s0',
       serverId: 'r1',
       resourceId: 's1',
+    })
+  })
+
+  it('decorates background investigation session and worktree identities', () => {
+    expect(
+      decorateServerResult('r1', 'start_background_investigation', {
+        sessionId: 's1',
+        worktreeId: 'w1',
+        status: 'investigation_started',
+      })
+    ).toEqual({
+      sessionId: 'r1:s1',
+      worktreeId: 'r1:w1',
+      status: 'investigation_started',
     })
   })
 })
