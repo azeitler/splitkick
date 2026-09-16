@@ -585,17 +585,9 @@ function ChatWindowContent({
     if (!deferredSessionId || !session) return
     const lastMsg = session.messages.at(-1)
     if (lastMsg?.role === 'assistant' && lastMsg.id.startsWith('running-')) {
-      const store = useChatStore.getState()
-      const isSending = !!store.sendingSessionIds[deferredSessionId]
-      const hasLiveStreamingState =
-        !!store.streamingContents[deferredSessionId] ||
-        (store.streamingContentBlocks[deferredSessionId]?.length ?? 0) > 0 ||
-        (store.activeToolCalls[deferredSessionId]?.length ?? 0) > 0
-
-      // A live sender already has the incremental event state. A restored web
-      // session is also marked sending, but starts without that state and must
-      // hydrate the persisted running snapshot (including prior tool calls).
-      if (isSending && hasLiveStreamingState) return
+      // Live chunks can reach Web Access before this session query finishes.
+      // Always merge the persisted snapshot ahead of those chunks so opening a
+      // running session includes output produced before this client connected.
       hydrateRunningSnapshot(deferredSessionId, lastMsg, {
         allowWhileSending: true,
         dedupeReplayedOutput: true,
