@@ -80,6 +80,7 @@ export function useBackgroundInvestigation(): void {
   useEffect(() => {
     if (!hasAutoInvestigate) return
     return queryClient.getQueryCache().subscribe(event => {
+      if (event.type !== 'updated') return
       const key = event.query.queryKey
       if (
         key[0] === projectsQueryKeys.all[0] &&
