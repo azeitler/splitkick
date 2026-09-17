@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@/test/test-utils'
+import { act, render, screen } from '@/test/test-utils'
 import { useUIStore } from '@/store/ui-store'
 import { MobileFileBrowser } from './MobileFileBrowser'
 
@@ -26,7 +26,7 @@ describe('MobileFileBrowser', () => {
       dragTransition: '',
     })
 
-    render(
+    const { rerender } = render(
       <MobileFileBrowser open={false} onOpenChange={vi.fn()} width={280} />
     )
 
@@ -37,5 +37,17 @@ describe('MobileFileBrowser', () => {
       animation: 'none',
       transition: 'none',
     })
+
+    act(() => {
+      useUIStore.getState().setFileBrowserSwipe({
+        isDragging: false,
+        dragOffset: 0,
+        dragTransition: '',
+      })
+      rerender(<MobileFileBrowser open onOpenChange={vi.fn()} width={280} />)
+    })
+
+    expect(drawer).toHaveStyle({ animation: 'none' })
+    expect(drawer).not.toHaveStyle({ transform: 'translateX(100%)' })
   })
 })

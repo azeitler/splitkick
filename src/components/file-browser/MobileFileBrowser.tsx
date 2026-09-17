@@ -1,4 +1,11 @@
-import { Suspense, lazy, useCallback, type CSSProperties } from 'react'
+import {
+  Suspense,
+  lazy,
+  useCallback,
+  useEffect,
+  useState,
+  type CSSProperties,
+} from 'react'
 import {
   Sheet,
   SheetContent,
@@ -31,6 +38,15 @@ export function MobileFileBrowser({
   const { isDragging, dragOffset, dragTransition } = useUIStore(
     state => state.fileBrowserSwipe
   )
+  const [openedByDrag, setOpenedByDrag] = useState(false)
+
+  useEffect(() => {
+    if (isDragging) {
+      setOpenedByDrag(true)
+    } else if (!open) {
+      setOpenedByDrag(false)
+    }
+  }, [isDragging, open])
 
   // While a file is open, ignore sheet dismiss (outside tap / focus steal).
   // The file viewer is closed only via its own X; reopening the browser is fine.
@@ -77,7 +93,9 @@ export function MobileFileBrowser({
                   transition: dragTransition || 'none',
                 }
               : {}),
-            ...(isDragging ? { animation: 'none' } : {}),
+            ...(isDragging || (open && openedByDrag)
+              ? { animation: 'none' }
+              : {}),
           } as CSSProperties
         }
         data-testid="mobile-file-browser"
