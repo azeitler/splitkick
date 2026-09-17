@@ -293,7 +293,7 @@ export function ProjectsSidebar() {
             )}
           </div>
         ) : (
-          <RecentWorktreesList projects={projects} />
+          <RecentWorktreesList projects={visibleProjects} />
         )}
       </div>
       <div

@@ -1109,6 +1109,127 @@ pub struct ProjectBootstrap {
     pub sessions_by_worktree: HashMap<String, crate::chat::types::WorktreeSessions>,
 }
 
+/// One recent prompted session with its owning worktree metadata.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentWorktreeItem {
+    pub project_id: String,
+    pub project_name: String,
+    pub worktree: Worktree,
+    pub session: crate::chat::types::Session,
+    pub last_activity_at: u64,
+    pub added: u32,
+    pub removed: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentWorktreesResponse {
+    pub items: Vec<RecentWorktreeItem>,
+    pub total: usize,
+    pub failed_worktree_ids: Vec<String>,
+}
+
+/// Return a sorted page of recently prompted sessions in one round-trip.
+/// A corrupt session file does not hide rows from other worktrees.
+pub async fn get_recent_worktrees(
+    app: AppHandle,
+    project_ids: Option<Vec<String>>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+    include_session_id: Option<String>,
+) -> Result<RecentWorktreesResponse, String> {
+    let data = load_projects_data(&app)?;
+    let project_filter =
+        project_ids.map(|ids| ids.into_iter().collect::<std::collections::HashSet<_>>());
+    let project_names: HashMap<_, _> = data
+        .projects
+        .iter()
+        .filter(|project| !project.is_folder)
+        .filter(|project| {
+            project_filter
+                .as_ref()
+                .is_none_or(|ids| ids.contains(&project.id))
+        })
+        .map(|project| (project.id.clone(), project.name.clone()))
+        .collect();
+
+    let mut items = Vec::new();
+    let mut failed_worktree_ids = Vec::new();
+    for worktree in data.worktrees.iter().filter(|worktree| {
+        worktree.archived_at.is_none() && project_names.contains_key(&worktree.project_id)
+    }) {
+        let sessions = match crate::chat::storage::load_sessions(&app, &worktree.path, &worktree.id)
+        {
+            Ok(sessions) => sessions,
+            Err(error) => {
+                log::warn!(
+                    "get_recent_worktrees: sessions failed for {}: {error}",
+                    worktree.id
+                );
+                failed_worktree_ids.push(worktree.id.clone());
+                continue;
+            }
+        };
+        let prompted_sessions = sessions.sessions.into_iter().filter(|session| {
+            session.archived_at.is_none()
+                && (session.last_message_at.is_some()
+                    || session
+                        .message_count
+                        .unwrap_or(session.messages.len() as u32)
+                        > 0)
+        });
+        let is_base = matches!(
+            worktree.session_type,
+            crate::projects::types::SessionType::Base
+        );
+        let added = worktree.cached_uncommitted_added.unwrap_or(0)
+            + if is_base {
+                0
+            } else {
+                worktree.cached_branch_diff_added.unwrap_or(0)
+            };
+        let removed = worktree.cached_uncommitted_removed.unwrap_or(0)
+            + if is_base {
+                0
+            } else {
+                worktree.cached_branch_diff_removed.unwrap_or(0)
+            };
+        items.extend(prompted_sessions.map(|session| RecentWorktreeItem {
+            project_id: worktree.project_id.clone(),
+            project_name: project_names[&worktree.project_id].clone(),
+            worktree: worktree.clone(),
+            last_activity_at: session.last_message_at.unwrap_or(session.updated_at),
+            session,
+            added,
+            removed,
+        }));
+    }
+    items.sort_by(|left, right| {
+        right
+            .last_activity_at
+            .cmp(&left.last_activity_at)
+            .then_with(|| right.worktree.created_at.cmp(&left.worktree.created_at))
+            .then_with(|| left.worktree.id.cmp(&right.worktree.id))
+    });
+    let total = items.len();
+    let offset = offset.unwrap_or(0).min(total);
+    let limit = limit.unwrap_or(10).clamp(1, 100);
+    let mut page = items[offset..total.min(offset + limit)].to_vec();
+    if let Some(include_id) = include_session_id {
+        if !page.iter().any(|item| item.session.id == include_id) {
+            if let Some(item) = items.into_iter().find(|item| item.session.id == include_id) {
+                page.push(item);
+            }
+        }
+    }
+    Ok(RecentWorktreesResponse {
+        items: page,
+        total,
+        failed_worktree_ids,
+    })
+}
+
 /// Load worktrees and per-worktree session lists for a project in one round-trip.
 /// Sessions are fetched in parallel with message counts (canvas needs them).
 pub async fn bootstrap_project(
@@ -15387,7 +15508,6 @@ mod tests {
             sentry_base_url: None,
             sentry_organization_slug: None,
             sentry_project_slug: None,
-            sentry_base_url: None,
             linked_project_ids: Vec::new(),
             auto_fix_settings: None,
         };

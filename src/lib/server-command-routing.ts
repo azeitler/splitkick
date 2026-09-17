@@ -153,7 +153,11 @@ export function decorateServerEvent<T>(
   }
 
   const decorated = decorate(value)
-  if (!event?.startsWith('worktree:') || !decorated || typeof decorated !== 'object') {
+  if (
+    !event?.startsWith('worktree:') ||
+    !decorated ||
+    typeof decorated !== 'object'
+  ) {
     return decorated as T
   }
 
@@ -335,6 +339,30 @@ export function decorateServerResult<T>(
           )
         : bootstrap.worktrees,
       sessionsByWorktree,
+    } as T
+  }
+  if (
+    command === 'get_recent_worktrees' &&
+    value &&
+    typeof value === 'object'
+  ) {
+    const response = value as Record<string, unknown>
+    return {
+      ...response,
+      items: Array.isArray(response.items)
+        ? response.items.map(item => {
+            const row = item as Record<string, unknown>
+            return {
+              ...row,
+              projectId: scopedId(serverId, row.projectId),
+              worktree: decorateWorktree(serverId, row.worktree),
+              session: decorateSession(serverId, row.session),
+            }
+          })
+        : response.items,
+      failedWorktreeIds: Array.isArray(response.failedWorktreeIds)
+        ? response.failedWorktreeIds.map(id => scopedId(serverId, id))
+        : response.failedWorktreeIds,
     } as T
   }
   return value

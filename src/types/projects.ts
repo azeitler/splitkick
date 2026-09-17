@@ -1,4 +1,4 @@
-import type { LabelData } from '@/types/chat'
+import type { LabelData, Session } from '@/types/chat'
 import type { AdvisoryContext, SecurityAlertContext } from '@/types/github'
 
 /**
@@ -222,6 +222,22 @@ export interface Worktree {
   archived_at?: number
   /** Unix timestamp when worktree was last opened/viewed by the user */
   last_opened_at?: number
+}
+
+export interface RecentWorktreeItem {
+  projectId: string
+  projectName: string
+  worktree: Worktree
+  session: Session
+  lastActivityAt: number
+  added: number
+  removed: number
+}
+
+export interface RecentWorktreesResponse {
+  items: RecentWorktreeItem[]
+  total: number
+  failedWorktreeIds: string[]
 }
 
 // =============================================================================

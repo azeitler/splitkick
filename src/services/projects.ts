@@ -36,7 +36,10 @@ import type {
   WorktreePathExistsEvent,
   WorktreeBranchExistsEvent,
   WorktreeSetupCompleteEvent,
+  RecentWorktreeItem,
+  RecentWorktreesResponse,
 } from '@/types/projects'
+import { isFolder } from '@/types/projects'
 import type { AllSessionsResponse, WorktreeSessions } from '@/types/chat'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -60,6 +63,8 @@ import {
   toRoutedProjects,
   useMultiServerProjects,
 } from './multi-server-projects'
+import { projectServerId } from '@/components/projects/server-filter'
+import { parseServerResourceKey } from '@/lib/server-resource'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -119,6 +124,92 @@ export const projectsQueryKeys = {
     [...projectsQueryKeys.all, 'worktrees', projectId] as const,
   bootstrap: (projectId: string) =>
     [...projectsQueryKeys.all, 'bootstrap', projectId] as const,
+}
+
+export interface RecentWorktreesData {
+  items: RecentWorktreeItem[]
+  total: number
+  failedServerIds: string[]
+  failedWorktreeIds: string[]
+}
+
+/** Load one recent-worktree page per owning server, then merge it globally. */
+export async function fetchRecentWorktrees(
+  projects: Project[],
+  limit: number,
+  includeSessionId: string | null
+): Promise<RecentWorktreesData> {
+  const projectsByServer = new Map<string, Project[]>()
+  for (const project of projects.filter(
+    project => !isFolder(project) && !project.offline
+  )) {
+    const serverId = projectServerId(project)
+    projectsByServer.set(serverId, [
+      ...(projectsByServer.get(serverId) ?? []),
+      project,
+    ])
+  }
+  const serverEntries = [...projectsByServer]
+  const results = await Promise.allSettled(
+    serverEntries.map(async ([serverId, serverProjects]) => {
+      const selectedRef = includeSessionId
+        ? parseServerResourceKey(includeSessionId)
+        : null
+      const selectedResourceId = selectedRef
+        ? selectedRef.serverId === serverId
+          ? selectedRef.resourceId
+          : null
+        : serverId === LOCAL_SERVER_ID
+          ? includeSessionId
+          : null
+      const response = await invokeForServer<RecentWorktreesResponse>(
+        serverId,
+        'get_recent_worktrees',
+        {
+          projectIds: serverProjects.map(
+            project => project.resourceId ?? project.id
+          ),
+          offset: 0,
+          limit,
+          includeSessionId: selectedResourceId,
+        }
+      )
+      return { serverId, response }
+    })
+  )
+  const successful = results.flatMap(result =>
+    result.status === 'fulfilled' ? [result.value] : []
+  )
+  if (projectsByServer.size > 0 && successful.length === 0) {
+    throw new Error('Unable to load recent worktrees from any server')
+  }
+  const items = successful
+    .flatMap(result => result.response.items)
+    .sort(
+      (a, b) =>
+        b.lastActivityAt - a.lastActivityAt ||
+        b.worktree.created_at - a.worktree.created_at ||
+        a.worktree.id.localeCompare(b.worktree.id)
+    )
+  const visibleItems = items.slice(0, limit)
+  if (
+    includeSessionId &&
+    !visibleItems.some(item => item.session.id === includeSessionId)
+  ) {
+    const selected = items.find(item => item.session.id === includeSessionId)
+    if (selected) visibleItems.push(selected)
+  }
+  return {
+    items: visibleItems,
+    total: successful.reduce((sum, result) => sum + result.response.total, 0),
+    failedServerIds: results.flatMap((result, index) => {
+      const serverId = serverEntries[index]?.[0]
+      return result.status === 'rejected' && serverId ? [serverId] : []
+    }),
+    failedWorktreeIds: successful.flatMap(
+      result => result.response.failedWorktreeIds
+    ),
+  }
 }
 
 // ============================================================================

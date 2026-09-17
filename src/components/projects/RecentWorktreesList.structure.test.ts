@@ -7,20 +7,27 @@ describe('RecentWorktreesList structure', () => {
     'utf8'
   )
 
-  it('shows ten recent worktrees before the expansion control', () => {
+  it('loads ten rows first and adds older rows in pages of 25', () => {
     expect(source).toContain('const INITIAL_RECENT_LIMIT = 10')
-    expect(source).toContain('rows.slice(0, INITIAL_RECENT_LIMIT)')
-    expect(source).toContain('Older worktrees ({hiddenCount})')
-    expect(source).toContain('className="min-h-0 flex-1 overflow-y-auto"')
-    expect(source).toContain(
-      'className="shrink-0 border-t border-border/40 p-2"'
-    )
+    expect(source).toContain('const RECENT_PAGE_SIZE = 25')
+    expect(source).toContain('{Math.min(hiddenCount, RECENT_PAGE_SIZE)} more')
+    expect(source).toContain('setLimit(value => value + RECENT_PAGE_SIZE)')
   })
 
-  it('shows only project, worktree, and Git diff information in each row', () => {
-    expect(source).toContain('{row.project.name}')
+  it('shows session, project, worktree, activity, and Git diff information', () => {
     expect(source).toContain('{row.session.name}')
+    expect(source).toContain('{row.projectName} · {row.worktree.name}')
+    expect(source).toContain('formatRecentActivity(row.lastActivityAt)')
     expect(source).toContain('+{row.added}')
     expect(source).toContain('-{row.removed}')
+  })
+
+  it('keeps current-row, keyboard, partial failure, and accessibility behavior', () => {
+    expect(source).toContain('event.metaKey')
+    expect(source).toContain("['ArrowUp', 'ArrowDown']")
+    expect(source).toContain("aria-current={isCurrent ? 'page' : undefined}")
+    expect(source).toContain('<ul aria-label="Recent sessions"')
+    expect(source).toContain('Some recent sessions could')
+    expect(source).toContain('selectedSessionId')
   })
 })
