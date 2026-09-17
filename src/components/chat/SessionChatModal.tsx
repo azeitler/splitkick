@@ -15,8 +15,9 @@ import {
   Copy,
   GitBranchPlus,
   GitPullRequestArrow,
-  Maximize2,
-  Minimize2,
+  Maximize,
+  Minimize,
+  Loader2,
   Pencil,
   RefreshCw,
   Tag,
@@ -394,6 +395,7 @@ export function SessionChatModal({
   const currentLabel = useChatStore(state =>
     labelSessionId ? (state.sessionLabels[labelSessionId] ?? null) : null
   )
+  const namingSessionIds = useChatStore(state => state.namingSessionIds)
 
   // Rename session state
   const renameSession = useRenameSession()
@@ -1149,9 +1151,9 @@ export function SessionChatModal({
                           onClick={toggleZenMode}
                         >
                           {zenMode ? (
-                            <Minimize2 className="h-3 w-3" />
+                            <Minimize className="size-2.5" />
                           ) : (
-                            <Maximize2 className="h-3 w-3" />
+                            <Maximize className="size-2.5" />
                           )}
                         </Button>
                       </TooltipTrigger>
@@ -1235,6 +1237,8 @@ export function SessionChatModal({
                     const chatState = useChatStore.getState()
                     const sessionLabel = chatState.sessionLabels[session.id]
                     const resumeCommand = getResumeCommand(session)
+                    const isGeneratingName =
+                      namingSessionIds[session.id] ?? false
                     return (
                       <ContextMenu key={session.id}>
                         <ContextMenuTrigger asChild>
@@ -1291,12 +1295,21 @@ export function SessionChatModal({
                             ) : (
                               <Tooltip>
                                 <TooltipTrigger asChild>
-                                  <span className="truncate max-w-48">
-                                    {session.name}
+                                  <span className="flex max-w-48 items-center gap-1.5 truncate">
+                                    {isGeneratingName && (
+                                      <Loader2 className="size-3 shrink-0 animate-spin" />
+                                    )}
+                                    <span className="truncate">
+                                      {isGeneratingName
+                                        ? 'Generating…'
+                                        : session.name}
+                                    </span>
                                   </span>
                                 </TooltipTrigger>
                                 <TooltipContent side="bottom">
-                                  {session.name}
+                                  {isGeneratingName
+                                    ? 'Generating session name…'
+                                    : session.name}
                                 </TooltipContent>
                               </Tooltip>
                             )}

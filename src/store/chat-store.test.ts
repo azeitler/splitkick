@@ -36,6 +36,7 @@ describe('ChatStore', () => {
       tableCheckedRows: {},
       worktreePaths: {},
       sendingSessionIds: {},
+      namingSessionIds: {},
       sendStartedAt: {},
       completedDurations: {},
       waitingForInputSessionIds: {},
@@ -76,6 +77,19 @@ describe('ChatStore', () => {
       savingContext: {},
       skippedQuestionSessions: {},
     })
+  })
+
+  it('tracks session name generation without no-op state changes', () => {
+    const { setSessionNaming } = useChatStore.getState()
+    setSessionNaming('session-1', true)
+    const activeState = useChatStore.getState().namingSessionIds
+
+    expect(activeState).toEqual({ 'session-1': true })
+    setSessionNaming('session-1', true)
+    expect(useChatStore.getState().namingSessionIds).toBe(activeState)
+
+    setSessionNaming('session-1', false)
+    expect(useChatStore.getState().namingSessionIds).toEqual({})
   })
 
   it('persists setup-script dismissal per worktree in store state', () => {

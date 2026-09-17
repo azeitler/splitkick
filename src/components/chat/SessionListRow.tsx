@@ -4,6 +4,7 @@ import {
   Copy,
   Pencil,
   RefreshCw,
+  Loader2,
   Shield,
   Tag,
   Trash2,
@@ -35,6 +36,7 @@ import {
 } from './session-card-utils'
 import { SessionStatusMenu } from './SessionStatusMenu'
 import { canReconnectSession } from '@/services/chat'
+import { useChatStore } from '@/store/chat-store'
 
 export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
   function SessionListRow(
@@ -63,6 +65,9 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
     ref
   ) {
     const config = statusConfig[card.status]
+    const isGeneratingName = useChatStore(
+      state => state.namingSessionIds[card.session.id] ?? false
+    )
     const handleSetStatusOverride =
       onSetStatusOverride ??
       (onToggleReview
@@ -143,8 +148,13 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                 className="flex-1 min-w-0 bg-transparent text-base outline-none ring-1 ring-ring rounded px-1 md:text-sm"
               />
             ) : (
-              <span className="flex-1 truncate text-sm">
-                {card.session.name}
+              <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm">
+                {isGeneratingName && (
+                  <Loader2 className="size-3 shrink-0 animate-spin" />
+                )}
+                <span className="truncate">
+                  {isGeneratingName ? 'Generating…' : card.session.name}
+                </span>
               </span>
             )}
 

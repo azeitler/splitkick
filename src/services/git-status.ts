@@ -18,6 +18,7 @@ import {
 import type {
   DetectPrResponse,
   GitPushResponse,
+  RecentWorktreeItem,
   Worktree,
 } from '@/types/projects'
 import type { GitDiff, CommitHistoryResult } from '@/types/git-diff'
@@ -96,6 +97,26 @@ export function areGitStatusValuesEqual(
     left.worktree_ahead_count === right.worktree_ahead_count &&
     left.unpushed_count === right.unpushed_count
   )
+}
+
+/** Apply a live Git status event to cached Recent rows for the worktree. */
+export function syncRecentRowsWithGitStatus(
+  rows: RecentWorktreeItem[],
+  status: GitStatusEvent
+): RecentWorktreeItem[] {
+  let changed = false
+  const nextRows = rows.map(row => {
+    if (row.worktree.id !== status.worktree_id) return row
+    const isBase = row.worktree.session_type === 'base'
+    const added =
+      status.uncommitted_added + (isBase ? 0 : status.branch_diff_added)
+    const removed =
+      status.uncommitted_removed + (isBase ? 0 : status.branch_diff_removed)
+    if (row.added === added && row.removed === removed) return row
+    changed = true
+    return { ...row, added, removed }
+  })
+  return changed ? nextRows : rows
 }
 
 /**
@@ -767,6 +788,14 @@ export function useGitStatusEvents(
           queryClient.setQueryData(
             gitStatusQueryKeys.worktree(status.worktree_id),
             status
+          )
+          queryClient.setQueriesData<{ items: RecentWorktreeItem[] }>(
+            { queryKey: ['recent-worktrees'] },
+            current => {
+              if (!current) return current
+              const items = syncRecentRowsWithGitStatus(current.items, status)
+              return items === current.items ? current : { ...current, items }
+            }
           )
         }
         if (

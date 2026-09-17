@@ -100,7 +100,9 @@ describe('fetchRecentWorktrees', () => {
 
   it('keeps separate recent sessions from the same worktree', async () => {
     const data = response('local', 'project', 20, 2)
-    const first = data.items[0]!
+    const first = data.items[0]
+    expect(first).toBeDefined()
+    if (!first) return
     data.items.push({
       ...first,
       lastActivityAt: 10,

@@ -6,7 +6,9 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { fetchRecentWorktrees } from '@/services/projects'
+import { fetchWorktreesStatus } from '@/services/git-status'
 import type { Project, RecentWorktreeItem } from '@/types/projects'
+import { getRecentSessionStatus } from './recent-session-status'
 
 const INITIAL_RECENT_LIMIT = 10
 const RECENT_PAGE_SIZE = 25
@@ -47,6 +49,12 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
       ? (state.activeSessionIds[selectedWorktreeId] ?? null)
       : null
   )
+  const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
+  const waitingForInputSessionIds = useChatStore(
+    state => state.waitingForInputSessionIds
+  )
+  const executionModes = useChatStore(state => state.executionModes)
+  const executingModes = useChatStore(state => state.executingModes)
   const [limit, setLimit] = useState(INITIAL_RECENT_LIMIT)
   const rowRefs = useRef(new Map<string, HTMLButtonElement>())
   const projectKey = useMemo(
@@ -68,6 +76,19 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
     staleTime: 30_000,
   })
   const rows = query.data?.items ?? []
+  const recentProjectKey = useMemo(
+    () => [...new Set(rows.map(row => row.projectId))].sort().join('\0'),
+    [rows]
+  )
+
+  useEffect(() => {
+    if (!recentProjectKey) return
+    void Promise.allSettled(
+      recentProjectKey.split('\0').map(projectId =>
+        fetchWorktreesStatus(projectId).catch(() => undefined)
+      )
+    )
+  }, [recentProjectKey])
 
   const handleOpen = useCallback(
     (row: RecentWorktreeItem) => {
@@ -171,6 +192,20 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
             const activity = formatRecentActivity(row.lastActivityAt)
             const activityLabel =
               activity === 'now' ? 'active now' : `active ${activity} ago`
+            const status = getRecentSessionStatus(row.session, {
+              sending: sendingSessionIds[row.session.id] ?? false,
+              waiting: waitingForInputSessionIds[row.session.id] ?? false,
+              executionMode: executionModes[row.session.id],
+              executingMode: executingModes[row.session.id],
+            })
+            const statusClassName =
+              status.tone === 'waiting'
+                ? 'text-amber-600 dark:text-amber-400'
+                : status.tone === 'working'
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : status.tone === 'failed'
+                    ? 'text-red-600 dark:text-red-400'
+                    : 'text-muted-foreground'
             return (
               <li key={row.session.id}>
                 <button
@@ -193,13 +228,18 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                     </span>
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] tabular-nums">
-                    <time
-                      dateTime={new Date(
-                        row.lastActivityAt * 1000
-                      ).toISOString()}
-                    >
-                      {activity}
-                    </time>
+                    <span className="flex items-center gap-1.5">
+                      <span className={`font-medium ${statusClassName}`}>
+                        {status.label}
+                      </span>
+                      <time
+                        dateTime={new Date(
+                          row.lastActivityAt * 1000
+                        ).toISOString()}
+                      >
+                        {activity}
+                      </time>
+                    </span>
                     {(row.added > 0 || row.removed > 0) && (
                       <span className="flex gap-1 font-medium">
                         <span className="text-green-500">+{row.added}</span>

@@ -10,6 +10,7 @@ import {
   ArrowUp,
   ChevronDown,
   GitBranch,
+  Loader2,
 } from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import { dismissibleToast } from '@/lib/dismissible-toast'
@@ -95,6 +96,7 @@ export function WorktreeItem({
   const loadingOperation = useChatStore(
     state => state.worktreeLoadingOperations[worktree.id] ?? null
   )
+  const namingSessionIds = useChatStore(state => state.namingSessionIds)
   const isSelected = selectedWorktreeId === worktree.id
   const isBase = isBaseSession(worktree)
 
@@ -883,6 +885,8 @@ export function WorktreeItem({
                 </div>
                 {group.cards.map(card => {
                   const config = statusConfig[card.status]
+                  const isGeneratingName =
+                    namingSessionIds[card.session.id] ?? false
                   return (
                     <button
                       type="button"
@@ -911,10 +915,17 @@ export function WorktreeItem({
                         className="h-1.5 w-1.5 shrink-0"
                       />
                       <span
-                        className="truncate text-xs"
+                        className="flex min-w-0 items-center gap-1.5 truncate text-xs"
                         title={`${config.label}: ${card.session.name || 'Untitled'}`}
                       >
-                        {card.session.name || 'Untitled'}
+                        {isGeneratingName && (
+                          <Loader2 className="size-3 shrink-0 animate-spin" />
+                        )}
+                        <span className="truncate">
+                          {isGeneratingName
+                            ? 'Generating…'
+                            : card.session.name || 'Untitled'}
+                        </span>
                       </span>
                     </button>
                   )

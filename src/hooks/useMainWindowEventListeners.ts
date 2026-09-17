@@ -1199,12 +1199,21 @@ export function useMainWindowEventListeners() {
         ),
 
         // Session naming events (automatic session renaming based on first message)
+        listen<{ session_id: string }>('session-naming-started', event => {
+          useChatStore
+            .getState()
+            .setSessionNaming(event.payload.session_id, true)
+        }),
+
         listen<{
           session_id: string
           worktree_id: string
           old_name: string
           new_name: string
         }>('session-renamed', event => {
+          useChatStore
+            .getState()
+            .setSessionNaming(event.payload.session_id, false)
           logger.info('Session renamed', {
             sessionId: event.payload.session_id,
             worktreeId: event.payload.worktree_id,
@@ -1234,6 +1243,9 @@ export function useMainWindowEventListeners() {
           error: string
           stage: string
         }>('session-naming-failed', event => {
+          useChatStore
+            .getState()
+            .setSessionNaming(event.payload.session_id, false)
           logger.warn('Session naming failed', {
             sessionId: event.payload.session_id,
             worktreeId: event.payload.worktree_id,

@@ -166,6 +166,8 @@ describe('SessionChatModal removal behavior', () => {
     expect(source).toContain('useClearSessionHistory')
     expect(source).toContain('handleClearContext')
     expect(source).toContain('data-testid="toggle-zen-mode"')
+    expect(source).toContain('<Minimize className="size-2.5" />')
+    expect(source).toContain('<Maximize className="size-2.5" />')
     expect(source).not.toContain('aria-label="Clear context"')
     expect(source).not.toContain('data-testid="clear-session-context"')
     expect(source).toMatch(

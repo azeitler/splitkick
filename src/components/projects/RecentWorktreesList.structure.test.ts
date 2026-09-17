@@ -20,6 +20,7 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('formatRecentActivity(row.lastActivityAt)')
     expect(source).toContain('+{row.added}')
     expect(source).toContain('-{row.removed}')
+    expect(source).toContain('fetchWorktreesStatus(projectId)')
   })
 
   it('keeps current-row, keyboard, partial failure, and accessibility behavior', () => {
@@ -29,5 +30,6 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('<ul aria-label="Recent sessions"')
     expect(source).toContain('Some recent sessions could')
     expect(source).toContain('selectedSessionId')
+    expect(source).toContain('getRecentSessionStatus(row.session')
   })
 })

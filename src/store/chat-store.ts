@@ -111,6 +111,9 @@ interface ChatUIState {
   // Set of session IDs currently sending (supports multiple concurrent sessions)
   sendingSessionIds: Record<string, boolean>
 
+  // Session IDs whose AI-generated names are pending
+  namingSessionIds: Record<string, boolean>
+
   // Timestamp of last addSendingSession call per session — used to protect new sends
   // from stale completion events arriving from a previous cancelled run
   sendStartedAt: Record<string, number>
@@ -387,6 +390,7 @@ interface ChatUIState {
   addSendingSession: (sessionId: string, startTime?: number) => void
   removeSendingSession: (sessionId: string) => void
   isSending: (sessionId: string) => boolean
+  setSessionNaming: (sessionId: string, isNaming: boolean) => void
 
   // Actions - User-initiated sessions (auto-mark as opened on completion)
   addUserInitiatedSession: (sessionId: string) => void
@@ -895,6 +899,7 @@ export const useChatStore = create<ChatUIState>()(
       tableCheckedRows: {},
       worktreePaths: {},
       sendingSessionIds: {},
+      namingSessionIds: {},
       sendStartedAt: {},
       completedDurations: {},
       userInitiatedSessionIds: {},
@@ -1489,6 +1494,26 @@ export const useChatStore = create<ChatUIState>()(
         ),
 
       isSending: sessionId => get().sendingSessionIds[sessionId] ?? false,
+
+      setSessionNaming: (sessionId, isNaming) =>
+        set(
+          state => {
+            if ((state.namingSessionIds[sessionId] ?? false) === isNaming)
+              return state
+            if (isNaming) {
+              return {
+                namingSessionIds: {
+                  ...state.namingSessionIds,
+                  [sessionId]: true,
+                },
+              }
+            }
+            const { [sessionId]: _, ...rest } = state.namingSessionIds
+            return { namingSessionIds: rest }
+          },
+          undefined,
+          'setSessionNaming'
+        ),
 
       // User-initiated sessions (auto-mark as opened on completion)
       addUserInitiatedSession: sessionId =>

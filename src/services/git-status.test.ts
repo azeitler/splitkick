@@ -17,6 +17,7 @@ import {
   triggerImmediateRemotePoll,
   getGitDiff,
   areGitStatusValuesEqual,
+  syncRecentRowsWithGitStatus,
   useGitStatus,
   useGitStatusEvents,
   useAppFocusTracking,
@@ -164,6 +165,54 @@ describe('git-status service', () => {
           createGitStatus({ uncommitted_added: 1 })
         )
       ).toBe(false)
+    })
+  })
+
+  describe('syncRecentRowsWithGitStatus', () => {
+    const createRecentRow = (sessionType: 'base' | 'worktree') =>
+      ({
+        added: 99,
+        removed: 88,
+        worktree: { id: 'wt-123', session_type: sessionType },
+      }) as Parameters<typeof syncRecentRowsWithGitStatus>[0][number]
+
+    it('uses working-tree and branch changes for a worktree session', () => {
+      const row = createRecentRow('worktree')
+      const result = syncRecentRowsWithGitStatus(
+        [row],
+        createGitStatus({
+          uncommitted_added: 2,
+          uncommitted_removed: 3,
+          branch_diff_added: 5,
+          branch_diff_removed: 7,
+        })
+      )
+
+      expect(result[0]).toMatchObject({ added: 7, removed: 10 })
+    })
+
+    it('uses only working-tree changes for a base session', () => {
+      const result = syncRecentRowsWithGitStatus(
+        [createRecentRow('base')],
+        createGitStatus({
+          uncommitted_added: 2,
+          uncommitted_removed: 3,
+          branch_diff_added: 50,
+          branch_diff_removed: 70,
+        })
+      )
+
+      expect(result[0]).toMatchObject({ added: 2, removed: 3 })
+    })
+
+    it('keeps the same array when the event belongs to another worktree', () => {
+      const rows = [createRecentRow('worktree')]
+      expect(
+        syncRecentRowsWithGitStatus(
+          rows,
+          createGitStatus({ worktree_id: 'other' })
+        )
+      ).toBe(rows)
     })
   })
 
@@ -647,6 +696,15 @@ describe('git-status service', () => {
         gitStatusQueryKeys.worktree('wt-123'),
         staleStatus
       )
+      queryClient.setQueryData(['recent-worktrees', 'projects', 10, null], {
+        items: [
+          {
+            added: 12,
+            removed: 4,
+            worktree: { id: 'wt-123', session_type: 'worktree' },
+          },
+        ],
+      })
 
       renderHook(() => useGitStatusEvents(), {
         wrapper: createWrapper(queryClient),
@@ -662,6 +720,11 @@ describe('git-status service', () => {
       expect(
         queryClient.getQueryData(gitStatusQueryKeys.worktree('wt-123'))
       ).toEqual(freshStatus)
+      expect(
+        queryClient.getQueryData<{
+          items: { added: number; removed: number }[]
+        }>(['recent-worktrees', 'projects', 10, null])?.items[0]
+      ).toMatchObject({ added: 10, removed: 2 })
       const { updateWorktreeCachedStatus } = vi.mocked(
         await import('@/services/projects')
       )
