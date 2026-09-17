@@ -19,10 +19,7 @@ import { WelcomeProjectGrid } from './WelcomeProjectGrid'
 import { isFolder } from '@/types/projects'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
-import {
-  closeChatTerminal,
-  isChatTerminalOpen,
-} from '@/lib/terminal-gesture'
+import { closeChatTerminal, isChatTerminalOpen } from '@/lib/terminal-gesture'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { JeanLoadingScreen } from '@/components/shared/JeanLoadingScreen'
@@ -43,12 +40,14 @@ interface MainWindowContentProps {
   children?: React.ReactNode
   className?: string
   sidebarSwipeContainerRef?: RefObject<HTMLDivElement | null>
+  fileBrowserSwipeContainerRef?: RefObject<HTMLDivElement | null>
 }
 
 export function MainWindowContent({
   children,
   className,
   sidebarSwipeContainerRef,
+  fileBrowserSwipeContainerRef,
 }: MainWindowContentProps) {
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
@@ -82,25 +81,6 @@ export function MainWindowContent({
     enabled: isMobile && !!activeWorktreePath,
     // Closing terminal is an overlay dismiss — no full content slide-off
     animateToEnd: !isPanelTerminalOpen,
-  })
-
-  const fileBrowserVisible = useUIStore(state => state.fileBrowserVisible)
-
-  // Full ChatWindow: right-edge swipe left → open file browser
-  const swipeOpenFileBrowserCallback = useCallback(() => {
-    useUIStore.getState().setFileBrowserVisible(true)
-  }, [])
-  const canSwipeOpenFileBrowser =
-    isMobile &&
-    !!activeWorktreePath &&
-    !!activeWorktreeId &&
-    !fileBrowserVisible
-  const swipeOpenFileBrowser = useSwipeBack({
-    onSwipeBack: swipeOpenFileBrowserCallback,
-    enabled: canSwipeOpenFileBrowser,
-    animateToEnd: false,
-    visualFeedback: true,
-    edge: 'right',
   })
 
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
@@ -254,25 +234,10 @@ export function MainWindowContent({
               : undefined
           }
         >
-          {/* Inner layer owns right-edge swipe → open file browser */}
           <div
-            ref={isMobile ? swipeOpenFileBrowser.containerRef : undefined}
+            ref={isMobile ? fileBrowserSwipeContainerRef : undefined}
             className="relative h-full min-h-0 w-full"
             data-testid="mobile-swipe-open-file-browser"
-            style={
-              isMobile &&
-              (swipeOpenFileBrowser.isSwiping ||
-                swipeOpenFileBrowser.translateX !== 0)
-                ? {
-                    transform: `translateX(${swipeOpenFileBrowser.translateX}px)`,
-                    transition:
-                      swipeOpenFileBrowser.transitionStyle || undefined,
-                    willChange: swipeOpenFileBrowser.isSwiping
-                      ? 'transform'
-                      : undefined,
-                  }
-                : undefined
-            }
           >
             {isMobile && (
               <>
@@ -283,7 +248,7 @@ export function MainWindowContent({
                   )}
                   aria-hidden
                 />
-                {canSwipeOpenFileBrowser && (
+                {fileBrowserSwipeContainerRef && (
                   <div
                     className="pointer-events-none absolute right-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-l-full bg-muted-foreground/20"
                     aria-hidden

@@ -11,5 +11,6 @@ describe('MobileFileBrowser side', () => {
     expect(source).toContain('side="right"')
     expect(source).toContain('border-l')
     expect(source).not.toContain('side="left"')
+    expect(source).toContain('state.fileBrowserSwipe')
   })
 })

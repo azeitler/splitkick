@@ -142,45 +142,22 @@ describe('MainWindowContent mobile chat swipes', () => {
     })
   })
 
-  it('opens the file browser on right-edge swipe left', async () => {
-    render(<MainWindowContent />)
-
-    const target = await screen.findByTestId(
-      'mobile-swipe-open-file-browser'
+  it('delegates the right-edge gesture without moving the chat content', async () => {
+    const fileBrowserSwipeContainerRef = createRef<HTMLDivElement>()
+    render(
+      <MainWindowContent
+        fileBrowserSwipeContainerRef={fileBrowserSwipeContainerRef}
+      />
     )
+
+    const target = await screen.findByTestId('mobile-swipe-open-file-browser')
     Object.defineProperty(target, 'offsetWidth', {
       value: 400,
       configurable: true,
     })
 
-    expect(useUIStore.getState().fileBrowserVisible).toBe(false)
-
-    act(() => {
-      fireTouch(target, 'touchstart', 392)
-      fireTouch(target, 'touchmove', 180)
-      fireTouch(target, 'touchend', 180)
-    })
-
-    expect(useUIStore.getState().fileBrowserVisible).toBe(true)
-  })
-
-  it('tracks the finger while swiping the file browser open', async () => {
-    render(<MainWindowContent />)
-
-    const target = await screen.findByTestId(
-      'mobile-swipe-open-file-browser'
-    )
-    Object.defineProperty(target, 'offsetWidth', {
-      value: 400,
-      configurable: true,
-    })
-
-    act(() => {
-      fireTouch(target, 'touchstart', 392)
-      fireTouch(target, 'touchmove', 280)
-    })
-
-    expect(target).toHaveStyle({ transform: 'translateX(-112px)' })
+    expect(fileBrowserSwipeContainerRef.current).toBe(target)
+    expect(target).not.toHaveStyle({ transform: 'translateX(-112px)' })
     expect(useUIStore.getState().fileBrowserVisible).toBe(false)
   })
 
@@ -228,9 +205,7 @@ describe('MainWindowContent mobile chat swipes', () => {
 
     render(<MainWindowContent />)
 
-    const target = await screen.findByTestId(
-      'mobile-swipe-open-file-browser'
-    )
+    const target = await screen.findByTestId('mobile-swipe-open-file-browser')
     Object.defineProperty(target, 'offsetWidth', {
       value: 400,
       configurable: true,

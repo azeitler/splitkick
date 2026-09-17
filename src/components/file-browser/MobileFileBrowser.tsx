@@ -28,6 +28,10 @@ export function MobileFileBrowser({
   onOpenChange,
   width,
 }: MobileFileBrowserProps) {
+  const { isDragging, dragOffset, dragTransition } = useUIStore(
+    state => state.fileBrowserSwipe
+  )
+
   // While a file is open, ignore sheet dismiss (outside tap / focus steal).
   // The file viewer is closed only via its own X; reopening the browser is fine.
   const handleOpenChange = useCallback(
@@ -41,7 +45,12 @@ export function MobileFileBrowser({
   )
 
   return (
-    <Sheet open={open} onOpenChange={handleOpenChange}>
+    <Sheet
+      open={open || isDragging}
+      onOpenChange={nextOpen => {
+        if (!isDragging) handleOpenChange(nextOpen)
+      }}
+    >
       <SheetContent
         side="right"
         showCloseButton={false}
@@ -62,9 +71,17 @@ export function MobileFileBrowser({
         style={
           {
             '--mobile-file-browser-width': `${width}px`,
+            ...(isDragging
+              ? {
+                  transform: `translateX(max(0px, calc(100% + ${dragOffset}px)))`,
+                  transition: dragTransition || 'none',
+                }
+              : {}),
+            ...(isDragging ? { animation: 'none' } : {}),
           } as CSSProperties
         }
         data-testid="mobile-file-browser"
+        data-swipe-dragging={isDragging}
       >
         <SheetHeader className="sr-only">
           <SheetTitle>File browser</SheetTitle>

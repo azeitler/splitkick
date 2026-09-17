@@ -221,6 +221,20 @@ export function SessionChatModal({
     visualFeedback: true,
     edge: 'right',
   })
+  useEffect(() => {
+    useUIStore.getState().setFileBrowserSwipe({
+      isDragging: canSwipeOpenFileBrowser && swipeOpenFileBrowser.isSwiping,
+      dragOffset: canSwipeOpenFileBrowser ? swipeOpenFileBrowser.translateX : 0,
+      dragTransition: canSwipeOpenFileBrowser
+        ? swipeOpenFileBrowser.transitionStyle
+        : '',
+    })
+  }, [
+    swipeOpenFileBrowser.isSwiping,
+    swipeOpenFileBrowser.translateX,
+    swipeOpenFileBrowser.transitionStyle,
+    canSwipeOpenFileBrowser,
+  ])
   // Shared host for left-edge back and right-edge file browser gestures
   const setSwipeContainerRef = useCallback(
     (el: HTMLDivElement | null) => {
@@ -1004,26 +1018,11 @@ export function SessionChatModal({
         )}
         data-testid="session-chat-modal-swipe"
         style={
-          isMobile &&
-          (swipe.isSwiping ||
-            swipe.translateX !== 0 ||
-            swipeOpenFileBrowser.isSwiping ||
-            swipeOpenFileBrowser.translateX !== 0)
+          isMobile && (swipe.isSwiping || swipe.translateX !== 0)
             ? {
-                transform: `translateX(${
-                  swipeOpenFileBrowser.isSwiping ||
-                  swipeOpenFileBrowser.translateX !== 0
-                    ? swipeOpenFileBrowser.translateX
-                    : swipe.translateX
-                }px)`,
-                transition:
-                  swipeOpenFileBrowser.transitionStyle ||
-                  swipe.transitionStyle ||
-                  undefined,
-                willChange:
-                  swipe.isSwiping || swipeOpenFileBrowser.isSwiping
-                    ? 'transform'
-                    : undefined,
+                transform: `translateX(${swipe.translateX}px)`,
+                transition: swipe.transitionStyle || undefined,
+                willChange: swipe.isSwiping ? 'transform' : undefined,
               }
             : undefined
         }

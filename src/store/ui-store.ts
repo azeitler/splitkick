@@ -230,6 +230,12 @@ interface UIState {
   toggleFileBrowser: () => void
   setFileBrowserVisible: (visible: boolean) => void
   setFileBrowserSize: (size: number) => void
+  fileBrowserSwipe: {
+    isDragging: boolean
+    dragOffset: number
+    dragTransition: string
+  }
+  setFileBrowserSwipe: (swipe: UIState['fileBrowserSwipe']) => void
   setViewingFilePath: (path: string | null) => void
   toggleRightSidebar: () => void
   setRightSidebarVisible: (visible: boolean) => void
@@ -378,6 +384,11 @@ export const useUIStore = create<UIState>()(
       leftSidebarSize: 250, // Default width in pixels
       fileBrowserVisible: false,
       fileBrowserSize: 280,
+      fileBrowserSwipe: {
+        isDragging: false,
+        dragOffset: 0,
+        dragTransition: '',
+      },
       viewingFilePath: null,
       rightSidebarVisible: false,
       commandPaletteOpen: false,
@@ -534,6 +545,17 @@ export const useUIStore = create<UIState>()(
             state.fileBrowserSize === size ? state : { fileBrowserSize: size },
           undefined,
           'setFileBrowserSize'
+        ),
+      setFileBrowserSwipe: swipe =>
+        set(
+          state =>
+            state.fileBrowserSwipe.isDragging === swipe.isDragging &&
+            state.fileBrowserSwipe.dragOffset === swipe.dragOffset &&
+            state.fileBrowserSwipe.dragTransition === swipe.dragTransition
+              ? state
+              : { fileBrowserSwipe: swipe },
+          undefined,
+          'setFileBrowserSwipe'
         ),
 
       setViewingFilePath: path =>
