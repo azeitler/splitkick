@@ -256,7 +256,7 @@ describe('UnreadBell', () => {
     expect(screen.getByText('Session two')).toBeInTheDocument()
   })
 
-  it('keeps the popover closed after directly opening the only unread session', async () => {
+  it('opens the list instead of selecting the only unread session from the bell', async () => {
     unreadCount = 1
     allSessions = {
       entries: [
@@ -276,11 +276,15 @@ describe('UnreadBell', () => {
       screen.getByRole('button', { name: /1 finished session/i })
     )
 
+    expect(screen.getByText('Session one')).toBeInTheDocument()
+    expect(markWorktreeForAutoOpenSessionMock).not.toHaveBeenCalled()
+
+    await userEvent.click(screen.getByText('Session one'))
+
     expect(markWorktreeForAutoOpenSessionMock).toHaveBeenCalledWith(
       'worktree-1',
       'session-1'
     )
-    expect(screen.queryByText('Session one')).not.toBeInTheDocument()
   })
 
   it('shows a running Claude session instead of stale waiting state', async () => {

@@ -4,7 +4,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { ChevronRight, CheckCircle2, XCircle, X } from '@/components/icons/reicon'
+import {
+  ChevronRight,
+  CheckCircle2,
+  XCircle,
+  X,
+} from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import type { SetupScriptResult } from '@/types/chat'
 
@@ -35,14 +40,14 @@ export function SetupScriptOutput({
     <Collapsible open={isExpanded} onOpenChange={setIsExpanded}>
       <div
         className={cn(
-          'my-2 rounded border font-mono text-sm',
+          'my-2 min-w-0 rounded border font-mono text-sm',
           result.success
             ? 'border-muted bg-muted/30'
             : 'border-destructive/30 bg-destructive/10'
         )}
       >
-        <div className="flex items-center">
-          <CollapsibleTrigger className="flex flex-1 items-center gap-2 px-3 py-2 text-left hover:bg-muted/50">
+        <div className="flex min-w-0 items-center">
+          <CollapsibleTrigger className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left hover:bg-muted/50">
             <ChevronRight
               className={cn(
                 'h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200',
@@ -50,12 +55,14 @@ export function SetupScriptOutput({
               )}
             />
             <StatusIcon className={cn('h-4 w-4 shrink-0', statusColor)} />
-            <span className="truncate text-muted-foreground">{statusText}</span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">
+              {statusText}
+            </span>
           </CollapsibleTrigger>
           <button
             type="button"
             onClick={onDismiss}
-            className="mr-2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            className="mr-2 shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
             aria-label="Dismiss setup script status"
           >
             <X className="h-4 w-4" />

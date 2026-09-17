@@ -393,24 +393,12 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
   )
 
   const handleTriggerClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      // Single finished session: navigate directly. Captures session id at click
-      // time, immune to status flips that would otherwise drop unreadCount→0
-      // and unmount the popover before the user can pick the item.
-      const only = unreadItems.length === 1 ? unreadItems[0] : null
-      if (only) {
-        e.preventDefault()
-        // PopoverTrigger is the wrapping element. Do not let this click bubble
-        // to its toggle handler after direct navigation closes the popover.
-        e.stopPropagation()
-        handleSelect(only)
-        return
-      }
+    () => {
       if (allSessions && (!isFetching || unreadItems.length > 0)) {
         setSnapshotItems(unreadItems)
       }
     },
-    [allSessions, isFetching, unreadItems, handleSelect]
+    [allSessions, isFetching, unreadItems]
   )
 
   const handleOpenChange = useCallback(
