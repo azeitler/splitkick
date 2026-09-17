@@ -14,6 +14,7 @@ import {
   Plus,
   Archive,
   Github,
+  Heart,
   GitPullRequest,
   ShieldAlert,
 } from '@/components/icons/reicon'
@@ -528,6 +529,27 @@ export function FloatingDock() {
             GitHub Dashboard
             <DropdownMenuShortcut>{githubShortcut}</DropdownMenuShortcut>
           </DropdownMenuItem>
+          {isMobile && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() =>
+                  openExternal('https://github.com/coollabsio/jean')
+                }
+              >
+                <Github className="mr-2 h-4 w-4" />
+                Jean on GitHub
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() =>
+                  openExternal('https://jean.build/sponsorships/')
+                }
+              >
+                <Heart className="mr-2 h-4 w-4 text-pink-500" />
+                Sponsor Jean
+              </DropdownMenuItem>
+            </>
+          )}
           {resumeCommand && (
             <>
               <DropdownMenuSeparator />

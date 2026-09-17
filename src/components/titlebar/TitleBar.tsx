@@ -151,21 +151,23 @@ export function TitleBar({
                 <TooltipContent>GitHub</TooltipContent>
               </Tooltip>
             )}
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={() =>
-                    openExternal('https://jean.build/sponsorships/')
-                  }
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 rounded-none text-pink-500 hover:text-pink-400"
-                >
-                  <Heart className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Sponsor</TooltipContent>
-            </Tooltip>
+            {!isMobile && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() =>
+                      openExternal('https://jean.build/sponsorships/')
+                    }
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 rounded-none text-pink-500 hover:text-pink-400"
+                  >
+                    <Heart className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Sponsor</TooltipContent>
+              </Tooltip>
+            )}
           </div>
         )}
       </div>
@@ -250,7 +252,7 @@ export function TitleBar({
         )}
         {!zenMode && (
           <>
-            {(!native || isMobile) && (
+            {!native && !isMobile && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
