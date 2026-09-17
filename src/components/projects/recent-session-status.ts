@@ -4,8 +4,9 @@ export type RecentSessionStatus =
   | { label: 'Waiting'; tone: 'waiting' }
   | { label: 'Working'; tone: 'working' }
   | { label: 'Failed'; tone: 'failed' }
+  | { label: 'Completed'; tone: 'completed' }
   | {
-      label: 'Idle' | 'Review' | 'Completed' | 'Cancelled'
+      label: 'Idle' | 'Review' | 'Cancelled'
       tone: 'idle'
     }
 
@@ -33,7 +34,7 @@ export function getRecentSessionStatus(
     return { label: 'Review', tone: 'idle' }
   }
   if (session.status_override === 'completed') {
-    return { label: 'Completed', tone: 'idle' }
+    return { label: 'Completed', tone: 'completed' }
   }
   if (
     session.status_override === 'cancelled' ||
@@ -42,7 +43,7 @@ export function getRecentSessionStatus(
     return { label: 'Cancelled', tone: 'idle' }
   }
   if (session.last_run_status === 'completed') {
-    return { label: 'Completed', tone: 'idle' }
+    return { label: 'Completed', tone: 'completed' }
   }
   return { label: 'Idle', tone: 'idle' }
 }

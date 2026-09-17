@@ -200,6 +200,12 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                 : status.tone === 'failed'
                     ? 'text-red-600 dark:text-red-400'
                     : 'text-muted-foreground'
+            const statusBorderClassName =
+              status.tone === 'working'
+                ? 'border-l-yellow-500'
+                : status.tone === 'completed'
+                  ? 'border-l-green-500'
+                  : 'border-l-transparent'
             return (
               <li key={row.session.id}>
                 <button
@@ -210,7 +216,7 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   type="button"
                   aria-current={isCurrent ? 'page' : undefined}
                   aria-label={`${row.session.name}, ${row.projectName}, ${row.worktree.name}, ${status.label}, ${activityLabel}`}
-                  className={`flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${status.tone === 'working' ? 'border-l-yellow-500' : 'border-l-transparent'} ${isCurrent ? 'bg-muted/60 text-foreground' : 'text-muted-foreground'}`}
+                  className={`flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${statusBorderClassName} ${isCurrent ? 'bg-muted/60 text-foreground' : 'text-muted-foreground'}`}
                   onClick={() => handleOpen(row)}
                 >
                   <span className="min-w-0 flex-1">
@@ -223,7 +229,7 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-0.5 text-[10px] tabular-nums">
                     <span className="flex items-center gap-1.5">
-                      {status.tone !== 'working' && (
+                      {!['working', 'completed'].includes(status.tone) && (
                         <span className={`font-medium ${statusClassName}`}>
                           {status.label}
                         </span>

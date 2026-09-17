@@ -1141,7 +1141,7 @@ export function SessionChatModal({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground"
+                          className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
                           aria-label={
                             zenMode ? 'Exit zen mode' : 'Enter zen mode'
                           }
@@ -1150,9 +1150,9 @@ export function SessionChatModal({
                           onClick={toggleZenMode}
                         >
                           {zenMode ? (
-                            <Minimize className="size-4" />
+                            <Minimize className="size-2.5" />
                           ) : (
-                            <Maximize className="size-4" />
+                            <Maximize className="size-2.5" />
                           )}
                         </Button>
                       </TooltipTrigger>

@@ -54,7 +54,6 @@ describe('getRecentSessionStatus', () => {
   )
 
   it.each([
-    [{ last_run_status: 'completed' }, 'Completed'],
     [{ last_run_status: 'cancelled' }, 'Cancelled'],
     [{ status_override: 'review' }, 'Review'],
   ] as const)('shows the current terminal state', (values, label) => {
@@ -64,6 +63,18 @@ describe('getRecentSessionStatus', () => {
         waiting: false,
       }).label
     ).toBe(label)
+  })
+
+  it.each([
+    { last_run_status: 'completed' },
+    { status_override: 'completed' },
+  ] as const)('marks completed sessions for border styling', values => {
+    expect(
+      getRecentSessionStatus(session(values), {
+        sending: false,
+        waiting: false,
+      })
+    ).toEqual({ label: 'Completed', tone: 'completed' })
   })
 
   it('treats persisted running and resumable runs as working', () => {
