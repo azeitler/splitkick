@@ -535,7 +535,8 @@ export function SessionChatModal({
         if (activeSessions.length > 1) {
           selectVisualNeighbor(session.id)
         }
-        // The mutation navigates after success when this was the last session.
+        // The mutation selects the backend-created empty session after success
+        // when this was the last session.
         handleDeleteSession(session.id)
       }
 

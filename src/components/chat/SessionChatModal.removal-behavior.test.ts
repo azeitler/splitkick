@@ -95,17 +95,25 @@ describe('SessionChatModal removal behavior', () => {
     expect(removeSessionTab).not.toContain('navigateToProjectPicker(')
   })
 
-  it('shows the empty worktree view after the last session is removed', () => {
-    const modalSource = readSource('src/components/chat/SessionChatModal.tsx')
-    const serviceSource = readSource('src/services/chat.ts')
+  it('creates and opens an empty session after the last session is removed', () => {
+    const commandSource = readSource('jean-core/src/chat/commands.rs')
+    const closeStart = commandSource.indexOf('pub async fn close_session(')
+    const closeEnd = commandSource.indexOf(
+      'pub async fn archive_session(',
+      closeStart
+    )
+    const archiveEnd = commandSource.indexOf(
+      'pub async fn unarchive_session(',
+      closeEnd
+    )
+    const closeSession = commandSource.slice(closeStart, closeEnd)
+    const archiveSession = commandSource.slice(closeEnd, archiveEnd)
 
-    expect(modalSource).toContain(
-      'No sessions yet. Create one to start chatting.'
-    )
-    expect(serviceSource).not.toContain('navigateToProjectPicker(')
-    expect(serviceSource).toContain(
-      'const { [worktreeId]: _removed, ...rest } = state.activeSessionIds'
-    )
+    for (const command of [closeSession, archiveSession]) {
+      expect(command).toContain('if new_active.is_none()')
+      expect(command).toContain('let session = create_session(')
+      expect(command).toContain('return Ok(Some(session.id))')
+    }
   })
 
   it('asks to close the worktree when Cmd+W is pressed with no sessions', () => {

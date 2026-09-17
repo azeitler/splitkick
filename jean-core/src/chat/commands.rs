@@ -1995,10 +1995,8 @@ pub async fn close_session(
             };
         }
 
-        // When the last non-archived session is closed, leave the worktree empty
-        // (active_session_id = None). Frontend navigates to the project picker
-        // (issue #501) instead of auto-creating a fallback "Session 1".
         // If non-archived sessions remain but active is unset, pick the first.
+        // The command creates a new empty session after this write when none remain.
         let first_non_archived = sessions
             .sessions
             .iter()
@@ -2016,6 +2014,23 @@ pub async fn close_session(
         );
         Ok(sessions.active_session_id.clone())
     })?;
+
+    if new_active.is_none() {
+        let session = create_session(
+            app.clone(),
+            worktree_id,
+            worktree_path,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await?;
+        return Ok(Some(session.id));
+    }
 
     emit_sessions_cache_invalidation(&app);
     Ok(new_active)
@@ -2112,10 +2127,8 @@ pub async fn archive_session(
         };
         sessions.active_session_id = new_active;
 
-        // When the last non-archived session is archived/deleted, leave the worktree
-        // empty (active_session_id = None). Frontend navigates to the project picker
-        // (issue #501) instead of auto-creating a fallback "Session 1".
         // If non-archived sessions remain but active is unset, pick the first.
+        // The command creates a new empty session after this write when none remain.
         let first_non_archived = sessions
             .sessions
             .iter()
@@ -2140,6 +2153,23 @@ pub async fn archive_session(
         }
         Ok(sessions.active_session_id.clone())
     })?;
+
+    if new_active.is_none() {
+        let session = create_session(
+            app.clone(),
+            worktree_id,
+            worktree_path,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await?;
+        return Ok(Some(session.id));
+    }
 
     emit_sessions_cache_invalidation(&app);
     Ok(new_active)
