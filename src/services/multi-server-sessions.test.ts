@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { AllSessionsResponse } from '@/types/chat'
-import { loadAllSessionsForServers } from './multi-server-sessions'
+import {
+  loadAllSessionsForServers,
+  loadUnreadSessionCountForServers,
+} from './multi-server-sessions'
 
 function response(project: string): AllSessionsResponse {
   return {
@@ -60,5 +63,26 @@ describe('loadAllSessionsForServers', () => {
     )
 
     expect(result.entries.map(entry => entry.project_name)).toEqual(['local'])
+  })
+})
+
+describe('loadUnreadSessionCountForServers', () => {
+  it('loads only scalar counts from online servers and sums them', async () => {
+    const invoke = vi.fn(async (serverId: string, command: string) => {
+      expect(command).toBe('get_unread_session_count')
+      return serverId === 'local' ? 2 : 3
+    })
+
+    const result = await loadUnreadSessionCountForServers(
+      [
+        { serverId: 'local', name: 'Local', online: true },
+        { serverId: 'remote', name: 'Remote', online: true },
+        { serverId: 'offline', name: 'Offline', online: false },
+      ],
+      invoke
+    )
+
+    expect(result).toBe(5)
+    expect(invoke).toHaveBeenCalledTimes(2)
   })
 })

@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   ChevronDown,
   Server,
+  Settings,
   Settings2,
 } from 'lucide-react'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
@@ -17,6 +18,11 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '@/components/ui/tooltip'
 import { useProjects } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
@@ -90,6 +96,11 @@ export function ProjectsSidebar() {
     closeMobileSidebarIfNeeded(isMobile)
     setAddProjectDialogOpen(true)
   }, [isMobile, setAddProjectDialogOpen])
+
+  const handleOpenSettings = useCallback(() => {
+    closeMobileSidebarIfNeeded(isMobile)
+    useUIStore.getState().togglePreferences()
+  }, [isMobile])
 
   return (
     <div className="flex h-full flex-col">
@@ -220,6 +231,22 @@ export function ProjectsSidebar() {
             groupByServer={showServerFilter && serverFilter === ALL_SERVERS}
           />
         )}
+      </div>
+      <div className="shrink-0 p-2">
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              onClick={handleOpenSettings}
+              aria-label="Open Settings"
+              data-testid="sidebar-settings"
+              className="flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              <Settings className="size-4" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right">Settings</TooltipContent>
+        </Tooltip>
       </div>
     </div>
   )

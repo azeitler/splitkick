@@ -9,17 +9,16 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip'
 import { useUIStore } from '@/store/ui-store'
-import { useCommandContext } from '@/lib/commands'
 import {
   ArrowUpCircle,
   Download,
-  FolderTree,
   Github,
   Heart,
   Minimize2,
   PanelLeft,
   PanelLeftClose,
-  Settings,
+  PanelRight,
+  PanelRightClose,
   X,
   Server,
 } from 'lucide-react'
@@ -63,7 +62,6 @@ export function TitleBar({
   const toggleFileBrowser = useUIStore(state => state.toggleFileBrowser)
   const zenMode = useUIStore(state => state.zenMode)
   const toggleZenMode = useUIStore(state => state.toggleZenMode)
-  const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()
   const isMobile = useIsMobile()
   /** Mobile zen: single header line in the title bar (name + exit). */
@@ -122,8 +120,8 @@ export function TitleBar({
         {!zenMode && (
           <div
             className={cn(
-              'relative z-10 flex items-center gap-1 pt-1',
-              native && isClientMacOS ? 'pl-[80px]' : 'pl-2'
+              'relative z-10 flex items-center gap-1',
+              native && isClientMacOS ? 'mac-titlebar-actions' : 'pl-2 pt-1'
             )}
           >
             <Tooltip>
@@ -145,55 +143,6 @@ export function TitleBar({
                 {leftSidebarVisible ? 'Hide' : 'Show'} Left Sidebar{' '}
                 <kbd className="ml-1 text-[0.625rem] opacity-60">
                   {sidebarShortcut}
-                </kbd>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={toggleFileBrowser}
-                  variant="ghost"
-                  size="icon"
-                  className={cn(
-                    'h-6 w-6 rounded-none text-foreground/70 hover:text-foreground',
-                    fileBrowserVisible && 'text-foreground bg-muted/50'
-                  )}
-                  aria-pressed={fileBrowserVisible}
-                  aria-label={
-                    fileBrowserVisible
-                      ? 'Hide file browser'
-                      : 'Show file browser'
-                  }
-                  data-testid="toggle-file-browser"
-                >
-                  <FolderTree className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {fileBrowserVisible ? 'Hide' : 'Show'} File Browser{' '}
-                <kbd className="ml-1 text-[0.625rem] opacity-60">
-                  {fileBrowserShortcut}
-                </kbd>
-              </TooltipContent>
-            </Tooltip>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  onClick={commandContext.openPreferences}
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
-                >
-                  <Settings className="size-3.5" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                Settings{' '}
-                <kbd className="ml-1 text-[0.625rem] opacity-60">
-                  {formatShortcutDisplay(
-                    (preferences?.keybindings?.open_preferences ||
-                      DEFAULT_KEYBINDINGS.open_preferences) as string
-                  )}
                 </kbd>
               </TooltipContent>
             </Tooltip>
@@ -315,6 +264,38 @@ export function TitleBar({
         )}
         {!zenMode && (
           <>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={toggleFileBrowser}
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    'h-6 w-6 rounded-none text-foreground/70 hover:text-foreground',
+                    fileBrowserVisible && 'bg-muted/50 text-foreground'
+                  )}
+                  aria-pressed={fileBrowserVisible}
+                  aria-label={
+                    fileBrowserVisible
+                      ? 'Hide file browser'
+                      : 'Show file browser'
+                  }
+                  data-testid="toggle-file-browser"
+                >
+                  {fileBrowserVisible ? (
+                    <PanelRightClose className="size-3.5" />
+                  ) : (
+                    <PanelRight className="size-3.5" />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                {fileBrowserVisible ? 'Hide' : 'Show'} File Browser{' '}
+                <kbd className="ml-1 text-[0.625rem] opacity-60">
+                  {fileBrowserShortcut}
+                </kbd>
+              </TooltipContent>
+            </Tooltip>
             {isMobile && (
               <Tooltip>
                 <TooltipTrigger asChild>

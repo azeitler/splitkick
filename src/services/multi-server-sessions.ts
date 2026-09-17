@@ -42,11 +42,25 @@ export async function loadAllSessionsForServers(
   }
 }
 
-export function useConsolidatedAllSessions(enabled = true) {
+export async function loadUnreadSessionCountForServers(
+  sources: SessionServerSource[],
+  invokeServer: (serverId: string, command: string) => Promise<number>
+): Promise<number> {
+  const counts = await Promise.all(
+    sources
+      .filter(source => source.online)
+      .map(source =>
+        invokeServer(source.serverId, 'get_unread_session_count')
+      )
+  )
+  return counts.reduce((total, count) => total + count, 0)
+}
+
+function useSessionServerSources(): SessionServerSource[] {
   const native = isNativeApp()
   const connections = useRemoteConnections()
   const snapshots = useServerConnectionSnapshots()
-  const sources: SessionServerSource[] = native
+  return native
     ? [
         { serverId: LOCAL_SERVER_ID, name: 'Local', online: true },
         ...connections
@@ -58,6 +72,11 @@ export function useConsolidatedAllSessions(enabled = true) {
           })),
       ]
     : [{ serverId: LOCAL_SERVER_ID, name: 'This server', online: true }]
+}
+
+export function useConsolidatedAllSessions(enabled = true) {
+  const native = isNativeApp()
+  const sources = useSessionServerSources()
   const sourceKey = sources
     .map(source => `${source.serverId}:${source.online}`)
     .join('|')
@@ -83,4 +102,25 @@ export function useConsolidatedAllSessions(enabled = true) {
   }, [enabled, sourceKey])
 
   return query
+}
+
+export function useConsolidatedUnreadSessionCount() {
+  const native = isNativeApp()
+  const sources = useSessionServerSources()
+  const sourceKey = sources
+    .map(source => `${source.serverId}:${source.online}`)
+    .join('|')
+
+  return useQuery({
+    queryKey: ['unread-session-count', sourceKey],
+    queryFn: () =>
+      native
+        ? loadUnreadSessionCountForServers(sources, (serverId, command) =>
+            invokeForServer<number>(serverId, command)
+          )
+        : invoke<number>('get_unread_session_count'),
+    staleTime: 60_000,
+    gcTime: 120_000,
+    refetchInterval: native ? 60_000 : false,
+  })
 }

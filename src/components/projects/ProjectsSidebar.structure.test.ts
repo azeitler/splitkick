@@ -76,4 +76,18 @@ describe('ProjectsSidebar server filter', () => {
 
     expect(source).not.toContain('sectionIndex > 0')
   })
+
+  it('places Settings in a bottom sidebar footer', () => {
+    const source = readFileSync(
+      'src/components/projects/ProjectsSidebar.tsx',
+      'utf8'
+    )
+
+    const projectTree = source.indexOf('<ProjectTree')
+    const settings = source.indexOf('aria-label="Open Settings"')
+
+    expect(settings).toBeGreaterThan(projectTree)
+    expect(source).toContain('data-testid="sidebar-settings"')
+    expect(source).toContain('togglePreferences()')
+  })
 })

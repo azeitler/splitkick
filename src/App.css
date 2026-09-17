@@ -515,6 +515,13 @@
   pointer-events: auto !important;
 }
 
+/* Native macOS traffic lights do not scale with the webview. Keep the action
+   row beside them while allowing a little more vertical space at larger zoom. */
+.mac-titlebar-actions {
+  padding-left: var(--mac-titlebar-action-left-inset, 76px);
+  padding-top: var(--mac-titlebar-action-top-inset, 4px);
+}
+
 /* Font overrides - outside @layer to ensure higher specificity */
 body {
   font-family: var(--font-family-sans) !important;

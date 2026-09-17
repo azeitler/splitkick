@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import {
   useQuery,
   useMutation,
@@ -160,15 +160,20 @@ export function useProjects() {
     staleTime: 1000 * 60 * 5, // 5 minutes
     gcTime: 1000 * 60 * 10, // 10 minutes
   })
-  const routedRemoteProjects = native
-    ? toRoutedProjects(remoteProjects.data ?? [])
-    : []
+  const localProjectData = localProjects.data
+  const remoteProjectData = remoteProjects.data
+  const projects = useMemo(() => {
+    const routedRemoteProjects = native
+      ? toRoutedProjects(remoteProjectData ?? [])
+      : []
+    return [
+      ...(native && !localDashboardEnabled ? [] : (localProjectData ?? [])),
+      ...routedRemoteProjects,
+    ]
+  }, [localDashboardEnabled, localProjectData, native, remoteProjectData])
   return {
     ...localProjects,
-    data: [
-      ...(native && !localDashboardEnabled ? [] : (localProjects.data ?? [])),
-      ...routedRemoteProjects,
-    ],
+    data: projects,
   }
 }
 
