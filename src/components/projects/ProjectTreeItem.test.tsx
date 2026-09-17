@@ -3,7 +3,6 @@ import userEvent from '@testing-library/user-event'
 import { render, screen } from '@/test/test-utils'
 import {
   ProjectTreeItem,
-  resolveProjectRowClickAction,
   shouldShowProjectStatusBadges,
 } from './ProjectTreeItem'
 import type { Project, Worktree } from '@/types/projects'
@@ -88,16 +87,6 @@ const worktree: Worktree = {
   session_type: 'worktree',
 }
 
-describe('resolveProjectRowClickAction', () => {
-  it('toggles expand when the project has worktrees', () => {
-    expect(resolveProjectRowClickAction(true)).toBe('toggle-expand')
-  })
-
-  it('opens canvas when the project has no worktrees', () => {
-    expect(resolveProjectRowClickAction(false)).toBe('open-canvas')
-  })
-})
-
 describe('shouldShowProjectStatusBadges', () => {
   it('hides GitHub status badges when the sidebar is narrow', () => {
     expect(shouldShowProjectStatusBadges(280, false, true, false)).toBe(false)
@@ -140,11 +129,36 @@ describe('ProjectTreeItem', () => {
     })
   })
 
-  it('toggles expand without clearing the selected worktree/session', async () => {
+  it('does not show project action buttons in the project row', () => {
+    render(<ProjectTreeItem project={project} />)
+
+    expect(
+      screen.queryByRole('button', { name: 'Project settings' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'New worktree' })
+    ).not.toBeInTheDocument()
+  })
+
+  it('opens the project canvas without changing sidebar expansion', async () => {
     const user = userEvent.setup()
     render(<ProjectTreeItem project={project} />)
 
     await user.click(screen.getByTestId('project-row-project-1'))
+
+    const projectsState = useProjectsStore.getState()
+    expect(projectsState.selectedProjectId).toBe('project-1')
+    expect(projectsState.selectedWorktreeId).toBeNull()
+    expect(projectsState.expandedProjectIds.has('project-1')).toBe(true)
+    expect(useChatStore.getState().activeWorktreeId).toBeNull()
+    expect(useChatStore.getState().activeWorktreePath).toBeNull()
+  })
+
+  it('toggles sidebar worktrees only from the chevron', async () => {
+    const user = userEvent.setup()
+    render(<ProjectTreeItem project={project} />)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse project' }))
 
     const projectsState = useProjectsStore.getState()
     expect(projectsState.selectedWorktreeId).toBe('wt-1')

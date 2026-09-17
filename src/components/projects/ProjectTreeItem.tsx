@@ -4,8 +4,6 @@ import {
   ArrowDownUp,
   ArrowUp,
   ChevronDown,
-  MoreHorizontal,
-  Plus,
 } from '@/components/icons/reicon'
 import {
   convertFileSrc,
@@ -55,17 +53,6 @@ interface ProjectTreeItemProps {
   searchQuery?: string
 }
 
-/**
- * Resolve the primary action for a project-row click.
- * Projects with worktrees expand/collapse only — never clear session selection.
- * Empty projects still open the project canvas.
- */
-export function resolveProjectRowClickAction(
-  hasWorktrees: boolean
-): 'toggle-expand' | 'open-canvas' {
-  return hasWorktrees ? 'toggle-expand' : 'open-canvas'
-}
-
 const STATUS_BADGES_MIN_SIDEBAR_WIDTH = 320
 
 export function shouldShowProjectStatusBadges(
@@ -95,7 +82,6 @@ export function ProjectTreeItem({
     selectedProjectId,
     selectProject,
     toggleProjectExpanded,
-    openProjectSettings,
   } = useProjectsStore()
   const isProjectExpanded = expandedProjectIds.has(project.id)
   const shouldLoadWorktrees =
@@ -117,9 +103,6 @@ export function ProjectTreeItem({
     matchesWorktreeSearch(worktree, searchQuery)
   )
   const isExpanded = hasWorktrees && (Boolean(searchQuery) || isProjectExpanded)
-  const setNewWorktreeModalOpen = useUIStore(
-    state => state.setNewWorktreeModalOpen
-  )
 
   const avatarKey = project.avatar_path ?? project.default_avatar_path ?? null
 
@@ -207,14 +190,6 @@ export function ProjectTreeItem({
   const handleClick = useCallback(() => {
     if (isEditing || isOffline) return
 
-    const action = resolveProjectRowClickAction(hasWorktrees)
-    if (action === 'toggle-expand') {
-      // Expand/collapse only — preserve selected worktree/session highlight
-      toggleProjectExpanded(project.id)
-      return
-    }
-
-    // Empty project: open project canvas
     selectProject(project.id)
     clearActiveWorktree()
     if (isMobile) {
@@ -223,8 +198,6 @@ export function ProjectTreeItem({
   }, [
     isEditing,
     isOffline,
-    hasWorktrees,
-    toggleProjectExpanded,
     project.id,
     selectProject,
     clearActiveWorktree,
@@ -277,17 +250,6 @@ export function ProjectTreeItem({
       toggleProjectExpanded(project.id)
     },
     [project.id, toggleProjectExpanded]
-  )
-
-  const handleAddWorktree = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      // Select this project first so the modal knows which project to use
-      selectProject(project.id)
-      // Open the New Session modal
-      setNewWorktreeModalOpen(true)
-    },
-    [project.id, selectProject, setNewWorktreeModalOpen]
   )
 
   const handleBasePull = useCallback(
@@ -542,42 +504,6 @@ export function ProjectTreeItem({
             </div>
           )}
 
-          {/* Settings */}
-          {!isOffline && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={e => {
-                    e.stopPropagation()
-                    openProjectSettings(project.id)
-                  }}
-                  aria-label="Project settings"
-                  className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                >
-                  <MoreHorizontal className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>Project settings</TooltipContent>
-            </Tooltip>
-          )}
-
-          {/* Add Worktree */}
-          {!isOffline && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleAddWorktree}
-                  aria-label="New worktree"
-                  className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                >
-                  <Plus className="size-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>New worktree</TooltipContent>
-            </Tooltip>
-          )}
         </div>
 
         {/* Worktrees */}
