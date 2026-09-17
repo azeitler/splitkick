@@ -58,7 +58,7 @@ export function MobileLeftSidebar({
         // Don't autofocus the first tree control (Expand all) — that opens its
         // tooltip on focus when the drawer slides in on mobile.
         onOpenAutoFocus={e => e.preventDefault()}
-        className="bg-sidebar text-sidebar-foreground w-[min(85vw,var(--mobile-sidebar-width))] gap-0 border-r p-0 sm:max-w-[min(85vw,var(--mobile-sidebar-width))]"
+        className="bg-sidebar text-sidebar-foreground dark:bg-[#0b0b0b] w-[min(85vw,var(--mobile-sidebar-width))] gap-0 border-r p-0 sm:max-w-[min(85vw,var(--mobile-sidebar-width))]"
         style={
           {
             '--mobile-sidebar-width': `${width}px`,

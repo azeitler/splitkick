@@ -569,7 +569,7 @@ export function MainWindow() {
           <SidebarWidthProvider value={leftSidebarSize}>
             <div
               ref={sidebarRef}
-              className="h-full overflow-hidden bg-sidebar pt-8"
+              className="h-full overflow-hidden bg-sidebar pt-8 dark:bg-[#0b0b0b]"
               style={{ width: leftSidebarSize }}
             >
               <Suspense fallback={null}>

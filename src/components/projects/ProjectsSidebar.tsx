@@ -216,7 +216,7 @@ export function ProjectsSidebar() {
                   disabled={!backendCheckReady || setupIncomplete}
                   aria-label="Add project"
                 >
-                  <Plus className="size-5" />
+                  <Plus className="size-3.5" />
                 </button>
               </TooltipTrigger>
               <TooltipContent>Add project</TooltipContent>
@@ -267,7 +267,9 @@ export function ProjectsSidebar() {
           />
         )}
       </div>
-      <div className="flex shrink-0 items-center justify-between p-2">
+      <div
+        className={`flex shrink-0 items-center justify-between ${showServerMenu ? 'p-2' : 'px-2 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]'}`}
+      >
         <Tooltip>
           <TooltipTrigger asChild>
             <button

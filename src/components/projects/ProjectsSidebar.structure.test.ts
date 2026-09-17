@@ -53,7 +53,7 @@ describe('ProjectsSidebar server filter', () => {
     expect(search).toBeGreaterThan(serverSelector)
     expect(addProject).toBeGreaterThan(search)
     expect(projectTree).toBeGreaterThan(addProject)
-    expect(source).toContain('<Plus className="size-5" />')
+    expect(source).toContain('<Plus className="size-3.5" />')
     expect(source).toContain('searchQuery={searchQuery}')
     expect(source).not.toContain('aria-label="New"')
     expect(source).not.toContain('{/* Footer')
@@ -91,6 +91,15 @@ describe('ProjectsSidebar server filter', () => {
     expect(settings).toBeGreaterThan(projectTree)
     expect(source).toContain('data-testid="sidebar-settings"')
     expect(source).toContain('togglePreferences()')
+  })
+
+  it('adds bottom safe-area spacing to the footer in web access', () => {
+    const source = readFileSync(
+      'src/components/projects/ProjectsSidebar.tsx',
+      'utf8'
+    )
+
+    expect(source).toContain("showServerMenu ? 'p-2' : 'px-2 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]'")
   })
 
   it('places the app version at the bottom-right of the sidebar footer', () => {

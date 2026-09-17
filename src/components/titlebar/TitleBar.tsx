@@ -20,7 +20,6 @@ import {
   PanelRight,
   PanelRightClose,
   X,
-  Server,
 } from '@/components/icons/reicon'
 import { usePreferences } from '@/services/preferences'
 import {
@@ -135,7 +134,7 @@ export function TitleBar({
                 </kbd>
               </TooltipContent>
             </Tooltip>
-            {!isMobile && (
+            {native && !isMobile && (
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -182,7 +181,6 @@ export function TitleBar({
           </span>
           {native && (
             <span className="ml-2 flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
-              <Server className="size-3" />
               {serverLabel}
               {serverContext && (
                 <RemoteServerRefreshButton
@@ -206,7 +204,6 @@ export function TitleBar({
                 className="flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
                 aria-label={`Current Jean server: ${serverLabel}`}
               >
-                <Server className="size-3" />
                 {serverLabel}
                 {serverContext && (
                   <RemoteServerRefreshButton
@@ -253,6 +250,28 @@ export function TitleBar({
         )}
         {!zenMode && (
           <>
+            {(!native || isMobile) && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    onClick={() =>
+                      openExternal('https://github.com/coollabsio/jean')
+                    }
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
+                    data-testid="open-github-web"
+                  >
+                    <Github className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>GitHub</TooltipContent>
+              </Tooltip>
+            )}
+            <MinimizedCliUpdate />
+            <CliUpdatesIndicator />
+            <ServerUpdateIndicator />
+            <UpdateIndicator />
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -285,27 +304,6 @@ export function TitleBar({
                 </kbd>
               </TooltipContent>
             </Tooltip>
-            {isMobile && (
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    onClick={() =>
-                      openExternal('https://github.com/coollabsio/jean')
-                    }
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
-                  >
-                    <Github className="h-3 w-3" />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>GitHub</TooltipContent>
-              </Tooltip>
-            )}
-            <MinimizedCliUpdate />
-            <CliUpdatesIndicator />
-            <ServerUpdateIndicator />
-            <UpdateIndicator />
           </>
         )}
         {native && isClientLinux && <LinuxWindowControls />}
