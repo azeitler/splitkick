@@ -162,6 +162,11 @@ export function applyCacheInvalidationKeys(
           queryKey: ['recent-worktrees'],
         })
         break
+      case 'recent-worktrees':
+        queryClient.invalidateQueries({
+          queryKey: ['recent-worktrees'],
+        })
+        break
       case 'projects':
         queryClient.invalidateQueries({
           queryKey: projectsQueryKeys.all,

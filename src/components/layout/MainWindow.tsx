@@ -289,10 +289,7 @@ export function MainWindow() {
   const isMobile = useIsMobile()
   const isTouch = useIsTouchDevice()
   const canSwipeOpenSidebar =
-    isMobile &&
-    !activeWorktreePath &&
-    !leftSidebarVisible &&
-    !sessionChatModalOpen
+    isMobile && !leftSidebarVisible && !sessionChatModalOpen
   const swipeOpenSidebar = useSwipeBack({
     onSwipeBack: useCallback(() => {
       useUIStore.getState().setLeftSidebarVisible(true)

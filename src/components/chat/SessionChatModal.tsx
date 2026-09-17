@@ -104,7 +104,6 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { pushNeedsRemotePicker, useRemotePicker } from '@/hooks/useRemotePicker'
 import { useIsTouchDevice } from '@/hooks/use-touch-device'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
-import { closeChatTerminal, isChatTerminalOpen } from '@/lib/terminal-gesture'
 import {
   MODAL_TERMINAL_PRIMARY_ROW_CLASS,
   MODAL_TERMINAL_SECONDARY_ROW_CLASS,
@@ -193,20 +192,16 @@ export function SessionChatModal({
   const isModalTerminalOpen = useTerminalStore(
     state => state.modalTerminalOpen[worktreeId] ?? false
   )
+  const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const fileBrowserVisible = useUIStore(state => state.fileBrowserVisible)
-  // Left-edge swipe right: close terminal if open, else dismiss modal
-  const swipeBackCallback = useCallback(() => {
-    if (worktreeId && isChatTerminalOpen(worktreeId, 'modal')) {
-      closeChatTerminal(worktreeId, 'modal')
-      return
-    }
-    onClose()
-  }, [worktreeId, onClose])
+  // Left-edge swipe right: open the sidebar without leaving the worktree.
+  const swipeOpenSidebar = useCallback(() => {
+    useUIStore.getState().setLeftSidebarVisible(true)
+  }, [])
   const swipe = useSwipeBack({
-    onSwipeBack: swipeBackCallback,
-    enabled: isTouch && isOpen,
-    // Closing terminal is an overlay dismiss — no full content slide-off
-    animateToEnd: !isModalTerminalOpen,
+    onSwipeBack: swipeOpenSidebar,
+    enabled: isTouch && isOpen && !leftSidebarVisible,
+    animateToEnd: false,
   })
   // Right-edge swipe left: open file browser
   const swipeOpenFileBrowserCallback = useCallback(() => {
@@ -235,7 +230,7 @@ export function SessionChatModal({
     swipeOpenFileBrowser.transitionStyle,
     canSwipeOpenFileBrowser,
   ])
-  // Shared host for left-edge back and right-edge file browser gestures
+  // Shared host for left-edge sidebar and right-edge file browser gestures
   const setSwipeContainerRef = useCallback(
     (el: HTMLDivElement | null) => {
       const swipeRef =
@@ -1017,15 +1012,6 @@ export function SessionChatModal({
           hasBottomDock ? 'flex-col' : 'flex-row'
         )}
         data-testid="session-chat-modal-swipe"
-        style={
-          isMobile && (swipe.isSwiping || swipe.translateX !== 0)
-            ? {
-                transform: `translateX(${swipe.translateX}px)`,
-                transition: swipe.transitionStyle || undefined,
-                willChange: swipe.isSwiping ? 'transform' : undefined,
-              }
-            : undefined
-        }
       >
         {isMobile && (
           <>

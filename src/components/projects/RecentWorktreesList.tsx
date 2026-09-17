@@ -82,8 +82,11 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
   }, [projectKey])
 
   const query = useQuery({
-    queryKey: ['recent-worktrees', projectKey, limit, selectedSessionId],
-    queryFn: () => fetchRecentWorktrees(projects, limit, selectedSessionId),
+    // Selection only changes the highlighted row. Keep it out of the query so
+    // switching sessions cannot swap between cached list variants with
+    // different ordering.
+    queryKey: ['recent-worktrees', projectKey, limit],
+    queryFn: () => fetchRecentWorktrees(projects, limit, null),
     enabled: projects.length > 0,
     placeholderData: keepPreviousData,
     staleTime: 30_000,

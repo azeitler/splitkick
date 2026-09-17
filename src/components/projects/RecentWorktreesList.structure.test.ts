@@ -48,4 +48,14 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('border-l-green-500')
     expect(source).toContain("!['working', 'completed'].includes(status.tone)")
   })
+
+  it('does not create a different cached list for each selected session', () => {
+    expect(source).toContain(
+      "queryKey: ['recent-worktrees', projectKey, limit]"
+    )
+    expect(source).toContain('fetchRecentWorktrees(projects, limit, null)')
+    expect(source).not.toContain(
+      "queryKey: ['recent-worktrees', projectKey, limit, selectedSessionId]"
+    )
+  })
 })

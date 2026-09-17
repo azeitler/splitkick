@@ -697,7 +697,7 @@ describe('applySessionRenamedToCaches', () => {
     )
     const all = queryClient.getQueryData<AllSessionsResponse>(['all-sessions'])
     const recent = queryClient.getQueryData<{
-      items: Array<{ session: Session }>
+      items: { session: Session }[]
     }>(['recent-worktrees', 'projects', 10, null])
 
     expect(base?.sessions[0]?.name).toBe('Fix auto naming')
@@ -709,6 +709,18 @@ describe('applySessionRenamedToCaches', () => {
 })
 
 describe('applyCacheInvalidationKeys', () => {
+  it('refreshes Recent when a first prompt is persisted', () => {
+    const queryClient = new QueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    applyCacheInvalidationKeys(queryClient, ['recent-worktrees'])
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['recent-worktrees'],
+    })
+    expect(invalidateSpy).toHaveBeenCalledTimes(1)
+  })
+
   it('invalidates chat queries and all-sessions for sessions keys', () => {
     const queryClient = new QueryClient()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')

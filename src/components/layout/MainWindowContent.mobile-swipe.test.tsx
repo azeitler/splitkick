@@ -6,7 +6,6 @@ import { MainWindowContent } from './MainWindowContent'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
-import { useTerminalStore } from '@/store/terminal-store'
 
 vi.mock('@/hooks/use-mobile', () => ({
   useIsMobile: () => true,
@@ -102,17 +101,20 @@ describe('MainWindowContent mobile swipe open sidebar', () => {
     expect(useUIStore.getState().leftSidebarVisible).toBe(false)
   })
 
-  it('uses swipe-back on chat instead of open-sidebar target', async () => {
+  it('attaches the sidebar swipe target inside chat without leaving it', async () => {
     useChatStore.setState({
       activeWorktreePath: '/tmp/wt',
       activeWorktreeId: 'wt-1',
     })
 
-    render(<MainWindowContent />)
+    const swipeContainerRef = createRef<HTMLDivElement>()
+    render(<MainWindowContent sidebarSwipeContainerRef={swipeContainerRef} />)
 
     await waitFor(() => {
       expect(screen.getByTestId('chat-window')).toBeInTheDocument()
     })
+    const target = screen.getByTestId('mobile-swipe-chat')
+    expect(swipeContainerRef.current).toBe(target)
     expect(screen.queryByTestId('mobile-swipe-open-sidebar')).toBeNull()
   })
 })
@@ -130,16 +132,6 @@ describe('MainWindowContent mobile chat swipes', () => {
       activeWorktreeId: 'wt-1',
     })
     useProjectsStore.setState({ selectedProjectId: 'proj-1' })
-    useTerminalStore.setState({
-      terminals: {},
-      activeTerminalIds: {},
-      runningTerminals: new Set(),
-      failedTerminals: new Set(),
-      terminalVisible: false,
-      terminalVisibleByWorktree: {},
-      terminalPanelOpen: {},
-      modalTerminalOpen: {},
-    })
   })
 
   it('delegates the right-edge gesture without moving the chat content', async () => {
@@ -159,45 +151,6 @@ describe('MainWindowContent mobile chat swipes', () => {
     expect(fileBrowserSwipeContainerRef.current).toBe(target)
     expect(target).not.toHaveStyle({ transform: 'translateX(-112px)' })
     expect(useUIStore.getState().fileBrowserVisible).toBe(false)
-  })
-
-  it('closes the terminal on left-edge swipe right when open', async () => {
-    useTerminalStore.setState({
-      terminalVisible: true,
-      terminalVisibleByWorktree: { 'wt-1': true },
-      terminalPanelOpen: { 'wt-1': true },
-      terminals: {
-        'wt-1': [
-          {
-            id: 't1',
-            worktreeId: 'wt-1',
-            command: null,
-            label: 'Terminal',
-            kind: 'panel',
-          },
-        ],
-      },
-    })
-
-    render(<MainWindowContent />)
-
-    const target = await screen.findByTestId('mobile-swipe-chat')
-    Object.defineProperty(target, 'offsetWidth', {
-      value: 400,
-      configurable: true,
-    })
-
-    act(() => {
-      fireTouch(target, 'touchstart', 8)
-      fireTouch(target, 'touchmove', 200)
-      fireTouch(target, 'touchend', 200)
-    })
-
-    // animateToEnd is false while terminal is open → closes immediately
-    expect(useTerminalStore.getState().terminalVisible).toBe(false)
-    expect(useTerminalStore.getState().terminalPanelOpen['wt-1']).toBe(false)
-    // Should not leave chat
-    expect(useChatStore.getState().activeWorktreePath).toBe('/tmp/wt')
   })
 
   it('disables the file browser gesture when it is already visible', async () => {

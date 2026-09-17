@@ -3342,6 +3342,15 @@ pub async fn send_chat_message(
         custom_profile_name.as_deref(),
     )?;
 
+    // Recent sessions are built from run metadata. Invalidate only after the
+    // run is durable so a new session's first prompt cannot race the refetch.
+    if let Err(e) = app.emit_all(
+        "cache:invalidate",
+        &serde_json::json!({ "keys": ["recent-worktrees"] }),
+    ) {
+        log::error!("Failed to emit cache:invalidate for recent sessions: {e}");
+    }
+
     // Get file paths for detached execution
     let input_file = run_log_writer.input_file_path()?;
     let output_file = run_log_writer.output_file_path()?;

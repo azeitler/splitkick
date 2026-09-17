@@ -6,6 +6,22 @@ const readSource = (path: string) =>
   readFileSync(join(process.cwd(), path), 'utf8')
 
 describe('SessionChatModal removal behavior', () => {
+  it('opens the sidebar on a worktree swipe without closing the session or terminal', () => {
+    const source = readSource('src/components/chat/SessionChatModal.tsx')
+    const start = source.indexOf('const swipeOpenSidebar = useCallback(')
+    const end = source.indexOf('const { data: sessionsData }', start)
+    const gesture = source.slice(start, end)
+
+    expect(start).toBeGreaterThan(-1)
+    expect(gesture).toContain('setLeftSidebarVisible(true)')
+    expect(gesture).toContain('onSwipeBack: swipeOpenSidebar')
+    expect(gesture).toContain('enabled: isTouch && isOpen && !leftSidebarVisible')
+    expect(gesture).toContain('animateToEnd: false')
+    expect(gesture).not.toContain('onClose()')
+    expect(gesture).not.toContain('closeChatTerminal')
+    expect(source).not.toContain('transform: `translateX(${swipe.translateX}px)`')
+  })
+
   it('receives complete header data from the loaded project canvas', () => {
     const modalSource = readSource('src/components/chat/SessionChatModal.tsx')
     const canvasSource = readSource(

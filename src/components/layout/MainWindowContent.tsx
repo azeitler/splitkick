@@ -11,7 +11,6 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useProjects } from '@/services/projects'
 import { useUIStore } from '@/store/ui-store'
-import { useTerminalStore } from '@/store/terminal-store'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
 import { Plus, Loader2 } from '@/components/icons/reicon'
@@ -19,9 +18,7 @@ import { WelcomeProjectGrid } from './WelcomeProjectGrid'
 import { isFolder } from '@/types/projects'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
-import { closeChatTerminal, isChatTerminalOpen } from '@/lib/terminal-gesture'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { JeanLoadingScreen } from '@/components/shared/JeanLoadingScreen'
 
 const ChatWindow = lazy(() =>
@@ -50,38 +47,7 @@ export function MainWindowContent({
   fileBrowserSwipeContainerRef,
 }: MainWindowContentProps) {
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
-  const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
   const isMobile = useIsMobile()
-  // Subscribe so swipe-back can prefer closing terminal over navigating away
-  const terminalPanelOpen = useTerminalStore(state =>
-    activeWorktreeId
-      ? (state.terminalPanelOpen[activeWorktreeId] ?? false)
-      : false
-  )
-  const terminalVisible = useTerminalStore(state =>
-    activeWorktreeId
-      ? (state.terminalVisibleByWorktree[activeWorktreeId] ?? false)
-      : false
-  )
-  const isPanelTerminalOpen =
-    !!activeWorktreeId && terminalPanelOpen && terminalVisible
-
-  // Full ChatWindow (active worktree path): edge swipe right →
-  // close terminal if open, otherwise back to project
-  const swipeBackCallback = useCallback(() => {
-    const worktreeId = useChatStore.getState().activeWorktreeId
-    if (worktreeId && isChatTerminalOpen(worktreeId, 'panel')) {
-      closeChatTerminal(worktreeId, 'panel')
-      return
-    }
-    useChatStore.getState().clearActiveWorktree()
-  }, [])
-  const swipeBack = useSwipeBack({
-    onSwipeBack: swipeBackCallback,
-    enabled: isMobile && !!activeWorktreePath,
-    // Closing terminal is an overlay dismiss — no full content slide-off
-    animateToEnd: !isPanelTerminalOpen,
-  })
 
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const setAddProjectDialogOpen = useProjectsStore(
@@ -221,18 +187,9 @@ export function MainWindowContent({
     >
       {activeWorktreePath ? (
         <div
-          ref={isMobile ? swipeBack.containerRef : undefined}
+          ref={isMobile ? sidebarSwipeContainerRef : undefined}
           className="relative h-full w-full"
           data-testid="mobile-swipe-chat"
-          style={
-            isMobile && (swipeBack.isSwiping || swipeBack.translateX !== 0)
-              ? {
-                  transform: `translateX(${swipeBack.translateX}px)`,
-                  transition: swipeBack.transitionStyle || undefined,
-                  willChange: swipeBack.isSwiping ? 'transform' : undefined,
-                }
-              : undefined
-          }
         >
           <div
             ref={isMobile ? fileBrowserSwipeContainerRef : undefined}
@@ -244,7 +201,7 @@ export function MainWindowContent({
                 <div
                   className={cn(
                     'absolute left-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-r-full bg-muted-foreground/20 transition-opacity duration-300',
-                    swipeBack.isSwiping ? 'opacity-0' : 'opacity-100'
+                    'opacity-100'
                   )}
                   aria-hidden
                 />

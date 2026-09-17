@@ -339,7 +339,7 @@ describe('CompactMessageList', () => {
     ])
 
     const recapHeading = screen.getByText('Recap')
-    const editedFiles = screen.getByText('Edited 1 file:')
+    const editedFiles = screen.getByRole('button', { name: 'Edited 1 file' })
 
     expect(editedFiles).toBeVisible()
     expect(
@@ -372,7 +372,7 @@ describe('CompactMessageList', () => {
     ])
 
     const latestText = screen.getAllByText('Changed chat UI.').at(-1)
-    const editedFiles = screen.getByText('Edited 1 file:')
+    const editedFiles = screen.getByRole('button', { name: 'Edited 1 file' })
 
     expect(editedFiles).toBeVisible()
     expect(latestText).toBeDefined()
@@ -405,7 +405,9 @@ describe('CompactMessageList', () => {
     ])
 
     expect(screen.getByText('(cancelled)')).toBeVisible()
-    expect(screen.getByText('Edited 1 file:')).toBeVisible()
+    const editedFiles = screen.getByRole('button', { name: 'Edited 1 file' })
+    expect(editedFiles).toBeVisible()
+    fireEvent.click(editedFiles)
     expect(screen.getByText('CompactMessageList.tsx')).toBeVisible()
   })
 
