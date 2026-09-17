@@ -35,7 +35,7 @@ describe('selectSessionRenderTarget', () => {
     expect(selectSessionRenderTarget(active, deferred)).toBe(active)
   })
 
-  it('can keep the previous session while switching tabs in one worktree', () => {
+  it('does not keep the previous session while switching tabs in one worktree', () => {
     const active = {
       sessionId: 'remote-one:session-2',
       worktreeId: 'remote-one:worktree-1',
@@ -47,7 +47,7 @@ describe('selectSessionRenderTarget', () => {
       worktreePath: '/srv/one/project',
     }
 
-    expect(selectSessionRenderTarget(active, deferred)).toBe(deferred)
+    expect(selectSessionRenderTarget(active, deferred)).toBe(active)
   })
 })
 

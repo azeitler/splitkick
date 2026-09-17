@@ -538,7 +538,9 @@ describe('shouldLetPlanDialogHandleAction', () => {
   })
 
   it('returns false for non-approve actions or when the dialog is closed', () => {
-    expect(shouldLetPlanDialogHandleAction('focus_chat_input', true)).toBe(false)
+    expect(shouldLetPlanDialogHandleAction('focus_chat_input', true)).toBe(
+      false
+    )
     expect(shouldLetPlanDialogHandleAction('approve_plan', false)).toBe(false)
   })
 })
@@ -721,6 +723,9 @@ describe('applyCacheInvalidationKeys', () => {
     })
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: chatQueryKeys.unreadSessionCount(),
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['recent-worktrees'],
     })
   })
 

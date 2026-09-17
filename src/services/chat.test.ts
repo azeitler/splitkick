@@ -23,6 +23,7 @@ import {
   isDuplicateSendError,
   prefetchSessions,
   reconnectNativeCliSession,
+  touchRecentSessionCaches,
 } from './chat'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
 import { useChatStore } from '@/store/chat-store'
@@ -36,6 +37,39 @@ const toastMock = toast as unknown as {
   success: ReturnType<typeof vi.fn>
   error: ReturnType<typeof vi.fn>
 }
+
+describe('touchRecentSessionCaches', () => {
+  it('updates and reorders a continued session immediately', () => {
+    const queryClient = new QueryClient()
+    const session = (id: string, timestamp: number) => ({
+      session: {
+        id,
+        name: id,
+        order: 0,
+        created_at: timestamp,
+        updated_at: timestamp,
+        messages: [],
+      },
+      lastActivityAt: timestamp,
+    })
+    const key = ['recent-worktrees', 'projects', 10, 'old']
+    queryClient.setQueryData(key, {
+      items: [session('new', 200), session('old', 100)],
+    })
+
+    touchRecentSessionCaches(queryClient, 'old', 300)
+
+    const result = queryClient.getQueryData<{
+      items: Array<{
+        lastActivityAt: number
+        session: Session
+      }>
+    }>(key)
+    expect(result?.items.map(item => item.session.id)).toEqual(['old', 'new'])
+    expect(result?.items[0]?.lastActivityAt).toBe(300)
+    expect(result?.items[0]?.session.last_message_at).toBe(300)
+  })
+})
 
 describe('isDuplicateSendError', () => {
   it('recognizes the run-log duplicate guard error', () => {

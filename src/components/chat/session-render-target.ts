@@ -4,16 +4,12 @@ export interface SessionRenderTarget {
   worktreePath: string | null
 }
 
-/**
- * Keep deferred rendering only for tab changes inside one worktree. A worktree
- * change can also change the owning Jean server, so the old session ID must
- * never be combined with the new worktree ID and path.
- */
+/** Always render the selected session. Never keep the previous tab visible. */
 export function selectSessionRenderTarget(
   active: SessionRenderTarget,
-  deferred: SessionRenderTarget
+  _deferred: SessionRenderTarget
 ): SessionRenderTarget {
-  return active.worktreeId === deferred.worktreeId ? deferred : active
+  return active
 }
 
 export function shouldClearStaleSessionStream(input: {

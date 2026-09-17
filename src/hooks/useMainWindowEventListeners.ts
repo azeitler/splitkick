@@ -158,6 +158,9 @@ export function applyCacheInvalidationKeys(
         queryClient.invalidateQueries({
           queryKey: chatQueryKeys.unreadSessionCount(),
         })
+        queryClient.invalidateQueries({
+          queryKey: ['recent-worktrees'],
+        })
         break
       case 'projects':
         queryClient.invalidateQueries({

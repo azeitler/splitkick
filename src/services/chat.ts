@@ -48,7 +48,11 @@ import {
   preferResolvedCliCommand,
   resolveBackendCliPath,
 } from '@/services/cli-binary'
-import type { StoredReviewResults, Worktree } from '@/types/projects'
+import type {
+  RecentWorktreeItem,
+  StoredReviewResults,
+  Worktree,
+} from '@/types/projects'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
 import { useConsolidatedAllSessions } from './multi-server-sessions'
 
@@ -56,6 +60,36 @@ import { useConsolidatedAllSessions } from './multi-server-sessions'
 export const INITIAL_RUN_LIMIT = 10
 /** Number of older runs to load per scroll-up batch. */
 export const OLDER_RUN_BATCH = 10
+
+/** Move a continued session to its new position in every cached Recent page. */
+export function touchRecentSessionCaches(
+  queryClient: QueryClient,
+  sessionId: string,
+  timestamp: number
+): void {
+  queryClient.setQueriesData<{ items: RecentWorktreeItem[] }>(
+    { queryKey: ['recent-worktrees'] },
+    old => {
+      if (!old?.items.some(item => item.session.id === sessionId)) return old
+      const items = old.items
+        .map(item =>
+          item.session.id === sessionId
+            ? {
+                ...item,
+                lastActivityAt: timestamp,
+                session: {
+                  ...item.session,
+                  last_message_at: timestamp,
+                  updated_at: timestamp,
+                },
+              }
+            : item
+        )
+        .sort((left, right) => right.lastActivityAt - left.lastActivityAt)
+      return { ...old, items }
+    }
+  )
+}
 
 /** Check if an error is from a WebSocket disconnect (suppress toasts before reload). */
 function isWsDisconnectError(error: unknown): boolean {
@@ -1868,6 +1902,11 @@ export function useSendMessage() {
       // Batch the optimistic user message AND sending state together so React
       // renders both in a single pass (no two-phase scroll: message then placeholder).
       useChatStore.getState().addSendingSession(sessionId)
+      touchRecentSessionCaches(
+        queryClient,
+        sessionId,
+        optimisticUserMessage.timestamp
+      )
 
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(sessionId),
