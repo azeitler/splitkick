@@ -119,13 +119,13 @@ export function OpenInButton({
 
   return (
     <div
-      className={`hidden items-center rounded-md border border-border/50 bg-muted/50 sm:inline-flex ${className ?? ''}`}
+      className={`hidden h-7 items-center rounded-md border border-border/50 bg-muted/50 sm:inline-flex ${className ?? ''}`}
     >
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
-            className="h-7 rounded-r-none border-0 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+            className="h-full rounded-r-none border-0 px-2.5 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => openAction(effectiveDefault)}
           >
             Open in {defaultLabel}
@@ -139,7 +139,7 @@ export function OpenInButton({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-6 rounded-l-none border-0 px-0 text-muted-foreground hover:text-foreground"
+            className="h-full w-6 rounded-l-none border-0 px-0 text-muted-foreground hover:text-foreground"
           >
             <ChevronDown className="h-3 w-3" />
           </Button>
