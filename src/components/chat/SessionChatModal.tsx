@@ -1141,7 +1141,7 @@ export function SessionChatModal({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 text-xs"
+                          className="h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground"
                           aria-label={
                             zenMode ? 'Exit zen mode' : 'Enter zen mode'
                           }
@@ -1150,9 +1150,9 @@ export function SessionChatModal({
                           onClick={toggleZenMode}
                         >
                           {zenMode ? (
-                            <Minimize className="size-2.5" />
+                            <Minimize className="size-4" />
                           ) : (
-                            <Maximize className="size-2.5" />
+                            <Maximize className="size-4" />
                           )}
                         </Button>
                       </TooltipTrigger>
@@ -1190,7 +1190,13 @@ export function SessionChatModal({
                           />
                         )}
                       </div>
-                      <ModalCloseButton onClick={handleClose} />
+                      <ModalCloseButton
+                        onClick={handleClose}
+                        className={cn(
+                          isMobile &&
+                            'text-muted-foreground hover:text-foreground'
+                        )}
+                      />
                     </>
                   )}
                 </div>
@@ -1432,10 +1438,16 @@ export function SessionChatModal({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-6 w-6 p-0 shrink-0"
+                    className={cn(
+                      'shrink-0 p-0',
+                      isMobile
+                        ? 'h-7 w-7 text-muted-foreground hover:text-foreground'
+                        : 'h-6 w-6'
+                    )}
                     onClick={handleCreateSession}
+                    aria-label="New session"
                   >
-                    <Plus className="h-3 w-3" />
+                    <Plus className={isMobile ? 'size-4' : 'h-3 w-3'} />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>New session</TooltipContent>

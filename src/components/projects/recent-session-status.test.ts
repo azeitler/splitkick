@@ -14,12 +14,11 @@ const session = (values: Partial<Session> = {}): Session =>
   }) as Session
 
 describe('getRecentSessionStatus', () => {
-  it('uses waiting, working, and failed priority before execution mode', () => {
+  it('uses waiting, working, and failed priority', () => {
     expect(
       getRecentSessionStatus(session({ last_run_status: 'crashed' }), {
         sending: true,
         waiting: true,
-        executionMode: 'yolo',
       }).label
     ).toBe('Waiting')
     expect(

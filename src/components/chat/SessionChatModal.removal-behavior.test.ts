@@ -131,7 +131,8 @@ describe('SessionChatModal removal behavior', () => {
     expect(source).not.toContain('{!(zenMode && isMobile) && (')
     expect(source).toContain('{!zenMode && sessions.length > 0 && (')
     expect(source).toContain('{!zenMode && (')
-    expect(source).toContain('<ModalCloseButton onClick={handleClose} />')
+    expect(source).toContain('<ModalCloseButton')
+    expect(source).toContain('onClick={handleClose}')
   })
 
   it('uses terminal-like square tab styling for session header tabs', () => {
@@ -166,13 +167,28 @@ describe('SessionChatModal removal behavior', () => {
     expect(source).toContain('useClearSessionHistory')
     expect(source).toContain('handleClearContext')
     expect(source).toContain('data-testid="toggle-zen-mode"')
-    expect(source).toContain('<Minimize className="size-2.5" />')
-    expect(source).toContain('<Maximize className="size-2.5" />')
+    expect(source).toContain('<Minimize className="size-4" />')
+    expect(source).toContain('<Maximize className="size-4" />')
     expect(source).not.toContain('aria-label="Clear context"')
     expect(source).not.toContain('data-testid="clear-session-context"')
     expect(source).toMatch(
       /onSuccess:\s*\(\)\s*=>\s*window\.dispatchEvent\(new CustomEvent\('focus-chat-input'\)\)/
     )
+  })
+
+  it('aligns the mobile header actions and uses the muted icon color', () => {
+    const source = readSource('src/components/chat/SessionChatModal.tsx')
+
+    expect(source).toContain(
+      'h-7 w-7 shrink-0 p-0 text-muted-foreground hover:text-foreground'
+    )
+    expect(source).toContain(
+      "isMobile &&\n                            'text-muted-foreground hover:text-foreground'"
+    )
+    expect(source).toContain(
+      "? 'h-7 w-7 text-muted-foreground hover:text-foreground'"
+    )
+    expect(source).toContain('aria-label="New session"')
   })
 
   it('falls back to a real session when restored active session state is stale', () => {
