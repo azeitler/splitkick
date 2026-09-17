@@ -54,20 +54,26 @@ describe('FileBrowserSidebar', () => {
     ).toBeTruthy()
   })
 
-  it('shows only the Files title and header actions', () => {
+  it('shows file search and refresh in the header', () => {
     useChatStore.setState({ activeWorktreePath: '/repo/main' })
 
     const { container, unmount } = render(<FileBrowserSidebar />)
 
-    expect(screen.getByText('Files')).toBeVisible()
+    expect(screen.queryByText('Files')).not.toBeInTheDocument()
+    expect(
+      screen.getByRole('searchbox', { name: 'Search files' })
+    ).toHaveAttribute('placeholder', 'Search files')
     expect(screen.queryByText('main')).not.toBeInTheDocument()
     expect(container.querySelector('.lucide-folder-tree')).toBeNull()
     expect(
       screen.getByRole('button', { name: 'Refresh file list' })
     ).toBeVisible()
     expect(
-      screen.getByRole('button', { name: 'Close file browser' })
-    ).toBeVisible()
+      screen.queryByRole('button', { name: 'Close file browser' })
+    ).not.toBeInTheDocument()
+    expect(
+      screen.getByTestId('file-browser-sidebar').firstElementChild
+    ).toHaveClass('border-border/40')
 
     unmount()
     useChatStore.setState({ activeWorktreePath: null })

@@ -64,8 +64,6 @@ function setsEqual(a: Set<string>, b: Set<string>): boolean {
 
 interface FileBrowserSidebarProps {
   className?: string
-  /** When true, hide the close button (e.g. mobile sheet has its own chrome) */
-  hideCloseButton?: boolean
 }
 
 function useFileBrowserRootPath(): {
@@ -109,10 +107,7 @@ function useFileBrowserRootPath(): {
   ])
 }
 
-export function FileBrowserSidebar({
-  className,
-  hideCloseButton = false,
-}: FileBrowserSidebarProps) {
+export function FileBrowserSidebar({ className }: FileBrowserSidebarProps) {
   const queryClient = useQueryClient()
   const isMobile = useIsMobile()
   const setFileBrowserVisible = useUIStore(state => state.setFileBrowserVisible)
@@ -293,8 +288,30 @@ export function FileBrowserSidebar({
       data-testid="file-browser-sidebar"
     >
       {/* Header */}
-      <div className="flex items-center gap-1 border-b border-sidebar-border px-2 py-1.5">
-        <p className="min-w-0 flex-1 truncate text-xs font-medium">Files</p>
+      <div className="flex items-center gap-1 border-b border-border/40 px-2 py-1.5">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={searchInputRef}
+            type="search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search files"
+            className="h-7 bg-background/50 pl-7 pr-7 text-xs"
+            disabled={!rootPath}
+            aria-label="Search files"
+          />
+          {search && (
+            <button
+              type="button"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+              onClick={() => setSearch('')}
+              aria-label="Clear file search"
+            >
+              <X className="size-3" />
+            </button>
+          )}
+        </div>
         <Tooltip>
           <TooltipTrigger asChild>
             <Button
@@ -314,48 +331,6 @@ export function FileBrowserSidebar({
           </TooltipTrigger>
           <TooltipContent side="bottom">Refresh</TooltipContent>
         </Tooltip>
-        {!hideCloseButton && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6 shrink-0"
-                onClick={() => setFileBrowserVisible(false)}
-                aria-label="Close file browser"
-              >
-                <X className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Close</TooltipContent>
-          </Tooltip>
-        )}
-      </div>
-
-      {/* Search */}
-      <div className="border-b border-sidebar-border px-2 py-1.5">
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-2 top-1/2 size-3 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={searchInputRef}
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Filter files…"
-            className="h-7 bg-background/50 pl-7 pr-7 text-xs"
-            disabled={!rootPath}
-            aria-label="Filter files"
-          />
-          {search && (
-            <button
-              type="button"
-              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
-              onClick={() => setSearch('')}
-              aria-label="Clear filter"
-            >
-              <X className="size-3" />
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Tree */}

@@ -39,8 +39,6 @@ import { LinuxWindowControls } from './LinuxWindowControls'
 import { useRemoteConnections } from '@/lib/remote-connections'
 import { useProjectsStore } from '@/store/projects-store'
 import { resolveHeaderServerLabel } from './server-context'
-import { resolveHeaderRemoteServer } from './server-context'
-import { RemoteServerRefreshButton } from '@/components/remote/RemoteServerRefreshButton'
 import { MinimizedCliUpdate } from './MinimizedCliUpdate'
 
 interface TitleBarProps {
@@ -77,10 +75,6 @@ export function TitleBar({
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const remoteConnections = useRemoteConnections()
   const serverLabel = resolveHeaderServerLabel(
-    selectedProjectId,
-    remoteConnections
-  )
-  const serverContext = resolveHeaderRemoteServer(
     selectedProjectId,
     remoteConnections
   )
@@ -184,13 +178,6 @@ export function TitleBar({
           {native && (
             <span className="ml-2 flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               {serverLabel}
-              {serverContext && (
-                <RemoteServerRefreshButton
-                  serverId={serverContext.serverId}
-                  serverName={serverContext.name}
-                  className="opacity-60"
-                />
-              )}
             </span>
           )}
         </div>
@@ -207,13 +194,6 @@ export function TitleBar({
                 aria-label={`Current Jean server: ${serverLabel}`}
               >
                 {serverLabel}
-                {serverContext && (
-                  <RemoteServerRefreshButton
-                    serverId={serverContext.serverId}
-                    serverName={serverContext.name}
-                    className="opacity-60"
-                  />
-                )}
               </span>
             )}
           </div>

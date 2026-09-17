@@ -14,10 +14,10 @@ describe('TitleBar connection placement', () => {
     expect(source).not.toContain('<Server className="size-3" />')
   })
 
-  it('shows a reconnect control beside a selected remote server', () => {
+  it('keeps remote server refresh out of the header', () => {
     const source = readFileSync('src/components/titlebar/TitleBar.tsx', 'utf8')
 
-    expect(source).toContain('<RemoteServerRefreshButton')
-    expect(source).toContain('serverId={serverContext.serverId}')
+    expect(source).not.toContain('RemoteServerRefreshButton')
+    expect(source).not.toContain('resolveHeaderRemoteServer')
   })
 })

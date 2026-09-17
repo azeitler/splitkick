@@ -366,8 +366,7 @@ export function ProjectTree({
     expandedFolderIds,
     expandAllFolders,
     collapseAllFolders,
-    expandAllProjects,
-    collapseAllProjects,
+    setProjectExpanded,
   } = useProjectsStore()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
@@ -802,53 +801,61 @@ export function ProjectTree({
       {projectSections.map(section => (
         <div key={section.id}>
           <div className="group/header flex items-center justify-between pl-3 pr-2 pb-1 pt-2">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-              {section.title}
-            </span>
-            {groupByServer && section.id !== 'local' ? (
+            <div
+              className="flex items-center gap-1"
+              data-testid="instance-title-actions"
+            >
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+                {section.title}
+              </span>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
+                    onClick={() =>
+                      section.projects.forEach(item =>
+                        setProjectExpanded(item.id, true)
+                      )
+                    }
+                    aria-label={
+                      section.title === 'Projects'
+                        ? 'Expand all projects'
+                        : `Expand all projects on ${section.title}`
+                    }
+                  >
+                    <ChevronsUpDown className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Expand all</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
+                    onClick={() =>
+                      section.projects.forEach(item =>
+                        setProjectExpanded(item.id, false)
+                      )
+                    }
+                    aria-label={
+                      section.title === 'Projects'
+                        ? 'Collapse all projects'
+                        : `Collapse all projects on ${section.title}`
+                    }
+                  >
+                    <ChevronsDownUp className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Collapse all</TooltipContent>
+              </Tooltip>
+            </div>
+            {groupByServer && section.id !== 'local' && (
               <RemoteServerRefreshButton
                 serverId={section.id}
                 serverName={section.title}
               />
-            ) : (
-              <div className="flex items-center gap-1">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                      onClick={() =>
-                        expandAllProjects(section.projects.map(item => item.id))
-                      }
-                      aria-label={
-                        section.title === 'Projects'
-                          ? 'Expand all projects'
-                          : `Expand all projects on ${section.title}`
-                      }
-                    >
-                      <ChevronsUpDown className="size-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Expand all</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                      onClick={collapseAllProjects}
-                      aria-label={
-                        section.title === 'Projects'
-                          ? 'Collapse all projects'
-                          : `Collapse all projects on ${section.title}`
-                      }
-                    >
-                      <ChevronsDownUp className="size-3.5" />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Collapse all</TooltipContent>
-                </Tooltip>
-              </div>
             )}
           </div>
           {section.projects.map(item => (

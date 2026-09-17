@@ -36,7 +36,6 @@ import {
   Settings,
   Plus,
   FileJson,
-  Clock3,
   Activity,
   AlertCircle,
   CircleDot,
@@ -934,10 +933,7 @@ function WorktreeSectionHeader({
               </span>
             ))}
             {lastActivity && (
-              <span className="inline-flex items-center gap-1 rounded px-2 py-0.5">
-                <Clock3 className="h-3 w-3" />
-                {lastActivity}
-              </span>
+              <span className="rounded px-2 py-0.5">{lastActivity}</span>
             )}
             {onRowClick && (
               <span className="ml-auto hidden text-[11px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:inline-flex">

@@ -73,7 +73,7 @@ export function MobileFileBrowser({
           </SheetDescription>
         </SheetHeader>
         <Suspense fallback={null}>
-          <FileBrowserSidebar hideCloseButton={false} />
+          <FileBrowserSidebar />
         </Suspense>
       </SheetContent>
     </Sheet>

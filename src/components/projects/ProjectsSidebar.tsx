@@ -121,81 +121,7 @@ export function ProjectsSidebar() {
       {/* Content */}
       <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
         <div className="border-b border-border/40 pb-2 pt-[3px]">
-          {showServerMenu && (
-            <div className="px-3 pb-1 pt-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    aria-label="Filter projects by server"
-                    className="flex h-7 w-full items-center gap-2 rounded-md border border-transparent bg-transparent px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  >
-                    <Server className="size-3.5" />
-                    <span className="min-w-0 flex-1 truncate text-left">
-                      {selectedServerLabel}
-                    </span>
-                    <ChevronDown className="size-3.5 opacity-50" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  align="start"
-                  className="border-border/60 bg-popover/95 shadow-lg backdrop-blur-sm"
-                  style={{ width: sidebarWidth - 24 }}
-                >
-                  <DropdownMenuRadioGroup
-                    value={serverFilter}
-                    onValueChange={setServerFilter}
-                  >
-                    <DropdownMenuRadioItem
-                      value={ALL_SERVERS}
-                      className="text-xs"
-                    >
-                      All servers
-                    </DropdownMenuRadioItem>
-                    {serverIds.map(serverId => {
-                      const snapshot = serverSnapshots.get(serverId)
-                      const fallback = projects.find(
-                        project => projectServerId(project) === serverId
-                      )?.serverName
-                      const status = snapshot?.status
-                      const statusLabel =
-                        status && status !== 'local' && status !== 'online'
-                          ? ` (${status})`
-                          : ''
-                      return (
-                        <DropdownMenuRadioItem
-                          key={serverId}
-                          value={serverId}
-                          className="text-xs"
-                        >
-                          {snapshot?.name ?? fallback ?? 'Local'}
-                          {statusLabel}
-                        </DropdownMenuRadioItem>
-                      )
-                    })}
-                  </DropdownMenuRadioGroup>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem
-                    className="text-xs text-muted-foreground"
-                    onSelect={() => setConnectionsOpen(true)}
-                  >
-                    <Settings2 className="size-3.5" />
-                    Connections
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
-              <RemoteConnectionsDialog
-                open={connectionsOpen}
-                onOpenChange={setConnectionsOpen}
-                showTrigger={false}
-              />
-            </div>
-          )}
-          <div
-            className={
-              showServerMenu ? 'flex gap-2 px-3' : 'flex gap-2 px-3 pt-2'
-            }
-          >
+          <div className="flex gap-2 px-3 pt-2">
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -223,6 +149,76 @@ export function ProjectsSidebar() {
             </Tooltip>
           </div>
         </div>
+        {showServerMenu && (
+          <div className="px-3 py-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  aria-label="Filter projects by server"
+                  className="flex h-7 w-full items-center gap-2 rounded-md border border-transparent bg-transparent px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  <Server className="size-3.5" />
+                  <span className="min-w-0 flex-1 truncate text-left">
+                    {selectedServerLabel}
+                  </span>
+                  <ChevronDown className="size-3.5 opacity-50" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                className="border-border/60 bg-popover/95 shadow-lg backdrop-blur-sm"
+                style={{ width: sidebarWidth - 24 }}
+              >
+                <DropdownMenuRadioGroup
+                  value={serverFilter}
+                  onValueChange={setServerFilter}
+                >
+                  <DropdownMenuRadioItem
+                    value={ALL_SERVERS}
+                    className="text-xs"
+                  >
+                    All servers
+                  </DropdownMenuRadioItem>
+                  {serverIds.map(serverId => {
+                    const snapshot = serverSnapshots.get(serverId)
+                    const fallback = projects.find(
+                      project => projectServerId(project) === serverId
+                    )?.serverName
+                    const status = snapshot?.status
+                    const statusLabel =
+                      status && status !== 'local' && status !== 'online'
+                        ? ` (${status})`
+                        : ''
+                    return (
+                      <DropdownMenuRadioItem
+                        key={serverId}
+                        value={serverId}
+                        className="text-xs"
+                      >
+                        {snapshot?.name ?? fallback ?? 'Local'}
+                        {statusLabel}
+                      </DropdownMenuRadioItem>
+                    )
+                  })}
+                </DropdownMenuRadioGroup>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-xs text-muted-foreground"
+                  onSelect={() => setConnectionsOpen(true)}
+                >
+                  <Settings2 className="size-3.5" />
+                  Connections
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <RemoteConnectionsDialog
+              open={connectionsOpen}
+              onOpenChange={setConnectionsOpen}
+              showTrigger={false}
+            />
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center p-4">
             <span className="text-sm text-muted-foreground">Loading...</span>

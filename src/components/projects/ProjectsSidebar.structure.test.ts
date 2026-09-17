@@ -8,7 +8,7 @@ describe('ProjectsSidebar server filter', () => {
       'utf8'
     )
 
-    expect(source).toContain('className="px-3 pb-1 pt-2"')
+    expect(source).toContain('className="px-3 py-2"')
     expect(source).toContain('<DropdownMenuTrigger')
     expect(source).toContain('aria-label="Filter projects by server"')
     expect(source).toContain('border-transparent bg-transparent')
@@ -37,7 +37,7 @@ describe('ProjectsSidebar server filter', () => {
     expect(source).not.toContain('>Features<')
   })
 
-  it('shows search and a clear add-project action below the server selector', () => {
+  it('places the server selector after search and before the project list', () => {
     const source = readFileSync(
       'src/components/projects/ProjectsSidebar.tsx',
       'utf8'
@@ -50,9 +50,10 @@ describe('ProjectsSidebar server filter', () => {
     const addProject = source.indexOf('aria-label="Add project"')
     const projectTree = source.indexOf('<ProjectTree')
 
-    expect(search).toBeGreaterThan(serverSelector)
+    expect(serverSelector).toBeGreaterThan(search)
     expect(addProject).toBeGreaterThan(search)
-    expect(projectTree).toBeGreaterThan(addProject)
+    expect(serverSelector).toBeGreaterThan(addProject)
+    expect(projectTree).toBeGreaterThan(serverSelector)
     expect(source).toContain('<Plus className="size-3.5" />')
     expect(source).toContain('searchQuery={searchQuery}')
     expect(source).not.toContain('aria-label="New"')
@@ -99,7 +100,9 @@ describe('ProjectsSidebar server filter', () => {
       'utf8'
     )
 
-    expect(source).toContain("showServerMenu ? 'p-2' : 'px-2 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]'")
+    expect(source).toContain(
+      "showServerMenu ? 'p-2' : 'px-2 pt-2 pb-[max(1rem,env(safe-area-inset-bottom))]'"
+    )
   })
 
   it('places the app version at the bottom-right of the sidebar footer', () => {

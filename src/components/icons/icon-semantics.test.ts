@@ -31,4 +31,13 @@ describe('semantic brand and issue icons', () => {
       "export { RecordCircle as GitCommitHorizontal } from 'reicon-react'"
     )
   })
+
+  it('maps CodeRabbit to its official brand mark', () => {
+    expect(source).toContain(
+      "export { CodeRabbitIcon as Rabbit } from './CodeRabbitIcon'"
+    )
+    expect(source).not.toContain(
+      "export { Speedometer as Rabbit } from 'reicon-react'"
+    )
+  })
 })
