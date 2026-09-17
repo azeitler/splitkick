@@ -314,6 +314,74 @@ describe('useBackgroundInvestigation', () => {
     })
   })
 
+  it('consumes the flag when the worktree cache updates during startup', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const cacheKey = [
+      ...projectsQueryKeys.all,
+      'worktree',
+      'worktree-1',
+    ] as const
+    queryClient.setQueryData<Worktree>(cacheKey, {
+      id: 'worktree-1',
+      project_id: 'project-1',
+      path: '/tmp/worktree-1',
+      status: 'ready',
+    } as Worktree)
+
+    let finishStart: ((value: unknown) => void) | undefined
+    vi.mocked(invoke).mockImplementation(async command => {
+      if (command === 'list_loaded_issue_contexts') return [{ number: 42 }]
+      if (command === 'start_background_investigation') {
+        return new Promise(resolve => {
+          finishStart = resolve
+        })
+      }
+      throw new Error(`Unexpected command: ${command}`)
+    })
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+    renderHook(() => useBackgroundInvestigation(), { wrapper })
+
+    await waitFor(() => expect(finishStart).toBeDefined())
+    act(() => {
+      queryClient.setQueryData<Worktree>(cacheKey, old => ({
+        ...(old as Worktree),
+        branch: 'updated-during-start',
+      }))
+    })
+    act(() => {
+      finishStart?.({
+        sessionId: 'session-1',
+        worktreeId: 'worktree-1',
+        status: 'investigation_started',
+      })
+    })
+
+    await waitFor(() => {
+      expect(
+        useUIStore.getState().autoInvestigateWorktreeIds.has('worktree-1')
+      ).toBe(false)
+    })
+
+    act(() => {
+      queryClient.setQueryData<Worktree>(cacheKey, old => ({
+        ...(old as Worktree),
+        branch: 'later-update',
+      }))
+    })
+    expect(
+      vi
+        .mocked(invoke)
+        .mock.calls.filter(
+          ([command]) => command === 'start_background_investigation'
+        )
+    ).toHaveLength(1)
+  })
+
   it('starts investigation even when the worktree is already active/open', async () => {
     const queryClient = new QueryClient({
       defaultOptions: { queries: { retry: false } },

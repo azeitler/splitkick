@@ -285,7 +285,11 @@ export function useBackgroundInvestigation(): void {
           autoInvestigateOverrides[worktreeId]
         )
           .then(() => {
-            if (!disposed) consumeByType[type](worktreeId)
+            // A worktree cache update can re-run this effect while the backend
+            // is accepting the investigation. The accepted prompt is durable,
+            // so consume its flag even when that effect instance was cleaned
+            // up. Leaving it set makes a later cache update start it again.
+            consumeByType[type](worktreeId)
           })
           .catch(err => {
             logger.error('Background investigation failed', { worktreeId, err })
