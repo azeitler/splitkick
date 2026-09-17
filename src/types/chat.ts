@@ -1367,6 +1367,14 @@ export interface SaveTextResponse {
   size: number
 }
 
+/** Response from saving an arbitrary uploaded file. */
+export interface SaveFileResponse {
+  id: string
+  filename: string
+  path: string
+  size: number
+}
+
 /**
  * Response from the read_pasted_text Tauri command
  */

@@ -21,6 +21,7 @@ describe('client view state store bridge', () => {
       projectCanvasActiveFilters: {},
       githubDashboardFavoriteProjectIds: [],
       sidebarServerFilter: null,
+      sidebarActiveTab: 'projects',
     })
   })
 
@@ -56,6 +57,7 @@ describe('client view state store bridge', () => {
       projectAccessTimestamps: { 'server:project': 123 },
       projectCanvasActiveFilters: { 'server:project': 'manual' },
       sidebarServerFilter: 'server',
+      sidebarActiveTab: 'recent',
     })
     useUIStore.setState({ rightSidebarVisible: true, zenMode: true })
     useTerminalStore.setState({
@@ -67,6 +69,7 @@ describe('client view state store bridge', () => {
       expandedWorktreeIds: new Set(),
       projectCanvasActiveFilters: {},
       sidebarServerFilter: null,
+      sidebarActiveTab: 'projects',
     })
     useUIStore.setState({ rightSidebarVisible: false, zenMode: false })
     useTerminalStore.setState({ terminalVisibleByWorktree: {} })
@@ -83,6 +86,7 @@ describe('client view state store bridge', () => {
       'server:project': 'manual',
     })
     expect(useProjectsStore.getState().sidebarServerFilter).toBe('server')
+    expect(useProjectsStore.getState().sidebarActiveTab).toBe('recent')
     expect(useUIStore.getState().rightSidebarVisible).toBe(true)
     expect(useUIStore.getState().zenMode).toBe(true)
     expect(useTerminalStore.getState().terminalVisibleByWorktree).toEqual({

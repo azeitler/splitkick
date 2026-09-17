@@ -69,7 +69,8 @@ export function ProjectsSidebar() {
     state => state.setSidebarServerFilter
   )
   const [connectionsOpen, setConnectionsOpen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'projects' | 'recent'>('projects')
+  const activeTab = useProjectsStore(state => state.sidebarActiveTab)
+  const setActiveTab = useProjectsStore(state => state.setSidebarActiveTab)
   const [searchQuery, setSearchQuery] = useState('')
   const [appVersion, setAppVersion] = useState(FALLBACK_APP_VERSION)
   const serverSnapshots = useServerConnectionSnapshots()

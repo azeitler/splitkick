@@ -40,6 +40,7 @@ describe('client view state', () => {
         'server-a:project-1': 'label:Important',
       },
       sidebar_server_filter: 'server-a',
+      sidebar_active_tab: 'recent' as const,
       left_sidebar_visible: true,
       left_sidebar_size: 320,
       file_browser_visible: true,

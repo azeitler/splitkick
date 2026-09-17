@@ -21,6 +21,7 @@ describe('useClientViewStatePersistence', () => {
     useProjectsStore.setState({
       expandedWorktreeIds: new Set(),
       projectCanvasActiveFilters: {},
+      sidebarActiveTab: 'projects',
     })
   })
 
@@ -31,6 +32,7 @@ describe('useClientViewStatePersistence', () => {
         ...defaultClientViewState,
         expanded_worktree_ids: ['server:worktree-1'],
         project_canvas_active_filters: { 'server:project-1': 'manual' },
+        sidebar_active_tab: 'recent',
       })
     )
 
@@ -40,6 +42,7 @@ describe('useClientViewStatePersistence', () => {
       expect(useProjectsStore.getState().expandedWorktreeIds).toEqual(
         new Set(['server:worktree-1'])
       )
+      expect(useProjectsStore.getState().sidebarActiveTab).toBe('recent')
     })
 
     useProjectsStore

@@ -19,6 +19,7 @@ export interface ClientViewState {
   dashboard_worktree_collapse_overrides: Record<string, boolean>
   github_dashboard_favorite_project_ids: string[]
   sidebar_server_filter: string | null
+  sidebar_active_tab: 'projects' | 'recent'
   left_sidebar_visible: boolean
   left_sidebar_size: number
   file_browser_visible: boolean
@@ -54,6 +55,7 @@ export const defaultClientViewState: ClientViewState = {
   dashboard_worktree_collapse_overrides: {},
   github_dashboard_favorite_project_ids: [],
   sidebar_server_filter: null,
+  sidebar_active_tab: 'projects',
   left_sidebar_visible: false,
   left_sidebar_size: 250,
   file_browser_visible: false,
@@ -188,6 +190,11 @@ function parseClientViewState(value: unknown): ClientViewState {
     isString(value.sidebar_server_filter)
   )
     assign('sidebar_server_filter', value.sidebar_server_filter)
+  if (
+    value.sidebar_active_tab === 'projects' ||
+    value.sidebar_active_tab === 'recent'
+  )
+    assign('sidebar_active_tab', value.sidebar_active_tab)
 
   for (const key of [
     'left_sidebar_visible',

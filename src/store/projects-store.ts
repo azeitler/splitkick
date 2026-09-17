@@ -9,6 +9,8 @@ export interface ProjectCanvasSettings {
   labels?: LabelData[]
 }
 
+export type SidebarTab = 'projects' | 'recent'
+
 interface ProjectsUIState {
   // Selection state
   selectedProjectId: string | null
@@ -33,6 +35,7 @@ interface ProjectsUIState {
   projectCanvasSettings: Record<string, ProjectCanvasSettings>
   projectCanvasActiveFilters: Record<string, string>
   sidebarServerFilter: string | null
+  sidebarActiveTab: SidebarTab
 
   // Favorited projects shown first in the GitHub Dashboard filter and sections
   githubDashboardFavoriteProjectIds: string[]
@@ -95,6 +98,7 @@ interface ProjectsUIState {
     open: boolean,
     parentFolderId?: string | null
   ) => void
+  setSidebarActiveTab: (tab: SidebarTab) => void
   openProjectSettings: (projectId: string, pane?: string) => void
   closeProjectSettings: () => void
   openGitInitModal: (path: string) => void
@@ -137,6 +141,7 @@ export const useProjectsStore = create<ProjectsUIState>()(
       projectCanvasSettings: {},
       projectCanvasActiveFilters: {},
       sidebarServerFilter: null,
+      sidebarActiveTab: 'projects',
       githubDashboardFavoriteProjectIds: [],
       addProjectDialogOpen: false,
       addProjectParentFolderId: null,
@@ -394,6 +399,14 @@ export const useProjectsStore = create<ProjectsUIState>()(
               : { sidebarServerFilter: serverId },
           undefined,
           'setSidebarServerFilter'
+        ),
+
+      setSidebarActiveTab: tab =>
+        set(
+          state =>
+            state.sidebarActiveTab === tab ? state : { sidebarActiveTab: tab },
+          undefined,
+          'setSidebarActiveTab'
         ),
 
       setGitHubDashboardFavoriteProjectIds: projectIds =>

@@ -11,6 +11,8 @@ describe('ProjectsSidebar server filter', () => {
     expect(source).toContain('role="tablist"')
     expect(source).toContain("(['projects', 'recent'] as const)")
     expect(source).toContain('<RecentWorktreesList projects={projects} />')
+    expect(source).toContain('state => state.sidebarActiveTab')
+    expect(source).toContain('state => state.setSidebarActiveTab')
   })
 
   it('uses a compact dropdown that blends into the sidebar', () => {

@@ -11,6 +11,7 @@ describe('ProjectsStore', () => {
       projectCanvasSettings: {},
       projectCanvasActiveFilters: {},
       sidebarServerFilter: null,
+      sidebarActiveTab: 'projects',
       githubDashboardFavoriteProjectIds: [],
       addProjectDialogOpen: false,
       projectSettingsDialogOpen: false,
@@ -246,6 +247,12 @@ describe('ProjectsStore', () => {
         'server-1:project-1': 'manual',
       })
       expect(useProjectsStore.getState().sidebarServerFilter).toBe('server-1')
+    })
+
+    it('stores the selected sidebar tab', () => {
+      useProjectsStore.getState().setSidebarActiveTab('recent')
+
+      expect(useProjectsStore.getState().sidebarActiveTab).toBe('recent')
     })
 
     it('stores worktree sort mode per project', () => {

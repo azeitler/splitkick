@@ -13,7 +13,6 @@ import {
 import { chatQueryKeys } from '@/services/chat'
 import { isFolder, type Project, type Worktree } from '@/types/projects'
 import type { WorktreeSessions } from '@/types/chat'
-import { getSessionActivityTimestamp } from './worktree-sort-utils'
 import { buildRecentWorktreeRows } from './recent-worktrees'
 
 const INITIAL_RECENT_LIMIT = 10
@@ -91,23 +90,12 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
       selectWorktree(row.worktree.id)
       useChatStore.getState().clearActiveWorktree()
 
-      const activeSessions = row.sessions.sessions.filter(
-        session => !session.archived_at
-      )
-      const targetSession = [...activeSessions].sort(
-        (a, b) =>
-          getSessionActivityTimestamp(b) - getSessionActivityTimestamp(a)
-      )[0]
-      if (targetSession) {
-        useChatStore
-          .getState()
-          .setActiveSession(row.worktree.id, targetSession.id)
-      }
+      useChatStore.getState().setActiveSession(row.worktree.id, row.session.id)
       window.setTimeout(() => {
         window.dispatchEvent(
           new CustomEvent('open-session-modal', {
             detail: {
-              sessionId: targetSession?.id ?? '',
+              sessionId: row.session.id,
               worktreeId: row.worktree.id,
               worktreePath: row.worktree.path,
             },
@@ -143,51 +131,56 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col overflow-y-auto"
+      className="flex h-full min-h-0 flex-col overflow-hidden"
       data-testid="recent-worktrees-list"
     >
-      <div className="divide-y divide-border/30">
-        {visibleRows.map(row => (
-          <button
-            key={row.worktree.id}
-            type="button"
-            className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50"
-            onClick={() => handleOpen(row)}
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                {row.project.name}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="divide-y divide-border/30">
+          {visibleRows.map(row => (
+            <button
+              key={row.worktree.id}
+              type="button"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50"
+              onClick={() => handleOpen(row)}
+            >
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                  {row.project.name}
+                </span>
+                <span className="block truncate text-sm text-foreground">
+                  {row.session.name}
+                </span>
               </span>
-              <span className="block truncate text-sm text-foreground">
-                {row.worktree.name}
-              </span>
-            </span>
-            {(row.added > 0 || row.removed > 0) && (
-              <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium">
-                <span className="text-green-500">+{row.added}</span>
-                <span className="text-red-500">-{row.removed}</span>
-              </span>
-            )}
-          </button>
-        ))}
+              {(row.added > 0 || row.removed > 0) && (
+                <span className="flex shrink-0 items-center gap-1 text-[11px] font-medium">
+                  <span className="text-green-500">+{row.added}</span>
+                  <span className="text-red-500">-{row.removed}</span>
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
       </div>
       {hiddenCount > 0 && (
-        <button
-          type="button"
-          className="mx-3 mb-2 mt-2 flex h-8 items-center justify-center gap-1 rounded-md text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
-          onClick={() => setShowAll(value => !value)}
-          aria-expanded={showAll}
-        >
-          {showAll ? (
-            <>
-              Show first 10 <ChevronUp className="size-3.5" />
-            </>
-          ) : (
-            <>
-              Show {hiddenCount} more <ChevronDown className="size-3.5" />
-            </>
-          )}
-        </button>
+        <div className="shrink-0 border-t border-border/40 p-2">
+          <button
+            type="button"
+            className="flex h-8 w-full items-center justify-center gap-1 rounded-md text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+            onClick={() => setShowAll(value => !value)}
+            aria-expanded={showAll}
+          >
+            {showAll ? (
+              <>
+                Show newest 10 <ChevronUp className="size-3.5" />
+              </>
+            ) : (
+              <>
+                Older worktrees ({hiddenCount})
+                <ChevronDown className="size-3.5" />
+              </>
+            )}
+          </button>
+        </div>
       )}
     </div>
   )

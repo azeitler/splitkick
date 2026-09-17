@@ -43,7 +43,7 @@ import {
 } from './ContextMentionPopover'
 import type { ContextMentionItem } from './hooks/useContextMentionData'
 import { processAttachmentFile } from './attachment-processing'
-import { IMAGE_ATTACHMENT_ACCEPT, MAX_TEXT_SIZE } from './image-constants'
+import { MAX_TEXT_SIZE } from './image-constants'
 import {
   listControlChars,
   sanitizeTextInputValue,
@@ -881,44 +881,43 @@ export const ChatInput = memo(function ChatInput({
 
       const items = e.clipboardData?.items ?? []
 
-      // First, check for image items in the clipboard
-      const imageFiles: File[] = []
+      // First, check for file items in the clipboard.
+      const attachmentFiles: File[] = []
       for (const item of items) {
-        if (!item.type.startsWith('image/')) continue
-        // Prevent the browser from also inserting any text/html fallback for
-        // image clipboard entries; mixed text is handled explicitly below.
-        e.preventDefault()
-
         const file = item.getAsFile()
         if (!file) continue
-        imageFiles.push(file)
+        // Prevent the browser from inserting a fallback representation. Mixed
+        // text is handled explicitly below.
+        e.preventDefault()
+        attachmentFiles.push(file)
       }
-      // iOS can expose an image copied from the share sheet through `files`
+      // iOS can expose a file copied from the share sheet through `files`
       // while leaving `items` empty.
       for (const file of Array.from(e.clipboardData?.files ?? [])) {
-        const isAlreadyExposedByItem = imageFiles.some(
-          imageFile =>
-            imageFile.name === file.name &&
-            imageFile.type === file.type &&
-            imageFile.size === file.size &&
-            imageFile.lastModified === file.lastModified
+        const isAlreadyExposedByItem = attachmentFiles.some(
+          attachmentFile =>
+            attachmentFile.name === file.name &&
+            attachmentFile.type === file.type &&
+            attachmentFile.size === file.size &&
+            attachmentFile.lastModified === file.lastModified
         )
-        if (file.type.startsWith('image/') && !isAlreadyExposedByItem) {
+        if (!isAlreadyExposedByItem) {
           e.preventDefault()
-          imageFiles.push(file)
+          attachmentFiles.push(file)
         }
       }
-      const hasImage = imageFiles.length > 0
-      // Independent per-image save; process in parallel
-      if (imageFiles.length > 0) {
+      const hasFiles = attachmentFiles.length > 0
+      if (hasFiles) {
         await Promise.all(
-          imageFiles.map(file => processAttachmentFile(file, activeSessionId))
+          attachmentFiles.map(file =>
+            processAttachmentFile(file, activeSessionId)
+          )
         )
       }
 
-      // Mixed image+text paste should preserve both parts. Because image paste
+      // Mixed file+text paste should preserve both parts. Because file paste
       // requires preventDefault(), manually apply the text branch too.
-      if (hasImage) {
+      if (hasFiles) {
         if (plainText) {
           const savedAsFile = await saveLargeTextPaste(plainText)
           if (!savedAsFile) {
@@ -1271,11 +1270,10 @@ export const ChatInput = memo(function ChatInput({
       <input
         ref={fileInputRef}
         type="file"
-        accept={IMAGE_ATTACHMENT_ACCEPT}
         multiple
         tabIndex={-1}
         className="sr-only"
-        aria-label="Attach images"
+        aria-label="Attach files"
         onChange={handleFileInputChange}
       />
       <Textarea

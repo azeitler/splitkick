@@ -52,6 +52,7 @@ describe('recent worktrees', () => {
     )
 
     expect(rows.map(row => row.worktree.id)).toEqual(['second', 'first'])
+    expect(rows.map(row => row.session.name)).toEqual(['Session', 'Session'])
   })
 
   it('includes cached Git diff totals', () => {

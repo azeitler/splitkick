@@ -1,11 +1,11 @@
 import { isBaseSession, type Project, type Worktree } from '@/types/projects'
-import type { WorktreeSessions } from '@/types/chat'
+import type { Session, WorktreeSessions } from '@/types/chat'
 import { getSessionActivityTimestamp } from './worktree-sort-utils'
 
 export interface RecentWorktreeRow {
   project: Project
   worktree: Worktree
-  sessions: WorktreeSessions
+  session: Session
   lastActivityAt: number
   added: number
   removed: number
@@ -24,16 +24,19 @@ export function buildRecentWorktreeRows(
 
         const promptedSessions = sessions.sessions.filter(
           session =>
-            session.last_message_at != null ||
-            (session.message_count ?? session.messages.length) > 0
+            !session.archived_at &&
+            (session.last_message_at != null ||
+              (session.message_count ?? session.messages.length) > 0)
         )
         if (promptedSessions.length === 0) return []
 
-        const lastActivityAt = promptedSessions.reduce(
-          (latest, session) =>
-            Math.max(latest, getSessionActivityTimestamp(session)),
-          0
+        const session = promptedSessions.reduce((latest, candidate) =>
+          getSessionActivityTimestamp(candidate) >
+          getSessionActivityTimestamp(latest)
+            ? candidate
+            : latest
         )
+        const lastActivityAt = getSessionActivityTimestamp(session)
         const uncommittedAdded = worktree.cached_uncommitted_added ?? 0
         const uncommittedRemoved = worktree.cached_uncommitted_removed ?? 0
         const added = isBaseSession(worktree)
@@ -47,7 +50,7 @@ export function buildRecentWorktreeRows(
           {
             project,
             worktree,
-            sessions,
+            session,
             lastActivityAt,
             added,
             removed,
