@@ -2,7 +2,6 @@ import { forwardRef, useCallback } from 'react'
 import {
   Archive,
   Copy,
-  FileText,
   Pencil,
   RefreshCw,
   Shield,
@@ -45,7 +44,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
       onSelect,
       onArchive,
       onDelete,
-      onPlanView,
       onApprove,
       onYolo,
       onClearContextApprove,
@@ -77,7 +75,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             }
           }
         : undefined)
-    const hasPlan = !!(card.planFilePath || card.planContent)
     const resumeCommand = getResumeCommand(card.session)
     const canReconnect = canReconnectSession(card.session)
     const renameInputRef = useCallback((node: HTMLInputElement | null) => {
@@ -315,11 +312,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
               Reconnect
             </ContextMenuItem>
           )}
-          <ContextMenuSeparator />
-          <ContextMenuItem disabled={!hasPlan} onSelect={onPlanView}>
-            <FileText className="mr-2 h-4 w-4" />
-            Plan
-          </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem variant="destructive" onSelect={onDelete}>
             <Trash2 className="mr-2 h-4 w-4" />

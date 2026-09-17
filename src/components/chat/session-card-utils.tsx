@@ -135,7 +135,6 @@ export interface SessionCardProps {
   onSelect: () => void
   onArchive: () => void
   onDelete: () => void
-  onPlanView: () => void
   onApprove?: () => void
   onYolo?: () => void
   onClearContextApprove?: () => void

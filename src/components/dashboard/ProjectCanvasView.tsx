@@ -121,7 +121,6 @@ import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { countUnreadFailedWorkflowRuns } from '@/components/shared/workflow-run-utils'
 import { SecurityAlertsBadge } from '@/components/shared/SecurityAlertsBadge'
-import { PlanDialog } from '@/components/chat/PlanDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
 import {
   getStackedBaseBranch,
@@ -2444,18 +2443,10 @@ export function ProjectCanvasView({
   // Get selected card for shortcut events
   const selectedCard = selectedFlatCard?.card ?? null
 
-  // Shortcut events (plan, approve) - must be before keyboard nav to get dialog states
-  const {
-    planDialogPath,
-    planDialogContent,
-    planApprovalContext,
-    planDialogCard,
-    closePlanDialog,
-  } = useCanvasShortcutEvents({
+  // Shortcut events for plan approval
+  useCanvasShortcutEvents({
     selectedCard,
     enabled: !selectedWorktreeModal && selectedIndex !== null,
-    worktreeId: selectedFlatCard?.worktreeId ?? '',
-    worktreePath: selectedFlatCard?.worktreePath ?? '',
     onPlanApproval: (card, updatedPlan) =>
       card.session.backend === 'cursor'
         ? handleClearContextApprovalBuild(card, updatedPlan)
@@ -2850,8 +2841,6 @@ export function ProjectCanvasView({
   // Keyboard navigation - disable when any modal/dialog is open
   const isModalOpen =
     !!selectedWorktreeModal ||
-    !!planDialogPath ||
-    !!planDialogContent ||
     worktreeLabelModalOpen ||
     !!labelDeleteTarget
   const { cardRefs } = useCanvasKeyboardNav({
@@ -2866,81 +2855,6 @@ export function ProjectCanvasView({
     enabled: !isModalOpen,
     onSelectionChange: syncSelectionToStore,
   })
-
-  // Handle approve from dialog (with updated plan content)
-  // Cursor can't switch modes on a resumed session, so redirect to clear-context (new session)
-  const isDialogCardCursor = planDialogCard?.session.backend === 'cursor'
-  const handleDialogApprove = useCallback(
-    (updatedPlan: string) => {
-      if (planDialogCard) {
-        if (isDialogCardCursor) {
-          handleClearContextApprovalBuild(planDialogCard, updatedPlan)
-        } else {
-          handlePlanApproval(planDialogCard, updatedPlan)
-        }
-      }
-    },
-    [
-      planDialogCard,
-      handlePlanApproval,
-      handleClearContextApprovalBuild,
-      isDialogCardCursor,
-    ]
-  )
-
-  const handleDialogApproveYolo = useCallback(
-    (updatedPlan: string) => {
-      if (planDialogCard) {
-        if (isDialogCardCursor) {
-          handleClearContextApproval(planDialogCard, updatedPlan)
-        } else {
-          handlePlanApprovalYolo(planDialogCard, updatedPlan)
-        }
-      }
-    },
-    [
-      planDialogCard,
-      handlePlanApprovalYolo,
-      handleClearContextApproval,
-      isDialogCardCursor,
-    ]
-  )
-
-  const handleDialogClearContextApprove = useCallback(
-    (updatedPlan: string) => {
-      if (planDialogCard) {
-        handleClearContextApproval(planDialogCard, updatedPlan)
-      }
-    },
-    [planDialogCard, handleClearContextApproval]
-  )
-
-  const handleDialogClearContextApproveBuild = useCallback(
-    (updatedPlan: string) => {
-      if (planDialogCard) {
-        handleClearContextApprovalBuild(planDialogCard, updatedPlan)
-      }
-    },
-    [planDialogCard, handleClearContextApprovalBuild]
-  )
-
-  const handleDialogWorktreeApprove = useCallback(
-    (updatedPlan: string) => {
-      if (planDialogCard && handleWorktreeApproval) {
-        handleWorktreeApproval(planDialogCard, updatedPlan)
-      }
-    },
-    [planDialogCard, handleWorktreeApproval]
-  )
-
-  const handleDialogWorktreeApproveYolo = useCallback(
-    (updatedPlan: string) => {
-      if (planDialogCard && handleWorktreeApprovalYolo) {
-        handleWorktreeApprovalYolo(planDialogCard, updatedPlan)
-      }
-    },
-    [planDialogCard, handleWorktreeApprovalYolo]
-  )
 
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
@@ -3770,51 +3684,6 @@ export function ProjectCanvasView({
           )}
         </div>
       </div>
-
-      {/* Plan Dialog */}
-      {planDialogPath ? (
-        <PlanDialog
-          filePath={planDialogPath}
-          isOpen={true}
-          onClose={closePlanDialog}
-          editable={true}
-          disabled={planDialogCard?.isSending ?? false}
-          approvalContext={planApprovalContext ?? undefined}
-          onApprove={handleDialogApprove}
-          onApproveYolo={handleDialogApproveYolo}
-          onClearContextApprove={handleDialogClearContextApprove}
-          onClearContextBuildApprove={handleDialogClearContextApproveBuild}
-          onWorktreeBuildApprove={
-            handleWorktreeApproval ? handleDialogWorktreeApprove : undefined
-          }
-          onWorktreeYoloApprove={
-            handleWorktreeApprovalYolo
-              ? handleDialogWorktreeApproveYolo
-              : undefined
-          }
-        />
-      ) : planDialogContent ? (
-        <PlanDialog
-          content={planDialogContent}
-          isOpen={true}
-          onClose={closePlanDialog}
-          editable={true}
-          disabled={planDialogCard?.isSending ?? false}
-          approvalContext={planApprovalContext ?? undefined}
-          onApprove={handleDialogApprove}
-          onApproveYolo={handleDialogApproveYolo}
-          onClearContextApprove={handleDialogClearContextApprove}
-          onClearContextBuildApprove={handleDialogClearContextApproveBuild}
-          onWorktreeBuildApprove={
-            handleWorktreeApproval ? handleDialogWorktreeApprove : undefined
-          }
-          onWorktreeYoloApprove={
-            handleWorktreeApprovalYolo
-              ? handleDialogWorktreeApproveYolo
-              : undefined
-          }
-        />
-      ) : null}
 
       {/* Worktree Label Modal */}
       <LabelModal

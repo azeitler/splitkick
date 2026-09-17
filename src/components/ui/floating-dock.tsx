@@ -13,7 +13,6 @@ import {
   Menu,
   Plus,
   Archive,
-  FileText,
   Github,
   GitPullRequest,
   ShieldAlert,
@@ -538,14 +537,6 @@ export function FloatingDock() {
               </DropdownMenuItem>
             </>
           )}
-          <DropdownMenuSeparator />
-
-          <DropdownMenuItem
-            onClick={() => window.dispatchEvent(new CustomEvent('open-plan'))}
-          >
-            <FileText className="mr-2 h-4 w-4" />
-            View Plan
-          </DropdownMenuItem>
           {isMobile && currentWorktreeId && (
             <>
               <DropdownMenuSeparator />

@@ -388,7 +388,6 @@ function executeKeybindingAction(
 ) {
   // Canvas-only actions: blocked when the session chat modal is open
   const CANVAS_ONLY_ACTIONS = new Set<KeybindingAction>([
-    'open_plan',
     'restore_last_archived',
     'focus_canvas_search',
   ])
@@ -652,10 +651,6 @@ function executeKeybindingAction(
       window.dispatchEvent(new CustomEvent('approve-plan-worktree-yolo'))
       break
     }
-    case 'open_plan':
-      logger.debug('Keybinding: open_plan')
-      window.dispatchEvent(new CustomEvent('open-plan'))
-      break
     case 'restore_last_archived':
       logger.debug('Keybinding: restore_last_archived')
       window.dispatchEvent(new CustomEvent('restore-last-archived'))
