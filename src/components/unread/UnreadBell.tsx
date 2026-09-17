@@ -169,11 +169,7 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
   const { data: preferences } = usePreferences()
   const animationEnabled =
     preferences?.finished_session_animation_enabled ?? true
-  const {
-    data: allSessions,
-    isLoading,
-    isFetching,
-  } = useAllSessions(open)
+  const { data: allSessions, isLoading, isFetching } = useAllSessions(open)
   const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
   // Listen for command palette event to open the popover
   useEffect(() => {
@@ -249,11 +245,12 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
     return results.sort((a, b) => b.session.updated_at - a.session.updated_at)
   }, [allSessions])
 
-  // Take the open snapshot only after the on-demand query has data. Taking an
-  // empty snapshot while the query starts makes the first open look empty and
-  // hides data that arrives while the popover is open.
+  // Use cached unread rows immediately while the open-triggered refetch runs.
+  // Only defer an empty snapshot because it can be stale and would hide rows
+  // that arrive with the refetch.
   useEffect(() => {
-    if (!open || !allSessions || isFetching) return
+    if (!open || !allSessions || (isFetching && unreadItems.length === 0))
+      return
     setSnapshotItems(prev => prev ?? unreadItems)
   }, [allSessions, isFetching, open, unreadItems])
 
@@ -406,14 +403,18 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
         handleSelect(only)
         return
       }
-      if (allSessions && !isFetching) setSnapshotItems(unreadItems)
+      if (allSessions && (!isFetching || unreadItems.length > 0)) {
+        setSnapshotItems(unreadItems)
+      }
     },
     [allSessions, isFetching, unreadItems, handleSelect]
   )
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
-      if (next && allSessions && !isFetching) setSnapshotItems(unreadItems)
+      if (next && allSessions && (!isFetching || unreadItems.length > 0)) {
+        setSnapshotItems(unreadItems)
+      }
       setOpen(next)
     },
     [allSessions, isFetching, unreadItems]
@@ -537,7 +538,8 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
           </div>
         )}
 
-        {isLoading || (isFetching && snapshotItems === null) ? (
+        {isLoading ||
+        (isFetching && snapshotItems === null && unreadItems.length === 0) ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           </div>

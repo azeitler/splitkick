@@ -219,8 +219,9 @@ describe('UnreadBell', () => {
       screen.getByRole('button', { name: /1 finished session/i })
     )
 
-    expect(screen.getByRole('button', { name: /1 finished session/i }))
-      .toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /1 finished session/i })
+    ).toBeInTheDocument()
 
     allSessions = {
       entries: [
@@ -238,8 +239,21 @@ describe('UnreadBell', () => {
     view.rerender(<UnreadBell title="Jean" />)
 
     expect(await screen.findByText('Session one')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /1 finished session/i }))
-      .toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /1 finished session/i })
+    ).toBeInTheDocument()
+  })
+
+  it('shows cached unread sessions on the first click while refetching', async () => {
+    allSessionsFetching = true
+    renderWithQueryClient(<UnreadBell title="Jean" />)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /2 finished sessions/i })
+    )
+
+    expect(screen.getByText('Session one')).toBeInTheDocument()
+    expect(screen.getByText('Session two')).toBeInTheDocument()
   })
 
   it('shows a running Claude session instead of stale waiting state', async () => {
