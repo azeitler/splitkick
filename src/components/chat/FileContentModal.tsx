@@ -15,7 +15,7 @@ import {
   Eye,
   Save,
   ExternalLink,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   invoke,
   invokeForOptionalServer,

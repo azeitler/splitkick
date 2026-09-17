@@ -36,7 +36,7 @@ import { disposeTerminal, setOnStopped } from '@/lib/terminal-instances'
 import { BackendLabel } from '@/components/ui/backend-label'
 import { generateId } from '@/lib/uuid'
 import { StandaloneTerminalSurface } from '@/components/chat/StandaloneTerminalSurface'
-import { Minus } from 'lucide-react'
+import { Minus } from '@/components/icons/reicon'
 
 export function CliLoginModal() {
   const [retryKey, setRetryKey] = useState(0)

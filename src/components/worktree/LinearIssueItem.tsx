@@ -1,4 +1,4 @@
-import { Loader2, Wand2, Eye } from 'lucide-react'
+import { Loader2, Wand2, Eye } from '@/components/icons/reicon'
 import { getModifierSymbol } from '@/lib/platform'
 import {
   Tooltip,

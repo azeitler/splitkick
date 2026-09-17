@@ -1,4 +1,4 @@
-import { Loader2, Wand2 } from 'lucide-react'
+import { Loader2, Wand2 } from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 
 export interface BulkInvestigateBarProps {

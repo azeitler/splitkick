@@ -11,8 +11,9 @@ describe('TitleBar macOS action insets', () => {
 
     expect(titleBar).toContain("'mac-titlebar-actions'")
     expect(styles).toContain(
-      'padding-left: var(--mac-titlebar-action-left-inset, 76px);'
+      'padding-left: var(--mac-titlebar-action-left-inset, 68px);'
     )
+    expect(styles).toContain('margin-left: 8px;')
     expect(styles).toContain(
       'padding-top: var(--mac-titlebar-action-top-inset, 4px);'
     )

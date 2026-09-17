@@ -15,7 +15,7 @@ import {
   Loader2,
   Wand2,
   RefreshCw,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   Tooltip,
   TooltipTrigger,

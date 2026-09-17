@@ -4,7 +4,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { ChevronRight, CheckCircle2, XCircle, X } from 'lucide-react'
+import { ChevronRight, CheckCircle2, XCircle, X } from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import type { SetupScriptResult } from '@/types/chat'
 

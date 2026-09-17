@@ -22,7 +22,7 @@ import {
   ChevronDown,
   ChevronRight,
   MessagesSquare,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import type {
   ReviewFinding,
   ReviewResponse,

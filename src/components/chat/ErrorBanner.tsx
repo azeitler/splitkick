@@ -1,5 +1,5 @@
 import { memo, type ReactNode } from 'react'
-import { AlertCircle, X } from 'lucide-react'
+import { AlertCircle, X } from '@/components/icons/reicon'
 import { openExternal } from '@/lib/platform'
 
 interface ErrorBannerProps {

@@ -17,7 +17,7 @@ import {
   extractInstruction,
   type Instruction,
 } from '@atlaskit/pragmatic-drag-and-drop-hitbox/list-item'
-import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import { ChevronsDownUp, ChevronsUpDown } from '@/components/icons/reicon'
 import { isFolder, type Project } from '@/types/projects'
 import { ProjectTreeItem } from './ProjectTreeItem'
 import { FolderTreeItem } from './FolderTreeItem'
@@ -63,6 +63,7 @@ function getMaxSubtreeDepth(projects: Project[], itemId: string): number {
 interface ProjectTreeProps {
   projects: Project[]
   groupByServer?: boolean
+  searchQuery?: string
 }
 
 function canMoveIntoFolder({
@@ -139,6 +140,7 @@ interface SortableItemProps {
   overFolderId: string | null
   insertBeforeId: string | null
   activeId: string | null
+  searchQuery: string
 }
 
 function SortableItem({
@@ -150,12 +152,13 @@ function SortableItem({
   overFolderId,
   insertBeforeId,
   activeId,
+  searchQuery,
 }: SortableItemProps) {
   const elementRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const element = elementRef.current
-    if (!element || item.serverId || item.offline) return
+    if (!element || item.serverId || item.offline || searchQuery) return
 
     return combine(
       draggable({
@@ -201,7 +204,7 @@ function SortableItem({
         },
       })
     )
-  }, [allProjects, item])
+  }, [allProjects, item, searchQuery])
 
   const style: React.CSSProperties = {
     opacity: activeId === item.id ? 0.35 : 1,
@@ -216,7 +219,7 @@ function SortableItem({
         : null
 
   if (isFolder(item)) {
-    const isExpanded = expandedFolderIds.has(item.id)
+    const isExpanded = Boolean(searchQuery) || expandedFolderIds.has(item.id)
 
     return (
       <div
@@ -241,6 +244,7 @@ function SortableItem({
               overFolderId={overFolderId}
               insertBeforeId={insertBeforeId}
               activeId={activeId}
+              searchQuery={searchQuery}
             />
           )}
         </FolderTreeItem>
@@ -261,7 +265,7 @@ function SortableItem({
       )}
     >
       <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />
-      <ProjectTreeItem project={item} />
+      <ProjectTreeItem project={item} searchQuery={searchQuery} />
     </div>
   )
 }
@@ -275,6 +279,7 @@ interface NestedItemsProps {
   overFolderId: string | null
   insertBeforeId: string | null
   activeId: string | null
+  searchQuery: string
 }
 
 function NestedItems({
@@ -285,6 +290,7 @@ function NestedItems({
   overFolderId,
   insertBeforeId,
   activeId,
+  searchQuery,
 }: NestedItemsProps) {
   const items = projects
     .filter(p => p.parent_id === parentId)
@@ -307,6 +313,7 @@ function NestedItems({
           overFolderId={overFolderId}
           insertBeforeId={insertBeforeId}
           activeId={activeId}
+          searchQuery={searchQuery}
         />
       ))}
     </>
@@ -350,6 +357,7 @@ function RootDropZone({ isOver }: { isOver: boolean }) {
 export function ProjectTree({
   projects,
   groupByServer = false,
+  searchQuery = '',
 }: ProjectTreeProps) {
   const reorderItems = useReorderItems()
   const moveItem = useMoveItem()
@@ -783,6 +791,7 @@ export function ProjectTree({
           overFolderId={overFolderId}
           insertBeforeId={insertBeforeId}
           activeId={activeId}
+          searchQuery={searchQuery}
         />
       ))}
       {hasBothTypes && (
@@ -853,6 +862,7 @@ export function ProjectTree({
               overFolderId={overFolderId}
               insertBeforeId={insertBeforeId}
               activeId={activeId}
+              searchQuery={searchQuery}
             />
           ))}
         </div>

@@ -10,7 +10,7 @@ import {
   ShieldAlert,
   Wand2,
   Bug,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { useCallback } from 'react'
 import { Kbd } from '@/components/ui/kbd'
 import {

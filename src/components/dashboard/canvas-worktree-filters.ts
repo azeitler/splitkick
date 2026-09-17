@@ -1,4 +1,4 @@
-import type { LucideIcon } from 'lucide-react'
+import type { LucideIcon } from '@/components/icons/reicon'
 import {
   Bot,
   CircleDot,
@@ -6,7 +6,7 @@ import {
   GitPullRequestArrow,
   Home,
   ShieldAlert,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { getWorktreeLabels } from '@/lib/worktree-labels'
 import { isBaseSession, type Worktree } from '@/types/projects'
 

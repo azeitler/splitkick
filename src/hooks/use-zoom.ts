@@ -29,7 +29,7 @@ async function applyZoom(scaleFactor: number) {
   root.style.setProperty('--app-zoom', String(scaleFactor))
   root.style.setProperty(
     '--mac-titlebar-action-left-inset',
-    `${76 / scaleFactor}px`
+    `${68 / scaleFactor}px`
   )
   root.style.setProperty(
     '--mac-titlebar-action-top-inset',

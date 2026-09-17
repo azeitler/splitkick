@@ -1,4 +1,4 @@
-import { CheckCircle, ShieldAlert, XCircle } from 'lucide-react'
+import { CheckCircle, ShieldAlert, XCircle } from '@/components/icons/reicon'
 import {
   Tooltip,
   TooltipContent,

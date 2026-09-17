@@ -17,7 +17,7 @@ import {
   Terminal,
   Trash2,
   X,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {

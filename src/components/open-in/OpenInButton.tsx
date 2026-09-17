@@ -6,7 +6,7 @@ import {
   Github,
   ChevronDown,
   Settings,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

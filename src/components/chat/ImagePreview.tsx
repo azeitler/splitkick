@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { X, Loader2 } from 'lucide-react'
+import { X, Loader2 } from '@/components/icons/reicon'
 import { invoke } from '@/lib/transport'
 import { parseServerResourceKey } from '@/lib/server-resource'
 import type { PendingImage } from '@/types/chat'

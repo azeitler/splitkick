@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2, Wand2 } from 'lucide-react'
+import { AlertTriangle, Loader2, Wand2 } from '@/components/icons/reicon'
 import { getModifierSymbol } from '@/lib/platform'
 import {
   Tooltip,

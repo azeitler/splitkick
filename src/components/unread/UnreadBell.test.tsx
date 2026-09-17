@@ -16,6 +16,7 @@ const invokeMock = vi.fn()
 const invokeForServerMock = vi.fn()
 let allSessions: AllSessionsResponse | undefined
 let allSessionsLoading = false
+let allSessionsFetching = false
 let unreadCount = 2
 let sendingSessionIds: Record<string, boolean> = {}
 
@@ -28,7 +29,11 @@ vi.mock('@/services/chat', () => ({
   chatQueryKeys: {
     unreadSessionCount: () => ['unread-session-count'],
   },
-  useAllSessions: () => ({ data: allSessions, isLoading: allSessionsLoading }),
+  useAllSessions: () => ({
+    data: allSessions,
+    isLoading: allSessionsLoading,
+    isFetching: allSessionsFetching,
+  }),
 }))
 
 let finishedSessionAnimationEnabled = true
@@ -156,6 +161,7 @@ describe('UnreadBell', () => {
     ).__JEAN_TEST_IS_NATIVE__ = true
     unreadCount = 2
     allSessionsLoading = false
+    allSessionsFetching = false
     sendingSessionIds = {}
     finishedSessionAnimationEnabled = true
     allSessions = {
@@ -201,6 +207,39 @@ describe('UnreadBell', () => {
     view.rerender(<UnreadBell title="Jean" />)
 
     expect(await screen.findByText('Session one')).toBeInTheDocument()
+  })
+
+  it('does not snapshot a stale empty list while the first open refetches', async () => {
+    unreadCount = 1
+    allSessions = { entries: [] }
+    allSessionsFetching = true
+    const view = renderWithQueryClient(<UnreadBell title="Jean" />)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /1 finished session/i })
+    )
+
+    expect(screen.getByRole('button', { name: /1 finished session/i }))
+      .toBeInTheDocument()
+
+    allSessions = {
+      entries: [
+        {
+          project_id: 'project-1',
+          project_name: 'Jean',
+          worktree_id: 'worktree-1',
+          worktree_name: 'main',
+          worktree_path: '/repo',
+          sessions: [session({ id: 'session-1', name: 'Session one' })],
+        },
+      ],
+    }
+    allSessionsFetching = false
+    view.rerender(<UnreadBell title="Jean" />)
+
+    expect(await screen.findByText('Session one')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /1 finished session/i }))
+      .toBeInTheDocument()
   })
 
   it('shows a running Claude session instead of stale waiting state', async () => {

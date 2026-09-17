@@ -515,10 +515,11 @@
   pointer-events: auto !important;
 }
 
-/* Native macOS traffic lights do not scale with the webview. Keep the action
-   row beside them while allowing a little more vertical space at larger zoom. */
+/* Native macOS traffic lights do not scale with the webview. The padding keeps
+   their clearance fixed; the margin scales with the neighboring app icons. */
 .mac-titlebar-actions {
-  padding-left: var(--mac-titlebar-action-left-inset, 76px);
+  margin-left: 8px;
+  padding-left: var(--mac-titlebar-action-left-inset, 68px);
   padding-top: var(--mac-titlebar-action-top-inset, 4px);
 }
 

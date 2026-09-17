@@ -108,7 +108,7 @@ import {
 import { WslSetupStep } from './WslSetupStep'
 import { UsageModeStep, type OnboardingUsageMode } from './UsageModeStep'
 import { RemoteSetupStep } from './RemoteSetupStep'
-import { ArrowLeft, Loader2 } from 'lucide-react'
+import { ArrowLeft, Loader2 } from '@/components/icons/reicon'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import {
   checkSystemPrerequisites,

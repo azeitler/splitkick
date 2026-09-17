@@ -6,7 +6,7 @@ import {
   Shield,
   ShieldAlert,
   Bug,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   Dialog,
   DialogContent,

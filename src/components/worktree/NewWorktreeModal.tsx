@@ -9,9 +9,9 @@ import {
   Shield,
   GitBranch,
   Bug,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { LinearIcon } from '@/components/icons/LinearIcon'
-import type { LucideIcon } from 'lucide-react'
+import type { LucideIcon } from '@/components/icons/reicon'
 import { useGhLogin } from '@/hooks/useGhLogin'
 import { usePreferences } from '@/services/preferences'
 import {

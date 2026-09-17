@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, Activity } from 'lucide-react'
+import { AlertCircle, Activity } from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,

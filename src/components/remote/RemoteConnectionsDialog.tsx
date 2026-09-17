@@ -7,7 +7,7 @@ import {
   Plus,
   Server,
   Trash2,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import {

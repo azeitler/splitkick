@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { Activity } from 'lucide-react'
+import { Activity } from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import { useUIStore } from '@/store/ui-store'
 import type { CheckStatus } from '@/types/pr-status'

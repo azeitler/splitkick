@@ -10,7 +10,7 @@ import {
   ArrowUp,
   ChevronDown,
   GitBranch,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import { isBaseSession, type Worktree } from '@/types/projects'

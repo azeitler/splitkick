@@ -30,6 +30,7 @@ import {
 import { reorderWithClosestEdge } from '@/lib/drag-and-drop/reorder'
 import { announceDrag } from '@/lib/drag-and-drop/live-region'
 import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
+import { matchesWorktreeSearch } from './project-search'
 import {
   applyWorktreeDropSnapshot,
   emptyWorktreeDropSnapshot,
@@ -160,6 +161,9 @@ interface WorktreeListProps {
   projectPath: string
   worktrees: Worktree[]
   defaultBranch: string
+  searchQuery?: string
+  searchActive?: boolean
+  loadSessionCounts?: boolean
 }
 
 export function WorktreeList({
@@ -167,6 +171,9 @@ export function WorktreeList({
   projectPath,
   worktrees,
   defaultBranch,
+  searchQuery = '',
+  searchActive = false,
+  loadSessionCounts = true,
 }: WorktreeListProps) {
   const reorderWorktrees = useReorderWorktrees()
   const worktreeSortMode = useProjectsStore(
@@ -174,16 +181,26 @@ export function WorktreeList({
       state.projectCanvasSettings[projectId]?.worktreeSortMode ?? 'created'
   )
 
+  const visibleWorktrees = useMemo(
+    () =>
+      searchQuery
+        ? worktrees.filter(worktree =>
+            matchesWorktreeSearch(worktree, searchQuery)
+          )
+        : worktrees,
+    [searchQuery, worktrees]
+  )
+
   const pendingWorktrees = useMemo(
-    () => worktrees.filter(w => w.status === 'pending'),
-    [worktrees]
+    () => visibleWorktrees.filter(w => w.status === 'pending'),
+    [visibleWorktrees]
   )
   const readyWorktrees = useMemo(
     () =>
-      worktrees.filter(
+      visibleWorktrees.filter(
         w => !w.status || w.status === 'ready' || w.status === 'error'
       ),
-    [worktrees]
+    [visibleWorktrees]
   )
 
   const sessionQueries = useQueries({
@@ -204,7 +221,7 @@ export function WorktreeList({
           includeMessageCounts: true,
         })
       },
-      enabled: !!wt.id && !!wt.path,
+      enabled: loadSessionCounts && !!wt.id && !!wt.path,
       // Prefer bootstrap/init-seeded cache; avoid N-way WS refetch on open
       staleTime: 1000 * 60 * 5,
       gcTime: 1000 * 60 * 5,
@@ -517,7 +534,9 @@ export function WorktreeList({
             projectPath={projectPath}
             defaultBranch={defaultBranch}
             disabled={
-              reorderWorktrees.isPending || !canReorderWorktree(worktree)
+              searchActive ||
+              reorderWorktrees.isPending ||
+              !canReorderWorktree(worktree)
             }
             isDragging={dragState.draggingId === worktree.id}
             closestEdge={isTarget ? dragState.closestEdge : null}

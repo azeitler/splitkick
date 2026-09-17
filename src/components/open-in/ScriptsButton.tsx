@@ -1,4 +1,4 @@
-import { Play, Star } from 'lucide-react'
+import { Play, Star } from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,

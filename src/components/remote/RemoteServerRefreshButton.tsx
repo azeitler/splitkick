@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react'
+import { RefreshCw } from '@/components/icons/reicon'
 import { reconnectRemoteServer } from '@/lib/server-connections'
 import type { ServerId } from '@/types/server-resource'
 import {

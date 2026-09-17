@@ -37,7 +37,7 @@ describe('ProjectsSidebar server filter', () => {
     expect(source).not.toContain('>Features<')
   })
 
-  it('shows a labeled add-project action below the server selector', () => {
+  it('shows search and a clear add-project action below the server selector', () => {
     const source = readFileSync(
       'src/components/projects/ProjectsSidebar.tsx',
       'utf8'
@@ -46,13 +46,15 @@ describe('ProjectsSidebar server filter', () => {
     const serverSelector = source.indexOf(
       'aria-label="Filter projects by server"'
     )
-    const addProject = source.indexOf('>Add project<')
+    const search = source.indexOf('aria-label="Search projects and worktrees"')
+    const addProject = source.indexOf('aria-label="Add project"')
     const projectTree = source.indexOf('<ProjectTree')
 
-    expect(serverSelector).toBeGreaterThan(-1)
-    expect(addProject).toBeGreaterThan(serverSelector)
+    expect(search).toBeGreaterThan(serverSelector)
+    expect(addProject).toBeGreaterThan(search)
     expect(projectTree).toBeGreaterThan(addProject)
-    expect(source).toContain('<Plus className="size-3.5" />')
+    expect(source).toContain('<Plus className="size-5" />')
+    expect(source).toContain('searchQuery={searchQuery}')
     expect(source).not.toContain('aria-label="New"')
     expect(source).not.toContain('{/* Footer')
   })

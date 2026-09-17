@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { GitPullRequestArrow } from 'lucide-react'
+import { GitPullRequestArrow } from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,

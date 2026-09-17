@@ -10,7 +10,7 @@ import {
   Globe,
   ShieldAlert,
   Siren,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   Dialog,
   DialogContent,

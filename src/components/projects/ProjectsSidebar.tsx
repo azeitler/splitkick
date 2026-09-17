@@ -3,10 +3,12 @@ import {
   Plus,
   AlertTriangle,
   ChevronDown,
+  Search,
   Server,
   Settings,
   Settings2,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
+import { Input } from '@/components/ui/input'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import {
   DropdownMenu,
@@ -64,6 +66,7 @@ export function ProjectsSidebar() {
     state => state.setSidebarServerFilter
   )
   const [connectionsOpen, setConnectionsOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
   const serverSnapshots = useServerConnectionSnapshots()
   const serverIds = useMemo(
     () => [...new Set(projects.map(projectServerId))],
@@ -177,16 +180,36 @@ export function ProjectsSidebar() {
               />
             </div>
           )}
-          <div className={showServerMenu ? 'px-3' : 'px-3 pt-2'}>
-            <button
-              type="button"
-              className="flex h-7 w-full items-center gap-2 rounded-md px-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-              onClick={handleNewProject}
-              disabled={!backendCheckReady || setupIncomplete}
-            >
-              <Plus className="size-3.5" />
-              <span>Add project</span>
-            </button>
+          <div
+            className={
+              showServerMenu ? 'flex gap-2 px-3' : 'flex gap-2 px-3 pt-2'
+            }
+          >
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-2 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                value={searchQuery}
+                onChange={event => setSearchQuery(event.target.value)}
+                placeholder="Search projects…"
+                aria-label="Search projects and worktrees"
+                className="h-8 bg-background/40 pl-7 pr-2 text-xs shadow-none"
+              />
+            </div>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                  onClick={handleNewProject}
+                  disabled={!backendCheckReady || setupIncomplete}
+                  aria-label="Add project"
+                >
+                  <Plus className="size-5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>Add project</TooltipContent>
+            </Tooltip>
           </div>
         </div>
         {isLoading ? (
@@ -229,6 +252,7 @@ export function ProjectsSidebar() {
           <ProjectTree
             projects={visibleProjects}
             groupByServer={showServerFilter && serverFilter === ALL_SERVERS}
+            searchQuery={searchQuery}
           />
         )}
       </div>

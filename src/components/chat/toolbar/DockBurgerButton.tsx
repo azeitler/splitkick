@@ -6,7 +6,7 @@ import {
   LayoutDashboard,
   Menu,
   Plus,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import {
   DropdownMenu,

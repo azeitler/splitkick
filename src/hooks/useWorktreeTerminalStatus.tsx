@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Play } from 'lucide-react'
+import { Play } from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useTerminalListeningPorts } from '@/services/projects'

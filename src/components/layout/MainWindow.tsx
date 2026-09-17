@@ -461,7 +461,8 @@ export function MainWindow() {
       let currentWidth = startWidth
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
-        const delta = moveEvent.clientX - startX
+        // Dragging left increases width because the browser is on the right.
+        const delta = startX - moveEvent.clientX
         currentWidth = Math.min(
           MAX_FILE_BROWSER_WIDTH,
           Math.max(MIN_FILE_BROWSER_WIDTH, startWidth + delta)
@@ -562,13 +563,13 @@ export function MainWindow() {
       <DevModeBanner />
 
       {/* Main Content Area */}
-      <div className="flex flex-1 overflow-hidden pt-8">
+      <div className="flex flex-1 overflow-hidden">
         {/* Desktop: in-flow left sidebar (shifts layout). Only after UI state init. */}
         {!isMobile && leftSidebarVisible && isInitialized && (
           <SidebarWidthProvider value={leftSidebarSize}>
             <div
               ref={sidebarRef}
-              className="h-full overflow-hidden"
+              className="h-full overflow-hidden bg-sidebar pt-8"
               style={{ width: leftSidebarSize }}
             >
               <Suspense fallback={null}>
@@ -589,33 +590,6 @@ export function MainWindow() {
             onMouseDown={handleResizeStart}
           >
             {/* Invisible wider hit area for easier clicking */}
-            <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
-          </div>
-        )}
-
-        {/* Desktop: file browser sidebar */}
-        {!isMobile && fileBrowserVisible && isInitialized && (
-          <div
-            ref={fileBrowserRef}
-            className="h-full overflow-hidden"
-            style={{ width: fileBrowserSize }}
-          >
-            <Suspense fallback={null}>
-              <FileBrowserSidebar />
-            </Suspense>
-          </div>
-        )}
-
-        {/* Desktop: resize handle for file browser */}
-        {!isMobile && fileBrowserVisible && isInitialized && (
-          <div
-            role="separator"
-            tabIndex={-1}
-            aria-orientation="vertical"
-            aria-label="Resize file browser"
-            className="relative h-full w-px bg-border/40"
-            onMouseDown={handleFileBrowserResizeStart}
-          >
             <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
           </div>
         )}
@@ -644,7 +618,7 @@ export function MainWindow() {
         )}
 
         {/* Main Content + bottom browser panel stacked vertically */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden pt-8">
           <div className="relative min-w-0 flex-1 overflow-hidden">
             <MainWindowContent
               sidebarSwipeContainerRef={
@@ -656,6 +630,33 @@ export function MainWindow() {
           {/* Browser bottom panel - native-only, pinned to bottom */}
           <BrowserPanel />
         </div>
+
+        {/* Desktop: resize handle for file browser */}
+        {!isMobile && fileBrowserVisible && isInitialized && (
+          <div
+            role="separator"
+            tabIndex={-1}
+            aria-orientation="vertical"
+            aria-label="Resize file browser"
+            className="relative h-full w-px bg-border/40"
+            onMouseDown={handleFileBrowserResizeStart}
+          >
+            <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
+          </div>
+        )}
+
+        {/* Desktop: file browser sidebar */}
+        {!isMobile && fileBrowserVisible && isInitialized && (
+          <div
+            ref={fileBrowserRef}
+            className="h-full overflow-hidden bg-sidebar pt-8"
+            style={{ width: fileBrowserSize }}
+          >
+            <Suspense fallback={null}>
+              <FileBrowserSidebar />
+            </Suspense>
+          </div>
+        )}
 
         {/* Browser side pane - native-only, mounts on right edge */}
         <BrowserSidePane />

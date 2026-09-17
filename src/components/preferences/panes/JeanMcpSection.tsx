@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, Copy, Loader2, PlugZap, XCircle } from 'lucide-react'
+import { CheckCircle, Copy, Loader2, PlugZap, XCircle } from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import {
   AlertDialog,

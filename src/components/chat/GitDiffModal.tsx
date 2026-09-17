@@ -26,7 +26,7 @@ import {
   ChevronsUpDown,
   PanelLeft,
   Check,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   parsePatchFiles,
   type SelectedLineRange,

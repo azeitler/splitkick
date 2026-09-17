@@ -10,7 +10,7 @@ import {
   Download,
   Pencil,
   RotateCcw,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import type { AppCommand } from './types'
 import { useUIStore } from '@/store/ui-store'
 

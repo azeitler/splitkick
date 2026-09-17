@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { Bug, GitPullRequest, ShieldAlert, Siren } from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+import { Bug, GitPullRequest, ShieldAlert, Siren } from '@/components/icons/reicon'
+import type { LucideIcon } from '@/components/icons/reicon'
 import {
   filterAdvisories,
   filterIssues,

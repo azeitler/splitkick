@@ -12,7 +12,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
-import { CheckCircle2, Minus } from 'lucide-react'
+import { CheckCircle2, Minus } from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import {
   Dialog,

@@ -8,7 +8,7 @@ import {
   Loader2,
   RotateCcw,
   X,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { isLocalBackend } from '@/lib/environment'
 import {
   convertFileSrc,

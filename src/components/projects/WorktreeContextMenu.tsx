@@ -6,7 +6,7 @@ import {
   Terminal,
   Trash2,
   X,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   AlertDialog,
   AlertDialogAction,

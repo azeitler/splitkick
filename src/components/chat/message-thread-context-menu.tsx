@@ -1,5 +1,5 @@
 import { useCallback, useState, type ReactElement } from 'react'
-import { Copy } from 'lucide-react'
+import { Copy } from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import {
   ContextMenu,

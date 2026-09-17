@@ -17,7 +17,7 @@ import {
   Github,
   GitPullRequest,
   ShieldAlert,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'

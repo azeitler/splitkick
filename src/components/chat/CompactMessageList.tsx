@@ -9,7 +9,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { ChevronRight, Loader2, Activity, Brain } from 'lucide-react'
+import { ChevronRight, Loader2, Activity, Brain } from '@/components/icons/reicon'
 import { Markdown } from '@/components/ui/markdown'
 import {
   Collapsible,

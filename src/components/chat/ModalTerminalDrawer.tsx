@@ -5,7 +5,7 @@ import {
   PanelRight,
   PanelRightDashed,
   Terminal,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { ModalCloseButton } from '@/components/ui/modal-close-button'

@@ -29,7 +29,7 @@ import {
   Star,
   Terminal,
   Bug,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {

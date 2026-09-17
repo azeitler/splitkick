@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { FileText, Loader2, Copy } from 'lucide-react'
+import { FileText, Loader2, Copy } from '@/components/icons/reicon'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'

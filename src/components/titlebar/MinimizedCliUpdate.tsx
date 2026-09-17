@@ -1,4 +1,4 @@
-import { LoaderCircle } from 'lucide-react'
+import { LoaderCircle } from '@/components/icons/reicon'
 import { useUIStore } from '@/store/ui-store'
 
 export function MinimizedCliUpdate() {

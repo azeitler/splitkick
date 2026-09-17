@@ -11,7 +11,7 @@ import {
   Eye,
   MoreHorizontal,
   MessageSquarePlus,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   Tooltip,
   TooltipTrigger,

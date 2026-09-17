@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react'
-import { Loader2, Activity, Brain, ChevronRight } from 'lucide-react'
+import { Loader2, Activity, Brain, ChevronRight } from '@/components/icons/reicon'
 import type { ContentBlock, ToolCall } from '@/types/chat'
 import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
 import {

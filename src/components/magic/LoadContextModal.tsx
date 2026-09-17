@@ -9,9 +9,9 @@ import {
   Shield,
   ShieldAlert,
   Bug,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { LinearIcon } from '@/components/icons/LinearIcon'
-import type { LucideIcon } from 'lucide-react'
+import type { LucideIcon } from '@/components/icons/reicon'
 import {
   Dialog,
   DialogContent,

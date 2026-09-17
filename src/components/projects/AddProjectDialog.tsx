@@ -7,7 +7,7 @@ import {
 } from 'react'
 import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
-import { FolderOpen, FolderPlus, Globe } from 'lucide-react'
+import { FolderOpen, FolderPlus, Globe } from '@/components/icons/reicon'
 import {
   Dialog,
   DialogContent,

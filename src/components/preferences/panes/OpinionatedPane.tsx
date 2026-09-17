@@ -12,7 +12,7 @@ import {
   RefreshCw,
   ChevronRight,
   Trash2,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { SettingsSection } from '../SettingsSection'
 

@@ -18,7 +18,7 @@ import {
   ShieldAlert,
   Undo2,
   Wand2,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   DropdownMenu,
   DropdownMenuContent,

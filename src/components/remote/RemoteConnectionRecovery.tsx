@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { ServerOff } from 'lucide-react'
+import { ServerOff } from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import type { RemoteConnection } from '@/lib/remote-connections'
 import { dismissTransientUi } from '@/lib/dismiss-transient-ui'

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useMemo, memo, useState } from 'react'
-import { Plus, X, Minus, Terminal, ChevronUp } from 'lucide-react'
+import { Plus, X, Minus, Terminal, ChevronUp } from '@/components/icons/reicon'
 import { invoke } from '@/lib/transport'
 import { middleClickClose } from '@/lib/middle-click'
 import { useTerminal } from '@/hooks/useTerminal'

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Server, WifiOff } from 'lucide-react'
+import { Server, WifiOff } from '@/components/icons/reicon'
 import { useMultiServerProjects } from '@/services/multi-server-projects'
 import { cn } from '@/lib/utils'
 

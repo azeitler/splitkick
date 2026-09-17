@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Copy } from 'lucide-react'
+import { Copy } from '@/components/icons/reicon'
 import { normalizePath } from '@/lib/path-utils'
 import {
   Tooltip,

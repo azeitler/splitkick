@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo } from 'react'
-import { Activity, Loader2 } from 'lucide-react'
+import { Activity, Loader2 } from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { Markdown } from '@/components/ui/markdown'
 import type {

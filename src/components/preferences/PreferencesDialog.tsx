@@ -16,7 +16,7 @@ import {
   Terminal,
   Server,
   type LucideIcon,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   Breadcrumb,
   BreadcrumbItem,

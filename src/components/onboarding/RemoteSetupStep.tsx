@@ -5,7 +5,7 @@
  */
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { HardDriveDownload, Link2, Loader2 } from 'lucide-react'
+import { HardDriveDownload, Link2, Loader2 } from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'

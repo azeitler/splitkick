@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus } from '@/components/icons/reicon'
 import {
   convertFileSrc,
   convertProjectFileSrc,

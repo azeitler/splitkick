@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo } from 'react'
-import { Copy } from 'lucide-react'
+import { Copy } from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { normalizePath } from '@/lib/path-utils'

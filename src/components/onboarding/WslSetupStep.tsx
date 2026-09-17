@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { usePatchPreferences } from '@/services/preferences'
-import { Loader2, CheckCircle2, XCircle, Monitor, Terminal } from 'lucide-react'
+import { Loader2, CheckCircle2, XCircle, Monitor, Terminal } from '@/components/icons/reicon'
 
 interface WslSetupStepProps {
   onComplete: () => void

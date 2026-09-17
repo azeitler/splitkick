@@ -5,7 +5,7 @@
  * Remote continues into jean-server install or existing Web Access URL.
  */
 
-import { Monitor, Server } from 'lucide-react'
+import { Monitor, Server } from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import { useState } from 'react'
 

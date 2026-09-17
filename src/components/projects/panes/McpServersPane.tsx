@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react'
-import { CheckCircle, Loader2, ShieldAlert, XCircle } from 'lucide-react'
+import { CheckCircle, Loader2, ShieldAlert, XCircle } from '@/components/icons/reicon'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'

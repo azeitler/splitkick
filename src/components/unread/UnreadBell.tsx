@@ -7,7 +7,7 @@ import {
   CirclePause,
   HelpCircle,
   FileText,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   Popover,
   PopoverTrigger,
@@ -169,7 +169,11 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
   const { data: preferences } = usePreferences()
   const animationEnabled =
     preferences?.finished_session_animation_enabled ?? true
-  const { data: allSessions, isLoading } = useAllSessions(open)
+  const {
+    data: allSessions,
+    isLoading,
+    isFetching,
+  } = useAllSessions(open)
   const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
   // Listen for command palette event to open the popover
   useEffect(() => {
@@ -249,9 +253,9 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
   // empty snapshot while the query starts makes the first open look empty and
   // hides data that arrives while the popover is open.
   useEffect(() => {
-    if (!open || !allSessions) return
+    if (!open || !allSessions || isFetching) return
     setSnapshotItems(prev => prev ?? unreadItems)
-  }, [allSessions, open, unreadItems])
+  }, [allSessions, isFetching, open, unreadItems])
 
   // Items rendered inside the popover. While open, prefer the snapshot taken at
   // open time so a queued prompt restarting a session (status flip → unread=false)
@@ -402,17 +406,17 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
         handleSelect(only)
         return
       }
-      if (allSessions) setSnapshotItems(unreadItems)
+      if (allSessions && !isFetching) setSnapshotItems(unreadItems)
     },
-    [allSessions, unreadItems, handleSelect]
+    [allSessions, isFetching, unreadItems, handleSelect]
   )
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
-      if (next && allSessions) setSnapshotItems(unreadItems)
+      if (next && allSessions && !isFetching) setSnapshotItems(unreadItems)
       setOpen(next)
     },
-    [allSessions, unreadItems]
+    [allSessions, isFetching, unreadItems]
   )
 
   const handleKeyDown = useCallback(
@@ -533,7 +537,7 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
           </div>
         )}
 
-        {isLoading ? (
+        {isLoading || (isFetching && snapshotItems === null) ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           </div>

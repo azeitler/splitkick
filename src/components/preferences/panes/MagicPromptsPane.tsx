@@ -5,7 +5,7 @@ import {
   Plus,
   RotateCcw,
   Trash2,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import { Textarea } from '@/components/ui/textarea'
 import {

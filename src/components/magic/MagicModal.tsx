@@ -19,7 +19,7 @@ import {
   Link2,
   ShieldAlert,
   Loader2,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   Dialog,
   DialogContent,

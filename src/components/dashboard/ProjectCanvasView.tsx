@@ -53,7 +53,7 @@ import {
   Trash2,
   GripVertical,
   Tag,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import {
   ContextMenu,

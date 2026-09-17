@@ -6,7 +6,7 @@ import {
   ChevronDown,
   MoreHorizontal,
   Plus,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   convertFileSrc,
   convertProjectFileSrc,
@@ -48,9 +48,11 @@ import {
 } from '@/components/ui/tooltip'
 import { WorktreeList } from './WorktreeList'
 import { ProjectContextMenu } from './ProjectContextMenu'
+import { matchesProjectSearch, matchesWorktreeSearch } from './project-search'
 
 interface ProjectTreeItemProps {
   project: Project
+  searchQuery?: string
 }
 
 /**
@@ -79,7 +81,10 @@ export function shouldShowProjectStatusBadges(
   )
 }
 
-export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
+export function ProjectTreeItem({
+  project,
+  searchQuery = '',
+}: ProjectTreeItemProps) {
   const isMobile = useIsMobile()
   const sidebarWidth = useSidebarWidth()
   const isOffline = project.offline === true
@@ -94,14 +99,24 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
   } = useProjectsStore()
   const isProjectExpanded = expandedProjectIds.has(project.id)
   const shouldLoadWorktrees =
-    !isOffline && (isProjectExpanded || selectedProjectId === project.id)
-  const { data: worktrees = [] } = useWorktrees(project.id, {
-    enabled: shouldLoadWorktrees,
-  })
+    !isOffline &&
+    (Boolean(searchQuery) ||
+      isProjectExpanded ||
+      selectedProjectId === project.id)
+  const { data: worktrees = [], isLoading: worktreesLoading } = useWorktrees(
+    project.id,
+    {
+      enabled: shouldLoadWorktrees,
+    }
+  )
   const { data: appDataDir = '' } = useAppDataDir()
   const hasWorktrees =
     !isOffline && (worktrees.length > 0 || (project.worktree_count ?? 0) > 0)
-  const isExpanded = hasWorktrees && isProjectExpanded
+  const projectMatchesSearch = matchesProjectSearch(project, searchQuery)
+  const hasMatchingWorktree = worktrees.some(worktree =>
+    matchesWorktreeSearch(worktree, searchQuery)
+  )
+  const isExpanded = hasWorktrees && (Boolean(searchQuery) || isProjectExpanded)
   const setNewWorktreeModalOpen = useUIStore(
     state => state.setNewWorktreeModalOpen
   )
@@ -131,14 +146,16 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
         : null
 
   // Fetch git status for all worktrees when project is expanded
-  useFetchWorktreesStatus(project.id, isExpanded)
+  useFetchWorktreesStatus(project.id, isExpanded && !searchQuery)
 
   // Check if base session exists
   const hasBaseSession = worktrees.some(w => isBaseSession(w))
 
   // Get base branch status from any worktree (all have it)
   const firstWorktree = worktrees[0]
-  const { data: gitStatus } = useGitStatus(firstWorktree?.id ?? null)
+  const { data: gitStatus } = useGitStatus(
+    searchQuery ? null : (firstWorktree?.id ?? null)
+  )
 
   // Only show on project line when no base session
   const baseBranchBehindCount = !hasBaseSession
@@ -344,6 +361,15 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
       project.id,
     ]
   )
+
+  if (
+    searchQuery &&
+    !projectMatchesSearch &&
+    !worktreesLoading &&
+    !hasMatchingWorktree
+  ) {
+    return null
+  }
 
   return (
     <ProjectContextMenu project={project}>
@@ -561,6 +587,9 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
             projectPath={project.path}
             worktrees={worktrees}
             defaultBranch={project.default_branch}
+            searchQuery={projectMatchesSearch ? '' : searchQuery}
+            searchActive={Boolean(searchQuery)}
+            loadSessionCounts={!searchQuery}
           />
         )}
       </div>

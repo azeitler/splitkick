@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useEffectEvent } from 'react'
-import { Bot, Loader2, Rabbit } from 'lucide-react'
+import { Bot, Loader2, Rabbit } from '@/components/icons/reicon'
 import {
   Dialog,
   DialogContent,

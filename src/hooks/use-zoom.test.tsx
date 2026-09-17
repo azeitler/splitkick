@@ -142,7 +142,7 @@ describe('useZoom', () => {
       document.documentElement.style.getPropertyValue(
         '--mac-titlebar-action-left-inset'
       )
-    ).toBe('60.8px')
+    ).toBe('54.4px')
     expect(
       document.documentElement.style.getPropertyValue(
         '--mac-titlebar-action-top-inset'

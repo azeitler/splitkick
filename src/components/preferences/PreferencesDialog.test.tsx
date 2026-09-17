@@ -196,7 +196,7 @@ describe('PreferencesDialog', () => {
     expect(
       within(navigationMenu)
         .getAllByRole('button')
-        .map(button => button.textContent)
+        .map(button => button.textContent?.replace(/\s+/g, ' ').trim())
     ).toEqual([
       'General',
       'Appearance',

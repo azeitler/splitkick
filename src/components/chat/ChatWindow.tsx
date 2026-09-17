@@ -28,7 +28,7 @@ import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { invoke, listen } from '@/lib/transport'
 import { hydrateRunningSnapshot } from '@/lib/hydrate-running-snapshot'
 import { generateId } from '@/lib/uuid'
-import { GitBranch, GitMerge, Layers, Loader2 } from 'lucide-react'
+import { GitBranch, GitMerge, Layers, Loader2 } from '@/components/icons/reicon'
 import {
   useSession,
   useSessions,
