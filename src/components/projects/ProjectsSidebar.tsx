@@ -33,6 +33,8 @@ import { ProjectTree } from './ProjectTree'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
 import { isNativeApp } from '@/lib/environment'
+import { FALLBACK_APP_VERSION } from '@/lib/app-version'
+import { openExternal } from '@/lib/platform'
 import { useServerConnectionSnapshots } from '@/lib/server-connections'
 import {
   ALL_SERVERS,
@@ -67,6 +69,7 @@ export function ProjectsSidebar() {
   )
   const [connectionsOpen, setConnectionsOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [appVersion, setAppVersion] = useState(FALLBACK_APP_VERSION)
   const serverSnapshots = useServerConnectionSnapshots()
   const serverIds = useMemo(
     () => [...new Set(projects.map(projectServerId))],
@@ -90,6 +93,14 @@ export function ProjectsSidebar() {
           ?.serverName ??
         'Local')
   useEffect(() => scheduleIdleWork(() => setBackendCheckReady(true), 1500), [])
+  useEffect(() => {
+    if (!isNativeApp()) return
+
+    import('@tauri-apps/api/app')
+      .then(({ getVersion }) => getVersion())
+      .then(setAppVersion)
+      .catch(() => setAppVersion(FALLBACK_APP_VERSION))
+  }, [])
   const { installedBackends } = useInstalledBackends({
     enabled: backendCheckReady,
   })
@@ -256,7 +267,7 @@ export function ProjectsSidebar() {
           />
         )}
       </div>
-      <div className="shrink-0 p-2">
+      <div className="flex shrink-0 items-center justify-between p-2">
         <Tooltip>
           <TooltipTrigger asChild>
             <button
@@ -271,6 +282,18 @@ export function ProjectsSidebar() {
           </TooltipTrigger>
           <TooltipContent side="right">Settings</TooltipContent>
         </Tooltip>
+        <button
+          type="button"
+          onClick={() =>
+            openExternal(
+              `https://github.com/coollabsio/jean/releases/tag/v${appVersion}`
+            )
+          }
+          data-testid="sidebar-app-version"
+          className="px-1.5 text-[0.625rem] text-foreground/40 transition-colors hover:text-foreground/60"
+        >
+          v{appVersion}
+        </button>
       </div>
     </div>
   )

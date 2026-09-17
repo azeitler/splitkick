@@ -92,4 +92,20 @@ describe('ProjectsSidebar server filter', () => {
     expect(source).toContain('data-testid="sidebar-settings"')
     expect(source).toContain('togglePreferences()')
   })
+
+  it('places the app version at the bottom-right of the sidebar footer', () => {
+    const sidebar = readFileSync(
+      'src/components/projects/ProjectsSidebar.tsx',
+      'utf8'
+    )
+    const titleBar = readFileSync(
+      'src/components/titlebar/TitleBar.tsx',
+      'utf8'
+    )
+
+    expect(sidebar).toContain('data-testid="sidebar-app-version"')
+    expect(sidebar).toContain('justify-between')
+    expect(sidebar).toContain('v{appVersion}')
+    expect(titleBar).not.toContain('v{appVersion}')
+  })
 })

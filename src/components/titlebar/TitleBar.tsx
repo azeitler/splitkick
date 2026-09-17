@@ -35,7 +35,6 @@ import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { isNativeApp } from '@/lib/environment'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { FALLBACK_APP_VERSION } from '@/lib/app-version'
 import { applyServerUpdate } from '@/hooks/useServerUpdateCheck'
 import { LinuxWindowControls } from './LinuxWindowControls'
 import { useRemoteConnections } from '@/lib/remote-connections'
@@ -86,16 +85,6 @@ export function TitleBar({
     selectedProjectId,
     remoteConnections
   )
-
-  const [appVersion, setAppVersion] = useState<string>(FALLBACK_APP_VERSION)
-  useEffect(() => {
-    if (!native) return
-
-    import('@tauri-apps/api/app')
-      .then(({ getVersion }) => getVersion())
-      .then(setAppVersion)
-      .catch(() => setAppVersion(FALLBACK_APP_VERSION))
-  }, [native])
 
   return (
     <div
@@ -232,7 +221,7 @@ export function TitleBar({
         </div>
       )}
 
-      {/* Right side - Version + Windows/Linux window controls (hidden in zen) */}
+      {/* Right side - Actions + Windows/Linux window controls (hidden in zen) */}
       <div
         className={cn('flex items-center pt-1', isMobile && 'pr-2')}
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
@@ -316,20 +305,7 @@ export function TitleBar({
             <MinimizedCliUpdate />
             <CliUpdatesIndicator />
             <ServerUpdateIndicator />
-            {appVersion && <UpdateIndicator />}
-            {appVersion && (
-              <button
-                type="button"
-                onClick={() =>
-                  openExternal(
-                    `https://github.com/coollabsio/jean/releases/tag/v${appVersion}`
-                  )
-                }
-                className="px-1.5 text-[0.625rem] text-foreground/40 transition-colors cursor-pointer hover:text-foreground/60"
-              >
-                v{appVersion}
-              </button>
-            )}
+            <UpdateIndicator />
           </>
         )}
         {native && isClientLinux && <LinuxWindowControls />}

@@ -5,7 +5,7 @@ describe('TitleBar file-browser placement', () => {
   it('uses a mirrored panel control in the right action group', () => {
     const source = readFileSync('src/components/titlebar/TitleBar.tsx', 'utf8')
     const rightGroup = source.indexOf(
-      '{/* Right side - Version + Windows/Linux window controls'
+      '{/* Right side - Actions + Windows/Linux window controls'
     )
     const fileBrowser = source.indexOf('data-testid="toggle-file-browser"')
 
