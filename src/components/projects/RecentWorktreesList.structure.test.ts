@@ -21,6 +21,8 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('+{row.added}')
     expect(source).toContain('-{row.removed}')
     expect(source).toContain('fetchWorktreesStatus(projectId)')
+    expect(source).toContain('text-[13px] font-medium')
+    expect(source).toContain('text-[11px]')
   })
 
   it('keeps current-row, keyboard, partial failure, and accessibility behavior', () => {

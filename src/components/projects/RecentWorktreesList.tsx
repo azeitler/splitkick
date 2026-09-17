@@ -214,14 +214,14 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   onClick={() => handleOpen(row)}
                 >
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-foreground">
+                    <span className="block truncate text-[13px] font-medium text-foreground">
                       {row.session.name}
                     </span>
-                    <span className="block truncate text-xs">
+                    <span className="block truncate text-[11px]">
                       {row.projectName} · {row.worktree.name}
                     </span>
                   </span>
-                  <span className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] tabular-nums">
+                  <span className="flex shrink-0 flex-col items-end gap-0.5 text-[10px] tabular-nums">
                     <span className="flex items-center gap-1.5">
                       {status.tone !== 'working' && (
                         <span className={`font-medium ${statusClassName}`}>
