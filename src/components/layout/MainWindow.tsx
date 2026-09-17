@@ -829,7 +829,6 @@ export function MainWindow() {
         position="bottom-right"
         offset={toasterOffset}
         mobileOffset={toasterMobileOffset}
-        expand={true}
         swipeDirections={['left', 'right', 'top', 'bottom']}
         style={{ '--width': '400px' } as CSSProperties}
         toastOptions={{
