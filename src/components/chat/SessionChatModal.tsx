@@ -104,11 +104,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { pushNeedsRemotePicker, useRemotePicker } from '@/hooks/useRemotePicker'
 import { useIsTouchDevice } from '@/hooks/use-touch-device'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
-import {
-  closeChatTerminal,
-  isChatTerminalOpen,
-  openChatTerminal,
-} from '@/lib/terminal-gesture'
+import { closeChatTerminal, isChatTerminalOpen } from '@/lib/terminal-gesture'
 import {
   MODAL_TERMINAL_PRIMARY_ROW_CLASS,
   MODAL_TERMINAL_SECONDARY_ROW_CLASS,
@@ -197,6 +193,7 @@ export function SessionChatModal({
   const isModalTerminalOpen = useTerminalStore(
     state => state.modalTerminalOpen[worktreeId] ?? false
   )
+  const fileBrowserVisible = useUIStore(state => state.fileBrowserVisible)
   // Left-edge swipe right: close terminal if open, else dismiss modal
   const swipeBackCallback = useCallback(() => {
     if (worktreeId && isChatTerminalOpen(worktreeId, 'modal')) {
@@ -211,36 +208,35 @@ export function SessionChatModal({
     // Closing terminal is an overlay dismiss — no full content slide-off
     animateToEnd: !isModalTerminalOpen,
   })
-  // Right-edge swipe left: open terminal
-  const swipeOpenTerminalCallback = useCallback(() => {
-    if (!worktreeId) return
-    openChatTerminal(worktreeId, 'modal')
-  }, [worktreeId])
-  const canSwipeOpenTerminal =
-    isTouch && isOpen && !!worktreeId && !isModalTerminalOpen
-  const swipeOpenTerminal = useSwipeBack({
-    onSwipeBack: swipeOpenTerminalCallback,
-    enabled: canSwipeOpenTerminal,
+  // Right-edge swipe left: open file browser
+  const swipeOpenFileBrowserCallback = useCallback(() => {
+    useUIStore.getState().setFileBrowserVisible(true)
+  }, [])
+  const canSwipeOpenFileBrowser =
+    isTouch && isOpen && !!worktreeId && !fileBrowserVisible
+  const swipeOpenFileBrowser = useSwipeBack({
+    onSwipeBack: swipeOpenFileBrowserCallback,
+    enabled: canSwipeOpenFileBrowser,
     animateToEnd: false,
     visualFeedback: true,
     edge: 'right',
   })
-  // Shared host for left-edge (back/close terminal) and right-edge (open terminal)
+  // Shared host for left-edge back and right-edge file browser gestures
   const setSwipeContainerRef = useCallback(
     (el: HTMLDivElement | null) => {
       const swipeRef =
         swipe.containerRef as MutableRefObject<HTMLDivElement | null>
-      const openTerminalRef =
-        swipeOpenTerminal.containerRef as MutableRefObject<HTMLDivElement | null>
+      const openFileBrowserRef =
+        swipeOpenFileBrowser.containerRef as MutableRefObject<HTMLDivElement | null>
       if (!isTouch) {
         swipeRef.current = null
-        openTerminalRef.current = null
+        openFileBrowserRef.current = null
         return
       }
       swipeRef.current = el
-      openTerminalRef.current = el
+      openFileBrowserRef.current = el
     },
-    [isTouch, swipe.containerRef, swipeOpenTerminal.containerRef]
+    [isTouch, swipe.containerRef, swipeOpenFileBrowser.containerRef]
   )
   const { data: sessionsData } = useSessions(
     worktreeId || null,
@@ -1011,21 +1007,21 @@ export function SessionChatModal({
           isMobile &&
           (swipe.isSwiping ||
             swipe.translateX !== 0 ||
-            swipeOpenTerminal.isSwiping ||
-            swipeOpenTerminal.translateX !== 0)
+            swipeOpenFileBrowser.isSwiping ||
+            swipeOpenFileBrowser.translateX !== 0)
             ? {
                 transform: `translateX(${
-                  swipeOpenTerminal.isSwiping ||
-                  swipeOpenTerminal.translateX !== 0
-                    ? swipeOpenTerminal.translateX
+                  swipeOpenFileBrowser.isSwiping ||
+                  swipeOpenFileBrowser.translateX !== 0
+                    ? swipeOpenFileBrowser.translateX
                     : swipe.translateX
                 }px)`,
                 transition:
-                  swipeOpenTerminal.transitionStyle ||
+                  swipeOpenFileBrowser.transitionStyle ||
                   swipe.transitionStyle ||
                   undefined,
                 willChange:
-                  swipe.isSwiping || swipeOpenTerminal.isSwiping
+                  swipe.isSwiping || swipeOpenFileBrowser.isSwiping
                     ? 'transform'
                     : undefined,
               }
@@ -1041,7 +1037,7 @@ export function SessionChatModal({
               )}
               aria-hidden
             />
-            {canSwipeOpenTerminal && (
+            {canSwipeOpenFileBrowser && (
               <div
                 className="pointer-events-none absolute right-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-l-full bg-muted-foreground/20"
                 aria-hidden

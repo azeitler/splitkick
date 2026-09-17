@@ -313,13 +313,13 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
           {snoozedBoundaryLoaded && !showSnoozed && (
             <button
               type="button"
-              className="flex h-8 w-full items-center justify-center gap-1 rounded-md text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              className="flex h-8 w-full items-center justify-center rounded-md text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
               onClick={() => {
                 setShowSnoozed(true)
                 setLimit(value => value + RECENT_PAGE_SIZE)
               }}
             >
-              <Plus className="size-3.5" /> Show snoozed sessions
+              Show snoozed sessions
             </button>
           )}
           {showSnoozed && hiddenCount > 0 && (

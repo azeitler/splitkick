@@ -40,6 +40,17 @@ describe('SessionChatModal removal behavior', () => {
     )
   })
 
+  it('opens the file browser instead of the terminal on a right-edge swipe', () => {
+    const source = readSource('src/components/chat/SessionChatModal.tsx')
+    const start = source.indexOf('const swipeOpenFileBrowserCallback')
+    const end = source.indexOf('\n  const canSwipeOpenFileBrowser', start)
+    const callback = start === -1 || end === -1 ? '' : source.slice(start, end)
+
+    expect(callback).toContain('setFileBrowserVisible(true)')
+    expect(source).not.toContain('swipeOpenTerminalCallback')
+    expect(source).not.toContain("openChatTerminal(worktreeId, 'modal')")
+  })
+
   it('keeps rename input out of the clickable tab button to avoid accidental close/cancel', () => {
     const source = readSource('src/components/chat/SessionChatModal.tsx')
 
