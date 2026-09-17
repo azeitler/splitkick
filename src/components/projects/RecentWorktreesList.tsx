@@ -53,6 +53,9 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
   const waitingForInputSessionIds = useChatStore(
     state => state.waitingForInputSessionIds
   )
+  const namingSessionIds = useChatStore(state => state.namingSessionIds)
+  const executionModes = useChatStore(state => state.executionModes)
+  const executingModes = useChatStore(state => state.executingModes)
   const [limit, setLimit] = useState(INITIAL_RECENT_LIMIT)
   const rowRefs = useRef(new Map<string, HTMLButtonElement>())
   const projectKey = useMemo(
@@ -202,7 +205,12 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                     : 'text-muted-foreground'
             const statusBorderClassName =
               status.tone === 'working'
-                ? 'border-l-yellow-500'
+                ? (executingModes[row.session.id] ??
+                    executionModes[row.session.id] ??
+                    row.session.last_run_execution_mode ??
+                    row.session.selected_execution_mode) === 'yolo'
+                  ? 'border-l-destructive'
+                  : 'border-l-yellow-500'
                 : status.tone === 'completed'
                   ? 'border-l-green-500'
                   : 'border-l-transparent'
@@ -221,7 +229,9 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                 >
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-medium text-foreground">
-                      {row.session.name}
+                      {namingSessionIds[row.session.id]
+                        ? 'Generating…'
+                        : row.session.name}
                     </span>
                     <span className="block truncate text-[11px]">
                       {row.projectName} · {row.worktree.name}

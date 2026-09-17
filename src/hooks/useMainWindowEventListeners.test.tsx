@@ -663,6 +663,13 @@ describe('applySessionRenamedToCaches', () => {
         },
       ],
     })
+    queryClient.setQueryData(['recent-worktrees', 'projects', 10, null], {
+      items: [
+        {
+          session: sessions.sessions[0],
+        },
+      ],
+    })
   }
 
   it('updates base sessions, with-counts, session detail, and all-sessions caches', () => {
@@ -687,11 +694,15 @@ describe('applySessionRenamedToCaches', () => {
       chatQueryKeys.session(sessionId)
     )
     const all = queryClient.getQueryData<AllSessionsResponse>(['all-sessions'])
+    const recent = queryClient.getQueryData<{
+      items: Array<{ session: Session }>
+    }>(['recent-worktrees', 'projects', 10, null])
 
     expect(base?.sessions[0]?.name).toBe('Fix auto naming')
     expect(withCounts?.sessions[0]?.name).toBe('Fix auto naming')
     expect(detail?.name).toBe('Fix auto naming')
     expect(all?.entries[0]?.sessions[0]?.name).toBe('Fix auto naming')
+    expect(recent?.items[0]?.session.name).toBe('Fix auto naming')
   })
 })
 

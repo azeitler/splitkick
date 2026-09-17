@@ -16,6 +16,7 @@ import type {
   Session,
   WorktreeSessions,
 } from '@/types/chat'
+import type { RecentWorktreeItem } from '@/types/projects'
 import { disposeTerminal, startHeadless } from '@/lib/terminal-instances'
 import { toast } from 'sonner'
 import { useCommandContext } from './use-command-context'
@@ -239,6 +240,21 @@ export function applySessionRenamedToCaches(
     })
     return changed ? { ...old, entries } : old
   })
+  queryClient.setQueriesData<{ items: RecentWorktreeItem[] }>(
+    { queryKey: ['recent-worktrees'] },
+    old => {
+      if (!old) return old
+      let changed = false
+      const items = old.items.map(item => {
+        if (item.session.id !== sessionId || item.session.name === newName) {
+          return item
+        }
+        changed = true
+        return { ...item, session: { ...item.session, name: newName } }
+      })
+      return changed ? { ...old, items } : old
+    }
+  )
 }
 
 export function shouldAllowKeybindingThroughOpenOverlay(
@@ -1234,6 +1250,9 @@ export function useMainWindowEventListeners() {
           })
           queryClient.invalidateQueries({
             queryKey: ['all-sessions'],
+          })
+          queryClient.invalidateQueries({
+            queryKey: ['recent-worktrees'],
           })
         }),
 

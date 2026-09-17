@@ -6,6 +6,7 @@ describe('session name generation UI', () => {
     'src/components/projects/WorktreeItem.tsx',
     'src/components/chat/SessionChatModal.tsx',
     'src/components/chat/SessionListRow.tsx',
+    'src/components/projects/RecentWorktreesList.tsx',
   ])('shows a loading label in %s', file => {
     const source = readFileSync(file, 'utf8')
     expect(source).toContain('namingSessionIds')

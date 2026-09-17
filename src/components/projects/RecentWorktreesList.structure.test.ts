@@ -16,6 +16,8 @@ describe('RecentWorktreesList structure', () => {
 
   it('shows session, project, worktree, activity, and Git diff information', () => {
     expect(source).toContain('{row.session.name}')
+    expect(source).toContain('namingSessionIds[row.session.id]')
+    expect(source).toContain("'Generating…'")
     expect(source).toContain('{row.projectName} · {row.worktree.name}')
     expect(source).toContain('formatRecentActivity(row.lastActivityAt)')
     expect(source).toContain('+{row.added}')
@@ -34,6 +36,10 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('selectedSessionId')
     expect(source).toContain('getRecentSessionStatus(row.session')
     expect(source).toContain("status.tone === 'working'")
+    expect(source).toContain('executingModes[row.session.id]')
+    expect(source).toContain('executionModes[row.session.id]')
+    expect(source).toContain('row.session.last_run_execution_mode')
+    expect(source).toContain('border-l-destructive')
     expect(source).toContain('border-l-yellow-500')
     expect(source).toContain("status.tone === 'completed'")
     expect(source).toContain('border-l-green-500')
