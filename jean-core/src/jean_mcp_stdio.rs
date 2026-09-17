@@ -12,11 +12,12 @@ use std::io::{BufRead, Write};
 use serde_json::{json, Value};
 
 use crate::jean_mcp_core::{
-    handle_protocol_message, jsonrpc_error, ToolCallRequest, JEAN_MCP_DEPTH_ENV,
+    handle_protocol_message, jsonrpc_error, McpRole, ToolCallRequest, JEAN_MCP_DEPTH_ENV,
     JEAN_MCP_SESSION_ENV, JEAN_MCP_SOCKET_ENV, JEAN_MCP_TOKEN_ENV,
 };
 
 pub fn run_stdio_server() -> Result<(), String> {
+    let role = McpRole::from_args(std::env::args().skip(1));
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
 
@@ -25,7 +26,7 @@ pub fn run_stdio_server() -> Result<(), String> {
         if line.trim().is_empty() {
             continue;
         }
-        let response = handle_message(&line);
+        let response = handle_message(&line, role);
         if let Some(response) = response {
             let encoded = serde_json::to_string(&response)
                 .map_err(|e| format!("Failed to encode MCP response: {e}"))?;
@@ -39,16 +40,16 @@ pub fn run_stdio_server() -> Result<(), String> {
     Ok(())
 }
 
-fn handle_message(line: &str) -> Option<Value> {
+fn handle_message(line: &str, role: McpRole) -> Option<Value> {
     let body: Value = match serde_json::from_str(line) {
         Ok(v) => v,
         Err(e) => return Some(jsonrpc_error(None, -32700, &format!("Parse error: {e}"))),
     };
 
-    handle_protocol_message(body, proxy_tool_call)
+    handle_protocol_message(body, role, |tool_call| proxy_tool_call(tool_call, role))
 }
 
-fn proxy_tool_call(tool_call: ToolCallRequest) -> Result<Value, String> {
+fn proxy_tool_call(tool_call: ToolCallRequest, role: McpRole) -> Result<Value, String> {
     let socket =
         std::env::var(JEAN_MCP_SOCKET_ENV).map_err(|_| format!("Missing {JEAN_MCP_SOCKET_ENV}"))?;
     let token =
@@ -65,20 +66,36 @@ fn proxy_tool_call(tool_call: ToolCallRequest) -> Result<Value, String> {
             "token": token,
             "source": source,
             "depth": depth,
+            "role": match role {
+                McpRole::Dialog => "dialog",
+                McpRole::Full => "full",
+            },
             "name": tool_call.name,
             "arguments": tool_call.arguments,
         }),
+        // A dialog parks on a human. The full server's 120s ceiling would
+        // abort the question long before anyone could answer it; the real
+        // bound is the per-server `timeout` Jean sets on the MCP entry plus
+        // the parent-side DIALOG_PARK_TIMEOUT.
+        match role {
+            McpRole::Dialog => None,
+            McpRole::Full => Some(120),
+        },
     )
 }
 #[cfg(unix)]
-fn proxy_to_parent(socket: &str, request: Value) -> Result<Value, String> {
+fn proxy_to_parent(
+    socket: &str,
+    request: Value,
+    read_timeout_secs: Option<u64>,
+) -> Result<Value, String> {
     use std::os::unix::net::UnixStream;
     use std::time::Duration;
 
     let mut stream = UnixStream::connect(socket)
         .map_err(|e| format!("Failed to connect Jean MCP socket {socket}: {e}"))?;
     stream
-        .set_read_timeout(Some(Duration::from_secs(120)))
+        .set_read_timeout(read_timeout_secs.map(Duration::from_secs))
         .map_err(|e| format!("Failed to set Jean MCP socket read timeout: {e}"))?;
     stream
         .set_write_timeout(Some(Duration::from_secs(30)))
@@ -104,7 +121,11 @@ fn proxy_to_parent(socket: &str, request: Value) -> Result<Value, String> {
 }
 
 #[cfg(windows)]
-fn proxy_to_parent(socket: &str, request: Value) -> Result<Value, String> {
+fn proxy_to_parent(
+    socket: &str,
+    request: Value,
+    read_timeout_secs: Option<u64>,
+) -> Result<Value, String> {
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
     use tokio::net::windows::named_pipe::ClientOptions;
     use tokio::runtime::Builder;
@@ -133,10 +154,17 @@ fn proxy_to_parent(socket: &str, request: Value) -> Result<Value, String> {
 
         let mut reader = BufReader::new(pipe);
         let mut line = String::new();
-        timeout(Duration::from_secs(120), reader.read_line(&mut line))
-            .await
-            .map_err(|_| "Timed out reading Jean MCP pipe response".to_string())?
-            .map_err(|e| format!("Failed to read Jean MCP pipe response: {e}"))?;
+        match read_timeout_secs {
+            Some(secs) => timeout(Duration::from_secs(secs), reader.read_line(&mut line))
+                .await
+                .map_err(|_| "Timed out reading Jean MCP pipe response".to_string())?
+                .map_err(|e| format!("Failed to read Jean MCP pipe response: {e}"))?,
+            // Dialogs park on a human; see the unix arm.
+            None => reader
+                .read_line(&mut line)
+                .await
+                .map_err(|e| format!("Failed to read Jean MCP pipe response: {e}"))?,
+        };
 
         serde_json::from_str::<Value>(&line)
             .map_err(|e| format!("Failed to parse Jean MCP pipe response: {e}"))
@@ -149,7 +177,11 @@ fn proxy_to_parent(socket: &str, request: Value) -> Result<Value, String> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn proxy_to_parent(_socket: &str, _request: Value) -> Result<Value, String> {
+fn proxy_to_parent(
+    _socket: &str,
+    _request: Value,
+    _read_timeout_secs: Option<u64>,
+) -> Result<Value, String> {
     Err("Jean MCP local IPC is not supported on this platform".to_string())
 }
 

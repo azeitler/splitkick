@@ -4164,16 +4164,15 @@ async fn sync_jean_mcp_socket_from_preferences(
         return Ok(());
     };
 
-    if !prefs.jean_mcp_enabled {
-        let mut guard = state.lock().await;
-        if let Some(handle) = guard.take() {
-            let _ = handle.shutdown_tx.send(());
-            log::info!("Jean MCP proxy socket stopped");
-        }
-        emit_jean_mcp_socket_status(&app, false);
-        return Ok(());
-    }
-
+    // The socket stays up regardless of `jean_mcp_enabled`. Claude's dialog
+    // server (AskUserQuestion / plan approval) rides the same socket under the
+    // `dialog` role, and `--permission-prompt-tool` naming a tool that cannot
+    // be resolved kills the run at the first permission check — so disabling
+    // the user-facing Jean MCP server must not take Claude's chat down.
+    //
+    // The preference is still enforced, one layer in: `jean_mcp_core::call_tool`
+    // refuses every full-role tool while it is off, so the user-visible surface
+    // is exactly what it was.
     let token = prefs
         .http_server_token
         .clone()
@@ -4185,6 +4184,10 @@ async fn sync_jean_mcp_socket_from_preferences(
         let mut guard = state.lock().await;
         if let Some(handle) = guard.as_ref() {
             if handle.path == path && handle.token == token {
+                // Socket is already correct, but the preference may have just
+                // flipped — re-emit so the MCP settings pane tracks it.
+                drop(guard);
+                emit_jean_mcp_socket_status(&app, prefs.jean_mcp_enabled);
                 return Ok(());
             }
         }
@@ -4199,7 +4202,9 @@ async fn sync_jean_mcp_socket_from_preferences(
 
     let mut guard = state.lock().await;
     *guard = Some(handle);
-    emit_jean_mcp_socket_status(&app, true);
+    // The socket is up either way, but "running" here drives the user-facing
+    // Jean MCP section, so report the surface the user actually gets.
+    emit_jean_mcp_socket_status(&app, prefs.jean_mcp_enabled);
     Ok(())
 }
 

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "jeanrig": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["$RIG/shim.py"],
+      "timeout": 1800000
+    }
+  }
+}

@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use tauri::AppHandle;
 use tokio::sync::Mutex;
 
-use crate::jean_mcp_core::{call_tool, extract_tool_call, jsonrpc_error, jsonrpc_ok};
+use crate::jean_mcp_core::{call_tool, extract_tool_call, jsonrpc_error, jsonrpc_ok, McpRole};
 
 #[derive(Debug)]
 pub struct JeanMcpSocketHandle {
@@ -264,8 +264,21 @@ async fn handle_socket_request(app: &AppHandle, expected_token: &str, line: &str
         .and_then(|v| v.as_str())
         .unwrap_or("anon");
     let depth = body.get("depth").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+    let role = match body.get("role").and_then(|v| v.as_str()) {
+        Some("dialog") => McpRole::Dialog,
+        _ => McpRole::Full,
+    };
 
-    match call_tool(app, &tool_call.name, tool_call.arguments, source, depth).await {
+    match call_tool(
+        app,
+        &tool_call.name,
+        tool_call.arguments,
+        source,
+        depth,
+        role,
+    )
+    .await
+    {
         Ok(result) => jsonrpc_ok(None, result),
         Err(e) => jsonrpc_error(None, e.code, &e.message),
     }
@@ -334,6 +347,346 @@ mod tests {
             assert_eq!(ask("wrong").await["error"], "unauthorized");
 
             let _ = handle.shutdown_tx.send(());
+        });
+    }
+
+    /// The whole dialog chain over the real transport: a `permission_prompt`
+    /// request arrives with the `dialog` role, parks, the UI answers it, and
+    /// the answers come back spliced into `updatedInput` — which is how they
+    /// reach the model, since AskUserQuestion's `call()` just echoes its input.
+    #[cfg(unix)]
+    #[test]
+    fn a_parked_question_is_answered_over_the_local_socket() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        use crate::chat::claude_dialog::{self, DialogOutcome};
+
+        let temp = tempfile::tempdir().unwrap();
+        let app = tauri::AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let socket = temp.path().join("dialog-mcp.sock");
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let handle = super::start_socket_server(app.clone(), socket.clone(), "secret".into())
+                .await
+                .expect("socket server");
+
+            let request = serde_json::json!({
+                "token": "secret",
+                "source": "socket-dialog-session",
+                "depth": 0,
+                "role": "dialog",
+                "name": "permission_prompt",
+                "arguments": {
+                    "tool_name": "AskUserQuestion",
+                    "tool_use_id": "toolu_socket_dialog",
+                    "input": {
+                        "questions": [{
+                            "question": "Which cache backend?",
+                            "options": [{"label": "Redis"}, {"label": "Memcached"}],
+                        }]
+                    }
+                },
+            });
+
+            let socket_for_call = socket.clone();
+            let call = tokio::spawn(async move {
+                let stream = tokio::net::UnixStream::connect(&socket_for_call)
+                    .await
+                    .unwrap();
+                let (read_half, mut write_half) = stream.into_split();
+                write_half
+                    .write_all(format!("{request}\n").as_bytes())
+                    .await
+                    .unwrap();
+                write_half.shutdown().await.unwrap();
+
+                let mut line = String::new();
+                BufReader::new(read_half)
+                    .read_line(&mut line)
+                    .await
+                    .unwrap();
+                serde_json::from_str::<serde_json::Value>(&line).unwrap()
+            });
+
+            // Wait for the call to actually park before answering it.
+            for _ in 0..200 {
+                if claude_dialog::is_parked("toolu_socket_dialog") {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
+            assert!(
+                claude_dialog::is_parked("toolu_socket_dialog"),
+                "the permission_prompt call should have parked"
+            );
+
+            assert!(claude_dialog::resolve(
+                "toolu_socket_dialog",
+                DialogOutcome::Answered {
+                    answers: serde_json::json!({"Which cache backend?": "Memcached"}),
+                    response: None,
+                },
+            ));
+
+            let response = call.await.unwrap();
+            let text = response["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or_else(|| panic!("no content in {response}"));
+            let payload: serde_json::Value = serde_json::from_str(text).unwrap();
+
+            assert_eq!(payload["behavior"], "allow");
+            assert_eq!(
+                payload["updatedInput"]["answers"]["Which cache backend?"],
+                "Memcached"
+            );
+            // The questions must survive: the tool echoes both back to the model.
+            assert!(payload["updatedInput"]["questions"].is_array(), "{payload}");
+
+            let _ = handle.shutdown_tx.send(());
+        });
+    }
+
+    /// The dialog role must work while the user-facing Jean MCP server is off,
+    /// because `--permission-prompt-tool` naming an unresolvable tool kills the
+    /// run with exit=1 at the first permission check.
+    #[cfg(unix)]
+    #[test]
+    fn a_full_role_tool_is_refused_but_the_dialog_role_is_not() {
+        use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+
+        let temp = tempfile::tempdir().unwrap();
+        let app = tauri::AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let socket = temp.path().join("gated-mcp.sock");
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let mut prefs = crate::load_preferences(app.clone()).await.unwrap();
+            prefs.jean_mcp_enabled = false;
+            crate::save_preferences(app.clone(), prefs).await.unwrap();
+
+            let handle = super::start_socket_server(app.clone(), socket.clone(), "secret".into())
+                .await
+                .expect("socket server");
+
+            let ask = |body: serde_json::Value| {
+                let socket = socket.clone();
+                async move {
+                    let stream = tokio::net::UnixStream::connect(&socket).await.unwrap();
+                    let (read_half, mut write_half) = stream.into_split();
+                    write_half
+                        .write_all(format!("{body}\n").as_bytes())
+                        .await
+                        .unwrap();
+                    write_half.shutdown().await.unwrap();
+                    let mut line = String::new();
+                    BufReader::new(read_half)
+                        .read_line(&mut line)
+                        .await
+                        .unwrap();
+                    serde_json::from_str::<serde_json::Value>(&line).unwrap()
+                }
+            };
+
+            let refused = ask(serde_json::json!({
+                "token": "secret", "source": "anon", "depth": 0, "role": "full",
+                "name": "list_all_sessions", "arguments": {},
+            }))
+            .await;
+            assert!(
+                refused["error"]["message"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .contains("Jean MCP is disabled"),
+                "{refused}"
+            );
+
+            // Same socket, dialog role: answered, not refused. A non-dialog tool
+            // takes the plan-mode default arm rather than the preference gate.
+            let allowed = ask(serde_json::json!({
+                "token": "secret", "source": "anon", "depth": 0, "role": "dialog",
+                "name": "permission_prompt",
+                "arguments": {"tool_name": "Read", "input": {}},
+            }))
+            .await;
+            let text = allowed["result"]["content"][0]["text"]
+                .as_str()
+                .unwrap_or_else(|| panic!("no content in {allowed}"));
+            let payload: serde_json::Value = serde_json::from_str(text).unwrap();
+            assert_eq!(payload["behavior"], "allow", "{payload}");
+
+            let _ = handle.shutdown_tx.send(());
+        });
+    }
+
+    /// The complete chain, with no stand-ins except the human: the real Claude
+    /// CLI, the real Jean dialog shim, the real socket, `permission_prompt`,
+    /// park, resolve — and the answer reaching the model.
+    ///
+    /// Ignored by default: it needs the Claude CLI, network access, and the
+    /// shim example built. Run it with
+    ///
+    /// ```text
+    /// cargo build --example dialog_shim
+    /// cargo test --lib real_claude_cli_round_trips_a_question -- --ignored --nocapture
+    /// ```
+    ///
+    /// Answers with a freeform `response`, which AskUserQuestion renders as
+    /// "The user responded: …" without needing the model-generated question
+    /// text as a key. Answer-key splicing is covered by
+    /// `a_parked_question_is_answered_over_the_local_socket`.
+    #[cfg(unix)]
+    #[test]
+    #[ignore = "needs the Claude CLI, network, and `cargo build --example dialog_shim`"]
+    fn real_claude_cli_round_trips_a_question() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        use crate::chat::claude_dialog::{self, DialogOutcome};
+
+        const SESSION: &str = "real-cli-verify-session";
+        const PARK_SECS: u64 = 45;
+
+        let cli = std::env::var("CLAUDE_CLI").unwrap_or_else(|_| {
+            format!(
+                "{}/Library/Application Support/com.jean.desktop/claude-cli/claude",
+                std::env::var("HOME").unwrap()
+            )
+        });
+        let shim = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("target/debug/examples/dialog_shim");
+        assert!(
+            shim.exists(),
+            "build the shim first: cargo build --example dialog_shim"
+        );
+
+        let temp = tempfile::tempdir().unwrap();
+        let app = tauri::AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let socket = temp.path().join("real-cli.sock");
+
+        // Exactly the entry `build_jean_dialog_mcp_entry` produces.
+        let config = serde_json::json!({"mcpServers": {
+            crate::chat::jean_mcp::JEAN_DIALOG_SERVER: {
+                "type": "stdio",
+                "command": shim,
+                "args": [crate::jean_mcp_core::JEAN_MCP_STDIO_ARG, crate::jean_mcp_core::JEAN_MCP_DIALOG_ARG],
+                "timeout": 1_800_000,
+                "env": {
+                    "JEAN_MCP_SOCKET": socket,
+                    "JEAN_MCP_TOKEN": "verify-token",
+                    "JEAN_MCP_SESSION": SESSION,
+                    "JEAN_MCP_DEPTH": "0",
+                }
+            }
+        }});
+
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .enable_all()
+            .build()
+            .unwrap();
+
+        runtime.block_on(async {
+            let handle =
+                super::start_socket_server(app.clone(), socket.clone(), "verify-token".into())
+                    .await
+                    .expect("socket server");
+
+            // The human: waits well past the old 120s-capped read and the CLI's
+            // default idle abort would allow for a silent call, then answers.
+            let answered_at = tokio::spawn(async {
+                tokio::time::sleep(std::time::Duration::from_secs(PARK_SECS)).await;
+                let start = std::time::Instant::now();
+                loop {
+                    let n = claude_dialog::resolve_session(
+                        SESSION,
+                        DialogOutcome::Answered {
+                            answers: serde_json::json!({}),
+                            response: Some("Memcached".to_string()),
+                        },
+                    );
+                    if n > 0 {
+                        return Some(n);
+                    }
+                    if start.elapsed() > std::time::Duration::from_secs(180) {
+                        return None;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                }
+            });
+
+            let flags = vec![
+                "--print".to_string(),
+                "--output-format".into(),
+                "stream-json".into(),
+                "--input-format".into(),
+                "stream-json".into(),
+                "--verbose".into(),
+                "--tools".into(),
+                "default".into(),
+                "--permission-mode".into(),
+                "acceptEdits".into(),
+                "--model".into(),
+                "haiku".into(),
+                "--mcp-config".into(),
+                config.to_string(),
+                "--strict-mcp-config".into(),
+                "--permission-prompt-tool".into(),
+                crate::chat::jean_mcp::dialog_permission_prompt_tool(),
+            ];
+            let output = tokio::task::spawn_blocking(move || {
+                let mut child = Command::new(&cli)
+                    .args(&flags)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .spawn()
+                    .expect("spawn claude");
+                let prompt = serde_json::json!({"type": "user", "message": {"role": "user",
+                    "content": [{"type": "text", "text":
+                        "Use the AskUserQuestion tool to ask me whether to use Redis or \
+                         Memcached, then tell me what I picked. Do not touch the filesystem."}]}});
+                writeln!(child.stdin.take().unwrap(), "{prompt}").unwrap();
+                child.wait_with_output().expect("claude output")
+            })
+            .await
+            .unwrap();
+
+            let resolved = answered_at.await.unwrap();
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            let _ = handle.shutdown_tx.send(());
+
+            assert!(
+                output.status.success(),
+                "claude exited {:?}\n{}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            );
+            assert_eq!(resolved, Some(1), "no dialog ever parked for {SESSION}");
+
+            let init_has_tool = stdout
+                .lines()
+                .filter_map(|l| serde_json::from_str::<serde_json::Value>(l).ok())
+                .find(|d| d["type"] == "system" && d["subtype"] == "init")
+                .and_then(|d| d["tools"].as_array().cloned())
+                .map(|t| t.iter().any(|x| x == "AskUserQuestion"))
+                .unwrap_or(false);
+            assert!(
+                init_has_tool,
+                "AskUserQuestion missing from the init tool list"
+            );
+
+            assert!(
+                stdout.contains("The user responded: Memcached"),
+                "the answer never reached the model:\n{stdout}"
+            );
         });
     }
 

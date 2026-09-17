@@ -2659,6 +2659,39 @@ export async function saveCancelledMessage(
 // ============================================================================
 
 /**
+ * Shape Claude's `AskUserQuestion` expects its answers in: question text ->
+ * the chosen option label, with multi-select joined by ", ".
+ *
+ * These are spliced back into the tool's own input via the permission
+ * response, which is how the answers reach the model — the tool's `call()` is
+ * a passthrough that reads `answers` out of its input. Freeform text takes the
+ * place of the label, which Claude renders as "The user answered: ...".
+ */
+export function formatAnswersForClaude(
+  questions: Question[],
+  answers: QuestionAnswer[]
+): Record<string, string> {
+  const formatted: Record<string, string> = {}
+
+  for (const answer of answers) {
+    const question = questions[answer.questionIndex]
+    if (!question) continue
+
+    const selectedLabels = answer.selectedOptions.flatMap(idx => {
+      const label = question.options[idx]?.label
+      return label ? [label] : []
+    })
+
+    const value = answer.customText?.trim()
+      ? answer.customText.trim()
+      : selectedLabels.join(', ')
+    if (value) formatted[question.question] = value
+  }
+
+  return formatted
+}
+
+/**
  * Format question answers into natural language for Claude
  *
  * Example output:

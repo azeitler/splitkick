@@ -22,6 +22,44 @@ pub const JEAN_MCP_TOKEN_ENV: &str = "JEAN_MCP_TOKEN";
 pub const JEAN_MCP_SESSION_ENV: &str = "JEAN_MCP_SESSION";
 pub const JEAN_MCP_DEPTH_ENV: &str = "JEAN_MCP_DEPTH";
 
+/// Marks the stdio child as the dialog-only server (see [`McpRole::Dialog`]).
+pub const JEAN_MCP_DIALOG_ARG: &str = "--dialog";
+/// Tool name Claude is pointed at via `--permission-prompt-tool`.
+pub const PERMISSION_PROMPT_TOOL: &str = "permission_prompt";
+
+/// Which surface a Jean MCP endpoint exposes.
+///
+/// The two roles share one socket, one token and one stdio binary; they differ
+/// only in the tool registry they advertise and in who may call them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpRole {
+    /// The user-facing Jean server: worktrees, sessions, git, GitHub. Gated on
+    /// the `jean_mcp_enabled` preference.
+    Full,
+    /// Internal-only. Exposes exactly one tool, [`PERMISSION_PROMPT_TOOL`],
+    /// which Claude Code calls to resolve permission requests and the dialog
+    /// tools (`AskUserQuestion`, `EnterPlanMode`, `ExitPlanMode`).
+    ///
+    /// Deliberately independent of `jean_mcp_enabled`: pointing
+    /// `--permission-prompt-tool` at a tool that does not resolve kills the
+    /// run with `exit=1` at the first permission check, so a user toggling the
+    /// Jean MCP server off must not take Claude's chat down with it.
+    ///
+    /// Never exposed to the model — Claude consumes the permission-prompt tool
+    /// internally and keeps it out of the model's tool list.
+    Dialog,
+}
+
+impl McpRole {
+    pub fn from_args<I: IntoIterator<Item = S>, S: AsRef<str>>(args: I) -> Self {
+        if args.into_iter().any(|a| a.as_ref() == JEAN_MCP_DIALOG_ARG) {
+            Self::Dialog
+        } else {
+            Self::Full
+        }
+    }
+}
+
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const RATE_LIMITED_TOOLS: &[&str] = &[
     "add_project",
@@ -105,17 +143,53 @@ const JEAN_MCP_INSTRUCTIONS: &str = concat!(
     "- Archiving and deleting cannot be undone from here. Show the user what you propose and wait for a yes."
 );
 
-pub fn initialize_result() -> Value {
-    json!({
-        "protocolVersion": MCP_PROTOCOL_VERSION,
-        "capabilities": { "tools": {}, "prompts": {} },
-        "serverInfo": { "name": "jean", "version": env!("CARGO_PKG_VERSION") },
-        "instructions": JEAN_MCP_INSTRUCTIONS,
-    })
+pub fn initialize_result(role: McpRole) -> Value {
+    match role {
+        // No instructions: the dialog server is invisible to the model, so any
+        // text here would be context the model pays for and can never use.
+        McpRole::Dialog => json!({
+            "protocolVersion": MCP_PROTOCOL_VERSION,
+            "capabilities": { "tools": {} },
+            "serverInfo": { "name": "jean-dialog", "version": env!("CARGO_PKG_VERSION") },
+        }),
+        McpRole::Full => json!({
+            "protocolVersion": MCP_PROTOCOL_VERSION,
+            "capabilities": { "tools": {}, "prompts": {} },
+            "serverInfo": { "name": "jean", "version": env!("CARGO_PKG_VERSION") },
+            "instructions": JEAN_MCP_INSTRUCTIONS,
+        }),
+    }
 }
 
-pub fn tools_list_result() -> Value {
-    json!({ "tools": tool_registry() })
+pub fn tools_list_result(role: McpRole) -> Value {
+    match role {
+        McpRole::Dialog => json!({ "tools": dialog_tool_registry() }),
+        McpRole::Full => json!({ "tools": tool_registry() }),
+    }
+}
+
+/// The dialog server's entire surface.
+///
+/// Claude passes `{tool_name, input, tool_use_id}` and expects one text block
+/// containing `{"behavior":"allow","updatedInput":{…}}` or
+/// `{"behavior":"deny","message":"…"}`.
+pub fn dialog_tool_registry() -> Value {
+    json!([
+        {
+            "name": PERMISSION_PROMPT_TOOL,
+            "description": "Internal Jean tool. Resolves Claude Code permission requests and interactive dialogs against the Jean UI.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "tool_name": {"type": "string", "description": "Name of the tool requesting permission."},
+                    "input": {"type": "object", "description": "The requesting tool's input."},
+                    "tool_use_id": {"type": "string", "description": "Tool call id, used to match the UI response."}
+                },
+                "required": ["tool_name", "input"],
+                "additionalProperties": true
+            }
+        }
+    ])
 }
 
 /// The workflows an agent should follow for the two questions the session
@@ -308,16 +382,27 @@ pub fn extract_tool_call(params: Value) -> Result<ToolCallRequest, ToolError> {
 
 pub fn handle_protocol_message(
     body: Value,
+    role: McpRole,
     call_tool: impl FnMut(ToolCallRequest) -> Result<Value, String>,
 ) -> Option<Value> {
     let id = body.get("id").cloned();
     let method = body.get("method").and_then(|v| v.as_str()).unwrap_or("");
     let params = body.get("params").cloned().unwrap_or(Value::Null);
 
+    // The dialog server advertises no prompts capability, so answer prompt
+    // methods as unsupported rather than leaking the full server's list.
+    if role == McpRole::Dialog && matches!(method, "prompts/list" | "prompts/get") {
+        return Some(jsonrpc_error(
+            id,
+            -32601,
+            &format!("Method not found: {method}"),
+        ));
+    }
+
     match method {
-        "initialize" => Some(jsonrpc_ok(id, initialize_result())),
+        "initialize" => Some(jsonrpc_ok(id, initialize_result(role))),
         "notifications/initialized" => None,
-        "tools/list" => Some(jsonrpc_ok(id, tools_list_result())),
+        "tools/list" => Some(jsonrpc_ok(id, tools_list_result(role))),
         "prompts/list" => Some(jsonrpc_ok(id, prompts_list_result())),
         "prompts/get" => Some(match prompts_get_result(&params) {
             Ok(result) => jsonrpc_ok(id, result),
@@ -422,7 +507,27 @@ pub async fn call_tool(
     arguments: Value,
     source: &str,
     depth: u32,
+    role: McpRole,
 ) -> Result<Value, ToolError> {
+    // The dialog server is answered before preferences are consulted on
+    // purpose. `--permission-prompt-tool` naming a tool that does not resolve
+    // kills the Claude run at the first permission check, so this path must
+    // not depend on `jean_mcp_enabled`.
+    if role == McpRole::Dialog {
+        if name != PERMISSION_PROMPT_TOOL {
+            return Err(ToolError::invalid_params(format!(
+                "Unknown dialog tool: {name}"
+            )));
+        }
+        return crate::chat::claude_dialog_tool::handle_permission_prompt(app, arguments, source)
+            .await;
+    }
+    if name == PERMISSION_PROMPT_TOOL {
+        return Err(ToolError::invalid_params(
+            "permission_prompt is only available on the Jean dialog server",
+        ));
+    }
+
     let prefs = crate::load_preferences(app.clone())
         .await
         .map_err(ToolError::internal)?;
@@ -4270,9 +4375,66 @@ mod tests {
         assert!(description.contains("chronological"));
     }
 
+    /// The dialog server must expose exactly one tool. Anything else would be
+    /// surface the model could reach, and the whole point of splitting it from
+    /// the `jean` server is that it adds none.
+    #[test]
+    fn the_dialog_server_exposes_only_permission_prompt() {
+        let listed = tools_list_result(McpRole::Dialog);
+        let tools = listed["tools"].as_array().expect("tools");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["name"], PERMISSION_PROMPT_TOOL);
+
+        let full = tools_list_result(McpRole::Full);
+        let names: Vec<&str> = full["tools"]
+            .as_array()
+            .expect("tools")
+            .iter()
+            .filter_map(|t| t["name"].as_str())
+            .collect();
+        assert!(names.len() > 1);
+        assert!(
+            !names.contains(&PERMISSION_PROMPT_TOOL),
+            "the user-facing server must not advertise the dialog tool"
+        );
+    }
+
+    /// Instructions land in the model's system prompt. The dialog server is
+    /// invisible to the model, so any text there is context nobody can use.
+    #[test]
+    fn the_dialog_server_sends_no_instructions_or_prompts() {
+        let result = initialize_result(McpRole::Dialog);
+        assert_eq!(result["serverInfo"]["name"], "jean-dialog");
+        assert!(result.get("instructions").is_none());
+        assert!(result["capabilities"].get("prompts").is_none());
+    }
+
+    #[test]
+    fn the_dialog_server_refuses_prompt_methods() {
+        let never_called =
+            |_: ToolCallRequest| -> Result<Value, String> { panic!("no tool call expected") };
+        let response = handle_protocol_message(
+            json!({ "jsonrpc": "2.0", "id": 1, "method": "prompts/list" }),
+            McpRole::Dialog,
+            never_called,
+        )
+        .expect("a response");
+        assert_eq!(response["error"]["code"], -32601);
+    }
+
+    #[test]
+    fn dialog_role_is_read_from_the_stdio_args() {
+        assert_eq!(
+            McpRole::from_args([JEAN_MCP_STDIO_ARG, JEAN_MCP_DIALOG_ARG]),
+            McpRole::Dialog
+        );
+        assert_eq!(McpRole::from_args([JEAN_MCP_STDIO_ARG]), McpRole::Full);
+        assert_eq!(McpRole::from_args(Vec::<String>::new()), McpRole::Full);
+    }
+
     #[test]
     fn initialize_advertises_instructions_and_prompts() {
-        let result = initialize_result();
+        let result = initialize_result(McpRole::Full);
 
         assert_eq!(result["capabilities"]["prompts"], json!({}));
         let instructions = result["instructions"].as_str().expect("instructions");
@@ -4716,6 +4878,7 @@ mod tests {
 
         let listed = handle_protocol_message(
             json!({ "jsonrpc": "2.0", "id": 1, "method": "prompts/list" }),
+            McpRole::Full,
             never_called,
         )
         .expect("a response");
@@ -4729,6 +4892,7 @@ mod tests {
                 "jsonrpc": "2.0", "id": 2, "method": "prompts/get",
                 "params": { "name": "find_session", "arguments": { "topic": "redirect" } },
             }),
+            McpRole::Full,
             never_called,
         )
         .expect("a response");
@@ -4742,6 +4906,7 @@ mod tests {
                 "jsonrpc": "2.0", "id": 3, "method": "prompts/get",
                 "params": { "name": "nope" },
             }),
+            McpRole::Full,
             never_called,
         )
         .expect("a response");
@@ -4858,7 +5023,7 @@ mod tests {
             ("search_sessions", json!({ "query": "redirect" })),
         ] {
             let wrapped = runtime
-                .block_on(call_tool(&app, name, args, "anon", 0))
+                .block_on(call_tool(&app, name, args, "anon", 0, McpRole::Full))
                 .unwrap_or_else(|e| panic!("{name}: {}", e.message));
 
             assert_eq!(wrapped["isError"], json!(false));

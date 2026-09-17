@@ -30,7 +30,10 @@ import type {
   WorktreeSessions,
 } from '@/types/chat'
 import type { ReviewFinding } from '@/types/chat'
-import { formatAnswersAsNaturalLanguage } from '@/services/chat'
+import {
+  formatAnswersAsNaturalLanguage,
+  formatAnswersForClaude,
+} from '@/services/chat'
 import { parseReviewFindings, getFindingKey } from '../review-finding-utils'
 import { findPlanFilePath, resolvePlanContent } from '../tool-call-utils'
 import { navigateToApprovedWorktree } from '../worktree-approval-navigation'
@@ -445,36 +448,72 @@ export function useMessageHandlers({
         return
       }
 
-      // Claude / Codex: format answers as natural language and send as new message
-      const message = formatAnswersAsNaturalLanguage(questions, answers)
+      // Codex, and Claude runs with no live dialog: format the answers as
+      // natural language and send them as a new message.
+      const sendAnswerAsMessage = () => {
+        const message = formatAnswersAsNaturalLanguage(questions, answers)
 
-      // Add to sending state
-      addSendingSession(sessionId)
-      setSelectedModel(sessionId, selectedModelRef.current)
-      setExecutingMode(sessionId, executionModeRef.current)
+        addSendingSession(sessionId)
+        setSelectedModel(sessionId, selectedModelRef.current)
+        setExecutingMode(sessionId, executionModeRef.current)
 
-      // Send the formatted answer
-      sendMessage.mutate(
-        {
-          sessionId,
-          worktreeId,
-          worktreePath,
-          message,
-          model: selectedModelRef.current,
-          executionMode: executionModeRef.current,
-          thinkingLevel: selectedThinkingLevelRef.current,
-          effortLevel: useAdaptiveThinkingRef.current
-            ? selectedEffortLevelRef.current
-            : undefined,
-          mcpConfig: getMcpConfig(),
-          customProfileName: getCustomProfileName(),
-        },
-        {
-          onSettled: () => {
-            inputRef.current?.focus()
+        sendMessage.mutate(
+          {
+            sessionId,
+            worktreeId,
+            worktreePath,
+            message,
+            model: selectedModelRef.current,
+            executionMode: executionModeRef.current,
+            thinkingLevel: selectedThinkingLevelRef.current,
+            effortLevel: useAdaptiveThinkingRef.current
+              ? selectedEffortLevelRef.current
+              : undefined,
+            mcpConfig: getMcpConfig(),
+            customProfileName: getCustomProfileName(),
           },
-        }
-      )
+          {
+            onSettled: () => {
+              inputRef.current?.focus()
+            },
+          }
+        )
+      }
+
+      if (session?.backend === 'claude') {
+        // Claude's AskUserQuestion is answered through the permission response,
+        // not a follow-up message: the turn is parked on an MCP call and the
+        // answers are spliced into the tool's own input. See
+        // jean-core/src/chat/claude_dialog.rs.
+        addSendingSession(sessionId)
+        invoke<boolean>('answer_claude_dialog', {
+          toolUseId: toolCallId,
+          outcome: 'answered',
+          answers: formatAnswersForClaude(questions, answers),
+        })
+          .then(resolved => {
+            if (resolved) {
+              inputRef.current?.focus()
+              return
+            }
+            // Nothing was parked — the dialog timed out, or this is an old
+            // transcript whose run already ended. Fall back to a message so
+            // the answer is not simply lost.
+            useChatStore.getState().removeSendingSession(sessionId)
+            sendAnswerAsMessage()
+          })
+          .catch(err => {
+            console.error(
+              '[useMessageHandlers] Failed to answer Claude dialog:',
+              err
+            )
+            useChatStore.getState().removeSendingSession(sessionId)
+            sendAnswerAsMessage()
+          })
+        return
+      }
+
+      sendAnswerAsMessage()
     },
     [
       activeSessionIdRef,
@@ -612,6 +651,31 @@ export function useMessageHandlers({
 
   // Handle plan approval for ExitPlanMode
   // PERFORMANCE: Uses refs for session/worktree IDs to keep callback stable across session switches
+  /**
+   * Release a Claude turn parked on ExitPlanMode.
+   *
+   * With the dialog harness restored, ExitPlanMode parks the run on an MCP
+   * permission call. Jean handles plan approval by starting a *new* turn with
+   * build permissions and the build model/effort overrides, so the parked call
+   * is declined rather than allowed — otherwise the old run would continue in
+   * the same process with none of those overrides applied, and the new turn
+   * could not start while the old one was still running.
+   */
+  const releaseParkedPlanDialog = useCallback((sessionId: string) => {
+    invoke('answer_claude_dialog', {
+      sessionId,
+      outcome: 'denied',
+      message:
+        'Jean is handling this plan approval as a new turn. Stop here; do not continue in this turn.',
+    }).catch(err => {
+      // Non-fatal: nothing was parked, or the run already ended.
+      console.debug(
+        '[useMessageHandlers] No parked plan dialog to release:',
+        err
+      )
+    })
+  }, [])
+
   const handlePlanApproval = useCallback(
     (messageId: string, updatedPlan?: string) => {
       const sessionId = activeSessionIdRef.current
@@ -670,6 +734,7 @@ export function useMessageHandlers({
       setMode(sessionId, 'build')
 
       const isCodex = selectedBackendRef.current === 'codex'
+      releaseParkedPlanDialog(sessionId)
       clearPlanApprovalTransientState(sessionId)
 
       // Mark as at-bottom so Tier 4 / Tier 2 auto-scroll kicks in when
@@ -844,6 +909,7 @@ export function useMessageHandlers({
       setMode(sessionId, 'yolo')
 
       const isCodexYolo = selectedBackendRef.current === 'codex'
+      releaseParkedPlanDialog(sessionId)
       clearPlanApprovalTransientState(sessionId)
 
       // Mark as at-bottom so Tier 4 / Tier 2 auto-scroll kicks in when
@@ -984,6 +1050,7 @@ export function useMessageHandlers({
     setStreamingPlanApproved(sessionId, true)
 
     const isCodex = selectedBackendRef.current === 'codex'
+    releaseParkedPlanDialog(sessionId)
     clearPlanApprovalTransientState(sessionId)
 
     // Mark as at-bottom so Tier 4 / Tier 2 auto-scroll kicks in when
@@ -1087,6 +1154,7 @@ export function useMessageHandlers({
     setStreamingPlanApproved(sessionId, true)
 
     const isCodexYolo = selectedBackendRef.current === 'codex'
+    releaseParkedPlanDialog(sessionId)
     clearPlanApprovalTransientState(sessionId)
 
     // Mark as at-bottom so Tier 4 / Tier 2 auto-scroll kicks in when

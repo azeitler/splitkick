@@ -3530,6 +3530,23 @@ pub async fn send_chat_message(
         }
         _ => mcp_config.clone(),
     };
+    // Claude additionally always gets the internal dialog server, which is what
+    // restores AskUserQuestion / EnterPlanMode / ExitPlanMode. Independent of
+    // `jean_mcp_enabled` on purpose — see `jean_mcp::build_jean_dialog_mcp_entry`.
+    let thread_mcp_config = if effective_backend == Backend::Claude {
+        super::jean_mcp::merge_dialog_into_mcp_config(
+            &app,
+            &session_id,
+            thread_mcp_config.as_deref(),
+        )
+        .await
+        .or(thread_mcp_config)
+    } else {
+        thread_mcp_config
+    };
+    // The permission-prompt tool runs out-of-band on the MCP socket and has
+    // only a session id, so record the mode this turn launched with.
+    super::registry::set_turn_execution_mode(&session_id, execution_mode.as_deref());
     let thread_custom_profile = custom_profile_name.clone();
     let thread_codex_provider = if effective_backend == Backend::Codex {
         let prefs_for_codex = crate::load_preferences(app.clone()).await.ok();
@@ -6584,6 +6601,55 @@ fn pasted_text_filename(preferred_name: Option<&str>) -> String {
         sanitized
     };
     format!("{prefix}-{timestamp}-{short_uuid}.txt")
+}
+
+/// Resolve a Claude dialog the UI just answered.
+///
+/// Returns `false` when nothing was parked for `tool_use_id` — the caller
+/// should then fall back to sending the answer as a normal message, which is
+/// what happens for a dialog that timed out, or a transcript reloaded after
+/// the run ended.
+pub async fn answer_claude_dialog(
+    _app: AppHandle,
+    tool_use_id: Option<String>,
+    session_id: Option<String>,
+    outcome: String,
+    answers: Option<serde_json::Map<String, serde_json::Value>>,
+    response: Option<String>,
+    message: Option<String>,
+) -> Result<bool, String> {
+    use super::claude_dialog::{self, DialogOutcome};
+
+    let outcome = match outcome.as_str() {
+        "answered" => DialogOutcome::Answered {
+            answers: serde_json::Value::Object(answers.unwrap_or_default()),
+            response,
+        },
+        "approved" => DialogOutcome::Approved,
+        "denied" => DialogOutcome::Denied {
+            message: message.unwrap_or_else(|| "The user declined.".to_string()),
+        },
+        other => return Err(format!("Unknown dialog outcome '{other}'")),
+    };
+
+    match (tool_use_id.filter(|id| !id.is_empty()), session_id) {
+        (Some(tool_use_id), _) => Ok(claude_dialog::resolve(&tool_use_id, outcome)),
+        // Session-scoped: plan approval resolves whatever is parked without
+        // threading the ExitPlanMode tool_use id through the plan UI.
+        (None, Some(session_id)) => Ok(claude_dialog::resolve_session(&session_id, outcome) > 0),
+        (None, None) => Err("answer_claude_dialog needs toolUseId or sessionId".to_string()),
+    }
+}
+
+/// Whether a Claude dialog is currently parked for this tool call.
+///
+/// The UI uses this to decide between resolving the MCP call and the legacy
+/// send-as-message path.
+pub async fn is_claude_dialog_pending(
+    _app: AppHandle,
+    tool_use_id: String,
+) -> Result<bool, String> {
+    Ok(super::claude_dialog::is_parked(&tool_use_id))
 }
 
 #[cfg(test)]

@@ -285,3 +285,58 @@ describe('reconnectNativeCliSession', () => {
     ).toBe(false)
   })
 })
+
+describe('formatAnswersForClaude', () => {
+  const questions = [
+    {
+      question: 'Which cache backend?',
+      options: [{ label: 'Redis' }, { label: 'Memcached' }],
+    },
+    {
+      question: 'Which features?',
+      options: [{ label: 'TTL' }, { label: 'Pub/Sub' }],
+      multiSelect: true,
+    },
+  ] as never
+
+  it('keys answers by question text, as AskUserQuestion expects', async () => {
+    const { formatAnswersForClaude } = await import('./chat')
+    expect(
+      formatAnswersForClaude(questions, [
+        { questionIndex: 0, selectedOptions: [1] },
+      ])
+    ).toEqual({ 'Which cache backend?': 'Memcached' })
+  })
+
+  it('joins multi-select labels with a comma', async () => {
+    const { formatAnswersForClaude } = await import('./chat')
+    expect(
+      formatAnswersForClaude(questions, [
+        { questionIndex: 1, selectedOptions: [0, 1] },
+      ])
+    ).toEqual({ 'Which features?': 'TTL, Pub/Sub' })
+  })
+
+  it('prefers freeform text over the selected labels', async () => {
+    const { formatAnswersForClaude } = await import('./chat')
+    expect(
+      formatAnswersForClaude(questions, [
+        {
+          questionIndex: 0,
+          selectedOptions: [0],
+          customText: '  neither, use Postgres  ',
+        },
+      ])
+    ).toEqual({ 'Which cache backend?': 'neither, use Postgres' })
+  })
+
+  it('omits questions with no answer rather than sending empty strings', async () => {
+    const { formatAnswersForClaude } = await import('./chat')
+    expect(
+      formatAnswersForClaude(questions, [
+        { questionIndex: 0, selectedOptions: [] },
+        { questionIndex: 9, selectedOptions: [0] },
+      ])
+    ).toEqual({})
+  })
+})

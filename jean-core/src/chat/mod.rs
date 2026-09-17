@@ -1,5 +1,7 @@
 pub(crate) mod antigravity;
 pub(crate) mod claude;
+pub mod claude_dialog;
+pub(crate) mod claude_dialog_tool;
 pub(crate) mod coalesce;
 pub(crate) mod codex;
 pub(crate) mod codex_server;

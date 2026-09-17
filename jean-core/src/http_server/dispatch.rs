@@ -2173,6 +2173,31 @@ pub async fn dispatch_command(
         // =====================================================================
         // Session Management (additional)
         // =====================================================================
+        "answer_claude_dialog" => {
+            let tool_use_id: Option<String> = field_opt(&args, "toolUseId", "tool_use_id")?;
+            let session_id: Option<String> = field_opt(&args, "sessionId", "session_id")?;
+            let outcome: String = from_field(&args, "outcome")?;
+            let answers: Option<serde_json::Map<String, serde_json::Value>> =
+                from_field_opt(&args, "answers")?;
+            let response: Option<String> = from_field_opt(&args, "response")?;
+            let message: Option<String> = from_field_opt(&args, "message")?;
+            let resolved = crate::chat::answer_claude_dialog(
+                app.clone(),
+                tool_use_id,
+                session_id,
+                outcome,
+                answers,
+                response,
+                message,
+            )
+            .await?;
+            to_value(resolved)
+        }
+        "is_claude_dialog_pending" => {
+            let tool_use_id: String = field(&args, "toolUseId", "tool_use_id")?;
+            let pending = crate::chat::is_claude_dialog_pending(app.clone(), tool_use_id).await?;
+            to_value(pending)
+        }
         "update_session_state" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;

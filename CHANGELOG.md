@@ -23,6 +23,24 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Claude asks you questions and presents plans again.** Since Claude Code
+  2.1.187 a Claude session could not show the question picker or a plan to
+  approve: it fell back to a plain-text numbered list, and plan mode ended
+  without a plan. Claude Code now offers `AskUserQuestion`, `EnterPlanMode`
+  and `ExitPlanMode` only to a host that names a tool to answer permission
+  requests, and Jean named none. Jean now runs a small internal MCP server,
+  `jean-dialog`, for every Claude turn and points Claude at it.
+
+  The server is separate from the Jean MCP server in Settings, so switching
+  that off does not take questions or plans with it. The model never sees
+  `jean-dialog` in its tool list. If `jean-dialog` is the only server Jean adds
+  to a turn, Jean no longer passes `--strict-mcp-config`, so MCP servers you
+  set up outside Jean in `~/.claude.json` still load.
+
+  Also fixed on the way: Jean stopped the Claude process on the first,
+  still-empty chunk of a question or plan, so the picker or the plan would have
+  come up blank. Jean now waits until the whole tool input has arrived.
+
 - **A URL in backticks is a link now.** An agent that wrote a dev-server
   address as code — `` `http://localhost:5174/#/demo` `` — left you with text
   to copy by hand, while the same address in a sentence was a link. Inline

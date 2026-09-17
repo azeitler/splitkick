@@ -48,6 +48,16 @@ static CODEX_TURN_REGISTRY: Lazy<Mutex<HashMap<String, (String, String)>>> =
 static CODEX_YOLO_AUTO_APPROVE: Lazy<Mutex<HashSet<String>>> =
     Lazy::new(|| Mutex::new(HashSet::new()));
 
+/// Execution mode the current turn was started with, per session.
+///
+/// Claude's `permission_prompt` MCP tool runs out-of-band on the socket task
+/// and has only a session id to go on, but it must reproduce the mode's own
+/// permission verdict (see `chat::claude_dialog_tool`). Recorded when the turn
+/// is spawned rather than read from preferences, because the user may switch
+/// modes mid-turn and the already-started CLI keeps the mode it launched with.
+static TURN_EXECUTION_MODE: Lazy<Mutex<HashMap<String, String>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
 /// Sessions in PROCESS_REGISTRY whose process is fully detached (survives Jean
 /// quitting). Claude CLI and host-backed Pi/Grok/Kimi/Antigravity runs are detached.
 static DETACHED_SESSIONS: Lazy<Mutex<HashSet<String>>> = Lazy::new(|| Mutex::new(HashSet::new()));
@@ -369,6 +379,26 @@ pub fn is_codex_yolo_auto_approve(session_id: &str) -> bool {
     lock_recover(&CODEX_YOLO_AUTO_APPROVE, "CODEX_YOLO_AUTO_APPROVE").contains(session_id)
 }
 
+/// Record the execution mode a turn was launched with.
+pub fn set_turn_execution_mode(session_id: &str, execution_mode: Option<&str>) {
+    let mut map = lock_recover(&TURN_EXECUTION_MODE, "TURN_EXECUTION_MODE");
+    match execution_mode {
+        Some(mode) => {
+            map.insert(session_id.to_string(), mode.to_string());
+        }
+        None => {
+            map.remove(session_id);
+        }
+    }
+}
+
+/// Execution mode the session's in-flight turn was launched with.
+pub fn current_execution_mode(session_id: &str) -> Option<String> {
+    lock_recover(&TURN_EXECUTION_MODE, "TURN_EXECUTION_MODE")
+        .get(session_id)
+        .cloned()
+}
+
 /// Remove all registry state for a session after a backend crash or thread panic.
 pub fn cleanup_session_registrations(session_id: &str) {
     let removed_pid = lock_recover(&PROCESS_REGISTRY, "PROCESS_REGISTRY").remove(session_id);
@@ -381,6 +411,9 @@ pub fn cleanup_session_registrations(session_id: &str) {
         .remove(session_id)
         .is_some();
     lock_recover(&CODEX_YOLO_AUTO_APPROVE, "CODEX_YOLO_AUTO_APPROVE").remove(session_id);
+    lock_recover(&TURN_EXECUTION_MODE, "TURN_EXECUTION_MODE").remove(session_id);
+    // A detached CLI may still be parked on a dialog nothing will answer now.
+    crate::chat::claude_dialog::cancel_session(session_id);
 
     if removed_pid.is_some() || removed_pending || removed_flag || removed_turn {
         log::warn!(
@@ -722,6 +755,9 @@ pub fn cancel_process(
         registry.remove(session_id)
     };
     lock_recover(&DETACHED_SESSIONS, "DETACHED_SESSIONS").remove(session_id);
+    // Unpark any dialog first: killing the CLI takes its MCP child with it, so
+    // nothing would ever answer, and the waiter would linger until it timed out.
+    crate::chat::claude_dialog::cancel_session(session_id);
 
     if let Some(pid) = pid {
         // SAFETY: Never kill PID 0 (would kill our own process group) or PID 1 (init/launchd)

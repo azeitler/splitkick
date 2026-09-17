@@ -306,6 +306,24 @@ fn stream_event_tool_use(msg: &serde_json::Value) -> Option<StreamToolUse> {
     })
 }
 
+/// The streamed input of a tool call, once it has fully arrived.
+///
+/// With `--include-partial-messages`, a tool's input arrives as a run of
+/// `input_json_delta` events, and the very first delta is usually empty. The
+/// blocking-tool path (AskUserQuestion / ExitPlanMode) used to treat an empty
+/// buffer as "the input is the `{}` from `content_block_start`" and SIGKILL the
+/// CLI on that first delta — before the plan or the questions had streamed, so
+/// the UI received a plan tool with nothing to present.
+///
+/// A top-level JSON object only parses once its closing brace has arrived, so a
+/// successful parse of a non-empty buffer means the input is complete.
+fn streamed_tool_input_if_complete(buffer: &str) -> Option<serde_json::Value> {
+    if buffer.trim().is_empty() {
+        return None;
+    }
+    serde_json::from_str(buffer).ok()
+}
+
 fn stream_event_input_delta(msg: &serde_json::Value) -> Option<(usize, &str)> {
     let event = msg.get("event")?;
     if event.get("type").and_then(|v| v.as_str()) != Some("content_block_delta") {
@@ -691,6 +709,7 @@ fn build_claude_args(
     args.push("Bash(*claude-cli/claude*)".to_string());
 
     append_mcp_config_args(&mut args, mcp_config);
+    append_permission_prompt_tool_arg(&mut args, mcp_config);
 
     // Chrome browser integration (beta)
     if chrome_enabled {
@@ -1169,22 +1188,75 @@ fn append_mcp_config_args(args: &mut Vec<String>, mcp_config: Option<&str>) {
 
     args.push("--mcp-config".to_string());
     args.push(config.to_string());
-    args.push("--strict-mcp-config".to_string());
+
+    let parsed = serde_json::from_str::<serde_json::Value>(config).ok();
+    let server_names: Vec<String> = parsed
+        .as_ref()
+        .and_then(|p| p.get("mcpServers"))
+        .and_then(|v| v.as_object())
+        .map(|servers| servers.keys().cloned().collect())
+        .unwrap_or_default();
+
+    // `--strict-mcp-config` makes the CLI ignore the user's own persistent
+    // config (~/.claude.json, .mcp.json). That is correct when Jean is
+    // supplying real servers, but the dialog server is injected on every turn
+    // and must not silently delete MCP servers the user configured outside
+    // Jean — so only go strict when there is something else in the config.
+    let only_internal_dialog_server = server_names
+        .iter()
+        .all(|name| name == super::jean_mcp::JEAN_DIALOG_SERVER);
+    if !only_internal_dialog_server {
+        args.push("--strict-mcp-config".to_string());
+    }
 
     // Auto-allow all tools from configured MCP servers. Claude CLI has accepted
     // both the server-level form and the wildcard form across releases; include
     // both so non-interactive `--print` runs can actually execute MCP calls
     // instead of stopping after emitting a tool_use that Jean cannot approve.
-    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(config) {
-        if let Some(servers) = parsed.get("mcpServers").and_then(|v| v.as_object()) {
-            for server_name in servers.keys() {
-                args.push("--allowedTools".to_string());
-                args.push(format!("mcp__{server_name}"));
-                args.push("--allowedTools".to_string());
-                args.push(format!("mcp__{server_name}__*"));
-            }
+    for server_name in &server_names {
+        // The dialog server is deliberately excluded. Claude consumes the
+        // permission-prompt tool internally and keeps it out of the model's
+        // tool list; allowlisting it is exactly what would make the model able
+        // to call `permission_prompt` and answer its own questions.
+        if server_name == super::jean_mcp::JEAN_DIALOG_SERVER {
+            continue;
         }
+        args.push("--allowedTools".to_string());
+        args.push(format!("mcp__{server_name}"));
+        args.push("--allowedTools".to_string());
+        args.push(format!("mcp__{server_name}__*"));
     }
+}
+
+/// Point Claude at Jean's dialog server so it offers the interactive tools.
+///
+/// Under `--print`, `AskUserQuestion`, `EnterPlanMode` and `ExitPlanMode` are
+/// only offered when `--permission-prompt-tool` names someone who can answer a
+/// permission request — the CLI hides tools that would otherwise be auto-denied
+/// 100% of the time. Without this flag the model never sees them and silently
+/// falls back to plain-text numbered lists.
+///
+/// Guarded on the dialog server actually being in the config: naming a tool
+/// that cannot be resolved does not degrade, it kills the run with `exit=1` at
+/// the first permission check.
+fn append_permission_prompt_tool_arg(args: &mut Vec<String>, mcp_config: Option<&str>) {
+    let Some(config) = mcp_config.filter(|c| !c.is_empty()) else {
+        return;
+    };
+    let has_dialog_server = serde_json::from_str::<serde_json::Value>(config)
+        .ok()
+        .and_then(|parsed| {
+            parsed
+                .get("mcpServers")
+                .and_then(|v| v.as_object())
+                .map(|servers| servers.contains_key(super::jean_mcp::JEAN_DIALOG_SERVER))
+        })
+        .unwrap_or(false);
+    if !has_dialog_server {
+        return;
+    }
+    args.push("--permission-prompt-tool".to_string());
+    args.push(super::jean_mcp::dialog_permission_prompt_tool());
 }
 
 /// Execute Claude CLI in detached mode.
@@ -1602,13 +1674,8 @@ pub fn tail_claude_output(
                     let input_buf = pending_stream_tool_inputs.entry(index).or_default();
                     input_buf.push_str(partial_json);
 
-                    let input = if input_buf.trim().is_empty() {
-                        pending_tool.input.clone()
-                    } else {
-                        match serde_json::from_str::<serde_json::Value>(input_buf) {
-                            Ok(value) => value,
-                            Err(_) => continue,
-                        }
+                    let Some(input) = streamed_tool_input_if_complete(input_buf) else {
+                        continue;
                     };
 
                     if pending_tool.name == "AskUserQuestion" || pending_tool.name == "ExitPlanMode"
@@ -1661,6 +1728,10 @@ pub fn tail_claude_output(
                                 .args(["/F", "/PID", &pid.to_string()])
                                 .output();
                         }
+                        // The CLI may have reached the permission check and parked
+                        // on the jean-dialog server just before the kill; release it
+                        // so the socket task does not wait out the park timeout.
+                        super::claude_dialog::cancel_session(session_id);
 
                         let done_event = DoneEvent {
                             session_id: session_id.to_string(),
@@ -1961,6 +2032,8 @@ pub fn tail_claude_output(
                                                     .args(["/F", "/PID", &pid.to_string()])
                                                     .output();
                                             }
+                                            // Release a dialog parked just before the kill.
+                                            super::claude_dialog::cancel_session(session_id);
 
                                             // Emit done event so frontend knows streaming is complete
                                             let done_event = DoneEvent {
@@ -2839,5 +2912,138 @@ mod tests {
         assert!(args.contains(&"mcp__jean-dev__*".to_string()));
         assert!(args.contains(&"mcp__github".to_string()));
         assert!(args.contains(&"mcp__github__*".to_string()));
+    }
+
+    /// Regression for session 469345db: the plan was never presented because the
+    /// blocking-tool path SIGKILLed the CLI on ExitPlanMode's first, empty
+    /// `input_json_delta` — before any of the plan had streamed.
+    #[test]
+    fn blocking_tool_input_waits_for_the_complete_streamed_json() {
+        // Exactly what the failing run logged: content_block_start, then "".
+        let deltas = [
+            "",
+            "{\"plan\": \"# Plan",
+            ": dummy files\\n- create 10 txt files",
+            "\\n- fill with lorem ipsum\"",
+            "}",
+        ];
+        let mut buffer = String::new();
+        let mut first_ready_at = None;
+        for (i, delta) in deltas.iter().enumerate() {
+            buffer.push_str(delta);
+            if let Some(input) = streamed_tool_input_if_complete(&buffer) {
+                first_ready_at = Some(i);
+                assert!(
+                    input["plan"].as_str().unwrap().contains("lorem ipsum"),
+                    "acted on an incomplete plan: {input}"
+                );
+                break;
+            }
+        }
+        assert_eq!(
+            first_ready_at,
+            Some(deltas.len() - 1),
+            "must wait for the closing brace, not act on the empty first delta"
+        );
+    }
+
+    #[test]
+    fn empty_or_whitespace_buffers_are_never_ready() {
+        assert!(streamed_tool_input_if_complete("").is_none());
+        assert!(streamed_tool_input_if_complete("   ").is_none());
+        assert!(streamed_tool_input_if_complete("{\"questions\": [").is_none());
+        assert!(streamed_tool_input_if_complete("{}").is_some());
+    }
+
+    /// Claude consumes the permission-prompt tool internally and keeps it out
+    /// of the model's tool list. Allowlisting it would hand the model the
+    /// ability to call `permission_prompt` and answer its own questions.
+    #[test]
+    fn dialog_server_is_never_allowlisted() {
+        let config = r#"{
+            "mcpServers": {
+                "jean": { "type": "stdio", "command": "jean" },
+                "jean-dialog": { "type": "stdio", "command": "jean" }
+            }
+        }"#;
+        let mut args = Vec::new();
+
+        append_mcp_config_args(&mut args, Some(config));
+
+        assert!(args.contains(&"mcp__jean__*".to_string()));
+        assert!(!args.contains(&"mcp__jean-dialog".to_string()));
+        assert!(!args.contains(&"mcp__jean-dialog__*".to_string()));
+    }
+
+    /// `--strict-mcp-config` makes the CLI ignore ~/.claude.json. The dialog
+    /// server is injected on every turn, so going strict for it alone would
+    /// silently delete MCP servers the user configured outside Jean.
+    #[test]
+    fn dialog_server_alone_does_not_go_strict() {
+        let config = r#"{"mcpServers": {"jean-dialog": {"type": "stdio", "command": "jean"}}}"#;
+        let mut args = Vec::new();
+
+        append_mcp_config_args(&mut args, Some(config));
+
+        assert!(args.contains(&"--mcp-config".to_string()));
+        assert!(!args.contains(&"--strict-mcp-config".to_string()));
+    }
+
+    #[test]
+    fn any_real_server_still_goes_strict() {
+        let config = r#"{
+            "mcpServers": {
+                "jean": { "type": "stdio", "command": "jean" },
+                "jean-dialog": { "type": "stdio", "command": "jean" }
+            }
+        }"#;
+        let mut args = Vec::new();
+
+        append_mcp_config_args(&mut args, Some(config));
+
+        assert!(args.contains(&"--strict-mcp-config".to_string()));
+    }
+
+    #[test]
+    fn permission_prompt_flag_is_passed_when_the_dialog_server_is_present() {
+        let config = r#"{"mcpServers": {"jean-dialog": {"type": "stdio", "command": "jean"}}}"#;
+        let mut args = Vec::new();
+
+        append_permission_prompt_tool_arg(&mut args, Some(config));
+
+        assert_eq!(
+            args,
+            vec![
+                "--permission-prompt-tool".to_string(),
+                "mcp__jean-dialog__permission_prompt".to_string(),
+            ]
+        );
+    }
+
+    /// Naming a permission-prompt tool that cannot be resolved does not
+    /// degrade — it kills the run with exit=1 at the first permission check.
+    #[test]
+    fn permission_prompt_flag_is_withheld_without_the_dialog_server() {
+        let mut args = Vec::new();
+        append_permission_prompt_tool_arg(&mut args, None);
+        assert!(args.is_empty());
+
+        let mut args = Vec::new();
+        append_permission_prompt_tool_arg(&mut args, Some(""));
+        assert!(args.is_empty());
+
+        let mut args = Vec::new();
+        append_permission_prompt_tool_arg(
+            &mut args,
+            Some(r#"{"mcpServers": {"jean": {"type": "stdio", "command": "jean"}}}"#),
+        );
+        assert!(args.is_empty(), "no dialog server means no flag");
+
+        let mut args = Vec::new();
+        append_permission_prompt_tool_arg(&mut args, Some("{not json"));
+        assert!(
+            args.is_empty(),
+            "unparseable config must not enable the flag"
+        );
     }
 }
