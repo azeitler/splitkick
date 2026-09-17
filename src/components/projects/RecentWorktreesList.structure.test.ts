@@ -12,6 +12,9 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('const RECENT_PAGE_SIZE = 25')
     expect(source).toContain('{Math.min(hiddenCount, RECENT_PAGE_SIZE)} more')
     expect(source).toContain('setLimit(value => value + RECENT_PAGE_SIZE)')
+    expect(source).toContain('Show snoozed sessions')
+    expect(source).toContain('Snoozed · inactive for 24 hours')
+    expect(source).toContain('isSnoozedSession(row.lastActivityAt)')
   })
 
   it('shows session, project, worktree, activity, and Git diff information', () => {

@@ -22,7 +22,6 @@ import { scheduleIdleWork } from '@/lib/idle'
 import {
   closeChatTerminal,
   isChatTerminalOpen,
-  openChatTerminal,
 } from '@/lib/terminal-gesture'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
@@ -85,20 +84,20 @@ export function MainWindowContent({
     animateToEnd: !isPanelTerminalOpen,
   })
 
-  // Full ChatWindow: right-edge swipe left → open terminal
-  const swipeOpenTerminalCallback = useCallback(() => {
-    const worktreeId = useChatStore.getState().activeWorktreeId
-    if (!worktreeId) return
-    openChatTerminal(worktreeId, 'panel')
+  const fileBrowserVisible = useUIStore(state => state.fileBrowserVisible)
+
+  // Full ChatWindow: right-edge swipe left → open file browser
+  const swipeOpenFileBrowserCallback = useCallback(() => {
+    useUIStore.getState().setFileBrowserVisible(true)
   }, [])
-  const canSwipeOpenTerminal =
+  const canSwipeOpenFileBrowser =
     isMobile &&
     !!activeWorktreePath &&
     !!activeWorktreeId &&
-    !isPanelTerminalOpen
-  const swipeOpenTerminal = useSwipeBack({
-    onSwipeBack: swipeOpenTerminalCallback,
-    enabled: canSwipeOpenTerminal,
+    !fileBrowserVisible
+  const swipeOpenFileBrowser = useSwipeBack({
+    onSwipeBack: swipeOpenFileBrowserCallback,
+    enabled: canSwipeOpenFileBrowser,
     animateToEnd: false,
     visualFeedback: true,
     edge: 'right',
@@ -255,19 +254,20 @@ export function MainWindowContent({
               : undefined
           }
         >
-          {/* Inner layer owns right-edge swipe → open terminal */}
+          {/* Inner layer owns right-edge swipe → open file browser */}
           <div
-            ref={isMobile ? swipeOpenTerminal.containerRef : undefined}
+            ref={isMobile ? swipeOpenFileBrowser.containerRef : undefined}
             className="relative h-full min-h-0 w-full"
-            data-testid="mobile-swipe-open-terminal"
+            data-testid="mobile-swipe-open-file-browser"
             style={
               isMobile &&
-              (swipeOpenTerminal.isSwiping ||
-                swipeOpenTerminal.translateX !== 0)
+              (swipeOpenFileBrowser.isSwiping ||
+                swipeOpenFileBrowser.translateX !== 0)
                 ? {
-                    transform: `translateX(${swipeOpenTerminal.translateX}px)`,
-                    transition: swipeOpenTerminal.transitionStyle || undefined,
-                    willChange: swipeOpenTerminal.isSwiping
+                    transform: `translateX(${swipeOpenFileBrowser.translateX}px)`,
+                    transition:
+                      swipeOpenFileBrowser.transitionStyle || undefined,
+                    willChange: swipeOpenFileBrowser.isSwiping
                       ? 'transform'
                       : undefined,
                   }
@@ -283,7 +283,7 @@ export function MainWindowContent({
                   )}
                   aria-hidden
                 />
-                {canSwipeOpenTerminal && (
+                {canSwipeOpenFileBrowser && (
                   <div
                     className="pointer-events-none absolute right-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-l-full bg-muted-foreground/20"
                     aria-hidden

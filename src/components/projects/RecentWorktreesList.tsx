@@ -12,6 +12,7 @@ import { getRecentSessionStatus } from './recent-session-status'
 
 const INITIAL_RECENT_LIMIT = 10
 const RECENT_PAGE_SIZE = 25
+const SNOOZE_AFTER_SECONDS = 24 * 60 * 60
 
 interface RecentWorktreesListProps {
   projects: Project[]
@@ -29,6 +30,13 @@ export function formatRecentActivity(
   if (hours < 24) return `${hours}h`
   const days = Math.floor(hours / 24)
   return days < 30 ? `${days}d` : `${Math.floor(days / 30)}mo`
+}
+
+export function isSnoozedSession(
+  lastActivityAt: number,
+  now = Date.now()
+): boolean {
+  return lastActivityAt <= Math.floor(now / 1000) - SNOOZE_AFTER_SECONDS
 }
 
 function ignoresNavigationShortcut(target: EventTarget | null): boolean {
@@ -57,6 +65,7 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
   const executionModes = useChatStore(state => state.executionModes)
   const executingModes = useChatStore(state => state.executingModes)
   const [limit, setLimit] = useState(INITIAL_RECENT_LIMIT)
+  const [showSnoozed, setShowSnoozed] = useState(false)
   const rowRefs = useRef(new Map<string, HTMLButtonElement>())
   const projectKey = useMemo(
     () =>
@@ -67,7 +76,10 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
     [projects]
   )
 
-  useEffect(() => setLimit(INITIAL_RECENT_LIMIT), [projectKey])
+  useEffect(() => {
+    setLimit(INITIAL_RECENT_LIMIT)
+    setShowSnoozed(false)
+  }, [projectKey])
 
   const query = useQuery({
     queryKey: ['recent-worktrees', projectKey, limit, selectedSessionId],
@@ -77,6 +89,12 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
     staleTime: 30_000,
   })
   const rows = query.data?.items ?? []
+  const snoozedBoundaryLoaded = rows
+    .slice(0, limit)
+    .some(row => isSnoozedSession(row.lastActivityAt))
+  const displayedRows = showSnoozed
+    ? rows
+    : rows.filter(row => !isSnoozedSession(row.lastActivityAt))
   const recentProjectKey = useMemo(
     () => [...new Set(rows.map(row => row.projectId))].sort().join('\0'),
     [rows]
@@ -85,9 +103,11 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
   useEffect(() => {
     if (!recentProjectKey) return
     void Promise.allSettled(
-      recentProjectKey.split('\0').map(projectId =>
-        fetchWorktreesStatus(projectId).catch(() => undefined)
-      )
+      recentProjectKey
+        .split('\0')
+        .map(projectId =>
+          fetchWorktreesStatus(projectId).catch(() => undefined)
+        )
     )
   }, [recentProjectKey])
 
@@ -188,7 +208,7 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
         <ul aria-label="Recent sessions" className="divide-y divide-border/30">
-          {rows.map(row => {
+          {displayedRows.map((row, index) => {
             const isCurrent = row.session.id === selectedSessionId
             const activity = formatRecentActivity(row.lastActivityAt)
             const activityLabel =
@@ -201,8 +221,8 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
               status.tone === 'waiting'
                 ? 'text-amber-600 dark:text-amber-400'
                 : status.tone === 'failed'
-                    ? 'text-red-600 dark:text-red-400'
-                    : 'text-muted-foreground'
+                  ? 'text-red-600 dark:text-red-400'
+                  : 'text-muted-foreground'
             const statusBorderClassName =
               status.tone === 'working'
                 ? (executingModes[row.session.id] ??
@@ -216,6 +236,16 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   : 'border-l-transparent'
             return (
               <li key={row.session.id}>
+                {showSnoozed &&
+                  isSnoozedSession(row.lastActivityAt) &&
+                  (index === 0 ||
+                    !isSnoozedSession(
+                      displayedRows[index - 1]?.lastActivityAt ?? 0
+                    )) && (
+                    <div className="border-b border-border/30 bg-muted/20 px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+                      Snoozed · inactive for 24 hours
+                    </div>
+                  )}
                 <button
                   ref={element => {
                     if (element) rowRefs.current.set(row.session.id, element)
@@ -265,9 +295,34 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
           })}
         </ul>
       </div>
-      {(hiddenCount > 0 || failedCount > 0 || query.isFetching) && (
+      {(hiddenCount > 0 ||
+        failedCount > 0 ||
+        query.isFetching ||
+        (snoozedBoundaryLoaded && !showSnoozed)) && (
         <div className="shrink-0 border-t border-border/40 p-2">
-          {hiddenCount > 0 && (
+          {hiddenCount > 0 && !snoozedBoundaryLoaded && (
+            <button
+              type="button"
+              className="flex h-8 w-full items-center justify-center gap-1 rounded-md text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              onClick={() => setLimit(value => value + RECENT_PAGE_SIZE)}
+            >
+              <Plus className="size-3.5" /> Show{' '}
+              {Math.min(hiddenCount, RECENT_PAGE_SIZE)} more
+            </button>
+          )}
+          {snoozedBoundaryLoaded && !showSnoozed && (
+            <button
+              type="button"
+              className="flex h-8 w-full items-center justify-center gap-1 rounded-md text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+              onClick={() => {
+                setShowSnoozed(true)
+                setLimit(value => value + RECENT_PAGE_SIZE)
+              }}
+            >
+              <Plus className="size-3.5" /> Show snoozed sessions
+            </button>
+          )}
+          {showSnoozed && hiddenCount > 0 && (
             <button
               type="button"
               className="flex h-8 w-full items-center justify-center gap-1 rounded-md text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"

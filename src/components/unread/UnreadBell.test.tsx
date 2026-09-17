@@ -256,6 +256,33 @@ describe('UnreadBell', () => {
     expect(screen.getByText('Session two')).toBeInTheDocument()
   })
 
+  it('keeps the popover closed after directly opening the only unread session', async () => {
+    unreadCount = 1
+    allSessions = {
+      entries: [
+        {
+          project_id: 'project-1',
+          project_name: 'Jean',
+          worktree_id: 'worktree-1',
+          worktree_name: 'main',
+          worktree_path: '/repo',
+          sessions: [session({ id: 'session-1', name: 'Session one' })],
+        },
+      ],
+    }
+    renderWithQueryClient(<UnreadBell title="Jean" />)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /1 finished session/i })
+    )
+
+    expect(markWorktreeForAutoOpenSessionMock).toHaveBeenCalledWith(
+      'worktree-1',
+      'session-1'
+    )
+    expect(screen.queryByText('Session one')).not.toBeInTheDocument()
+  })
+
   it('shows a running Claude session instead of stale waiting state', async () => {
     sendingSessionIds = { 'session-1': true }
     const firstEntry = allSessions?.entries[0]

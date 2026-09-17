@@ -400,6 +400,9 @@ export function UnreadBell({ title, hideTitle }: UnreadBellProps) {
       const only = unreadItems.length === 1 ? unreadItems[0] : null
       if (only) {
         e.preventDefault()
+        // PopoverTrigger is the wrapping element. Do not let this click bubble
+        // to its toggle handler after direct navigation closes the popover.
+        e.stopPropagation()
         handleSelect(only)
         return
       }

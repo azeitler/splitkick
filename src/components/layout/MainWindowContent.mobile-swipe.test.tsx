@@ -117,10 +117,11 @@ describe('MainWindowContent mobile swipe open sidebar', () => {
   })
 })
 
-describe('MainWindowContent mobile swipe terminal', () => {
+describe('MainWindowContent mobile chat swipes', () => {
   beforeEach(() => {
     useUIStore.setState({
       leftSidebarVisible: false,
+      fileBrowserVisible: false,
       sessionChatModalOpen: false,
       sessionChatModalWorktreeId: null,
     })
@@ -135,21 +136,24 @@ describe('MainWindowContent mobile swipe terminal', () => {
       runningTerminals: new Set(),
       failedTerminals: new Set(),
       terminalVisible: false,
+      terminalVisibleByWorktree: {},
       terminalPanelOpen: {},
       modalTerminalOpen: {},
     })
   })
 
-  it('opens the terminal panel on right-edge swipe left', async () => {
+  it('opens the file browser on right-edge swipe left', async () => {
     render(<MainWindowContent />)
 
-    const target = await screen.findByTestId('mobile-swipe-open-terminal')
+    const target = await screen.findByTestId(
+      'mobile-swipe-open-file-browser'
+    )
     Object.defineProperty(target, 'offsetWidth', {
       value: 400,
       configurable: true,
     })
 
-    expect(useTerminalStore.getState().terminalVisible).toBe(false)
+    expect(useUIStore.getState().fileBrowserVisible).toBe(false)
 
     act(() => {
       fireTouch(target, 'touchstart', 392)
@@ -157,14 +161,15 @@ describe('MainWindowContent mobile swipe terminal', () => {
       fireTouch(target, 'touchend', 180)
     })
 
-    expect(useTerminalStore.getState().terminalPanelOpen['wt-1']).toBe(true)
-    expect(useTerminalStore.getState().terminalVisible).toBe(true)
+    expect(useUIStore.getState().fileBrowserVisible).toBe(true)
   })
 
-  it('tracks the finger while swiping the terminal open', async () => {
+  it('tracks the finger while swiping the file browser open', async () => {
     render(<MainWindowContent />)
 
-    const target = await screen.findByTestId('mobile-swipe-open-terminal')
+    const target = await screen.findByTestId(
+      'mobile-swipe-open-file-browser'
+    )
     Object.defineProperty(target, 'offsetWidth', {
       value: 400,
       configurable: true,
@@ -176,12 +181,13 @@ describe('MainWindowContent mobile swipe terminal', () => {
     })
 
     expect(target).toHaveStyle({ transform: 'translateX(-112px)' })
-    expect(useTerminalStore.getState().terminalVisible).toBe(false)
+    expect(useUIStore.getState().fileBrowserVisible).toBe(false)
   })
 
   it('closes the terminal on left-edge swipe right when open', async () => {
     useTerminalStore.setState({
       terminalVisible: true,
+      terminalVisibleByWorktree: { 'wt-1': true },
       terminalPanelOpen: { 'wt-1': true },
       terminals: {
         'wt-1': [
@@ -217,32 +223,18 @@ describe('MainWindowContent mobile swipe terminal', () => {
     expect(useChatStore.getState().activeWorktreePath).toBe('/tmp/wt')
   })
 
-  it('does not open terminal when already visible', async () => {
-    useTerminalStore.setState({
-      terminalVisible: true,
-      terminalPanelOpen: { 'wt-1': true },
-      terminals: {
-        'wt-1': [
-          {
-            id: 't1',
-            worktreeId: 'wt-1',
-            command: null,
-            label: 'Terminal',
-            kind: 'panel',
-          },
-        ],
-      },
-    })
+  it('disables the file browser gesture when it is already visible', async () => {
+    useUIStore.setState({ fileBrowserVisible: true })
 
     render(<MainWindowContent />)
 
-    const target = await screen.findByTestId('mobile-swipe-open-terminal')
+    const target = await screen.findByTestId(
+      'mobile-swipe-open-file-browser'
+    )
     Object.defineProperty(target, 'offsetWidth', {
       value: 400,
       configurable: true,
     })
-
-    const before = useTerminalStore.getState().terminals['wt-1']?.length
 
     act(() => {
       fireTouch(target, 'touchstart', 392)
@@ -250,8 +242,6 @@ describe('MainWindowContent mobile swipe terminal', () => {
       fireTouch(target, 'touchend', 180)
     })
 
-    // Gesture disabled while open — no extra terminal
-    expect(useTerminalStore.getState().terminals['wt-1']?.length).toBe(before)
-    expect(useTerminalStore.getState().terminalVisible).toBe(true)
+    expect(useUIStore.getState().fileBrowserVisible).toBe(true)
   })
 })
