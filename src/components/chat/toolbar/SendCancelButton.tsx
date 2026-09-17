@@ -1,4 +1,5 @@
 import { getModifierSymbol, isClientMacOS } from '@/lib/platform'
+import { isNativeApp } from '@/lib/environment'
 import { cn } from '@/lib/utils'
 import { Kbd } from '@/components/ui/kbd'
 import {
@@ -15,8 +16,11 @@ interface SendCancelButtonProps {
   willSteer?: boolean
   /** When true, steering requires the primary modifier plus Enter. */
   steerWithModifier?: boolean
+  /** When true, the running backend accepts a manual steer action. */
+  canSteer?: boolean
   queuedMessageCount?: number
   onCancel: () => void
+  onSteer?: () => void
 }
 
 export function SendCancelButton({
@@ -24,8 +28,10 @@ export function SendCancelButton({
   canSend,
   willSteer = false,
   steerWithModifier = false,
+  canSteer = false,
   queuedMessageCount,
   onCancel,
+  onSteer,
 }: SendCancelButtonProps) {
   const isMobile = useIsMobile()
 
@@ -57,6 +63,8 @@ export function SendCancelButton({
     )
 
     if (canSend) {
+      const showSeparateSteer =
+        canSteer && !willSteer && (isMobile || !isNativeApp())
       const actionLabel = willSteer ? 'Steer' : 'Queue'
       const actionShortcut = steerWithModifier
         ? isClientMacOS
@@ -90,6 +98,24 @@ export function SendCancelButton({
             </TooltipTrigger>
             <TooltipContent>{actionTooltip}</TooltipContent>
           </Tooltip>
+          {showSeparateSteer && (
+            <>
+              <div className="h-4 w-px shrink-0 bg-border/50" />
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Steer"
+                    onClick={onSteer}
+                    className="flex h-8 items-center justify-center px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                  >
+                    Steer
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Steer into running turn</TooltipContent>
+              </Tooltip>
+            </>
+          )}
         </div>
       )
     }

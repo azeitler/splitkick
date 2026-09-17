@@ -36,16 +36,33 @@ describe('getRecentSessionStatus', () => {
     ).toBe('Failed')
   })
 
+  it.each(['plan', 'build', 'yolo'] as const)(
+    'shows idle instead of the previous %s mode after it stops',
+    mode => {
+      expect(
+        getRecentSessionStatus(
+          session({
+            selected_execution_mode: mode,
+            last_run_execution_mode: mode,
+          }),
+          {
+            sending: false,
+            waiting: false,
+          }
+        ).label
+      ).toBe('Idle')
+    }
+  )
+
   it.each([
-    ['plan', 'Plan'],
-    ['build', 'Build'],
-    ['yolo', 'Yolo'],
-  ] as const)('shows %s as %s when idle', (mode, label) => {
+    [{ last_run_status: 'completed' }, 'Completed'],
+    [{ last_run_status: 'cancelled' }, 'Cancelled'],
+    [{ status_override: 'review' }, 'Review'],
+  ] as const)('shows the current terminal state', (values, label) => {
     expect(
-      getRecentSessionStatus(session(), {
+      getRecentSessionStatus(session(values), {
         sending: false,
         waiting: false,
-        executionMode: mode,
       }).label
     ).toBe(label)
   })

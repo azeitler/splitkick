@@ -10,7 +10,6 @@ import {
   ArrowUp,
   ChevronDown,
   GitBranch,
-  Loader2,
 } from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import { dismissibleToast } from '@/lib/dismissible-toast'
@@ -918,9 +917,6 @@ export function WorktreeItem({
                         className="flex min-w-0 items-center gap-1.5 truncate text-xs"
                         title={`${config.label}: ${card.session.name || 'Untitled'}`}
                       >
-                        {isGeneratingName && (
-                          <Loader2 className="size-3 shrink-0 animate-spin" />
-                        )}
                         <span className="truncate">
                           {isGeneratingName
                             ? 'Generating…'

@@ -1,18 +1,19 @@
-import type { ExecutionMode, Session } from '@/types/chat'
+import type { Session } from '@/types/chat'
 
 export type RecentSessionStatus =
   | { label: 'Waiting'; tone: 'waiting' }
   | { label: 'Working'; tone: 'working' }
   | { label: 'Failed'; tone: 'failed' }
-  | { label: 'Plan' | 'Build' | 'Yolo'; tone: 'mode' }
+  | {
+      label: 'Idle' | 'Review' | 'Completed' | 'Cancelled'
+      tone: 'idle'
+    }
 
 export function getRecentSessionStatus(
   session: Session,
   state: {
     sending: boolean
     waiting: boolean
-    executionMode?: ExecutionMode
-    executingMode?: ExecutionMode
   }
 ): RecentSessionStatus {
   if (state.waiting || session.waiting_for_input) {
@@ -28,14 +29,20 @@ export function getRecentSessionStatus(
   if (session.last_run_status === 'crashed') {
     return { label: 'Failed', tone: 'failed' }
   }
-  const mode =
-    state.executingMode ??
-    state.executionMode ??
-    session.selected_execution_mode ??
-    session.last_run_execution_mode ??
-    'plan'
-  return {
-    label: mode === 'yolo' ? 'Yolo' : mode === 'build' ? 'Build' : 'Plan',
-    tone: 'mode',
+  if (session.status_override === 'review' || session.is_reviewing) {
+    return { label: 'Review', tone: 'idle' }
   }
+  if (session.status_override === 'completed') {
+    return { label: 'Completed', tone: 'idle' }
+  }
+  if (
+    session.status_override === 'cancelled' ||
+    session.last_run_status === 'cancelled'
+  ) {
+    return { label: 'Cancelled', tone: 'idle' }
+  }
+  if (session.last_run_status === 'completed') {
+    return { label: 'Completed', tone: 'idle' }
+  }
+  return { label: 'Idle', tone: 'idle' }
 }

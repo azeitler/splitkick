@@ -53,8 +53,6 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
   const waitingForInputSessionIds = useChatStore(
     state => state.waitingForInputSessionIds
   )
-  const executionModes = useChatStore(state => state.executionModes)
-  const executingModes = useChatStore(state => state.executingModes)
   const [limit, setLimit] = useState(INITIAL_RECENT_LIMIT)
   const rowRefs = useRef(new Map<string, HTMLButtonElement>())
   const projectKey = useMemo(
@@ -195,15 +193,11 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
             const status = getRecentSessionStatus(row.session, {
               sending: sendingSessionIds[row.session.id] ?? false,
               waiting: waitingForInputSessionIds[row.session.id] ?? false,
-              executionMode: executionModes[row.session.id],
-              executingMode: executingModes[row.session.id],
             })
             const statusClassName =
               status.tone === 'waiting'
                 ? 'text-amber-600 dark:text-amber-400'
-                : status.tone === 'working'
-                  ? 'text-blue-600 dark:text-blue-400'
-                  : status.tone === 'failed'
+                : status.tone === 'failed'
                     ? 'text-red-600 dark:text-red-400'
                     : 'text-muted-foreground'
             return (
@@ -215,8 +209,8 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   }}
                   type="button"
                   aria-current={isCurrent ? 'page' : undefined}
-                  aria-label={`${row.session.name}, ${row.projectName}, ${row.worktree.name}, ${activityLabel}`}
-                  className={`flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${isCurrent ? 'bg-muted/60 text-foreground' : 'text-muted-foreground'}`}
+                  aria-label={`${row.session.name}, ${row.projectName}, ${row.worktree.name}, ${status.label}, ${activityLabel}`}
+                  className={`flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${status.tone === 'working' ? 'border-l-yellow-500' : 'border-l-transparent'} ${isCurrent ? 'bg-muted/60 text-foreground' : 'text-muted-foreground'}`}
                   onClick={() => handleOpen(row)}
                 >
                   <span className="min-w-0 flex-1">
@@ -229,9 +223,11 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-0.5 text-[11px] tabular-nums">
                     <span className="flex items-center gap-1.5">
-                      <span className={`font-medium ${statusClassName}`}>
-                        {status.label}
-                      </span>
+                      {status.tone !== 'working' && (
+                        <span className={`font-medium ${statusClassName}`}>
+                          {status.label}
+                        </span>
+                      )}
                       <time
                         dateTime={new Date(
                           row.lastActivityAt * 1000

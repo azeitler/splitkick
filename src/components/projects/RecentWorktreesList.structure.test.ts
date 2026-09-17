@@ -31,5 +31,8 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('Some recent sessions could')
     expect(source).toContain('selectedSessionId')
     expect(source).toContain('getRecentSessionStatus(row.session')
+    expect(source).toContain("status.tone === 'working'")
+    expect(source).toContain('border-l-yellow-500')
+    expect(source).toContain("status.tone !== 'working'")
   })
 })

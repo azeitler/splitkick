@@ -10,7 +10,7 @@ describe('session name generation UI', () => {
     const source = readFileSync(file, 'utf8')
     expect(source).toContain('namingSessionIds')
     expect(source).toContain('Generating…')
-    expect(source).toContain('animate-spin')
+    expect(source).not.toContain('<Loader2')
   })
 
   it('starts and clears the loading state from backend events', () => {

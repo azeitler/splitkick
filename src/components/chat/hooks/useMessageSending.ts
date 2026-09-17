@@ -286,10 +286,10 @@ export function useMessageSending({
   // Form submit handler
   const handleSubmit = useCallback(
     async (
-      e: React.FormEvent,
+      e: React.FormEvent | undefined,
       options?: { forceSteer?: boolean }
     ) => {
-      e.preventDefault()
+      e?.preventDefault()
 
       const {
         inputDrafts,

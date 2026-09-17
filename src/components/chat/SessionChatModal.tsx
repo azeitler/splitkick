@@ -17,7 +17,6 @@ import {
   GitPullRequestArrow,
   Maximize,
   Minimize,
-  Loader2,
   Pencil,
   RefreshCw,
   Tag,
@@ -1296,9 +1295,6 @@ export function SessionChatModal({
                               <Tooltip>
                                 <TooltipTrigger asChild>
                                   <span className="flex max-w-48 items-center gap-1.5 truncate">
-                                    {isGeneratingName && (
-                                      <Loader2 className="size-3 shrink-0 animate-spin" />
-                                    )}
                                     <span className="truncate">
                                       {isGeneratingName
                                         ? 'Generating…'

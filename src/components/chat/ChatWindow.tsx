@@ -3136,10 +3136,18 @@ function ChatWindowContent({
                                         preferences
                                       )
                                     }
+                                    canSteer={isSteerCapableBackend(
+                                      selectedBackend
+                                    )}
                                     queuedMessageCount={
                                       currentQueuedMessages.length
                                     }
                                     onCancel={handleCancel}
+                                    onSteer={() =>
+                                      handleSubmit(undefined, {
+                                        forceSteer: true,
+                                      })
+                                    }
                                   />
                                 </div>
                               ) : (
@@ -3273,6 +3281,14 @@ function ChatWindowContent({
                                         selectedBackend,
                                         preferences
                                       )
+                                    }
+                                    canSteer={isSteerCapableBackend(
+                                      selectedBackend
+                                    )}
+                                    onSteer={() =>
+                                      handleSubmit(undefined, {
+                                        forceSteer: true,
+                                      })
                                     }
                                     queuedMessageCount={
                                       currentQueuedMessages.length

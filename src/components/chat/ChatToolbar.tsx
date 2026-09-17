@@ -146,6 +146,8 @@ export const ChatToolbar = memo(function ChatToolbar({
   onCancel,
   willSteer,
   steerWithModifier,
+  canSteer,
+  onSteer,
   queuedMessageCount,
   availableMcpServers,
   enabledMcpServers,
@@ -691,8 +693,10 @@ export const ChatToolbar = memo(function ChatToolbar({
               canSend={canSend}
               willSteer={willSteer}
               steerWithModifier={steerWithModifier}
+              canSteer={canSteer}
               queuedMessageCount={queuedMessageCount}
               onCancel={onCancel}
+              onSteer={onSteer}
             />
           </div>
         </div>

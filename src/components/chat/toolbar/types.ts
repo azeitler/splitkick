@@ -112,6 +112,8 @@ export interface ChatToolbarProps {
   /** When true while sending, the secondary submit button steers instead of queues. */
   willSteer?: boolean
   steerWithModifier?: boolean
+  canSteer?: boolean
+  onSteer?: () => void
   queuedMessageCount?: number
 
   availableMcpServers: McpServerInfo[]

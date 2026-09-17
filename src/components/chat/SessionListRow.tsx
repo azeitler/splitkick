@@ -4,7 +4,6 @@ import {
   Copy,
   Pencil,
   RefreshCw,
-  Loader2,
   Shield,
   Tag,
   Trash2,
@@ -149,9 +148,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
               />
             ) : (
               <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm">
-                {isGeneratingName && (
-                  <Loader2 className="size-3 shrink-0 animate-spin" />
-                )}
                 <span className="truncate">
                   {isGeneratingName ? 'Generating…' : card.session.name}
                 </span>
