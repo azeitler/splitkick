@@ -101,4 +101,36 @@ describe('LinkedProjectsModal', () => {
       'shadow-sm'
     )
   })
+
+  it('shows instance names and only offers projects from the current instance', () => {
+    projectsMock = [
+      project({
+        id: 'dev:current-project',
+        resourceId: 'current-project',
+        name: 'current',
+        serverId: 'dev',
+        serverName: 'DEV Server',
+      }),
+      project({
+        id: 'dev:jean-dev',
+        resourceId: 'jean-dev',
+        name: 'jean',
+        serverId: 'dev',
+        serverName: 'DEV Server',
+      }),
+      project({ id: 'jean-local', name: 'jean' }),
+    ]
+
+    render(
+      <LinkedProjectsModal
+        open
+        onOpenChange={vi.fn()}
+        projectId="dev:current-project"
+      />
+    )
+
+    expect(screen.getByText('DEV Server')).toBeInTheDocument()
+    expect(screen.getAllByText('jean')).toHaveLength(1)
+    expect(screen.queryByText('Local')).not.toBeInTheDocument()
+  })
 })

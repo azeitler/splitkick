@@ -9,7 +9,6 @@ import {
   ArrowDownUp,
   ArrowUp,
   ChevronDown,
-  GitBranch,
 } from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import { dismissibleToast } from '@/lib/dismissible-toast'
@@ -751,17 +750,6 @@ export function WorktreeItem({
                   )}
                 />
               </button>
-              {/* Show branch name only when different from displayed name */}
-              {(() => {
-                const displayBranch =
-                  gitStatus?.current_branch ?? worktree.branch
-                return displayBranch !== worktree.name ? (
-                  <span className="ml-0.5 inline-flex max-w-[80px] items-center gap-0.5 truncate text-xs text-muted-foreground">
-                    <GitBranch className="h-2.5 w-2.5" />
-                    {displayBranch}
-                  </span>
-                ) : null
-              })()}
             </span>
           )}
 

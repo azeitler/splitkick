@@ -30,6 +30,14 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('text-[11px]')
   })
 
+  it('renders recent sessions as separated cards', () => {
+    expect(source).toContain('className="flex flex-col gap-2 px-2 py-2"')
+    expect(source).toContain('rounded-lg border border-border/50 border-l-2')
+    expect(source).toContain('bg-card/40')
+    expect(source).toContain('shadow-sm')
+    expect(source).not.toContain('divide-y divide-border/30')
+  })
+
   it('keeps current-row, keyboard, partial failure, and accessibility behavior', () => {
     expect(source).toContain('event.metaKey')
     expect(source).toContain("['ArrowUp', 'ArrowDown']")
@@ -39,7 +47,7 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('event.stopPropagation()')
     expect(source).toContain('{ capture: true }')
     expect(source).toContain("aria-current={isCurrent ? 'page' : undefined}")
-    expect(source).toContain('<ul aria-label="Recent sessions"')
+    expect(source).toContain('aria-label="Recent sessions"')
     expect(source).toContain('Some recent sessions could')
     expect(source).toContain('selectedSessionId')
     expect(source).toContain('getRecentSessionStatus(row.session')

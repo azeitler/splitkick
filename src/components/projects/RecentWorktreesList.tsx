@@ -214,7 +214,10 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
       data-testid="recent-worktrees-list"
     >
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <ul aria-label="Recent sessions" className="divide-y divide-border/30">
+        <ul
+          aria-label="Recent sessions"
+          className="flex flex-col gap-2 px-2 py-2"
+        >
           {displayedRows.map((row, index) => {
             const isCurrent = row.session.id === selectedSessionId
             const activity = formatRecentActivity(row.lastActivityAt)
@@ -249,7 +252,7 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                     !isSnoozedSession(
                       displayedRows[index - 1]?.lastActivityAt ?? 0
                     )) && (
-                    <div className="border-b border-border/30 bg-muted/20 px-3 py-1.5 text-[11px] font-medium text-muted-foreground">
+                    <div className="px-1 py-1 text-[11px] font-medium text-muted-foreground">
                       Snoozed · inactive for 24 hours
                     </div>
                   )}
@@ -261,7 +264,7 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   type="button"
                   aria-current={isCurrent ? 'page' : undefined}
                   aria-label={`${row.session.name}, ${row.projectName}, ${row.worktree.name}, ${status.label}, ${activityLabel}`}
-                  className={`flex w-full items-center gap-2 border-l-2 px-3 py-2 text-left transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring ${statusBorderClassName} ${isCurrent ? 'bg-muted/60 text-foreground' : 'text-muted-foreground'}`}
+                  className={`flex w-full items-center gap-2 rounded-lg border border-border/50 border-l-2 bg-card/40 px-3 py-2.5 text-left shadow-sm transition-[background-color,border-color,box-shadow,color] hover:border-border hover:bg-muted/50 hover:text-foreground hover:shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${statusBorderClassName} ${isCurrent ? 'border-border bg-muted/60 text-foreground shadow' : 'text-muted-foreground'}`}
                   onClick={() => handleOpen(row)}
                 >
                   <span className="min-w-0 flex-1">

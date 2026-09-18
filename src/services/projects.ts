@@ -13,6 +13,7 @@ import {
 } from '@/lib/transport'
 import { registerServerResourcePath } from '@/lib/server-command-routing'
 import { LOCAL_SERVER_ID } from '@/types/server-resource'
+import { parseServerResourceKey } from '@/lib/server-resource'
 import { useLocalDashboardEnabled } from '@/lib/remote-connections'
 import { listen, type UnlistenFn } from '@/lib/transport'
 import { toast } from 'sonner'
@@ -64,7 +65,6 @@ import {
   useMultiServerProjects,
 } from './multi-server-projects'
 import { projectServerId } from '@/components/projects/server-filter'
-import { parseServerResourceKey } from '@/lib/server-resource'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -3094,29 +3094,45 @@ export function useUpdateProjectSettings() {
         name,
         defaultBranch,
       })
-      const project = await invoke<Project>('update_project_settings', {
-        projectId,
-        name,
-        defaultBranch,
-        enabledMcpServers,
-        knownMcpServers,
-        customSystemPrompt,
-        defaultProvider,
-        defaultBackend,
-        worktreesDir,
-        linearApiKey,
-        linearTeamId,
-        sentryAuthToken,
-        sentryOrganizationSlug,
-        sentryProjectSlug,
-        autoFixSettings,
-        linkedProjectIds,
+      const projectRef = parseServerResourceKey(projectId)
+      const serverId = projectRef?.serverId ?? LOCAL_SERVER_ID
+      const resourceLinkedProjectIds = linkedProjectIds?.map(id => {
+        const reference = parseServerResourceKey(id)
+        if (reference && reference.serverId !== serverId) {
+          throw new Error(
+            'Linked projects must belong to the same Jean instance'
+          )
+        }
+        return reference?.resourceId ?? id
       })
+      const project = await invokeForServer<Project>(
+        serverId,
+        'update_project_settings',
+        {
+          projectId: projectRef?.resourceId ?? projectId,
+          name,
+          defaultBranch,
+          enabledMcpServers,
+          knownMcpServers,
+          customSystemPrompt,
+          defaultProvider,
+          defaultBackend,
+          worktreesDir,
+          linearApiKey,
+          linearTeamId,
+          sentryAuthToken,
+          sentryOrganizationSlug,
+          sentryProjectSlug,
+          autoFixSettings,
+          linkedProjectIds: resourceLinkedProjectIds,
+        }
+      )
       logger.info('Project settings updated', { project })
       return project
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: projectsQueryKeys.list() })
+      queryClient.invalidateQueries({ queryKey: ['multi-server', 'projects'] })
     },
     onError: error => {
       const message =

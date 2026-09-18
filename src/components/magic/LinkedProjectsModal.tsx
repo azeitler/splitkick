@@ -11,6 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { useProjects, useUpdateProjectSettings } from '@/services/projects'
 import { isFolder, type Project } from '@/types/projects'
 import { cn } from '@/lib/utils'
+import { LOCAL_SERVER_ID } from '@/types/server-resource'
 
 interface LinkedProjectsModalProps {
   open: boolean
@@ -39,6 +40,13 @@ export function LinkedProjectsModal({
     [currentProject?.linked_project_ids]
   )
 
+  const currentServerId = currentProject?.serverId ?? LOCAL_SERVER_ID
+
+  const instanceName = useCallback(
+    (project: Project) => project.serverName ?? 'Local',
+    []
+  )
+
   const linkedProjects = useMemo(
     () => (projects ?? []).filter(p => linkedIds.has(p.id)),
     [projects, linkedIds]
@@ -49,11 +57,17 @@ export function LinkedProjectsModal({
     return (projects ?? []).filter(p => {
       if (isFolder(p)) return false
       if (p.id === projectId) return false
+      if ((p.serverId ?? LOCAL_SERVER_ID) !== currentServerId) return false
       if (linkedIds.has(p.id)) return false
-      if (q && !p.name.toLowerCase().includes(q)) return false
+      if (
+        q &&
+        !p.name.toLowerCase().includes(q) &&
+        !instanceName(p).toLowerCase().includes(q)
+      )
+        return false
       return true
     })
-  }, [projects, projectId, linkedIds, search])
+  }, [projects, projectId, currentServerId, linkedIds, search, instanceName])
 
   useEffect(() => {
     if (!open) {
@@ -158,7 +172,12 @@ export function LinkedProjectsModal({
                   key={p.id}
                   className="flex items-center justify-between rounded-md border border-border px-3 py-2 text-sm"
                 >
-                  <span className="truncate">{p.name}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate">{p.name}</span>
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {instanceName(p)}
+                    </span>
+                  </span>
                   <button
                     type="button"
                     onClick={() => handleRemove(p.id)}
@@ -241,7 +260,19 @@ export function LinkedProjectsModal({
                             : 'text-muted-foreground'
                         )}
                       />
-                      <span className="truncate">{p.name}</span>
+                      <span className="min-w-0">
+                        <span className="block truncate">{p.name}</span>
+                        <span
+                          className={cn(
+                            'block truncate text-xs',
+                            isSelected
+                              ? 'text-accent-foreground/70'
+                              : 'text-muted-foreground'
+                          )}
+                        >
+                          {instanceName(p)}
+                        </span>
+                      </span>
                     </button>
                   )
                 })}
