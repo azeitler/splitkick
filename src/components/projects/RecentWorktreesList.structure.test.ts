@@ -33,10 +33,13 @@ describe('RecentWorktreesList structure', () => {
   it('shows status borders on square left edges and selects with hover color', () => {
     expect(source).toContain('className="flex flex-col gap-2 px-2 py-2"')
     expect(source).toContain(
-      'rounded-r-lg border border-l-2 border-transparent bg-transparent'
+      'rounded-r-lg border border-l-2 px-3 py-2.5'
     )
     expect(source).toContain(
       "isCurrent ? 'border-border bg-muted/30 text-foreground shadow'"
+    )
+    expect(source).toContain(
+      ": 'border-transparent bg-transparent text-muted-foreground'"
     )
     expect(source).toContain("${statusBorderClassName}`}")
     expect(source).not.toContain('rounded-lg border')
