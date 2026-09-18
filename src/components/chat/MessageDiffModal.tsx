@@ -29,7 +29,7 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { getFilename } from '@/lib/path-utils'
+import { getFilename, joinPaths } from '@/lib/path-utils'
 import { getHunkLineStats } from '@/lib/diff-stats'
 import { useTheme } from '@/hooks/use-theme'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -184,6 +184,13 @@ export function MessageDiffModal({
   const { theme } = useTheme()
   const { data: preferences } = usePreferences()
 
+  const resolvedFilePath = useMemo(() => {
+    const isAbsolute = /^(?:[A-Za-z]:[\\/]|[\\/])/.test(filePath)
+    return worktreePath && !isAbsolute
+      ? joinPaths(worktreePath, filePath)
+      : filePath
+  }, [filePath, worktreePath])
+
   const resolvedThemeType = useMemo((): 'dark' | 'light' => {
     if (theme === 'system') {
       return window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -194,16 +201,22 @@ export function MessageDiffModal({
   }, [theme])
 
   const relativePath = useMemo(() => {
-    if (worktreePath && filePath.startsWith(worktreePath + '/')) {
-      return filePath.slice(worktreePath.length + 1)
+    const normalizedFilePath = resolvedFilePath.replace(/\\/g, '/')
+    const normalizedWorktreePath = worktreePath?.replace(/\\/g, '/')
+    if (
+      normalizedWorktreePath &&
+      normalizedFilePath.startsWith(`${normalizedWorktreePath}/`)
+    ) {
+      return normalizedFilePath.slice(normalizedWorktreePath.length + 1)
     }
     return getFilename(filePath)
-  }, [filePath, worktreePath])
+  }, [filePath, resolvedFilePath, worktreePath])
 
   // ── Current change: final file → reverse this message's edits → full-file diff ──
   const { data: fileContent, isLoading: isLoadingFile } = useQuery({
-    queryKey: ['file-content', filePath],
-    queryFn: () => invoke<string>('read_file_content', { path: filePath }),
+    queryKey: ['file-content', resolvedFilePath],
+    queryFn: () =>
+      invoke<string>('read_file_content', { path: resolvedFilePath }),
     enabled: isOpen && !patch,
     staleTime: 10_000,
   })
@@ -292,7 +305,7 @@ export function MessageDiffModal({
   const openFileMutation = useMutation({
     mutationFn: () =>
       invoke('open_file_in_default_app', {
-        path: filePath,
+        path: resolvedFilePath,
         editor: preferences?.editor,
       }),
   })
