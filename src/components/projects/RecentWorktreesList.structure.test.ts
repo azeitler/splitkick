@@ -33,6 +33,11 @@ describe('RecentWorktreesList structure', () => {
   it('keeps current-row, keyboard, partial failure, and accessibility behavior', () => {
     expect(source).toContain('event.metaKey')
     expect(source).toContain("['ArrowUp', 'ArrowDown']")
+    expect(source).toContain('getAdjacentRecentRow(')
+    expect(source).toContain('displayedRows,')
+    expect(source).not.toContain('ignoresNavigationShortcut')
+    expect(source).toContain('event.stopPropagation()')
+    expect(source).toContain('{ capture: true }')
     expect(source).toContain("aria-current={isCurrent ? 'page' : undefined}")
     expect(source).toContain('<ul aria-label="Recent sessions"')
     expect(source).toContain('Some recent sessions could')
@@ -57,5 +62,10 @@ describe('RecentWorktreesList structure', () => {
     expect(source).not.toContain(
       "queryKey: ['recent-worktrees', projectKey, limit, selectedSessionId]"
     )
+  })
+
+  it('keeps the snoozed footer stable during background refreshes', () => {
+    expect(source).not.toContain('query.isFetching')
+    expect(source).not.toContain('Updating…')
   })
 })

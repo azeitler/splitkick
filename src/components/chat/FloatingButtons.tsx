@@ -1,5 +1,11 @@
 import { memo, useCallback } from 'react'
-import { AlertCircle, ArrowDown, Check, ChevronDown } from '@/components/icons/reicon'
+import {
+  AlertCircle,
+  ArrowDown,
+  ArrowUp,
+  Check,
+  ChevronDown,
+} from '@/components/icons/reicon'
 import {
   Tooltip,
   TooltipContent,
@@ -26,6 +32,10 @@ interface FloatingButtonsProps {
   isAtBottom: boolean
   /** Whether a message is currently streaming — drives new-activity indicator on Bottom button */
   isSending?: boolean
+  /** Number of earlier prompts hidden by compact history */
+  hiddenPromptCount?: number
+  /** Callback to reveal earlier compact-history prompts */
+  onShowHiddenPrompts?: () => void
   /** Keyboard shortcut for approve */
   approveShortcut: string
   /** Callback for approve (build mode) */
@@ -59,6 +69,8 @@ export const FloatingButtons = memo(function FloatingButtons({
   showFindingsButton,
   isAtBottom,
   isSending,
+  hiddenPromptCount = 0,
+  onShowHiddenPrompts,
   approveShortcut,
   onApprove,
   onYoloApprove,
@@ -87,6 +99,17 @@ export const FloatingButtons = memo(function FloatingButtons({
 
   return (
     <>
+      {hiddenPromptCount > 0 && onShowHiddenPrompts && (
+        <button
+          type="button"
+          onClick={onShowHiddenPrompts}
+          className="absolute left-1/2 top-3 z-20 flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border/70 bg-background/90 px-3 text-xs font-medium text-muted-foreground shadow-md backdrop-blur-md transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <ArrowUp className="h-3.5 w-3.5" />
+          <span>Show {hiddenPromptCount} earlier prompts</span>
+        </button>
+      )}
+
       {/* Right side - Approve, Findings, Bottom buttons */}
       <div className="absolute bottom-4 right-4 flex gap-2">
         {/* Floating approval buttons with dropdowns - shown when main approve buttons are not visible */}

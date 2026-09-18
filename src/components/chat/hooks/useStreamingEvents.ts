@@ -1939,9 +1939,9 @@ export default function useStreamingEvents({
         // Clear compacting state (safety net)
         useChatStore.getState().setCompacting(session_id, false)
 
-        // Restore the prompt and its attachments only when the backend confirms
-        // that execution did not start. Once execution starts, cancellation must
-        // not copy sent content back into the composer.
+        // Restore the prompt and its attachments when cancellation produced no
+        // visible assistant output. Some backends report undo_send=false as soon
+        // as a process or turn is registered, before it produces any output.
         const hasToolCalls = toolCalls && toolCalls.length > 0
         const hasText = sanitizedContent.trim().length > 0
         const hasThinking = !!streamingThinkingContent[session_id]
@@ -1954,8 +1954,9 @@ export default function useStreamingEvents({
         const hasCurrentDraft = !!useChatStore
           .getState()
           .inputDrafts[session_id]?.trim()
+        const sentMessage = useChatStore.getState().lastSentMessages[session_id]
         const shouldRestoreMessage =
-          undo_send && !hasQueuedMessages && !hasCurrentDraft
+          !hasContent && !hasQueuedMessages && !hasCurrentDraft
         const shouldHydrateCancelledFromBackend = !undo_send && !hasContent
 
         const removeLatestUserMessageFromCache = () => {
@@ -2141,7 +2142,39 @@ export default function useStreamingEvents({
                 queryClient,
                 session_id,
                 resolvedWorktreeId
-              )
+              ).then(session => {
+                const assistant = session
+                  ? [...session.messages]
+                      .reverse()
+                      .find(message => message.role === 'assistant')
+                  : undefined
+                if (
+                  !assistant ||
+                  !hasMeaningfulAssistantPayload(
+                    assistant.content,
+                    assistant.content_blocks,
+                    assistant.tool_calls
+                  )
+                ) {
+                  return
+                }
+
+                // A backend can persist output before its stream reaches the
+                // client. In that case, keep the persisted turn and retract only
+                // the draft that this cancellation restored. Never clear newer
+                // text that the user entered after cancelling.
+                const store = useChatStore.getState()
+                if (
+                  sentMessage &&
+                  store.inputDrafts[session_id] === sentMessage
+                ) {
+                  store.clearInputDraft(session_id)
+                  store.clearPendingImages(session_id)
+                  store.clearPendingFiles(session_id)
+                  store.clearPendingTextFiles(session_id)
+                  store.clearPendingSkills(session_id)
+                }
+              })
             }
           }
           queryClient.invalidateQueries({

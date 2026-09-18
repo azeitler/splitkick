@@ -919,7 +919,7 @@ describe('useStreamingEvents cancellation sanitization', () => {
     expect(useChatStore.getState().isSessionReviewing('session-1')).toBe(true)
   })
 
-  it('does not restore text or images after an already-running prompt is cancelled', async () => {
+  it('restores text and images when an already-running prompt is cancelled before output', async () => {
     const queryClient = createQueryClient()
     const wrapper = createWrapper(queryClient)
     const hiddenRunSession = {
@@ -1002,11 +1002,19 @@ describe('useStreamingEvents cancellation sanitization', () => {
       messages: { id: string; role: string; content: string }[]
     }>(['chat', 'session', 'session-1'])
 
-    expect(session?.messages.map(message => message.id)).toContain(
+    expect(session?.messages.map(message => message.id)).not.toContain(
       'current-user'
     )
-    expect(useChatStore.getState().inputDrafts['session-1']).toBe('')
-    expect(useChatStore.getState().pendingImages['session-1']).toBeUndefined()
+    expect(useChatStore.getState().inputDrafts['session-1']).toBe(
+      'already running'
+    )
+    expect(useChatStore.getState().pendingImages['session-1']).toEqual([
+      {
+        id: 'image-1',
+        path: '/tmp/image.png',
+        filename: 'image.png',
+      },
+    ])
     expect(
       useChatStore.getState().lastSentAttachments['session-1']
     ).toBeUndefined()
@@ -1020,7 +1028,9 @@ describe('useStreamingEvents cancellation sanitization', () => {
         worktreePath: '/tmp/worktree',
       })
     )
-    expect(useChatStore.getState().inputDrafts['session-1']).toBe('')
+    expect(useChatStore.getState().inputDrafts['session-1']).toBe(
+      'already running'
+    )
   })
 
   it('hydrates a persisted cancelled turn without restoring the sent prompt', async () => {
@@ -1110,7 +1120,10 @@ describe('useStreamingEvents cancellation sanitization', () => {
       },
     })
 
-    expect(useChatStore.getState().inputDrafts['session-1']).toBe('')
+    // Restore immediately because the client has not received any output yet.
+    expect(useChatStore.getState().inputDrafts['session-1']).toBe(
+      'already running'
+    )
 
     await waitFor(() => {
       const session = queryClient.getQueryData<{

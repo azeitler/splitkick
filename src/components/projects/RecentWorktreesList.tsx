@@ -39,12 +39,21 @@ export function isSnoozedSession(
   return lastActivityAt <= Math.floor(now / 1000) - SNOOZE_AFTER_SECONDS
 }
 
-function ignoresNavigationShortcut(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    (target.isContentEditable ||
-      ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
-  )
+export function getAdjacentRecentRow(
+  rows: RecentWorktreeItem[],
+  selectedSessionId: string | null,
+  direction: 1 | -1
+): RecentWorktreeItem | undefined {
+  if (rows.length === 0) return undefined
+
+  const current = rows.findIndex(row => row.session.id === selectedSessionId)
+  const nextIndex =
+    current < 0
+      ? direction > 0
+        ? 0
+        : rows.length - 1
+      : Math.min(rows.length - 1, Math.max(0, current + direction))
+  return rows[nextIndex]
 }
 
 export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
@@ -140,26 +149,21 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!event.metaKey || !['ArrowUp', 'ArrowDown'].includes(event.key))
         return
-      if (ignoresNavigationShortcut(event.target) || rows.length === 0) return
       event.preventDefault()
-      const current = rows.findIndex(
-        row => row.session.id === selectedSessionId
+      event.stopPropagation()
+      const row = getAdjacentRecentRow(
+        displayedRows,
+        selectedSessionId,
+        event.key === 'ArrowDown' ? 1 : -1
       )
-      const direction = event.key === 'ArrowDown' ? 1 : -1
-      const nextIndex =
-        current < 0
-          ? direction > 0
-            ? 0
-            : rows.length - 1
-          : Math.min(rows.length - 1, Math.max(0, current + direction))
-      const row = rows[nextIndex]
       if (!row) return
       handleOpen(row)
       rowRefs.current.get(row.session.id)?.focus()
     }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [handleOpen, rows, selectedSessionId])
+    window.addEventListener('keydown', onKeyDown, { capture: true })
+    return () =>
+      window.removeEventListener('keydown', onKeyDown, { capture: true })
+  }, [displayedRows, handleOpen, selectedSessionId])
 
   if (query.isPending) {
     return (
@@ -300,7 +304,6 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
       </div>
       {(hiddenCount > 0 ||
         failedCount > 0 ||
-        query.isFetching ||
         (snoozedBoundaryLoaded && !showSnoozed)) && (
         <div className="shrink-0 border-t border-border/40 p-2">
           {hiddenCount > 0 && !snoozedBoundaryLoaded && (
@@ -349,14 +352,6 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
               >
                 Retry
               </button>
-            </div>
-          )}
-          {query.isFetching && !query.isPending && (
-            <div
-              role="status"
-              className="text-center text-[11px] text-muted-foreground"
-            >
-              Updating…
             </div>
           )}
         </div>

@@ -1396,10 +1396,7 @@ function ChatWindowContent({
   })
 
   // Plan state: finished pending plan, content, file path
-  const {
-    pendingPlanMessage,
-    hasPendingPlanApproval,
-  } = usePlanState({
+  const { pendingPlanMessage, hasPendingPlanApproval } = usePlanState({
     sessionMessages: session?.messages,
     pendingPlanMessageId: session?.pending_plan_message_id,
     currentToolCalls,
@@ -2902,6 +2899,14 @@ function ChatWindowContent({
                         showFindingsButton={!areFindingsVisible}
                         isAtBottom={isAtBottom || messages.length === 0}
                         isSending={isSending}
+                        hiddenPromptCount={
+                          preferences?.compact_chat_view_enabled &&
+                          !zenMode &&
+                          !isCompactHistoryExpanded
+                            ? compactHistoryWindow.hiddenPromptCount
+                            : 0
+                        }
+                        onShowHiddenPrompts={handleShowHiddenCompactPrompts}
                         approveShortcut={approveShortcut}
                         buildDefaultModelLabel={buildNewContextLabel}
                         yoloDefaultModelLabel={yoloNewContextLabel}

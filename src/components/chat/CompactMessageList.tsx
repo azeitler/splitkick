@@ -1058,16 +1058,14 @@ export const CompactMessageList = memo(
 
       return (
         <div className="flex flex-col w-full">
-          {(hasHiddenPrompts || hasOlderOnDisk) && (
+          {!hasHiddenPrompts && hasOlderOnDisk && (
             <button
               type="button"
-              onClick={hasHiddenPrompts ? onShowHiddenPrompts : loadOlder}
-              disabled={!hasHiddenPrompts && isLoadingOlder}
+              onClick={loadOlder}
+              disabled={isLoadingOlder}
               className="w-full text-center text-muted-foreground text-xs py-2 opacity-60 hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-wait"
             >
-              {hasHiddenPrompts ? (
-                `↑ Load old prompts (${hiddenPromptCount})`
-              ) : isLoadingOlder ? (
+              {isLoadingOlder ? (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Loading old prompts…
