@@ -272,6 +272,7 @@ export function MainWindow() {
   const githubDashboardOpen = useUIStore(state => state.githubDashboardOpen)
   const newSessionModeTarget = useUIStore(state => state.newSessionModeTarget)
   const sessionChatModalOpen = useUIStore(state => state.sessionChatModalOpen)
+  const modalSidebarSwipe = useUIStore(state => state.leftSidebarSwipe)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
   const addProjectDialogOpen = useProjectsStore(
     state => state.addProjectDialogOpen
@@ -596,9 +597,21 @@ export function MainWindow() {
             open={leftSidebarVisible}
             onOpenChange={setLeftSidebarVisible}
             width={leftSidebarSize}
-            isDragging={swipeOpenSidebar.isSwiping}
-            dragOffset={swipeOpenSidebar.translateX}
-            dragTransition={swipeOpenSidebar.transitionStyle}
+            isDragging={
+              sessionChatModalOpen
+                ? modalSidebarSwipe.isDragging
+                : swipeOpenSidebar.isSwiping
+            }
+            dragOffset={
+              sessionChatModalOpen
+                ? modalSidebarSwipe.dragOffset
+                : swipeOpenSidebar.translateX
+            }
+            dragTransition={
+              sessionChatModalOpen
+                ? modalSidebarSwipe.dragTransition
+                : swipeOpenSidebar.transitionStyle
+            }
           />
         )}
 
@@ -619,6 +632,15 @@ export function MainWindow() {
             <MainWindowContent
               sidebarSwipeContainerRef={
                 canSwipeOpenSidebar ? swipeOpenSidebar.containerRef : undefined
+              }
+              sidebarSwipeIndicator={
+                canSwipeOpenSidebar
+                  ? {
+                      isSwiping: swipeOpenSidebar.isSwiping,
+                      translateX: swipeOpenSidebar.translateX,
+                      progress: swipeOpenSidebar.progress,
+                    }
+                  : undefined
               }
             />
             <FloatingDock />

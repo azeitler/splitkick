@@ -20,7 +20,7 @@ function TouchProbe({
   edge?: 'left' | 'right'
   visualFeedback?: boolean
 }) {
-  const { containerRef, translateX, isSwiping } = useSwipeBack({
+  const { containerRef, translateX, isSwiping, progress } = useSwipeBack({
     onSwipeBack,
     enabled,
     animateToEnd,
@@ -34,6 +34,7 @@ function TouchProbe({
       ref={containerRef}
       data-testid="swipe-target"
       data-translate={translateX}
+      data-progress={progress}
       data-swiping={isSwiping ? 'true' : 'false'}
       style={{ width: 400, height: 600 }}
     />
@@ -150,6 +151,7 @@ describe('useSwipeBack', () => {
       fireTouch(el, 'touchmove', 180)
     })
     expect(el).toHaveAttribute('data-translate', '180')
+    expect(el).toHaveAttribute('data-progress', '1')
 
     act(() => {
       fireTouch(el, 'touchend', 180)

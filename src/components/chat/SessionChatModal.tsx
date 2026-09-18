@@ -200,7 +200,24 @@ export function SessionChatModal({
     onSwipeBack: swipeOpenSidebar,
     enabled: isTouch && isOpen && !leftSidebarVisible,
     animateToEnd: false,
+    visualFeedback: true,
   })
+  useEffect(() => {
+    useUIStore.getState().setLeftSidebarSwipe({
+      isDragging: swipe.isSwiping,
+      dragOffset: swipe.translateX,
+      dragTransition: swipe.transitionStyle,
+    })
+  }, [swipe.isSwiping, swipe.translateX, swipe.transitionStyle])
+  useEffect(() => {
+    return () => {
+      useUIStore.getState().setLeftSidebarSwipe({
+        isDragging: false,
+        dragOffset: 0,
+        dragTransition: '',
+      })
+    }
+  }, [])
   const { data: sessionsData } = useSessions(
     worktreeId || null,
     worktreePath || null
@@ -967,16 +984,21 @@ export function SessionChatModal({
         )}
         data-testid="session-chat-modal-swipe"
       >
-        {isMobile && (
-          <>
+        {isMobile && swipe.isSwiping && (
+          <div
+            className="pointer-events-none absolute top-1/2 z-[60] flex -translate-y-1/2 items-center justify-center"
+            style={{ left: swipe.translateX - 8 }}
+            data-testid="mobile-sidebar-swipe-indicator"
+          >
             <div
-              className={cn(
-                'absolute left-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-r-full bg-muted-foreground/20 transition-opacity duration-300',
-                swipe.isSwiping ? 'opacity-0' : 'opacity-100'
-              )}
-              aria-hidden
+              className="rounded-full bg-muted-foreground/30 transition-transform"
+              style={{
+                width: 8 + swipe.progress * 24,
+                height: 8 + swipe.progress * 24,
+                opacity: 0.3 + swipe.progress * 0.7,
+              }}
             />
-          </>
+          </div>
         )}
         {isModalTerminalOpen && modalTerminalDockMode === 'left' && (
           <ModalTerminalDrawer

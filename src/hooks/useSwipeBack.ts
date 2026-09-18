@@ -30,6 +30,7 @@ interface SwipeBackResult {
   containerRef: React.RefObject<HTMLDivElement | null>
   translateX: number
   isSwiping: boolean
+  progress: number
   transitionStyle: string
 }
 
@@ -48,6 +49,7 @@ export function useSwipeBack({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [translateX, setTranslateX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
+  const [progress, setProgress] = useState(0)
   const [transitionStyle, setTransitionStyle] = useState('')
 
   const startXRef = useRef(0)
@@ -122,29 +124,39 @@ export function useSwipeBack({
     [isInEdgeZone]
   )
 
-  const handleTouchMove = useCallback((e: TouchEvent) => {
-    if (!swipingRef.current) return
-    e.stopPropagation()
-    if (e.cancelable) e.preventDefault()
+  const handleTouchMove = useCallback(
+    (e: TouchEvent) => {
+      if (!swipingRef.current) return
+      e.stopPropagation()
+      if (e.cancelable) e.preventDefault()
 
-    const touch = e.touches[0]
-    if (!touch) return
-    lastXRef.current = touch.clientX
-    lastTimeRef.current = Date.now()
-    if (showVisualRef.current) {
+      const touch = e.touches[0]
+      if (!touch) return
+      lastXRef.current = touch.clientX
+      lastTimeRef.current = Date.now()
       const containerWidth =
         containerRef.current?.offsetWidth ?? window.innerWidth
-      // Keep the drawer edge under the finger. Using only the distance from
-      // touch start leaves it behind by the width of the edge start zone.
-      const delta =
-        edgeRef.current === 'right'
-          ? Math.max(0, containerWidth - touch.clientX)
-          : Math.max(0, touch.clientX)
-      // Visual still uses positive translateX for left-edge swipe-right.
-      // Right-edge swipe-left uses negative translateX.
-      setTranslateX(edgeRef.current === 'right' ? -delta : delta)
-    }
-  }, [])
+      setProgress(
+        Math.min(
+          1,
+          progressDelta(startXRef.current, touch.clientX) /
+            (containerWidth * threshold)
+        )
+      )
+      if (showVisualRef.current) {
+        // Keep the drawer edge under the finger. Using only the distance from
+        // touch start leaves it behind by the width of the edge start zone.
+        const delta =
+          edgeRef.current === 'right'
+            ? Math.max(0, containerWidth - touch.clientX)
+            : Math.max(0, touch.clientX)
+        // Visual still uses positive translateX for left-edge swipe-right.
+        // Right-edge swipe-left uses negative translateX.
+        setTranslateX(edgeRef.current === 'right' ? -delta : delta)
+      }
+    },
+    [progressDelta, threshold]
+  )
 
   const handleTouchEnd = useCallback(
     (e: TouchEvent) => {
@@ -155,6 +167,7 @@ export function useSwipeBack({
       const container = containerRef.current
       if (!container) {
         setIsSwiping(false)
+        setProgress(0)
         if (showVisualRef.current) setTranslateX(0)
         return
       }
@@ -184,6 +197,7 @@ export function useSwipeBack({
             // Reset after callback
             setTranslateX(0)
             setIsSwiping(false)
+            setProgress(0)
             setTransitionStyle('')
             firedRef.current = false
           }, 200)
@@ -193,6 +207,7 @@ export function useSwipeBack({
           onSwipeBackRef.current()
           if (showVisualRef.current) setTranslateX(0)
           setIsSwiping(false)
+          setProgress(0)
           firedRef.current = false
         }
       } else {
@@ -201,10 +216,12 @@ export function useSwipeBack({
           setTranslateX(0)
           setTimeout(() => {
             setIsSwiping(false)
+            setProgress(0)
             setTransitionStyle('')
           }, 200)
         } else {
           setIsSwiping(false)
+          setProgress(0)
         }
       }
     },
@@ -234,5 +251,5 @@ export function useSwipeBack({
     }
   }, [enabled, handleTouchStart, handleTouchMove, handleTouchEnd])
 
-  return { containerRef, translateX, isSwiping, transitionStyle }
+  return { containerRef, translateX, isSwiping, progress, transitionStyle }
 }

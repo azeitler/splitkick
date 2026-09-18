@@ -26,6 +26,14 @@ describe('SessionChatModal removal behavior', () => {
     )
   })
 
+  it('publishes swipe progress so the mobile sidebar follows the gesture', () => {
+    const source = readSource('src/components/chat/SessionChatModal.tsx')
+
+    expect(source).toContain('setLeftSidebarSwipe({')
+    expect(source).toContain('dragOffset: swipe.translateX')
+    expect(source).toContain('dragTransition: swipe.transitionStyle')
+  })
+
   it('receives complete header data from the loaded project canvas', () => {
     const modalSource = readSource('src/components/chat/SessionChatModal.tsx')
     const canvasSource = readSource(

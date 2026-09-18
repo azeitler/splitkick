@@ -37,12 +37,18 @@ interface MainWindowContentProps {
   children?: React.ReactNode
   className?: string
   sidebarSwipeContainerRef?: RefObject<HTMLDivElement | null>
+  sidebarSwipeIndicator?: {
+    isSwiping: boolean
+    translateX: number
+    progress: number
+  }
 }
 
 export function MainWindowContent({
   children,
   className,
   sidebarSwipeContainerRef,
+  sidebarSwipeIndicator,
 }: MainWindowContentProps) {
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const isMobile = useIsMobile()
@@ -183,6 +189,22 @@ export function MainWindowContent({
         className
       )}
     >
+      {sidebarSwipeIndicator?.isSwiping && (
+        <div
+          className="pointer-events-none absolute top-1/2 z-[60] flex -translate-y-1/2 items-center justify-center"
+          style={{ left: sidebarSwipeIndicator.translateX - 8 }}
+          data-testid="mobile-sidebar-swipe-indicator"
+        >
+          <div
+            className="rounded-full bg-muted-foreground/30 transition-transform"
+            style={{
+              width: 8 + sidebarSwipeIndicator.progress * 24,
+              height: 8 + sidebarSwipeIndicator.progress * 24,
+              opacity: 0.3 + sidebarSwipeIndicator.progress * 0.7,
+            }}
+          />
+        </div>
+      )}
       {activeWorktreePath ? (
         <div
           ref={isMobile ? sidebarSwipeContainerRef : undefined}
@@ -190,17 +212,6 @@ export function MainWindowContent({
           data-testid="mobile-swipe-chat"
         >
           <div className="relative h-full min-h-0 w-full">
-            {isMobile && (
-              <>
-                <div
-                  className={cn(
-                    'absolute left-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-r-full bg-muted-foreground/20 transition-opacity duration-300',
-                    'opacity-100'
-                  )}
-                  aria-hidden
-                />
-              </>
-            )}
             <Suspense
               fallback={
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
@@ -218,12 +229,6 @@ export function MainWindowContent({
           className="relative flex h-full w-full min-w-0 flex-col bg-background"
           data-testid="mobile-swipe-open-sidebar"
         >
-          {sidebarSwipeContainerRef && (
-            <div
-              className="pointer-events-none absolute left-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-r-full bg-muted-foreground/20"
-              aria-hidden
-            />
-          )}
           {nonChatContent}
         </div>
       )}

@@ -101,6 +101,28 @@ describe('MainWindowContent mobile swipe open sidebar', () => {
     expect(useUIStore.getState().leftSidebarVisible).toBe(false)
   })
 
+  it('shows the circular indicator at the current swipe position', () => {
+    render(
+      <MainWindowContent
+        sidebarSwipeIndicator={{
+          isSwiping: true,
+          translateX: 68,
+          progress: 0.5,
+        }}
+      />
+    )
+
+    const indicator = screen.getByTestId('mobile-sidebar-swipe-indicator')
+    expect(indicator).toHaveStyle({ left: '60px' })
+    expect(indicator.firstElementChild).toHaveStyle({
+      width: '20px',
+      height: '20px',
+    })
+    expect(
+      Number((indicator.firstElementChild as HTMLElement).style.opacity)
+    ).toBeCloseTo(0.65)
+  })
+
   it('attaches the sidebar swipe target inside chat without leaving it', async () => {
     useChatStore.setState({
       activeWorktreePath: '/tmp/wt',
