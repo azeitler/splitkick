@@ -80,6 +80,7 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 5. **Explain Changes**: High-level summary at each step\n\
 6. **Document Results**: Add review to '.ai/todo.md'\n\
 7. **Capture Lessons**: Update '.ai/lessons.md' only for general, project-wide learning; remove narrow entries\n\
+8. **Keep Task File Untracked**: Never add '.ai/todo.md' to Git\n\
 \n\
 ## Core Principles\n\
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.\n\
@@ -2666,6 +2667,7 @@ mod tests {
         ));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
             .contains("Only update '.ai/lessons.md' for general, project-wide learning"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Never add '.ai/todo.md' to Git"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
             .contains("Do not add feature-specific, bug-fix-specific, or small/local lessons"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT

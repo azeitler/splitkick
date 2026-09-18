@@ -65,6 +65,7 @@ import {
   useMultiServerProjects,
 } from './multi-server-projects'
 import { projectServerId } from '@/components/projects/server-filter'
+import { removeWorktreeFromRecentCaches } from '@/lib/recent-worktree-cache'
 
 // Check if a backend is available (Tauri IPC or WebSocket)
 // Kept as `isTauri` for backward compatibility across the codebase
@@ -1541,6 +1542,7 @@ export function useWorktreeEvents() {
             return old.filter(w => w.id !== id)
           }
         )
+        removeWorktreeFromRecentCaches(queryClient, id)
 
         // Clear chat/selection if this worktree was active
         const { activeWorktreeId, clearActiveWorktree } =
@@ -1578,6 +1580,8 @@ export function useWorktreeEvents() {
             return old.filter(w => w.id !== id)
           }
         )
+        removeWorktreeFromRecentCaches(queryClient, id)
+        queryClient.invalidateQueries({ queryKey: ['recent-worktrees'] })
 
         // Clear chat/selection if this worktree was active
         // (handles cases where worktree:deleting wasn't emitted, e.g. close_base_session)
@@ -1629,6 +1633,7 @@ export function useWorktreeEvents() {
             )
           }
         )
+        queryClient.invalidateQueries({ queryKey: ['recent-worktrees'] })
 
         toast.error('Failed to delete worktree', {
           description: error,
@@ -1885,6 +1890,7 @@ export function useDeleteWorktree() {
           )
         }
       )
+      removeWorktreeFromRecentCaches(queryClient, worktreeId)
 
       // Drop the worktree's sessions from the finished-session bell, which
       // reads from ['all-sessions'].

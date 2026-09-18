@@ -674,6 +674,7 @@ export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `Always use ASD-STE100 Simplified Te
 5. **Explain Changes**: High-level summary at each step
 6. **Document Results**: Add review to '.ai/todo.md'
 7. **Capture Lessons**: Update '.ai/lessons.md' only for general, project-wide learning; remove narrow entries
+8. **Keep Task File Untracked**: Never add '.ai/todo.md' to Git
 
 ## Core Principles
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.

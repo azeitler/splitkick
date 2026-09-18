@@ -344,7 +344,8 @@ export function GitDiffModal({
           removed: result.total_deletions,
         }
         if (request.type === 'branch') setCachedBranchStats(stats)
-        else if (request.type === 'uncommitted') setCachedUncommittedStats(stats)
+        else if (request.type === 'uncommitted')
+          setCachedUncommittedStats(stats)
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err))
       } finally {
@@ -1074,7 +1075,7 @@ export function GitDiffModal({
           <DialogTitle className="flex shrink-0 flex-col gap-2 px-3 pt-3 sm:flex-row sm:items-center sm:px-0 sm:pt-0">
             <div className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
               {showSwitcher ? (
-                <div className="flex w-full min-w-0 items-center bg-muted rounded-lg p-1 sm:w-auto sm:shrink">
+                <div className="flex min-w-0 flex-1 items-center bg-muted rounded-lg p-1 sm:w-auto sm:shrink">
                   <button
                     type="button"
                     onClick={() => handleSwitchDiffType('uncommitted')}
@@ -1150,6 +1151,43 @@ export function GitDiffModal({
                   <span className="truncate">{title}</span>
                 </>
               )}
+              {isMobile && (
+                <div
+                  className="ml-auto flex shrink-0 items-center gap-1"
+                  data-testid="mobile-diff-header-actions"
+                >
+                  {activeDiffType !== 'commits' &&
+                    activeDiffType !== 'checkpoints' && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0 p-0"
+                            onClick={() => {
+                              if (!diffRequest) return
+                              loadDiff(
+                                { ...diffRequest, type: activeDiffType },
+                                true
+                              )
+                            }}
+                            disabled={isLoading}
+                            aria-label="Refresh diff"
+                          >
+                            <RefreshCw
+                              className={cn(
+                                'h-4 w-4',
+                                isLoading && 'animate-spin'
+                              )}
+                            />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Refresh diff</TooltipContent>
+                      </Tooltip>
+                    )}
+                  <ModalCloseButton onClick={onClose} />
+                </div>
+              )}
             </div>
 
             <div className="flex w-full min-w-0 flex-wrap items-center justify-between gap-1.5 pb-0.5 sm:ml-auto sm:w-auto sm:flex-nowrap sm:justify-start sm:overflow-visible sm:pb-0">
@@ -1161,42 +1199,42 @@ export function GitDiffModal({
               {/* Side-by-side diffs are not usable at phone widths. */}
               {!isMobile && (
                 <div className="flex min-w-0 flex-1 items-center bg-muted rounded-lg p-1 sm:flex-none sm:shrink-0">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => setDiffStyle('split')}
-                      className={cn(
-                        'flex flex-1 items-center justify-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors sm:flex-none sm:shrink-0 sm:px-3',
-                        diffStyle === 'split'
-                          ? 'bg-background shadow-sm text-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      <Columns2 className="h-3.5 w-3.5 shrink-0" />
-                      <span className="hidden sm:inline">Split</span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Side-by-side view</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => setDiffStyle('unified')}
-                      className={cn(
-                        'flex flex-1 items-center justify-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors sm:flex-none sm:shrink-0 sm:px-3',
-                        diffStyle === 'unified'
-                          ? 'bg-background shadow-sm text-foreground'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      <Rows3 className="h-3.5 w-3.5 shrink-0" />
-                      <span className="hidden sm:inline">Stacked</span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Unified view</TooltipContent>
-                </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setDiffStyle('split')}
+                        className={cn(
+                          'flex flex-1 items-center justify-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors sm:flex-none sm:shrink-0 sm:px-3',
+                          diffStyle === 'split'
+                            ? 'bg-background shadow-sm text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        <Columns2 className="h-3.5 w-3.5 shrink-0" />
+                        <span className="hidden sm:inline">Split</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Side-by-side view</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={() => setDiffStyle('unified')}
+                        className={cn(
+                          'flex flex-1 items-center justify-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors sm:flex-none sm:shrink-0 sm:px-3',
+                          diffStyle === 'unified'
+                            ? 'bg-background shadow-sm text-foreground'
+                            : 'text-muted-foreground hover:text-foreground'
+                        )}
+                      >
+                        <Rows3 className="h-3.5 w-3.5 shrink-0" />
+                        <span className="hidden sm:inline">Stacked</span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Unified view</TooltipContent>
+                  </Tooltip>
                 </div>
               )}
               {/* Add selected comments to a new prompt session */}
@@ -1251,49 +1289,54 @@ export function GitDiffModal({
                 hasFiles &&
                 activeDiffType !== 'commits' &&
                 activeDiffType !== 'checkpoints' && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 shrink-0 p-0"
-                      onClick={() => setShowMobileSidebar(v => !v)}
-                    >
-                      <PanelLeft className="h-4 w-4" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Toggle file list</TooltipContent>
-                </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 p-0"
+                        onClick={() => setShowMobileSidebar(v => !v)}
+                      >
+                        <PanelLeft className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Toggle file list</TooltipContent>
+                  </Tooltip>
+                )}
+              {!isMobile && (
+                <>
+                  {activeDiffType !== 'commits' &&
+                    activeDiffType !== 'checkpoints' && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 shrink-0 p-0"
+                            onClick={() => {
+                              if (!diffRequest) return
+                              loadDiff(
+                                { ...diffRequest, type: activeDiffType },
+                                true
+                              )
+                            }}
+                            disabled={isLoading}
+                            aria-label="Refresh diff"
+                          >
+                            <RefreshCw
+                              className={cn(
+                                'h-4 w-4',
+                                isLoading && 'animate-spin'
+                              )}
+                            />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>Refresh diff</TooltipContent>
+                      </Tooltip>
+                    )}
+                  <ModalCloseButton onClick={onClose} />
+                </>
               )}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-7 w-7 shrink-0 p-0"
-                    onClick={() => {
-                      if (
-                        !diffRequest ||
-                        activeDiffType === 'commits' ||
-                        activeDiffType === 'checkpoints'
-                      )
-                        return
-                      loadDiff({ ...diffRequest, type: activeDiffType }, true)
-                    }}
-                    disabled={
-                      isLoading ||
-                      activeDiffType === 'commits' ||
-                      activeDiffType === 'checkpoints'
-                    }
-                  >
-                    <RefreshCw
-                      className={cn('h-4 w-4', isLoading && 'animate-spin')}
-                    />
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>Refresh diff</TooltipContent>
-              </Tooltip>
-              <ModalCloseButton onClick={onClose} />
             </div>
           </DialogTitle>
           <DialogDescription className="sr-only">
@@ -1313,15 +1356,14 @@ export function GitDiffModal({
           )}
 
           {/* AI Checkpoints tab */}
-          {activeDiffType === 'checkpoints' &&
-            diffRequest?.worktreeId && (
-              <CheckpointsTabView
-                worktreeId={diffRequest.worktreeId}
-                worktreePath={diffRequest.worktreePath}
-                diffStyle={diffStyle}
-                initialCheckpointId={diffRequest.checkpointId}
-              />
-            )}
+          {activeDiffType === 'checkpoints' && diffRequest?.worktreeId && (
+            <CheckpointsTabView
+              worktreeId={diffRequest.worktreeId}
+              worktreePath={diffRequest.worktreePath}
+              diffStyle={diffStyle}
+              initialCheckpointId={diffRequest.checkpointId}
+            />
+          )}
           {activeDiffType === 'checkpoints' &&
             diffRequest &&
             !diffRequest.worktreeId && (
@@ -1331,8 +1373,7 @@ export function GitDiffModal({
             )}
 
           {/* Diff tabs body (Uncommitted / Branch) */}
-          {activeDiffType !== 'commits' &&
-            activeDiffType !== 'checkpoints' && (
+          {activeDiffType !== 'commits' && activeDiffType !== 'checkpoints' && (
             <>
               {/* Comment bar - above sidebar and main content */}
               {hasFiles && (

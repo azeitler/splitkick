@@ -40,3 +40,23 @@ describe('SessionChatModal responsive header actions', () => {
     expect(source).not.toContain('isBase || isMobile')
   })
 })
+
+describe('GitDiffModal responsive header actions', () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, 'GitDiffModal.tsx'),
+    'utf8'
+  )
+
+  it('keeps the mobile refresh and close actions together in the top row', () => {
+    expect(source).toContain('data-testid="mobile-diff-header-actions"')
+    expect(source).toMatch(
+      /data-testid="mobile-diff-header-actions"[\s\S]*aria-label="Refresh diff"[\s\S]*<ModalCloseButton onClick=\{onClose\}/
+    )
+  })
+
+  it('only shows refresh on diff tabs that can refresh', () => {
+    expect(source).toMatch(
+      /activeDiffType !== 'commits' &&[\s\S]*activeDiffType !== 'checkpoints'/
+    )
+  })
+})

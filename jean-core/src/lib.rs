@@ -981,6 +981,7 @@ mod tests {
             "At the start of a new task, replace '.ai/todo.md' instead of appending to it"
         ));
         assert!(prompt.contains("Only update '.ai/lessons.md' for general, project-wide learning"));
+        assert!(prompt.contains("Never add '.ai/todo.md' to Git"));
         assert!(prompt
             .contains("Do not add feature-specific, bug-fix-specific, or small/local lessons"));
         assert!(prompt.contains("Remove narrow or specific entries when you detect them"));
@@ -2224,6 +2225,7 @@ fn default_global_system_prompt() -> String {
 5. **Explain Changes**: High-level summary at each step
 6. **Document Results**: Add review to '.ai/todo.md'
 7. **Capture Lessons**: Update '.ai/lessons.md' only for general, project-wide learning; remove narrow entries
+8. **Keep Task File Untracked**: Never add '.ai/todo.md' to Git
 
 ## Core Principles
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
