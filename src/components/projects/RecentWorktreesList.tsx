@@ -264,7 +264,7 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   type="button"
                   aria-current={isCurrent ? 'page' : undefined}
                   aria-label={`${row.session.name}, ${row.projectName}, ${row.worktree.name}, ${status.label}, ${activityLabel}`}
-                  className={`flex w-full items-center gap-2 rounded-lg border border-border/50 border-l-2 bg-card/40 px-3 py-2.5 text-left shadow-sm transition-[background-color,border-color,box-shadow,color] hover:border-border hover:bg-muted/50 hover:text-foreground hover:shadow focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${statusBorderClassName} ${isCurrent ? 'border-border bg-muted/60 text-foreground shadow' : 'text-muted-foreground'}`}
+                  className={`flex w-full items-center gap-2 rounded-lg border border-transparent bg-transparent px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow,color] hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${isCurrent ? `border-l-2 border-border bg-muted/60 text-foreground shadow ${statusBorderClassName}` : 'text-muted-foreground'}`}
                   onClick={() => handleOpen(row)}
                 >
                   <span className="min-w-0 flex-1">

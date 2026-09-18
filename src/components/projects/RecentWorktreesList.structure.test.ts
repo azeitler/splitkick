@@ -30,11 +30,14 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('text-[11px]')
   })
 
-  it('renders recent sessions as separated cards', () => {
+  it('renders only the selected session as a card', () => {
     expect(source).toContain('className="flex flex-col gap-2 px-2 py-2"')
-    expect(source).toContain('rounded-lg border border-border/50 border-l-2')
-    expect(source).toContain('bg-card/40')
-    expect(source).toContain('shadow-sm')
+    expect(source).toContain('rounded-lg border border-transparent bg-transparent')
+    expect(source).toContain(
+      'border-l-2 border-border bg-muted/60 text-foreground shadow'
+    )
+    expect(source).not.toContain('bg-card/40')
+    expect(source).not.toContain('shadow-sm')
     expect(source).not.toContain('divide-y divide-border/30')
   })
 
