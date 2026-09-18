@@ -1158,8 +1158,9 @@ export function GitDiffModal({
                   {selectedFileCount} selected
                 </span>
               )}
-              {/* View mode toggle */}
-              <div className="flex min-w-0 flex-1 items-center bg-muted rounded-lg p-1 sm:flex-none sm:shrink-0">
+              {/* Side-by-side diffs are not usable at phone widths. */}
+              {!isMobile && (
+                <div className="flex min-w-0 flex-1 items-center bg-muted rounded-lg p-1 sm:flex-none sm:shrink-0">
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <button
@@ -1196,7 +1197,8 @@ export function GitDiffModal({
                   </TooltipTrigger>
                   <TooltipContent>Unified view</TooltipContent>
                 </Tooltip>
-              </div>
+                </div>
+              )}
               {/* Add selected comments to a new prompt session */}
               {comments.length > 0 && onAddToPrompt && (
                 <div className="flex shrink-0 items-center gap-1">
@@ -1245,7 +1247,10 @@ export function GitDiffModal({
                   </Tooltip>
                 )}
               {/* Mobile sidebar toggle */}
-              {isMobile && hasFiles && activeDiffType !== 'commits' && (
+              {isMobile &&
+                hasFiles &&
+                activeDiffType !== 'commits' &&
+                activeDiffType !== 'checkpoints' && (
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <Button
