@@ -8,7 +8,7 @@ import {
   GitPullRequest,
   Shield,
   GitBranch,
-  Bug,
+  Sentry,
 } from '@/components/icons/reicon'
 import { LinearIcon } from '@/components/icons/LinearIcon'
 import type { LucideIcon } from '@/components/icons/reicon'
@@ -74,7 +74,7 @@ export const TABS: Tab[] = [
   { id: 'security', label: 'Security', key: '4', icon: Shield },
   { id: 'branches', label: 'Branches', key: '5', icon: GitBranch },
   { id: 'linear', label: 'Linear', key: '6', icon: LinearIcon },
-  { id: 'sentry', label: 'Sentry', key: '7', icon: Bug },
+  { id: 'sentry', label: 'Sentry', key: '7', icon: Sentry },
 ]
 
 export function NewWorktreeModal() {

@@ -14,12 +14,16 @@ describe('semantic brand and issue icons', () => {
   })
 
   it('maps Github to the GitHub brand icon instead of Code', () => {
-    expect(source).toContain("export { GithubIcon as Github } from './GithubIcon'")
+    expect(source).toContain(
+      "export { GithubIcon as Github } from './GithubIcon'"
+    )
     expect(source).not.toContain('export { Code as Github }')
   })
 
   it('maps CircleDot to the issue icon instead of Radio', () => {
-    expect(source).toContain("export { IssueIcon as CircleDot } from './IssueIcon'")
+    expect(source).toContain(
+      "export { IssueIcon as CircleDot } from './IssueIcon'"
+    )
     expect(source).not.toContain('export { Radio as CircleDot }')
   })
 
@@ -38,6 +42,12 @@ describe('semantic brand and issue icons', () => {
     )
     expect(source).not.toContain(
       "export { Speedometer as Rabbit } from 'reicon-react'"
+    )
+  })
+
+  it('maps Sentry to its official brand mark', () => {
+    expect(source).toContain(
+      "export { SentryIcon as Sentry } from './SentryIcon'"
     )
   })
 })

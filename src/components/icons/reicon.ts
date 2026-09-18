@@ -1,4 +1,7 @@
-export type { IconComponent as LucideIcon, IconProps as LucideProps } from 'reicon-react'
+export type {
+  IconComponent as LucideIcon,
+  IconProps as LucideProps,
+} from 'reicon-react'
 
 export {
   Activity,
@@ -214,6 +217,7 @@ export { SidebarRight as PanelRightDashed } from 'reicon-react'
 export { Pen as Pencil } from 'reicon-react'
 export { Plug as PlugZap } from 'reicon-react'
 export { CodeRabbitIcon as Rabbit } from './CodeRabbitIcon'
+export { SentryIcon as Sentry } from './SentryIcon'
 export { Refresh as RefreshCw } from 'reicon-react'
 export { RotateLeft as RotateCcw } from 'reicon-react'
 export { RotateRight as RotateCw } from 'reicon-react'

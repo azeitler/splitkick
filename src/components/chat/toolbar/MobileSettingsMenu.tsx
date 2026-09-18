@@ -28,7 +28,7 @@ import {
   Sparkles,
   Star,
   Terminal,
-  Bug,
+  Sentry,
 } from '@/components/icons/reicon'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -1167,7 +1167,7 @@ export function MobileSettingsMenu({
                         handleViewSentry(ctx)
                       }}
                     >
-                      <Bug className="h-4 w-4 text-orange-500" />
+                      <Sentry className="h-4 w-4 text-orange-500" />
                       <span className="truncate">
                         {ctx.shortId} {ctx.title}
                       </span>

@@ -5,6 +5,7 @@ import {
   ArrowUpToLine,
   BookmarkPlus,
   Bug,
+  Sentry,
   Eye,
   FileText,
   GitBranchPlus,
@@ -417,7 +418,11 @@ export function MobileToolbarMenu({
             )
           }}
         >
-          <Bug className="h-4 w-4" />
+          {hasIssueContexts ? (
+            <Bug className="h-4 w-4" />
+          ) : (
+            <Sentry className="h-4 w-4" />
+          )}
           Issue
           <span
             className={cn(
