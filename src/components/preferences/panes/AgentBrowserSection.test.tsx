@@ -56,12 +56,12 @@ describe('AgentBrowserSection', () => {
     })
   })
 
-  it('installs the browser and MCP configuration with one action', async () => {
+  it('repairs the automatic browser and MCP setup with one action', async () => {
     const user = userEvent.setup()
     renderSection()
 
     await user.click(
-      await screen.findByRole('button', { name: /^install agent-browser$/i })
+      await screen.findByRole('button', { name: /retry automatic setup/i })
     )
 
     await waitFor(() => {

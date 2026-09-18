@@ -1,6 +1,12 @@
 import React, { useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, Copy, Globe, Loader2, XCircle } from '@/components/icons/reicon'
+import {
+  CheckCircle,
+  Copy,
+  Globe,
+  Loader2,
+  XCircle,
+} from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -67,16 +73,6 @@ export const AgentBrowserSection: React.FC = () => {
     installedBackends.includes(b)
   )
 
-  const handleEnsureProfile = useCallback(async () => {
-    try {
-      await invoke<AgentBrowserStatus>('ensure_agent_browser_profile')
-      await refetch()
-      toast.success('Agent browser profile ready')
-    } catch (e) {
-      toast.error(`Failed to create profile: ${e}`)
-    }
-  }, [refetch])
-
   const handleInstallBinary = useCallback(async () => {
     setBinaryInstallState('installing')
     setBinaryInstallMessage(
@@ -129,7 +125,8 @@ export const AgentBrowserSection: React.FC = () => {
       <p className="text-sm text-muted-foreground">
         Give coding agents a real Chromium browser with a Jean-managed login
         profile (Vercel agent-browser). Log in manually once; sessions reuse
-        cookies. Works on jean-server and desktop.
+        cookies. Jean installs and activates it automatically on jean-server and
+        desktop.
       </p>
 
       <div className="space-y-3 rounded-md border px-4 py-3">
@@ -151,7 +148,7 @@ export const AgentBrowserSection: React.FC = () => {
               ) : (
                 <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
                   <XCircle className="size-3.5" />
-                  agent-browser not installed
+                  Automatic agent-browser setup is not complete
                 </span>
               )}
               {status?.profileExists && (
@@ -199,18 +196,10 @@ export const AgentBrowserSection: React.FC = () => {
                 Installing agent-browser…
               </>
             ) : status?.installed ? (
-              'Reinstall / update agent-browser'
+              'Repair / update agent-browser'
             ) : (
-              'Install agent-browser'
+              'Retry automatic setup'
             )}
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() => void handleEnsureProfile()}
-          >
-            Create profile
           </Button>
           {status && (
             <>
@@ -251,9 +240,9 @@ export const AgentBrowserSection: React.FC = () => {
           <Label className="text-xs text-foreground">How to use</Label>
           <ol className="list-decimal space-y-0.5 pl-4">
             <li>
-              Click <strong>Install agent-browser</strong> to install the npm
-              package, Chromium, and MCP configuration for installed backends.
-              Requires <code>npm</code> on PATH.
+              Jean installs the npm package, Chromium, profile, and MCP
+              configuration automatically. The repair button retries setup if it
+              fails. Requires <code>npm</code> on PATH.
             </li>
             <li>
               First login: run headed (or under VNC) and sign in manually.

@@ -165,7 +165,7 @@ describe('McpServersPane Jean MCP install', () => {
     renderPane()
 
     const button = await screen.findByRole('button', {
-      name: /add current jean mcp/i,
+      name: /repair jean mcp config/i,
     })
     await waitFor(() => expect(button).not.toBeDisabled())
 
@@ -194,7 +194,7 @@ describe('McpServersPane Jean MCP install', () => {
     renderPane()
 
     const button = await screen.findByRole('button', {
-      name: /add current jean mcp/i,
+      name: /repair jean mcp config/i,
     })
     await waitFor(() => expect(button).not.toBeDisabled())
 
@@ -208,26 +208,16 @@ describe('McpServersPane Jean MCP install', () => {
     consoleErrorSpy.mockRestore()
   })
 
-  it('asks whether to add Jean MCP automatically or manually when enabling', async () => {
+  it('shows Jean MCP as required without an off switch', async () => {
     mocks.jeanMcpEnabled = false
-    const user = userEvent.setup()
     renderPane()
 
-    await user.click(
-      await screen.findByRole('switch', { name: /enable jean mcp/i })
+    expect(
+      await screen.findByText(/required and automatically activated/i)
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
+    expect(mocks.patchPreferencesMutate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ jean_mcp_enabled: false })
     )
-
-    expect(mocks.patchPreferencesMutate).toHaveBeenCalledWith({
-      jean_mcp_enabled: true,
-    })
-    expect(
-      await screen.findByRole('alertdialog', {
-        name: /add jean mcp to your cli configs/i,
-      })
-    ).toBeInTheDocument()
-
-    expect(
-      screen.getByRole('button', { name: /add automatically/i })
-    ).toBeInTheDocument()
   })
 })

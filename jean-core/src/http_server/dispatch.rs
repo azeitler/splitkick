@@ -2859,6 +2859,10 @@ pub async fn dispatch_command(
             let result = crate::agent_browser::get_agent_browser_status(app.clone()).await?;
             to_value(result)
         }
+        "check_agent_browser_update" => {
+            let result = crate::agent_browser::check_agent_browser_update(app.clone()).await?;
+            to_value(result)
+        }
         "ensure_agent_browser_profile" => {
             let result = crate::agent_browser::ensure_agent_browser_profile(app.clone()).await?;
             to_value(result)

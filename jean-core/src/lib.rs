@@ -1357,7 +1357,7 @@ mod tests {
     }
 
     #[test]
-    fn app_preferences_preserves_explicit_jean_mcp_disabled() {
+    fn app_preferences_schema_can_read_legacy_jean_mcp_disabled() {
         let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
         prefs_json
             .as_object_mut()
@@ -3223,6 +3223,9 @@ pub fn load_preferences_sync(app: &AppHandle) -> Result<AppPreferences, String> 
         serde_json::from_str(&contents).map_err(|e| format!("Failed to parse preferences: {e}"))?;
     let mut preferences: AppPreferences = serde_json::from_value(raw_preferences.clone())
         .map_err(|e| format!("Failed to parse preferences: {e}"))?;
+    // Jean MCP is a required runtime service. Keep the legacy field for
+    // preference-file compatibility, but never honor an old disabled value.
+    preferences.jean_mcp_enabled = true;
     migrate_final_review_preferences(&mut preferences, &raw_preferences);
     maybe_auto_select_system_cli_preferences(app, &mut preferences, Some(&raw_preferences));
     Ok(preferences)
@@ -3266,6 +3269,10 @@ async fn load_preferences(app: AppHandle) -> Result<AppPreferences, String> {
     // Migrate legacy default Claude model names to the 1M variants where
     // available so hidden non-1M defaults do not render blank in settings.
     let mut needs_resave = migrate_final_review_preferences(&mut preferences, &raw_preferences);
+    if !preferences.jean_mcp_enabled {
+        preferences.jean_mcp_enabled = true;
+        needs_resave = true;
+    }
     if let Some(new_model) = migrate_default_claude_model(&preferences.selected_model) {
         preferences.selected_model = new_model.to_string();
         needs_resave = true;
@@ -3381,6 +3388,8 @@ async fn save_preferences(app: AppHandle, preferences: AppPreferences) -> Result
 
     // Strip settings_json from CLI profiles before writing to preferences.json (file is source of truth)
     let mut prefs_for_disk = preferences;
+    // Jean MCP is mandatory. Normalize stale clients and hand-edited files.
+    prefs_for_disk.jean_mcp_enabled = true;
     for profile in &mut prefs_for_disk.custom_cli_profiles {
         profile.settings_json = String::new();
         profile.file_path = String::new();
@@ -4511,7 +4520,55 @@ pub async fn start_runtime_services(context: RuntimeContext) -> Result<(), Strin
         preferences.wsl_enabled && !preferences.wsl_distro.trim().is_empty(),
         preferences.wsl_distro.clone(),
     );
-    sync_jean_mcp_socket_from_preferences(context, &preferences).await
+    sync_jean_mcp_socket_from_preferences(context.clone(), &preferences).await?;
+
+    // Required integrations are repaired on every launch. Do this outside the
+    // startup path because agent-browser can download Chromium on first use.
+    async_runtime::spawn(async move {
+        if let Err(error) =
+            jean_mcp_config::install_jean_mcp_config_impl(context.clone(), None, None).await
+        {
+            log::warn!("Failed to activate required Jean MCP configs: {error}");
+        }
+
+        let status = agent_browser::resolve_agent_browser_binary(&context);
+        if !status.installed {
+            let install_context = context.clone();
+            match async_runtime::spawn_blocking(move || {
+                agent_browser::install_agent_browser_sync(&install_context)
+            })
+            .await
+            {
+                Ok(Ok(_)) => log::info!("Installed required agent-browser integration"),
+                Ok(Err(error)) => {
+                    log::warn!("Failed to install required agent-browser: {error}");
+                    return;
+                }
+                Err(error) => {
+                    log::warn!("Required agent-browser install task failed: {error}");
+                    return;
+                }
+            }
+        }
+
+        match agent_browser::install_agent_browser_mcp(context, None).await {
+            Ok(results) => {
+                for result in results
+                    .into_iter()
+                    .filter(|result| result.status == "error")
+                {
+                    log::warn!(
+                        "Failed to activate required agent-browser for {}: {}",
+                        result.backend,
+                        result.message
+                    );
+                }
+            }
+            Err(error) => log::warn!("Failed to activate required agent-browser MCP: {error}"),
+        }
+    });
+
+    Ok(())
 }
 
 pub async fn set_project_avatar_from_path(

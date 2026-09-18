@@ -1,5 +1,10 @@
 import React, { useEffect, useMemo } from 'react'
-import { CheckCircle, Loader2, ShieldAlert, XCircle } from '@/components/icons/reicon'
+import {
+  CheckCircle,
+  Loader2,
+  ShieldAlert,
+  XCircle,
+} from '@/components/icons/reicon'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -18,6 +23,7 @@ import {
   useAllBackendsMcpHealth,
   groupServersByBackend,
   mcpKey,
+  isRequiredMcpServer,
   migrateLegacyMcpKeys,
 } from '@/services/mcp'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
@@ -261,7 +267,11 @@ export const McpServersPane: React.FC = () => {
                           enabledServersSet.has(mcpKey(backend, server.name)))
                       }
                       onCheckedChange={() => handleToggle(backend, server.name)}
-                      disabled={server.disabled || backend === 'antigravity'}
+                      disabled={
+                        server.disabled ||
+                        backend === 'antigravity' ||
+                        isRequiredMcpServer(server.name)
+                      }
                     />
                     <Label
                       htmlFor={`mcp-${backend}-${server.name}`}
@@ -285,7 +295,8 @@ export const McpServersPane: React.FC = () => {
                     <span className="text-xs text-muted-foreground">
                       {server.disabled
                         ? 'disabled'
-                        : backend === 'antigravity'
+                        : backend === 'antigravity' ||
+                            isRequiredMcpServer(server.name)
                           ? 'automatic'
                           : server.scope}
                     </span>

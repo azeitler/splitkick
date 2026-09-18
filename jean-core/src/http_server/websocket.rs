@@ -34,6 +34,7 @@ fn command_should_run_on_blocking_pool(command: &str) -> bool {
             | "install_coderabbit_cli"
             | "update_coderabbit_cli"
             | "install_agent_browser"
+            | "check_agent_browser_update"
             | "run_coderabbit_review"
             | "trigger_coderabbit_pr_review"
     )

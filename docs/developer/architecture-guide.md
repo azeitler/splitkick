@@ -138,6 +138,22 @@ Each major system has focused documentation:
 
 Additional systems (no dedicated docs yet):
 
+- **Required agent integrations** - Jean MCP and Agent Browser are mandatory
+  runtime services. Startup always enables the Jean MCP socket, repairs the
+  supported CLI config entries, and installs Agent Browser plus Chrome for
+  Testing when they are missing. These repairs run in the background so the UI
+  and HTTP server do not wait for a first-run browser download. Legacy
+  `jean_mcp_enabled: false` values are migrated to `true`, and Agent Browser is
+  always included in effective MCP server selection. The Settings controls can
+  report status and retry a failed repair, but cannot disable either service.
+  Agent Browser installation follows the official `npm install agent-browser`
+  and `agent-browser install` flow:
+  https://github.com/vercel-labs/agent-browser#installation
+  After startup settles, the client checks the npm registry for the latest
+  Agent Browser version. When a newer version exists, Jean shows a persistent
+  notification with **Update** and **Later** actions. Jean does not update the
+  browser until the user selects **Update**.
+
 - **Terminal** - Built-in PTY terminal emulator (`src-tauri/src/terminal/`).
   On Unix, terminals launched with a command run it through the user's
   interactive login shell so package scripts and native CLI sessions inherit

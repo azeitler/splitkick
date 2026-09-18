@@ -71,6 +71,7 @@ import { useZoom } from './hooks/use-zoom'
 import { useExternalDisplayZoomTip } from './hooks/use-external-display-zoom-tip'
 import { useImmediateSessionStateSave } from './hooks/useImmediateSessionStateSave'
 import { useCliVersionCheck } from './hooks/useCliVersionCheck'
+import { useAgentBrowserUpdateCheck } from './hooks/useAgentBrowserUpdateCheck'
 import { useServerUpdateCheck } from './hooks/useServerUpdateCheck'
 import { useCodexCodeModeHostRepair } from './hooks/useCodexCodeModeHostRepair'
 import { useServerQuerySync } from './hooks/useServerQuerySync'
@@ -78,7 +79,6 @@ import { useQueueProcessor } from './hooks/useQueueProcessor'
 import { useBackgroundInvestigation } from './hooks/useBackgroundInvestigation'
 import { useAutoArchiveOnMerge } from './hooks/useAutoArchiveOnMerge'
 import { useMagicPromptAutoDefaults } from './hooks/useMagicPromptAutoDefaults'
-import { usePreferences } from './services/preferences'
 import useStreamingEvents from './components/chat/hooks/useStreamingEvents'
 import { hydrateRunningSnapshot } from './lib/hydrate-running-snapshot'
 import { preloadAllSounds } from './lib/sounds'
@@ -154,10 +154,6 @@ function App() {
   const [isPreloading, setIsPreloading] = useState(webBackend)
   const [platformVersion, setPlatformVersion] = useState(0)
   const queryClient = useQueryClient()
-  const { data: preferences } = usePreferences()
-  const onboardingOpen = useUIStore(state => state.onboardingOpen)
-  const featureTourOpen = useUIStore(state => state.featureTourOpen)
-  const jeanMcpIntroOpen = useUIStore(state => state.jeanMcpIntroOpen)
   const hasStartedTransportRef = useRef(false)
 
   useEffect(() => {
@@ -867,6 +863,9 @@ function App() {
   // Check for CLI updates on startup (shows toast notification if updates available)
   useCliVersionCheck()
 
+  // Ask before updating the required Agent Browser integration.
+  useAgentBrowserUpdateCheck()
+
   // Headless jean-server binary updates (Web Access only)
   useServerUpdateCheck()
 
@@ -1158,114 +1157,6 @@ function App() {
     cliCheckReady,
     platformVersion,
     queryClient,
-  ])
-
-  // Show the one-time Jean MCP announcement only after setup is complete.
-  // This must never compete with first-run onboarding or the feature tour.
-  useEffect(() => {
-    if (!isNativeApp()) return
-    if (!cliCheckReady || !preferences) return
-    if (preferences.has_seen_jean_mcp_intro) return
-    if (onboardingOpen || featureTourOpen || jeanMcpIntroOpen) return
-
-    const aiStatuses = [
-      claudeStatus,
-      codexStatus,
-      opencodeStatus,
-      cursorStatus,
-      piStatus,
-      commandcodeStatus,
-      grokStatus,
-      kimiStatus,
-    ]
-    const aiAuth = [
-      claudeAuth,
-      codexAuth,
-      opencodeAuth,
-      cursorAuth,
-      piAuth,
-      commandcodeAuth,
-      grokAuth,
-      kimiAuth,
-    ]
-    if (aiStatuses.some(status => !status) || !ghStatus) return
-
-    const isLoading =
-      isClaudeStatusLoading ||
-      isCodexStatusLoading ||
-      isOpencodeStatusLoading ||
-      isCursorStatusLoading ||
-      isPiStatusLoading ||
-      isCommandcodeStatusLoading ||
-      isGrokStatusLoading ||
-      isKimiStatusLoading ||
-      isGhStatusLoading ||
-      (claudeStatus?.installed && isClaudeAuthLoading) ||
-      (codexStatus?.installed && isCodexAuthLoading) ||
-      (opencodeStatus?.installed && isOpencodeAuthLoading) ||
-      (cursorStatus?.installed && isCursorAuthLoading) ||
-      (piStatus?.installed && isPiAuthLoading) ||
-      (commandcodeStatus?.installed && isCommandcodeAuthLoading) ||
-      (grokStatus?.installed && isGrokAuthLoading) ||
-      (kimiStatus?.installed && isKimiAuthLoading) ||
-      (ghStatus?.installed && isGhAuthLoading)
-    if (isLoading) return
-
-    const ghReady = !!ghStatus?.installed && !!ghAuth?.authenticated
-    const hasAiBackendReady = aiStatuses.some(
-      (status, index) => !!status?.installed && !!aiAuth[index]?.authenticated
-    )
-
-    // If setup is incomplete, onboarding owns the startup surface.
-    if (!ghReady || !hasAiBackendReady) return
-
-    // Existing first-run tour has priority; show MCP intro on a later tick/reload
-    // after that preference has been marked seen.
-    if (!preferences.has_seen_feature_tour) return
-
-    useUIStore.getState().setJeanMcpIntroOpen(true)
-  }, [
-    preferences,
-    onboardingOpen,
-    featureTourOpen,
-    jeanMcpIntroOpen,
-    claudeStatus,
-    codexStatus,
-    opencodeStatus,
-    cursorStatus,
-    piStatus,
-    commandcodeStatus,
-    grokStatus,
-    kimiStatus,
-    ghStatus,
-    claudeAuth,
-    codexAuth,
-    opencodeAuth,
-    cursorAuth,
-    piAuth,
-    commandcodeAuth,
-    grokAuth,
-    kimiAuth,
-    ghAuth,
-    isClaudeStatusLoading,
-    isCodexStatusLoading,
-    isOpencodeStatusLoading,
-    isCursorStatusLoading,
-    isPiStatusLoading,
-    isCommandcodeStatusLoading,
-    isGrokStatusLoading,
-    isKimiStatusLoading,
-    isGhStatusLoading,
-    isClaudeAuthLoading,
-    isCodexAuthLoading,
-    isOpencodeAuthLoading,
-    isCursorAuthLoading,
-    isPiAuthLoading,
-    isCommandcodeAuthLoading,
-    isGrokAuthLoading,
-    isKimiAuthLoading,
-    isGhAuthLoading,
-    cliCheckReady,
   ])
 
   // Show feature tour after CLI onboarding completes (first launch or manual trigger)

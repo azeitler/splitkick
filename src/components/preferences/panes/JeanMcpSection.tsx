@@ -1,21 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { CheckCircle, Copy, Loader2, PlugZap, XCircle } from '@/components/icons/reicon'
-import { toast } from 'sonner'
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog'
+  CheckCircle,
+  Copy,
+  Loader2,
+  PlugZap,
+  XCircle,
+} from '@/components/icons/reicon'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Switch } from '@/components/ui/switch'
 import { copyToClipboard } from '@/lib/clipboard'
 import { cn } from '@/lib/utils'
 import { invoke, listen } from '@/lib/transport'
@@ -51,7 +46,7 @@ interface JeanMcpInstallResult {
   message: string
 }
 
-type InstallState = 'idle' | 'installing' | 'waiting' | 'success' | 'error'
+type InstallState = 'idle' | 'installing' | 'success' | 'error'
 
 /** Backends that support persistent Jean MCP config install. */
 const INSTALLABLE_BACKENDS = [
@@ -88,13 +83,6 @@ function installButtonContent(state: InstallState, message: string) {
         <>
           <Loader2 className="size-3.5 animate-spin" />
           <span>Adding...</span>
-        </>
-      )
-    case 'waiting':
-      return (
-        <>
-          <Loader2 className="size-3.5 animate-spin" />
-          <span className="truncate">Waiting for MCP...</span>
         </>
       )
     case 'success':
@@ -138,23 +126,19 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
   const queryClient = useQueryClient()
   const [installState, setInstallState] = useState<InstallState>('idle')
   const [installMessage, setInstallMessage] = useState('')
-  const [showInstallChoice, setShowInstallChoice] = useState(false)
-
-  const enabled = preferences?.jean_mcp_enabled ?? true
+  const enabled = true
   const {
     data: snippet,
     refetch: refreshSnippet,
     isLoading: isSnippetLoading,
     isFetching: isSnippetFetching,
   } = useQuery<JeanMcpSnippet>({
-    queryKey: ['jeanMcpSnippet', enabled],
+    queryKey: ['jeanMcpSnippet'],
     queryFn: () => invoke<JeanMcpSnippet>('get_jean_mcp_config_snippet'),
-    enabled,
   })
 
   const serverRunning = snippet?.serverRunning ?? false
-  const checkingServer =
-    enabled && !snippet && (isSnippetLoading || isSnippetFetching)
+  const checkingServer = !snippet && (isSnippetLoading || isSnippetFetching)
   const modeLabel = (snippet?.mode ?? 'prod') === 'dev' ? 'Dev' : 'Prod'
   const installableBackends = installedBackends.filter(
     (backend): backend is (typeof INSTALLABLE_BACKENDS)[number] =>
@@ -248,70 +232,48 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
     }
   }, [queryClient])
 
-  const handleInstall = useCallback(
-    async (assumeEnabled = false) => {
-      if ((!enabled && !assumeEnabled) || !serverRunning) {
-        setTemporaryInstallState('error', 'Enable Jean MCP first')
-        return
-      }
-      if (installableBackends.length === 0) {
-        setTemporaryInstallState(
-          'error',
-          'Install a supported CLI first (Claude, Codex, Cursor, Grok, Kimi, Antigravity, or OpenCode)'
-        )
-        return
-      }
-
-      setTemporaryInstallState('installing')
-      try {
-        const results = await invoke<JeanMcpInstallResult[]>(
-          'install_jean_mcp_config',
-          {
-            backends: installableBackends,
-            mode: 'current',
-          }
-        )
-        const successes = results.filter(r => r.status === 'installed')
-        const failures = results.filter(r => r.status === 'error')
-        invalidateAllMcpServers(undefined, installableBackends)
-        await refreshSnippet()
-        setTemporaryInstallState(
-          failures.length > 0 ? 'error' : 'success',
-          failures.length > 0
-            ? `Added ${successes.length}/${results.length}; ${failures.length} failed`
-            : 'Added'
-        )
-      } catch (e) {
-        setTemporaryInstallState('error', 'Failed to add Jean MCP')
-        console.error('Failed to add Jean MCP config', e)
-      }
-    },
-    [
-      enabled,
-      installableBackends,
-      refreshSnippet,
-      serverRunning,
-      setTemporaryInstallState,
-    ]
-  )
-
-  useEffect(() => {
-    if (installState === 'waiting' && enabled && serverRunning) {
-      handleInstall(true)
+  const handleInstall = useCallback(async () => {
+    if (!serverRunning) {
+      setTemporaryInstallState('error', 'Jean MCP socket is not running')
+      return
     }
-  }, [enabled, handleInstall, installState, serverRunning])
+    if (installableBackends.length === 0) {
+      setTemporaryInstallState(
+        'error',
+        'Install a supported CLI first (Claude, Codex, Cursor, Grok, Kimi, Antigravity, or OpenCode)'
+      )
+      return
+    }
 
-  const handleEnabledChange = (checked: boolean) => {
-    patchPreferences.mutate({ jean_mcp_enabled: checked })
-    setTemporaryInstallState('idle')
-    setShowInstallChoice(checked)
-  }
-
-  const handleAddAutomatically = () => {
-    setShowInstallChoice(false)
-    if (serverRunning) handleInstall(true)
-    else setTemporaryInstallState('waiting')
-  }
+    setTemporaryInstallState('installing')
+    try {
+      const results = await invoke<JeanMcpInstallResult[]>(
+        'install_jean_mcp_config',
+        {
+          backends: installableBackends,
+          mode: 'current',
+        }
+      )
+      const successes = results.filter(r => r.status === 'installed')
+      const failures = results.filter(r => r.status === 'error')
+      invalidateAllMcpServers(undefined, installableBackends)
+      await refreshSnippet()
+      setTemporaryInstallState(
+        failures.length > 0 ? 'error' : 'success',
+        failures.length > 0
+          ? `Added ${successes.length}/${results.length}; ${failures.length} failed`
+          : 'Added'
+      )
+    } catch (e) {
+      setTemporaryInstallState('error', 'Failed to add Jean MCP')
+      console.error('Failed to add Jean MCP config', e)
+    }
+  }, [
+    installableBackends,
+    refreshSnippet,
+    serverRunning,
+    setTemporaryInstallState,
+  ])
 
   const transientButton = installButtonContent(installState, installMessage)
 
@@ -325,15 +287,9 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
         </p>
 
         <div className="flex flex-col gap-2 rounded-md border px-4 py-3 sm:flex-row sm:items-center sm:gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
-            <Switch
-              id="jean-mcp-enabled"
-              checked={enabled}
-              onCheckedChange={handleEnabledChange}
-            />
-            <Label htmlFor="jean-mcp-enabled" className="cursor-pointer">
-              Enable Jean MCP
-            </Label>
+          <div className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">
+            <CheckCircle className="size-4 text-green-600 dark:text-green-400" />
+            Required and automatically activated
           </div>
           {checkingServer && (
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -341,7 +297,7 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
               Checking MCP socket…
             </span>
           )}
-          {!checkingServer && !serverRunning && enabled && (
+          {!checkingServer && !serverRunning && (
             <span className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400">
               <PlugZap className="size-3.5 shrink-0" />
               MCP socket not running
@@ -397,10 +353,11 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
             <div className="space-y-3 rounded-md border px-4 py-3">
               <div className="space-y-1">
                 <Label className="text-sm font-medium">
-                  One-click config install
+                  Automatic config install
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Safely merges Jean MCP into installed CLI user configs
+                  Jean safely merges its MCP server into installed CLI user
+                  configs at startup
                   {installableLabels.length > 0
                     ? `: ${installableLabels.join(', ')}.`
                     : '. Install a supported CLI first.'}
@@ -440,7 +397,7 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
                 title={installMessage}
               >
                 {transientButton ?? (
-                  <span>Add current Jean MCP ({modeLabel})</span>
+                  <span>Repair Jean MCP config ({modeLabel})</span>
                 )}
               </Button>
             </div>
@@ -476,27 +433,6 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
           </>
         )}
       </SettingsSection>
-
-      <AlertDialog open={showInstallChoice} onOpenChange={setShowInstallChoice}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Add Jean MCP to your CLI configs?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Jean MCP is enabled. Jean can add it automatically to your
-              installed CLI config files (Claude, Codex, Cursor, Grok, Kimi,
-              OpenCode), or you can copy the manual snippets below.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Manual setup</AlertDialogCancel>
-            <AlertDialogAction onClick={handleAddAutomatically}>
-              Add automatically
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   )
 }
