@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { act, render, screen } from '@/test/test-utils'
-import { useUIStore } from '@/store/ui-store'
+import { describe, expect, it, vi } from 'vitest'
+import { render, screen } from '@/test/test-utils'
 import { MobileFileBrowser } from './MobileFileBrowser'
 
 vi.mock('./FileBrowserSidebar', () => ({
@@ -9,45 +8,11 @@ vi.mock('./FileBrowserSidebar', () => ({
 }))
 
 describe('MobileFileBrowser', () => {
-  beforeEach(() => {
-    useUIStore.setState({
-      fileBrowserSwipe: {
-        isDragging: false,
-        dragOffset: 0,
-        dragTransition: '',
-      },
-    })
-  })
-
-  it('drags the file-browser drawer over the content during a right-edge swipe', async () => {
-    useUIStore.getState().setFileBrowserSwipe({
-      isDragging: true,
-      dragOffset: -112,
-      dragTransition: '',
-    })
-
-    const { rerender } = render(
-      <MobileFileBrowser open={false} onOpenChange={vi.fn()} width={280} />
-    )
+  it('shows the drawer only when explicitly opened', async () => {
+    render(<MobileFileBrowser open onOpenChange={vi.fn()} width={280} />)
 
     const drawer = await screen.findByTestId('mobile-file-browser')
-    expect(drawer).toHaveAttribute('data-swipe-dragging', 'true')
-    expect(drawer).toHaveStyle({
-      transform: 'translateX(max(0px, calc(100% + -112px)))',
-      animation: 'none',
-      transition: 'none',
-    })
-
-    act(() => {
-      useUIStore.getState().setFileBrowserSwipe({
-        isDragging: false,
-        dragOffset: 0,
-        dragTransition: '',
-      })
-      rerender(<MobileFileBrowser open onOpenChange={vi.fn()} width={280} />)
-    })
-
-    expect(drawer).toHaveStyle({ animation: 'none' })
-    expect(drawer).not.toHaveStyle({ transform: 'translateX(100%)' })
+    expect(drawer).toBeVisible()
+    expect(drawer).not.toHaveAttribute('data-swipe-dragging')
   })
 })

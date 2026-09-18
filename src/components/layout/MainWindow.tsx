@@ -272,7 +272,6 @@ export function MainWindow() {
   const githubDashboardOpen = useUIStore(state => state.githubDashboardOpen)
   const newSessionModeTarget = useUIStore(state => state.newSessionModeTarget)
   const sessionChatModalOpen = useUIStore(state => state.sessionChatModalOpen)
-  const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
   const addProjectDialogOpen = useProjectsStore(
     state => state.addProjectDialogOpen
@@ -296,35 +295,6 @@ export function MainWindow() {
     }, []),
     enabled: canSwipeOpenSidebar,
   })
-  const canSwipeOpenFileBrowser =
-    isMobile &&
-    !!activeWorktreePath &&
-    !!activeWorktreeId &&
-    !fileBrowserVisible &&
-    !sessionChatModalOpen
-  const swipeOpenFileBrowser = useSwipeBack({
-    onSwipeBack: useCallback(() => {
-      useUIStore.getState().setFileBrowserVisible(true)
-    }, []),
-    enabled: canSwipeOpenFileBrowser,
-    animateToEnd: false,
-    visualFeedback: true,
-    edge: 'right',
-  })
-  useEffect(() => {
-    useUIStore.getState().setFileBrowserSwipe({
-      isDragging: canSwipeOpenFileBrowser && swipeOpenFileBrowser.isSwiping,
-      dragOffset: canSwipeOpenFileBrowser ? swipeOpenFileBrowser.translateX : 0,
-      dragTransition: canSwipeOpenFileBrowser
-        ? swipeOpenFileBrowser.transitionStyle
-        : '',
-    })
-  }, [
-    swipeOpenFileBrowser.isSwiping,
-    swipeOpenFileBrowser.translateX,
-    swipeOpenFileBrowser.transitionStyle,
-    canSwipeOpenFileBrowser,
-  ])
   const swipeDown = useSwipeDown({
     onSwipeDown: useCallback(() => {
       useUIStore.getState().setCommandPaletteOpen(true)
@@ -649,11 +619,6 @@ export function MainWindow() {
             <MainWindowContent
               sidebarSwipeContainerRef={
                 canSwipeOpenSidebar ? swipeOpenSidebar.containerRef : undefined
-              }
-              fileBrowserSwipeContainerRef={
-                canSwipeOpenFileBrowser
-                  ? swipeOpenFileBrowser.containerRef
-                  : undefined
               }
             />
             <FloatingDock />

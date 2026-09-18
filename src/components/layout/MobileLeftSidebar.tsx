@@ -64,8 +64,9 @@ export function MobileLeftSidebar({
             '--mobile-sidebar-width': `${width}px`,
             ...(isDragging
               ? {
-                  transform: `translateX(min(0px, calc(-100% + ${dragOffset}px)))`,
+                  transform: `translate3d(min(0px, calc(-100% + ${dragOffset}px)), 0, 0)`,
                   transition: dragTransition || 'none',
+                  willChange: 'transform',
                 }
               : {}),
             ...(isDragging || (open && openedByDrag)

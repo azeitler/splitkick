@@ -122,25 +122,29 @@ export function useSwipeBack({
     [isInEdgeZone]
   )
 
-  const handleTouchMove = useCallback(
-    (e: TouchEvent) => {
-      if (!swipingRef.current) return
-      e.stopPropagation()
-      if (e.cancelable) e.preventDefault()
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (!swipingRef.current) return
+    e.stopPropagation()
+    if (e.cancelable) e.preventDefault()
 
-      const touch = e.touches[0]
-      if (!touch) return
-      lastXRef.current = touch.clientX
-      lastTimeRef.current = Date.now()
-      if (showVisualRef.current) {
-        const delta = progressDelta(startXRef.current, touch.clientX)
-        // Visual still uses positive translateX for left-edge swipe-right.
-        // Right-edge swipe-left uses negative translateX.
-        setTranslateX(edgeRef.current === 'right' ? -delta : delta)
-      }
-    },
-    [progressDelta]
-  )
+    const touch = e.touches[0]
+    if (!touch) return
+    lastXRef.current = touch.clientX
+    lastTimeRef.current = Date.now()
+    if (showVisualRef.current) {
+      const containerWidth =
+        containerRef.current?.offsetWidth ?? window.innerWidth
+      // Keep the drawer edge under the finger. Using only the distance from
+      // touch start leaves it behind by the width of the edge start zone.
+      const delta =
+        edgeRef.current === 'right'
+          ? Math.max(0, containerWidth - touch.clientX)
+          : Math.max(0, touch.clientX)
+      // Visual still uses positive translateX for left-edge swipe-right.
+      // Right-edge swipe-left uses negative translateX.
+      setTranslateX(edgeRef.current === 'right' ? -delta : delta)
+    }
+  }, [])
 
   const handleTouchEnd = useCallback(
     (e: TouchEvent) => {
@@ -212,6 +216,12 @@ export function useSwipeBack({
     const el = containerRef.current
     if (!el) return
 
+    // Tell the browser that vertical scrolling is allowed, but horizontal
+    // movement belongs to this gesture. This avoids waiting for the browser's
+    // native pan decision before the drawer starts following the finger.
+    const previousTouchAction = el.style.touchAction
+    el.style.touchAction = 'pan-y'
+
     el.addEventListener('touchstart', handleTouchStart, { passive: true })
     el.addEventListener('touchmove', handleTouchMove, { passive: false })
     el.addEventListener('touchend', handleTouchEnd, { passive: true })
@@ -220,6 +230,7 @@ export function useSwipeBack({
       el.removeEventListener('touchstart', handleTouchStart)
       el.removeEventListener('touchmove', handleTouchMove)
       el.removeEventListener('touchend', handleTouchEnd)
+      el.style.touchAction = previousTouchAction
     }
   }, [enabled, handleTouchStart, handleTouchMove, handleTouchEnd])
 

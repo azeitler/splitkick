@@ -7,7 +7,6 @@ import {
   useRef,
   useState,
   type MouseEvent,
-  type MutableRefObject,
   type RefObject,
 } from 'react'
 import {
@@ -193,7 +192,6 @@ export function SessionChatModal({
     state => state.modalTerminalOpen[worktreeId] ?? false
   )
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
-  const fileBrowserVisible = useUIStore(state => state.fileBrowserVisible)
   // Left-edge swipe right: open the sidebar without leaving the worktree.
   const swipeOpenSidebar = useCallback(() => {
     useUIStore.getState().setLeftSidebarVisible(true)
@@ -203,50 +201,6 @@ export function SessionChatModal({
     enabled: isTouch && isOpen && !leftSidebarVisible,
     animateToEnd: false,
   })
-  // Right-edge swipe left: open file browser
-  const swipeOpenFileBrowserCallback = useCallback(() => {
-    useUIStore.getState().setFileBrowserVisible(true)
-  }, [])
-  const canSwipeOpenFileBrowser =
-    isTouch && isOpen && !!worktreeId && !fileBrowserVisible
-  const swipeOpenFileBrowser = useSwipeBack({
-    onSwipeBack: swipeOpenFileBrowserCallback,
-    enabled: canSwipeOpenFileBrowser,
-    animateToEnd: false,
-    visualFeedback: true,
-    edge: 'right',
-  })
-  useEffect(() => {
-    useUIStore.getState().setFileBrowserSwipe({
-      isDragging: canSwipeOpenFileBrowser && swipeOpenFileBrowser.isSwiping,
-      dragOffset: canSwipeOpenFileBrowser ? swipeOpenFileBrowser.translateX : 0,
-      dragTransition: canSwipeOpenFileBrowser
-        ? swipeOpenFileBrowser.transitionStyle
-        : '',
-    })
-  }, [
-    swipeOpenFileBrowser.isSwiping,
-    swipeOpenFileBrowser.translateX,
-    swipeOpenFileBrowser.transitionStyle,
-    canSwipeOpenFileBrowser,
-  ])
-  // Shared host for left-edge sidebar and right-edge file browser gestures
-  const setSwipeContainerRef = useCallback(
-    (el: HTMLDivElement | null) => {
-      const swipeRef =
-        swipe.containerRef as MutableRefObject<HTMLDivElement | null>
-      const openFileBrowserRef =
-        swipeOpenFileBrowser.containerRef as MutableRefObject<HTMLDivElement | null>
-      if (!isTouch) {
-        swipeRef.current = null
-        openFileBrowserRef.current = null
-        return
-      }
-      swipeRef.current = el
-      openFileBrowserRef.current = el
-    },
-    [isTouch, swipe.containerRef, swipeOpenFileBrowser.containerRef]
-  )
   const { data: sessionsData } = useSessions(
     worktreeId || null,
     worktreePath || null
@@ -1005,7 +959,7 @@ export function SessionChatModal({
     <>
       <div
         key={worktreeId}
-        ref={setSwipeContainerRef}
+        ref={isTouch ? swipe.containerRef : undefined}
         className={cn(
           'absolute inset-0 z-10 flex min-w-0 overflow-hidden bg-background pt-[3px]',
           !isMobile && 'pb-2',
@@ -1022,12 +976,6 @@ export function SessionChatModal({
               )}
               aria-hidden
             />
-            {canSwipeOpenFileBrowser && (
-              <div
-                className="pointer-events-none absolute right-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-l-full bg-muted-foreground/20"
-                aria-hidden
-              />
-            )}
           </>
         )}
         {isModalTerminalOpen && modalTerminalDockMode === 'left' && (

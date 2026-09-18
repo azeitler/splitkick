@@ -119,7 +119,7 @@ describe('MainWindowContent mobile swipe open sidebar', () => {
   })
 })
 
-describe('MainWindowContent mobile chat swipes', () => {
+describe('MainWindowContent mobile chat gestures', () => {
   beforeEach(() => {
     useUIStore.setState({
       leftSidebarVisible: false,
@@ -134,42 +134,15 @@ describe('MainWindowContent mobile chat swipes', () => {
     useProjectsStore.setState({ selectedProjectId: 'proj-1' })
   })
 
-  it('delegates the right-edge gesture without moving the chat content', async () => {
-    const fileBrowserSwipeContainerRef = createRef<HTMLDivElement>()
-    render(
-      <MainWindowContent
-        fileBrowserSwipeContainerRef={fileBrowserSwipeContainerRef}
-      />
-    )
-
-    const target = await screen.findByTestId('mobile-swipe-open-file-browser')
-    Object.defineProperty(target, 'offsetWidth', {
-      value: 400,
-      configurable: true,
-    })
-
-    expect(fileBrowserSwipeContainerRef.current).toBe(target)
-    expect(target).not.toHaveStyle({ transform: 'translateX(-112px)' })
-    expect(useUIStore.getState().fileBrowserVisible).toBe(false)
-  })
-
-  it('disables the file browser gesture when it is already visible', async () => {
-    useUIStore.setState({ fileBrowserVisible: true })
-
+  it('does not expose a right-edge file-browser swipe target', async () => {
     render(<MainWindowContent />)
 
-    const target = await screen.findByTestId('mobile-swipe-open-file-browser')
-    Object.defineProperty(target, 'offsetWidth', {
-      value: 400,
-      configurable: true,
+    await waitFor(() => {
+      expect(screen.getByTestId('chat-window')).toBeInTheDocument()
     })
-
-    act(() => {
-      fireTouch(target, 'touchstart', 392)
-      fireTouch(target, 'touchmove', 180)
-      fireTouch(target, 'touchend', 180)
-    })
-
-    expect(useUIStore.getState().fileBrowserVisible).toBe(true)
+    expect(
+      screen.queryByTestId('mobile-swipe-open-file-browser')
+    ).not.toBeInTheDocument()
+    expect(useUIStore.getState().fileBrowserVisible).toBe(false)
   })
 })

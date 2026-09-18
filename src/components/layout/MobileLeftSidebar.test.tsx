@@ -67,9 +67,10 @@ describe('MobileLeftSidebar', () => {
     const sheet = await screen.findByTestId('mobile-left-sidebar')
     expect(sheet).toHaveAttribute('data-swipe-dragging', 'true')
     expect(sheet).toHaveStyle({
-      transform: 'translateX(min(0px, calc(-100% + 112px)))',
+      transform: 'translate3d(min(0px, calc(-100% + 112px)), 0, 0)',
       animation: 'none',
       transition: 'none',
+      willChange: 'transform',
     })
     expect(
       await screen.findByTestId('left-sidebar-content')

@@ -37,14 +37,12 @@ interface MainWindowContentProps {
   children?: React.ReactNode
   className?: string
   sidebarSwipeContainerRef?: RefObject<HTMLDivElement | null>
-  fileBrowserSwipeContainerRef?: RefObject<HTMLDivElement | null>
 }
 
 export function MainWindowContent({
   children,
   className,
   sidebarSwipeContainerRef,
-  fileBrowserSwipeContainerRef,
 }: MainWindowContentProps) {
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const isMobile = useIsMobile()
@@ -191,11 +189,7 @@ export function MainWindowContent({
           className="relative h-full w-full"
           data-testid="mobile-swipe-chat"
         >
-          <div
-            ref={isMobile ? fileBrowserSwipeContainerRef : undefined}
-            className="relative h-full min-h-0 w-full"
-            data-testid="mobile-swipe-open-file-browser"
-          >
+          <div className="relative h-full min-h-0 w-full">
             {isMobile && (
               <>
                 <div
@@ -205,12 +199,6 @@ export function MainWindowContent({
                   )}
                   aria-hidden
                 />
-                {fileBrowserSwipeContainerRef && (
-                  <div
-                    className="pointer-events-none absolute right-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-l-full bg-muted-foreground/20"
-                    aria-hidden
-                  />
-                )}
               </>
             )}
             <Suspense
