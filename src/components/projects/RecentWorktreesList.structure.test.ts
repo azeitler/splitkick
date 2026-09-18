@@ -30,12 +30,16 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('text-[11px]')
   })
 
-  it('renders only the selected session as a card', () => {
+  it('shows status borders on square left edges and selects with hover color', () => {
     expect(source).toContain('className="flex flex-col gap-2 px-2 py-2"')
-    expect(source).toContain('rounded-lg border border-transparent bg-transparent')
     expect(source).toContain(
-      'border-l-2 border-border bg-muted/60 text-foreground shadow'
+      'rounded-r-lg border border-l-2 border-transparent bg-transparent'
     )
+    expect(source).toContain(
+      "isCurrent ? 'border-border bg-muted/30 text-foreground shadow'"
+    )
+    expect(source).toContain("${statusBorderClassName}`}")
+    expect(source).not.toContain('rounded-lg border')
     expect(source).not.toContain('bg-card/40')
     expect(source).not.toContain('shadow-sm')
     expect(source).not.toContain('divide-y divide-border/30')

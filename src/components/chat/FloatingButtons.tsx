@@ -103,10 +103,11 @@ export const FloatingButtons = memo(function FloatingButtons({
         <button
           type="button"
           onClick={onShowHiddenPrompts}
-          className="absolute left-1/2 top-3 z-20 flex h-8 -translate-x-1/2 items-center gap-1.5 rounded-full border border-border/70 bg-background/90 px-3 text-xs font-medium text-muted-foreground shadow-md backdrop-blur-md transition-colors hover:bg-muted hover:text-foreground"
+          aria-label={`Show ${hiddenPromptCount} earlier prompts`}
+          className="absolute left-3 top-3 z-20 flex h-7 items-center gap-1.5 rounded-full border border-border/70 bg-background/90 px-2.5 text-xs font-medium text-muted-foreground shadow-sm backdrop-blur-md transition-colors hover:bg-muted hover:text-foreground"
         >
-          <ArrowUp className="h-3.5 w-3.5" />
-          <span>Show {hiddenPromptCount} earlier prompts</span>
+          <ArrowUp className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>{hiddenPromptCount} earlier</span>
         </button>
       )}
 

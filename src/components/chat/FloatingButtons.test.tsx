@@ -32,6 +32,7 @@ describe('FloatingButtons', () => {
       screen.getByRole('button', { name: 'Show 2 earlier prompts' })
     )
 
+    expect(screen.getByText('2 earlier')).toBeVisible()
     expect(onShowHiddenPrompts).toHaveBeenCalledOnce()
   })
 
