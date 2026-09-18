@@ -262,6 +262,61 @@ describe('useMessageSending Codex /goal', () => {
     expect(sendMessage.mutate).not.toHaveBeenCalled()
   })
 
+  it('queues direct magic prompts without clearing an active turn', () => {
+    useChatStore.setState({
+      sendingSessionIds: { 'session-1': true },
+      streamingContents: { 'session-1': 'Active response' },
+      activeToolCalls: {
+        'session-1': [
+          {
+            id: 'tool-1',
+            name: 'Read',
+            input: {},
+            status: 'running',
+          },
+        ],
+      },
+    })
+    const { result, sendMessage } = renderUseMessageSending({
+      inputValue: 'unused',
+    })
+
+    act(() => {
+      result.current.sendMessageNow({
+        id: 'magic-prompt-1',
+        message: 'Check GitHub issues',
+        pendingImages: [],
+        pendingFiles: [],
+        pendingSkills: [],
+        pendingTextFiles: [],
+        model: 'gpt-5.5',
+        provider: null,
+        executionMode: 'plan',
+        thinkingLevel: 'off',
+        backend: 'codex',
+        queuedAt: Date.now(),
+      })
+    })
+
+    expect(useChatStore.getState().messageQueues['session-1']).toEqual([
+      expect.objectContaining({
+        id: 'magic-prompt-1',
+        message: 'Check GitHub issues',
+      }),
+    ])
+    expect(useChatStore.getState().streamingContents['session-1']).toBe(
+      'Active response'
+    )
+    expect(useChatStore.getState().activeToolCalls['session-1']).toHaveLength(1)
+    expect(persistEnqueue).toHaveBeenCalledWith(
+      'worktree-1',
+      '/tmp/worktree',
+      'session-1',
+      expect.objectContaining({ id: 'magic-prompt-1' })
+    )
+    expect(sendMessage.mutate).not.toHaveBeenCalled()
+  })
+
   it('blocks send when the selected backend is installed but not authenticated', async () => {
     mockInstalledBackends.installedBackends = ['claude', 'codex']
     mockBackendAuthStatuses.authByBackend = {

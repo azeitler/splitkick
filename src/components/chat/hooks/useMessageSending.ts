@@ -156,6 +156,21 @@ export function useMessageSending({
     (queuedMsg: QueuedMessage) => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
+      const store = useChatStore.getState()
+      if (store.isSending(activeSessionId)) {
+        console.log(
+          `[Send] sendMessageNow ENQUEUING sessionId=${activeSessionId} (session is sending)`
+        )
+        store.enqueueMessage(activeSessionId, queuedMsg)
+        persistEnqueue(
+          activeWorktreeId,
+          activeWorktreePath,
+          activeSessionId,
+          queuedMsg
+        )
+        return
+      }
+
       console.log(
         `[Send] sendMessageNow sessionId=${activeSessionId} worktreeId=${activeWorktreeId}`
       )
