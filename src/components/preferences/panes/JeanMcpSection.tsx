@@ -1,17 +1,14 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   CheckCircle,
-  Copy,
   Loader2,
   PlugZap,
   XCircle,
 } from '@/components/icons/reicon'
-import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { copyToClipboard } from '@/lib/clipboard'
 import { cn } from '@/lib/utils'
 import { invoke, listen } from '@/lib/transport'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
@@ -69,13 +66,6 @@ const BACKEND_LABELS: Record<(typeof INSTALLABLE_BACKENDS)[number], string> = {
   antigravity: 'Antigravity',
 }
 
-interface SnippetTarget {
-  id: string
-  label: string
-  path: string
-  content: string | null
-}
-
 function installButtonContent(state: InstallState, message: string) {
   switch (state) {
     case 'installing':
@@ -104,15 +94,6 @@ function installButtonContent(state: InstallState, message: string) {
   }
 }
 
-function handleCopySnippet(label: string, content: string | null) {
-  if (!content) {
-    toast.error(`No ${label} snippet available — enable Jean MCP first`)
-    return
-  }
-  copyToClipboard(content)
-  toast.success(`${label} snippet copied`)
-}
-
 interface JeanMcpSectionProps {
   mcpServers: McpServerInfo[]
 }
@@ -126,7 +107,6 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
   const queryClient = useQueryClient()
   const [installState, setInstallState] = useState<InstallState>('idle')
   const [installMessage, setInstallMessage] = useState('')
-  const enabled = true
   const {
     data: snippet,
     refetch: refreshSnippet,
@@ -139,7 +119,6 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
 
   const serverRunning = snippet?.serverRunning ?? false
   const checkingServer = !snippet && (isSnippetLoading || isSnippetFetching)
-  const modeLabel = (snippet?.mode ?? 'prod') === 'dev' ? 'Dev' : 'Prod'
   const installableBackends = installedBackends.filter(
     (backend): backend is (typeof INSTALLABLE_BACKENDS)[number] =>
       (INSTALLABLE_BACKENDS as readonly CliBackend[]).includes(backend)
@@ -150,59 +129,6 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
         server.backend === backend && server.name === snippet?.serverName
     )
   )
-  const installableLabels = installableBackends.flatMap(backend => {
-    const label = BACKEND_LABELS[backend]
-    return label ? [label] : []
-  })
-
-  const snippetTargets = useMemo<SnippetTarget[]>(
-    () => [
-      {
-        id: 'claude',
-        label: 'Claude',
-        path: '~/.claude.json',
-        content: snippet?.claude ?? null,
-      },
-      {
-        id: 'codex',
-        label: 'Codex',
-        path: '~/.codex/config.toml',
-        content: snippet?.codexToml ?? null,
-      },
-      {
-        id: 'cursor',
-        label: 'Cursor',
-        path: '~/.cursor/mcp.json',
-        content: snippet?.cursor ?? null,
-      },
-      {
-        id: 'grok',
-        label: 'Grok',
-        path: '~/.grok/config.toml',
-        content: snippet?.grokToml ?? null,
-      },
-      {
-        id: 'kimi',
-        label: 'Kimi',
-        path: '~/.kimi-code/mcp.json',
-        content: snippet?.kimi ?? null,
-      },
-      {
-        id: 'opencode',
-        label: 'OpenCode',
-        path: '~/.config/opencode/opencode.json',
-        content: snippet?.opencodeJson ?? null,
-      },
-      {
-        id: 'antigravity',
-        label: 'Antigravity',
-        path: '~/.gemini/config/mcp_config.json',
-        content: snippet?.claude ?? null,
-      },
-    ],
-    [snippet]
-  )
-
   const setTemporaryInstallState = useCallback(
     (state: InstallState, message = '') => {
       setInstallState(state)
@@ -280,16 +206,10 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
   return (
     <>
       <SettingsSection title="Jean MCP Server" anchorId="pref-mcp-section-jean">
-        <p className="text-sm text-muted-foreground">
-          Expose Jean&apos;s own commands over MCP so spawned local CLIs can
-          call back into Jean (create worktrees, list GitHub issues, send chat
-          messages, etc).
-        </p>
-
         <div className="flex flex-col gap-2 rounded-md border px-4 py-3 sm:flex-row sm:items-center sm:gap-3">
           <div className="flex min-w-0 flex-1 items-center gap-2 text-sm font-medium">
             <CheckCircle className="size-4 text-green-600 dark:text-green-400" />
-            Required and automatically activated
+            Required · Automatic
           </div>
           {checkingServer && (
             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -305,133 +225,84 @@ export const JeanMcpSection: React.FC<JeanMcpSectionProps> = ({
           )}
         </div>
 
-        {enabled && (
-          <>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-1.5">
-                <Label htmlFor="jean-mcp-max-depth" className="text-xs">
-                  Max recursion depth
-                </Label>
-                <Input
-                  id="jean-mcp-max-depth"
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={preferences?.jean_mcp_max_depth ?? 3}
-                  onChange={e =>
-                    patchPreferences.mutate({
-                      jean_mcp_max_depth: Math.max(
-                        0,
-                        Math.min(10, Number(e.target.value) || 0)
-                      ),
-                    })
-                  }
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="jean-mcp-rate-limit" className="text-xs">
-                  Spawn rate limit (per minute)
-                </Label>
-                <Input
-                  id="jean-mcp-rate-limit"
-                  type="number"
-                  min={0}
-                  max={1000}
-                  value={preferences?.jean_mcp_rate_limit_per_minute ?? 20}
-                  onChange={e =>
-                    patchPreferences.mutate({
-                      jean_mcp_rate_limit_per_minute: Math.max(
-                        0,
-                        Math.min(1000, Number(e.target.value) || 0)
-                      ),
-                    })
-                  }
-                />
-              </div>
-            </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+          {configuredBackends.length > 0 && (
+            <span>
+              Active in{' '}
+              {configuredBackends
+                .map(backend => BACKEND_LABELS[backend])
+                .join(', ')}
+            </span>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => handleInstall()}
+            disabled={
+              installState === 'installing' ||
+              installState === 'success' ||
+              !serverRunning ||
+              installableBackends.length === 0
+            }
+            className={cn(
+              'h-7',
+              installState === 'success' &&
+                'border-green-600 bg-green-600 text-white hover:bg-green-700'
+            )}
+            aria-live="polite"
+            title={installMessage}
+          >
+            {transientButton ?? <span>Repair config</span>}
+          </Button>
+        </div>
 
-            <div className="space-y-3 rounded-md border px-4 py-3">
-              <div className="space-y-1">
-                <Label className="text-sm font-medium">
-                  Automatic config install
-                </Label>
-                <p className="text-xs text-muted-foreground">
-                  Jean safely merges its MCP server into installed CLI user
-                  configs at startup
-                  {installableLabels.length > 0
-                    ? `: ${installableLabels.join(', ')}.`
-                    : '. Install a supported CLI first.'}
-                </p>
-              </div>
-              {configuredBackends.length > 0 && (
-                <div
-                  className="flex flex-wrap gap-2"
-                  aria-label="Install status"
-                >
-                  {configuredBackends.map(backend => (
-                    <span
-                      key={backend}
-                      className="inline-flex items-center gap-1.5 rounded-full border border-green-600/30 bg-green-600/10 px-2.5 py-1 text-xs text-green-700 dark:text-green-400"
-                    >
-                      <CheckCircle className="size-3.5" />
-                      Installed in {BACKEND_LABELS[backend]}
-                    </span>
-                  ))}
-                </div>
-              )}
-              <Button
-                size="sm"
-                onClick={() => handleInstall()}
-                disabled={
-                  installState === 'installing' ||
-                  installState === 'success' ||
-                  !serverRunning ||
-                  installableBackends.length === 0
-                }
-                className={cn(
-                  'w-full sm:w-auto sm:min-w-[11rem] sm:max-w-[20rem]',
-                  installState === 'success' &&
-                    'border-green-600 bg-green-600 text-white hover:bg-green-700'
-                )}
-                aria-live="polite"
-                title={installMessage}
-              >
-                {transientButton ?? (
-                  <span>Repair Jean MCP config ({modeLabel})</span>
-                )}
-              </Button>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Manual setup snippets
+        <details className="rounded-md border px-4 py-3">
+          <summary className="cursor-pointer text-sm font-medium">
+            Advanced limits
+          </summary>
+          <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="jean-mcp-max-depth" className="text-xs">
+                Max recursion depth
               </Label>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                {snippetTargets.map(target => (
-                  <Button
-                    key={target.id}
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      handleCopySnippet(target.label, target.content)
-                    }
-                    className="h-auto w-full justify-start gap-2 px-3 py-2.5 text-left"
-                  >
-                    <Copy className="mt-0.5 size-3.5 shrink-0" />
-                    <span className="min-w-0 flex-1">
-                      <span className="block text-sm font-medium leading-tight">
-                        {target.label}
-                      </span>
-                      <span className="block truncate text-[11px] font-normal text-muted-foreground">
-                        {target.path}
-                      </span>
-                    </span>
-                  </Button>
-                ))}
-              </div>
+              <Input
+                id="jean-mcp-max-depth"
+                type="number"
+                min={0}
+                max={10}
+                value={preferences?.jean_mcp_max_depth ?? 3}
+                onChange={e =>
+                  patchPreferences.mutate({
+                    jean_mcp_max_depth: Math.max(
+                      0,
+                      Math.min(10, Number(e.target.value) || 0)
+                    ),
+                  })
+                }
+              />
             </div>
-          </>
-        )}
+            <div className="space-y-1.5">
+              <Label htmlFor="jean-mcp-rate-limit" className="text-xs">
+                Spawn rate limit (per minute)
+              </Label>
+              <Input
+                id="jean-mcp-rate-limit"
+                type="number"
+                min={0}
+                max={1000}
+                value={preferences?.jean_mcp_rate_limit_per_minute ?? 20}
+                onChange={e =>
+                  patchPreferences.mutate({
+                    jean_mcp_rate_limit_per_minute: Math.max(
+                      0,
+                      Math.min(1000, Number(e.target.value) || 0)
+                    ),
+                  })
+                }
+              />
+            </div>
+          </div>
+        </details>
       </SettingsSection>
     </>
   )

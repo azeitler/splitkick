@@ -156,8 +156,8 @@ describe('McpServersPane Jean MCP install', () => {
 
     renderPane()
 
-    expect(await screen.findByText('Installed in Codex')).toBeInTheDocument()
-    expect(screen.queryByText(/Installed in Cursor/)).not.toBeInTheDocument()
+    expect(await screen.findByText('Active in Codex')).toBeInTheDocument()
+    expect(screen.queryByText(/Active in Cursor/)).not.toBeInTheDocument()
   })
 
   it('shows successful install confirmation on the button instead of a toast', async () => {
@@ -165,7 +165,7 @@ describe('McpServersPane Jean MCP install', () => {
     renderPane()
 
     const button = await screen.findByRole('button', {
-      name: /repair jean mcp config/i,
+      name: /repair config/i,
     })
     await waitFor(() => expect(button).not.toBeDisabled())
 
@@ -194,7 +194,7 @@ describe('McpServersPane Jean MCP install', () => {
     renderPane()
 
     const button = await screen.findByRole('button', {
-      name: /repair jean mcp config/i,
+      name: /repair config/i,
     })
     await waitFor(() => expect(button).not.toBeDisabled())
 
@@ -213,7 +213,7 @@ describe('McpServersPane Jean MCP install', () => {
     renderPane()
 
     expect(
-      await screen.findByText(/required and automatically activated/i)
+      await screen.findByText(/required · automatic/i)
     ).toBeInTheDocument()
     expect(screen.queryByRole('switch')).not.toBeInTheDocument()
     expect(mocks.patchPreferencesMutate).not.toHaveBeenCalledWith(

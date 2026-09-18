@@ -1,16 +1,8 @@
 import React, { useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  CheckCircle,
-  Copy,
-  Globe,
-  Loader2,
-  XCircle,
-} from '@/components/icons/reicon'
+import { CheckCircle, Loader2, XCircle } from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { copyToClipboard } from '@/lib/clipboard'
 import { invoke } from '@/lib/transport'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { invalidateAllMcpServers } from '@/services/mcp'
@@ -108,25 +100,13 @@ export const AgentBrowserSection: React.FC = () => {
     }
   }, [installableBackends, queryClient, refetch])
 
-  const handleCopy = (label: string, content: string | undefined) => {
-    if (!content) {
-      toast.error(`No ${label} snippet available`)
-      return
-    }
-    copyToClipboard(content)
-    toast.success(`${label} snippet copied`)
-  }
-
   return (
     <SettingsSection
       title="Agent Browser"
       anchorId="pref-mcp-section-agent-browser"
     >
       <p className="text-sm text-muted-foreground">
-        Give coding agents a real Chromium browser with a Jean-managed login
-        profile (Vercel agent-browser). Log in manually once; sessions reuse
-        cookies. Jean installs and activates it automatically on jean-server and
-        desktop.
+        Managed Chromium access for agents. Installed automatically.
       </p>
 
       <div className="space-y-3 rounded-md border px-4 py-3">
@@ -141,9 +121,7 @@ export const AgentBrowserSection: React.FC = () => {
               {status?.installed ? (
                 <span className="flex items-center gap-1.5 text-green-600 dark:text-green-400">
                   <CheckCircle className="size-3.5" />
-                  agent-browser
-                  {status.version ? ` ${status.version}` : ''} installed
-                  {status.managedInstall ? ' (Jean-managed)' : ''}
+                  Installed{status.version ? ` · ${status.version}` : ''}
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
@@ -152,34 +130,11 @@ export const AgentBrowserSection: React.FC = () => {
                 </span>
               )}
               {status?.profileExists && (
-                <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <Globe className="size-3.5" />
+                <span className="text-xs text-muted-foreground">
                   Profile ready
                 </span>
               )}
             </div>
-
-            {status && (
-              <div className="space-y-1 text-xs text-muted-foreground">
-                <div className="break-all">
-                  <span className="font-medium text-foreground">Profile: </span>
-                  {status.profilePath}
-                </div>
-                {status.binaryPath && (
-                  <div className="break-all">
-                    <span className="font-medium text-foreground">
-                      Binary:{' '}
-                    </span>
-                    {status.binaryPath}
-                  </div>
-                )}
-                {!status.installed && (
-                  <div className="rounded bg-muted/50 px-2 py-1.5 font-mono text-[11px]">
-                    {status.installHint}
-                  </div>
-                )}
-              </div>
-            )}
           </>
         )}
 
@@ -196,33 +151,11 @@ export const AgentBrowserSection: React.FC = () => {
                 Installing agent-browser…
               </>
             ) : status?.installed ? (
-              'Repair / update agent-browser'
+              'Update / repair'
             ) : (
               'Retry automatic setup'
             )}
           </Button>
-          {status && (
-            <>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => handleCopy('Claude', status.claudeSnippet)}
-              >
-                <Copy className="size-3.5" />
-                Claude snippet
-              </Button>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={() => handleCopy('Codex', status.codexSnippet)}
-              >
-                <Copy className="size-3.5" />
-                Codex snippet
-              </Button>
-            </>
-          )}
         </div>
 
         {binaryInstallMessage && (
@@ -236,23 +169,6 @@ export const AgentBrowserSection: React.FC = () => {
             {binaryInstallMessage}
           </p>
         )}
-        <div className="space-y-1 text-xs text-muted-foreground">
-          <Label className="text-xs text-foreground">How to use</Label>
-          <ol className="list-decimal space-y-0.5 pl-4">
-            <li>
-              Jean installs the npm package, Chromium, profile, and MCP
-              configuration automatically. The repair button retries setup if it
-              fails. Requires <code>npm</code> on PATH.
-            </li>
-            <li>
-              First login: run headed (or under VNC) and sign in manually.
-            </li>
-            <li>
-              In chat, ask the agent to use the browser; it reuses the Jean
-              profile.
-            </li>
-          </ol>
-        </div>
       </div>
     </SettingsSection>
   )
