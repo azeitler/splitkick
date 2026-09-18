@@ -161,6 +161,8 @@ interface MessageItemProps {
   hideApproveButtons?: boolean
   /** Hide the built-in cancelled marker when a parent compact row renders it externally */
   hideCancelledIndicator?: boolean
+  /** Hide the edited-files summary when a compact parent renders it outside. */
+  hideEditedFiles?: boolean
   /** Duration of this assistant message in ms (computed from user→assistant timestamp delta) */
   durationMs?: number | null
 }
@@ -203,6 +205,7 @@ export const MessageItem = memo(function MessageItem({
   onCopyToInput,
   hideApproveButtons,
   hideCancelledIndicator,
+  hideEditedFiles = false,
   durationMs,
 }: MessageItemProps) {
   const zenMode = useUIStore(state => state.zenMode)
@@ -872,6 +875,7 @@ export const MessageItem = memo(function MessageItem({
       {/* Show edited files at the bottom of assistant messages */}
       {message.role === 'assistant' &&
         (message.tool_calls?.length ?? 0) > 0 &&
+        !hideEditedFiles &&
         !skipToolCalls && (
           <EditedFilesDisplay
             toolCalls={message.tool_calls}

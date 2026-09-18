@@ -9,7 +9,12 @@ import {
   useRef,
   useState,
 } from 'react'
-import { ChevronRight, Loader2, Activity, Brain } from '@/components/icons/reicon'
+import {
+  ChevronRight,
+  Loader2,
+  Activity,
+  Brain,
+} from '@/components/icons/reicon'
 import { Markdown } from '@/components/ui/markdown'
 import {
   Collapsible,
@@ -389,6 +394,7 @@ interface CompactActivityRowProps {
       hasFollowUpMessage: boolean
       durationMs: number | null
       hideCancelledIndicator?: boolean
+      hideEditedFiles?: boolean
     }
   ) => React.ReactNode
   hasFollowUpFor: (globalIndex: number) => boolean
@@ -397,6 +403,7 @@ interface CompactActivityRowProps {
    * strip it from the latest assistant message inside the expanded body to
    * avoid duplicating the recap. */
   recapShownExternally?: boolean
+  editedFilesShownExternally?: boolean
 }
 
 function CompactActivityRow({
@@ -406,6 +413,7 @@ function CompactActivityRow({
   hasFollowUpFor,
   durationFor,
   recapShownExternally,
+  editedFilesShownExternally,
 }: CompactActivityRowProps) {
   const [isOpen, setIsOpen] = useState(false)
   const summary = useMemo(() => summarizeGroup(group), [group])
@@ -487,6 +495,7 @@ function CompactActivityRow({
                   hasFollowUpMessage: hasFollowUpFor(item.globalIndex),
                   durationMs: durationFor(item.globalIndex, item.message),
                   hideCancelledIndicator: hasCancelledMessage,
+                  hideEditedFiles: editedFilesShownExternally,
                 })}
               </div>
             ))}
@@ -870,6 +879,7 @@ export const CompactMessageList = memo(
             hasFollowUpMessage: boolean
             durationMs: number | null
             hideCancelledIndicator?: boolean
+            hideEditedFiles?: boolean
           }
         ) => (
           <MessageItem
@@ -910,6 +920,7 @@ export const CompactMessageList = memo(
             onCopyToInput={onCopyToInput}
             hideApproveButtons={hideApproveButtons}
             hideCancelledIndicator={extra.hideCancelledIndicator}
+            hideEditedFiles={extra.hideEditedFiles}
             durationMs={extra.durationMs}
           />
         ),
@@ -1212,8 +1223,10 @@ export const CompactMessageList = memo(
             const surfaceRecap = latestTextIsRecap && showLatestText
             const surfacedLatestToolCalls =
               isLatestCompact && (showLatestText || hasCancelledMessage)
-              ? item.messages.flatMap(({ message }) => message.tool_calls ?? [])
-              : []
+                ? item.messages.flatMap(
+                    ({ message }) => message.tool_calls ?? []
+                  )
+                : []
             return (
               <div key={item.key}>
                 <CompactActivityRow
@@ -1223,6 +1236,9 @@ export const CompactMessageList = memo(
                   hasFollowUpFor={hasFollowUpFor}
                   durationFor={durationFor}
                   recapShownExternally={surfaceRecap}
+                  editedFilesShownExternally={
+                    surfacedLatestToolCalls.length > 0
+                  }
                 />
                 {(showLatestText || surfacedLatestToolCalls.length > 0) && (
                   <div className="pb-4">

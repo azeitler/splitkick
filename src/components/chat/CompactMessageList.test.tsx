@@ -342,6 +342,10 @@ describe('CompactMessageList', () => {
     const editedFiles = screen.getByRole('button', { name: 'Edited 1 file' })
 
     expect(editedFiles).toBeVisible()
+    fireEvent.click(screen.getByRole('button', { name: /1 step/ }))
+    expect(
+      screen.getAllByRole('button', { name: 'Edited 1 file' })
+    ).toHaveLength(1)
     expect(
       recapHeading.compareDocumentPosition(editedFiles) &
         Node.DOCUMENT_POSITION_FOLLOWING

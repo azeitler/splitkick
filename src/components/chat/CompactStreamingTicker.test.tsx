@@ -237,6 +237,10 @@ describe('CompactStreamingTicker', () => {
     expect(ticker.closest('.rounded-md.border')).not.toContainElement(
       editedFiles
     )
+    fireEvent.click(ticker)
+    expect(
+      screen.getAllByRole('button', { name: 'Edited 1 file' })
+    ).toHaveLength(1)
     fireEvent.click(editedFiles)
     expect(
       screen.getByRole('button', {

@@ -19,6 +19,11 @@ pub const MCP_SERVER_NAME: &str = "agent-browser";
 /// npm package name for agent-browser.
 pub const NPM_PACKAGE: &str = "agent-browser";
 
+/// Explicit latest tag is required for updates. A plain `npm install
+/// agent-browser` keeps the existing package.json caret range, and npm treats
+/// `^0.37.1` as `<0.38.0` for a pre-1.0 package.
+const NPM_INSTALL_SPEC: &str = "agent-browser@latest";
+
 /// Jean-managed npm install directory under app data.
 pub const CLI_DIR_NAME: &str = "agent-browser-cli";
 
@@ -284,7 +289,7 @@ pub async fn get_agent_browser_status(app: AppHandle) -> Result<AgentBrowserStat
         managed_install: resolved.managed,
         claude_snippet: entry.claude_snippet(),
         codex_snippet: entry.codex_snippet(),
-        install_hint: "Use Install agent-browser in Settings, or: npm install -g agent-browser && agent-browser install".to_string(),
+        install_hint: "Jean installs Agent Browser automatically. Manual fallback: npm install -g agent-browser@latest && agent-browser install".to_string(),
     })
 }
 
@@ -386,7 +391,7 @@ pub(crate) fn install_agent_browser_sync(app: &AppHandle) -> Result<AgentBrowser
     let npm_output = host_cli_command(&npm_path, None)
         .args(["install", "--prefix"])
         .arg(&cli_dir)
-        .arg(NPM_PACKAGE)
+        .arg(NPM_INSTALL_SPEC)
         .output()
         .map_err(|e| {
             format!("Failed to run npm install for agent-browser (is npm on PATH?): {e}")
@@ -472,7 +477,7 @@ pub(crate) fn install_agent_browser_sync(app: &AppHandle) -> Result<AgentBrowser
         managed_install: true,
         claude_snippet: entry.claude_snippet(),
         codex_snippet: entry.codex_snippet(),
-        install_hint: "Use Install agent-browser in Settings, or: npm install -g agent-browser && agent-browser install".to_string(),
+        install_hint: "Jean installs Agent Browser automatically. Manual fallback: npm install -g agent-browser@latest && agent-browser install".to_string(),
     })
 }
 
@@ -965,5 +970,10 @@ mod tests {
         assert!(is_newer_version("1.0.0", "0.99.9"));
         assert!(!is_newer_version("0.8.0", "agent-browser 0.8.0"));
         assert!(!is_newer_version("0.7.9", "0.8.0"));
+    }
+
+    #[test]
+    fn managed_install_explicitly_requests_latest_release() {
+        assert_eq!(NPM_INSTALL_SPEC, "agent-browser@latest");
     }
 }

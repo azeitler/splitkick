@@ -149,6 +149,9 @@ Additional systems (no dedicated docs yet):
   Agent Browser installation follows the official `npm install agent-browser`
   and `agent-browser install` flow:
   https://github.com/vercel-labs/agent-browser#installation
+  Jean uses `agent-browser@latest` for its managed npm prefix. Do not remove
+  the explicit tag: npm otherwise keeps the existing caret range, and a range
+  such as `^0.37.1` does not accept `0.38.1` for a pre-1.0 package.
   After startup settles, the client checks the npm registry for the latest
   Agent Browser version. When a newer version exists, Jean shows a persistent
   notification with **Update** and **Later** actions. Jean does not update the
