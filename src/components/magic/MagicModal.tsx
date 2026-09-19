@@ -96,6 +96,7 @@ import {
   resolveMagicPromptProvider,
 } from '@/types/preferences'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { chatQueryKeys, refreshWorktreeSessionsCaches } from '@/services/chat'
 import {
@@ -412,6 +413,7 @@ const KEY_TO_OPTION: Record<string, MagicOption> = {
 }
 
 export function MagicModal() {
+  const isMobile = useIsMobile()
   const { magicModalOpen, setMagicModalOpen, sessionChatModalWorktreeId } =
     useUIStore()
   const selectedWorktreeIdFromProjects = useProjectsStore(
@@ -617,7 +619,7 @@ export function MagicModal() {
                 'commandcode/default')
               : backend === 'kimi'
                 ? (preferences?.selected_kimi_model ?? 'kimi/default')
-              : backend === 'grok'
+                : backend === 'grok'
                   ? (preferences?.selected_grok_model ?? 'grok/grok-4.6')
                   : backend === 'antigravity'
                     ? (preferences?.selected_antigravity_model ??
@@ -653,7 +655,7 @@ export function MagicModal() {
                 'commandcode/default')
               : backend === 'kimi'
                 ? (preferences?.selected_kimi_model ?? 'kimi/default')
-              : backend === 'grok'
+                : backend === 'grok'
                   ? (preferences?.selected_grok_model ?? 'grok/grok-4.6')
                   : backend === 'antigravity'
                     ? (preferences?.selected_antigravity_model ??
@@ -2425,6 +2427,49 @@ ${resolveInstructions}`
     [dispatchResolveConflictsCommand]
   )
 
+  const renderOption = (option: MagicOptionItem, mobile = false) => {
+    const Icon = option.icon
+    const isSelected = selectedOption === option.id
+    const isDisabled =
+      (isOnCanvas && !CANVAS_ALLOWED_OPTIONS.has(option.id)) ||
+      (option.id === 'investigate-issue' &&
+        !hasIssueContexts &&
+        !hasSentryContexts) ||
+      (option.id === 'investigate-pr' && !hasPrContexts) ||
+      (option.id === 'investigate-advisory' && !hasAdvisoryContexts) ||
+      (option.id === 'review-comments' && !hasOpenPr) ||
+      (option.id === 'merge-pr' && !hasOpenPr)
+
+    return (
+      <button
+        type="button"
+        key={option.id}
+        aria-label={mobile ? option.label : `${option.label} ${option.key}`}
+        disabled={isDisabled}
+        onClick={() => executeAction(option.id)}
+        onMouseEnter={() => setSelectedOption(option.id)}
+        className={cn(
+          'flex w-full items-center text-left text-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+          mobile
+            ? 'min-h-12 gap-2.5 rounded-lg border border-border/70 bg-muted/30 px-3 py-2.5 active:bg-accent'
+            : 'justify-between px-4 py-2',
+          isDisabled ? 'cursor-not-allowed opacity-40' : 'hover:bg-accent',
+          isSelected && !isDisabled && !mobile && 'bg-accent'
+        )}
+      >
+        <span className="flex min-w-0 items-center gap-2.5">
+          <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <span className="leading-tight">{option.label}</span>
+        </span>
+        {!mobile && (
+          <kbd className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+            {option.key}
+          </kbd>
+        )}
+      </button>
+    )
+  }
+
   return (
     <>
       <ReviewMethodModal
@@ -2464,88 +2509,67 @@ ${resolveInstructions}`
         <DialogContent
           ref={contentRef}
           tabIndex={-1}
-          className="sm:max-w-[560px] max-h-[min(90vh,760px)] overflow-y-auto p-0 outline-none"
+          className="max-h-[calc(100dvh-5.5rem-env(safe-area-inset-bottom))] overflow-hidden p-0 outline-none max-md:top-auto max-md:bottom-[calc(4.5rem+env(safe-area-inset-bottom))] max-md:w-[calc(100%-1rem)] max-md:max-w-none max-md:translate-y-0 max-md:rounded-xl sm:max-h-[min(90vh,760px)] sm:max-w-[560px]"
           onOpenAutoFocus={e => {
             e.preventDefault()
             contentRef.current?.focus()
           }}
           onKeyDown={handleKeyDown}
         >
-          <DialogHeader className="px-4 pt-5 pb-2">
+          <DialogHeader className="shrink-0 border-b border-border/60 px-4 py-4 text-left sm:border-b-0 sm:pt-5 sm:pb-2">
             <DialogTitle className="flex items-center gap-2">
               <Wand2 className="h-4 w-4" />
               Magic
             </DialogTitle>
           </DialogHeader>
 
-          <div className="pb-2 grid grid-cols-2">
-            {[magicColumns.left, magicColumns.right].map(
-              (columnSections, colIndex) => (
-                <div
-                  key={colIndex}
-                  data-testid={
-                    colIndex === 0 ? 'magic-column-left' : 'magic-column-right'
-                  }
-                  className={cn(colIndex === 0 && 'border-r border-border')}
-                >
-                  {columnSections.map((section, sectionIndex) => (
-                    <div key={section.header}>
-                      <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                        {section.header}
+          {isMobile ? (
+            <div
+              data-testid="magic-mobile-menu"
+              className="min-h-0 flex-1 space-y-5 overflow-y-auto overscroll-contain px-3 pt-3 pb-4"
+            >
+              {magicColumns.all.map(section => (
+                <section key={section.header}>
+                  <h3 className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {section.header}
+                  </h3>
+                  <div className="grid grid-cols-2 gap-2">
+                    {section.options.map(option => renderOption(option, true))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : (
+            <div className="grid min-h-0 flex-1 grid-cols-2 overflow-y-auto pb-2">
+              {[magicColumns.left, magicColumns.right].map(
+                (columnSections, colIndex) => (
+                  <div
+                    key={colIndex}
+                    data-testid={
+                      colIndex === 0
+                        ? 'magic-column-left'
+                        : 'magic-column-right'
+                    }
+                    className={cn(colIndex === 0 && 'border-r border-border')}
+                  >
+                    {columnSections.map((section, sectionIndex) => (
+                      <div key={section.header}>
+                        <div className="px-4 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                          {section.header}
+                        </div>
+
+                        {section.options.map(option => renderOption(option))}
+
+                        {sectionIndex < columnSections.length - 1 && (
+                          <div className="my-1 mx-4 border-t border-border" />
+                        )}
                       </div>
-
-                      {section.options.map(option => {
-                        const Icon = option.icon
-                        const isSelected = selectedOption === option.id
-                        const isDisabled =
-                          (isOnCanvas &&
-                            !CANVAS_ALLOWED_OPTIONS.has(option.id)) ||
-                          (option.id === 'investigate-issue' &&
-                            !hasIssueContexts &&
-                            !hasSentryContexts) ||
-                          (option.id === 'investigate-pr' && !hasPrContexts) ||
-                          (option.id === 'investigate-advisory' &&
-                            !hasAdvisoryContexts) ||
-                          (option.id === 'review-comments' && !hasOpenPr) ||
-                          (option.id === 'merge-pr' && !hasOpenPr)
-
-                        return (
-                          <button
-                            type="button"
-                            key={option.id}
-                            onClick={() =>
-                              !isDisabled && executeAction(option.id)
-                            }
-                            onMouseEnter={() => setSelectedOption(option.id)}
-                            className={cn(
-                              'w-full flex items-center justify-between px-4 py-2 text-sm transition-colors',
-                              'focus:outline-none',
-                              isDisabled
-                                ? 'opacity-40 cursor-not-allowed'
-                                : 'hover:bg-accent',
-                              isSelected && !isDisabled && 'bg-accent'
-                            )}
-                          >
-                            <div className="flex items-center gap-3">
-                              <Icon className="h-4 w-4 text-muted-foreground" />
-                              <span>{option.label}</span>
-                            </div>
-                            <kbd className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
-                              {option.key}
-                            </kbd>
-                          </button>
-                        )
-                      })}
-
-                      {sectionIndex < columnSections.length - 1 && (
-                        <div className="my-1 mx-4 border-t border-border" />
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )
-            )}
-          </div>
+                    ))}
+                  </div>
+                )
+              )}
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

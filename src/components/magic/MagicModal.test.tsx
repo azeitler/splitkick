@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { act, render, screen, waitFor } from '@/test/test-utils'
+import { act, render, screen, waitFor, within } from '@/test/test-utils'
 import { MagicModal } from './MagicModal'
 
 const mocks = vi.hoisted(() => {
@@ -261,6 +261,10 @@ vi.mock('@/components/chat/ReviewMethodModal', () => ({
 describe('MagicModal manual PR link', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 1024,
+    })
     mocks.worktree.pr_number = null
     mocks.worktree.pr_url = null
     mocks.activeWorktreePath = null
@@ -275,6 +279,22 @@ describe('MagicModal manual PR link', () => {
       }
       return Promise.resolve(null)
     })
+  })
+
+  it('renders touch-friendly grouped actions for the mobile menu', () => {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: 390,
+    })
+    render(<MagicModal />)
+
+    const mobileMenu = screen.getByTestId('magic-mobile-menu')
+    expect(within(mobileMenu).getByText('Context')).toBeInTheDocument()
+    expect(within(mobileMenu).getByText('Pull Request')).toBeInTheDocument()
+    expect(
+      within(mobileMenu).getByRole('button', { name: 'Save Context' })
+    ).toHaveClass('min-h-12')
+    expect(mobileMenu.querySelector('kbd')).not.toBeInTheDocument()
   })
 
   it('opens a Link PR dialog and shows checking state while searching current branch', async () => {
