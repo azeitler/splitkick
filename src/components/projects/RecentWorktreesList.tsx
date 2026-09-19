@@ -233,17 +233,13 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                 : status.tone === 'failed'
                   ? 'text-red-600 dark:text-red-400'
                   : 'text-muted-foreground'
-            const statusBorderClassName =
-              status.tone === 'working'
-                ? (executingModes[row.session.id] ??
-                    executionModes[row.session.id] ??
-                    row.session.last_run_execution_mode ??
-                    row.session.selected_execution_mode) === 'yolo'
-                  ? 'border-l-destructive'
-                  : 'border-l-yellow-500'
-                : status.tone === 'completed'
-                  ? 'border-l-green-500'
-                  : 'border-l-transparent'
+            const executionMode =
+              executingModes[row.session.id] ??
+              executionModes[row.session.id] ??
+              row.session.last_run_execution_mode ??
+              row.session.selected_execution_mode ??
+              'plan'
+            const modeLabel = executionMode === 'plan' ? 'planning' : 'vibing'
             return (
               <li key={row.session.id}>
                 {showSnoozed &&
@@ -263,8 +259,8 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   }}
                   type="button"
                   aria-current={isCurrent ? 'page' : undefined}
-                  aria-label={`${row.session.name}, ${row.projectName}, ${row.worktree.name}, ${status.label}, ${activityLabel}`}
-                  className={`flex w-full items-center gap-2 rounded-r-lg border border-l-2 px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow,color] hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${isCurrent ? 'border-border bg-muted/30 text-foreground shadow' : 'border-transparent bg-transparent text-muted-foreground'} ${statusBorderClassName}`}
+                  aria-label={`${row.session.name}, ${row.projectName}, ${row.worktree.name}, ${modeLabel}, ${status.label}, ${activityLabel}`}
+                  className={`relative flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow,color] hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${isCurrent ? 'border-border bg-muted/50 text-foreground shadow' : 'border-transparent bg-transparent text-muted-foreground'}`}
                   onClick={() => handleOpen(row)}
                 >
                   <span className="min-w-0 flex-1">
@@ -277,7 +273,10 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                       {row.projectName} · {row.worktree.name}
                     </span>
                   </span>
-                  <span className="flex shrink-0 flex-col items-end gap-0.5 text-[10px] tabular-nums">
+                  <span className="flex w-14 shrink-0 flex-col items-end gap-1 pt-4 text-[10px] tabular-nums">
+                    <span className="absolute right-3 top-2 text-[10px] text-muted-foreground">
+                      {modeLabel}
+                    </span>
                     <span className="flex items-center gap-1.5">
                       {!['working', 'completed'].includes(status.tone) && (
                         <span className={`font-medium ${statusClassName}`}>

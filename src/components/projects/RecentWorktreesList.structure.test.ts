@@ -30,19 +30,17 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('text-[11px]')
   })
 
-  it('shows status borders on square left edges and selects with hover color', () => {
+  it('uses fully rounded rows and a full background for the current row', () => {
     expect(source).toContain('className="flex flex-col gap-2 px-2 py-2"')
+    expect(source).toContain('rounded-lg border px-3 py-2.5')
     expect(source).toContain(
-      'rounded-r-lg border border-l-2 px-3 py-2.5'
-    )
-    expect(source).toContain(
-      "isCurrent ? 'border-border bg-muted/30 text-foreground shadow'"
+      "isCurrent ? 'border-border bg-muted/50 text-foreground shadow'"
     )
     expect(source).toContain(
       ": 'border-transparent bg-transparent text-muted-foreground'"
     )
-    expect(source).toContain("${statusBorderClassName}`}")
-    expect(source).not.toContain('rounded-lg border')
+    expect(source).not.toContain('rounded-r-lg')
+    expect(source).not.toContain('border-l-2')
     expect(source).not.toContain('bg-card/40')
     expect(source).not.toContain('shadow-sm')
     expect(source).not.toContain('divide-y divide-border/30')
@@ -61,14 +59,18 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('Some recent sessions could')
     expect(source).toContain('selectedSessionId')
     expect(source).toContain('getRecentSessionStatus(row.session')
-    expect(source).toContain("status.tone === 'working'")
     expect(source).toContain('executingModes[row.session.id]')
     expect(source).toContain('executionModes[row.session.id]')
     expect(source).toContain('row.session.last_run_execution_mode')
-    expect(source).toContain('border-l-destructive')
-    expect(source).toContain('border-l-yellow-500')
-    expect(source).toContain("status.tone === 'completed'")
-    expect(source).toContain('border-l-green-500')
+    expect(source).toContain('row.session.selected_execution_mode')
+    expect(source).toContain("executionMode === 'plan' ? 'planning' : 'vibing'")
+    expect(source).toContain('{modeLabel}')
+    expect(source).toContain(
+      'absolute right-3 top-2 text-[10px] text-muted-foreground'
+    )
+    expect(source).not.toContain('border-l-destructive')
+    expect(source).not.toContain('border-l-yellow-500')
+    expect(source).not.toContain('border-l-green-500')
     expect(source).toContain("!['working', 'completed'].includes(status.tone)")
   })
 
