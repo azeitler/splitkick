@@ -106,6 +106,17 @@
   --safe-area-right: env(safe-area-inset-right, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
+  /* Title bar strip plus the status bar / notch it has to clear. The bar is an
+     absolute overlay, so MainWindow offsets its content row by the same value —
+     keep the two in step through this variable, never a literal height.
+     Taller below the mobile breakpoint so the 44px touch targets fit. */
+  --titlebar-height: calc(2.75rem + var(--safe-area-top));
+}
+
+@media (min-width: 768px) {
+  :root {
+    --titlebar-height: calc(2rem + var(--safe-area-top));
+  }
 }
 
 .dark {
@@ -382,8 +393,20 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     min-height: 100dvh;
-    min-width: 100vw;
+    /* 100vw includes the classic scrollbar width and forces a permanent
+       horizontal overflow in desktop web access. */
+    min-width: 100%;
     position: relative;
+    overflow: hidden;
+  }
+
+  /* Stop the mobile-web rubber-band and Chrome Android pull-to-refresh: the
+     shell is a non-scrolling h-dvh surface, and pull-to-refresh competes with
+     Jean's own swipe-down-opens-the-command-palette gesture. Must sit on `html`
+     to reach the viewport, and outside body.native-app so web access gets it. */
+  html,
+  body {
+    overscroll-behavior: none;
   }
 
   /* Non-retina / 1× displays (typical external monitors): let the platform

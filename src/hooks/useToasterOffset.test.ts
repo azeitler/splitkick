@@ -101,10 +101,12 @@ describe('useToasterOffset', () => {
   it('keeps the default mobile bottom offset when no composer is visible', () => {
     const { result } = renderHook(() => useToasterOffset())
     expect(result.current.offset).toBe('52px')
+    // 52 is a desktop window-chrome inset; on a 375px phone it left only 271px
+    // for the toast, so the sides use a plain 16px gutter.
     expect(result.current.mobileOffset).toEqual({
       top: 52,
-      right: 52,
-      left: 52,
+      right: 16,
+      left: 16,
       bottom: 52,
     })
   })
@@ -118,10 +120,31 @@ describe('useToasterOffset', () => {
 
     expect(result.current.mobileOffset).toEqual({
       top: 52,
-      right: 52,
-      left: 52,
+      right: 16,
+      left: 16,
       bottom: 800 - 600 + CHAT_COMPOSER_GUTTER,
     })
     expect(result.current.offset).toBe('52px')
+  })
+
+  it('keeps the desktop inset while pinning the mobile sides to the gutter', () => {
+    isNativeAppMock.mockReturnValue(true)
+
+    const { result } = renderHook(() => useToasterOffset())
+
+    // Docked browser panes are a desktop-only surface, so only `offset` tracks
+    // them — the mobile sides stay at the gutter.
+    expect(result.current.offset).toEqual({
+      top: 52,
+      right: 52,
+      bottom: 52,
+      left: 52,
+    })
+    expect(result.current.mobileOffset).toEqual({
+      top: 52,
+      right: 16,
+      left: 16,
+      bottom: 52,
+    })
   })
 })

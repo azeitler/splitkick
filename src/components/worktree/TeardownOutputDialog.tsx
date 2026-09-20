@@ -59,7 +59,7 @@ export function TeardownOutputDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-lg">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Icon
@@ -74,7 +74,7 @@ export function TeardownOutputDialog() {
           </DialogDescription>
         </DialogHeader>
         {detail?.output && (
-          <ScrollArea className="max-h-[50vh] select-text cursor-text">
+          <ScrollArea className="max-h-[50dvh] select-text cursor-text">
             <div className="mb-2 flex justify-end">
               <Button size="sm" variant="outline" onClick={handleCopy}>
                 <Copy className="mr-1.5 h-3.5 w-3.5" />

@@ -1179,7 +1179,7 @@ export function SessionChatModal({
                   {!zenMode && (
                     <>
                       {/* Desktop: inline action buttons */}
-                      <div className="hidden sm:flex items-center gap-1">
+                      <div className="hidden md:flex items-center gap-1">
                         <OpenInButton
                           worktreePath={worktreePath}
                           branch={worktree?.branch}
@@ -1456,7 +1456,7 @@ export function SessionChatModal({
                                   e.stopPropagation()
                                   removeSessionTab(session)
                                 }}
-                                className="ml-0.5 opacity-60 sm:opacity-0 sm:group-hover/tab:opacity-60 hover:!opacity-100"
+                                className="ml-0.5 opacity-60 md:opacity-0 md:group-hover/tab:opacity-60 hover:!opacity-100"
                                 size="xs"
                               />
                             )}

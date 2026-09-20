@@ -422,7 +422,7 @@ export function CommitsTabView({
                                 handleReviewCommit(commit)
                               }}
                               aria-label="Ask AI to review this commit"
-                              className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-primary/10 transition-opacity shrink-0"
+                              className="p-1 rounded [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100 hover:bg-primary/10 transition-opacity shrink-0"
                             >
                               <Sparkles className="h-3.5 w-3.5 text-primary" />
                             </button>

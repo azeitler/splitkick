@@ -555,8 +555,10 @@ export function TerminalView({
                   aria-label="Close terminal"
                   onClick={e => handleCloseTerminal(e, terminal.id)}
                   className={cn(
-                    'rounded p-0.5 opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100',
-                    isActive && 'opacity-50'
+                    'rounded p-0.5 transition-opacity hover:bg-muted',
+                    isActive
+                      ? 'opacity-50'
+                      : '[@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100'
                   )}
                 >
                   <X className="h-3 w-3" />

@@ -223,7 +223,7 @@ export const QueuedPromptsPanel = memo(function QueuedPromptsPanel({
                       'flex shrink-0 items-center gap-1 transition-opacity',
                       isSelected
                         ? 'opacity-100'
-                        : 'opacity-0 group-hover:opacity-100'
+                        : '[@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100'
                     )}
                   >
                     {isEditing ? (
@@ -236,7 +236,7 @@ export const QueuedPromptsPanel = memo(function QueuedPromptsPanel({
                             e.stopPropagation()
                             saveEditing()
                           }}
-                          className="rounded p-0.5 text-muted-foreground hover:bg-green-600 hover:text-white disabled:opacity-40 transition-colors"
+                          className="rounded p-2 md:p-0.5 text-muted-foreground hover:bg-green-600 hover:text-white disabled:opacity-40 transition-colors"
                         >
                           <Check className="h-3.5 w-3.5" />
                         </button>
@@ -247,7 +247,7 @@ export const QueuedPromptsPanel = memo(function QueuedPromptsPanel({
                             e.stopPropagation()
                             cancelEditing()
                           }}
-                          className="rounded p-0.5 text-muted-foreground hover:bg-muted transition-colors"
+                          className="rounded p-2 md:p-0.5 text-muted-foreground hover:bg-muted transition-colors"
                         >
                           <X className="h-3.5 w-3.5" />
                         </button>
@@ -263,7 +263,7 @@ export const QueuedPromptsPanel = memo(function QueuedPromptsPanel({
                                 e.stopPropagation()
                                 startEditing(msg)
                               }}
-                              className="rounded p-0.5 text-muted-foreground hover:bg-muted transition-colors"
+                              className="rounded p-2 md:p-0.5 text-muted-foreground hover:bg-muted transition-colors"
                             >
                               <Pencil className="h-3.5 w-3.5" />
                             </button>
@@ -279,7 +279,7 @@ export const QueuedPromptsPanel = memo(function QueuedPromptsPanel({
                                 e.stopPropagation()
                                 onRemove(sessionId, msg.id)
                               }}
-                              className="rounded p-0.5 text-muted-foreground hover:bg-destructive hover:text-white transition-colors"
+                              className="rounded p-2 md:p-0.5 text-muted-foreground hover:bg-destructive hover:text-white transition-colors"
                             >
                               <X className="h-3.5 w-3.5" />
                             </button>
@@ -295,7 +295,7 @@ export const QueuedPromptsPanel = memo(function QueuedPromptsPanel({
                                 e.stopPropagation()
                                 onSendNow(sessionId, msg.id)
                               }}
-                              className="rounded p-0.5 text-muted-foreground hover:bg-green-600 hover:text-white transition-colors"
+                              className="rounded p-2 md:p-0.5 text-muted-foreground hover:bg-green-600 hover:text-white transition-colors"
                             >
                               <Play className="h-3.5 w-3.5" />
                             </button>

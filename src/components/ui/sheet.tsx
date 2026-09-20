@@ -46,6 +46,7 @@ function SheetOverlay({
 
 function SheetContent({
   className,
+  overlayClassName,
   children,
   side = 'right',
   modal = true,
@@ -55,10 +56,12 @@ function SheetContent({
   side?: 'top' | 'right' | 'bottom' | 'left'
   modal?: boolean
   showCloseButton?: boolean
+  /** Restyle the backdrop — needed to stack two sheets on the same side. */
+  overlayClassName?: string
 }) {
   return (
     <SheetPortal>
-      {modal && <SheetOverlay />}
+      {modal && <SheetOverlay className={overlayClassName} />}
       <SheetPrimitive.Content
         data-slot="sheet-content"
         onEscapeKeyDown={e => {
@@ -81,7 +84,7 @@ function SheetContent({
       >
         {children}
         {showCloseButton && (
-          <SheetPrimitive.Close className="ring-offset-background focus:ring-ring absolute top-4 right-4 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
+          <SheetPrimitive.Close className="ring-offset-background focus:ring-ring after:absolute after:-inset-2 md:after:hidden absolute top-4 right-4 inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50 focus:ring-2 focus:ring-offset-2 focus:outline-hidden disabled:pointer-events-none">
             <XIcon className="size-4" />
             <span className="sr-only">Close</span>
           </SheetPrimitive.Close>

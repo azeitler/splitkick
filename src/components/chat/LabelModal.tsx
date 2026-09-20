@@ -392,7 +392,7 @@ export function LabelModal({
                         className={`h-3 w-3 transition-opacity mr-1 ${
                           labelData.pinned
                             ? 'opacity-100'
-                            : 'opacity-0 group-hover:opacity-50 hover:!opacity-100'
+                            : '[@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-50 hover:!opacity-100'
                         }`}
                         onClick={e => togglePinned(labelData, e)}
                       />
@@ -402,12 +402,12 @@ export function LabelModal({
                       <>
                         {onDeleteLabel && (
                           <Trash2
-                            className="h-3 w-3 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity mr-1 text-destructive"
+                            className="h-3 w-3 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-50 hover:!opacity-100 transition-opacity mr-1 text-destructive"
                             onClick={e => deleteLabel(labelData, e)}
                           />
                         )}
                         <Pencil
-                          className="h-3 w-3 opacity-0 group-hover:opacity-50 hover:!opacity-100 transition-opacity mr-1"
+                          className="h-3 w-3 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-50 hover:!opacity-100 transition-opacity mr-1"
                           onClick={e => startEditColor(labelData, e)}
                         />
                       </>

@@ -1169,7 +1169,7 @@ export function GitHubDashboardModal() {
   return (
     <Dialog open={githubDashboardOpen} onOpenChange={handleDashboardOpenChange}>
       <DialogContent
-        className="!w-[calc(100vw-4rem)] !h-[calc(100dvh-6rem)] !max-w-[calc(100vw-4rem)] !max-h-[calc(100dvh-6rem)] !rounded-lg p-0 flex flex-col overflow-hidden"
+        className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!h-[calc(100dvh-6rem)] sm:!max-w-[calc(100vw-4rem)] sm:!max-h-[calc(100dvh-6rem)] sm:!rounded-lg flex flex-col overflow-hidden"
         aria-describedby={undefined}
       >
         <DialogHeader className="px-4 pt-5 pb-2 flex-shrink-0">

@@ -544,7 +544,7 @@ export function NativeCliSessionsModal({
   return (
     <Dialog open={open} onOpenChange={nextOpen => !nextOpen && onClose()}>
       <DialogContent
-        className="grid h-[min(760px,calc(100vh-64px))] w-[min(860px,calc(100vw-32px))] grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] gap-4 p-5 sm:max-w-[860px]"
+        className="grid h-[min(760px,calc(100dvh-64px))] w-[min(860px,calc(100vw-32px))] grid-rows-[auto_auto_auto_auto_minmax(0,1fr)] gap-4 p-5 sm:max-w-[860px]"
         onOpenAutoFocus={event => {
           event.preventDefault()
           newSessionButtonRef.current?.focus()

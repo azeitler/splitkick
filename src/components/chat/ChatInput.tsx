@@ -1288,13 +1288,13 @@ export const ChatInput = memo(function ChatInput({
         disabled={false}
         className={cn(
           'min-h-[40px] w-full resize-none overflow-x-hidden overflow-y-auto border-0 dark:bg-transparent p-0 font-mono text-base placeholder:text-sm shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 md:text-sm',
-          zenMode ? 'h-12 max-h-12' : 'max-h-[50vh]'
+          zenMode ? 'h-12 max-h-12' : 'max-h-[50dvh]'
         )}
         rows={1}
         autoFocus={!isMobile}
       />
-      {showHint && !zenMode && (
-        <span className="absolute top-0 right-0 hidden sm:flex items-center gap-1.5 text-xs text-muted-foreground opacity-40">
+      {showHint && !zenMode && isNativeApp() && (
+        <span className="absolute top-0 right-0 hidden md:flex items-center gap-1.5 text-xs text-muted-foreground opacity-40">
           <Kbd>{focusChatShortcut}</Kbd>
           <span>to focus</span>
         </span>

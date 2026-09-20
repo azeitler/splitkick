@@ -287,7 +287,7 @@ export function PlanDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={open => !open && onClose()}>
-      <DialogContent className="max-w-7xl h-[80vh] min-w-[90vw] flex flex-col overflow-hidden">
+      <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-4 sm:!w-[90vw] sm:!max-w-7xl sm:!h-[85dvh] sm:!max-h-none sm:!rounded-lg sm:p-6 flex flex-col overflow-hidden">
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2">
             <FileText className="h-4 w-4" />
@@ -310,7 +310,7 @@ export function PlanDialog({
           />
         ) : (
           // View mode: rendered markdown
-          <ScrollArea className="flex-1 min-h-0 -mx-6 px-6 select-text">
+          <ScrollArea className="flex-1 min-h-0 -mx-4 px-4 sm:-mx-6 sm:px-6 select-text">
             {!inlineContent && isLoading ? (
               <div className="text-sm text-muted-foreground">
                 Loading plan...
@@ -328,7 +328,7 @@ export function PlanDialog({
         )}
 
         {editable && (
-          <DialogFooter className="shrink-0 border-t pt-4 -mx-6 px-6 mt-4 sm:justify-between">
+          <DialogFooter className="shrink-0 border-t pt-4 -mx-4 px-4 sm:-mx-6 sm:px-6 mt-4 sm:justify-between">
             {/* Left side: Edit or Reset button */}
             {isEditMode ? (
               <Button

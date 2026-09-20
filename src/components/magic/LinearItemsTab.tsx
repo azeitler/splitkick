@@ -103,7 +103,7 @@ export function LinearItemsTab({
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <div className="flex items-center gap-1 [@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100 transition-opacity">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <button

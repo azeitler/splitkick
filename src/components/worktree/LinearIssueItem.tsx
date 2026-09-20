@@ -142,7 +142,7 @@ export function LinearIssueItem({
           <TooltipContent>Investigate ({getModifierSymbol()}+M)</TooltipContent>
         </Tooltip>
         {onPreview && (
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="[@media(pointer:fine)]:opacity-0 [@media(pointer:fine)]:group-hover:opacity-100 transition-opacity">
             <Tooltip>
               <TooltipTrigger asChild>
                 <button

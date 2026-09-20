@@ -2803,7 +2803,7 @@ function OnboardingDialogContent() {
   return (
     <Dialog open={onboardingOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="sm:max-w-2xl max-h-[85vh] flex flex-col"
+        className="sm:max-w-2xl max-h-[85dvh] flex flex-col"
         preventClose
       >
         <DialogHeader>

@@ -207,7 +207,7 @@ export function ReleaseNotesDialog() {
   return (
     <Dialog open={releaseNotesModalOpen} onOpenChange={handleOpenChange}>
       <DialogContent
-        className="!max-w-lg h-[500px] p-0 flex flex-col"
+        className="h-[min(500px,calc(100dvh-4rem))] sm:!max-w-lg p-0 flex flex-col"
         onKeyDown={handleKeyDown}
         showCloseButton={false}
       >

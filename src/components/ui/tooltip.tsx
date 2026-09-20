@@ -49,6 +49,12 @@ function TooltipContent({
         side={side}
         className={cn(
           'bg-popover text-popover-foreground border border-border animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-[80] w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md px-3 py-1.5 text-xs text-balance',
+          // Radix opens tooltips on focus, so a tap on a touch device leaves one
+          // stuck over the UI. CSS rather than useIsTouchDevice(): this element
+          // is mounted for every tooltip in the tree — hundreds in a long
+          // message list — and each hook instance would add a matchMedia
+          // listener for nothing.
+          '[@media(pointer:coarse)]:hidden',
           className
         )}
         {...props}

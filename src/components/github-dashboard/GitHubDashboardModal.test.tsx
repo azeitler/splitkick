@@ -184,21 +184,24 @@ describe('GitHubDashboardModal auth error handling', () => {
     ).toBeInTheDocument()
   })
 
-  it('renders as a padded large modal instead of full-screen or the old smaller modal', () => {
+  it('is full-screen on phones and a padded large modal from sm up', () => {
     mockInvoke.mockImplementation(resolveEmptyDashboardCommand)
 
     renderDashboard()
 
     const dashboard = screen.getByRole('dialog', { name: 'GitHub Dashboard' })
     expect(dashboard).toHaveClass(
-      '!w-[calc(100vw-4rem)]',
-      '!h-[calc(100dvh-6rem)]',
-      '!max-w-[calc(100vw-4rem)]',
-      '!max-h-[calc(100dvh-6rem)]',
-      '!rounded-lg'
+      '!w-screen',
+      '!h-dvh',
+      '!max-w-screen',
+      '!rounded-none',
+      'sm:!w-[calc(100vw-4rem)]',
+      'sm:!h-[calc(100dvh-6rem)]',
+      'sm:!max-w-[calc(100vw-4rem)]',
+      'sm:!max-h-[calc(100dvh-6rem)]',
+      'sm:!rounded-lg'
     )
-    expect(dashboard.className).not.toContain('!w-screen')
-    expect(dashboard.className).not.toContain('!h-dvh')
+    // Not the old small modal, and not the generic 90vw/85vh treatment.
     expect(dashboard.className).not.toContain('sm:!w-[90vw]')
     expect(dashboard.className).not.toContain('sm:!h-[85vh]')
   })

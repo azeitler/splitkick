@@ -23,6 +23,59 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **The chat composer stays above the keyboard on a phone.** Tapping the input
+  used to push the composer and its toolbar under the on-screen keyboard, so you
+  typed into a box you could not see. iOS Safari does not shrink the page for the
+  keyboard the way other browsers do, and Jean's layout fills the screen exactly,
+  so there was nothing left to scroll. Jean now measures the visible area and
+  lifts the composer above the keyboard, the same way the terminal's extra-keys
+  bar already did, and keeps the last message in view. Opening the terminal
+  drawer still works as before — only the surface at the bottom compensates, so
+  nothing is padded twice.
+
+- **The title bar clears the status bar and the notch.** Added to an iPhone home
+  screen, or held in landscape, the bar was drawn underneath the status bar and
+  the buttons at the edges were hard to hit. The bar now reserves the room the
+  phone asks for, on all four sides. Nothing changes on a desktop.
+
+- **Buttons on a phone are big enough to hit.** The title bar was the only way to
+  reach the sidebar, the file browser and Settings, and its buttons were 24
+  pixels — smaller than a fingertip. They are 44 pixels on a phone now, and the
+  bar grew to match. The Send button and the dialog close buttons did too. To
+  make room, the GitHub, Sponsor and version links are hidden on a phone; they
+  are all still in Settings and on Home.
+
+- **Actions you could only reach by hovering are visible on a phone.** A phone
+  has no hover, so these buttons simply did not exist there: editing, removing or
+  sending a queued prompt, restoring or deleting an archived item, and the row
+  actions on labels, commits, saved contexts and Linear issues. They are always
+  visible on a touch screen now, and unchanged on a desktop.
+
+- **Tapping an icon no longer leaves a tooltip stuck on the screen.** A tooltip
+  opens on focus as well as on hover, so a tap opened one with nothing to close
+  it. Tooltips are off on touch screens.
+
+- **Dialogs fit a phone screen.** The plan dialog was wider than the screen, and
+  the Approve buttons could be cut off the bottom — awkward, since approving a
+  plan from a phone is one of the main reasons to open Jean there. It is
+  full-screen on a phone now. The GitHub dashboard was squeezed into a box
+  narrower than the screen instead of filling it. The release notes, teardown
+  output and update dialogs ran edge to edge with their corners off-screen. Four
+  more dialogs were measured against the wrong idea of the screen height on iOS
+  Safari and were clipped at the top and bottom.
+
+- **The projects sidebar is no longer hidden behind the file browser.** With both
+  open on a phone, the file browser was drawn on top and dimmed the sidebar, so
+  the main navigation sat behind the panel it should sit in front of. Closes
+  [#28](https://github.com/azeitler/jean/issues/28).
+
+- **Small phone fixes.** Toasts were 271 pixels wide on a 375-pixel screen and
+  now use the full width less a margin. Pulling down at the top of the page no
+  longer triggers the browser's own refresh, which used to fight Jean's
+  swipe-down gesture for the command palette. Between 640 and 767 pixels wide the
+  composer mixed the desktop and phone layouts and showed a floating card with a
+  gap under it.
+
 - **Web Access stops reloading the page when you leave the tab.** On a phone this
   happened constantly: switch to another app, take a call, lock the screen, and
   coming back to Jean threw away your composer draft, your place in the

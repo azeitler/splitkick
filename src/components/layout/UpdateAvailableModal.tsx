@@ -60,7 +60,7 @@ export function UpdateAvailableModal() {
         if (!open) handleUpdateLater()
       }}
     >
-      <DialogContent className="max-w-sm">
+      <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ArrowUpCircle className="size-5 text-primary" />

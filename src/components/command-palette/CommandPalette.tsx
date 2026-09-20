@@ -413,7 +413,7 @@ export function CommandPalette({
             type="button"
             onClick={() => setMode(item.id)}
             className={cn(
-              'shrink-0 rounded-md px-2 py-1 text-xs transition-colors',
+              'shrink-0 rounded-md px-3 py-2 md:px-2 md:py-1 text-xs transition-colors',
               mode === item.id
                 ? 'bg-accent text-accent-foreground'
                 : 'text-muted-foreground hover:bg-accent/50'

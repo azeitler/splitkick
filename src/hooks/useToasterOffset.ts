@@ -11,6 +11,10 @@ import {
 
 const BASE = 52
 const GUTTER = 12
+/** BASE is a desktop window-chrome inset; on a 375px phone it left toasts
+ *  271px wide. Docked browser panes are a desktop-only surface, so the mobile
+ *  sides are pinned to a plain gutter. */
+const MOBILE_GUTTER = 16
 
 export type ToasterOffsetValue =
   | number
@@ -70,8 +74,8 @@ export function useToasterOffset(): {
       offset: `${BASE}px`,
       mobileOffset: {
         top: BASE,
-        right: BASE,
-        left: BASE,
+        right: MOBILE_GUTTER,
+        left: MOBILE_GUTTER,
         bottom: mobileBottom,
       },
     }
@@ -95,8 +99,8 @@ export function useToasterOffset(): {
     offset: { top: BASE, right, bottom, left: BASE },
     mobileOffset: {
       top: BASE,
-      right,
-      left: BASE,
+      right: MOBILE_GUTTER,
+      left: MOBILE_GUTTER,
       bottom: mobileBottom,
     },
   }

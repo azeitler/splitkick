@@ -231,6 +231,8 @@ import { useInvestigateHandlers } from './hooks/useInvestigateHandlers'
 import { useMcpServerResolution } from './hooks/useMcpServerResolution'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset'
+import { isNativeApp } from '@/lib/environment'
 import { useToolbarHandlers } from './hooks/useToolbarHandlers'
 import { useMessageSending } from './hooks/useMessageSending'
 import { usePlanState } from './hooks/usePlanState'
@@ -1195,6 +1197,15 @@ export function ChatWindow({
 
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const formRef = useRef<HTMLFormElement>(null)
+  const chatColumnRef = useRef<HTMLDivElement>(null)
+  // iOS Safari ignores `interactive-widget=resizes-content` and `dvh` does not
+  // shrink for the soft keyboard, so the composer would sit under it. Measure
+  // and pad like TerminalView does. The enabled expression matches
+  // TerminalView so the two bottom-anchored surfaces stay in step.
+  const keyboardInset = useVisualViewportBottomInset(
+    chatColumnRef,
+    !isNativeApp() || isMobile
+  )
   const unregisterChatComposerRef = useRef<(() => void) | null>(null)
   const setChatComposerNode = useCallback((node: HTMLDivElement | null) => {
     unregisterChatComposerRef.current?.()
@@ -1308,6 +1319,17 @@ export function ChatWindow({
       !isLoading && !isSessionsLoading && !isSessionSwitching && !!session,
     isSending,
   })
+
+  // Keep the tail visible when the soft keyboard shrinks the message area.
+  // Read `isAtBottom` through a ref so opening the keyboard does not re-run
+  // this effect on every bottom-state flip.
+  const isAtBottomForKeyboardRef = useRef(isAtBottom)
+  isAtBottomForKeyboardRef.current = isAtBottom
+  useEffect(() => {
+    if (keyboardInset <= 0 || !isAtBottomForKeyboardRef.current) return
+    const timer = setTimeout(() => scrollToBottom(), 50)
+    return () => clearTimeout(timer)
+  }, [keyboardInset, scrollToBottom])
 
   // Drag and drop images into chat input
   const { isDragging } = useDragAndDropImages(activeSessionId)
@@ -3023,7 +3045,17 @@ export function ChatWindow({
                   minSize={isMobile || isModal ? 0 : 30}
                   className="min-h-0"
                 >
-                  <div className="flex h-full min-h-0 flex-col">
+                  <div
+                    ref={chatColumnRef}
+                    className="flex h-full min-h-0 flex-col"
+                    data-keyboard-inset={
+                      keyboardInset > 0 ? keyboardInset : undefined
+                    }
+                    style={{
+                      paddingBottom:
+                        keyboardInset > 0 ? keyboardInset : undefined,
+                    }}
+                  >
                     {/* Messages area */}
                     <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden">
                       {/* Session badges - absolute positioned to avoid covering content */}
@@ -3562,7 +3594,7 @@ export function ChatWindow({
                         <div
                           ref={setChatComposerNode}
                           data-chat-composer=""
-                          className="relative sm:mx-auto sm:mb-3 sm:max-w-3xl xl:max-w-4xl"
+                          className="relative md:mx-auto md:mb-3 md:max-w-3xl xl:max-w-4xl"
                         >
                           {/* Queued prompts - rendered as an extension above the chat input */}
                           {activeSessionId &&
@@ -3582,15 +3614,15 @@ export function ChatWindow({
                             ref={formRef}
                             onSubmit={handleSubmit}
                             className={cn(
-                              'relative overflow-hidden border-t border-border bg-card transition-[background-color,box-shadow] duration-150 sm:rounded-lg sm:border',
+                              'relative overflow-hidden border-t border-border bg-card transition-[background-color,box-shadow] duration-150 md:rounded-lg md:border',
                               activeSessionId &&
                                 currentQueuedMessages.length > 0 &&
-                                'sm:rounded-t-none',
+                                'md:rounded-t-none',
                               isDragging &&
                                 'ring-2 ring-primary ring-inset bg-primary/5'
                             )}
                             style={
-                              isMobile
+                              isMobile && keyboardInset === 0
                                 ? { paddingBottom: 'var(--safe-area-bottom)' }
                                 : undefined
                             }

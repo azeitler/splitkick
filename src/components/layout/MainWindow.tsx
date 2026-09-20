@@ -571,7 +571,9 @@ export function MainWindow() {
       <DevModeBanner />
 
       {/* Main Content Area */}
-      <div className="flex flex-1 overflow-hidden pt-8">
+      {/* Offset by the title bar, which is an absolute overlay. Must stay in
+          step with TitleBar's own height — see --titlebar-height in App.css. */}
+      <div className="flex flex-1 overflow-hidden pt-[var(--titlebar-height)]">
         {/* Desktop: in-flow left sidebar (shifts layout). Only after UI state init. */}
         {!isMobile && leftSidebarVisible && isInitialized && (
           <SidebarWidthProvider value={leftSidebarSize}>

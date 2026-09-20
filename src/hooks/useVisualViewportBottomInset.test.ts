@@ -155,4 +155,30 @@ describe('useVisualViewportBottomInset', () => {
     el.remove()
     vi.useRealTimers()
   })
+
+  it('reports 0 for an element that already sits above the keyboard', () => {
+    // The chat composer and the terminal drawer both measure themselves. When
+    // the drawer is open the composer's column ends above the keyboard, so it
+    // must not pad — otherwise the drawer would be compensated twice.
+    const el = document.createElement('div')
+    document.body.appendChild(el)
+    vi.spyOn(el, 'getBoundingClientRect').mockReturnValue({
+      top: 0,
+      bottom: 400,
+      left: 0,
+      right: 400,
+      width: 400,
+      height: 400,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    })
+    const ref = { current: el }
+    installVisualViewport(500, 0)
+
+    const { result } = renderHook(() => useVisualViewportBottomInset(ref, true))
+
+    expect(result.current).toBe(0)
+    el.remove()
+  })
 })

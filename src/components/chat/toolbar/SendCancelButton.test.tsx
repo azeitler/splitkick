@@ -1,9 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@/test/test-utils'
 import { SendCancelButton } from './SendCancelButton'
 
+const { useIsMobileMock } = vi.hoisted(() => ({
+  useIsMobileMock: vi.fn(() => false),
+}))
+
 vi.mock('@/hooks/use-mobile', () => ({
-  useIsMobile: () => false,
+  useIsMobile: () => useIsMobileMock(),
 }))
 
 vi.mock('@/lib/platform', () => ({
@@ -124,5 +128,59 @@ describe('SendCancelButton', () => {
     expect(
       cancel.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
+  })
+})
+
+describe('SendCancelButton touch target', () => {
+  afterEach(() => {
+    useIsMobileMock.mockReturnValue(false)
+  })
+
+  it('grows Send to 44px on a phone', () => {
+    // The most-tapped control in the composer. Uses the component's own
+    // useIsMobile rather than a viewport prefix, because the surrounding
+    // toolbar is container-query driven.
+    useIsMobileMock.mockReturnValue(true)
+
+    render(
+      <SendCancelButton
+        isSending={false}
+        canSend
+        queuedMessageCount={0}
+        onCancel={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /send/i })).toHaveClass('h-11')
+  })
+
+  it('keeps the compact height on desktop', () => {
+    render(
+      <SendCancelButton
+        isSending={false}
+        canSend
+        queuedMessageCount={0}
+        onCancel={vi.fn()}
+      />
+    )
+
+    const button = screen.getByRole('button', { name: /send/i })
+    expect(button).toHaveClass('h-8')
+    expect(button).not.toHaveClass('h-11')
+  })
+
+  it('grows Cancel to 44px on a phone too', () => {
+    useIsMobileMock.mockReturnValue(true)
+
+    render(
+      <SendCancelButton
+        isSending
+        canSend={false}
+        queuedMessageCount={0}
+        onCancel={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /cancel/i })).toHaveClass('h-11')
   })
 })

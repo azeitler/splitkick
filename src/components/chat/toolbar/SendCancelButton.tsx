@@ -28,6 +28,8 @@ export function SendCancelButton({
   onCancel,
 }: SendCancelButtonProps) {
   const isMobile = useIsMobile()
+  // Send / Cancel is the most-tapped control in the composer.
+  const heightClass = isMobile ? 'h-11' : 'h-8'
 
   if (isSending) {
     const cancelButton = (
@@ -37,7 +39,8 @@ export function SendCancelButton({
             type="button"
             onClick={onCancel}
             className={cn(
-              'flex h-8 items-center justify-center gap-1.5 px-3 text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90'
+              heightClass,
+              'flex items-center justify-center gap-1.5 px-3 text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90'
             )}
           >
             <span>{queuedMessageCount ? 'Skip to Next' : 'Cancel'}</span>
@@ -80,7 +83,10 @@ export function SendCancelButton({
               <button
                 type="submit"
                 aria-label={actionLabel}
-                className="flex h-8 items-center justify-center gap-1.5 px-2.5 text-xs font-medium transition-colors text-muted-foreground hover:bg-muted/80 hover:text-foreground"
+                className={cn(
+                  heightClass,
+                  'flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium transition-colors text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                )}
               >
                 <span>{actionLabel}</span>
                 {!isMobile && (
@@ -104,7 +110,8 @@ export function SendCancelButton({
           type="submit"
           disabled={!canSend}
           className={cn(
-            'flex h-8 items-center justify-center px-3 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
+            heightClass,
+            'flex items-center justify-center px-3 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
             canSend
               ? 'bg-primary text-primary-foreground hover:bg-primary/90'
               : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
