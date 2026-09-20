@@ -544,6 +544,12 @@ async fn init_handler(
     response["appVersion"] = Value::String(build_info.app_version.clone());
     response["serverPlatform"] = Value::String(crate::server_platform_name().to_string());
     response["nativeOpenAllowed"] = Value::Bool(crate::platform::native_open_allowed());
+    if let Ok(name) = std::env::var("JEAN_SERVER_NAME") {
+        let name = name.trim();
+        if !name.is_empty() {
+            response["serverName"] = Value::String(name.to_string());
+        }
+    }
 
     let projects_load_failed = projects_result.is_err();
     let projects = match projects_result {

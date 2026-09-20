@@ -252,51 +252,47 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   type="button"
                   aria-current={isCurrent ? 'page' : undefined}
                   aria-label={`${row.session.name}, ${row.projectName}, ${row.worktree.name}, ${status.label}, ${activityLabel}`}
-                  className={`relative flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow,color] hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${isCurrent ? 'border-border bg-muted/50 text-foreground shadow' : 'border-transparent bg-transparent text-muted-foreground'}`}
+                  className={`grid w-full grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow,color] hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${isCurrent ? 'border-border bg-muted/50 text-foreground shadow' : 'border-transparent bg-transparent text-muted-foreground'}`}
                   onClick={() => handleOpen(row)}
                 >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[13px] font-medium text-foreground">
-                      {namingSessionIds[row.session.id]
-                        ? 'Generating…'
-                        : row.session.name}
-                    </span>
-                    <span className="block truncate text-[11px]">
-                      {row.projectName} · {row.worktree.name}
-                    </span>
+                  <span className="min-w-0 truncate text-[13px] font-medium text-foreground">
+                    {namingSessionIds[row.session.id]
+                      ? 'Generating…'
+                      : row.session.name}
                   </span>
-                  <span className="flex w-14 shrink-0 flex-col items-end gap-1 pt-4 text-[10px] tabular-nums">
-                    {isWorking && (
+                  <span className="flex min-w-14 items-center justify-end text-[10px]">
+                    {isWorking ? (
                       <span
                         aria-hidden="true"
-                        className="recent-working-waveform absolute right-3 top-2 text-muted-foreground"
+                        className="recent-working-waveform text-violet-500 dark:text-violet-400"
                       >
                         <span />
                         <span />
                         <span />
                       </span>
-                    )}
-                    <span className="flex items-center gap-1.5">
-                      {!['working', 'completed'].includes(status.tone) && (
+                    ) : (
+                      status.tone !== 'completed' && (
                         <span className={`font-medium ${statusClassName}`}>
                           {status.label}
                         </span>
-                      )}
-                      <time
-                        dateTime={new Date(
-                          row.lastActivityAt * 1000
-                        ).toISOString()}
-                      >
-                        {activity}
-                      </time>
-                    </span>
-                    {(row.added > 0 || row.removed > 0) && (
-                      <span className="flex gap-1 font-medium">
-                        <span className="text-green-500">+{row.added}</span>
-                        <span className="text-red-500">-{row.removed}</span>
-                      </span>
+                      )
                     )}
                   </span>
+                  <span className="min-w-0 truncate text-[11px]">
+                    {row.projectName} · {row.worktree.name}
+                  </span>
+                  <time
+                    className="justify-self-end text-[10px] tabular-nums"
+                    dateTime={new Date(row.lastActivityAt * 1000).toISOString()}
+                  >
+                    {activity}
+                  </time>
+                  {(row.added > 0 || row.removed > 0) && (
+                    <span className="col-start-2 flex justify-self-end gap-1 text-[10px] font-medium tabular-nums">
+                      <span className="text-green-500">+{row.added}</span>
+                      <span className="text-red-500">-{row.removed}</span>
+                    </span>
+                  )}
                 </button>
               </li>
             )

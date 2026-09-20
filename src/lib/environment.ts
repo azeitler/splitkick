@@ -29,7 +29,14 @@ export const isLocalBackend = (): boolean =>
 
 /** Label for the Jean server a web access session talks to, so people running
  * several servers can tell which one is asking for or holding a token. */
-export const webAccessServerLabel = (): string => window.location.host
+let _webAccessServerName: string | null = null
+
+export const setWebAccessServerName = (name?: string | null): void => {
+  _webAccessServerName = name?.trim() || null
+}
+
+export const webAccessServerLabel = (): string =>
+  _webAccessServerName ?? window.location.host
 
 /**
  * Whether the connected Jean backend can open host apps (editor/finder/terminal).

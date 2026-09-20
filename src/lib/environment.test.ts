@@ -10,8 +10,10 @@ import {
   isLocalBackend,
   isNativeApp,
   setNativeOpenAllowed,
+  setWebAccessServerName,
   setWebAccessEnabled,
   setWsConnected,
+  webAccessServerLabel,
 } from './environment'
 import {
   addRemoteConnection,
@@ -30,7 +32,14 @@ describe('environment detection', () => {
     setWsConnected(false)
     setWebAccessEnabled(false)
     setNativeOpenAllowed(false)
+    setWebAccessServerName(null)
     selectConnection(LOCAL_CONNECTION_ID)
+  })
+
+  it('uses the configured Web Access server name', () => {
+    setWebAccessServerName('Dev Server')
+
+    expect(webAccessServerLabel()).toBe('Dev Server')
   })
 
   it('does not treat partial Tauri internals as native', () => {

@@ -30,6 +30,19 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('text-[11px]')
   })
 
+  it('aligns status, activity, and optional Git changes in grid rows', () => {
+    expect(source).toContain('grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1')
+    expect(source).toContain(
+      'recent-working-waveform text-violet-500 dark:text-violet-400'
+    )
+    expect(source).toContain(
+      'className="justify-self-end text-[10px] tabular-nums"'
+    )
+    expect(source).toContain('col-start-2 flex justify-self-end gap-1')
+    expect(source).not.toContain('pt-4')
+    expect(source).not.toContain('absolute right-3 top-2')
+  })
+
   it('uses fully rounded rows and a full background for the current row', () => {
     expect(source).toContain('className="flex flex-col gap-2 px-2 py-2"')
     expect(source).toContain('rounded-lg border px-3 py-2.5')
@@ -60,7 +73,7 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('selectedSessionId')
     expect(source).toContain('getRecentSessionStatus(row.session')
     expect(source).toContain("const isWorking = status.tone === 'working'")
-    expect(source).toContain('{isWorking && (')
+    expect(source).toContain('{isWorking ? (')
     expect(source).toContain('recent-working-waveform')
     expect(source).toContain('aria-hidden="true"')
     expect(source).not.toContain('vibing')
@@ -68,12 +81,12 @@ describe('RecentWorktreesList structure', () => {
     expect(source).not.toContain('executingModes[row.session.id]')
     expect(source).not.toContain('executionModes[row.session.id]')
     expect(source).toContain(
-      'recent-working-waveform absolute right-3 top-2 text-muted-foreground'
+      'recent-working-waveform text-violet-500 dark:text-violet-400'
     )
     expect(source).not.toContain('border-l-destructive')
     expect(source).not.toContain('border-l-yellow-500')
     expect(source).not.toContain('border-l-green-500')
-    expect(source).toContain("!['working', 'completed'].includes(status.tone)")
+    expect(source).toContain("status.tone !== 'completed'")
   })
 
   it('does not create a different cached list for each selected session', () => {

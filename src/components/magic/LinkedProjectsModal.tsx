@@ -13,7 +13,24 @@ import { isFolder, type Project } from '@/types/projects'
 import { cn } from '@/lib/utils'
 import { LOCAL_SERVER_ID } from '@/types/server-resource'
 import { isNativeApp, webAccessServerLabel } from '@/lib/environment'
-import { getActiveRemoteConnection } from '@/lib/remote-connections'
+import {
+  getActiveRemoteConnection,
+  getRemoteConnections,
+} from '@/lib/remote-connections'
+
+function currentRemoteConnectionName(): string | undefined {
+  const activeName = getActiveRemoteConnection()?.name
+  if (activeName) return activeName
+
+  if (typeof window === 'undefined') return undefined
+  return getRemoteConnections().find(connection => {
+    try {
+      return new URL(connection.url).origin === window.location.origin
+    } catch {
+      return false
+    }
+  })?.name
+}
 
 interface LinkedProjectsModalProps {
   open: boolean
@@ -45,7 +62,7 @@ export function LinkedProjectsModal({
   const currentServerId = currentProject?.serverId ?? LOCAL_SERVER_ID
 
   const defaultInstanceName =
-    getActiveRemoteConnection()?.name ??
+    currentRemoteConnectionName() ??
     (isNativeApp() ? 'Local' : webAccessServerLabel())
   const instanceName = useCallback(
     (project: Project) => project.serverName ?? defaultInstanceName,
@@ -152,7 +169,7 @@ export function LinkedProjectsModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="sm:max-w-md font-sans"
+        className="max-h-[calc(100dvh-2rem)] overflow-hidden sm:max-w-md font-sans"
         onOpenAutoFocus={e => {
           e.preventDefault()
           searchRef.current?.focus()
@@ -226,7 +243,7 @@ export function LinkedProjectsModal({
               className="w-full rounded-md border border-border bg-muted/40 pl-8 pr-3 py-2 text-base shadow-sm placeholder:text-muted-foreground focus:outline-none focus:border-ring focus:ring-2 focus:ring-ring/40 dark:bg-input/50 md:text-sm"
             />
           </div>
-          <ScrollArea className="max-h-48">
+          <ScrollArea className="h-48 min-h-0">
             {availableProjects.length === 0 ? (
               <p className="py-3 text-center text-xs text-muted-foreground">
                 {search

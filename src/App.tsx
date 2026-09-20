@@ -19,6 +19,7 @@ import {
   isLocalBackend,
   isNativeApp,
   setNativeOpenAllowed,
+  setWebAccessServerName,
 } from '@/lib/environment'
 import { useNativeWindowCloseGuard } from '@/hooks/useNativeWindowCloseGuard'
 import { QuitConfirmationDialog } from '@/components/layout/QuitConfirmationDialog'
@@ -375,6 +376,7 @@ function App() {
       if (data.serverPlatform) {
         setServerPlatform(data.serverPlatform)
       }
+      setWebAccessServerName(data.serverName)
       if (typeof data.nativeOpenAllowed === 'boolean') {
         setNativeOpenAllowed(data.nativeOpenAllowed)
       }

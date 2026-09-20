@@ -101,6 +101,7 @@ Common options:
 sudo ./scripts/install-jean-server.sh \
   --host 0.0.0.0 \
   --port 3456 \
+  --name "Dev Server" \
   --token "$(openssl rand -base64 32)" \
   -y
 
@@ -204,6 +205,7 @@ bun run install:local:server
 | `--headless`              | `JEAN_HEADLESS=1`              | off                                    |
 | `--host <addr>`           | `JEAN_HOST`                    | saved preference, normally `127.0.0.1` |
 | `--port <port>`           | `JEAN_PORT`                    | `3456`                                 |
+| `--name <name>`           | `JEAN_SERVER_NAME`             | Web Access host                        |
 | `--token <token>`         | `JEAN_TOKEN`                   | saved/generated token                  |
 | `--no-token`              | `JEAN_NO_TOKEN=1`              | off                                    |
 | `--allow-unsafe-no-token` | `JEAN_ALLOW_UNSAFE_NO_TOKEN=1` | off                                    |

@@ -6,11 +6,17 @@ import { LinkedProjectsModal } from './LinkedProjectsModal'
 
 const mutateMock = vi.fn()
 let projectsMock: Project[] = []
-const remoteConnectionMock = vi.hoisted(() => ({ name: null as string | null }))
+const remoteConnectionMock = vi.hoisted(() => ({
+  activeName: null as string | null,
+  connections: [] as { name: string; url: string }[],
+}))
 
 vi.mock('@/lib/remote-connections', () => ({
   getActiveRemoteConnection: () =>
-    remoteConnectionMock.name ? { name: remoteConnectionMock.name } : null,
+    remoteConnectionMock.activeName
+      ? { name: remoteConnectionMock.activeName }
+      : null,
+  getRemoteConnections: () => remoteConnectionMock.connections,
 }))
 
 vi.mock('@/services/projects', () => ({
@@ -49,7 +55,8 @@ function renderModal() {
 describe('LinkedProjectsModal', () => {
   beforeEach(() => {
     mutateMock.mockReset()
-    remoteConnectionMock.name = null
+    remoteConnectionMock.activeName = null
+    remoteConnectionMock.connections = []
     projectsMock = [
       project({
         id: 'current-project',
@@ -109,6 +116,16 @@ describe('LinkedProjectsModal', () => {
     )
   })
 
+  it('gives the project list a scrollable fixed-height viewport', () => {
+    renderModal()
+
+    const viewport = document.querySelector(
+      '[data-slot="scroll-area-viewport"]'
+    )
+    expect(viewport?.parentElement).toHaveClass('h-48', 'min-h-0')
+    expect(viewport).toHaveClass('overflow-y-auto')
+  })
+
   it('shows the serving instance instead of Local in Web Access', () => {
     renderModal()
 
@@ -117,7 +134,18 @@ describe('LinkedProjectsModal', () => {
   })
 
   it('uses the custom name of the active remote instance', () => {
-    remoteConnectionMock.name = 'Production'
+    remoteConnectionMock.activeName = 'Production'
+
+    renderModal()
+
+    expect(screen.getAllByText('Production').length).toBeGreaterThan(0)
+    expect(screen.queryByText(window.location.host)).not.toBeInTheDocument()
+  })
+
+  it('uses the saved custom name when Web Access serves that connection', () => {
+    remoteConnectionMock.connections = [
+      { name: 'Production', url: window.location.origin },
+    ]
 
     renderModal()
 

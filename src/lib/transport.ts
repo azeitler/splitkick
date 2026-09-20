@@ -493,6 +493,7 @@ export interface InitialData {
   nativeOpenAllowed?: boolean
   webBuildId?: string
   appVersion?: string
+  serverName?: string
 }
 
 let initialDataPromise: Promise<InitialData | null> | null = null
