@@ -215,9 +215,9 @@ export const MessageItem = memo(function MessageItem({
   // Extract image, text file, file mention, and skill paths and clean content for user messages
   const imagePaths =
     message.role === 'user' ? extractImagePaths(message.content) : []
-  const messageServerId = worktreeId
-    ? parseServerResourceKey(worktreeId)?.serverId
-    : undefined
+  const messageServerId = parseServerResourceKey(
+    worktreeId ?? sessionId
+  )?.serverId
   const textFilePaths =
     message.role === 'user' ? extractTextFilePaths(message.content) : []
   const fileMentionPaths =
@@ -381,7 +381,13 @@ export const MessageItem = memo(function MessageItem({
       {textFilePaths.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
           {textFilePaths.map((path, idx) => (
-            <TextFileLightbox key={`${message.id}-txt-${idx}`} path={path} />
+            <TextFileLightbox
+              key={`${message.id}-txt-${idx}`}
+              path={path}
+              serverId={
+                messageServerId === 'local' ? undefined : messageServerId
+              }
+            />
           ))}
         </div>
       )}
@@ -601,6 +607,11 @@ export const MessageItem = memo(function MessageItem({
                               <SteeredPromptGroup
                                 texts={item.texts}
                                 worktreePath={worktreePath}
+                                serverId={
+                                  messageServerId === 'local'
+                                    ? undefined
+                                    : messageServerId
+                                }
                                 onCopyText={
                                   onCopyToInput
                                     ? handleCopySteeredText
