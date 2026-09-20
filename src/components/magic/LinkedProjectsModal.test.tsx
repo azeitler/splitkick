@@ -6,6 +6,12 @@ import { LinkedProjectsModal } from './LinkedProjectsModal'
 
 const mutateMock = vi.fn()
 let projectsMock: Project[] = []
+const remoteConnectionMock = vi.hoisted(() => ({ name: null as string | null }))
+
+vi.mock('@/lib/remote-connections', () => ({
+  getActiveRemoteConnection: () =>
+    remoteConnectionMock.name ? { name: remoteConnectionMock.name } : null,
+}))
 
 vi.mock('@/services/projects', () => ({
   useProjects: () => ({ data: projectsMock }),
@@ -43,6 +49,7 @@ function renderModal() {
 describe('LinkedProjectsModal', () => {
   beforeEach(() => {
     mutateMock.mockReset()
+    remoteConnectionMock.name = null
     projectsMock = [
       project({
         id: 'current-project',
@@ -107,6 +114,15 @@ describe('LinkedProjectsModal', () => {
 
     expect(screen.getAllByText(window.location.host).length).toBeGreaterThan(0)
     expect(screen.queryByText('Local')).not.toBeInTheDocument()
+  })
+
+  it('uses the custom name of the active remote instance', () => {
+    remoteConnectionMock.name = 'Production'
+
+    renderModal()
+
+    expect(screen.getAllByText('Production').length).toBeGreaterThan(0)
+    expect(screen.queryByText(window.location.host)).not.toBeInTheDocument()
   })
 
   it('shows instance names and only offers projects from the current instance', () => {

@@ -13,6 +13,7 @@ import { isFolder, type Project } from '@/types/projects'
 import { cn } from '@/lib/utils'
 import { LOCAL_SERVER_ID } from '@/types/server-resource'
 import { isNativeApp, webAccessServerLabel } from '@/lib/environment'
+import { getActiveRemoteConnection } from '@/lib/remote-connections'
 
 interface LinkedProjectsModalProps {
   open: boolean
@@ -43,7 +44,9 @@ export function LinkedProjectsModal({
 
   const currentServerId = currentProject?.serverId ?? LOCAL_SERVER_ID
 
-  const defaultInstanceName = isNativeApp() ? 'Local' : webAccessServerLabel()
+  const defaultInstanceName =
+    getActiveRemoteConnection()?.name ??
+    (isNativeApp() ? 'Local' : webAccessServerLabel())
   const instanceName = useCallback(
     (project: Project) => project.serverName ?? defaultInstanceName,
     [defaultInstanceName]
