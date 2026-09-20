@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { toFileUrl } from '@/lib/path-utils'
+import { isPaneTextUrl, toFileUrl } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { isBlankTabUrl, useBrowserStore } from '@/store/browser-store'
 import { browserBackend, useBrowserTabActions } from '@/hooks/useBrowserPane'
@@ -139,6 +139,9 @@ export const BrowserToolbar = memo(function BrowserToolbar({
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null
 
   const activeUrl = activeTab?.url ?? ''
+  // A text tab is rendered by React and owns no webview, so history and Grab
+  // have nothing to act on.
+  const isTextTab = isPaneTextUrl(activeUrl)
   const [draftUrl, setDraftUrl] = useState(() => displayUrl(activeUrl))
   const [editing, setEditing] = useState(false)
   // Track last synced (url, editing) so external navigations and blur refresh the
@@ -219,7 +222,7 @@ export const BrowserToolbar = memo(function BrowserToolbar({
           size="icon"
           className="h-7 w-7"
           onClick={() => void actions.back()}
-          disabled={!activeTab}
+          disabled={!activeTab || isTextTab}
           aria-label="Back"
         >
           <ArrowLeft className="h-4 w-4" />
@@ -229,7 +232,7 @@ export const BrowserToolbar = memo(function BrowserToolbar({
           size="icon"
           className="h-7 w-7"
           onClick={() => void actions.forward()}
-          disabled={!activeTab}
+          disabled={!activeTab || isTextTab}
           aria-label="Forward"
         >
           <ArrowRight className="h-4 w-4" />
@@ -261,7 +264,7 @@ export const BrowserToolbar = memo(function BrowserToolbar({
           size="icon"
           className="h-7 w-7"
           onClick={handleEnableGrab}
-          disabled={!activeTab || isBlankTabUrl(activeTab.url)}
+          disabled={!activeTab || isBlankTabUrl(activeTab.url) || isTextTab}
           aria-label="Grab DOM element"
           title="Grab DOM element"
         >

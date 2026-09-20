@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { invoke, listen } from '@/lib/transport'
 import { isLocalBackend, isNativeApp } from '@/lib/environment'
-import { isVideoFile, toFileUrl } from '@/lib/path-utils'
+import { isPaneTextUrl, isVideoFile, toFileUrl } from '@/lib/path-utils'
 import { isLoopbackHost } from '@/lib/remote-editor'
 import { isBlankTabUrl, useBrowserStore } from '@/store/browser-store'
 import { useChatStore } from '@/store/chat-store'
@@ -338,11 +338,26 @@ export async function navigateBrowserTab(
 ): Promise<void> {
   if (!isNativeApp()) return
   const s = useBrowserStore.getState()
+  // A local text file has no webview: BrowserTextContent reads it and reports
+  // the load itself, so there is nothing to navigate and no load that can
+  // hang. The nonce makes it read again even when the URL did not change.
+  if (isPaneTextUrl(url)) {
+    clearWatchdog(tabId)
+    s.setTabUrl(tabId, url)
+    s.setRequestedUrl(tabId, null)
+    s.setTabError(tabId, null)
+    s.reloadTab(tabId)
+    return
+  }
   // Optimistic UI: URL bar shows what user typed, even if load fails.
   s.setTabUrl(tabId, url)
   s.setRequestedUrl(tabId, url)
   s.setTabError(tabId, null)
   s.setTabLoading(tabId, true)
+  // A tab that has only ever shown text owns no webview yet. Leave it to the
+  // mount of BrowserTabContent's webview body, which creates one with this URL
+  // and reports its own failure; browser_navigate would answer "tab not found".
+  if (!(await browserBackend.hasActive(tabId))) return
   armWatchdog(tabId, url)
   try {
     await invoke('browser_navigate', { tabId, url })
@@ -400,7 +415,9 @@ export async function openUrlInEmbeddedBrowser(url: string): Promise<boolean> {
 
   if (existing) {
     store.setActiveTab(target.worktreeId, existing.id)
-    if (await browserBackend.hasActive(existing.id)) {
+    // A text tab has no webview; navigateBrowserTab makes it read the file
+    // again, which is the point of navigating a URL the tab already shows.
+    if (isPaneTextUrl(url) || (await browserBackend.hasActive(existing.id))) {
       await navigateBrowserTab(existing.id, url)
     }
   } else {
@@ -486,6 +503,14 @@ export function useBrowserTabActions(tabId: string | null): BrowserActions {
     const s = useBrowserStore.getState()
     const tab = findTab(s, tabId)
     const currentUrl = tab?.url ?? ''
+    // A text tab renders in React: read the file again instead of reloading
+    // a page that no webview holds.
+    if (isPaneTextUrl(currentUrl)) {
+      clearWatchdog(tabId)
+      s.setTabError(tabId, null)
+      s.reloadTab(tabId)
+      return
+    }
     if (!isBlankTabUrl(currentUrl)) {
       s.setRequestedUrl(tabId, currentUrl)
       s.setTabError(tabId, null)

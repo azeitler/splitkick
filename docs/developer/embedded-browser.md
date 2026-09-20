@@ -127,20 +127,21 @@ local webview would load the wrong file or nothing.
 
 `isBrowsableFile()` in the same module decides which files the Files sidebar
 and chat links open in the browser. `isHtmlFile()` covers the page extensions
-alone (`.html`, `.htm`, `.xhtml`, `.xht`, `.shtml`).
+alone (`.html`, `.htm`, `.xhtml`, `.xht`, `.shtml`). `isPaneTextUrl()` decides
+which of the two renderers a tab gets — see "Text files" below.
 
 ## What the pane renders, and what it reports
 
 Checked with a headless `WKWebView` that loads each type from disk and prints
 `canShowMIMEType`, the navigation callback and `document.contentType`:
 
-| Type                                    | Result                                     |
-| --------------------------------------- | ------------------------------------------ |
-| `.html` `.htm` `.xhtml` `.xht` `.shtml` | page, load finishes normally               |
-| `.pdf`                                  | built-in PDF view, load finishes           |
-| images incl. `.svg`                     | image document, load finishes              |
-| `.txt` `.md` `.log`                     | plain-text document (see the caveat below) |
-| movies                                  | player appears, load reports **failure**   |
+| Type                                    | Result                                    |
+| --------------------------------------- | ----------------------------------------- |
+| `.html` `.htm` `.xhtml` `.xht` `.shtml` | page, load finishes normally              |
+| `.pdf`                                  | built-in PDF view, load finishes          |
+| images incl. `.svg`                     | image document, load finishes             |
+| `.txt` `.md` `.log`                     | plain-text document — React renders these |
+| movies                                  | player appears, load reports **failure**  |
 
 Two findings drive code:
 
@@ -148,10 +149,37 @@ Two findings drive code:
   and reports `WebKitErrorDomain 204 "Plug-in handled load"`, so `on_page_load`
   fires Started and never Finished. `useBrowserEvents` therefore treats a
   `browser:loading` event for an `isVideoFile()` URL as a finished load.
-- **Plain text is decoded as Latin-1.** A `file://` response carries no
-  charset, so `# Notes — draft` in a UTF-8 `.md` shows as `â€"`. HTML is fine,
-  because the document declares its own encoding. The file viewer renders
-  Markdown properly and stays available as "Open" in the context menu.
+- **The web view is the wrong renderer for text.** It shows a Markdown file as
+  its own source, and a `file://` response carries no charset, so WebKit falls
+  back to Latin-1 and `# Notes — draft` in a UTF-8 `.md` shows as `â€"`. HTML
+  is fine, because the document declares its own encoding. Text therefore never
+  reaches the web view; see below.
+
+## Text files
+
+`BrowserTabContent` is a router. `isPaneTextUrl(url)` — a `file://` URL naming
+a `.md`, `.markdown`, `.txt`, `.text` or `.log` — sends the tab to
+`BrowserTextContent`, which reads the file with `read_file_content` and renders
+it with Jean's own `Markdown` component (or a `<pre>` for plain text). Every
+other URL keeps the native child web view. A Markdown file served over http(s)
+stays with the web view: the user asked for a web page there.
+
+No web view exists for a text tab, which is what lets its DOM show — a web view
+paints over the DOM beside it. Switching between the two modes needs no extra
+work: leaving text mounts the web view body, which finds no web view for the
+tab and creates one with the new URL; entering text unmounts it, and its
+cleanup parks the web view off-screen and hides it.
+
+Consequences elsewhere:
+
+- `navigateBrowserTab` does not call `browser_navigate` for a text URL. It
+  bumps `reloadTab`, so the file is read again even when the URL did not
+  change. It also skips the call when the tab owns no web view yet.
+- `useBrowserTabActions.reload` bumps `reloadTab` instead of calling
+  `browser_reload`. `BrowserView`'s error overlay Retry goes through it.
+- `BrowserToolbar` disables Back, Forward and Grab for a text tab.
+- `BrowserTextContent` writes the tab's loading and error state, so the tab
+  pill spinner and the error overlay work the same for both renderers.
 
 ## Why a load must never hang
 

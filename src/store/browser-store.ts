@@ -58,6 +58,8 @@ interface BrowserState {
   setTabError: (tabId: string, error: string | null) => void
   setRequestedUrl: (tabId: string, url: string | null) => void
   setLastLoadedUrl: (tabId: string, url: string | null) => void
+  /** Ask a text tab to read its file again (the Reload button). */
+  reloadTab: (tabId: string) => void
   // Hydration (used by useUIStatePersistence on app load)
   hydrateTabs: (
     tabs: Record<string, BrowserTab[]>,
@@ -221,6 +223,14 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
     get().updateTab(tabId, { requestedUrl: url }),
   setLastLoadedUrl: (tabId, url) =>
     get().updateTab(tabId, { lastLoadedUrl: url }),
+
+  reloadTab: tabId => {
+    const wid = findWorktreeForTab(get().tabs, tabId)
+    if (!wid) return
+    const tab = (get().tabs[wid] ?? []).find(t => t.id === tabId)
+    if (!tab) return
+    get().updateTab(tabId, { reloadNonce: (tab.reloadNonce ?? 0) + 1 })
+  },
 
   hydrateTabs: (tabs, activeTabIds) => set({ tabs, activeTabIds }),
 

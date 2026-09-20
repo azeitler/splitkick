@@ -17,6 +17,11 @@ export interface BrowserTab {
   requestedUrl?: string | null
   /** Last URL that successfully reached browser:loaded. Used to detect WKWebView fallback-to-previous on failed nav. */
   lastLoadedUrl?: string | null
+  /**
+   * Bumped by `reloadTab`. A text tab has no web view to call
+   * `browser_reload` on, so this is how Reload reaches `BrowserTextContent`.
+   */
+  reloadNonce?: number
 }
 
 // Rust → React event payloads (camelCase via serde rename_all)

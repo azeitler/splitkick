@@ -16,10 +16,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   else the web view cannot draw still open there, and "Open" in the right-click
   menu always uses the file viewer.
 
-  Markdown and plain text are a partial case worth knowing about: the web view
-  shows them as text, but a `file://` text file carries no character set, so the
-  web view reads it as Latin-1 and an em dash in a UTF-8 file shows as `â€"`.
-  The file viewer renders Markdown properly and is one right-click away.
+  Markdown and plain text are drawn by Jean itself, not by the web view. A `.md`
+  opens as a formatted page — headings, tables, task lists and code blocks with a
+  copy button — and a `.txt` or a `.log` as monospace text. The web view would
+  have shown a Markdown file as its own source, and it reads a `file://` text
+  file as Latin-1, because such a file carries no character set, so an em dash in
+  a UTF-8 file would show as `â€"`. Reload reads the file from disk again, which
+  is how you see an edit an agent has just made. Back, Forward and Grab do
+  nothing for a file Jean draws itself, and are greyed out.
 
 ### Fixed
 

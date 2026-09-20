@@ -115,13 +115,20 @@ const IMAGE_EXTENSIONS = new Set([
 ])
 const PDF_EXTENSIONS = new Set(['.pdf'])
 
+const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown'])
+
 /**
- * Plain-text extensions. These become a text document, but WebKit has no
- * charset for a `file://` text response and falls back to Latin-1, so
- * non-ASCII characters show as mojibake. The file viewer renders Markdown
- * properly and stays available as "Open" in the context menu.
+ * Plain-text extensions. The pane does not give these to the web view: a
+ * `file://` text response carries no charset, so WebKit falls back to Latin-1
+ * and every non-ASCII character becomes mojibake, and Markdown shows as its
+ * own source. `BrowserTextContent` reads the file and renders it instead.
  */
-const TEXT_EXTENSIONS = new Set(['.txt', '.text', '.log', '.md', '.markdown'])
+const TEXT_EXTENSIONS = new Set([
+  '.txt',
+  '.text',
+  '.log',
+  ...MARKDOWN_EXTENSIONS,
+])
 
 /**
  * Movie extensions. A movie is special: WebKit replaces the page with a media
@@ -145,6 +152,31 @@ const VIDEO_EXTENSIONS = new Set(['.mp4', '.m4v', '.mov', '.webm', '.ogv'])
  */
 export function isVideoFile(path: string): boolean {
   return VIDEO_EXTENSIONS.has(getExtension(path).toLowerCase())
+}
+
+/**
+ * Whether a path names a plain-text file (case-insensitive).
+ *
+ * The browser pane renders these itself instead of loading them into the web
+ * view. See `TEXT_EXTENSIONS` for why.
+ *
+ * @example
+ * isTextFile('notes.MD') // true
+ * isTextFile('main.rs') // false
+ */
+export function isTextFile(path: string): boolean {
+  return TEXT_EXTENSIONS.has(getExtension(path).toLowerCase())
+}
+
+/**
+ * Whether a path names a Markdown document (case-insensitive).
+ *
+ * @example
+ * isMarkdownFile('README.md') // true
+ * isMarkdownFile('notes.txt') // false
+ */
+export function isMarkdownFile(path: string): boolean {
+  return MARKDOWN_EXTENSIONS.has(getExtension(path).toLowerCase())
 }
 
 /**
@@ -241,4 +273,21 @@ export function toFileUrl(absolutePath: string): string {
   }
 
   return `file://${encodeSegments(normalized)}`
+}
+
+/**
+ * Whether the browser pane renders this URL as text of its own, instead of
+ * giving it to the web view.
+ *
+ * Only a local file qualifies. A Markdown file served over http(s) stays with
+ * the web view, which is the browser the user asked for there.
+ *
+ * @example
+ * isPaneTextUrl('file:///docs/notes.md#top') // true
+ * isPaneTextUrl('file:///site/index.html') // false
+ * isPaneTextUrl('https://example.com/readme.md') // false
+ */
+export function isPaneTextUrl(url: string): boolean {
+  if (!/^file:/i.test(url)) return false
+  return isTextFile(splitFileRefSuffix(url)[0])
 }

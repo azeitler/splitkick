@@ -3,6 +3,9 @@ import {
   browsableExtensions,
   isBrowsableFile,
   isHtmlFile,
+  isMarkdownFile,
+  isPaneTextUrl,
+  isTextFile,
   isVideoFile,
   splitFileRefSuffix,
   toFileUrl,
@@ -104,6 +107,48 @@ describe('isVideoFile', () => {
     ['page.html', false],
   ])('%s -> %s', (path, expected) => {
     expect(isVideoFile(path)).toBe(expected)
+  })
+})
+
+describe('isTextFile', () => {
+  it.each([
+    ['notes.md', true],
+    ['README.MARKDOWN', true],
+    ['output.log', true],
+    ['notes.txt', true],
+    ['page.html', false],
+    ['shot.png', false],
+    ['main.rs', false],
+  ])('%s -> %s', (path, expected) => {
+    expect(isTextFile(path)).toBe(expected)
+  })
+})
+
+describe('isMarkdownFile', () => {
+  it.each([
+    ['README.md', true],
+    ['notes.Markdown', true],
+    ['notes.txt', false],
+    ['output.log', false],
+  ])('%s -> %s', (path, expected) => {
+    expect(isMarkdownFile(path)).toBe(expected)
+  })
+})
+
+describe('isPaneTextUrl', () => {
+  it.each([
+    ['file:///docs/notes.md', true],
+    ['file:///docs/notes.md#section', true],
+    ['file:///docs/output.log', true],
+    ['file:///C:/docs/notes.MD', true],
+    ['file:///site/index.html', false],
+    ['file:///shots/clip.mp4', false],
+    // A Markdown file served over http stays with the web view — the user
+    // asked for a web page there.
+    ['https://example.com/readme.md', false],
+    ['', false],
+  ])('%s -> %s', (url, expected) => {
+    expect(isPaneTextUrl(url)).toBe(expected)
   })
 })
 

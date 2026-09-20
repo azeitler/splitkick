@@ -3,6 +3,8 @@ import { getCurrentWindow } from '@tauri-apps/api/window'
 import { browserBackend } from '@/hooks/useBrowserPane'
 import { useBrowserStore } from '@/store/browser-store'
 import { isNativeApp } from '@/lib/environment'
+import { isPaneTextUrl } from '@/lib/path-utils'
+import { BrowserTextContent } from './BrowserTextContent'
 
 interface BrowserTabContentProps {
   tabId: string
@@ -51,7 +53,7 @@ async function parkAndHideIfActive(tabId: string): Promise<void> {
  *   3. Active flag flips → `browser_set_visible`.
  *   4. On unmount: hide (do NOT close — keeps history when re-mounted).
  */
-export const BrowserTabContent = memo(function BrowserTabContent({
+const BrowserWebviewContent = memo(function BrowserWebviewContent({
   tabId,
   isActive,
   relayoutNonce,
@@ -289,6 +291,45 @@ export const BrowserTabContent = memo(function BrowserTabContent({
       ref={placeholderRef}
       className="relative h-full w-full"
       data-browser-tab-id={tabId}
+    />
+  )
+})
+
+/**
+ * One browser tab's body.
+ *
+ * A local text file is rendered by React (`BrowserTextContent`); everything
+ * else goes to the native child web view. Creating no web view for a text tab
+ * is what lets its DOM show: a web view paints over the DOM beside it.
+ *
+ * Switching between the two needs no extra work. Leaving text mounts the web
+ * view, which finds no web view for the tab and creates one with the new URL.
+ * Entering text unmounts it, and its cleanup parks the web view off-screen and
+ * hides it.
+ */
+export const BrowserTabContent = memo(function BrowserTabContent({
+  tabId,
+  isActive,
+  relayoutNonce,
+}: BrowserTabContentProps) {
+  const url = useBrowserStore(
+    state =>
+      state.tabs[
+        Object.keys(state.tabs).find(wid =>
+          state.tabs[wid]?.some(t => t.id === tabId)
+        ) ?? ''
+      ]?.find(t => t.id === tabId)?.url ?? ''
+  )
+
+  if (isPaneTextUrl(url)) {
+    return <BrowserTextContent tabId={tabId} url={url} />
+  }
+
+  return (
+    <BrowserWebviewContent
+      tabId={tabId}
+      isActive={isActive}
+      relayoutNonce={relayoutNonce}
     />
   )
 })

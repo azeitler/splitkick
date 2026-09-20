@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import {
+  navigateBrowserTab,
   openUrlInEmbeddedBrowser,
   resolveBrowserSurfaceTarget,
   useBrowserTabActions,
@@ -129,5 +130,71 @@ describe('openUrlInEmbeddedBrowser', () => {
     expect(resolveBrowserSurfaceTarget()).toBeNull()
     expect(await openUrlInEmbeddedBrowser(FILE_URL)).toBe(false)
     expect(useBrowserStore.getState().tabs).toEqual({})
+  })
+})
+
+describe('navigateBrowserTab with a local text file', () => {
+  const MD_URL = 'file:///repo/NOTES.md'
+
+  const tab = (tabId: string) =>
+    (useBrowserStore.getState().tabs['wt-1'] ?? []).find(t => t.id === tabId)
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    invokeMock.mockResolvedValue(undefined)
+    useBrowserStore.setState({ tabs: {}, activeTabIds: {} })
+  })
+
+  it('renders the file instead of navigating a webview', async () => {
+    const tabId = useBrowserStore.getState().addTab('wt-1', 'https://a.test')
+
+    await navigateBrowserTab(tabId, MD_URL)
+
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'browser_navigate',
+      expect.anything()
+    )
+    expect(tab(tabId)?.url).toBe(MD_URL)
+    expect(tab(tabId)?.error).toBeNull()
+    // BrowserTextContent reads the file when the nonce changes.
+    expect(tab(tabId)?.reloadNonce).toBe(1)
+  })
+
+  it('reads the file again when the URL bar submits the same file', async () => {
+    const tabId = useBrowserStore.getState().addTab('wt-1', MD_URL)
+
+    await navigateBrowserTab(tabId, MD_URL)
+    await navigateBrowserTab(tabId, MD_URL)
+
+    expect(tab(tabId)?.reloadNonce).toBe(2)
+  })
+
+  it('leaves webview creation to the mount when the tab has none', async () => {
+    const tabId = useBrowserStore.getState().addTab('wt-1', MD_URL)
+    invokeMock.mockImplementation(async (command: string) =>
+      command === 'has_active_browser_tab' ? false : undefined
+    )
+
+    await navigateBrowserTab(tabId, 'https://example.test')
+
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'browser_navigate',
+      expect.anything()
+    )
+    expect(tab(tabId)?.url).toBe('https://example.test')
+    expect(tab(tabId)?.isLoading).toBe(true)
+  })
+
+  it('reloads a text tab by reading the file again', async () => {
+    const tabId = useBrowserStore.getState().addTab('wt-1', MD_URL)
+    const { result } = renderHook(() => useBrowserTabActions(tabId))
+
+    await result.current.reload()
+
+    expect(invokeMock).not.toHaveBeenCalledWith(
+      'browser_reload',
+      expect.anything()
+    )
+    expect(tab(tabId)?.reloadNonce).toBe(1)
   })
 })

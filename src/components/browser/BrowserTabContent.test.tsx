@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { waitFor } from '@testing-library/react'
+import { screen, waitFor } from '@testing-library/react'
 import { render } from '@/test/test-utils'
 import { BrowserTabContent } from './BrowserTabContent'
+import { useBrowserStore } from '@/store/browser-store'
+import type * as Transport from '@/lib/transport'
 
 const browserBackendMock = vi.hoisted(() => ({
   create: vi.fn(),
@@ -13,6 +15,14 @@ const browserBackendMock = vi.hoisted(() => ({
 
 vi.mock('@/hooks/useBrowserPane', () => ({
   browserBackend: browserBackendMock,
+  openUrlInEmbeddedBrowser: vi.fn(),
+}))
+
+const invokeMock = vi.hoisted(() => vi.fn())
+
+vi.mock('@/lib/transport', async importOriginal => ({
+  ...(await importOriginal<typeof Transport>()),
+  invoke: invokeMock,
 }))
 
 vi.mock('@tauri-apps/api/window', () => ({
@@ -39,6 +49,8 @@ describe('BrowserTabContent', () => {
     browserBackendMock.setVisible.mockResolvedValue(undefined)
     browserBackendMock.hasActive.mockResolvedValue(false)
     browserBackendMock.close.mockResolvedValue(undefined)
+    invokeMock.mockResolvedValue('')
+    useBrowserStore.setState({ tabs: {}, activeTabIds: {} })
   })
 
   afterEach(() => {
@@ -58,5 +70,37 @@ describe('BrowserTabContent', () => {
     })
     expect(browserBackendMock.setBounds).not.toHaveBeenCalled()
     expect(browserBackendMock.setVisible).not.toHaveBeenCalled()
+  })
+
+  it('renders a local text file itself instead of creating a webview', async () => {
+    invokeMock.mockResolvedValue('# Notes')
+    const tabId = useBrowserStore
+      .getState()
+      .addTab('wt-1', 'file:///repo/NOTES.md')
+
+    render(<BrowserTabContent tabId={tabId} isActive />)
+
+    await screen.findByText('Notes')
+    expect(browserBackendMock.create).not.toHaveBeenCalled()
+  })
+
+  it('gives a local HTML page to the webview', async () => {
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => {
+      setTimeout(() => cb(0), 0)
+      return 1
+    })
+    const tabId = useBrowserStore
+      .getState()
+      .addTab('wt-1', 'file:///repo/index.html')
+
+    render(<BrowserTabContent tabId={tabId} isActive />)
+
+    await waitFor(() => {
+      expect(browserBackendMock.create).toHaveBeenCalledWith(
+        tabId,
+        'file:///repo/index.html',
+        expect.anything()
+      )
+    })
   })
 })
