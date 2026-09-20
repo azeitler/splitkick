@@ -5705,6 +5705,189 @@ pub async fn list_worktree_files(
     Ok(files)
 }
 
+/// A chat file reference resolved against the filesystem.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedFileReference {
+    /// Best match, or `None` when nothing the caller offered exists.
+    pub path: Option<String>,
+    /// Every match that exists, best first. `path` is the first entry.
+    pub candidates: Vec<String>,
+    /// True when the worktree search ran, because no offered candidate existed.
+    pub searched: bool,
+}
+
+/// How many entries the fallback search visits before it gives up.
+const REFERENCE_SEARCH_MAX_ENTRIES: usize = 20_000;
+/// How many matches the fallback search collects before it stops.
+const REFERENCE_SEARCH_MAX_MATCHES: usize = 8;
+
+/// Remove `.` and `..` segments without touching the filesystem.
+///
+/// `fs::canonicalize` would also resolve symlinks, which turns a worktree
+/// under `/var` into `/private/var` on macOS and makes the path the user sees
+/// disagree with the one they gave.
+fn normalize_lexically(path: &Path) -> PathBuf {
+    let mut out = PathBuf::new();
+    for component in path.components() {
+        match component {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                // Keep `..` when there is nothing to pop (a relative path that
+                // climbs above its own root).
+                if !out.pop() {
+                    out.push("..");
+                }
+            }
+            other => out.push(other.as_os_str()),
+        }
+    }
+    out
+}
+
+/// Whether `relative` ends with `reference` at a separator boundary.
+///
+/// `src/lib/api.ts` matches the reference `lib/api.ts` but not `ib/api.ts`.
+fn path_tail_matches(relative: &str, reference: &str) -> bool {
+    if relative == reference {
+        return true;
+    }
+    relative
+        .strip_suffix(reference)
+        .is_some_and(|head| head.ends_with('/'))
+}
+
+/// Breadth-first search for files whose path ends with `reference`.
+///
+/// The last resort, for a reference no root and no tool call explains — a
+/// monorepo package path, or a name an agent printed with no directory at all.
+/// Bounded twice over, by entries visited and by matches collected, so a huge
+/// checkout cannot stall the click that asked for it.
+fn search_worktree_for_reference(root: &Path, reference: &str) -> Vec<PathBuf> {
+    let needle = reference.replace('\\', "/");
+    let needle = needle.trim_start_matches("./").trim_start_matches('/');
+    if needle.is_empty() {
+        return Vec::new();
+    }
+
+    let mut matches: Vec<(usize, String, PathBuf)> = Vec::new();
+    let mut visited = 0usize;
+    let mut queue: VecDeque<PathBuf> = VecDeque::new();
+    queue.push_back(root.to_path_buf());
+
+    while let Some(dir) = queue.pop_front() {
+        if visited >= REFERENCE_SEARCH_MAX_ENTRIES || matches.len() >= REFERENCE_SEARCH_MAX_MATCHES
+        {
+            break;
+        }
+        let Ok(read) = fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut entries: Vec<fs::DirEntry> = read.filter_map(|e| e.ok()).collect();
+        entries.sort_by_key(|e| e.file_name());
+
+        for entry in entries {
+            visited += 1;
+            if visited >= REFERENCE_SEARCH_MAX_ENTRIES
+                || matches.len() >= REFERENCE_SEARCH_MAX_MATCHES
+            {
+                break;
+            }
+            let name = entry.file_name();
+            if is_skipped_file_browser_dir(name.to_string_lossy().as_ref()) {
+                continue;
+            }
+            let path = entry.path();
+            let Ok(file_type) = entry.file_type() else {
+                continue;
+            };
+            let is_dir = file_type.is_dir() && !file_type.is_symlink();
+            if is_dir {
+                queue.push_back(path.clone());
+            }
+            let Ok(relative) = path.strip_prefix(root) else {
+                continue;
+            };
+            let relative = relative.to_string_lossy().replace('\\', "/");
+            if path_tail_matches(&relative, needle) {
+                // Depth first as the tie-break: a top-level README beats one
+                // buried in a fixture directory.
+                let depth = relative.matches('/').count();
+                matches.push((depth, relative, path));
+            }
+        }
+    }
+
+    matches.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+    matches.into_iter().map(|(_, _, path)| path).collect()
+}
+
+/// Resolve a file reference from a chat answer or an `@`-mention to a real path.
+///
+/// A reference in chat is a string with no context of its own. `docs/api.md`
+/// may be relative to the worktree, to a package inside it, to a linked
+/// project, or to wherever a tool happened to run. The caller orders the
+/// candidates it can infer — paths the session's tool calls actually touched
+/// come first, then root joins — and this checks which of them exist. When
+/// none do, a bounded search under `search_root` looks for a path that ends
+/// with the reference.
+///
+/// Returning every match, not only the first, lets the UI ask the user which
+/// `README.md` they meant instead of guessing.
+pub async fn resolve_file_reference(
+    reference: String,
+    candidates: Vec<String>,
+    search_root: Option<String>,
+) -> Result<ResolvedFileReference, String> {
+    log::trace!(
+        "Resolving file reference {reference} against {} candidates",
+        candidates.len()
+    );
+
+    tokio::task::spawn_blocking(move || {
+        let mut found: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+        for candidate in &candidates {
+            if candidate.is_empty() {
+                continue;
+            }
+            let path = normalize_lexically(Path::new(candidate));
+            let display = path.to_string_lossy().to_string();
+            if !seen.insert(display.clone()) {
+                continue;
+            }
+            if path.exists() {
+                found.push(display);
+            }
+        }
+
+        let mut searched = false;
+        if found.is_empty() {
+            if let Some(root) = search_root.as_deref().filter(|r| !r.is_empty()) {
+                let root = Path::new(root);
+                if root.is_dir() {
+                    searched = true;
+                    for path in search_worktree_for_reference(root, &reference) {
+                        let display = path.to_string_lossy().to_string();
+                        if seen.insert(display.clone()) {
+                            found.push(display);
+                        }
+                    }
+                }
+            }
+        }
+
+        ResolvedFileReference {
+            path: found.first().cloned(),
+            candidates: found,
+            searched,
+        }
+    })
+    .await
+    .map_err(|e| format!("Failed to resolve file reference: {e}"))
+}
+
 /// Get available branches for a project (prefers remote branches if available)
 ///
 /// This command fetches from origin first to get the latest branches,
@@ -14068,6 +14251,164 @@ mod tests {
         assert!(!is_skipped_file_browser_dir(".env"));
         assert!(!is_skipped_file_browser_dir("src"));
         assert!(!is_skipped_file_browser_dir("app"));
+    }
+
+    #[test]
+    fn path_tail_matches_only_at_a_separator() {
+        assert!(path_tail_matches("src/lib/api.ts", "lib/api.ts"));
+        assert!(path_tail_matches("src/lib/api.ts", "api.ts"));
+        assert!(path_tail_matches("api.ts", "api.ts"));
+        // A partial segment is not a match.
+        assert!(!path_tail_matches("src/lib/api.ts", "ib/api.ts"));
+        assert!(!path_tail_matches("src/lib/api.ts", "pi.ts"));
+    }
+
+    #[test]
+    fn normalize_lexically_drops_dot_segments_without_touching_disk() {
+        assert_eq!(
+            normalize_lexically(Path::new("/repo/packages/../docs/./api.md")),
+            PathBuf::from("/repo/docs/api.md")
+        );
+        // Nothing to pop: the climb is kept rather than silently dropped.
+        assert_eq!(
+            normalize_lexically(Path::new("../outside.md")),
+            PathBuf::from("../outside.md")
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_takes_the_first_candidate_that_exists() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("packages/web/docs")).expect("docs");
+        std::fs::write(root.join("packages/web/docs/api.md"), "ok\n").expect("api");
+
+        let missing = root.join("docs/api.md").to_string_lossy().to_string();
+        let real = root
+            .join("packages/web/docs/api.md")
+            .to_string_lossy()
+            .to_string();
+
+        let resolved = resolve_file_reference(
+            "docs/api.md".to_string(),
+            vec![missing.clone(), real.clone()],
+            None,
+        )
+        .await
+        .expect("resolve");
+
+        assert_eq!(resolved.path.as_deref(), Some(real.as_str()));
+        assert_eq!(resolved.candidates, vec![real]);
+        assert!(!resolved.searched);
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_reports_every_match_for_the_picker() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("a")).expect("a");
+        std::fs::create_dir_all(root.join("b")).expect("b");
+        std::fs::write(root.join("a/README.md"), "a\n").expect("a readme");
+        std::fs::write(root.join("b/README.md"), "b\n").expect("b readme");
+
+        let a = root.join("a/README.md").to_string_lossy().to_string();
+        let b = root.join("b/README.md").to_string_lossy().to_string();
+
+        let resolved =
+            resolve_file_reference("README.md".to_string(), vec![a.clone(), b.clone()], None)
+                .await
+                .expect("resolve");
+
+        assert_eq!(resolved.candidates, vec![a.clone(), b]);
+        assert_eq!(resolved.path.as_deref(), Some(a.as_str()));
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_searches_the_worktree_when_no_candidate_exists() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("packages/web/src")).expect("nested");
+        std::fs::write(root.join("packages/web/src/app.tsx"), "x\n").expect("app");
+
+        let resolved = resolve_file_reference(
+            "src/app.tsx".to_string(),
+            vec![root.join("src/app.tsx").to_string_lossy().to_string()],
+            Some(root.to_string_lossy().to_string()),
+        )
+        .await
+        .expect("resolve");
+
+        assert!(resolved.searched);
+        assert_eq!(
+            resolved.path,
+            Some(
+                root.join("packages/web/src/app.tsx")
+                    .to_string_lossy()
+                    .to_string()
+            )
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_search_prefers_the_shallowest_match() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("docs")).expect("docs");
+        std::fs::create_dir_all(root.join("packages/web/docs")).expect("nested docs");
+        std::fs::write(root.join("docs/guide.md"), "top\n").expect("top");
+        std::fs::write(root.join("packages/web/docs/guide.md"), "deep\n").expect("deep");
+
+        let resolved = resolve_file_reference(
+            "docs/guide.md".to_string(),
+            Vec::new(),
+            Some(root.to_string_lossy().to_string()),
+        )
+        .await
+        .expect("resolve");
+
+        assert_eq!(
+            resolved.path,
+            Some(root.join("docs/guide.md").to_string_lossy().to_string())
+        );
+        assert_eq!(resolved.candidates.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_skips_heavy_directories_while_searching() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("node_modules/pkg")).expect("node_modules");
+        std::fs::write(root.join("node_modules/pkg/notes.md"), "vendored\n").expect("vendored");
+
+        let resolved = resolve_file_reference(
+            "notes.md".to_string(),
+            Vec::new(),
+            Some(root.to_string_lossy().to_string()),
+        )
+        .await
+        .expect("resolve");
+
+        assert!(resolved.searched);
+        assert_eq!(resolved.path, None);
+        assert!(resolved.candidates.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_reports_nothing_when_the_file_is_gone() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+
+        let resolved = resolve_file_reference(
+            "deleted.md".to_string(),
+            vec![root.join("deleted.md").to_string_lossy().to_string()],
+            None,
+        )
+        .await
+        .expect("resolve");
+
+        assert_eq!(resolved.path, None);
+        assert!(resolved.candidates.is_empty());
+        assert!(!resolved.searched);
     }
 
     #[tokio::test]

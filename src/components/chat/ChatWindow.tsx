@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { useFileReferenceEvidence } from '@/lib/file-reference'
 import { ChatSearchBar } from './ChatSearchBar'
 import { Button } from '@/components/ui/button'
 import {
@@ -2867,6 +2868,14 @@ export function ChatWindow({
       currentToolCalls,
     ]
   )
+
+  // Let the links and @-mentions inside this thread resolve their own paths
+  // against the files it has actually touched (src/lib/file-reference.ts).
+  useFileReferenceEvidence({
+    worktreePath: activeWorktreePath,
+    messages,
+    isSending,
+  })
 
   // Staleness hint for a session you are returning to. Suppressed while the
   // session is live and below an hour, so it never nags during normal use.

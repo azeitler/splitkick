@@ -77,6 +77,18 @@ export function joinPaths(root: string, relative: string): string {
   return `${cleanRoot}${sep}${cleanRelative}`
 }
 
+/**
+ * Whether a path is absolute (POSIX root or a Windows drive).
+ *
+ * @example
+ * isAbsolutePath('/repo/docs/api.md') // true
+ * isAbsolutePath('C:\\repo\\api.md') // true
+ * isAbsolutePath('docs/api.md') // false
+ */
+export function isAbsolutePath(path: string): boolean {
+  return path.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(path)
+}
+
 /** Extensions a web view renders as a page when it loads the file from disk. */
 const HTML_EXTENSIONS = new Set(['.html', '.htm', '.xhtml', '.xht', '.shtml'])
 

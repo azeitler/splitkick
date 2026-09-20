@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { FileIcon, FolderIcon, Loader2 } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import {
@@ -11,7 +11,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import { getExtension, getExtensionColor } from '@/lib/file-colors'
-import { getFilename } from '@/lib/path-utils'
+import { getFilename, joinPaths } from '@/lib/path-utils'
+import { useFileReference } from '@/lib/file-reference'
+import { FileReferencePicker } from '@/components/ui/file-reference-picker'
 import {
   Tooltip,
   TooltipTrigger,
@@ -36,18 +38,15 @@ interface FileMentionBadgeProps {
   isDirectory?: boolean
 }
 
-function isAbsolutePath(path: string): boolean {
-  return path.startsWith('/') || /^[A-Za-z]:[\\/]/.test(path)
-}
-
-function joinPath(root: string, relativePath: string): string {
-  if (!root) return relativePath
-  return `${root.replace(/[\\/]+$/, '')}/${relativePath.replace(/^[\\/]+/, '')}`
-}
-
 /**
  * Displays a file mention as a clickable badge that opens a preview dialog
  * Used in chat messages to show @mentioned files
+ *
+ * The mention is stored as the user typed it, which says nothing about where
+ * the file is. `useFileReference` resolves it against the session — the paths
+ * its tool calls touched first, then the roots — and confirms the file is
+ * there. A mention that resolves to nothing is not clickable, instead of
+ * opening a dialog that reports "File not found".
  */
 export function FileMentionBadge({
   path,
@@ -61,24 +60,26 @@ export function FileMentionBadge({
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const [pickerOpen, setPickerOpen] = useState(false)
+
   const filename = getFilename(path)
   const extension = getExtension(path)
 
-  const handleOpen = useCallback(async () => {
-    // Directories don't have a preview dialog
-    if (isDirectory) return
+  const extraRoots = useMemo(
+    () =>
+      [sourceRootPath, worktreePath].filter((root): root is string => !!root),
+    [sourceRootPath, worktreePath]
+  )
+  const reference = useFileReference(path, { extraRoots })
+  const isMissing = reference.status === 'missing'
 
-    setIsOpen(true)
-
-    // Load content on-demand if not already loaded
-    if (content === null && !isLoading) {
+  const loadFile = useCallback(
+    async (absolutePath: string) => {
+      setIsOpen(true)
+      if (content !== null || isLoading) return
       setIsLoading(true)
       setError(null)
       try {
-        // Resolve absolute path from explicit source root, worktree, or already-absolute marker path
-        const absolutePath = isAbsolutePath(path)
-          ? path
-          : joinPath(sourceRootPath ?? worktreePath, path)
         const fileContent = await invoke<string>('read_file_content', {
           path: absolutePath,
         })
@@ -88,40 +89,71 @@ export function FileMentionBadge({
       } finally {
         setIsLoading(false)
       }
+    },
+    [content, isLoading]
+  )
+
+  const handleOpen = useCallback(() => {
+    // Directories don't have a preview dialog
+    if (isDirectory || isMissing) return
+    if (reference.status === 'ambiguous') {
+      setPickerOpen(true)
+      return
     }
-  }, [content, isLoading, isDirectory, path, sourceRootPath, worktreePath])
+    // While the resolution is still in flight, fall back to the mention as
+    // written — the preview reports its own read error if that is wrong.
+    void loadFile(reference.path ?? joinPaths(extraRoots[0] ?? '', path))
+  }, [isDirectory, isMissing, reference, loadFile, extraRoots, path])
+
+  const badge = (
+    <button
+      type="button"
+      onClick={handleOpen}
+      data-file-reference={reference.status}
+      aria-disabled={isMissing || undefined}
+      className={cn(
+        'flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/50 bg-muted/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
+        isDirectory || isMissing
+          ? 'cursor-default'
+          : 'cursor-pointer hover:border-primary/50',
+        isMissing && 'opacity-60 border-dashed'
+      )}
+    >
+      {isDirectory ? (
+        <FolderIcon className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+      ) : (
+        <FileIcon
+          className={cn('h-3.5 w-3.5 shrink-0', getExtensionColor(extension))}
+        />
+      )}
+      <span className="text-xs font-medium truncate max-w-[120px]">
+        {isDirectory ? `${filename}/` : filename}
+      </span>
+    </button>
+  )
+
+  const label = sourceProjectName ? `${sourceProjectName}: ${path}` : path
 
   return (
     <>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={handleOpen}
-            className={cn(
-              'flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border/50 bg-muted/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2',
-              isDirectory
-                ? 'cursor-default'
-                : 'cursor-pointer hover:border-primary/50'
-            )}
-          >
-            {isDirectory ? (
-              <FolderIcon className="h-3.5 w-3.5 shrink-0 text-blue-400" />
-            ) : (
-              <FileIcon
-                className={cn(
-                  'h-3.5 w-3.5 shrink-0',
-                  getExtensionColor(extension)
-                )}
-              />
-            )}
-            <span className="text-xs font-medium truncate max-w-[120px]">
-              {isDirectory ? `${filename}/` : filename}
-            </span>
-          </button>
+          {reference.status === 'ambiguous' ? (
+            <FileReferencePicker
+              candidates={reference.candidates}
+              rootPath={reference.root ?? extraRoots[0]}
+              open={pickerOpen}
+              onOpenChange={setPickerOpen}
+              onSelect={selected => void loadFile(selected)}
+            >
+              {badge}
+            </FileReferencePicker>
+          ) : (
+            badge
+          )}
         </TooltipTrigger>
         <TooltipContent>
-          {sourceProjectName ? `${sourceProjectName}: ${path}` : path}
+          {isMissing ? `${label} — no file here by that name` : label}
         </TooltipContent>
       </Tooltip>
 

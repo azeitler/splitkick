@@ -1,25 +1,34 @@
-import { useContext, type MouseEvent, type ReactNode } from 'react'
+import { useContext, useState, type MouseEvent, type ReactNode } from 'react'
 import { ExternalLink } from 'lucide-react'
 import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
 } from '@/components/ui/tooltip'
+import { FileReferencePicker } from '@/components/ui/file-reference-picker'
 import {
   canOpenInEmbeddedBrowser,
   classifyChatLink,
   LocalPathRootContext,
   openChatLink,
 } from '@/lib/chat-links'
+import { useFileReference } from '@/lib/file-reference'
 
 const LINK_CLASS = 'underline underline-offset-2 hover:text-foreground'
 
 /**
- * Markdown link. Web links and local HTML pages open in the embedded
- * browser; the button after the link and Cmd/Ctrl-click open them in the
- * system browser. Other local files open in the file viewer. Links carry
- * `data-chat-link`, so the global external-link interceptor leaves them to
- * this component.
+ * Markdown link. Web links and local pages open in the embedded browser; the
+ * button after the link and Cmd/Ctrl-click open them in the system browser.
+ * Other local files open in the file viewer. Links carry `data-chat-link`, so
+ * the global external-link interceptor leaves them to this component.
+ *
+ * A local reference is resolved before it is drawn (`useFileReference`):
+ *
+ * - One file → a link that opens exactly that file, wherever it turned out
+ *   to be, rather than whatever the worktree root plus the reference spells.
+ * - Several → a link that asks which one.
+ * - None → plain text. A link that can only open an error is worse than no
+ *   link, because it looks the same as one that works.
  */
 export function MarkdownLink({
   href,
@@ -30,6 +39,11 @@ export function MarkdownLink({
 }) {
   const rootPath = useContext(LocalPathRootContext)
   const kind = classifyChatLink(href)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const reference = useFileReference(href, {
+    enabled: kind === 'page' || kind === 'file',
+  })
+
   if (!kind) {
     return (
       <a
@@ -43,32 +57,76 @@ export function MarkdownLink({
     )
   }
 
-  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (
-      openChatLink(href, { system: event.metaKey || event.ctrlKey, rootPath })
-    ) {
-      event.preventDefault()
-    }
+  const open = (system: boolean, path?: string | null) =>
+    openChatLink(href, {
+      system,
+      rootPath,
+      resolvedPath: path ?? reference.path,
+    })
+
+  if (reference.status === 'missing') {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            data-file-reference="missing"
+            className="underline decoration-dotted underline-offset-2 text-muted-foreground"
+          >
+            {children}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent>No file here by that name</TooltipContent>
+      </Tooltip>
+    )
   }
+
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    const system = event.metaKey || event.ctrlKey
+    if (reference.status === 'ambiguous' && !system) {
+      event.preventDefault()
+      setPickerOpen(true)
+      return
+    }
+    if (open(system)) event.preventDefault()
+  }
+
+  const link = (
+    <a
+      href={href}
+      data-chat-link=""
+      data-file-reference={
+        reference.status === 'disabled' ? undefined : reference.status
+      }
+      onClick={handleClick}
+      className={LINK_CLASS}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      {children}
+    </a>
+  )
 
   return (
     <>
-      <a
-        href={href}
-        data-chat-link=""
-        onClick={handleClick}
-        className={LINK_CLASS}
-        target="_blank"
-        rel="noopener noreferrer"
-      >
-        {children}
-      </a>
+      {reference.status === 'ambiguous' ? (
+        <FileReferencePicker
+          candidates={reference.candidates}
+          rootPath={reference.root ?? rootPath}
+          open={pickerOpen}
+          onOpenChange={setPickerOpen}
+          onSelect={path => open(false, path)}
+        >
+          {link}
+        </FileReferencePicker>
+      ) : (
+        link
+      )}
       {canOpenInEmbeddedBrowser(kind) && (
         <Tooltip>
           <TooltipTrigger asChild>
             <button
               type="button"
-              onClick={() => openChatLink(href, { system: true, rootPath })}
+              onClick={() => open(true)}
               aria-label="Open in system browser"
               className="ml-0.5 inline-flex cursor-pointer rounded-sm p-0.5 align-middle text-muted-foreground opacity-60 transition-opacity hover:bg-muted hover:text-foreground hover:opacity-100"
             >

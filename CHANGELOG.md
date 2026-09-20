@@ -27,6 +27,22 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A file named in chat opens the file that was meant.** Clicking a path in an
+  answer, or an `@`-mention, joined it onto the worktree root and hoped. In a
+  monorepo, or for a file an agent wrote inside a package, that names a file
+  which is not there, and the viewer opened on "File not found". Which file a
+  link pointed at could even change with the worktree selected when you clicked.
+
+  Jean now works out where the file is before it draws the link. The paths this
+  session's own tool calls touched come first — a Read or an Edit records
+  exactly where the agent was — then the worktree and any linked project, and
+  failing all of those Jean searches the worktree for a path that ends with the
+  reference. A reference that matches several files (twelve packages, one
+  `README.md` each) asks which one you mean instead of choosing for you. A
+  reference that matches nothing is no longer drawn as a link: the text stays,
+  and says why when you point at it. A file the agent writes during the turn
+  becomes a link by itself when the turn ends.
+
 - **The chat composer stays above the keyboard on a phone.** Tapping the input
   used to push the composer and its toolbar under the on-screen keyboard, so you
   typed into a box you could not see. iOS Safari does not shrink the page for the

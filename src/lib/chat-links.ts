@@ -35,16 +35,19 @@ export type ChatLinkKind = 'web' | 'page' | 'file'
 export const LocalPathRootContext = createContext<string | null>(null)
 
 /**
- * Resolve a markdown link/image reference to a local filesystem path.
- * Absolute paths (POSIX, Windows drive, file://) are returned decoded;
- * relative paths resolve against `rootPath`, or the active worktree when it
- * is not given. Returns null for anchors, other URL schemes, or relative
- * paths without a root.
+ * Strip a reference down to the path it names, without resolving it.
+ *
+ * Drops a `file://` scheme, percent-decodes, and refuses an anchor or any
+ * other URL scheme. The result may still be relative — deciding what it is
+ * relative to is the caller's job (`resolveLocalPath` joins it against one
+ * root; `buildFileReferenceCandidates` offers several).
+ *
+ * @example
+ * toLocalReferencePath('file:///my%20docs/api.md') // '/my docs/api.md'
+ * toLocalReferencePath('docs/api.md') // 'docs/api.md'
+ * toLocalReferencePath('https://example.com/a.md') // null
  */
-export function resolveLocalPath(
-  ref: string | undefined,
-  rootPath?: string | null
-): string | null {
+export function toLocalReferencePath(ref: string | undefined): string | null {
   if (!ref || ref.startsWith('#')) return null
 
   let path = ref
@@ -55,10 +58,26 @@ export function resolveLocalPath(
   }
 
   try {
-    path = decodeURIComponent(path)
+    return decodeURIComponent(path)
   } catch {
     // Malformed percent-encoding: keep the raw reference.
+    return path
   }
+}
+
+/**
+ * Resolve a markdown link/image reference to a local filesystem path.
+ * Absolute paths (POSIX, Windows drive, file://) are returned decoded;
+ * relative paths resolve against `rootPath`, or the active worktree when it
+ * is not given. Returns null for anchors, other URL schemes, or relative
+ * paths without a root.
+ */
+export function resolveLocalPath(
+  ref: string | undefined,
+  rootPath?: string | null
+): string | null {
+  const path = toLocalReferencePath(ref)
+  if (path === null) return null
 
   if (path.startsWith('/') || WINDOWS_DRIVE_RE.test(path)) return path
 
@@ -128,7 +147,17 @@ export function openChatLink(
   {
     system = false,
     rootPath,
-  }: { system?: boolean; rootPath?: string | null } = {}
+    resolvedPath,
+  }: {
+    system?: boolean
+    rootPath?: string | null
+    /**
+     * The path `useFileReference` confirmed exists. Given, it wins: it was
+     * resolved against the session's tool calls and checked on disk, where
+     * `rootPath` can only join and hope.
+     */
+    resolvedPath?: string | null
+  } = {}
 ): boolean {
   const kind = classifyChatLink(href)
   if (!href || !kind) return false
@@ -148,7 +177,12 @@ export function openChatLink(
   }
 
   if (kind === 'page' && canOpenInEmbeddedBrowser(kind)) {
-    const page = resolvePageUrl(href, rootPath)
+    const page = resolvedPath
+      ? {
+          path: resolvedPath,
+          url: `${toFileUrl(resolvedPath)}${splitFileRefSuffix(href)[1]}`,
+        }
+      : resolvePageUrl(href, rootPath)
     if (!page) return false
     if (system) {
       openPathInSystem(page.path)
@@ -160,10 +194,12 @@ export function openChatLink(
     return true
   }
 
-  const path = resolveLocalPath(
-    kind === 'page' ? splitFileRefSuffix(href)[0] : href,
-    rootPath
-  )
+  const path =
+    resolvedPath ??
+    resolveLocalPath(
+      kind === 'page' ? splitFileRefSuffix(href)[0] : href,
+      rootPath
+    )
   if (!path) return false
   useUIStore.getState().setViewingFilePath(path)
   return true

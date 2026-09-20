@@ -772,6 +772,14 @@ pub async fn dispatch_command(
             let result = crate::projects::list_worktree_files(worktree_path, max_files).await?;
             to_value(result)
         }
+        "resolve_file_reference" => {
+            let reference: String = from_field(&args, "reference")?;
+            let candidates: Vec<String> = from_field(&args, "candidates")?;
+            let search_root: Option<String> = field_opt(&args, "searchRoot", "search_root")?;
+            let result =
+                crate::projects::resolve_file_reference(reference, candidates, search_root).await?;
+            to_value(result)
+        }
 
         // =====================================================================
         // GitHub Issues & PRs
