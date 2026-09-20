@@ -59,12 +59,12 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('Some recent sessions could')
     expect(source).toContain('selectedSessionId')
     expect(source).toContain('getRecentSessionStatus(row.session')
-    expect(source).toContain('executingModes[row.session.id]')
-    expect(source).toContain('executionModes[row.session.id]')
-    expect(source).toContain('row.session.last_run_execution_mode')
-    expect(source).toContain('row.session.selected_execution_mode')
-    expect(source).toContain("executionMode === 'plan' ? 'planning' : 'vibing'")
-    expect(source).toContain('{modeLabel}')
+    expect(source).toContain("const isWorking = status.tone === 'working'")
+    expect(source).toContain('{isWorking && (')
+    expect(source).toContain('vibing')
+    expect(source).not.toContain('planning')
+    expect(source).not.toContain('executingModes[row.session.id]')
+    expect(source).not.toContain('executionModes[row.session.id]')
     expect(source).toContain(
       'absolute right-3 top-2 text-[10px] text-muted-foreground'
     )

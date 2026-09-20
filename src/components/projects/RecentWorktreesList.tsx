@@ -71,8 +71,6 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
     state => state.waitingForInputSessionIds
   )
   const namingSessionIds = useChatStore(state => state.namingSessionIds)
-  const executionModes = useChatStore(state => state.executionModes)
-  const executingModes = useChatStore(state => state.executingModes)
   const [limit, setLimit] = useState(INITIAL_RECENT_LIMIT)
   const [showSnoozed, setShowSnoozed] = useState(false)
   const rowRefs = useRef(new Map<string, HTMLButtonElement>())
@@ -233,13 +231,7 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                 : status.tone === 'failed'
                   ? 'text-red-600 dark:text-red-400'
                   : 'text-muted-foreground'
-            const executionMode =
-              executingModes[row.session.id] ??
-              executionModes[row.session.id] ??
-              row.session.last_run_execution_mode ??
-              row.session.selected_execution_mode ??
-              'plan'
-            const modeLabel = executionMode === 'plan' ? 'planning' : 'vibing'
+            const isWorking = status.tone === 'working'
             return (
               <li key={row.session.id}>
                 {showSnoozed &&
@@ -259,7 +251,7 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   }}
                   type="button"
                   aria-current={isCurrent ? 'page' : undefined}
-                  aria-label={`${row.session.name}, ${row.projectName}, ${row.worktree.name}, ${modeLabel}, ${status.label}, ${activityLabel}`}
+                  aria-label={`${row.session.name}, ${row.projectName}, ${row.worktree.name}, ${status.label}, ${activityLabel}`}
                   className={`relative flex w-full items-center gap-2 rounded-lg border px-3 py-2.5 text-left transition-[background-color,border-color,box-shadow,color] hover:bg-muted/30 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${isCurrent ? 'border-border bg-muted/50 text-foreground shadow' : 'border-transparent bg-transparent text-muted-foreground'}`}
                   onClick={() => handleOpen(row)}
                 >
@@ -274,9 +266,11 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                     </span>
                   </span>
                   <span className="flex w-14 shrink-0 flex-col items-end gap-1 pt-4 text-[10px] tabular-nums">
-                    <span className="absolute right-3 top-2 text-[10px] text-muted-foreground">
-                      {modeLabel}
-                    </span>
+                    {isWorking && (
+                      <span className="absolute right-3 top-2 text-[10px] text-muted-foreground">
+                        vibing
+                      </span>
+                    )}
                     <span className="flex items-center gap-1.5">
                       {!['working', 'completed'].includes(status.tone) && (
                         <span className={`font-medium ${statusClassName}`}>
