@@ -184,13 +184,25 @@ Additional systems (no dedicated docs yet):
   filesystem path to `ssh://[user@]host[:port]/path` and launches the local
   `zed` CLI (SSH fields live on the remote connection profile).
 
-  When an established WebSocket disconnects, the frontend reloads the page
-  instead of repairing stale in-memory state. The normal
-  HTTP bootstrap then restores current persisted state, while backend-owned
-  jobs and terminals keep running. Before reload, the current canvas session
-  modal and active session are copied to short-lived `sessionStorage` so the
-  same session header is restored even if the debounced UI-state save has not
-  completed yet.
+  When an established WebSocket disconnects, **browser web access recovers in
+  place** — it does not reload the page. A mobile browser drops the socket every
+  time it suspends a background tab, and reloading there would discard the
+  composer draft, the scroll position and every open modal whenever the user
+  switches app. Instead `WsTransport` reconnects with backoff (the
+  `allowReconnect` guard in `src/lib/transport.ts`, gated on `!isNativeApp()`),
+  and on the second and later connects `App.tsx` calls
+  `refetchBootstrapData()` plus `queryClient.invalidateQueries()`. That replays
+  the events missed while the socket was down — dedup is by sequence number in
+  `handleMessage`, so nothing is applied twice — and refetches every query,
+  which is the in-memory equivalent of the old reload. A server that shipped new
+  frontend code still prompts for a real reload through
+  `checkWebClientVersion`.
+
+  **Native remote clients keep the reload-free recovery UI they had**
+  (`RemoteConnectionRecovery`) and never open a second socket. The current
+  canvas session modal and active session are still copied to short-lived
+  `sessionStorage` (`captureWebReloadState`), which covers a manual or
+  stale-version reload.
   1. **Backend PTY registry** (`src-tauri/src/terminal/registry.rs`) keeps the
      real `portable_pty` process alive in `TERMINAL_SESSIONS` keyed by
      `terminal_id`. The frontend is a viewer; refresh never kills the PTY.

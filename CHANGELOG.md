@@ -23,6 +23,27 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Web Access stops reloading the page when you leave the tab.** On a phone this
+  happened constantly: switch to another app, take a call, lock the screen, and
+  coming back to Jean threw away your composer draft, your place in the
+  conversation and any dialog you had open.
+
+  A mobile browser suspends a background tab and closes its WebSocket. Jean
+  treated any dropped connection as a reason to reload the page, because a fresh
+  page was the simplest way to rebuild its in-memory state. That trade made sense
+  on a desktop, where the socket almost never drops, and was painful everywhere
+  else.
+
+  Jean now reconnects instead. When the socket comes back it re-runs the same
+  bootstrap request the page start uses, replays the events it missed while it
+  was away, and refetches its data — everything a reload did, without discarding
+  what you were typing. Long-running work was never at risk: sessions and
+  terminals live in the backend and keep going regardless.
+
+  If the desktop app was updated while you were away, Jean still asks you to
+  reload, because the page's code is genuinely out of date. Native remote clients
+  keep the recovery screen they had.
+
 - **Claude asks you questions and presents plans again.** Since Claude Code
   2.1.187 a Claude session could not show the question picker or a plan to
   approve: it fell back to a plain-text numbered list, and plan mode ended

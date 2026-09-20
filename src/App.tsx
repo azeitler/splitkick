@@ -13,6 +13,7 @@ import {
   useWsConnectionStatus,
   useWsAuthError,
   preloadInitialData,
+  refetchBootstrapData,
   setAppDataDir,
   hasPreloadedData,
   listen,
@@ -881,7 +882,11 @@ function App() {
   // listeners attach; WS buffers events until React listeners register.
   // Native remote clients keep the shell and show RemoteConnectionRecovery —
   // dismiss open overlays so they cannot trap pointer events (issue #623).
-  // Pure web-access reloads so in-memory UI state is rebuilt cleanly.
+  // Pure web access recovers in place: a mobile browser drops the socket every
+  // time it suspends a background tab, and reloading there would discard the
+  // composer draft, the scroll position and every open modal whenever the user
+  // switches app. The transport reconnects and the effect below re-bootstraps.
+  // The captured modal state still covers a manual or stale-version reload.
   useEffect(() => {
     if (!webBackend) return
 
@@ -890,9 +895,8 @@ function App() {
         dismissTransientUi()
         return
       }
-      logger.info('WebSocket disconnected, reloading web app')
+      logger.info('WebSocket disconnected, reconnecting web app in place')
       captureWebReloadState()
-      window.location.reload()
     })
   }, [captureWebReloadState, webBackend])
 
@@ -910,13 +914,32 @@ function App() {
   // One-time: detect installed backends and set magic prompt defaults accordingly
   useMagicPromptAutoDefaults()
 
-  // A fresh page bootstrap is faster and more reliable than repairing stale
-  // in-memory state. The backend keeps long-running jobs and
-  // terminals alive, so reloading behaves like reopening Jean without losing
-  // backend work.
+  // The backend keeps long-running jobs and terminals alive across a dropped
+  // socket, so recovery only has to refresh the client's view of them.
   const wsConnected = useWsConnectionStatus()
+  const wsWasConnectedRef = useRef(false)
   useEffect(() => {
     if (!webBackend || !wsConnected) return
+
+    // Reconnect after a suspended tab or a dropped socket. Re-run the HTTP
+    // bootstrap for the events missed while the socket was down (replay is
+    // deduplicated by sequence number) and refetch every query, which is the
+    // in-memory equivalent of the page reload this used to do.
+    if (wsWasConnectedRef.current) {
+      logger.info('WebSocket reconnected, re-running bootstrap')
+      refetchBootstrapData(useProjectsStore.getState().selectedProjectId)
+        .then(data => {
+          if (!data) return
+          checkWebClientVersion(data)
+          ingestBootstrapEvents(data.replayEvents ?? [])
+        })
+        .catch(error => {
+          logger.warn('Failed to re-bootstrap after reconnect', { error })
+        })
+      queryClient.invalidateQueries()
+      return
+    }
+    wsWasConnectedRef.current = true
 
     // First connect: invalidate non-preloaded queries. If the HTTP preload
     // failed, invalidate everything so it fetches over the open WebSocket.

@@ -571,15 +571,31 @@ describe('transport bootstrap', () => {
     )
   })
 
-  it('does not open a second socket after an established connection closes', async () => {
+  it('reopens the socket in browser web access after an established close', async () => {
+    // A mobile browser drops the socket whenever it suspends a background tab.
+    // Reconnecting in place is what keeps the page from reloading there.
     const transport = await loadTransportModule()
 
     transport.connectTransport()
-    await flushAsync()
+    // Wait for the connection to be *established* — before that a retry is
+    // expected regardless, so it would not prove anything.
+    await waitFor(() => expect(transport.isTransportConnected()).toBe(true))
 
-    const firstWs = getWs(0)
-    firstWs.close()
-    await new Promise(resolve => setTimeout(resolve, 150))
+    getWs(0).close()
+    await waitFor(() =>
+      expect(MockWebSocket.instances.length).toBeGreaterThan(1)
+    )
+  })
+
+  it('does not reopen the socket for a native remote client', async () => {
+    // Native remotes keep the shell and show RemoteConnectionRecovery instead.
+    const transport = await loadRemoteNativeTransportModule()
+
+    transport.connectTransport()
+    await waitFor(() => expect(transport.isTransportConnected()).toBe(true))
+
+    getWs(0).close()
+    await new Promise(resolve => setTimeout(resolve, 200))
     await flushAsync()
 
     expect(MockWebSocket.instances).toHaveLength(1)

@@ -438,22 +438,44 @@ export async function preloadInitialData(
     return null
   if (initialDataPromise) return initialDataPromise
 
-  initialDataPromise = (async () => {
-    try {
-      const url = buildInitUrl({ selectedProjectId })
-      const response = await fetchBackend(url)
-      if (!response.ok) {
-        return null
-      }
-      const data = await response.json()
-      initialDataResolved = true
-      return data as InitialData
-    } catch {
-      return null
-    }
-  })()
+  initialDataPromise = fetchInitialData(selectedProjectId)
 
   return initialDataPromise
+}
+
+async function fetchInitialData(
+  selectedProjectId?: string | null
+): Promise<InitialData | null> {
+  try {
+    const url = buildInitUrl({ selectedProjectId })
+    const response = await fetchBackend(url)
+    if (!response.ok) {
+      return null
+    }
+    const data = await response.json()
+    initialDataResolved = true
+    return data as InitialData
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Fetch a fresh bootstrap payload, bypassing the one-shot preload cache.
+ *
+ * Browser web access calls this after it reconnects: the events missed while
+ * the socket was down come back in `replayEvents`, and the sequence-number
+ * dedup in `handleMessage` makes replaying them safe.
+ */
+export async function refetchBootstrapData(
+  selectedProjectId?: string | null
+): Promise<InitialData | null> {
+  if (!usesWebSocketBackend()) return null
+  setWebAccessEnabled(true)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (typeof window !== 'undefined' && (window as any).__JEAN_E2E_MOCK__)
+    return null
+  return fetchInitialData(selectedProjectId)
 }
 
 /**
@@ -542,8 +564,8 @@ class WsTransport {
 
   constructor() {
     // Mobile browsers suspend background tabs and freeze JS timers. Check the
-    // socket immediately on wake so a stale established connection triggers
-    // the app reload without waiting for the periodic liveness timer.
+    // socket immediately on wake so a stale established connection reconnects
+    // without waiting for the periodic liveness timer.
     if (typeof window !== 'undefined') {
       document.addEventListener('visibilitychange', this.handleWake)
       window.addEventListener('online', this.handleWake)
@@ -553,6 +575,20 @@ class WsTransport {
 
   get connected(): boolean {
     return this._connected
+  }
+
+  /**
+   * Pure browser web access recovers *in place*: a mobile browser drops the
+   * socket whenever it suspends a background tab, and reloading the page there
+   * would throw away composer drafts, scroll position and open modals every
+   * time the user switches app. Reconnect and re-run the HTTP bootstrap
+   * instead — replay is deduplicated by sequence number
+   * (see `_lastSeqBySession`), so no event is applied twice.
+   *
+   * Native remote clients keep their explicit `RemoteConnectionRecovery` flow.
+   */
+  private get allowReconnect(): boolean {
+    return !isNativeApp() && !this._authError
   }
 
   get authError(): string | null {
@@ -598,9 +634,10 @@ class WsTransport {
   /** Connect to the WebSocket server (validates token first). */
   connect(): void {
     if (!this._connectEnabled) return
-    // Established connections recover through a full page reload, never a
-    // second in-memory WebSocket connection.
-    if (this._hasConnectedOnce && !this._connected) return
+    // Native remote clients recover through an explicit reload, never a second
+    // in-memory WebSocket connection. Browser web access reconnects in place.
+    if (this._hasConnectedOnce && !this._connected && !this.allowReconnect)
+      return
     if (
       this._connecting ||
       this.ws?.readyState === WebSocket.OPEN ||
@@ -794,7 +831,7 @@ class WsTransport {
       // spawn duplicate CLI processes.
       this.queue = []
 
-      if (!wasConnected && !this._hasConnectedOnce) {
+      if (this.allowReconnect || (!wasConnected && !this._hasConnectedOnce)) {
         this.scheduleConnectRetry()
       }
     }
@@ -1036,11 +1073,12 @@ class WsTransport {
   }
 
   private scheduleConnectRetry(): void {
-    if (this.connectRetryTimer || this._hasConnectedOnce) return
+    if (this.connectRetryTimer) return
+    if (this._hasConnectedOnce && !this.allowReconnect) return
     // Don't retry if there's an auth error — user needs to fix the token.
     if (this._authError) return
 
-    // Exponential backoff while establishing the initial connection.
+    // Exponential backoff while establishing or re-establishing a connection.
     const delay =
       this.connectRetryAttempt === 0
         ? 100
@@ -1065,12 +1103,12 @@ class WsTransport {
       if (this.ws?.readyState !== WebSocket.OPEN) return
       if (Date.now() - this._lastInbound > WsTransport.INBOUND_TIMEOUT) {
         console.warn(
-          '[WsTransport] No inbound traffic, closing stale connection for reload'
+          '[WsTransport] No inbound traffic, closing stale connection'
         )
         try {
           this.ws.close()
         } catch {
-          // Ignore close errors; a successful close triggers the app reload.
+          // Ignore close errors; a successful close triggers recovery.
         }
       }
     }, WsTransport.LIVENESS_CHECK_INTERVAL)
@@ -1097,18 +1135,19 @@ class WsTransport {
       // recent socket may simply have queued frames. Replace one already past
       // the liveness timeout immediately so iOS resume adds no extra delay.
       if (Date.now() - this._lastInbound > WsTransport.INBOUND_TIMEOUT) {
-        console.warn('[WsTransport] Stale socket after resume, reloading app')
+        console.warn('[WsTransport] Stale socket after resume, reconnecting')
         try {
           this.ws?.close()
         } catch {
-          // Ignore close errors; a successful close triggers the app reload.
+          // Ignore close errors; a successful close triggers recovery.
         }
       }
       return
     }
 
-    // Before the first successful connection, retry immediately on wake.
-    if (this._hasConnectedOnce) return
+    // The socket is closed. Retry immediately on wake rather than waiting out
+    // the backoff — a phone returning to the foreground should feel instant.
+    if (this._hasConnectedOnce && !this.allowReconnect) return
     if (this.connectRetryTimer) {
       clearTimeout(this.connectRetryTimer)
       this.connectRetryTimer = null
