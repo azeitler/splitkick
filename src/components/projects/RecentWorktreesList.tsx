@@ -267,8 +267,13 @@ export function RecentWorktreesList({ projects }: RecentWorktreesListProps) {
                   </span>
                   <span className="flex w-14 shrink-0 flex-col items-end gap-1 pt-4 text-[10px] tabular-nums">
                     {isWorking && (
-                      <span className="absolute right-3 top-2 text-[10px] text-muted-foreground">
-                        vibing
+                      <span
+                        aria-hidden="true"
+                        className="recent-working-waveform absolute right-3 top-2 text-muted-foreground"
+                      >
+                        <span />
+                        <span />
+                        <span />
                       </span>
                     )}
                     <span className="flex items-center gap-1.5">

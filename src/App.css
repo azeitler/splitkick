@@ -169,6 +169,40 @@
   display: inline-block;
 }
 
+/* Small activity waveform used by working sessions in the Recent tab. */
+@keyframes recent-working-waveform {
+  0%,
+  100% {
+    transform: scaleY(0.45);
+  }
+  50% {
+    transform: scaleY(1);
+  }
+}
+
+.recent-working-waveform {
+  display: inline-flex;
+  height: 10px;
+  align-items: center;
+  gap: 2px;
+}
+
+.recent-working-waveform > span {
+  width: 2px;
+  height: 8px;
+  border-radius: 9999px;
+  background: currentColor;
+  animation: recent-working-waveform 0.9s ease-in-out infinite;
+}
+
+.recent-working-waveform > span:nth-child(2) {
+  animation-delay: -0.6s;
+}
+
+.recent-working-waveform > span:nth-child(3) {
+  animation-delay: -0.3s;
+}
+
 /* Blink animation for waiting indicator */
 @keyframes blink {
   0%,
@@ -678,6 +712,7 @@ body:not(.native-app) kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .animate-wave,
+  .recent-working-waveform > span,
   .animate-blink,
   .animate-border-spin,
   .animate-icon-glow,
@@ -692,6 +727,7 @@ body:not(.native-app) kbd {
 }
 
 .window-blurred .animate-wave,
+.window-blurred .recent-working-waveform > span,
 .window-blurred .animate-blink,
 .window-blurred .animate-border-spin,
 .window-blurred .animate-icon-glow,

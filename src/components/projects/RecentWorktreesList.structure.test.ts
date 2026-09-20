@@ -61,12 +61,14 @@ describe('RecentWorktreesList structure', () => {
     expect(source).toContain('getRecentSessionStatus(row.session')
     expect(source).toContain("const isWorking = status.tone === 'working'")
     expect(source).toContain('{isWorking && (')
-    expect(source).toContain('vibing')
+    expect(source).toContain('recent-working-waveform')
+    expect(source).toContain('aria-hidden="true"')
+    expect(source).not.toContain('vibing')
     expect(source).not.toContain('planning')
     expect(source).not.toContain('executingModes[row.session.id]')
     expect(source).not.toContain('executionModes[row.session.id]')
     expect(source).toContain(
-      'absolute right-3 top-2 text-[10px] text-muted-foreground'
+      'recent-working-waveform absolute right-3 top-2 text-muted-foreground'
     )
     expect(source).not.toContain('border-l-destructive')
     expect(source).not.toContain('border-l-yellow-500')
