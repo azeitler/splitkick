@@ -102,6 +102,13 @@ describe('LinkedProjectsModal', () => {
     )
   })
 
+  it('shows the serving instance instead of Local in Web Access', () => {
+    renderModal()
+
+    expect(screen.getAllByText(window.location.host).length).toBeGreaterThan(0)
+    expect(screen.queryByText('Local')).not.toBeInTheDocument()
+  })
+
   it('shows instance names and only offers projects from the current instance', () => {
     projectsMock = [
       project({
