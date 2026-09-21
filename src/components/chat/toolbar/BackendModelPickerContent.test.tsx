@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { within } from '@testing-library/react'
 import { render, screen } from '@/test/test-utils'
 import { BackendModelPickerContent } from './BackendModelPickerContent'
+import type * as ModelCatalogModule from '@/services/model-catalog'
 
 class ResizeObserverMock {
   observe() {
@@ -21,6 +22,15 @@ HTMLCanvasElement.prototype.getContext = vi.fn(() => null)
 Element.prototype.scrollIntoView = vi.fn()
 
 const refreshOpencodeModelsMutateAsync = vi.fn()
+
+// The live catalog is fetched from coollabs-cdn and changes without a commit
+// here: GPT 5.4 left it on 2026-09-17, and these tests - and every release
+// build - failed from then on. Pin the bundled catalog so the tests assert on
+// Jean's own model list, not on the network.
+vi.mock('@/services/model-catalog', async importOriginal => ({
+  ...(await importOriginal<typeof ModelCatalogModule>()),
+  useModelCatalog: () => ({ data: undefined }),
+}))
 
 vi.mock('@/services/opencode-cli', () => ({
   useAvailableOpencodeModels: () => ({

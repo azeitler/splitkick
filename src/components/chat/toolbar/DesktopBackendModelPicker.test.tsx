@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { render, screen, within } from '@/test/test-utils'
 import { DesktopBackendModelPicker } from './DesktopBackendModelPicker'
 import type * as EnvironmentModule from '@/lib/environment'
+import type * as ModelCatalogModule from '@/services/model-catalog'
 
 class ResizeObserverMock {
   observe() {
@@ -30,6 +31,15 @@ const modelMocks = vi.hoisted(() => ({
 const envMocks = vi.hoisted(() => ({
   isNativeApp: true,
   isMobile: false,
+}))
+
+// The live catalog is fetched from coollabs-cdn and changes without a commit
+// here: GPT 5.4 left it on 2026-09-17, and these tests - and every release
+// build - failed from then on. Pin the bundled catalog so the tests assert on
+// Jean's own model list, not on the network.
+vi.mock('@/services/model-catalog', async importOriginal => ({
+  ...(await importOriginal<typeof ModelCatalogModule>()),
+  useModelCatalog: () => ({ data: undefined }),
 }))
 
 vi.mock('@/lib/environment', async importOriginal => ({
