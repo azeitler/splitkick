@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { FileIcon, FolderIcon } from '@/components/icons/reicon'
+import { FileIcon, FolderIcon } from 'lucide-react'
 import { DismissButton } from '@/components/ui/dismiss-button'
 import type { PendingFile } from '@/types/chat'
 import { cn } from '@/lib/utils'

@@ -4,7 +4,7 @@
 
 import { useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { invoke, invokeForOptionalServer } from '@/lib/transport'
+import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 import type {
@@ -14,7 +14,6 @@ import type {
   PiReleaseInfo,
 } from '@/types/pi-cli'
 import { hasBackendTransport } from '@/lib/environment'
-import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
 
@@ -63,19 +62,13 @@ export function usePiPathDetection(options?: { enabled?: boolean }) {
   })
 }
 
-export function usePiCliStatus(options?: {
-  enabled?: boolean
-  serverId?: string
-}) {
+export function usePiCliStatus(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: [...piCliQueryKeys.status(), options?.serverId ?? 'local'],
+    queryKey: piCliQueryKeys.status(),
     queryFn: async (): Promise<PiCliStatus> => {
       if (!isTauri()) return { installed: false, version: null, path: null }
       try {
-        return await invokeForOptionalServer<PiCliStatus>(
-          options?.serverId,
-          'check_pi_cli_installed'
-        )
+        return await invoke<PiCliStatus>('check_pi_cli_installed')
       } catch (error) {
         logger.error('Failed to check PI CLI status', { error })
         return { installed: false, version: null, path: null }
@@ -125,16 +118,12 @@ export function useAvailablePiVersions(options?: { enabled?: boolean }) {
 }
 
 export function useAvailablePiModels(options?: { enabled?: boolean }) {
-  const serverId = useOptionalSettingsTargetServerId()
   const queryClient = useQueryClient()
   const query = useQuery({
-    queryKey: [...piCliQueryKeys.models(), serverId ?? 'local'],
+    queryKey: piCliQueryKeys.models(),
     queryFn: async (): Promise<PiModelInfo[]> => {
       if (!isTauri()) return []
-      return await invokeForOptionalServer<PiModelInfo[]>(
-        serverId,
-        'list_pi_models'
-      )
+      return await invoke<PiModelInfo[]>('list_pi_models')
     },
     enabled: options?.enabled ?? true,
     staleTime: 1000 * 60 * 5,
@@ -154,19 +143,16 @@ export function useAvailablePiModels(options?: { enabled?: boolean }) {
     let cancelled = false
     async function syncPiDefaultModel() {
       try {
-        const preferences = await invokeForOptionalServer<AppPreferences>(
-          serverId,
-          'load_preferences'
-        )
+        const preferences = await invoke<AppPreferences>('load_preferences')
         if (cancelled) return
         const selected = preferences.selected_pi_model
         if (selected && availableValues.includes(selected)) return
-        await invokeForOptionalServer(serverId, 'patch_preferences', {
+        await invoke('patch_preferences', {
           patch: { selected_pi_model: preferred },
         })
         if (!cancelled) {
           queryClient.invalidateQueries({
-            queryKey: preferencesQueryKeys.preferences(serverId ?? 'local'),
+            queryKey: preferencesQueryKeys.preferences(),
           })
         }
       } catch (error) {
@@ -180,7 +166,7 @@ export function useAvailablePiModels(options?: { enabled?: boolean }) {
     return () => {
       cancelled = true
     }
-  }, [query.data, queryClient, serverId])
+  }, [query.data, queryClient])
 
   return query
 }
@@ -221,6 +207,7 @@ export function usePiCliSetup() {
       onError: error => options?.onError?.(error),
     })
   }
+
 
   return {
     status: status.data,

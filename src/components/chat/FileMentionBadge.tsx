@@ -1,10 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import {
-  FileIcon,
-  FileQuestionMark,
-  FolderIcon,
-  Loader2,
-} from '@/components/icons/reicon'
+import { FileIcon, FileQuestionMark, FolderIcon, Loader2 } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import {
   Dialog,

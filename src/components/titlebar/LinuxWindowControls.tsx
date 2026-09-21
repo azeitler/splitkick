@@ -1,5 +1,5 @@
 import type React from 'react'
-import { Copy, Minus, Square, X } from '@/components/icons/reicon'
+import { Copy, Minus, Square, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useWindowMaximized } from '@/hooks/use-window-maximized'
 

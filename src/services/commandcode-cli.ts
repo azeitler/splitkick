@@ -3,9 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useState } from 'react'
 import { toast } from 'sonner'
-import { invoke, invokeForOptionalServer } from '@/lib/transport'
+import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
-import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 import type {
   CommandCodeAuthStatus,
   CommandCodeCliStatus,
@@ -61,17 +60,13 @@ export function useCommandCodePathDetection(options?: { enabled?: boolean }) {
   })
 }
 
-export function useCommandCodeCliStatus(options?: {
-  enabled?: boolean
-  serverId?: string
-}) {
+export function useCommandCodeCliStatus(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: [...commandcodeCliQueryKeys.status(), options?.serverId],
+    queryKey: commandcodeCliQueryKeys.status(),
     queryFn: async (): Promise<CommandCodeCliStatus> => {
       if (!isTauri()) return { installed: false, version: null, path: null }
       try {
-        return await invokeForOptionalServer<CommandCodeCliStatus>(
-          options?.serverId,
+        return await invoke<CommandCodeCliStatus>(
           'check_commandcode_cli_installed'
         )
       } catch (error) {
@@ -115,16 +110,12 @@ export function useCommandCodeCliAuth(options?: { enabled?: boolean }) {
 }
 
 export function useAvailableCommandCodeModels(options?: { enabled?: boolean }) {
-  const serverId = useOptionalSettingsTargetServerId()
   return useQuery({
-    queryKey: [...commandcodeCliQueryKeys.models(), serverId ?? 'local'],
+    queryKey: commandcodeCliQueryKeys.models(),
     queryFn: async (): Promise<CommandCodeModelInfo[]> => {
       if (!isTauri()) return []
       try {
-        return await invokeForOptionalServer<CommandCodeModelInfo[]>(
-          serverId,
-          'list_commandcode_models'
-        )
+        return await invoke<CommandCodeModelInfo[]>('list_commandcode_models')
       } catch (error) {
         logger.error('Failed to list Command Code models', { error })
         return []
@@ -221,6 +212,7 @@ export function useCommandCodeCliSetup() {
       onError: error => options?.onError?.(error),
     })
   }
+
 
   return {
     status: status.data,

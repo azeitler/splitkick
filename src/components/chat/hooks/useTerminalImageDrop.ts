@@ -88,9 +88,7 @@ export function useTerminalImageDrop(
       if (files.length === 0) return
 
       const imageFiles = files.filter(
-        file =>
-          classifyAttachmentFile(file) === 'raster' ||
-          file.name.toLowerCase().endsWith('.svg')
+        file => classifyAttachmentFile(file) !== 'unsupported'
       )
       if (imageFiles.length === 0) {
         toast.error('No image detected', {

@@ -1,4 +1,4 @@
-import { ClipboardList, Hammer, Zap } from '@/components/icons/reicon'
+import { ClipboardList, Hammer, Zap } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,

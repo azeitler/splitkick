@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Brain, ChevronRight } from '@/components/icons/reicon'
+import { Brain, ChevronRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Markdown } from '@/components/ui/markdown'
 import type { ThinkingLevel } from '@/types/chat'

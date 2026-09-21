@@ -11,18 +11,13 @@ use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
-use crate::platform::{detect_cli_in_path, host_cli_command};
+use crate::platform::{detect_cli_in_path, silent_command};
 
 /// MCP server key written into CLI configs.
 pub const MCP_SERVER_NAME: &str = "agent-browser";
 
 /// npm package name for agent-browser.
 pub const NPM_PACKAGE: &str = "agent-browser";
-
-/// Explicit latest tag is required for updates. A plain `npm install
-/// agent-browser` keeps the existing package.json caret range, and npm treats
-/// `^0.37.1` as `<0.38.0` for a pre-1.0 package.
-const NPM_INSTALL_SPEC: &str = "agent-browser@latest";
 
 /// Jean-managed npm install directory under app data.
 pub const CLI_DIR_NAME: &str = "agent-browser-cli";
@@ -61,15 +56,6 @@ pub struct AgentBrowserInstallResult {
     pub backup_path: Option<String>,
     pub server_name: String,
     pub message: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AgentBrowserUpdateStatus {
-    pub installed: bool,
-    pub current_version: Option<String>,
-    pub latest_version: Option<String>,
-    pub update_available: bool,
 }
 
 struct McpEntry {
@@ -223,10 +209,7 @@ pub struct ResolvedBinary {
 }
 
 fn read_binary_version(path: &Path) -> Option<String> {
-    let output = host_cli_command(&path.to_string_lossy(), None)
-        .arg("--version")
-        .output()
-        .ok()?;
+    let output = silent_command(path).arg("--version").output().ok()?;
     if !output.status.success() {
         return None;
     }
@@ -289,7 +272,7 @@ pub async fn get_agent_browser_status(app: AppHandle) -> Result<AgentBrowserStat
         managed_install: resolved.managed,
         claude_snippet: entry.claude_snippet(),
         codex_snippet: entry.codex_snippet(),
-        install_hint: "Jean installs Agent Browser automatically. Manual fallback: npm install -g agent-browser@latest && agent-browser install".to_string(),
+        install_hint: "Use Install agent-browser in Settings, or: npm install -g agent-browser && agent-browser install".to_string(),
     })
 }
 
@@ -297,73 +280,6 @@ pub async fn get_agent_browser_status(app: AppHandle) -> Result<AgentBrowserStat
 pub async fn ensure_agent_browser_profile(app: AppHandle) -> Result<AgentBrowserStatus, String> {
     ensure_profile(&app)?;
     get_agent_browser_status(app).await
-}
-
-/// Check the npm registry for a newer agent-browser release.
-///
-/// Performs synchronous npm/network work; WebSocket dispatch runs this on the
-/// blocking pool.
-pub async fn check_agent_browser_update(
-    app: AppHandle,
-) -> Result<AgentBrowserUpdateStatus, String> {
-    let resolved = resolve_agent_browser_binary(&app);
-    if !resolved.installed {
-        return Ok(AgentBrowserUpdateStatus {
-            installed: false,
-            current_version: None,
-            latest_version: None,
-            update_available: false,
-        });
-    }
-
-    let npm_path = crate::prerequisites::require_npm("agent-browser update check")?;
-    let output = host_cli_command(&npm_path, None)
-        .args(["view", NPM_PACKAGE, "version", "--json"])
-        .output()
-        .map_err(|error| format!("Failed to check agent-browser updates: {error}"))?;
-    if !output.status.success() {
-        let error = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        return Err(format!(
-            "Failed to check agent-browser updates: {}",
-            if error.is_empty() {
-                "npm returned an error"
-            } else {
-                &error
-            }
-        ));
-    }
-
-    let raw = String::from_utf8_lossy(&output.stdout);
-    let latest = serde_json::from_str::<String>(raw.trim())
-        .unwrap_or_else(|_| raw.trim().trim_matches('"').to_string());
-    let latest_version = (!latest.is_empty()).then_some(latest);
-    let update_available = resolved
-        .version
-        .as_deref()
-        .zip(latest_version.as_deref())
-        .is_some_and(|(current, latest)| is_newer_version(latest, current));
-
-    Ok(AgentBrowserUpdateStatus {
-        installed: true,
-        current_version: resolved.version,
-        latest_version,
-        update_available,
-    })
-}
-
-fn is_newer_version(latest: &str, current: &str) -> bool {
-    fn parts(version: &str) -> Vec<u64> {
-        version
-            .trim()
-            .trim_start_matches(|character: char| !character.is_ascii_digit())
-            .split(['.', '-', '+'])
-            .map_while(|part| part.parse::<u64>().ok())
-            .collect()
-    }
-
-    let latest = parts(latest);
-    let current = parts(current);
-    !latest.is_empty() && !current.is_empty() && latest > current
 }
 
 /// Install agent-browser via npm into Jean app data, then download Chromium
@@ -375,7 +291,7 @@ pub async fn install_agent_browser(app: AppHandle) -> Result<AgentBrowserStatus,
     install_agent_browser_sync(&app)
 }
 
-pub(crate) fn install_agent_browser_sync(app: &AppHandle) -> Result<AgentBrowserStatus, String> {
+fn install_agent_browser_sync(app: &AppHandle) -> Result<AgentBrowserStatus, String> {
     let cli_dir = managed_cli_dir(app)?;
     std::fs::create_dir_all(&cli_dir).map_err(|e| {
         format!(
@@ -386,12 +302,11 @@ pub(crate) fn install_agent_browser_sync(app: &AppHandle) -> Result<AgentBrowser
 
     // Ensure profile exists so MCP install can succeed right after.
     ensure_profile(app)?;
-    let npm_path = crate::prerequisites::require_npm("agent-browser")?;
 
-    let npm_output = host_cli_command(&npm_path, None)
+    let npm_output = silent_command("npm")
         .args(["install", "--prefix"])
         .arg(&cli_dir)
-        .arg(NPM_INSTALL_SPEC)
+        .arg(NPM_PACKAGE)
         .output()
         .map_err(|e| {
             format!("Failed to run npm install for agent-browser (is npm on PATH?): {e}")
@@ -420,7 +335,7 @@ pub(crate) fn install_agent_browser_sync(app: &AppHandle) -> Result<AgentBrowser
 
     // Download Chrome for Testing into agent-browser's cache.
     // Linux servers often need OS shared libs; --with-deps helps when available.
-    let mut install_cmd = host_cli_command(&binary.to_string_lossy(), None);
+    let mut install_cmd = silent_command(&binary);
     install_cmd.arg("install");
     if cfg!(target_os = "linux") {
         install_cmd.arg("--with-deps");
@@ -431,7 +346,7 @@ pub(crate) fn install_agent_browser_sync(app: &AppHandle) -> Result<AgentBrowser
 
     if !chromium_output.status.success() {
         // Retry without --with-deps (flag may not exist on older versions).
-        let retry = host_cli_command(&binary.to_string_lossy(), None)
+        let retry = silent_command(&binary)
             .arg("install")
             .output()
             .map_err(|e| format!("Failed to run `agent-browser install`: {e}"))?;
@@ -477,7 +392,7 @@ pub(crate) fn install_agent_browser_sync(app: &AppHandle) -> Result<AgentBrowser
         managed_install: true,
         claude_snippet: entry.claude_snippet(),
         codex_snippet: entry.codex_snippet(),
-        install_hint: "Jean installs Agent Browser automatically. Manual fallback: npm install -g agent-browser@latest && agent-browser install".to_string(),
+        install_hint: "Use Install agent-browser in Settings, or: npm install -g agent-browser && agent-browser install".to_string(),
     })
 }
 
@@ -815,7 +730,20 @@ fn write_atomic_with_backup(path: &Path, content: &str) -> Result<Option<PathBuf
         None
     };
 
-    crate::platform::write_file_atomically(path, content.as_bytes())?;
+    let tmp = path.with_extension(format!(
+        "{}.tmp",
+        path.extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("config")
+    ));
+    std::fs::write(&tmp, content).map_err(|e| format!("Failed to write {}: {e}", tmp.display()))?;
+    std::fs::rename(&tmp, path).map_err(|e| {
+        format!(
+            "Failed to replace {} with {}: {e}",
+            path.display(),
+            tmp.display()
+        )
+    })?;
     Ok(backup)
 }
 
@@ -962,18 +890,5 @@ mod tests {
         assert!(s.contains("node_modules"));
         assert!(s.contains(".bin"));
         assert!(s.contains("agent-browser"));
-    }
-
-    #[test]
-    fn compares_agent_browser_versions() {
-        assert!(is_newer_version("0.8.1", "agent-browser 0.8.0"));
-        assert!(is_newer_version("1.0.0", "0.99.9"));
-        assert!(!is_newer_version("0.8.0", "agent-browser 0.8.0"));
-        assert!(!is_newer_version("0.7.9", "0.8.0"));
-    }
-
-    #[test]
-    fn managed_install_explicitly_requests_latest_release() {
-        assert_eq!(NPM_INSTALL_SPEC, "agent-browser@latest");
     }
 }

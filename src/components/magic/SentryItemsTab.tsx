@@ -1,4 +1,4 @@
-import { Eye, Loader2, RotateCw, X } from '@/components/icons/reicon'
+import { Eye, Loader2, RotateCw, X } from 'lucide-react'
 import { SentryIssuesTab } from '@/components/worktree/SentryIssuesTab'
 import type { SentryIssue, SentryIssueContext } from '@/types/sentry'
 

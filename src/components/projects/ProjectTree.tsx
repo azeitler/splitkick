@@ -17,7 +17,7 @@ import {
   extractInstruction,
   type Instruction,
 } from '@atlaskit/pragmatic-drag-and-drop-hitbox/list-item'
-import { ChevronDown, ChevronUp } from '@/components/icons/reicon'
+import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
 import { isFolder, type Project } from '@/types/projects'
 import { ProjectTreeItem } from './ProjectTreeItem'
 import { FolderTreeItem } from './FolderTreeItem'
@@ -38,8 +38,6 @@ import {
 import { reorderWithClosestEdge } from '@/lib/drag-and-drop/reorder'
 import { announceDrag } from '@/lib/drag-and-drop/live-region'
 import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
-import { groupProjectsByServer } from './project-server-sections'
-import { RemoteServerRefreshButton } from '@/components/remote/RemoteServerRefreshButton'
 
 const MAX_NESTING_DEPTH = 3
 
@@ -62,8 +60,6 @@ function getMaxSubtreeDepth(projects: Project[], itemId: string): number {
 
 interface ProjectTreeProps {
   projects: Project[]
-  groupByServer?: boolean
-  searchQuery?: string
 }
 
 function canMoveIntoFolder({
@@ -140,7 +136,6 @@ interface SortableItemProps {
   overFolderId: string | null
   insertBeforeId: string | null
   activeId: string | null
-  searchQuery: string
 }
 
 function SortableItem({
@@ -152,13 +147,12 @@ function SortableItem({
   overFolderId,
   insertBeforeId,
   activeId,
-  searchQuery,
 }: SortableItemProps) {
   const elementRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const element = elementRef.current
-    if (!element || item.serverId || item.offline || searchQuery) return
+    if (!element) return
 
     return combine(
       draggable({
@@ -204,7 +198,7 @@ function SortableItem({
         },
       })
     )
-  }, [allProjects, item, searchQuery])
+  }, [allProjects, item])
 
   const style: React.CSSProperties = {
     opacity: activeId === item.id ? 0.35 : 1,
@@ -219,7 +213,7 @@ function SortableItem({
         : null
 
   if (isFolder(item)) {
-    const isExpanded = Boolean(searchQuery) || expandedFolderIds.has(item.id)
+    const isExpanded = expandedFolderIds.has(item.id)
 
     return (
       <div
@@ -228,9 +222,7 @@ function SortableItem({
         style={style}
         className={cn(
           'relative transition-opacity',
-          !item.serverId &&
-            !item.offline &&
-            (activeId === item.id ? 'cursor-grabbing' : 'cursor-grab')
+          activeId === item.id ? 'cursor-grabbing' : 'cursor-grab'
         )}
       >
         <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />
@@ -249,7 +241,6 @@ function SortableItem({
               overFolderId={overFolderId}
               insertBeforeId={insertBeforeId}
               activeId={activeId}
-              searchQuery={searchQuery}
             />
           )}
         </FolderTreeItem>
@@ -264,13 +255,11 @@ function SortableItem({
       style={style}
       className={cn(
         'relative transition-opacity',
-        !item.serverId &&
-          !item.offline &&
-          (activeId === item.id ? 'cursor-grabbing' : 'cursor-grab')
+        activeId === item.id ? 'cursor-grabbing' : 'cursor-grab'
       )}
     >
       <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />
-      <ProjectTreeItem project={item} searchQuery={searchQuery} />
+      <ProjectTreeItem project={item} />
     </div>
   )
 }
@@ -284,7 +273,6 @@ interface NestedItemsProps {
   overFolderId: string | null
   insertBeforeId: string | null
   activeId: string | null
-  searchQuery: string
 }
 
 function NestedItems({
@@ -295,7 +283,6 @@ function NestedItems({
   overFolderId,
   insertBeforeId,
   activeId,
-  searchQuery,
 }: NestedItemsProps) {
   const items = projects
     .filter(p => p.parent_id === parentId)
@@ -318,7 +305,6 @@ function NestedItems({
           overFolderId={overFolderId}
           insertBeforeId={insertBeforeId}
           activeId={activeId}
-          searchQuery={searchQuery}
         />
       ))}
     </>
@@ -359,11 +345,43 @@ function RootDropZone({ isOver }: { isOver: boolean }) {
   )
 }
 
-export function ProjectTree({
-  projects,
-  groupByServer = false,
-  searchQuery = '',
-}: ProjectTreeProps) {
+/**
+ * Single control that expands or collapses a whole tree section. Shows the
+ * action that is currently available: collapse while anything is expanded,
+ * expand otherwise.
+ */
+function BulkExpandToggle({
+  isExpanded,
+  onExpandAll,
+  onCollapseAll,
+  section,
+}: {
+  isExpanded: boolean
+  onExpandAll: () => void
+  onCollapseAll: () => void
+  section: string
+}) {
+  const Icon = isExpanded ? ChevronsDownUp : ChevronsUpDown
+  const label = isExpanded ? 'Collapse all' : 'Expand all'
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
+          onClick={isExpanded ? onCollapseAll : onExpandAll}
+          aria-label={`${label} ${section}`}
+        >
+          <Icon className="size-3.5" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  )
+}
+
+export function ProjectTree({ projects }: ProjectTreeProps) {
   const reorderItems = useReorderItems()
   const moveItem = useMoveItem()
   const {
@@ -372,7 +390,8 @@ export function ProjectTree({
     expandedProjectIds,
     expandAllFolders,
     collapseAllFolders,
-    setProjectExpanded,
+    expandAllProjects,
+    collapseAllProjects,
   } = useProjectsStore()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
@@ -396,12 +415,6 @@ export function ProjectTree({
   const rootProjects = rootItems
     .filter(p => !isFolder(p))
     .sort((a, b) => a.order - b.order)
-  const projectSections =
-    rootProjects.length === 0
-      ? []
-      : groupByServer
-        ? groupProjectsByServer(rootProjects)
-        : [{ id: 'all', title: 'Projects', projects: rootProjects }]
   const hasBothTypes = rootFolders.length > 0 && rootProjects.length > 0
 
   // IDs for bulk expand/collapse actions (across all nesting levels)
@@ -409,9 +422,18 @@ export function ProjectTree({
     () => projects.flatMap(p => (isFolder(p) ? [p.id] : [])),
     [projects]
   )
-  const areAllFoldersExpanded = allFolderIds.every(id =>
-    expandedFolderIds.has(id)
+  const allProjectIds = useMemo(
+    () => projects.flatMap(p => (!isFolder(p) ? [p.id] : [])),
+    [projects]
   )
+
+  // A section counts as expanded while at least one of its items is open, so
+  // the toggle always offers the action that changes something.
+  const anyFolderExpanded = allFolderIds.some(id => expandedFolderIds.has(id))
+  const anyProjectExpanded = allProjectIds.some(id =>
+    expandedProjectIds.has(id)
+  )
+
   const clearDragState = useCallback(() => {
     setActiveId(null)
     setOverFolderId(null)
@@ -758,33 +780,12 @@ export function ProjectTree({
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
             Folders
           </span>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                onClick={() =>
-                  areAllFoldersExpanded
-                    ? collapseAllFolders()
-                    : expandAllFolders(allFolderIds)
-                }
-                aria-label={
-                  areAllFoldersExpanded
-                    ? 'Collapse all folders'
-                    : 'Expand all folders'
-                }
-              >
-                {areAllFoldersExpanded ? (
-                  <ChevronUp className="size-3.5" />
-                ) : (
-                  <ChevronDown className="size-3.5" />
-                )}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {areAllFoldersExpanded ? 'Collapse all' : 'Expand all'}
-            </TooltipContent>
-          </Tooltip>
+          <BulkExpandToggle
+            isExpanded={anyFolderExpanded}
+            onExpandAll={() => expandAllFolders(allFolderIds)}
+            onCollapseAll={collapseAllFolders}
+            section="folders"
+          />
         </div>
       )}
       {rootFolders.map(item => (
@@ -798,7 +799,6 @@ export function ProjectTree({
           overFolderId={overFolderId}
           insertBeforeId={insertBeforeId}
           activeId={activeId}
-          searchQuery={searchQuery}
         />
       ))}
       {hasBothTypes && (
@@ -806,72 +806,32 @@ export function ProjectTree({
           <Separator />
         </div>
       )}
-      {projectSections.map(section => {
-        const areAllProjectsExpanded = section.projects.every(item =>
-          expandedProjectIds.has(item.id)
-        )
-        const actionLabel = areAllProjectsExpanded ? 'Collapse' : 'Expand'
-
-        return (
-          <div key={section.id}>
-            <div className="group/header flex items-center justify-between pl-3 pr-2 pb-1 pt-2">
-              <div
-                className="flex items-center gap-1"
-                data-testid="instance-title-actions"
-              >
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-                  {section.title}
-                </span>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-                      onClick={() =>
-                        section.projects.forEach(item =>
-                          setProjectExpanded(item.id, !areAllProjectsExpanded)
-                        )
-                      }
-                      aria-label={
-                        section.title === 'Projects'
-                          ? `${actionLabel} all projects`
-                          : `${actionLabel} all projects on ${section.title}`
-                      }
-                    >
-                      {areAllProjectsExpanded ? (
-                        <ChevronUp className="size-3.5" />
-                      ) : (
-                        <ChevronDown className="size-3.5" />
-                      )}
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>{actionLabel} all</TooltipContent>
-                </Tooltip>
-              </div>
-              {groupByServer && section.id !== 'local' && (
-                <RemoteServerRefreshButton
-                  serverId={section.id}
-                  serverName={section.title}
-                />
-              )}
-            </div>
-            {section.projects.map(item => (
-              <SortableItem
-                key={item.id}
-                item={item}
-                allProjects={projects}
-                depth={0}
-                isOverFolder={false}
-                expandedFolderIds={expandedFolderIds}
-                overFolderId={overFolderId}
-                insertBeforeId={insertBeforeId}
-                activeId={activeId}
-                searchQuery={searchQuery}
-              />
-            ))}
-          </div>
-        )
-      })}
+      {rootProjects.length > 0 && (
+        <div className="group/header flex items-center justify-between pl-3 pr-2 pb-1 pt-2">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+            Projects
+          </span>
+          <BulkExpandToggle
+            isExpanded={anyProjectExpanded}
+            onExpandAll={() => expandAllProjects(allProjectIds)}
+            onCollapseAll={collapseAllProjects}
+            section="projects"
+          />
+        </div>
+      )}
+      {rootProjects.map(item => (
+        <SortableItem
+          key={item.id}
+          item={item}
+          allProjects={projects}
+          depth={0}
+          isOverFolder={false}
+          expandedFolderIds={expandedFolderIds}
+          overFolderId={overFolderId}
+          insertBeforeId={insertBeforeId}
+          activeId={activeId}
+        />
+      ))}
 
       {/* Root drop zone - visible when dragging an item that's inside a folder */}
       {activeId &&

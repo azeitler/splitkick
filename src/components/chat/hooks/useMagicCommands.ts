@@ -23,7 +23,6 @@ interface MagicCommandHandlers {
   handleLinkedProjects: () => void
   handleForkSession: () => void
   handleForkSessionInPlace: () => void
-  handleCheckGitHubIssues: () => void
   handleCommit: () => void
   handleCommitAndPush: () => void
   handlePull: () => void
@@ -43,6 +42,7 @@ interface MagicCommandHandlers {
     prompt: string | string[],
     options?: { executionMode?: ExecutionMode }
   ) => void
+  handleSmokeTest: () => void
 }
 
 interface UseMagicCommandsOptions extends MagicCommandHandlers {
@@ -67,7 +67,6 @@ export function useMagicCommands({
   handleLinkedProjects,
   handleForkSession,
   handleForkSessionInPlace,
-  handleCheckGitHubIssues,
   handleCommit,
   handleCommitAndPush,
   handlePull,
@@ -81,6 +80,7 @@ export function useMagicCommands({
   handleInvestigateWorkflowRun,
   handleInvestigate,
   handleReviewComments,
+  handleSmokeTest,
   isModal = false,
   sessionModalOpen = false,
 }: UseMagicCommandsOptions): void {
@@ -91,7 +91,6 @@ export function useMagicCommands({
     handleLinkedProjects,
     handleForkSession,
     handleForkSessionInPlace,
-    handleCheckGitHubIssues,
     handleCommit,
     handleCommitAndPush,
     handlePull,
@@ -105,6 +104,7 @@ export function useMagicCommands({
     handleInvestigateWorkflowRun,
     handleInvestigate,
     handleReviewComments,
+    handleSmokeTest,
   })
 
   // Update refs in useLayoutEffect to avoid linter warning about ref updates during render
@@ -116,7 +116,6 @@ export function useMagicCommands({
       handleLinkedProjects,
       handleForkSession,
       handleForkSessionInPlace,
-      handleCheckGitHubIssues,
       handleCommit,
       handleCommitAndPush,
       handlePull,
@@ -130,6 +129,7 @@ export function useMagicCommands({
       handleInvestigateWorkflowRun,
       handleInvestigate,
       handleReviewComments,
+      handleSmokeTest,
     }
   })
 
@@ -159,7 +159,7 @@ export function useMagicCommands({
           break
         case 'load-context':
         case 'inject-session':
-          // Inject Context opens the context picker on the Sessions list.
+          // Inject Session opens Load Context on the Contexts tab (Sessions list)
           handlers.handleLoadContext()
           break
         case 'linked-projects':
@@ -170,9 +170,6 @@ export function useMagicCommands({
           break
         case 'fork-session-in-place':
           handlers.handleForkSessionInPlace()
-          break
-        case 'check-github-issues':
-          handlers.handleCheckGitHubIssues()
           break
         case 'commit':
           handlers.handleCommit()
@@ -231,6 +228,9 @@ export function useMagicCommands({
           })
           break
         }
+        case 'smoke-test':
+          handlers.handleSmokeTest()
+          break
       }
     }
 

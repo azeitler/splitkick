@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react'
-import { CircleDot } from '@/components/icons/reicon'
+import { CircleDot } from 'lucide-react'
 import { HomeSection } from '@/components/home/HomeSection'
 import { HOME_FILTER_MIN_ITEMS } from '@/components/home/home-utils'
 import { IssuePreviewModal } from '@/components/worktree/IssuePreviewModal'

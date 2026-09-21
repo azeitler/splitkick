@@ -39,14 +39,7 @@ describe('EditedFilesDisplay', () => {
 
     render(<EditedFilesDisplay toolCalls={toolCalls} />)
 
-    const trigger = screen.getByRole('button', { name: 'Edited 2 files' })
-    expect(trigger).toBeVisible()
-    expect(trigger).toHaveAttribute('aria-expanded', 'false')
-    expect(screen.queryByText('codex.rs')).not.toBeInTheDocument()
-
-    fireEvent.click(trigger)
-
-    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByText('Edited 2 files:')).toBeVisible()
     expect(screen.getByText('codex.rs')).toBeVisible()
     expect(screen.getByText('EditedFilesDisplay.tsx')).toBeVisible()
     expect(screen.getByText('+2')).toBeVisible()
@@ -69,7 +62,6 @@ describe('EditedFilesDisplay', () => {
 
     render(<EditedFilesDisplay toolCalls={toolCalls} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edited 1 file' }))
     fireEvent.click(
       screen.getByRole('button', { name: 'View changes to codex.rs' })
     )
@@ -84,7 +76,9 @@ describe('EditedFilesDisplay', () => {
         ),
       })
     )
-    expect(diffModalMock.mock.lastCall?.[0].patch).toContain('+another line')
+    expect(diffModalMock.mock.lastCall?.[0].patch).toContain(
+      '+another line'
+    )
   })
 
   it('truncates long mobile file modification names so stats remain visible', () => {
@@ -103,7 +97,6 @@ describe('EditedFilesDisplay', () => {
 
     render(<EditedFilesDisplay toolCalls={toolCalls} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edited 1 file' }))
     expect(
       screen.getByText('2026_06_11_232520_create_connected_accounts_table.php')
     ).toHaveClass('truncate')

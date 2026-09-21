@@ -10,7 +10,6 @@ import {
   resolveMagicPromptProvider,
   type AppPreferences,
 } from '@/types/preferences'
-import { savedContextsQueryKey } from '@/services/saved-contexts'
 
 interface UseContextOperationsParams {
   activeSessionId: string | null | undefined
@@ -66,9 +65,9 @@ export function useContextOperations({
       'unknown-project'
 
     // Check if this session already has a saved context
-    const cachedContexts = queryClient.getQueryData<SavedContextsResponse>(
-      savedContextsQueryKey(worktree?.project_id)
-    )
+    const cachedContexts = queryClient.getQueryData<SavedContextsResponse>([
+      'session-context',
+    ])
     const existingContext = cachedContexts?.contexts.find(
       c => c.source_session_id === activeSessionId
     )
@@ -113,7 +112,6 @@ export function useContextOperations({
     activeWorktreeId,
     activeWorktreePath,
     worktree?.name,
-    worktree?.project_id,
     queryClient,
     preferences?.magic_prompts?.context_summary,
     preferences?.magic_prompt_models?.context_summary_model,

@@ -1,5 +1,5 @@
 import { useCallback, useState, useRef } from 'react'
-import { GitBranch, Delete } from '@/components/icons/reicon'
+import { GitBranch, Delete } from 'lucide-react'
 import {
   Dialog,
   DialogContent,

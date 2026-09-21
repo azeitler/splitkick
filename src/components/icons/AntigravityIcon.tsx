@@ -1,5 +1,5 @@
 import { forwardRef } from 'react'
-import type { LucideProps } from '@/components/icons/reicon'
+import type { LucideProps } from 'lucide-react'
 
 export const AntigravityIcon = forwardRef<SVGSVGElement, LucideProps>(
   ({ size = 24, ...props }, ref) => (

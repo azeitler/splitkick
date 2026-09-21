@@ -186,10 +186,7 @@ export function useNewWorktreeKeyboard({
         }
         if (key === 'enter' && filteredIssues[selectedItemIndex]) {
           e.preventDefault()
-          handleSelectIssue(
-            filteredIssues[selectedItemIndex],
-            e.metaKey || e.ctrlKey
-          )
+          handleSelectIssue(filteredIssues[selectedItemIndex], e.metaKey)
           return
         }
         if (
@@ -234,10 +231,7 @@ export function useNewWorktreeKeyboard({
         }
         if (key === 'enter' && filteredPRs[selectedItemIndex]) {
           e.preventDefault()
-          handleSelectPR(
-            filteredPRs[selectedItemIndex],
-            e.metaKey || e.ctrlKey
-          )
+          handleSelectPR(filteredPRs[selectedItemIndex], e.metaKey)
           return
         }
         if (
@@ -286,15 +280,13 @@ export function useNewWorktreeKeyboard({
           e.preventDefault()
           if (selectedItemIndex < filteredSecurityAlerts.length) {
             const alert = filteredSecurityAlerts[selectedItemIndex]
-            if (alert)
-              handleSelectSecurityAlert(alert, e.metaKey || e.ctrlKey)
+            if (alert) handleSelectSecurityAlert(alert, e.metaKey)
           } else {
             const advisory =
               filteredAdvisories[
                 selectedItemIndex - filteredSecurityAlerts.length
               ]
-            if (advisory)
-              handleSelectAdvisory(advisory, e.metaKey || e.ctrlKey)
+            if (advisory) handleSelectAdvisory(advisory, e.metaKey)
           }
           return
         }
@@ -432,10 +424,7 @@ export function useNewWorktreeKeyboard({
         }
         if (key === 'enter' && filteredBranches[selectedItemIndex]) {
           e.preventDefault()
-          handleSelectBranch(
-            filteredBranches[selectedItemIndex],
-            e.metaKey || e.ctrlKey
-          )
+          handleSelectBranch(filteredBranches[selectedItemIndex], e.metaKey)
           return
         }
       }

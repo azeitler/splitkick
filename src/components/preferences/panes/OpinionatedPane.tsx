@@ -12,7 +12,7 @@ import {
   RefreshCw,
   ChevronRight,
   Trash2,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { SettingsSection } from '../SettingsSection'
 
@@ -134,32 +134,6 @@ const PLUGINS: PluginDefinition[] = [
       {
         label: 'Request code review',
         command: '/superpowers:requesting-code-review',
-      },
-    ],
-  },
-  {
-    id: 'pstack',
-    name: 'pstack',
-    description:
-      'Poteto\'s cross-backend engineering skill pack. Adds Poteto Mode, architecture and investigation workflows, TDD, concise writing, verification, and focused parallel work.',
-    githubUrl: 'https://github.com/cursor/plugins/tree/main/pstack',
-    scope: 'ai-backends',
-    backends: [
-      'Claude',
-      'Codex',
-      'OpenCode',
-      'Cursor',
-      'Pi',
-      'Command Code',
-      'Grok',
-    ],
-    usage: [
-      {
-        note: 'Downloads the current pstack workflow skills from the Cursor plugins repository, then installs them into each backend path and Jean-global mirror. Jean omits the Cursor-only setup-pstack configuration skill.',
-      },
-      {
-        label: 'Start rigorous engineering mode',
-        command: '/poteto-mode',
       },
     ],
   },

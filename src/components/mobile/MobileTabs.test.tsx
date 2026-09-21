@@ -19,7 +19,6 @@ vi.mock('@/services/chat', () => ({
 
 vi.mock('@/services/projects', () => ({
   useAppDataDir: () => ({ data: '' }),
-  useProjects: () => ({ data: [] }),
 }))
 
 vi.mock('@/lib/navigate-to-session', () => ({

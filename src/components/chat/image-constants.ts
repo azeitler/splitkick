@@ -19,6 +19,12 @@ export const ALLOWED_IMAGE_EXTENSIONS = ['png', 'jpg', 'jpeg', 'gif', 'webp']
 export const SVG_MIME_TYPE = 'image/svg+xml'
 export const SVG_EXTENSION = 'svg'
 
+/** Accept attribute for the native file picker */
+export const IMAGE_ATTACHMENT_ACCEPT = [
+  ...ALLOWED_IMAGE_TYPES,
+  SVG_MIME_TYPE,
+].join(',')
+
 /** Infer MIME type from filename when the browser does not provide one */
 export function getImageMimeTypeFromFilename(filename: string): string | null {
   const extension = filename.split('.').pop()?.toLowerCase()

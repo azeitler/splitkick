@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react'
-import { isLocalBackend, isNativeApp } from '@/lib/environment'
-import { Loader2, Globe, FolderOpen, AlertCircle } from '@/components/icons/reicon'
+import { isLocalBackend } from '@/lib/environment'
+import { Loader2, Globe, FolderOpen, AlertCircle } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -12,27 +12,10 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
 import { useProjectsStore } from '@/store/projects-store'
 import { useCloneProject } from '@/services/projects'
 import { DirectoryBrowser } from '@/components/projects/DirectoryBrowser'
 import { toast } from 'sonner'
-import { ServerTargetSelect } from './ServerTargetSelect'
-import { LOCAL_SERVER_ID } from '@/types/server-resource'
-import { parseServerResourceKey } from '@/lib/server-resource'
-import { useActiveConnectionId } from '@/lib/remote-connections'
-import {
-  buildProjectDestination,
-  getLastProjectDestination,
-  rememberProjectDestination,
-} from '@/lib/project-destination'
-import { buildCloneUrl, type GitProvider } from '@/lib/git-provider'
 
 /** Extract a repository name from a git URL (strips .git suffix) */
 function extractRepoName(url: string): string {
@@ -47,57 +30,26 @@ export function CloneProjectModal() {
     closeCloneModal,
     setAddProjectDialogOpen,
     addProjectParentFolderId,
-    selectedProjectId,
   } = useProjectsStore()
 
   const cloneProject = useCloneProject()
 
-  const [provider, setProvider] = useState<GitProvider>('github')
   const [url, setUrl] = useState('')
   const [destination, setDestination] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [browserOpen, setBrowserOpen] = useState(false)
-  const parentServerId = addProjectParentFolderId
-    ? parseServerResourceKey(addProjectParentFolderId)?.serverId
-    : undefined
-  const activeConnectionId = useActiveConnectionId()
-  const selectedProjectServerId = selectedProjectId
-    ? parseServerResourceKey(selectedProjectId)?.serverId
-    : undefined
-  const currentServerId =
-    parentServerId ?? selectedProjectServerId ?? activeConnectionId
-  const [targetServerId, setTargetServerId] = useState(
-    currentServerId ?? LOCAL_SERVER_ID
-  )
-  const effectiveServerId = parentServerId ?? targetServerId
-  const lastDestination = useMemo(
-    () => getLastProjectDestination(effectiveServerId),
-    [cloneModalOpen, effectiveServerId]
-  )
 
   const repoName = useMemo(() => extractRepoName(url), [url])
-  const cloneUrl = useMemo(() => buildCloneUrl(provider, url), [provider, url])
-
-  useEffect(() => {
-    setDestination(
-      lastDestination && repoName
-        ? buildProjectDestination(lastDestination, repoName)
-        : ''
-    )
-  }, [effectiveServerId, lastDestination, repoName])
 
   // Reset state when modal closes
   useEffect(() => {
-    if (cloneModalOpen) {
-      setTargetServerId(currentServerId)
-    } else {
-      setProvider('github')
+    if (!cloneModalOpen) {
       setUrl('')
       setDestination('')
       setError(null)
       setBrowserOpen(false)
     }
-  }, [cloneModalOpen, currentServerId])
+  }, [cloneModalOpen])
 
   const handleOpenChange = useCallback(
     (open: boolean) => {
@@ -112,7 +64,7 @@ export function CloneProjectModal() {
   const handleBrowse = useCallback(async () => {
     // Remote backends (and pure web) must browse the server filesystem via
     // DirectoryBrowser — the native OS picker only sees the local machine.
-    if (!isLocalBackend() || effectiveServerId !== LOCAL_SERVER_ID) {
+    if (!isLocalBackend()) {
       setBrowserOpen(true)
       return
     }
@@ -121,22 +73,22 @@ export function CloneProjectModal() {
       const { save } = await import('@tauri-apps/plugin-dialog')
       const selected = await save({
         title: 'Choose clone destination',
-        defaultPath: destination || repoName || 'repo',
+        defaultPath: repoName || 'repo',
       })
 
       if (selected && typeof selected === 'string') {
         setDestination(selected)
-        rememberProjectDestination(effectiveServerId, selected)
       }
     } catch (error) {
       // User cancelled
       if (error instanceof Error && error.message.includes('cancel')) return
     }
-  }, [destination, effectiveServerId, repoName])
+  }, [repoName])
 
   const handleClone = useCallback(async () => {
-    if (!cloneUrl) {
-      setError('Please enter a repository.')
+    const trimmedUrl = url.trim()
+    if (!trimmedUrl) {
+      setError('Please enter a git URL.')
       return
     }
     if (!destination) {
@@ -154,10 +106,9 @@ export function CloneProjectModal() {
 
     try {
       await cloneProject.mutateAsync({
-        url: cloneUrl,
+        url: trimmedUrl,
         path: destination,
         parentId: addProjectParentFolderId ?? undefined,
-        serverId: isNativeApp() ? effectiveServerId : undefined,
       })
       toast.dismiss(toastId)
     } catch {
@@ -165,12 +116,11 @@ export function CloneProjectModal() {
       toast.dismiss(toastId)
     }
   }, [
-    cloneUrl,
+    url,
     destination,
     repoName,
     cloneProject,
     addProjectParentFolderId,
-    effectiveServerId,
     closeCloneModal,
     setAddProjectDialogOpen,
   ])
@@ -185,55 +135,25 @@ export function CloneProjectModal() {
               Clone Repository
             </DialogTitle>
             <DialogDescription>
-              Clone a remote git repository from a provider or custom URL.
+              Clone a remote git repository by URL.
             </DialogDescription>
           </DialogHeader>
 
           <div className="min-w-0 space-y-4 py-4">
-            <ServerTargetSelect
-              id="clone-target-server"
-              value={effectiveServerId}
-              onChange={setTargetServerId}
-              disabled={cloneProject.isPending || parentServerId !== undefined}
-            />
-            <div className="space-y-1.5">
-              <Label htmlFor="clone-provider" className="text-xs">
-                Git provider
-              </Label>
-              <Select
-                value={provider}
-                onValueChange={value => setProvider(value as GitProvider)}
-                disabled={cloneProject.isPending}
-              >
-                <SelectTrigger id="clone-provider" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="github">GitHub</SelectItem>
-                  <SelectItem value="gitlab">GitLab</SelectItem>
-                  <SelectItem value="custom">Custom</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Repository input */}
+            {/* Git URL input */}
             <div className="space-y-1.5">
               <Label htmlFor="clone-url" className="text-xs">
-                {provider === 'custom' ? 'Repository URL' : 'Repository'}
+                Repository URL
               </Label>
               <Input
                 id="clone-url"
-                placeholder={
-                  provider === 'custom'
-                    ? 'https://example.com/user/repo.git'
-                    : 'user/repository'
-                }
+                placeholder="https://github.com/user/repo.git"
                 value={url}
                 onChange={e => setUrl(e.target.value)}
                 disabled={cloneProject.isPending}
                 autoFocus
                 onKeyDown={e => {
-                  if (e.key === 'Enter' && cloneUrl && destination) {
+                  if (e.key === 'Enter' && url.trim() && destination) {
                     e.preventDefault()
                     handleClone()
                   }
@@ -287,7 +207,7 @@ export function CloneProjectModal() {
             </Button>
             <Button
               onClick={handleClone}
-              disabled={cloneProject.isPending || !cloneUrl || !destination}
+              disabled={cloneProject.isPending || !url.trim() || !destination}
             >
               {cloneProject.isPending && (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -300,16 +220,11 @@ export function CloneProjectModal() {
         <DirectoryBrowser
           open={browserOpen}
           onOpenChange={setBrowserOpen}
-          onSelect={selected => {
-            setDestination(selected)
-            rememberProjectDestination(effectiveServerId, selected)
-          }}
+          onSelect={setDestination}
           mode="save"
           title="Choose clone destination"
           description="Choose a parent folder and enter the cloned repository name."
           defaultName={repoName || 'repo'}
-          initialPath={lastDestination}
-          serverId={isNativeApp() ? effectiveServerId : undefined}
         />
       </>
     </Dialog>

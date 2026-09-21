@@ -8,10 +8,8 @@ import {
   Trash2,
   FileText,
   ChevronRight,
-  ChevronLeft,
-  ChevronsUpDown,
   X,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -44,7 +42,6 @@ import { cn } from '@/lib/utils'
 import { getFilename } from '@/lib/path-utils'
 import { getFileLineStats } from '@/lib/diff-stats'
 import { useTheme } from '@/hooks/use-theme'
-import { useIsMobile } from '@/hooks/use-mobile'
 import { usePreferences } from '@/services/preferences'
 import { triggerImmediateGitPoll } from '@/services/git-status'
 import {
@@ -119,7 +116,6 @@ export function CheckpointsTabView({
 }: CheckpointsTabViewProps) {
   const queryClient = useQueryClient()
   const { theme } = useTheme()
-  const isMobile = useIsMobile()
   const { data: preferences } = usePreferences()
   const [selectedId, setSelectedId] = useState<string | null>(
     initialCheckpointId ?? null
@@ -134,10 +130,6 @@ export function CheckpointsTabView({
     null
   )
   const [fileRestoring, setFileRestoring] = useState(false)
-  const [mobileDetailOpen, setMobileDetailOpen] = useState(
-    Boolean(initialCheckpointId)
-  )
-  const [mobileFilesOpen, setMobileFilesOpen] = useState(false)
 
   const resolvedThemeType = useMemo((): 'dark' | 'light' => {
     if (theme === 'system') {
@@ -241,7 +233,9 @@ export function CheckpointsTabView({
 
   const selectedFile =
     flattenedFiles.length > 0
-      ? flattenedFiles[Math.min(selectedFileIndex, flattenedFiles.length - 1)]
+      ? flattenedFiles[
+          Math.min(selectedFileIndex, flattenedFiles.length - 1)
+        ]
       : null
 
   const openRestoreDialog = useCallback((checkpoint: AiCheckpoint) => {
@@ -261,7 +255,11 @@ export function CheckpointsTabView({
     setFileRestoring(true)
     setRestoringFile(fileRestoreTarget)
     try {
-      await restoreAiCheckpointFile(worktreeId, selected.id, fileRestoreTarget)
+      await restoreAiCheckpointFile(
+        worktreeId,
+        selected.id,
+        fileRestoreTarget
+      )
       toast.success(`Restored ${getFilename(fileRestoreTarget)}`)
       triggerImmediateGitPoll()
       await loadDiff(selected)
@@ -324,214 +322,6 @@ export function CheckpointsTabView({
     )
   }
 
-  if (isMobile) {
-    if (!mobileDetailOpen) {
-      return (
-        <div className="mt-2 flex min-h-0 flex-1 flex-col">
-          <div className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-4 text-sm font-medium">
-            <History className="h-4 w-4 text-muted-foreground" />
-            AI Checkpoints
-            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-              {checkpoints.length}
-            </span>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain">
-            {checkpoints.map(cp => {
-              const fileCount = cp.filesChanged.length || undefined
-              return (
-                <button
-                  key={cp.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedId(cp.id)
-                    setMobileDetailOpen(true)
-                    setMobileFilesOpen(false)
-                  }}
-                  className="flex min-h-16 w-full items-start gap-3 border-b border-border/50 px-4 py-3 text-left active:bg-accent"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="line-clamp-2 text-sm font-medium leading-snug">
-                      {cp.userMessagePreview || 'Agent turn'}
-                    </p>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
-                      <span>{formatRelativeTime(cp.createdAt)}</span>
-                      <span>·</span>
-                      <span>{statusLabel(cp.status)}</span>
-                      {fileCount != null && (
-                        <span>
-                          {fileCount} file{fileCount === 1 ? '' : 's'}
-                        </span>
-                      )}
-                      {cp.totalAdditions > 0 && (
-                        <span className="text-green-500">
-                          +{cp.totalAdditions}
-                        </span>
-                      )}
-                      {cp.totalDeletions > 0 && (
-                        <span className="text-red-500">
-                          -{cp.totalDeletions}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-muted-foreground" />
-                </button>
-              )
-            })}
-          </div>
-        </div>
-      )
-    }
-
-    return (
-      <>
-        <div className="mt-2 flex min-h-0 flex-1 flex-col">
-          {selected && (
-            <div className="flex shrink-0 items-start gap-2 border-b border-border px-2 py-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-11 w-11 shrink-0"
-                onClick={() => setMobileDetailOpen(false)}
-                aria-label="Back to checkpoints"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </Button>
-              <div className="min-w-0 flex-1 py-1">
-                <p className="line-clamp-2 text-sm font-medium">
-                  {selected.userMessagePreview || 'Agent turn'}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {formatRelativeTime(selected.createdAt)} ·{' '}
-                  {statusLabel(selected.status)}
-                </p>
-              </div>
-              <Button
-                size="sm"
-                variant="outline"
-                className="min-h-11 shrink-0 gap-1.5 px-3"
-                onClick={() => openRestoreDialog(selected)}
-              >
-                <RotateCcw className="h-4 w-4" />
-                Restore
-              </Button>
-            </div>
-          )}
-          {diffLoading ? (
-            <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Loading diff…
-            </div>
-          ) : diffError ? (
-            <div className="flex flex-1 items-center justify-center p-4 text-sm text-destructive">
-              {diffError}
-            </div>
-          ) : flattenedFiles.length === 0 ? (
-            <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-sm text-muted-foreground">
-              <FileText className="h-7 w-7 opacity-40" />
-              <p>No file changes in this checkpoint</p>
-              {selected && (
-                <Button
-                  variant="ghost"
-                  className="mt-2 text-destructive"
-                  onClick={() => void handleDelete(selected)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete checkpoint
-                </Button>
-              )}
-            </div>
-          ) : (
-            <div className="relative flex min-h-0 flex-1 flex-col">
-              {selectedFile && (
-                <button
-                  type="button"
-                  onClick={() => setMobileFilesOpen(value => !value)}
-                  className="flex min-h-11 shrink-0 items-center gap-2 border-b border-border px-3 text-sm"
-                >
-                  <FileText
-                    className={cn(
-                      'h-4 w-4 shrink-0',
-                      getStatusColor(selectedFile.fileDiff.type)
-                    )}
-                  />
-                  <span className="min-w-0 flex-1 truncate text-left">
-                    {selectedFile.fileName}
-                  </span>
-                  <span className="text-xs text-muted-foreground">
-                    {selectedFileIndex + 1}/{flattenedFiles.length}
-                  </span>
-                  <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                </button>
-              )}
-              {mobileFilesOpen && (
-                <div className="absolute inset-x-0 bottom-0 top-11 z-20 overflow-y-auto bg-background">
-                  {flattenedFiles.map((file, index) => (
-                    <button
-                      key={file.key}
-                      type="button"
-                      onClick={() => {
-                        setSelectedFileIndex(index)
-                        setMobileFilesOpen(false)
-                      }}
-                      className={cn(
-                        'flex min-h-12 w-full items-center gap-2 border-b border-border/50 px-3 text-left text-sm',
-                        index === selectedFileIndex && 'bg-accent'
-                      )}
-                    >
-                      <FileText
-                        className={cn(
-                          'h-4 w-4 shrink-0',
-                          getStatusColor(file.fileDiff.type)
-                        )}
-                      />
-                      <span className="min-w-0 flex-1 truncate">
-                        {file.fileName}
-                      </span>
-                      <span className="text-green-500">+{file.additions}</span>
-                      <span className="text-red-500">-{file.deletions}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-              <div className="min-h-0 flex-1 overflow-y-auto px-1">
-                {selectedFile && (
-                  <MemoizedFileDiff
-                    key={selectedFile.key}
-                    fileDiff={selectedFile.fileDiff}
-                    fileName={selectedFile.fileName}
-                    rootPath={worktreePath}
-                    resourceOwnerId={worktreeId}
-                    annotations={EMPTY_ANNOTATIONS}
-                    selectedLines={null}
-                    themeType={resolvedThemeType}
-                    syntaxThemeDark={
-                      preferences?.syntax_theme_dark ?? 'vitesse-black'
-                    }
-                    syntaxThemeLight={
-                      preferences?.syntax_theme_light ?? 'github-light'
-                    }
-                    diffStyle="unified"
-                    enableLineSelection={false}
-                    onLineSelected={NOOP_LINE_SELECTED}
-                    onRemoveComment={NOOP_REMOVE_COMMENT}
-                  />
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-        <CheckpointRestoreDialog
-          open={!!restoreTarget}
-          worktreeId={worktreeId}
-          checkpoint={restoreTarget}
-          onOpenChange={handleRestoreDialogOpenChange}
-          onRestored={() => void handleRestored()}
-        />
-      </>
-    )
-  }
-
   return (
     <>
       <ResizablePanelGroup
@@ -585,7 +375,8 @@ export function CheckpointsTabView({
                               </span>
                             </>
                           )}
-                          {(cp.totalAdditions > 0 || cp.totalDeletions > 0) && (
+                          {(cp.totalAdditions > 0 ||
+                            cp.totalDeletions > 0) && (
                             <>
                               <span className="text-green-500">
                                 +{cp.totalAdditions}
@@ -719,7 +510,8 @@ export function CheckpointsTabView({
                               type="button"
                               className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                               disabled={
-                                fileRestoring || restoringFile === file.fileName
+                                fileRestoring ||
+                                restoringFile === file.fileName
                               }
                               onClick={() =>
                                 setFileRestoreTarget(file.fileName)
@@ -751,8 +543,6 @@ export function CheckpointsTabView({
                           key={selectedFile.key}
                           fileDiff={selectedFile.fileDiff}
                           fileName={selectedFile.fileName}
-                          rootPath={worktreePath}
-                          resourceOwnerId={worktreeId}
                           annotations={EMPTY_ANNOTATIONS}
                           selectedLines={null}
                           themeType={resolvedThemeType}

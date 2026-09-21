@@ -6,7 +6,7 @@ import {
   X,
   Eye,
   RotateCw,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import {

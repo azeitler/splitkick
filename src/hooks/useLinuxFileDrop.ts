@@ -4,13 +4,11 @@ import { isLocalBackend } from '@/lib/environment'
 import { useChatStore } from '@/store/chat-store'
 import {
   classifyAttachmentFile,
-  isTextFilename,
   type AttachmentFileKind,
 } from '@/components/chat/attachment-processing'
 import {
   processDroppedImage,
   processDroppedSvg,
-  processDroppedText,
 } from '@/components/chat/hooks/useDragAndDropImages'
 import { writePathsToTerminal } from '@/components/chat/hooks/useTerminalImageDrop'
 
@@ -62,23 +60,21 @@ function routeToChat(paths: string[], sessionId: string | undefined): void {
     return
   }
 
+  let handled = false
   for (const path of paths) {
     const kind = classifyPath(path)
     if (kind === 'raster') {
       processDroppedImage(path, sessionId)
-    } else if (path.toLowerCase().endsWith('.svg')) {
+      handled = true
+    } else if (kind === 'svg') {
       processDroppedSvg(path, sessionId)
-    } else if (isTextFilename(path)) {
-      processDroppedText(path, sessionId)
-    } else {
-      const filename = path.split(/[/\\]/).pop() ?? path
-      useChatStore.getState().addPendingFile(sessionId, {
-        id: `file-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        relativePath: path,
-        extension: filename.split('.').pop()?.toLowerCase() ?? '',
-        isDirectory: false,
-      })
+      handled = true
     }
+  }
+  if (!handled) {
+    toast.error('No image detected', {
+      description: 'Only PNG, JPEG, GIF, WebP, SVG files are accepted',
+    })
   }
 }
 

@@ -1,4 +1,4 @@
-import { Maximize, Minus, Minimize, Square, X } from '@/components/icons/reicon'
+import { Maximize, Minus, Minimize, Square, X } from 'lucide-react'
 
 import type { AppCommand } from './types'
 import { isNativeApp } from '@/lib/environment'

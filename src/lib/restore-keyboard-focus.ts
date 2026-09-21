@@ -20,14 +20,6 @@ const FOCUS_OWNING_OVERLAY_SELECTOR =
 const OVERLAY_FOCUSABLE_SELECTOR =
   'input:not([disabled]), textarea:not([disabled]), select:not([disabled]), button:not([disabled]), a[href], [tabindex]'
 
-type SubscribeToNativeFocus = (
-  handler: (focused: boolean) => void
-) => Promise<() => void>
-
-interface KeyboardFocusRestoreOptions {
-  subscribeToNativeFocus?: SubscribeToNativeFocus
-}
-
 /** Whether an open overlay should own focus (do not steal). */
 export function hasFocusOwningOverlay(): boolean {
   return !!document.querySelector(FOCUS_OWNING_OVERLAY_SELECTOR)
@@ -113,13 +105,9 @@ export function restoreKeyboardFocusAfterWindowActivation(
  * Install listeners that restore keyboard focus when the window is re-activated.
  * Returns a cleanup function.
  */
-export function installWindowKeyboardFocusRestore(
-  options: KeyboardFocusRestoreOptions = {}
-): () => void {
+export function installWindowKeyboardFocusRestore(): () => void {
   let lastFocused: HTMLElement | null = null
   let restoreFrame: number | null = null
-  let nativeUnlisten: (() => void) | null = null
-  let cleaned = false
 
   const onFocusIn = (event: FocusEvent) => {
     const target = event.target
@@ -132,8 +120,7 @@ export function installWindowKeyboardFocusRestore(
     lastFocused = target
   }
 
-  const scheduleRestore = () => {
-    if (cleaned) return
+  const onWindowFocus = () => {
     if (restoreFrame !== null) {
       cancelAnimationFrame(restoreFrame)
     }
@@ -144,8 +131,6 @@ export function installWindowKeyboardFocusRestore(
     })
   }
 
-  const onWindowFocus = () => scheduleRestore()
-
   // Seed from current focus if the app already has one.
   if (isMeaningfulFocusTarget(document.activeElement)) {
     lastFocused = document.activeElement
@@ -155,26 +140,9 @@ export function installWindowKeyboardFocusRestore(
   document.addEventListener('focusin', onFocusIn)
   window.addEventListener('focus', onWindowFocus)
 
-  if (options.subscribeToNativeFocus) {
-    void options
-      .subscribeToNativeFocus(focused => {
-        if (focused) scheduleRestore()
-      })
-      .then(unlisten => {
-        if (cleaned) unlisten()
-        else nativeUnlisten = unlisten
-      })
-      .catch(() => {
-        // Keep the browser focus-event fallback when registration fails.
-      })
-  }
-
   return () => {
-    cleaned = true
     document.removeEventListener('focusin', onFocusIn)
     window.removeEventListener('focus', onWindowFocus)
-    nativeUnlisten?.()
-    nativeUnlisten = null
     if (restoreFrame !== null) {
       cancelAnimationFrame(restoreFrame)
       restoreFrame = null

@@ -5,7 +5,7 @@ import {
   ArrowDownZA,
   ArrowUpNarrowWide,
   type LucideIcon,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,

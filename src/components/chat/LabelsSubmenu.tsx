@@ -1,4 +1,4 @@
-import { Tag } from '@/components/icons/reicon'
+import { Tag } from 'lucide-react'
 import {
   ContextMenuCheckboxItem,
   ContextMenuItem,

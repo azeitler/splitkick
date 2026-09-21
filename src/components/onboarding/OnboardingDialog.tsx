@@ -108,7 +108,7 @@ import {
 import { WslSetupStep } from './WslSetupStep'
 import { UsageModeStep, type OnboardingUsageMode } from './UsageModeStep'
 import { RemoteSetupStep } from './RemoteSetupStep'
-import { ArrowLeft, Loader2 } from '@/components/icons/reicon'
+import { ArrowLeft, Loader2 } from 'lucide-react'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import {
   checkSystemPrerequisites,
@@ -1281,8 +1281,7 @@ function OnboardingDialogContent() {
     if (step !== 'antigravity-auth-checking') return
     if (antigravityAuth.isLoading || antigravityAuth.isFetching) return
 
-    if (antigravityAuth.data?.authenticated || antigravityAuth.data?.timedOut) {
-      // A timed-out `agy models` probe is unknown, not signed-out.
+    if (antigravityAuth.data?.authenticated) {
       queueMicrotask(() => moveToNextBackendOrGh('antigravity'))
     } else {
       queueMicrotask(() => setStep('antigravity-auth-login'))
@@ -1292,7 +1291,6 @@ function OnboardingDialogContent() {
     antigravityAuth.isLoading,
     antigravityAuth.isFetching,
     antigravityAuth.data?.authenticated,
-    antigravityAuth.data?.timedOut,
     moveToNextBackendOrGh,
     setStep,
   ])
@@ -2823,7 +2821,7 @@ function OnboardingDialogContent() {
             {step === 'usage-mode' ? (
               <UsageModeStep onSelect={handleUsageModeSelect} />
             ) : step === 'remote-setup' ? (
-              <RemoteSetupStep onComplete={continueAfterLocalChoice} />
+              <RemoteSetupStep />
             ) : step === 'wsl-setup' ? (
               <WslSetupStep
                 onComplete={() => {

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { FileQuestionMark } from '@/components/icons/reicon'
+import { FileQuestionMark } from 'lucide-react'
 import { isHomeRelativePath } from '@/lib/path-utils'
 import {
   Tooltip,

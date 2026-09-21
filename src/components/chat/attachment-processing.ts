@@ -1,17 +1,14 @@
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { useChatStore } from '@/store/chat-store'
-import type {
-  SaveFileResponse,
-  SaveImageResponse,
-  SaveTextResponse,
-} from '@/types/chat'
+import type { SaveImageResponse, SaveTextResponse } from '@/types/chat'
 import {
   ALLOWED_IMAGE_EXTENSIONS,
   ALLOWED_IMAGE_TYPES,
   getImageMimeTypeFromFilename,
   MAX_IMAGE_SIZE,
   MAX_TEXT_SIZE,
+  SVG_EXTENSION,
   SVG_MIME_TYPE,
 } from './image-constants'
 
@@ -35,71 +32,7 @@ async function fileToBase64(file: File): Promise<string> {
   return btoa(binary)
 }
 
-export type AttachmentFileKind = 'raster' | 'text' | 'file'
-
-const TEXT_EXTENSIONS = new Set([
-  'txt',
-  'md',
-  'markdown',
-  'csv',
-  'tsv',
-  'json',
-  'jsonl',
-  'xml',
-  'yaml',
-  'yml',
-  'toml',
-  'ini',
-  'conf',
-  'log',
-  'html',
-  'htm',
-  'css',
-  'scss',
-  'less',
-  'js',
-  'jsx',
-  'ts',
-  'tsx',
-  'mjs',
-  'cjs',
-  'py',
-  'rb',
-  'rs',
-  'go',
-  'java',
-  'kt',
-  'kts',
-  'c',
-  'h',
-  'cc',
-  'cpp',
-  'hpp',
-  'cs',
-  'php',
-  'sh',
-  'bash',
-  'zsh',
-  'fish',
-  'sql',
-  'graphql',
-  'gql',
-  'vue',
-  'svelte',
-  'astro',
-  'env',
-  'gitignore',
-  'dockerfile',
-  'svg',
-])
-
-export function isTextFilename(filename: string): boolean {
-  const extension = getExtension(filename)
-  return (
-    TEXT_EXTENSIONS.has(extension) ||
-    TEXT_EXTENSIONS.has(filename.toLowerCase())
-  )
-}
+export type AttachmentFileKind = 'raster' | 'svg' | 'unsupported'
 
 export function classifyAttachmentFile(
   file: Pick<File, 'name' | 'type'>
@@ -107,16 +40,7 @@ export function classifyAttachmentFile(
   const mimeType = file.type.toLowerCase()
   const extension = getExtension(file.name)
 
-  if (
-    mimeType === SVG_MIME_TYPE ||
-    mimeType.startsWith('text/') ||
-    mimeType === 'application/json' ||
-    mimeType.endsWith('+json') ||
-    mimeType.endsWith('+xml') ||
-    isTextFilename(file.name)
-  ) {
-    return 'text'
-  }
+  if (mimeType === SVG_MIME_TYPE || extension === SVG_EXTENSION) return 'svg'
   if (
     ALLOWED_IMAGE_TYPES.includes(
       mimeType as (typeof ALLOWED_IMAGE_TYPES)[number]
@@ -126,7 +50,7 @@ export function classifyAttachmentFile(
     return 'raster'
   }
 
-  return 'file'
+  return 'unsupported'
 }
 
 export async function processAttachmentFile(
@@ -135,20 +59,25 @@ export async function processAttachmentFile(
 ): Promise<void> {
   const kind = classifyAttachmentFile(file)
 
-  if (kind === 'text') {
+  if (kind === 'unsupported') {
+    toast.error('Unsupported image type', {
+      description: 'Allowed types: PNG, JPEG, GIF, WebP, SVG',
+    })
+    return
+  }
+
+  if (kind === 'svg') {
     if (file.size > MAX_TEXT_SIZE) {
-      toast.error('Text file too large', {
+      toast.error('SVG too large', {
         description: 'Maximum size is 10MB',
       })
       return
     }
 
     try {
-      const text = await file.text()
+      const svgText = await file.text()
       const result = await invoke<SaveTextResponse>('save_pasted_text', {
-        content: text,
-        filename: file.name,
-        sessionId,
+        content: svgText,
       })
 
       useChatStore.getState().addPendingTextFile(sessionId, {
@@ -156,35 +85,15 @@ export async function processAttachmentFile(
         path: result.path,
         filename: file.name || result.filename,
         size: result.size,
-        content: text,
+        content: svgText,
       })
     } catch (error) {
-      console.error('Failed to save text file:', error)
-      toast.error('Failed to save text file', {
+      console.error('Failed to save SVG:', error)
+      toast.error('Failed to save SVG', {
         description: String(error),
       })
     }
 
-    return
-  }
-
-  if (kind === 'file') {
-    try {
-      const result = await invoke<SaveFileResponse>('save_pasted_file', {
-        data: await fileToBase64(file),
-        filename: file.name,
-        sessionId,
-      })
-      useChatStore.getState().addPendingFile(sessionId, {
-        id: result.id,
-        relativePath: result.path,
-        extension: getExtension(result.filename),
-        isDirectory: false,
-      })
-    } catch (error) {
-      console.error('Failed to save file:', error)
-      toast.error('Failed to save file', { description: String(error) })
-    }
     return
   }
 
@@ -220,7 +129,6 @@ export async function processAttachmentFile(
     const result = await invoke<SaveImageResponse>('save_pasted_image', {
       data: base64Data,
       mimeType,
-      sessionId,
     })
 
     updatePendingImage(sessionId, placeholderId, {
@@ -242,7 +150,7 @@ export async function processAttachmentFiles(
   files: Iterable<File>,
   sessionId: string
 ): Promise<void> {
-  // Independent per-file I/O; run in parallel.
+  // Independent per-file I/O (save image/SVG); run in parallel.
   await Promise.all(
     Array.from(files, file => processAttachmentFile(file, sessionId))
   )
@@ -257,10 +165,7 @@ export async function processAttachmentFiles(
 export async function saveImageFileToDisk(file: File): Promise<string | null> {
   const kind = classifyAttachmentFile(file)
 
-  const isSvg =
-    file.type.toLowerCase() === SVG_MIME_TYPE ||
-    getExtension(file.name) === 'svg'
-  if (kind === 'file' || (kind === 'text' && !isSvg)) {
+  if (kind === 'unsupported') {
     toast.error('Unsupported image type', {
       description: 'Allowed types: PNG, JPEG, GIF, WebP, SVG',
     })
@@ -268,7 +173,7 @@ export async function saveImageFileToDisk(file: File): Promise<string | null> {
   }
 
   try {
-    if (isSvg) {
+    if (kind === 'svg') {
       if (file.size > MAX_TEXT_SIZE) {
         toast.error('SVG too large', { description: 'Maximum size is 10MB' })
         return null

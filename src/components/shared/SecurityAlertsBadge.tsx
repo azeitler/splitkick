@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { ShieldAlert } from '@/components/icons/reicon'
+import { ShieldAlert } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,

@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo } from 'react'
-import { Copy } from '@/components/icons/reicon'
+import { Copy } from 'lucide-react'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { normalizePath } from '@/lib/path-utils'
@@ -25,7 +25,6 @@ import {
 } from './tool-call-utils'
 import { PlanDisplay } from './PlanFileDisplay'
 import { ImageLightbox } from './ImageLightbox'
-import { parseServerResourceKey } from '@/lib/server-resource'
 import { TextFileLightbox } from './TextFileLightbox'
 import { FileMentionBadge } from './FileMentionBadge'
 import { SkillBadge } from './SkillBadge'
@@ -162,8 +161,6 @@ interface MessageItemProps {
   hideApproveButtons?: boolean
   /** Hide the built-in cancelled marker when a parent compact row renders it externally */
   hideCancelledIndicator?: boolean
-  /** Hide the edited-files summary when a compact parent renders it outside. */
-  hideEditedFiles?: boolean
   /** Duration of this assistant message in ms (computed from user→assistant timestamp delta) */
   durationMs?: number | null
 }
@@ -206,7 +203,6 @@ export const MessageItem = memo(function MessageItem({
   onCopyToInput,
   hideApproveButtons,
   hideCancelledIndicator,
-  hideEditedFiles = false,
   durationMs,
 }: MessageItemProps) {
   const zenMode = useUIStore(state => state.zenMode)
@@ -216,9 +212,6 @@ export const MessageItem = memo(function MessageItem({
   // Extract image, text file, file mention, and skill paths and clean content for user messages
   const imagePaths =
     message.role === 'user' ? extractImagePaths(message.content) : []
-  const messageServerId = parseServerResourceKey(
-    worktreeId ?? sessionId
-  )?.serverId
   const textFilePaths =
     message.role === 'user' ? extractTextFilePaths(message.content) : []
   const fileMentionPaths =
@@ -376,9 +369,6 @@ export const MessageItem = memo(function MessageItem({
             <ImageLightbox
               key={`${message.id}-img-${idx}`}
               src={path}
-              serverId={
-                messageServerId === 'local' ? undefined : messageServerId
-              }
               alt={`Attached image ${idx + 1}`}
               thumbnailClassName="h-20 max-w-40 object-contain rounded border border-border/50 cursor-pointer hover:border-primary/50 transition-colors"
             />
@@ -390,13 +380,7 @@ export const MessageItem = memo(function MessageItem({
       {textFilePaths.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
           {textFilePaths.map((path, idx) => (
-            <TextFileLightbox
-              key={`${message.id}-txt-${idx}`}
-              path={path}
-              serverId={
-                messageServerId === 'local' ? undefined : messageServerId
-              }
-            />
+            <TextFileLightbox key={`${message.id}-txt-${idx}`} path={path} />
           ))}
         </div>
       )}
@@ -616,11 +600,6 @@ export const MessageItem = memo(function MessageItem({
                               <SteeredPromptGroup
                                 texts={item.texts}
                                 worktreePath={worktreePath}
-                                serverId={
-                                  messageServerId === 'local'
-                                    ? undefined
-                                    : messageServerId
-                                }
                                 onCopyText={
                                   onCopyToInput
                                     ? handleCopySteeredText
@@ -895,7 +874,6 @@ export const MessageItem = memo(function MessageItem({
       {/* Show edited files at the bottom of assistant messages */}
       {message.role === 'assistant' &&
         (message.tool_calls?.length ?? 0) > 0 &&
-        !hideEditedFiles &&
         !skipToolCalls && (
           <EditedFilesDisplay
             toolCalls={message.tool_calls}
@@ -932,7 +910,6 @@ export const MessageItem = memo(function MessageItem({
                     executionMode={message.execution_mode}
                     thinkingLevel={message.thinking_level}
                     effortLevel={message.effort_level}
-                    provider={message.custom_profile_name}
                     isCursor={message.model.startsWith('cursor/')}
                   />
                 )}

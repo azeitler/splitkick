@@ -3,11 +3,10 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { invoke, invokeForOptionalServer } from '@/lib/transport'
+import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import { toast } from 'sonner'
 import { hasBackendTransport } from '@/lib/environment'
-import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 import type {
   KimiAuthStatus,
   KimiCliStatus,
@@ -66,19 +65,13 @@ export function useKimiPathDetection(options?: { enabled?: boolean }) {
   })
 }
 
-export function useKimiCliStatus(options?: {
-  enabled?: boolean
-  serverId?: string
-}) {
+export function useKimiCliStatus(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: [...kimiCliQueryKeys.status(), options?.serverId ?? 'local'],
+    queryKey: kimiCliQueryKeys.status(),
     queryFn: async (): Promise<KimiCliStatus> => {
       if (!isTauri()) return { installed: false, version: null, path: null }
       try {
-        return await invokeForOptionalServer<KimiCliStatus>(
-          options?.serverId,
-          'check_kimi_cli_installed'
-        )
+        return await invoke<KimiCliStatus>('check_kimi_cli_installed')
       } catch (error) {
         logger.error('Failed to check Kimi CLI status', { error })
         return { installed: false, version: null, path: null }
@@ -120,18 +113,14 @@ export function useKimiCliAuth(options?: { enabled?: boolean }) {
 }
 
 export function useAvailableKimiModels(options?: { enabled?: boolean }) {
-  const serverId = useOptionalSettingsTargetServerId()
   return useQuery({
-    queryKey: [...kimiCliQueryKeys.models(), serverId ?? 'local'],
+    queryKey: kimiCliQueryKeys.models(),
     queryFn: async (): Promise<KimiModelInfo[]> => {
       if (!isTauri()) {
         return [{ id: 'default', label: 'Configured default', isDefault: true }]
       }
       try {
-        const models = await invokeForOptionalServer<KimiModelInfo[]>(
-          serverId,
-          'list_kimi_models'
-        )
+        const models = await invoke<KimiModelInfo[]>('list_kimi_models')
         return models.length
           ? models
           : [{ id: 'default', label: 'Configured default', isDefault: true }]
@@ -216,6 +205,7 @@ export function useKimiCliSetup() {
       onError: error => options?.onError?.(error),
     })
   }
+
 
   return {
     status: status.data,

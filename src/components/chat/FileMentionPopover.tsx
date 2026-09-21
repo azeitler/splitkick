@@ -7,7 +7,7 @@ import {
   useState,
 } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { FileIcon, FolderIcon } from '@/components/icons/reicon'
+import { FileIcon, FolderIcon } from 'lucide-react'
 import {
   Command,
   CommandEmpty,

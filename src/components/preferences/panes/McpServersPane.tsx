@@ -1,10 +1,5 @@
 import React, { useEffect, useMemo } from 'react'
-import {
-  CheckCircle,
-  Loader2,
-  ShieldAlert,
-  XCircle,
-} from '@/components/icons/reicon'
+import { CheckCircle, Loader2, ShieldAlert, XCircle } from 'lucide-react'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -23,7 +18,6 @@ import {
   useAllBackendsMcpHealth,
   groupServersByBackend,
   mcpKey,
-  isRequiredMcpServer,
   migrateLegacyMcpKeys,
 } from '@/services/mcp'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
@@ -218,14 +212,16 @@ export const McpServersPane: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <JeanMcpSection mcpServers={mcpServers ?? []} />
+      <JeanMcpSection />
       <AgentBrowserSection />
       <SettingsSection
         title="Default MCP Servers"
         anchorId="pref-mcp-section-default-servers"
       >
         <p className="text-sm text-muted-foreground">
-          Defaults for new sessions. Change a session from its toolbar.
+          Selected servers will be enabled by default in new sessions. You can
+          override per-session from the toolbar. Antigravity loads its
+          configured servers automatically.
         </p>
 
         {isLoading ? (
@@ -253,7 +249,7 @@ export const McpServersPane: React.FC = () => {
                   <div
                     key={`${backend}-${server.name}`}
                     className={cn(
-                      'flex items-center gap-3 rounded-md border px-3 py-2',
+                      'flex items-center gap-3 rounded-md border px-4 py-3',
                       server.disabled && 'opacity-50'
                     )}
                   >
@@ -265,11 +261,7 @@ export const McpServersPane: React.FC = () => {
                           enabledServersSet.has(mcpKey(backend, server.name)))
                       }
                       onCheckedChange={() => handleToggle(backend, server.name)}
-                      disabled={
-                        server.disabled ||
-                        backend === 'antigravity' ||
-                        isRequiredMcpServer(server.name)
-                      }
+                      disabled={server.disabled || backend === 'antigravity'}
                     />
                     <Label
                       htmlFor={`mcp-${backend}-${server.name}`}
@@ -293,8 +285,7 @@ export const McpServersPane: React.FC = () => {
                     <span className="text-xs text-muted-foreground">
                       {server.disabled
                         ? 'disabled'
-                        : backend === 'antigravity' ||
-                            isRequiredMcpServer(server.name)
+                        : backend === 'antigravity'
                           ? 'automatic'
                           : server.scope}
                     </span>

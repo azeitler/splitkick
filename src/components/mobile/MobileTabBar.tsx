@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { History, House, Search, Star, type LucideIcon } from '@/components/icons/reicon'
+import { History, House, Search, Star, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'

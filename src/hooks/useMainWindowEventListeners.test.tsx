@@ -13,7 +13,6 @@ import {
   closeActiveTerminalTabForShortcut,
   findKeybindingAction,
   getTerminalShortcutWorktreeId,
-  hasBlockingOpenOverlay,
   handleRunEnvironmentStarted,
   isPlainSessionTerminalFocused,
   shouldAllowKeybindingThroughOpenOverlay,
@@ -538,9 +537,7 @@ describe('shouldLetPlanDialogHandleAction', () => {
   })
 
   it('returns false for non-approve actions or when the dialog is closed', () => {
-    expect(shouldLetPlanDialogHandleAction('focus_chat_input', true)).toBe(
-      false
-    )
+    expect(shouldLetPlanDialogHandleAction('open_plan', true)).toBe(false)
     expect(shouldLetPlanDialogHandleAction('approve_plan', false)).toBe(false)
   })
 })
@@ -591,25 +588,6 @@ describe('dialog overlay keybinding passthrough', () => {
         useUIStore.getState()
       )
     ).toBe(false)
-  })
-
-  it('does not treat the floating terminal host as a blocking dialog', () => {
-    const terminalHost = document.createElement('div')
-    terminalHost.setAttribute('role', 'dialog')
-    terminalHost.setAttribute('data-state', 'open')
-    terminalHost.setAttribute('data-terminal-host', 'true')
-    document.body.appendChild(terminalHost)
-
-    expect(hasBlockingOpenOverlay()).toBe(false)
-  })
-
-  it('still treats other open dialogs as blocking overlays', () => {
-    const dialog = document.createElement('div')
-    dialog.setAttribute('role', 'dialog')
-    dialog.setAttribute('data-state', 'open')
-    document.body.appendChild(dialog)
-
-    expect(hasBlockingOpenOverlay()).toBe(true)
   })
 
   it.each(['toggle_zen_mode', 'clear_session_context'] as const)(
@@ -665,13 +643,6 @@ describe('applySessionRenamedToCaches', () => {
         },
       ],
     })
-    queryClient.setQueryData(['recent-worktrees', 'projects', 10, null], {
-      items: [
-        {
-          session: sessions.sessions[0],
-        },
-      ],
-    })
   }
 
   it('updates base sessions, with-counts, session detail, and all-sessions caches', () => {
@@ -696,31 +667,15 @@ describe('applySessionRenamedToCaches', () => {
       chatQueryKeys.session(sessionId)
     )
     const all = queryClient.getQueryData<AllSessionsResponse>(['all-sessions'])
-    const recent = queryClient.getQueryData<{
-      items: { session: Session }[]
-    }>(['recent-worktrees', 'projects', 10, null])
 
     expect(base?.sessions[0]?.name).toBe('Fix auto naming')
     expect(withCounts?.sessions[0]?.name).toBe('Fix auto naming')
     expect(detail?.name).toBe('Fix auto naming')
     expect(all?.entries[0]?.sessions[0]?.name).toBe('Fix auto naming')
-    expect(recent?.items[0]?.session.name).toBe('Fix auto naming')
   })
 })
 
 describe('applyCacheInvalidationKeys', () => {
-  it('refreshes Recent when a first prompt is persisted', () => {
-    const queryClient = new QueryClient()
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
-
-    applyCacheInvalidationKeys(queryClient, ['recent-worktrees'])
-
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ['recent-worktrees'],
-    })
-    expect(invalidateSpy).toHaveBeenCalledTimes(1)
-  })
-
   it('invalidates chat queries and all-sessions for sessions keys', () => {
     const queryClient = new QueryClient()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
@@ -732,12 +687,6 @@ describe('applyCacheInvalidationKeys', () => {
     })
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ['all-sessions'],
-    })
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: chatQueryKeys.unreadSessionCount(),
-    })
-    expect(invalidateSpy).toHaveBeenCalledWith({
-      queryKey: ['recent-worktrees'],
     })
   })
 

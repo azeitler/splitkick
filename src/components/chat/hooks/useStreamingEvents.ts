@@ -350,14 +350,10 @@ export default function useStreamingEvents({
       .then(entries => {
         const store = useChatStore.getState()
         for (const entry of entries) {
-          store.setScheduledWakeup(
-            entry.wakeup.tool_call_id,
-            {
-              ...entry.wakeup,
-              status: 'pending',
-            },
-            entry.session_id
-          )
+          store.setScheduledWakeup(entry.wakeup.tool_call_id, {
+            ...entry.wakeup,
+            status: 'pending',
+          })
         }
       })
       .catch(err => {
@@ -1317,8 +1313,8 @@ export default function useStreamingEvents({
                   }
                 : old
           )
-          queryClient.setQueriesData<WorktreeSessions>(
-            { queryKey: chatQueryKeys.sessions(worktreeId) },
+          queryClient.setQueryData<WorktreeSessions>(
+            chatQueryKeys.sessions(worktreeId),
             old => {
               if (!old) return old
               return {
@@ -1363,8 +1359,8 @@ export default function useStreamingEvents({
                 }
               : old
         )
-        queryClient.setQueriesData<WorktreeSessions>(
-          { queryKey: chatQueryKeys.sessions(worktreeId) },
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
           old => {
             if (!old) return old
             return {
@@ -1482,8 +1478,8 @@ export default function useStreamingEvents({
                   }
                 : old
           )
-          queryClient.setQueriesData<WorktreeSessions>(
-            { queryKey: chatQueryKeys.sessions(worktreeId) },
+          queryClient.setQueryData<WorktreeSessions>(
+            chatQueryKeys.sessions(worktreeId),
             old => {
               if (!old) return old
               return {
@@ -1536,8 +1532,8 @@ export default function useStreamingEvents({
                   }
                 : old
           )
-          queryClient.setQueriesData<WorktreeSessions>(
-            { queryKey: chatQueryKeys.sessions(worktreeId) },
+          queryClient.setQueryData<WorktreeSessions>(
+            chatQueryKeys.sessions(worktreeId),
             old => {
               if (!old) return old
               return {
@@ -1623,8 +1619,8 @@ export default function useStreamingEvents({
                 }
               : old
         )
-        queryClient.setQueriesData<WorktreeSessions>(
-          { queryKey: chatQueryKeys.sessions(worktreeId) },
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(worktreeId),
           old => {
             if (!old) return old
             return {
@@ -1677,9 +1673,6 @@ export default function useStreamingEvents({
       // invalidate here for optimistic cache consistency on the local client.
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(worktreeId),
-      })
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.unreadSessionCount(),
       })
       queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
       // Invalidate individual session so cross-client viewers get the
@@ -1803,8 +1796,8 @@ export default function useStreamingEvents({
         old => (old ? { ...old, last_run_status: 'crashed' as const } : old)
       )
       if (sessionWorktreeId) {
-        queryClient.setQueriesData<WorktreeSessions>(
-          { queryKey: chatQueryKeys.sessions(sessionWorktreeId) },
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(sessionWorktreeId),
           old => {
             if (!old) return old
             return {
@@ -1830,9 +1823,6 @@ export default function useStreamingEvents({
           queryKey: chatQueryKeys.sessions(sessionWorktreeId),
         })
       }
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.unreadSessionCount(),
-      })
       queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
     })
 
@@ -1941,9 +1931,12 @@ export default function useStreamingEvents({
         // Clear compacting state (safety net)
         useChatStore.getState().setCompacting(session_id, false)
 
-        // Restore the prompt and its attachments when cancellation produced no
-        // visible assistant output. Some backends report undo_send=false as soon
-        // as a process or turn is registered, before it produces any output.
+        // Restore message to input ONLY when the prompt never started
+        // (backend undo_send=true: process not registered / pending cancel).
+        // If the prompt is already running, do not restore even when no
+        // assistant content has streamed yet — cancel of a live run leaves
+        // the input empty. Also skip restore when queued messages exist
+        // ("Skip to Next").
         const hasToolCalls = toolCalls && toolCalls.length > 0
         const hasText = sanitizedContent.trim().length > 0
         const hasThinking = !!streamingThinkingContent[session_id]
@@ -1953,13 +1946,8 @@ export default function useStreamingEvents({
           hasToolCalls || hasText || hasThinking || hasContentBlocks
         const hasQueuedMessages =
           (useChatStore.getState().messageQueues[session_id] ?? []).length > 0
-        const hasCurrentDraft = !!useChatStore
-          .getState()
-          .inputDrafts[session_id]?.trim()
-        const sentMessage = useChatStore.getState().lastSentMessages[session_id]
-        const shouldRestoreMessage =
-          !hasContent && !hasQueuedMessages && !hasCurrentDraft
         const shouldHydrateCancelledFromBackend = !undo_send && !hasContent
+        const shouldRestoreMessage = !hasQueuedMessages && undo_send
 
         const removeLatestUserMessageFromCache = () => {
           queryClient.setQueryData<Session>(
@@ -1977,9 +1965,9 @@ export default function useStreamingEvents({
         }
 
         // Update TanStack Query cache FIRST (before clearing Zustand streaming state)
-        // so StreamingMessage unmount does not flicker. undo_send removes the
-        // optimistic user turn; a live no-output cancel keeps it visible and
-        // restores the draft. Partial output stays in history, marked cancelled.
+        // so the cancelled optimistic prompt/partial response disappears as soon
+        // as StreamingMessage unmounts. The backend still keeps run logs/metadata
+        // for diagnostics, but cancelled turns are not visible chat history.
 
         // Optimistically update last_run_status so "restored session" indicator hides
         queryClient.setQueryData<Session>(
@@ -1987,8 +1975,8 @@ export default function useStreamingEvents({
           old => (old ? { ...old, last_run_status: 'cancelled' } : old)
         )
         if (sessionWorktreeId) {
-          queryClient.setQueriesData<WorktreeSessions>(
-            { queryKey: chatQueryKeys.sessions(sessionWorktreeId) },
+          queryClient.setQueryData<WorktreeSessions>(
+            chatQueryKeys.sessions(sessionWorktreeId),
             old => {
               if (!old) return old
               return {
@@ -2027,13 +2015,10 @@ export default function useStreamingEvents({
             }
             clearLastSentMessage(session_id)
 
-            // undo_send means the prompt never entered the run history. A
-            // normal live cancellation keeps the user turn visible while the
-            // draft is restored for retry.
-            if (undo_send || !hasContent) removeLatestUserMessageFromCache()
+            removeLatestUserMessageFromCache()
           } else {
             useChatStore.getState().clearLastSentAttachments(session_id)
-            if (undo_send || !hasContent) removeLatestUserMessageFromCache()
+            removeLatestUserMessageFromCache()
           }
         } else {
           // Partial response exists — keep the prompt + streamed partial output
@@ -2145,43 +2130,18 @@ export default function useStreamingEvents({
                 session_id,
                 resolvedWorktreeId
               ).then(session => {
-                const assistant = session
-                  ? [...session.messages]
-                      .reverse()
-                      .find(message => message.role === 'assistant')
-                  : undefined
-                if (
-                  !assistant ||
-                  !hasMeaningfulAssistantPayload(
-                    assistant.content,
-                    assistant.content_blocks,
-                    assistant.tool_calls
-                  )
-                ) {
-                  return
-                }
-
-                // A backend can persist output before its stream reaches the
-                // client. In that case, keep the persisted turn and retract only
-                // the draft that this cancellation restored. Never clear newer
-                // text that the user entered after cancelling.
-                const store = useChatStore.getState()
-                if (
-                  sentMessage &&
-                  store.inputDrafts[session_id] === sentMessage
-                ) {
-                  store.clearInputDraft(session_id)
-                  store.clearPendingImages(session_id)
-                  store.clearPendingFiles(session_id)
-                  store.clearPendingTextFiles(session_id)
-                  store.clearPendingSkills(session_id)
+                const lastHydratedMessage = session?.messages.at(-1)
+                const hydratedCancelledAssistant =
+                  lastHydratedMessage?.role === 'assistant' &&
+                  lastHydratedMessage.cancelled === true
+                const currentDraft =
+                  useChatStore.getState().inputDrafts[session_id] ?? ''
+                if (hydratedCancelledAssistant && !currentDraft) {
+                  useChatStore.getState().clearInputDraft(session_id)
                 }
               })
             }
           }
-          queryClient.invalidateQueries({
-            queryKey: chatQueryKeys.unreadSessionCount(),
-          })
           queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
         }
 
@@ -2284,16 +2244,7 @@ export default function useStreamingEvents({
             ) {
               messages.pop()
             }
-            // Pop only the prompt this undo is about. The chat:cancelled
-            // handler may already have removed it, and then the last user
-            // message is an earlier turn that must stay.
-            const lastUser = messages.at(-1)
-            if (
-              lastUser?.role === 'user' &&
-              (lastUser.content === user_message ||
-                stripAllMarkers(lastUser.content).trim() ===
-                  stripAllMarkers(user_message ?? '').trim())
-            ) {
+            if (messages.at(-1)?.role === 'user') {
               messages.pop()
             }
             if (messages.length === old.messages.length) return old
@@ -2346,15 +2297,11 @@ export default function useStreamingEvents({
     const unlistenWakeupScheduled = listen<WakeupScheduledEvent>(
       'chat:wakeup_scheduled',
       event => {
-        const { session_id, wakeup } = event.payload
-        useChatStore.getState().setScheduledWakeup(
-          wakeup.tool_call_id,
-          {
-            ...wakeup,
-            status: 'pending',
-          },
-          session_id
-        )
+        const { wakeup } = event.payload
+        useChatStore.getState().setScheduledWakeup(wakeup.tool_call_id, {
+          ...wakeup,
+          status: 'pending',
+        })
       }
     )
 
@@ -2444,7 +2391,12 @@ export default function useStreamingEvents({
         case 'thinkingLevel':
           store.setThinkingLevel(
             session_id,
-            value as 'off' | 'adaptive' | 'think' | 'megathink' | 'ultrathink'
+            value as
+              | 'off'
+              | 'adaptive'
+              | 'think'
+              | 'megathink'
+              | 'ultrathink'
           )
           break
         case 'effortLevel':
@@ -2496,9 +2448,6 @@ export default function useStreamingEvents({
       })
       queryClient.invalidateQueries({
         queryKey: ['all-sessions'],
-      })
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.unreadSessionCount(),
       })
     })
 

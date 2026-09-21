@@ -12,7 +12,6 @@ function renderUseMagicCommands(
     handleLinkedProjects: vi.fn(),
     handleForkSession: vi.fn(),
     handleForkSessionInPlace: vi.fn(),
-    handleCheckGitHubIssues: vi.fn(),
     handleCommit: vi.fn(),
     handleCommitAndPush: vi.fn(),
     handlePull: vi.fn(),
@@ -26,6 +25,7 @@ function renderUseMagicCommands(
     handleInvestigateWorkflowRun: vi.fn(),
     handleInvestigate: vi.fn(),
     handleReviewComments: vi.fn(),
+    handleSmokeTest: vi.fn(),
     ...overrides,
   }
   renderHook(() => useMagicCommands(handlers))
@@ -64,16 +64,14 @@ describe('useMagicCommands review comments batch', () => {
     expect(handlers.handleForkSession).not.toHaveBeenCalled()
   })
 
-  it('dispatches the check GitHub issues magic command', () => {
+  it('dispatches the smoke test magic command', () => {
     const handlers = renderUseMagicCommands()
 
     window.dispatchEvent(
-      new CustomEvent('magic-command', {
-        detail: { command: 'check-github-issues' },
-      })
+      new CustomEvent('magic-command', { detail: { command: 'smoke-test' } })
     )
 
-    expect(handlers.handleCheckGitHubIssues).toHaveBeenCalledTimes(1)
+    expect(handlers.handleSmokeTest).toHaveBeenCalledTimes(1)
   })
 
   it('passes separate review comment prompts and plan mode from event detail', () => {

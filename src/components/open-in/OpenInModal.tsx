@@ -10,7 +10,7 @@ import {
   Globe,
   ShieldAlert,
   Siren,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -41,11 +41,7 @@ import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import { notify } from '@/lib/notifications'
 import { openExternal } from '@/lib/platform'
 import { cn } from '@/lib/utils'
-import {
-  canOpenInEditor,
-  canOpenInFinder,
-  canOpenInTerminal,
-} from '@/lib/environment'
+import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { resolvePortUrl } from '@/components/browser/default-tab-url'
 
 interface ModalOption {
@@ -109,16 +105,8 @@ export function OpenInModal() {
   // Finder/terminal: backend host can launch apps (local desktop, WSL headless,
   // or --allow-native-open). Editor also works from the native shell against a
   // remote Jean via local Zed + ssh://.
+  const canOpenLocally = canOpenNativeApps()
   const canOpenEditor = canOpenInEditor()
-  const canOpenTerminal = canOpenInTerminal()
-
-  const selectedProject = useMemo(
-    () => projects?.find(project => project.id === selectedProjectId),
-    [projects, selectedProjectId]
-  )
-  const canOpenFinder = canOpenInFinder(
-    worktree?.serverId ?? selectedProject?.serverId
-  )
 
   const targetPath = useMemo(() => {
     if (worktree?.path) return worktree.path
@@ -126,9 +114,12 @@ export function OpenInModal() {
       const path = useChatStore.getState().getWorktreePath(selectedWorktreeId)
       if (path) return path
     }
-    if (selectedProject) return selectedProject.path
+    if (selectedProjectId && projects) {
+      const project = projects.find(p => p.id === selectedProjectId)
+      if (project) return project.path
+    }
     return null
-  }, [worktree?.path, selectedWorktreeId, selectedProject])
+  }, [worktree?.path, selectedWorktreeId, selectedProjectId, projects])
 
   const { data: ports } = usePorts(targetPath)
 
@@ -173,16 +164,14 @@ export function OpenInModal() {
 
     return allOptions.filter(opt => {
       if (opt.id === 'editor') return canOpenEditor
-      if (opt.id === 'terminal') return canOpenTerminal
-      if (opt.id === 'finder') return canOpenFinder
+      if (opt.id === 'terminal' || opt.id === 'finder') return canOpenLocally
       return true
     })
   }, [
     preferences?.editor,
     preferences?.terminal,
-    canOpenFinder,
+    canOpenLocally,
     canOpenEditor,
-    canOpenTerminal,
     worktree?.pr_url,
     worktree?.pr_number,
   ])

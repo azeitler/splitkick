@@ -5,8 +5,8 @@ import {
   GitPullRequest,
   Shield,
   ShieldAlert,
-  Sentry,
-} from '@/components/icons/reicon'
+  Bug,
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -82,7 +82,7 @@ export function ContextViewerDialog({
                 <LinearIcon className="h-4 w-4 text-violet-500" />
               )}
               {viewingContext.type === 'sentry' && (
-                <Sentry className="h-4 w-4 text-orange-500" />
+                <Bug className="h-4 w-4 text-orange-500" />
               )}
               {titlePrefix}
             </DialogTitle>

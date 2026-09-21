@@ -3,7 +3,7 @@ import {
   GitPullRequest,
   Activity,
   LayoutDashboard,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import type { AppCommand } from './types'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'

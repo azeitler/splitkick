@@ -1,8 +1,11 @@
 import { useEffect } from 'react'
-import { ServerOff } from '@/components/icons/reicon'
+import { ServerOff } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
+  LOCAL_CONNECTION_ID,
   isConnectionWindow,
+  markConnectionSwitch,
+  selectConnection,
   type RemoteConnection,
 } from '@/lib/remote-connections'
 import { focusMainWindow } from '@/lib/connection-windows'
@@ -68,18 +71,22 @@ export function RemoteConnectionRecovery({
           >
             Edit connection
           </Button>
-          {connectionWindow && (
-            <Button
-              variant="ghost"
-              onClick={() => {
-                // A connection window cannot become the local one — local
-                // lives in the main window. Give up on this remote and close.
+          <Button
+            variant="ghost"
+            onClick={() => {
+              // A connection window cannot become the local one — local lives
+              // in the main window. Give up on this remote and close.
+              if (isConnectionWindow()) {
                 void focusMainWindow().finally(() => void destroyAppWindow())
-              }}
-            >
-              Close window
-            </Button>
-          )}
+                return
+              }
+              markConnectionSwitch()
+              selectConnection(LOCAL_CONNECTION_ID)
+              reloadPage()
+            }}
+          >
+            {connectionWindow ? 'Close window' : 'Switch to Local'}
+          </Button>
         </div>
       </div>
     </div>

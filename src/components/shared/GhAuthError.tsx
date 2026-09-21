@@ -1,4 +1,4 @@
-import { LogIn, Download } from '@/components/icons/reicon'
+import { LogIn, Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/store/ui-store'
 

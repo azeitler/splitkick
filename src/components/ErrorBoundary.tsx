@@ -130,10 +130,10 @@ export class ErrorBoundary extends Component<
               </button>
             </div>
 
-            {this.state.error && (
+            {process.env.NODE_ENV === 'development' && this.state.error && (
               <details className="mt-6 text-left">
                 <summary className="cursor-pointer text-sm text-muted-foreground hover:text-foreground">
-                  Error Details
+                  Error Details (Development Only)
                 </summary>
                 <div className="mt-2 p-3 bg-muted rounded-md text-xs font-mono">
                   <div className="flex items-start justify-between gap-2">

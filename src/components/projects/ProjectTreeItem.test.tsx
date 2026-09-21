@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, waitFor } from '@/test/test-utils'
-import {
-  ProjectTreeItem,
-  shouldShowProjectStatusBadges,
-} from './ProjectTreeItem'
+import { ProjectTreeItem } from './ProjectTreeItem'
 import type { Project, Worktree } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
@@ -12,7 +9,6 @@ import { useUIStore } from '@/store/ui-store'
 
 const mocks = vi.hoisted(() => ({
   worktrees: [] as Worktree[],
-  worktreeQueryOptions: [] as { enabled?: boolean }[],
   updateSettingsMutate: vi.fn(),
 }))
 
@@ -25,10 +21,7 @@ vi.mock('@/hooks/useRemotePicker', () => ({
 }))
 
 vi.mock('@/services/projects', () => ({
-  useWorktrees: (_projectId: string, options?: { enabled?: boolean }) => {
-    mocks.worktreeQueryOptions.push(options ?? {})
-    return { data: mocks.worktrees }
-  },
+  useWorktrees: () => ({ data: mocks.worktrees }),
   useAppDataDir: () => ({ data: '' }),
   useUpdateProjectSettings: () => ({
     mutate: mocks.updateSettingsMutate,
@@ -90,20 +83,9 @@ const worktree: Worktree = {
   session_type: 'worktree',
 }
 
-describe('shouldShowProjectStatusBadges', () => {
-  it('hides GitHub status badges when the sidebar is narrow', () => {
-    expect(shouldShowProjectStatusBadges(280, false, true, false)).toBe(false)
-  })
-
-  it('shows GitHub status badges in a wide expanded project row', () => {
-    expect(shouldShowProjectStatusBadges(360, false, true, false)).toBe(true)
-  })
-})
-
 describe('ProjectTreeItem', () => {
   beforeEach(() => {
     mocks.worktrees = [worktree]
-    mocks.worktreeQueryOptions = []
     mocks.updateSettingsMutate.mockReset()
     useProjectsStore.setState({
       selectedProjectId: 'project-1',
@@ -132,18 +114,7 @@ describe('ProjectTreeItem', () => {
     })
   })
 
-  it('does not show project action buttons in the project row', () => {
-    render(<ProjectTreeItem project={project} />)
-
-    expect(
-      screen.queryByRole('button', { name: 'Project settings' })
-    ).not.toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: 'New worktree' })
-    ).not.toBeInTheDocument()
-  })
-
-  it('opens the project canvas without changing sidebar expansion', async () => {
+  it('opens the project canvas on a row click without collapsing the project', async () => {
     const user = userEvent.setup()
     render(<ProjectTreeItem project={project} />)
 
@@ -151,10 +122,11 @@ describe('ProjectTreeItem', () => {
 
     const projectsState = useProjectsStore.getState()
     expect(projectsState.selectedProjectId).toBe('project-1')
-    expect(projectsState.selectedWorktreeId).toBeNull()
-    expect(projectsState.expandedProjectIds.has('project-1')).toBe(true)
+    // Leaving the chat is what puts the canvas on screen.
     expect(useChatStore.getState().activeWorktreeId).toBeNull()
     expect(useChatStore.getState().activeWorktreePath).toBeNull()
+    // The chevron owns the open/closed state, not the row.
+    expect(projectsState.expandedProjectIds.has('project-1')).toBe(true)
   })
 
   // Regression: with "restore last session" on, the canvas reopened the last
@@ -169,58 +141,17 @@ describe('ProjectTreeItem', () => {
     expect(useUIStore.getState().pendingProjectHomeId).toBe('project-1')
   })
 
-  it('toggles sidebar worktrees only from the chevron', async () => {
+  it('collapses the project from the chevron only', async () => {
     const user = userEvent.setup()
     render(<ProjectTreeItem project={project} />)
 
     await user.click(screen.getByRole('button', { name: 'Collapse project' }))
 
-    const projectsState = useProjectsStore.getState()
-    expect(projectsState.selectedWorktreeId).toBe('wt-1')
-    expect(projectsState.expandedProjectIds.has('project-1')).toBe(false)
-    expect(useChatStore.getState().activeWorktreeId).toBe('wt-1')
-    expect(useChatStore.getState().activeWorktreePath).toBe('/tmp/jean-feature')
-  })
-
-  it('disables worktree loading for collapsed, unselected projects', () => {
-    useProjectsStore.setState({
-      selectedProjectId: null,
-      selectedWorktreeId: null,
-      expandedProjectIds: new Set(),
-    })
-
-    render(<ProjectTreeItem project={project} />)
-
-    expect(mocks.worktreeQueryOptions.at(-1)).toEqual({ enabled: false })
     expect(
-      screen.getByRole('button', { name: 'Expand project' })
-    ).toBeInTheDocument()
-  })
-
-  it('loads and shows worktrees that match the sidebar search', () => {
-    useProjectsStore.setState({
-      selectedProjectId: null,
-      selectedWorktreeId: null,
-      expandedProjectIds: new Set(),
-    })
-
-    render(<ProjectTreeItem project={project} searchQuery="feature" />)
-
-    expect(mocks.worktreeQueryOptions.at(-1)).toEqual({ enabled: true })
-    expect(screen.getByTestId('project-row-project-1')).toBeInTheDocument()
-    expect(screen.getByTestId('worktree-list')).toBeInTheDocument()
-  })
-
-  it('hides projects that do not match the sidebar search', () => {
-    useProjectsStore.setState({
-      selectedProjectId: null,
-      selectedWorktreeId: null,
-      expandedProjectIds: new Set(),
-    })
-
-    render(<ProjectTreeItem project={project} searchQuery="missing" />)
-
-    expect(screen.queryByTestId('project-row-project-1')).toBeNull()
+      useProjectsStore.getState().expandedProjectIds.has('project-1')
+    ).toBe(false)
+    // The chevron must not move the selection either.
+    expect(useProjectsStore.getState().selectedWorktreeId).toBe('wt-1')
   })
 
   it('opens project canvas when the project has no worktrees', async () => {
@@ -329,27 +260,5 @@ describe('ProjectTreeItem', () => {
       projectId: 'project-1',
       name: 'jean-app',
     })
-  })
-
-  it('keeps cached offline projects read-only without a repeated server badge', async () => {
-    mocks.worktrees = []
-    useProjectsStore.setState({ selectedProjectId: null })
-    const user = userEvent.setup()
-    render(
-      <ProjectTreeItem
-        project={{
-          ...project,
-          id: 'remote:project-1',
-          serverId: 'remote',
-          serverName: 'Build',
-          offline: true,
-        }}
-      />
-    )
-
-    expect(screen.queryByText('Build')).toBeNull()
-    expect(screen.getByText('Offline')).toBeInTheDocument()
-    await user.click(screen.getByTestId('project-row-remote:project-1'))
-    expect(useProjectsStore.getState().selectedProjectId).toBeNull()
   })
 })

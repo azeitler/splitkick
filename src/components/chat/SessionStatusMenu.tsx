@@ -1,4 +1,4 @@
-import { Check, CircleDashed } from '@/components/icons/reicon'
+import { Check, CircleDashed } from 'lucide-react'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import {
   ContextMenuItem,

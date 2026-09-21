@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react'
-import { Loader2 } from '@/components/icons/reicon'
+import { Loader2 } from 'lucide-react'
 import { Markdown } from '@/components/ui/markdown'
 import { LocalPathRootContext, resolveLocalPath } from '@/lib/chat-links'
 import {

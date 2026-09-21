@@ -9,12 +9,6 @@ import { toast } from 'sonner'
 const mocks = vi.hoisted(() => ({
   jeanMcpEnabled: true,
   patchPreferencesMutate: vi.fn(),
-  mcpServers: [] as {
-    name: string
-    backend: string
-    config: Record<string, unknown>
-    disabled: boolean
-  }[],
 }))
 
 vi.mock('@/lib/transport', () => ({
@@ -56,10 +50,7 @@ vi.mock('@/hooks/useInstalledBackends', () => ({
 }))
 
 vi.mock('@/services/mcp', () => ({
-  useAllBackendsMcpServers: () => ({
-    data: mocks.mcpServers,
-    isLoading: false,
-  }),
+  useAllBackendsMcpServers: () => ({ data: [], isLoading: false }),
   invalidateAllMcpServers: vi.fn(),
   getNewServersToAutoEnable: vi.fn(() => []),
   useAllBackendsMcpHealth: () => ({
@@ -109,7 +100,6 @@ describe('McpServersPane Jean MCP install', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.jeanMcpEnabled = true
-    mocks.mcpServers = []
     vi.mocked(invoke).mockImplementation(async (command: string) => {
       if (command === 'get_jean_mcp_config_snippet') return snippet
       if (command === 'install_jean_mcp_config') {
@@ -138,34 +128,12 @@ describe('McpServersPane Jean MCP install', () => {
     })
   })
 
-  it('shows the CLIs where the current Jean MCP is already installed', async () => {
-    mocks.mcpServers = [
-      {
-        name: 'jean',
-        backend: 'codex',
-        config: { env: { JEAN_MCP_MODE: 'prod' } },
-        disabled: false,
-      },
-      {
-        name: 'other-server',
-        backend: 'cursor',
-        config: {},
-        disabled: false,
-      },
-    ]
-
-    renderPane()
-
-    expect(await screen.findByText('Active in Codex')).toBeInTheDocument()
-    expect(screen.queryByText(/Active in Cursor/)).not.toBeInTheDocument()
-  })
-
   it('shows successful install confirmation on the button instead of a toast', async () => {
     const user = userEvent.setup()
     renderPane()
 
     const button = await screen.findByRole('button', {
-      name: /repair config/i,
+      name: /add current jean mcp/i,
     })
     await waitFor(() => expect(button).not.toBeDisabled())
 
@@ -194,7 +162,7 @@ describe('McpServersPane Jean MCP install', () => {
     renderPane()
 
     const button = await screen.findByRole('button', {
-      name: /repair config/i,
+      name: /add current jean mcp/i,
     })
     await waitFor(() => expect(button).not.toBeDisabled())
 
@@ -208,16 +176,26 @@ describe('McpServersPane Jean MCP install', () => {
     consoleErrorSpy.mockRestore()
   })
 
-  it('shows Jean MCP as required without an off switch', async () => {
+  it('asks whether to add Jean MCP automatically or manually when enabling', async () => {
     mocks.jeanMcpEnabled = false
+    const user = userEvent.setup()
     renderPane()
 
-    expect(
-      await screen.findByText(/required · automatic/i)
-    ).toBeInTheDocument()
-    expect(screen.queryByRole('switch')).not.toBeInTheDocument()
-    expect(mocks.patchPreferencesMutate).not.toHaveBeenCalledWith(
-      expect.objectContaining({ jean_mcp_enabled: false })
+    await user.click(
+      await screen.findByRole('switch', { name: /enable jean mcp/i })
     )
+
+    expect(mocks.patchPreferencesMutate).toHaveBeenCalledWith({
+      jean_mcp_enabled: true,
+    })
+    expect(
+      await screen.findByRole('alertdialog', {
+        name: /add jean mcp to your cli configs/i,
+      })
+    ).toBeInTheDocument()
+
+    expect(
+      screen.getByRole('button', { name: /add automatically/i })
+    ).toBeInTheDocument()
   })
 })

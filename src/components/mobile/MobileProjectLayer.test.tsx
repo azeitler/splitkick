@@ -27,12 +27,6 @@ vi.mock('@/components/dashboard/ProjectCanvasView', () => ({
   ),
 }))
 
-vi.mock('@/services/projects', () => ({
-  useProjects: () => ({
-    data: ['p1', 'p2'].map(id => ({ id, name: id, path: `/repo/${id}` })),
-  }),
-}))
-
 function openProject(projectId: string) {
   act(() => {
     useProjectsStore.getState().selectProject(projectId)

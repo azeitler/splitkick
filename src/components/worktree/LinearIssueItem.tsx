@@ -1,4 +1,4 @@
-import { Loader2, Wand2, Eye } from '@/components/icons/reicon'
+import { Loader2, Wand2, Eye } from 'lucide-react'
 import { getModifierSymbol } from '@/lib/platform'
 import {
   Tooltip,
@@ -73,7 +73,7 @@ export function LinearIssueItem({
       )}
       <button
         type="button"
-        onClick={e => onClick(e.metaKey || e.ctrlKey)}
+        onClick={e => onClick(e.metaKey)}
         disabled={isCreating}
         className="flex-1 min-w-0 text-left focus:outline-none disabled:cursor-not-allowed"
       >
@@ -126,7 +126,7 @@ export function LinearIssueItem({
               type="button"
               onClick={e => {
                 e.stopPropagation()
-                onInvestigate(e.metaKey || e.ctrlKey)
+                onInvestigate(e.metaKey)
               }}
               disabled={isCreating}
               aria-label="Investigate"

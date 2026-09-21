@@ -11,7 +11,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createElement } from 'react'
 import {
   usePreferences,
-  usePatchPreferences,
   useSavePreferences,
   preferencesQueryKeys,
 } from './preferences'
@@ -43,11 +42,9 @@ import {
 } from '@/types/preferences'
 import { DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import { clearClientPreferencesForTests } from '@/lib/client-preferences'
-import { SettingsTargetProvider } from '@/lib/settings-target'
 
 vi.mock('@/lib/transport', () => ({
   invoke: vi.fn(),
-  invokeForServer: vi.fn(),
 }))
 
 vi.mock('@/lib/platform', () => ({
@@ -102,22 +99,7 @@ const createWrapper = (queryClient: QueryClient) => {
   return Wrapper
 }
 
-const createServerWrapper = (queryClient: QueryClient, serverId: string) => {
-  const Wrapper = ({ children }: { children: React.ReactNode }) =>
-    createElement(
-      QueryClientProvider,
-      { client: queryClient },
-      createElement(SettingsTargetProvider, { serverId }, children)
-    )
-  Wrapper.displayName = 'TestServerQueryClientWrapper'
-  return Wrapper
-}
-
 describe('model option helpers', () => {
-  it('enables the combined git sync button by default', () => {
-    expect(defaultPreferences.git_sync_button).toBe(true)
-  })
-
   it('enables compact chat view by default', () => {
     expect(defaultPreferences.compact_chat_view_enabled).toBe(true)
   })
@@ -130,7 +112,6 @@ describe('model option helpers', () => {
 
   it('offers Claude 1M variants alongside standard context models', () => {
     expect(modelOptions.map(option => option.value)).toEqual([
-      'claude-fable-5-1',
       'claude-fable-5',
       'claude-opus-5',
       'claude-sonnet-5',
@@ -145,7 +126,6 @@ describe('model option helpers', () => {
       'claude-sonnet-4-6',
       'haiku',
     ])
-    expect(normalizeClaudeModel('claude-fable-5-1')).toBe('claude-fable-5-1')
     expect(normalizeClaudeModel('sonnet')).toBe('claude-sonnet-5')
     expect(normalizeClaudeModel('claude-fable-5')).toBe('claude-fable-5')
     expect(normalizeClaudeModel('claude-opus-5')).toBe('claude-opus-5')
@@ -168,14 +148,12 @@ describe('model option helpers', () => {
 
   it('offers GPT 5.6 preview variants in Codex selectors', () => {
     const values = codexDefaultModelOptions.map(option => option.value)
-    expect(values.slice(0, 4)).toEqual([
-      'gpt-6-astra',
+    expect(values.slice(0, 3)).toEqual([
       'gpt-5.6-sol',
       'gpt-5.6-terra',
       'gpt-5.6-luna',
     ])
     expect(values).not.toContain('gpt-5.6')
-    expect(normalizeCodexModel('gpt-6-astra')).toBe('gpt-6-astra')
     expect(normalizeCodexModel('gpt-5.6-sol')).toBe('gpt-5.6-sol')
     expect(normalizeCodexModel('gpt-5.6-terra')).toBe('gpt-5.6-terra')
     expect(normalizeCodexModel('gpt-5.6-luna')).toBe('gpt-5.6-luna')
@@ -250,12 +228,6 @@ describe('model option helpers', () => {
       'test against its `url`, port, and startup command'
     )
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      'use the Agent Browser when it is available'
-    )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      'no other browser testing method'
-    )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
       'VERY IMPORTANT: Keep Code Simple'
     )
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
@@ -265,26 +237,17 @@ describe('model option helpers', () => {
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
       'include clickable links when available'
     )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      "At the start of a new task, replace '.ai/todo.md' instead of appending to it"
-    )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      "Only update '.ai/lessons.md' for general, project-wide learning"
-    )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      'Do not add feature-specific, bug-fix-specific, or small/local lessons'
-    )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
-      'Remove narrow or specific entries when you detect them'
-    )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).not.toContain(
-      'After ANY correction from the user'
-    )
   })
 
-  it('does not require GitHub discovery in every chat', () => {
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).not.toContain(
+  it('requires GitHub issue and discussion discovery after changes', () => {
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
       'GitHub Issue and Discussion Discovery'
+    )
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+      "search the current repository's existing GitHub issues and discussions"
+    )
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
+      'Include the results in both the main response and the `## Recap`'
     )
   })
 })
@@ -311,64 +274,6 @@ describe('preferences service', () => {
     })
   })
 
-  describe('usePatchPreferences', () => {
-    it('updates cached client preferences before startup effects can reopen UI', () => {
-      queryClient.setQueryData(preferencesQueryKeys.preferences(), {
-        ...defaultPreferences,
-        has_seen_feature_tour: false,
-      })
-      const { result } = renderHook(() => usePatchPreferences(), {
-        wrapper: createWrapper(queryClient),
-      })
-
-      act(() => {
-        result.current.mutate({ has_seen_feature_tour: true })
-      })
-
-      expect(
-        queryClient.getQueryData<AppPreferences>(
-          preferencesQueryKeys.preferences()
-        )?.has_seen_feature_tour
-      ).toBe(true)
-    })
-
-    it('patches server-owned settings on the selected remote server', async () => {
-      const { invokeForServer } = await import('@/lib/transport')
-      vi.mocked(invokeForServer)
-        .mockResolvedValueOnce({
-          schemaVersion: 1,
-          revision: 'revision-1',
-          preferences: {},
-        })
-        .mockResolvedValueOnce({
-          schemaVersion: 1,
-          revision: 'revision-2',
-          preferences: { default_backend: 'codex' },
-        })
-      const { result } = renderHook(() => usePatchPreferences(), {
-        wrapper: createServerWrapper(queryClient, 'dev-server'),
-      })
-
-      act(() => result.current.mutate({ default_backend: 'codex' }))
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true))
-      expect(invokeForServer).toHaveBeenNthCalledWith(
-        1,
-        'dev-server',
-        'get_server_preferences'
-      )
-      expect(invokeForServer).toHaveBeenNthCalledWith(
-        2,
-        'dev-server',
-        'update_server_preferences',
-        {
-          patch: { default_backend: 'codex' },
-          expectedRevision: 'revision-1',
-        }
-      )
-    })
-  })
-
   describe('preferencesQueryKeys', () => {
     it('returns correct all key', () => {
       expect(preferencesQueryKeys.all).toEqual(['preferences'])
@@ -380,26 +285,6 @@ describe('preferences service', () => {
   })
 
   describe('usePreferences', () => {
-    it('loads settings from the selected remote server', async () => {
-      const { invokeForServer } = await import('@/lib/transport')
-      vi.mocked(invokeForServer).mockResolvedValueOnce({
-        schemaVersion: 1,
-        revision: 'revision-1',
-        preferences: { selected_model: 'haiku' },
-      })
-
-      const { result } = renderHook(() => usePreferences(), {
-        wrapper: createServerWrapper(queryClient, 'dev-server'),
-      })
-
-      await waitFor(() => expect(result.current.isSuccess).toBe(true))
-      expect(result.current.data?.selected_model).toBe('haiku')
-      expect(invokeForServer).toHaveBeenCalledWith(
-        'dev-server',
-        'get_server_preferences'
-      )
-    })
-
     it('loads preferences from backend', async () => {
       const { invoke } = await import('@/lib/transport')
       const mockPreferences: AppPreferences = {

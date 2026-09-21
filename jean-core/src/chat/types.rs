@@ -631,9 +631,6 @@ pub struct ChatMessage {
     /// Effort level when this message was sent (user messages only, Opus 4.6)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_level: Option<String>,
-    /// Provider/custom profile used when this message was sent (user messages only)
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub custom_profile_name: Option<String>,
     /// True if this message was recovered from a crash
     #[serde(default)]
     pub recovered: bool,
@@ -659,7 +656,6 @@ impl Default for ChatMessage {
             execution_mode: None,
             thinking_level: None,
             effort_level: None,
-            custom_profile_name: None,
             recovered: false,
             usage: None,
         }
@@ -1050,73 +1046,6 @@ impl Session {
     }
 }
 
-/// Lightweight unread state stored alongside session index entries.
-///
-/// Keeping this summary in the worktree index lets global indicators answer
-/// unread-count queries without deserializing every session metadata file.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SessionUnreadSummary {
-    /// Session freshness used to compare against `last_opened_at`.
-    #[serde(default)]
-    pub updated_at: u64,
-    /// Unix timestamp when the session was last opened/viewed.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub last_opened_at: Option<u64>,
-    /// Whether the session currently has activity that should be surfaced.
-    #[serde(default)]
-    pub has_unread_activity: bool,
-}
-
-impl Default for SessionUnreadSummary {
-    fn default() -> Self {
-        Self {
-            updated_at: 0,
-            last_opened_at: None,
-            has_unread_activity: false,
-        }
-    }
-}
-
-impl SessionUnreadSummary {
-    pub fn from_session(session: &Session) -> Self {
-        let has_finished_run = matches!(
-            session.last_run_status.as_ref(),
-            Some(RunStatus::Completed) | Some(RunStatus::Cancelled) | Some(RunStatus::Crashed)
-        );
-        let has_pending_approval = !session.pending_permission_denials.is_empty()
-            || !session.pending_codex_permission_requests.is_empty()
-            || !session.pending_opencode_permission_requests.is_empty()
-            || !session.pending_codex_command_approval_requests.is_empty()
-            || !session.pending_codex_user_input_requests.is_empty()
-            || !session.pending_codex_mcp_elicitation_requests.is_empty()
-            || !session.pending_codex_dynamic_tool_call_requests.is_empty();
-
-        Self {
-            updated_at: session.updated_at,
-            last_opened_at: session.last_opened_at,
-            has_unread_activity: has_finished_run
-                || session.waiting_for_input
-                || has_pending_approval
-                || session.is_reviewing
-                || session
-                    .review_results
-                    .as_ref()
-                    .is_some_and(|value| !value.is_null()),
-        }
-    }
-
-    pub fn is_unread(&self) -> bool {
-        if !self.has_unread_activity {
-            return false;
-        }
-
-        match self.last_opened_at {
-            None | Some(0) => true,
-            Some(last_opened_at) => last_opened_at < self.updated_at,
-        }
-    }
-}
-
 /// Lightweight session entry for index files (fast tab rendering)
 /// Stored in sessions/index/{worktree_id}.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1133,23 +1062,6 @@ pub struct SessionIndexEntry {
     /// Unix timestamp when session was archived (None = not archived)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<u64>,
-    /// Optional for backwards compatibility with indexes written before the
-    /// unread summary was introduced. Missing values are migrated lazily.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub unread_summary: Option<SessionUnreadSummary>,
-}
-
-impl SessionIndexEntry {
-    pub fn from_session(session: &Session) -> Self {
-        Self {
-            id: session.id.clone(),
-            name: session.name.clone(),
-            order: session.order,
-            message_count: session.message_count.unwrap_or(0),
-            archived_at: session.archived_at,
-            unread_summary: Some(SessionUnreadSummary::from_session(session)),
-        }
-    }
 }
 
 /// Worktree index - lightweight data for tab bar rendering
@@ -1184,7 +1096,6 @@ impl Default for WorktreeIndex {
                 order: 0,
                 message_count: 0,
                 archived_at: None,
-                unread_summary: Some(SessionUnreadSummary::default()),
             }],
             version: 1,
             branch_naming_completed: false,
@@ -1218,7 +1129,6 @@ impl WorktreeIndex {
                 order: 0,
                 message_count: 0,
                 archived_at: None,
-                unread_summary: Some(SessionUnreadSummary::default()),
             }],
             version: 1,
             branch_naming_completed: false,
@@ -1248,58 +1158,6 @@ fn default_version() -> u32 {
 }
 
 impl SessionMetadata {
-    fn has_pending_plan_waiting(&self) -> bool {
-        let Some(message_id) = self.pending_plan_message_id.as_ref() else {
-            return false;
-        };
-
-        self.waiting_for_input_type.as_deref() == Some("plan")
-            && !self.approved_plan_message_ids.contains(message_id)
-            && self.runs.last().is_some_and(|run| {
-                run.status == RunStatus::Completed && run.execution_mode.as_deref() == Some("plan")
-            })
-    }
-
-    fn updated_at(&self) -> u64 {
-        self.runs
-            .last()
-            .map(|run| run.ended_at.unwrap_or(run.started_at))
-            .unwrap_or(self.created_at)
-            .max(self.terminal_activity_at.unwrap_or(0))
-    }
-
-    /// Build the index-sized unread state without constructing a full Session.
-    pub fn to_unread_summary(&self) -> SessionUnreadSummary {
-        let last_run = self.runs.last();
-        let has_finished_run = last_run.is_some_and(|run| {
-            matches!(
-                run.status,
-                RunStatus::Completed | RunStatus::Cancelled | RunStatus::Crashed
-            )
-        });
-        let has_pending_approval = !self.pending_permission_denials.is_empty()
-            || !self.pending_codex_permission_requests.is_empty()
-            || !self.pending_opencode_permission_requests.is_empty()
-            || !self.pending_codex_command_approval_requests.is_empty()
-            || !self.pending_codex_user_input_requests.is_empty()
-            || !self.pending_codex_mcp_elicitation_requests.is_empty()
-            || !self.pending_codex_dynamic_tool_call_requests.is_empty();
-
-        SessionUnreadSummary {
-            updated_at: self.updated_at(),
-            last_opened_at: self.last_opened_at,
-            has_unread_activity: has_finished_run
-                || self.waiting_for_input
-                || self.has_pending_plan_waiting()
-                || has_pending_approval
-                || self.is_reviewing
-                || self
-                    .review_results
-                    .as_ref()
-                    .is_some_and(|value| !value.is_null()),
-        }
-    }
-
     /// Convert metadata to a Session API response struct (with empty messages)
     /// Messages should be loaded separately via load_session_messages() and set on the returned Session
     pub fn to_session(&self) -> Session {
@@ -1311,11 +1169,26 @@ impl SessionMetadata {
             last_run.map(|r| &r.status),
             last_run.and_then(|r| r.execution_mode.as_ref())
         );
-        let is_pending_plan_waiting = self.has_pending_plan_waiting();
+        let is_pending_plan_waiting =
+            self.pending_plan_message_id
+                .as_ref()
+                .is_some_and(|message_id| {
+                    self.waiting_for_input_type.as_deref() == Some("plan")
+                        && !self.approved_plan_message_ids.contains(message_id)
+                        && last_run.is_some_and(|run| {
+                            run.status == RunStatus::Completed
+                                && run.execution_mode.as_deref() == Some("plan")
+                        })
+                });
         let waiting_for_input = self.waiting_for_input || is_pending_plan_waiting;
         let is_reviewing = self.is_reviewing && !is_pending_plan_waiting;
 
-        let updated_at = self.updated_at();
+        let updated_at = self
+            .runs
+            .last()
+            .map(|r| r.ended_at.unwrap_or(r.started_at))
+            .unwrap_or(self.created_at)
+            .max(self.terminal_activity_at.unwrap_or(0));
         let last_message_at = self.runs.last().map(|r| r.ended_at.unwrap_or(r.started_at));
         Session {
             id: self.id.clone(),
@@ -2088,7 +1961,6 @@ impl SessionMetadata {
             order: self.order,
             message_count,
             archived_at: self.archived_at,
-            unread_summary: Some(self.to_unread_summary()),
         }
     }
 }
@@ -2403,36 +2275,6 @@ mod tests {
         assert_eq!(session.order, 0);
     }
 
-    #[test]
-    fn session_unread_summary_tracks_finished_activity_and_mark_as_read() {
-        let mut session = Session::new("Unread".to_string(), 0, Backend::Claude);
-        session.updated_at = 20;
-        session.last_opened_at = Some(0);
-        session.last_run_status = Some(RunStatus::Completed);
-
-        let summary = SessionUnreadSummary::from_session(&session);
-        assert!(summary.has_unread_activity);
-        assert!(summary.is_unread());
-
-        session.last_opened_at = Some(session.updated_at);
-        assert!(!SessionUnreadSummary::from_session(&session).is_unread());
-    }
-
-    #[test]
-    fn session_index_entry_accepts_legacy_json_without_unread_summary() {
-        let entry: SessionIndexEntry = serde_json::from_value(serde_json::json!({
-            "id": "session-1",
-            "name": "Session 1",
-            "order": 0,
-            "message_count": 2,
-            "archived_at": null
-        }))
-        .unwrap();
-
-        assert_eq!(entry.id, "session-1");
-        assert!(entry.unread_summary.is_none());
-    }
-
     // ========================================================================
     // SessionMetadata tests
     // ========================================================================
@@ -2643,7 +2485,6 @@ mod tests {
         // A "paused" override round-trips unchanged (pending-plan logic only
         // clears the legacy reviewing flag).
         assert_eq!(restored.status_override.as_deref(), Some("paused"));
-        assert!(metadata.to_unread_summary().has_unread_activity);
     }
 
     #[test]

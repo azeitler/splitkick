@@ -6,7 +6,7 @@ import {
   Terminal,
   Trash2,
   X,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -28,11 +28,7 @@ import {
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
-import {
-  canOpenInEditor,
-  canOpenInFinder,
-  canOpenInTerminal,
-} from '@/lib/environment'
+import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { getFileManagerName } from '@/lib/platform'
 import type { useWorktreeMenuActions } from './useWorktreeMenuActions'
 
@@ -40,13 +36,11 @@ interface WorktreeContextMenuProps {
   // Computed once by the parent (WorktreeItem) and passed in so the hook isn't
   // run twice per worktree row.
   actions: ReturnType<typeof useWorktreeMenuActions>
-  serverId?: string
   children: React.ReactNode
 }
 
 export function WorktreeContextMenu({
   actions,
-  serverId,
   children,
 }: WorktreeContextMenuProps) {
   const {
@@ -94,9 +88,9 @@ export function WorktreeContextMenu({
           </ContextMenuSub>
         )}
 
-        {(canOpenInEditor() ||
-          canOpenInTerminal() ||
-          canOpenInFinder(serverId)) && <ContextMenuSeparator />}
+        {(canOpenInEditor() || canOpenNativeApps()) && (
+          <ContextMenuSeparator />
+        )}
 
         {canOpenInEditor() && (
           <ContextMenuItem onClick={handleOpenInEditor}>
@@ -105,14 +99,14 @@ export function WorktreeContextMenu({
           </ContextMenuItem>
         )}
 
-        {canOpenInFinder(serverId) && (
+        {canOpenNativeApps() && (
           <ContextMenuItem onClick={handleOpenInFinder}>
             <FolderOpen className="mr-2 h-4 w-4" />
             Open in {getFileManagerName()}
           </ContextMenuItem>
         )}
 
-        {canOpenInTerminal() && (
+        {canOpenNativeApps() && (
           <ContextMenuItem onClick={handleOpenInTerminal}>
             <Terminal className="mr-2 h-4 w-4" />
             Open in {getTerminalLabel(preferences?.terminal)}

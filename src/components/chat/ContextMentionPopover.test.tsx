@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@/test/test-utils'
-import { Bug, GitPullRequest } from '@/components/icons/reicon'
+import { Bug, GitPullRequest } from 'lucide-react'
 import { ContextMentionPopover } from './ContextMentionPopover'
 import type { ContextMentionItem } from './hooks/useContextMentionData'
 

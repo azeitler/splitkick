@@ -509,8 +509,6 @@ const sectionEntries: PreferenceSearchEntry[] = [
       'terminal',
       'open in',
       'git poll interval',
-      'combined git sync button',
-      'pull push sync',
       'remote poll interval',
     ],
     anchorId: 'pref-general-section-defaults',
@@ -758,6 +756,17 @@ const sectionEntries: PreferenceSearchEntry[] = [
     fallbackAnchorId: 'pref-pane-integrations',
   },
   {
+    id: 'experimental-features',
+    pane: 'experimental',
+    paneTitle: 'Experimental',
+    type: 'section',
+    title: 'Features',
+    sectionTitle: 'Experimental',
+    keywords: ['combined git sync button', 'pull push sync'],
+    anchorId: 'pref-experimental-section-features',
+    fallbackAnchorId: 'pref-pane-experimental',
+  },
+  {
     id: 'experimental-developer-tools',
     pane: 'experimental',
     paneTitle: 'Experimental',
@@ -875,6 +884,12 @@ const magicPromptDefinitions: {
   description: string
   keywords: string[]
 }[] = [
+  {
+    key: 'smoke_test',
+    title: 'Smoke Test Prompt',
+    description: 'Test the current work through available interfaces.',
+    keywords: ['smoke test prompt', 'test current feature'],
+  },
   {
     key: 'investigate_issue',
     title: 'Investigate Issue Prompt',

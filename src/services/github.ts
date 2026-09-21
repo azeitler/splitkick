@@ -191,13 +191,10 @@ export function useGitHubLabels(
 export function useGitHubIssues(
   projectPath: string | null,
   state: 'open' | 'closed' | 'all' = 'open',
-  options?: { enabled?: boolean; staleTime?: number; ownerId?: string }
+  options?: { enabled?: boolean; staleTime?: number }
 ) {
   return useQuery({
-    queryKey: [
-      ...githubQueryKeys.issues(projectPath ?? '', state),
-      options?.ownerId ?? '',
-    ],
+    queryKey: githubQueryKeys.issues(projectPath ?? '', state),
     queryFn: async (): Promise<GitHubIssueListResult> => {
       if (!isTauri() || !projectPath) {
         return { issues: [], totalCount: 0 }
@@ -210,7 +207,6 @@ export function useGitHubIssues(
           {
             projectPath,
             state,
-            projectId: options?.ownerId,
           }
         )
         logger.info('GitHub issues loaded', {
@@ -472,14 +468,12 @@ export async function loadIssueContext(
 export async function removeIssueContext(
   sessionId: string,
   issueNumber: number,
-  projectPath: string,
-  worktreeId?: string | null
+  projectPath: string
 ): Promise<void> {
   return invoke('remove_issue_context', {
     sessionId,
     issueNumber,
     projectPath,
-    worktreeId,
   })
 }
 
@@ -496,13 +490,10 @@ export async function removeIssueContext(
 export function useGitHubPRs(
   projectPath: string | null,
   state: 'open' | 'closed' | 'merged' | 'all' = 'open',
-  options?: { enabled?: boolean; staleTime?: number; ownerId?: string }
+  options?: { enabled?: boolean; staleTime?: number }
 ) {
   return useQuery({
-    queryKey: [
-      ...githubQueryKeys.prs(projectPath ?? '', state),
-      options?.ownerId ?? '',
-    ],
+    queryKey: githubQueryKeys.prs(projectPath ?? '', state),
     queryFn: async (): Promise<GitHubPullRequest[]> => {
       if (!isTauri() || !projectPath) {
         return []
@@ -513,7 +504,6 @@ export function useGitHubPRs(
         const prs = await invoke<GitHubPullRequest[]>('list_github_prs', {
           projectPath,
           state,
-          projectId: options?.ownerId,
         })
         logger.info('GitHub PRs loaded', { count: prs.length })
         return prs

@@ -6,9 +6,7 @@ import {
   LayoutDashboard,
   Menu,
   Plus,
-  Github,
-  Heart,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   DropdownMenu,
@@ -46,7 +44,6 @@ import { DEFAULT_KEYBINDINGS, formatShortcutDisplay } from '@/types/keybindings'
 import { ClaudeIcon } from '@/components/icons/ClaudeIcon'
 import { CodexIcon } from '@/components/icons/CodexIcon'
 import { GrokIcon } from '@/components/icons/GrokIcon'
-import { openExternal } from '@/lib/platform'
 
 interface DockBurgerButtonProps {
   /** Extra classes merged onto the trigger button (e.g. responsive visibility). */
@@ -231,27 +228,6 @@ export function DockBurgerButton({
             <DropdownMenuShortcut>{githubShortcut}</DropdownMenuShortcut>
           )}
         </DropdownMenuItem>
-        {isMobile && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              onClick={() =>
-                openExternal('https://github.com/coollabsio/jean')
-              }
-            >
-              <Github className="mr-2 h-4 w-4" />
-              Jean on GitHub
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                openExternal('https://jean.build/sponsorships/')
-              }
-            >
-              <Heart className="mr-2 h-4 w-4 text-pink-500" />
-              Sponsor Jean
-            </DropdownMenuItem>
-          </>
-        )}
 
         {showUsageSection && (
           <>

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { act, render, screen, waitFor, within } from '@/test/test-utils'
+import { render, screen, waitFor } from '@/test/test-utils'
 import { MagicModal } from './MagicModal'
 
 const mocks = vi.hoisted(() => {
@@ -190,9 +190,12 @@ vi.mock('@/services/preferences', () => ({
       default_backend: 'claude',
       selected_model: 'claude-opus-4-8[1m]',
       selected_codex_model: 'gpt-5.5',
-      magic_prompt_models: {},
-      magic_prompt_efforts: {},
-      magic_prompt_modes: {},
+      magic_prompt_models: {
+      },
+      magic_prompt_efforts: {
+      },
+      magic_prompt_modes: {
+      },
       magic_prompts: {
         resolve_conflicts: 'Resolve and finish.',
       },
@@ -261,10 +264,6 @@ vi.mock('@/components/chat/ReviewMethodModal', () => ({
 describe('MagicModal manual PR link', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    Object.defineProperty(window, 'innerWidth', {
-      configurable: true,
-      value: 1024,
-    })
     mocks.worktree.pr_number = null
     mocks.worktree.pr_url = null
     mocks.activeWorktreePath = null
@@ -279,22 +278,6 @@ describe('MagicModal manual PR link', () => {
       }
       return Promise.resolve(null)
     })
-  })
-
-  it('renders touch-friendly grouped actions for the mobile menu', () => {
-    Object.defineProperty(window, 'innerWidth', {
-      configurable: true,
-      value: 390,
-    })
-    render(<MagicModal />)
-
-    const mobileMenu = screen.getByTestId('magic-mobile-menu')
-    expect(within(mobileMenu).getByText('Context')).toBeInTheDocument()
-    expect(within(mobileMenu).getByText('Pull Request')).toBeInTheDocument()
-    expect(
-      within(mobileMenu).getByRole('button', { name: 'Save Context' })
-    ).toHaveClass('min-h-12')
-    expect(mobileMenu.querySelector('kbd')).not.toBeInTheDocument()
   })
 
   it('opens a Link PR dialog and shows checking state while searching current branch', async () => {
@@ -346,20 +329,6 @@ describe('MagicModal manual PR link', () => {
     expect(mocks.invalidateQueries).toHaveBeenCalledWith({
       queryKey: ['projects', 'project-1', 'worktrees'],
     })
-  })
-
-  it('opens Link PR from the mobile Magic option event', async () => {
-    render(<MagicModal />)
-
-    act(() => {
-      window.dispatchEvent(
-        new CustomEvent('magic-option', { detail: 'link-pr' })
-      )
-    })
-
-    expect(
-      await screen.findByRole('dialog', { name: /link pull request/i })
-    ).toBeInTheDocument()
   })
 
   it('opens a Link PR dialog and links the selected PR number', async () => {
@@ -630,31 +599,37 @@ describe('MagicModal manual PR link', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows one inject context command instead of load context', () => {
+  it('shows the inject session magic command', () => {
     render(<MagicModal />)
 
     expect(
-      screen.getByRole('button', { name: /inject context/i })
-    ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('button', { name: /load context/i })
-    ).not.toBeInTheDocument()
-  })
-
-  it('shows the check GitHub issues magic command', () => {
-    render(<MagicModal />)
-
-    expect(
-      screen.getByRole('button', { name: /check github issues/i })
+      screen.getByRole('button', { name: /inject session/i })
     ).toBeInTheDocument()
   })
 
-  it('does not show the removed smoke test magic command', () => {
+  it('shows the smoke test magic command', () => {
     render(<MagicModal />)
 
     expect(
-      screen.queryByRole('button', { name: /smoke test/i })
-    ).not.toBeInTheDocument()
+      screen.getByRole('button', { name: /smoke test/i })
+    ).toBeInTheDocument()
+  })
+
+  it('allows smoke test from the worktree canvas without an existing session', async () => {
+    const user = userEvent.setup()
+    render(<MagicModal />)
+
+    const smokeTest = screen.getByRole('button', { name: /smoke test/i })
+    expect(smokeTest).toBeEnabled()
+    await user.click(smokeTest)
+
+    expect(mocks.setActiveWorktree).toHaveBeenCalledWith(
+      'wt-1',
+      '/repo/worktree'
+    )
+    expect(mocks.setPendingMagicCommand).toHaveBeenCalledWith({
+      command: 'smoke-test',
+    })
   })
 
   it('starts commit and push actions directly with loading notifications when chat is active', async () => {
@@ -686,12 +661,7 @@ describe('MagicModal manual PR link', () => {
       'Pushing feature-branch...',
       expect.any(Object)
     )
-    expect(mocks.gitPush).toHaveBeenCalledWith(
-      '/repo/worktree',
-      null,
-      'origin',
-      'wt-1'
-    )
+    expect(mocks.gitPush).toHaveBeenCalledWith('/repo/worktree', null, 'origin')
 
     rerender(<MagicModal />)
     await user.click(screen.getByRole('button', { name: /^commit & push p$/i }))

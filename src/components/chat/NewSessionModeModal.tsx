@@ -12,7 +12,7 @@ import {
   Loader2,
   Terminal,
   Zap,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -43,7 +43,6 @@ import type { CliBackend } from '@/types/preferences'
 import { usePreferences } from '@/services/preferences'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { resolveDefaultModelForBackend } from '@/lib/session-defaults'
-import { parseServerResourceKey } from '@/lib/server-resource'
 import {
   NativeCliSessionsModal,
   type NativeCliSessionKind,
@@ -86,22 +85,17 @@ export function NewSessionModeModal() {
   const target = useUIStore(state => state.newSessionModeTarget)
   const close = useUIStore(state => state.closeNewSessionModeModal)
   const createSession = useCreateSession()
-  const targetServerId = target
-    ? (parseServerResourceKey(target.worktreeId)?.serverId ?? 'local')
-    : 'local'
-  const statusOptions = { enabled: target !== null, serverId: targetServerId }
-  const claudeStatus = useClaudeCliStatus(statusOptions)
-  const codexStatus = useCodexCliStatus(statusOptions)
-  const opencodeStatus = useOpencodeCliStatus(statusOptions)
-  const cursorStatus = useCursorCliStatus(statusOptions)
-  const piStatus = usePiCliStatus(statusOptions)
+  const claudeStatus = useClaudeCliStatus({ enabled: target !== null })
+  const codexStatus = useCodexCliStatus({ enabled: target !== null })
+  const opencodeStatus = useOpencodeCliStatus({ enabled: target !== null })
+  const cursorStatus = useCursorCliStatus({ enabled: target !== null })
+  const piStatus = usePiCliStatus({ enabled: target !== null })
   const commandcodeStatus = useCommandCodeCliStatus({
     enabled: target !== null,
-    serverId: targetServerId,
   })
-  const grokStatus = useGrokCliStatus(statusOptions)
-  const kimiStatus = useKimiCliStatus(statusOptions)
-  const antigravityStatus = useAntigravityCliStatus(statusOptions)
+  const grokStatus = useGrokCliStatus({ enabled: target !== null })
+  const kimiStatus = useKimiCliStatus({ enabled: target !== null })
+  const antigravityStatus = useAntigravityCliStatus({ enabled: target !== null })
   const { data: preferences } = usePreferences()
   const [nativePickerKind, setNativePickerKind] =
     useState<NativeCliSessionKind | null>(null)
@@ -194,8 +188,8 @@ export function NewSessionModeModal() {
     piStatus.isLoading ||
     commandcodeStatus.isLoading ||
     grokStatus.isLoading ||
-    kimiStatus.isLoading ||
-    antigravityStatus.isLoading
+    kimiStatus.isLoading
+    || antigravityStatus.isLoading
 
   const nativePickerCommand = useMemo(() => {
     if (nativePickerKind === null || nativePickerKind === 'terminal') {

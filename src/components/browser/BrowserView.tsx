@@ -1,5 +1,5 @@
 import { memo, useEffect } from 'react'
-import { AlertTriangle, RotateCw } from '@/components/icons/reicon'
+import { AlertTriangle, RotateCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useBrowserStore } from '@/store/browser-store'
 import {

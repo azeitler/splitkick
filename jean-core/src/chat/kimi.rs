@@ -1035,7 +1035,6 @@ pub(crate) fn parse_kimi_run_to_message(
         execution_mode: run.execution_mode.clone(),
         thinking_level: run.thinking_level.clone(),
         effort_level: run.effort_level.clone(),
-        custom_profile_name: None,
         recovered: run.recovered,
         usage: response.usage.or_else(|| run.usage.clone()),
     })
@@ -1188,7 +1187,7 @@ fn execute_kimi_attached(
         callback(pid);
     }
     if !super::registry::register_process(options.jean_session_id.to_string(), pid) {
-        crate::platform::kill_and_reap(&mut child);
+        let _ = child.kill();
         return Ok(KimiResponse {
             content: String::new(),
             session_id: options
@@ -1205,7 +1204,8 @@ fn execute_kimi_attached(
     let result = execute_kimi_child(&mut child, options);
     let cancelled = !super::registry::is_process_running(options.jean_session_id);
     super::registry::unregister_process(options.jean_session_id);
-    crate::platform::kill_and_reap(&mut child);
+    let _ = child.kill();
+    let _ = child.wait();
 
     match result {
         Ok(mut response) => {

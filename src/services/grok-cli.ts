@@ -3,11 +3,10 @@
  */
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { invoke, invokeForOptionalServer } from '@/lib/transport'
+import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import { toast } from 'sonner'
 import { hasBackendTransport } from '@/lib/environment'
-import { useOptionalSettingsTargetServerId } from '@/lib/settings-target'
 import type {
   GrokAuthStatus,
   GrokCliStatus,
@@ -81,19 +80,13 @@ export function useGrokPathDetection(options?: { enabled?: boolean }) {
   })
 }
 
-export function useGrokCliStatus(options?: {
-  enabled?: boolean
-  serverId?: string
-}) {
+export function useGrokCliStatus(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: [...grokCliQueryKeys.status(), options?.serverId ?? 'local'],
+    queryKey: grokCliQueryKeys.status(),
     queryFn: async (): Promise<GrokCliStatus> => {
       if (!isTauri()) return { installed: false, version: null, path: null }
       try {
-        return await invokeForOptionalServer<GrokCliStatus>(
-          options?.serverId,
-          'check_grok_cli_installed'
-        )
+        return await invoke<GrokCliStatus>('check_grok_cli_installed')
       } catch (error) {
         logger.error('Failed to check Grok CLI status', { error })
         return { installed: false, version: null, path: null }
@@ -154,9 +147,8 @@ export function useGrokUsage(options?: { enabled?: boolean }) {
 }
 
 export function useAvailableGrokModels(options?: { enabled?: boolean }) {
-  const serverId = useOptionalSettingsTargetServerId()
   return useQuery({
-    queryKey: [...grokCliQueryKeys.models(), serverId ?? 'local'],
+    queryKey: grokCliQueryKeys.models(),
     queryFn: async (): Promise<GrokModelInfo[]> => {
       if (!isTauri()) {
         return [
@@ -173,10 +165,7 @@ export function useAvailableGrokModels(options?: { enabled?: boolean }) {
         ]
       }
       try {
-        return await invokeForOptionalServer<GrokModelInfo[]>(
-          serverId,
-          'list_grok_models'
-        )
+        return await invoke<GrokModelInfo[]>('list_grok_models')
       } catch (error) {
         logger.error('Failed to list Grok models', { error })
         return [
@@ -269,6 +258,7 @@ export function useGrokCliSetup() {
       onError: error => options?.onError?.(error),
     })
   }
+
 
   return {
     status: status.data,

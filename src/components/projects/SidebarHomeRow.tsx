@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { House } from '@/components/icons/reicon'
+import { House } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import { useIsHomeActive } from '@/components/home/useIsHomeActive'

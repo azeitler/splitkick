@@ -1,4 +1,4 @@
-import { ArrowUpCircle } from '@/components/icons/reicon'
+import { ArrowUpCircle } from 'lucide-react'
 import {
   Dialog,
   DialogContent,

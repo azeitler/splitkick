@@ -1,4 +1,4 @@
-import { Loader2 } from '@/components/icons/reicon'
+import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import type { Worktree } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'

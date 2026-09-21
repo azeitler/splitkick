@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, FileText, Loader2, RefreshCw, Tag, XIcon } from '@/components/icons/reicon'
+import { AlertCircle, FileText, Loader2, RefreshCw, Tag, XIcon } from 'lucide-react'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { isGhAuthError } from '@/services/github'

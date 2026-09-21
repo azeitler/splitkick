@@ -1,5 +1,5 @@
 import { Fragment } from 'react'
-import { CircleHelp } from '@/components/icons/reicon'
+import { CircleHelp } from 'lucide-react'
 import { Kbd } from '@/components/ui/kbd'
 import { Button } from '@/components/ui/button'
 import {

@@ -51,7 +51,6 @@ import {
 import { reorderWithClosestEdge } from '@/lib/drag-and-drop/reorder'
 import { announceDrag } from '@/lib/drag-and-drop/live-region'
 import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
-import { matchesWorktreeSearch } from './project-search'
 import {
   applyWorktreeDropSnapshot,
   emptyWorktreeDropSnapshot,
@@ -197,9 +196,6 @@ interface WorktreeListProps {
   sessionFilterOpen?: boolean
   /** Called once a session row is picked, so the project filter can close. */
   onSessionSelected?: () => void
-  searchQuery?: string
-  searchActive?: boolean
-  loadSessionCounts?: boolean
 }
 
 export function WorktreeList({
@@ -210,9 +206,6 @@ export function WorktreeList({
   sessionFilterQuery = '',
   sessionFilterOpen = false,
   onSessionSelected,
-  searchQuery = '',
-  searchActive = false,
-  loadSessionCounts = true,
 }: WorktreeListProps) {
   const reorderWorktrees = useReorderWorktrees()
   const worktreeSortMode = useProjectsStore(
@@ -220,26 +213,16 @@ export function WorktreeList({
       state.projectCanvasSettings[projectId]?.worktreeSortMode ?? 'created'
   )
 
-  const searchedWorktrees = useMemo(
-    () =>
-      searchQuery
-        ? worktrees.filter(worktree =>
-            matchesWorktreeSearch(worktree, searchQuery)
-          )
-        : worktrees,
-    [searchQuery, worktrees]
-  )
-
   const pendingWorktrees = useMemo(
-    () => searchedWorktrees.filter(w => w.status === 'pending'),
-    [searchedWorktrees]
+    () => worktrees.filter(w => w.status === 'pending'),
+    [worktrees]
   )
   const readyWorktrees = useMemo(
     () =>
-      searchedWorktrees.filter(
+      worktrees.filter(
         w => !w.status || w.status === 'ready' || w.status === 'error'
       ),
-    [searchedWorktrees]
+    [worktrees]
   )
 
   const sessionQueries = useQueries({
@@ -260,7 +243,7 @@ export function WorktreeList({
           includeMessageCounts: true,
         })
       },
-      enabled: loadSessionCounts && !!wt.id && !!wt.path,
+      enabled: !!wt.id && !!wt.path,
       // Prefer bootstrap/init-seeded cache; avoid N-way WS refetch on open
       staleTime: 1000 * 60 * 5,
       gcTime: 1000 * 60 * 5,
@@ -700,7 +683,6 @@ export function WorktreeList({
             projectPath={projectPath}
             defaultBranch={defaultBranch}
             disabled={
-              searchActive ||
               reorderWorktrees.isPending ||
               isFiltering ||
               !canReorderWorktree(worktree)

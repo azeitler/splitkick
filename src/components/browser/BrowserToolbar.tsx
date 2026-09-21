@@ -15,7 +15,7 @@ import {
   RotateCw,
   X,
   XSquare,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { isPaneTextUrl, toFileUrl } from '@/lib/path-utils'

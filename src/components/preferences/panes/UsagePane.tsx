@@ -1,5 +1,5 @@
 import React, { useCallback } from 'react'
-import { Loader2, RefreshCw } from '@/components/icons/reicon'
+import { Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   useClaudeCliAuth,

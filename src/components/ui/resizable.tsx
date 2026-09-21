@@ -1,7 +1,7 @@
 'use client'
 
 import * as React from 'react'
-import { GripVerticalIcon } from '@/components/icons/reicon'
+import { GripVerticalIcon } from 'lucide-react'
 import * as ResizablePrimitive from 'react-resizable-panels'
 import type { ImperativePanelHandle } from 'react-resizable-panels'
 

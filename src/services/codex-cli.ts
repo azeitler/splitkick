@@ -11,11 +11,7 @@ import {
   useQueryClient,
   type QueryClient,
 } from '@tanstack/react-query'
-import {
-  invoke,
-  invokeForOptionalServer,
-  useWsConnectionStatus,
-} from '@/lib/transport'
+import { invoke, useWsConnectionStatus } from '@/lib/transport'
 import { listen } from '@/lib/transport'
 import { toast } from 'sonner'
 import { useCallback, useEffect, useState } from 'react'
@@ -102,12 +98,9 @@ function getUsageRefetchInterval(snapshot?: CodexUsageSnapshot): number {
 /**
  * Hook to check if Codex CLI is installed and get its status
  */
-export function useCodexCliStatus(options?: {
-  enabled?: boolean
-  serverId?: string
-}) {
+export function useCodexCliStatus(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: [...codexCliQueryKeys.status(), options?.serverId ?? 'local'],
+    queryKey: codexCliQueryKeys.status(),
     queryFn: async (): Promise<CodexCliStatus> => {
       if (!isTauri()) {
         return { installed: false, version: null, path: null }
@@ -115,10 +108,7 @@ export function useCodexCliStatus(options?: {
 
       try {
         console.debug('[ONBOARDING:SVC] codex: checking installed status...')
-        const status = await invokeForOptionalServer<CodexCliStatus>(
-          options?.serverId,
-          'check_codex_cli_installed'
-        )
+        const status = await invoke<CodexCliStatus>('check_codex_cli_installed')
         console.debug('[ONBOARDING:SVC] codex: status =', status)
         return status
       } catch (error) {
@@ -383,6 +373,7 @@ export function useCodexCliSetup() {
       },
     })
   }
+
 
   return {
     status: status.data,

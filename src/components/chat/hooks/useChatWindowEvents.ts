@@ -22,6 +22,11 @@ interface UseChatWindowEventsParams {
   activeWorktreeId: string | null | undefined
   activeWorktreePath: string | null | undefined
   isModal: boolean
+  // Plan dialog
+  latestPlanContent: string | null
+  latestPlanFilePath: string | null
+  setPlanDialogContent: (content: string | null) => void
+  setIsPlanDialogOpen: (open: boolean) => void
   session: Session | null | undefined
   // Git diff
   gitStatus: { base_branch?: string; base_remote?: string } | null | undefined
@@ -65,7 +70,7 @@ interface UseChatWindowEventsParams {
 
 /**
  * Manages all window event listeners for ChatWindow.
- * Consolidates focus, git-diff, cancel, create-session,
+ * Consolidates focus, plan, git-diff, cancel, create-session,
  * cycle-mode, set-chat-input, debug-mode, and context command events.
  */
 export function useChatWindowEvents({
@@ -74,6 +79,10 @@ export function useChatWindowEvents({
   activeWorktreeId,
   activeWorktreePath,
   isModal,
+  latestPlanContent,
+  latestPlanFilePath,
+  setPlanDialogContent,
+  setIsPlanDialogOpen,
   session,
   gitStatus,
   setDiffRequest,
@@ -169,6 +178,27 @@ export function useChatWindowEvents({
     window.addEventListener('focus-chat-input', handler)
     return () => window.removeEventListener('focus-chat-input', handler)
   }, [focusChatInput])
+
+  // P key: Open plan dialog
+  useEffect(() => {
+    const handler = () => {
+      if (latestPlanContent) {
+        setPlanDialogContent(latestPlanContent)
+        setIsPlanDialogOpen(true)
+      } else if (latestPlanFilePath) {
+        setIsPlanDialogOpen(true)
+      } else {
+        toast.info('No plan available for this session')
+      }
+    }
+    window.addEventListener('open-plan', handler)
+    return () => window.removeEventListener('open-plan', handler)
+  }, [
+    latestPlanContent,
+    latestPlanFilePath,
+    setPlanDialogContent,
+    setIsPlanDialogOpen,
+  ])
 
   // CMD+T: Open configured default; CMD+SHIFT+T / plus buttons open picker
   useEffect(() => {

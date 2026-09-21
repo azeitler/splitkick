@@ -8,14 +8,9 @@ import {
   Loader2,
   RotateCcw,
   X,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { isLocalBackend } from '@/lib/environment'
-import {
-  convertFileSrc,
-  convertProjectFileSrc,
-  convertServerFileSrc,
-  convertServerProjectFileSrc,
-} from '@/lib/transport'
+import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
 import { DirectoryBrowser } from '@/components/projects/DirectoryBrowser'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -127,19 +122,10 @@ export function GeneralPane({
   const imgError = imgErrorKey === avatarKey
 
   const avatarUrl =
-    project?.avatar_path && !imgError
-      ? project.serverId
-        ? convertServerFileSrc(project.serverId, project.avatar_path)
-        : appDataDir
-          ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
-          : null
+    project?.avatar_path && appDataDir && !imgError
+      ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
       : project?.default_avatar_path && !imgError
-        ? project.serverId
-          ? convertServerProjectFileSrc(
-              project.serverId,
-              project.default_avatar_path
-            )
-          : convertProjectFileSrc(project.default_avatar_path)
+        ? convertProjectFileSrc(project.default_avatar_path)
         : null
 
   const displayedName = localName ?? project?.name ?? ''

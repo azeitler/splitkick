@@ -273,12 +273,8 @@ describe('OnboardingDialog backends', () => {
     expect(
       await screen.findByText('How will you use Jean?')
     ).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /^Local Install/i })
-    ).toBeInTheDocument()
-    expect(
-      screen.getByRole('button', { name: /^Local \+ remote/i })
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Local/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Remote/i })).toBeInTheDocument()
   })
 
   it('skips local vs remote selection in Jean Server Web Access', async () => {
@@ -289,7 +285,9 @@ describe('OnboardingDialog backends', () => {
     expect(
       await screen.findByText(/Select additional AI backends to install/i)
     ).toBeInTheDocument()
-    expect(screen.queryByText('How will you use Jean?')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('How will you use Jean?')
+    ).not.toBeInTheDocument()
   })
 
   it('shows remote setup after choosing remote', async () => {

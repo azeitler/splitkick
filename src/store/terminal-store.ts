@@ -1,9 +1,5 @@
 import { create } from 'zustand'
 import { getFilename } from '@/lib/path-utils'
-import {
-  parseServerResourceKey,
-  serverResourceKey,
-} from '@/lib/server-resource'
 import { generateId } from '@/lib/uuid'
 import type { ModalTerminalDockMode } from '@/types/ui-state'
 import { useBrowserStore } from './browser-store'
@@ -48,9 +44,6 @@ interface TerminalState {
   failedTerminals: Set<string>
   // Whether terminal panel is expanded (false = collapsed/minimized) - global since only one worktree visible
   terminalVisible: boolean
-  // Expanded/collapsed state per worktree. The legacy boolean mirrors the
-  // most recent change for persisted Web Access compatibility.
-  terminalVisibleByWorktree: Record<string, boolean>
   // Whether terminal panel is open per worktree (worktreeId -> open)
   terminalPanelOpen: Record<string, boolean>
   terminalHeight: number
@@ -62,8 +55,6 @@ interface TerminalState {
   modalTerminalHeight: number
 
   setTerminalVisible: (visible: boolean) => void
-  setTerminalVisibleForWorktree: (worktreeId: string, visible: boolean) => void
-  isTerminalVisible: (worktreeId: string) => boolean
   setTerminalPanelOpen: (worktreeId: string, open: boolean) => void
   isTerminalPanelOpen: (worktreeId: string) => boolean
   toggleTerminal: (worktreeId: string) => void
@@ -114,12 +105,8 @@ interface TerminalState {
   closePanelTerminals: (worktreeId: string) => string[]
 }
 
-function generateTerminalId(worktreeId: string): string {
-  const worktree = parseServerResourceKey(worktreeId)
-  const id = generateId()
-  return worktree
-    ? serverResourceKey({ serverId: worktree.serverId, resourceId: id })
-    : id
+function generateTerminalId(): string {
+  return generateId()
 }
 
 /** Close every browser surface for this worktree — terminal modal and
@@ -159,7 +146,6 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   runningTerminals: new Set(),
   failedTerminals: new Set(),
   terminalVisible: false,
-  terminalVisibleByWorktree: {},
   terminalPanelOpen: {},
   terminalHeight: 30,
   modalTerminalOpen: {},
@@ -171,26 +157,6 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     set(state =>
       state.terminalVisible === visible ? state : { terminalVisible: visible }
     ),
-
-  setTerminalVisibleForWorktree: (worktreeId, visible) =>
-    set(state => {
-      if (
-        state.terminalVisibleByWorktree[worktreeId] === visible &&
-        state.terminalVisible === visible
-      ) {
-        return state
-      }
-      return {
-        terminalVisible: visible,
-        terminalVisibleByWorktree: {
-          ...state.terminalVisibleByWorktree,
-          [worktreeId]: visible,
-        },
-      }
-    }),
-
-  isTerminalVisible: worktreeId =>
-    get().terminalVisibleByWorktree[worktreeId] ?? false,
 
   setTerminalPanelOpen: (worktreeId, open) =>
     set(state => {
@@ -207,20 +173,13 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     get().terminalPanelOpen[worktreeId] ?? false,
 
   toggleTerminal: worktreeId =>
-    set(state => {
-      const visible = !(state.terminalVisibleByWorktree[worktreeId] ?? false)
-      return {
-        terminalVisible: visible,
-        terminalVisibleByWorktree: {
-          ...state.terminalVisibleByWorktree,
-          [worktreeId]: visible,
-        },
-        // Also open the panel for this worktree if making visible
-        terminalPanelOpen: visible
-          ? { ...state.terminalPanelOpen, [worktreeId]: true }
-          : state.terminalPanelOpen,
-      }
-    }),
+    set(state => ({
+      terminalVisible: !state.terminalVisible,
+      // Also open the panel for this worktree if making visible
+      terminalPanelOpen: !state.terminalVisible
+        ? { ...state.terminalPanelOpen, [worktreeId]: true }
+        : state.terminalPanelOpen,
+    })),
 
   setTerminalHeight: height =>
     set(state =>
@@ -270,7 +229,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     ),
 
   addTerminal: (worktreeId, command = null, label, options) => {
-    const id = generateTerminalId(worktreeId)
+    const id = generateTerminalId()
     const kind = options?.kind ?? 'panel'
     const activate = options?.activate ?? kind === 'panel'
     const openPanel = options?.openPanel ?? kind === 'panel'
@@ -304,10 +263,6 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           [worktreeId]: true,
         }
         nextState.terminalVisible = true
-        nextState.terminalVisibleByWorktree = {
-          ...state.terminalVisibleByWorktree,
-          [worktreeId]: true,
-        }
       }
       return nextState
     })
@@ -458,10 +413,6 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
           [worktreeId]: existingTerminal.id,
         },
         terminalVisible: true,
-        terminalVisibleByWorktree: {
-          ...state.terminalVisibleByWorktree,
-          [worktreeId]: true,
-        },
         terminalPanelOpen: {
           ...state.terminalPanelOpen,
           [worktreeId]: true,
@@ -487,9 +438,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
   registerStartedRun: (worktreeId, terminalId, command) =>
     set(state => {
       const existing = state.terminals[worktreeId] ?? []
-      const terminalExists = existing.some(
-        terminal => terminal.id === terminalId
-      )
+      const terminalExists = existing.some(terminal => terminal.id === terminalId)
       const runningTerminals = new Set(state.runningTerminals)
       runningTerminals.add(terminalId)
 
@@ -516,10 +465,6 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
         },
         runningTerminals,
         terminalVisible: true,
-        terminalVisibleByWorktree: {
-          ...state.terminalVisibleByWorktree,
-          [worktreeId]: true,
-        },
         terminalPanelOpen: {
           ...state.terminalPanelOpen,
           [worktreeId]: true,
@@ -535,8 +480,7 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     if (
       terminalIds.length === 0 &&
       !state.activeTerminalIds[worktreeId] &&
-      !(state.terminalPanelOpen[worktreeId] ?? false) &&
-      !(state.modalTerminalOpen[worktreeId] ?? false)
+      !(state.terminalPanelOpen[worktreeId] ?? false)
     ) {
       return []
     }
@@ -549,24 +493,21 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       newFailed.delete(id)
     }
 
-    const { [worktreeId]: _terminals, ...remainingTerminals } = state.terminals
-    const { [worktreeId]: _activeTerminal, ...activeTerminalIds } =
-      state.activeTerminalIds
-    const { [worktreeId]: _panelOpen, ...terminalPanelOpen } =
-      state.terminalPanelOpen
-    const { [worktreeId]: _modalOpen, ...modalTerminalOpen } =
-      state.modalTerminalOpen
-    const { [worktreeId]: _visible, ...terminalVisibleByWorktree } =
-      state.terminalVisibleByWorktree
-
     set({
-      terminals: remainingTerminals,
-      activeTerminalIds,
+      terminals: {
+        ...state.terminals,
+        [worktreeId]: [],
+      },
+      activeTerminalIds: {
+        ...state.activeTerminalIds,
+        [worktreeId]: '',
+      },
       runningTerminals: newRunning,
       failedTerminals: newFailed,
-      terminalPanelOpen,
-      modalTerminalOpen,
-      terminalVisibleByWorktree,
+      terminalPanelOpen: {
+        ...state.terminalPanelOpen,
+        [worktreeId]: false,
+      },
       // Don't set terminalVisible=false as that's global and affects other worktrees
     })
 
@@ -609,10 +550,6 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       failedTerminals: newFailed,
       terminalPanelOpen: {
         ...state.terminalPanelOpen,
-        [worktreeId]: false,
-      },
-      terminalVisibleByWorktree: {
-        ...state.terminalVisibleByWorktree,
         [worktreeId]: false,
       },
     })

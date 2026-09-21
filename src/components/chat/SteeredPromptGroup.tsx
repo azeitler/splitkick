@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Copy } from '@/components/icons/reicon'
+import { Copy } from 'lucide-react'
 import { normalizePath } from '@/lib/path-utils'
 import {
   Tooltip,
@@ -28,12 +28,10 @@ export const SteeredPromptGroup = memo(function SteeredPromptGroup({
   texts,
   onCopyText,
   worktreePath,
-  serverId,
 }: {
   texts: string[]
   onCopyText?: (text: string) => void
   worktreePath?: string
-  serverId?: string
 }) {
   if (texts.length === 0) return null
   return (
@@ -91,11 +89,7 @@ export const SteeredPromptGroup = memo(function SteeredPromptGroup({
               {textFilePaths.length > 0 && (
                 <div className="flex flex-wrap gap-2 mb-2">
                   {textFilePaths.map(path => (
-                    <TextFileLightbox
-                      key={path}
-                      path={path}
-                      serverId={serverId}
-                    />
+                    <TextFileLightbox key={path} path={path} />
                   ))}
                 </div>
               )}

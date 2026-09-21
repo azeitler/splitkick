@@ -28,8 +28,9 @@ interface UseSessionArchiveParams {
  *   - 'archive' (default): archives session
  *   - 'delete': permanently deletes session
  *
- * When the last non-archived session is removed, the backend creates and opens
- * a new empty session so the worktree always remains ready for input.
+ * When the last non-archived session is removed, the backend leaves the
+ * worktree empty and the modal shows its empty state instead of navigating
+ * away or auto-creating a fallback "Session 1".
  */
 export function useSessionRemoval(removalBehavior: RemovalBehavior = 'archive') {
   const archiveSession = useArchiveSession()

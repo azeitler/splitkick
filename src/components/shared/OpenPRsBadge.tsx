@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { GitPullRequestArrow } from '@/components/icons/reicon'
+import { GitPullRequestArrow } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -31,9 +31,8 @@ export function OpenPRsBadge({
   const isAuthenticated = authData?.authenticated ?? false
 
   const { data: prs } = useGitHubPRs(projectPath, 'open', {
-    enabled: isAuthenticated || projectId.includes(':'),
+    enabled: isAuthenticated,
     staleTime: BADGE_STALE_TIME,
-    ownerId: projectId,
   })
 
   const totalCount = prs?.length ?? 0

@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import { useChatStore } from '@/store/chat-store'
-import { useUIStore, type InvestigationOverride } from '@/store/ui-store'
+import { useUIStore } from '@/store/ui-store'
 import { usePreferences } from '@/services/preferences'
 import { chatQueryKeys } from '@/services/chat'
 import { resolveBackend, supportsAdaptiveThinking } from '@/lib/model-utils'
@@ -72,25 +72,6 @@ export function useBackgroundInvestigation(): void {
       state.autoInvestigateSentryIssueWorktreeIds.size > 0
   )
 
-  // A ready worktree can replace its pending TanStack Query entry without
-  // changing any Zustand state. Subscribe while work is pending so the
-  // investigation starts immediately instead of waiting for navigation or the
-  // fallback timer to cause an unrelated render.
-  const [worktreeCacheTick, setWorktreeCacheTick] = useState(0)
-  useEffect(() => {
-    if (!hasAutoInvestigate) return
-    return queryClient.getQueryCache().subscribe(event => {
-      if (event.type !== 'updated') return
-      const key = event.query.queryKey
-      if (
-        key[0] === projectsQueryKeys.all[0] &&
-        (key[1] === 'worktree' || key[1] === 'worktrees')
-      ) {
-        setWorktreeCacheTick(tick => tick + 1)
-      }
-    })
-  }, [hasAutoInvestigate, queryClient])
-
   // Re-trigger effect when new worktree paths are registered.
   // Without this, the effect runs when the flag is set (before the worktree is ready),
   // skips because worktreePaths[id] is undefined, and never re-runs.
@@ -125,7 +106,6 @@ export function useBackgroundInvestigation(): void {
         autoInvestigateAdvisoryWorktreeIds,
         autoInvestigateLinearIssueWorktreeIds,
         autoInvestigateSentryIssueWorktreeIds,
-        autoInvestigateOverrides,
       } = useUIStore.getState()
 
       const { worktreePaths } = useChatStore.getState()
@@ -281,15 +261,10 @@ export function useBackgroundInvestigation(): void {
           type,
           preferencesRef.current,
           null,
-          queryClient,
-          autoInvestigateOverrides[worktreeId]
+          queryClient
         )
           .then(() => {
-            // A worktree cache update can re-run this effect while the backend
-            // is accepting the investigation. The accepted prompt is durable,
-            // so consume its flag even when that effect instance was cleaned
-            // up. Leaving it set makes a later cache update start it again.
-            consumeByType[type](worktreeId)
+            if (!disposed) consumeByType[type](worktreeId)
           })
           .catch(err => {
             logger.error('Background investigation failed', { worktreeId, err })
@@ -306,13 +281,7 @@ export function useBackgroundInvestigation(): void {
       disposed = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    hasAutoInvestigate,
-    worktreePathCount,
-    worktreeCacheTick,
-    queryClient,
-    retryTick,
-  ])
+  }, [hasAutoInvestigate, worktreePathCount, queryClient, retryTick])
 }
 
 /**
@@ -524,8 +493,7 @@ async function processBackgroundInvestigation(
   type: InvestigationType,
   preferences: ReturnType<typeof usePreferences>['data'],
   cliVersion: string | null,
-  queryClient: ReturnType<typeof useQueryClient>,
-  override?: InvestigationOverride
+  queryClient: ReturnType<typeof useQueryClient>
 ): Promise<void> {
   const worktreePath = useChatStore.getState().worktreePaths[worktreeId]
   if (!worktreePath) {
@@ -549,21 +517,15 @@ async function processBackgroundInvestigation(
     investigationConfig[type]
 
   const selectedModel =
-    override?.model ??
     preferences?.magic_prompt_models?.[modelKey] ??
     preferences?.selected_model ??
     'sonnet'
-  const backend = override?.backend ?? resolveBackend(selectedModel)
-  const provider =
-    backend !== 'claude'
-      ? null
-      : override?.provider !== undefined
-        ? override.provider
-        : resolveMagicPromptProvider(
-            preferences?.magic_prompt_providers,
-            providerKey,
-            preferences?.default_provider
-          )
+  const provider = resolveMagicPromptProvider(
+    preferences?.magic_prompt_providers,
+    providerKey,
+    preferences?.default_provider
+  )
+  const backend = resolveBackend(selectedModel)
 
   // Resolve custom profile name
   let customProfileName: string | undefined
@@ -587,8 +549,7 @@ async function processBackgroundInvestigation(
 
   // Build the investigation prompt (append fix directive when mode is yolo)
   const prompt = applyYoloInvestigationFixDirective(
-    override?.prompt ??
-      (await buildPrompt(worktreeId, type, preferences, projectId)),
+    await buildPrompt(worktreeId, type, preferences, projectId),
     executionMode
   )
 
@@ -612,7 +573,6 @@ async function processBackgroundInvestigation(
     chromeEnabled: preferences?.chrome_enabled ?? false,
     aiLanguage: preferences?.ai_language,
     executionMode,
-    forceNewSession: override?.forceNewSession,
   })
 
   const sessionId = result.sessionId
@@ -633,14 +593,6 @@ async function processBackgroundInvestigation(
   } = useChatStore.getState()
 
   setActiveSession(worktreeId, sessionId)
-
-  if (override?.openSession) {
-    window.dispatchEvent(
-      new CustomEvent('open-session-modal', {
-        detail: { sessionId, worktreeId, worktreePath },
-      })
-    )
-  }
 
   // Invalidate sessions query so ProjectCanvasView picks up the session
   queryClient.invalidateQueries({

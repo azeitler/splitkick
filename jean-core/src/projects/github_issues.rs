@@ -79,46 +79,6 @@ pub struct GitHubIssueListResult {
     pub total_count: u32,
 }
 
-fn is_github_issue(value: &serde_json::Value) -> bool {
-    value
-        .get("url")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|url| url.contains("/issues/"))
-}
-
-fn parse_github_issues_response(stdout: &str) -> Result<Vec<GitHubIssue>, String> {
-    let values: Vec<serde_json::Value> =
-        serde_json::from_str(stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
-
-    values
-        .into_iter()
-        .filter(is_github_issue)
-        .map(|value| {
-            serde_json::from_value(value).map_err(|e| format!("Failed to parse gh response: {e}"))
-        })
-        .collect()
-}
-
-fn parse_github_issue_response(stdout: &str) -> Result<GitHubIssue, String> {
-    let value: serde_json::Value =
-        serde_json::from_str(stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
-    if !is_github_issue(&value) {
-        return Err("GitHub item is not an issue".to_string());
-    }
-
-    serde_json::from_value(value).map_err(|e| format!("Failed to parse gh response: {e}"))
-}
-
-fn parse_github_issue_detail_response(stdout: &str) -> Result<GitHubIssueDetail, String> {
-    let value: serde_json::Value =
-        serde_json::from_str(stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
-    if !is_github_issue(&value) {
-        return Err("GitHub item is not an issue".to_string());
-    }
-
-    serde_json::from_value(value).map_err(|e| format!("Failed to parse gh response: {e}"))
-}
-
 pub async fn list_github_labels(
     app: AppHandle,
     project_path: String,
@@ -209,7 +169,7 @@ pub async fn list_github_issues(
             "issue",
             "list",
             "--json",
-            "number,title,body,state,labels,createdAt,author,url",
+            "number,title,body,state,labels,createdAt,author",
             "-L",
             "1000",
             "--state",
@@ -234,7 +194,8 @@ pub async fn list_github_issues(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let issues = parse_github_issues_response(&stdout)?;
+    let issues: Vec<GitHubIssue> =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
 
     // Get accurate total count from GitHub search API
     let total_count =
@@ -296,7 +257,7 @@ pub async fn search_github_issues(
             "--search",
             &query,
             "--json",
-            "number,title,body,state,labels,createdAt,author,url",
+            "number,title,body,state,labels,createdAt,author",
             "-L",
             "100",
             "--state",
@@ -320,7 +281,8 @@ pub async fn search_github_issues(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let issues = parse_github_issues_response(&stdout)?;
+    let issues: Vec<GitHubIssue> =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
 
     log::trace!("Search found {} issues", issues.len());
     Ok(issues)
@@ -344,7 +306,7 @@ pub async fn get_github_issue_by_number(
             "view",
             &issue_number.to_string(),
             "--json",
-            "number,title,body,state,labels,createdAt,author,url",
+            "number,title,body,state,labels,createdAt,author",
         ])
         .output()
         .map_err(|e| format!("Failed to run gh issue view: {e}"))?;
@@ -361,7 +323,8 @@ pub async fn get_github_issue_by_number(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let issue = parse_github_issue_response(&stdout)?;
+    let issue: GitHubIssue =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
 
     log::trace!("Got issue #{}: {}", issue.number, issue.title);
     Ok(issue)
@@ -403,7 +366,8 @@ pub async fn get_github_issue(
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    let issue = parse_github_issue_detail_response(&stdout)?;
+    let issue: GitHubIssueDetail =
+        serde_json::from_str(&stdout).map_err(|e| format!("Failed to parse gh response: {e}"))?;
 
     log::trace!("Got issue #{}: {}", issue.number, issue.title);
     Ok(issue)
@@ -1335,7 +1299,6 @@ pub fn cleanup_issue_contexts_for_session(
 pub async fn remove_issue_context(
     app: tauri::AppHandle,
     session_id: String,
-    worktree_id: Option<String>,
     issue_number: u32,
     project_path: String,
 ) -> Result<(), String> {
@@ -1346,10 +1309,7 @@ pub async fn remove_issue_context(
     let repo_key = repo_id.to_key();
 
     // Remove reference
-    let mut is_orphaned = remove_issue_reference(&app, &repo_key, issue_number, &session_id)?;
-    if let Some(worktree_id) = worktree_id.filter(|id| id != &session_id) {
-        is_orphaned = remove_issue_reference(&app, &repo_key, issue_number, &worktree_id)?;
-    }
+    let is_orphaned = remove_issue_reference(&app, &repo_key, issue_number, &session_id)?;
 
     // If orphaned, delete the shared file immediately
     if is_orphaned {
@@ -3208,28 +3168,6 @@ mod tests {
         assert_eq!(labels.len(), 2);
         assert_eq!(labels[0].name, "bug");
         assert_eq!(labels[1].color, "008672");
-    }
-
-    #[test]
-    fn issue_list_response_excludes_pull_requests() {
-        let response = r#"[
-            {"number":1,"title":"Issue","body":null,"state":"OPEN","labels":[],"createdAt":"2026-01-01T00:00:00Z","author":{"login":"user"},"url":"https://github.com/acme/repo/issues/1"},
-            {"number":2,"title":"Pull request","body":null,"state":"OPEN","labels":[],"createdAt":"2026-01-01T00:00:00Z","author":{"login":"user"},"url":"https://github.com/acme/repo/pull/2"}
-        ]"#;
-
-        let issues = parse_github_issues_response(response).expect("issues");
-
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].number, 1);
-    }
-
-    #[test]
-    fn exact_issue_response_rejects_pull_requests() {
-        let response = r#"{"number":2,"title":"Pull request","body":null,"state":"OPEN","labels":[],"createdAt":"2026-01-01T00:00:00Z","author":{"login":"user"},"url":"https://github.com/acme/repo/pull/2"}"#;
-
-        let error = parse_github_issue_response(response).expect_err("must reject pull request");
-
-        assert_eq!(error, "GitHub item is not an issue");
     }
 
     #[test]

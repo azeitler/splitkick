@@ -20,10 +20,8 @@ vi.mock('sonner', () => ({
 
 import {
   canReconnectSession,
-  isDuplicateSendError,
   prefetchSessions,
   reconnectNativeCliSession,
-  touchRecentSessionCaches,
 } from './chat'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
 import { useChatStore } from '@/store/chat-store'
@@ -37,59 +35,6 @@ const toastMock = toast as unknown as {
   success: ReturnType<typeof vi.fn>
   error: ReturnType<typeof vi.fn>
 }
-
-describe('touchRecentSessionCaches', () => {
-  it('updates and reorders a continued session immediately', () => {
-    const queryClient = new QueryClient()
-    const session = (id: string, timestamp: number) => ({
-      session: {
-        id,
-        name: id,
-        order: 0,
-        created_at: timestamp,
-        updated_at: timestamp,
-        messages: [],
-      },
-      lastActivityAt: timestamp,
-    })
-    const key = ['recent-worktrees', 'projects', 10, 'old']
-    queryClient.setQueryData(key, {
-      items: [session('new', 200), session('old', 100)],
-    })
-
-    touchRecentSessionCaches(queryClient, 'old', 300)
-
-    const result = queryClient.getQueryData<{
-      items: {
-        lastActivityAt: number
-        session: Session
-      }[]
-    }>(key)
-    expect(result?.items.map(item => item.session.id)).toEqual(['old', 'new'])
-    expect(result?.items[0]?.lastActivityAt).toBe(300)
-    expect(result?.items[0]?.session.last_message_at).toBe(300)
-  })
-})
-
-describe('isDuplicateSendError', () => {
-  it('recognizes the run-log duplicate guard error', () => {
-    expect(
-      isDuplicateSendError(
-        'Session session-1 already has a Running run — refusing to create duplicate'
-      )
-    ).toBe(true)
-  })
-
-  it('recognizes the active-request duplicate guard error', () => {
-    expect(
-      isDuplicateSendError(new Error('Session already has an active request'))
-    ).toBe(true)
-  })
-
-  it('does not classify unrelated send errors as duplicates', () => {
-    expect(isDuplicateSendError('CLI process failed')).toBe(false)
-  })
-})
 
 describe('transient WebSocket query failures', () => {
   it('rethrows disconnects so TanStack Query preserves cached session data', () => {

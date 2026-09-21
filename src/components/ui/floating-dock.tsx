@@ -13,11 +13,11 @@ import {
   Menu,
   Plus,
   Archive,
+  FileText,
   Github,
-  Heart,
   GitPullRequest,
   ShieldAlert,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -532,27 +532,6 @@ export function FloatingDock() {
             GitHub Dashboard
             <DropdownMenuShortcut>{githubShortcut}</DropdownMenuShortcut>
           </DropdownMenuItem>
-          {isMobile && (
-            <>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem
-                onClick={() =>
-                  openExternal('https://github.com/coollabsio/jean')
-                }
-              >
-                <Github className="mr-2 h-4 w-4" />
-                Jean on GitHub
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={() =>
-                  openExternal('https://jean.build/sponsorships/')
-                }
-              >
-                <Heart className="mr-2 h-4 w-4 text-pink-500" />
-                Sponsor Jean
-              </DropdownMenuItem>
-            </>
-          )}
           {resumeCommand && (
             <>
               <DropdownMenuSeparator />
@@ -562,6 +541,14 @@ export function FloatingDock() {
               </DropdownMenuItem>
             </>
           )}
+          <DropdownMenuSeparator />
+
+          <DropdownMenuItem
+            onClick={() => window.dispatchEvent(new CustomEvent('open-plan'))}
+          >
+            <FileText className="mr-2 h-4 w-4" />
+            View Plan
+          </DropdownMenuItem>
           {isMobile && currentWorktreeId && (
             <>
               <DropdownMenuSeparator />

@@ -17,7 +17,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { ChevronRight, CheckCircle2, Circle } from '@/components/icons/reicon'
+import { ChevronRight, CheckCircle2, Circle } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import type { Question, QuestionAnswer } from '@/types/chat'

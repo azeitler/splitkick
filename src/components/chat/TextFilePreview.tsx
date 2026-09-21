@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import { X, FileText, Copy, Pencil, Check } from '@/components/icons/reicon'
+import { X, FileText, Copy, Pencil, Check } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'

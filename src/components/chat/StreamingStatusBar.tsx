@@ -12,20 +12,6 @@ interface StreamingStatusBarProps {
   streamingExecutionMode: ExecutionMode
   restoredRunStatus?: RunStatus
   restoredExecutionMode?: string
-  completedDurationMs?: number | null
-}
-
-export function shouldShowRestoredRun({
-  isSending,
-  restoredRunStatus,
-  completedDurationMs,
-}: Pick<
-  StreamingStatusBarProps,
-  'isSending' | 'restoredRunStatus' | 'completedDurationMs'
->): boolean {
-  return (
-    !isSending && completedDurationMs == null && restoredRunStatus === 'running'
-  )
 }
 
 function getModeLabel(mode: string | undefined): string {
@@ -50,15 +36,10 @@ export const StreamingStatusBar = memo(function StreamingStatusBar({
   streamingExecutionMode,
   restoredRunStatus,
   restoredExecutionMode,
-  completedDurationMs,
 }: StreamingStatusBarProps) {
   const elapsed = useElapsedTime(isSending ? sendStartedAt : null)
 
-  const showRestored = shouldShowRestoredRun({
-    isSending,
-    restoredRunStatus,
-    completedDurationMs,
-  })
+  const showRestored = !isSending && restoredRunStatus === 'running'
   const visible = isSending || showRestored
   const activeMode = isSending ? streamingExecutionMode : restoredExecutionMode
 

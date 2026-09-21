@@ -12,11 +12,6 @@ import type { CliBackend } from '@/types/preferences'
 
 /** Query key prefix for MCP server queries */
 export const MCP_SERVERS_KEY = 'mcp-servers'
-export const REQUIRED_MCP_SERVER_NAMES = new Set(['agent-browser'])
-
-export function isRequiredMcpServer(name: string): boolean {
-  return REQUIRED_MCP_SERVER_NAMES.has(name)
-}
 
 /**
  * Invalidate MCP server queries so they are re-fetched from disk.
@@ -109,8 +104,7 @@ export function useAllBackendsMcpServers(
     if (has.has('cursor') && cursor.data) result.push(...cursor.data)
     if (has.has('grok') && grok.data) result.push(...grok.data)
     if (has.has('kimi') && kimi.data) result.push(...kimi.data)
-    if (has.has('antigravity') && antigravity.data)
-      result.push(...antigravity.data)
+    if (has.has('antigravity') && antigravity.data) result.push(...antigravity.data)
     return result
   }, [
     has,
@@ -328,12 +322,7 @@ export function resolveEnabledMcpServers(options: {
   const antigravityEnabled = options.availableServers
     .filter(server => server.backend === 'antigravity' && !server.disabled)
     .map(server => mcpKey('antigravity', server.name))
-  const requiredEnabled = options.availableServers
-    .filter(server => isRequiredMcpServer(server.name))
-    .map(server => mcpKey(server.backend, server.name))
-  const effectiveBase = [
-    ...new Set([...baseEnabled, ...antigravityEnabled, ...requiredEnabled]),
-  ]
+  const effectiveBase = [...new Set([...baseEnabled, ...antigravityEnabled])]
 
   if (hasSessionOverride) return effectiveBase
 

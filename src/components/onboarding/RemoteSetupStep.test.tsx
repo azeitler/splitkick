@@ -91,8 +91,7 @@ describe('RemoteSetupStep', () => {
       log: 'ok',
     })
     const reloadApp = vi.fn()
-    const onComplete = vi.fn()
-    render(<RemoteSetupStep reloadApp={reloadApp} onComplete={onComplete} />)
+    render(<RemoteSetupStep reloadApp={reloadApp} />)
 
     expect(
       screen.getByRole('tab', { name: /Install via SSH/i })
@@ -127,14 +126,11 @@ describe('RemoteSetupStep', () => {
     })
     expect(selectConnection).not.toHaveBeenCalled()
     expect(reloadApp).not.toHaveBeenCalled()
-    // Onboarding continues in this window once the remote is open.
-    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
   })
 
   it('connects with an existing Web Access URL', async () => {
     const reloadApp = vi.fn()
-    const onComplete = vi.fn()
-    render(<RemoteSetupStep reloadApp={reloadApp} onComplete={onComplete} />)
+    render(<RemoteSetupStep reloadApp={reloadApp} />)
 
     fireEvent.click(screen.getByRole('tab', { name: /Existing URL/i }))
     fireEvent.change(screen.getByLabelText('Name'), {
@@ -164,15 +160,12 @@ describe('RemoteSetupStep', () => {
     })
     expect(selectConnection).not.toHaveBeenCalled()
     expect(reloadApp).not.toHaveBeenCalled()
-    // Onboarding continues in this window once the remote is open.
-    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce())
   })
 
   it('swaps the connection in place in Web Access, which has no windows', async () => {
     isNativeApp.mockReturnValue(false)
     const reloadApp = vi.fn()
-    const onComplete = vi.fn()
-    render(<RemoteSetupStep reloadApp={reloadApp} onComplete={onComplete} />)
+    render(<RemoteSetupStep reloadApp={reloadApp} />)
 
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Build server' },

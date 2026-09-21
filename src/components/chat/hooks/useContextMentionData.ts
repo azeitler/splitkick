@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
-import { Bug, GitPullRequest, ShieldAlert, Siren } from '@/components/icons/reicon'
-import type { LucideIcon } from '@/components/icons/reicon'
+import { Bug, GitPullRequest, ShieldAlert, Siren } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import {
   filterAdvisories,
   filterIssues,
@@ -190,12 +190,12 @@ export function useContextMentionData({
   const { data: issueResult, isFetching: isFetchingIssues } = useGitHubIssues(
     enabledProjectPath,
     issueState,
-    { enabled: open, ownerId: enabledProjectId ?? undefined }
+    { enabled: open }
   )
   const { data: prs = [], isFetching: isFetchingPRs } = useGitHubPRs(
     enabledProjectPath,
     prState,
-    { enabled: open, ownerId: enabledProjectId ?? undefined }
+    { enabled: open }
   )
   const { data: alerts = [], isFetching: isFetchingAlerts } =
     useDependabotAlerts(enabledProjectPath, securityState, { enabled: open })

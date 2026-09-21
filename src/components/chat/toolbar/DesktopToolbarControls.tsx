@@ -9,8 +9,8 @@ import {
   Shield,
   ShieldAlert,
   Wand2,
-  Sentry,
-} from '@/components/icons/reicon'
+  Bug,
+} from 'lucide-react'
 import { useCallback } from 'react'
 import { Kbd } from '@/components/ui/kbd'
 import {
@@ -561,7 +561,7 @@ export function DesktopToolbarControls({
                       key={ctx.id}
                       onClick={() => handleViewSentry(ctx)}
                     >
-                      <Sentry className="h-4 w-4 text-orange-500" />
+                      <Bug className="h-4 w-4 text-orange-500" />
                       <span className="truncate">
                         {ctx.shortId} {ctx.title}
                       </span>

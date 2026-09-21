@@ -1,10 +1,5 @@
 import { memo, useMemo, useState } from 'react'
-import {
-  Loader2,
-  Activity,
-  Brain,
-  ChevronRight,
-} from '@/components/icons/reicon'
+import { Loader2, Activity, Brain, ChevronRight } from 'lucide-react'
 import type { ContentBlock, ToolCall } from '@/types/chat'
 import { isAskUserQuestion, isPlanToolCall } from '@/types/chat'
 import {
@@ -190,9 +185,9 @@ function compactStreamSegmentKey(segment: CompactStreamSegment): string {
   if (toolId) return `activity:tool:${toolId}`
   const first = segment.blocks[0]
   if (first) {
-    if (first.type === 'tool_use')
-      return `activity:tooluse:${first.tool_call_id}`
-    if (first.type === 'text') return `activity:text:${first.text.slice(0, 64)}`
+    if (first.type === 'tool_use') return `activity:tooluse:${first.tool_call_id}`
+    if (first.type === 'text')
+      return `activity:text:${first.text.slice(0, 64)}`
     if (first.type === 'thinking')
       return `activity:thinking:${first.thinking.slice(0, 64)}`
     if (first.type === 'user_input')
@@ -527,7 +522,6 @@ export const CompactStreamingTicker = memo(function CompactStreamingTicker(
                 contentBlocks={activityBlocks}
                 toolCalls={activityToolCalls}
                 streamingContent={hasPlan ? '' : streamingContent}
-                hideEditedFiles
               />
             </div>
           </CollapsibleContent>

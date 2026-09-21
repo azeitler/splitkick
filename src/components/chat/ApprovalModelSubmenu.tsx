@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronRight } from '@/components/icons/reicon'
+import { ChevronRight } from 'lucide-react'
 import type { CliBackend, CustomCliProfile } from '@/types/preferences'
 import { usePreferences } from '@/services/preferences'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'

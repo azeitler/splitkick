@@ -30,7 +30,6 @@ interface SwipeBackResult {
   containerRef: React.RefObject<HTMLDivElement | null>
   translateX: number
   isSwiping: boolean
-  progress: number
   transitionStyle: string
 }
 
@@ -49,7 +48,6 @@ export function useSwipeBack({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const [translateX, setTranslateX] = useState(0)
   const [isSwiping, setIsSwiping] = useState(false)
-  const [progress, setProgress] = useState(0)
   const [transitionStyle, setTransitionStyle] = useState('')
 
   const startXRef = useRef(0)
@@ -134,28 +132,14 @@ export function useSwipeBack({
       if (!touch) return
       lastXRef.current = touch.clientX
       lastTimeRef.current = Date.now()
-      const containerWidth =
-        containerRef.current?.offsetWidth ?? window.innerWidth
-      setProgress(
-        Math.min(
-          1,
-          progressDelta(startXRef.current, touch.clientX) /
-            (containerWidth * threshold)
-        )
-      )
       if (showVisualRef.current) {
-        // Keep the drawer edge under the finger. Using only the distance from
-        // touch start leaves it behind by the width of the edge start zone.
-        const delta =
-          edgeRef.current === 'right'
-            ? Math.max(0, containerWidth - touch.clientX)
-            : Math.max(0, touch.clientX)
+        const delta = progressDelta(startXRef.current, touch.clientX)
         // Visual still uses positive translateX for left-edge swipe-right.
         // Right-edge swipe-left uses negative translateX.
         setTranslateX(edgeRef.current === 'right' ? -delta : delta)
       }
     },
-    [progressDelta, threshold]
+    [progressDelta]
   )
 
   const handleTouchEnd = useCallback(
@@ -167,7 +151,6 @@ export function useSwipeBack({
       const container = containerRef.current
       if (!container) {
         setIsSwiping(false)
-        setProgress(0)
         if (showVisualRef.current) setTranslateX(0)
         return
       }
@@ -197,7 +180,6 @@ export function useSwipeBack({
             // Reset after callback
             setTranslateX(0)
             setIsSwiping(false)
-            setProgress(0)
             setTransitionStyle('')
             firedRef.current = false
           }, 200)
@@ -207,7 +189,6 @@ export function useSwipeBack({
           onSwipeBackRef.current()
           if (showVisualRef.current) setTranslateX(0)
           setIsSwiping(false)
-          setProgress(0)
           firedRef.current = false
         }
       } else {
@@ -216,12 +197,10 @@ export function useSwipeBack({
           setTranslateX(0)
           setTimeout(() => {
             setIsSwiping(false)
-            setProgress(0)
             setTransitionStyle('')
           }, 200)
         } else {
           setIsSwiping(false)
-          setProgress(0)
         }
       }
     },
@@ -233,12 +212,6 @@ export function useSwipeBack({
     const el = containerRef.current
     if (!el) return
 
-    // Tell the browser that vertical scrolling is allowed, but horizontal
-    // movement belongs to this gesture. This avoids waiting for the browser's
-    // native pan decision before the drawer starts following the finger.
-    const previousTouchAction = el.style.touchAction
-    el.style.touchAction = 'pan-y'
-
     el.addEventListener('touchstart', handleTouchStart, { passive: true })
     el.addEventListener('touchmove', handleTouchMove, { passive: false })
     el.addEventListener('touchend', handleTouchEnd, { passive: true })
@@ -247,9 +220,8 @@ export function useSwipeBack({
       el.removeEventListener('touchstart', handleTouchStart)
       el.removeEventListener('touchmove', handleTouchMove)
       el.removeEventListener('touchend', handleTouchEnd)
-      el.style.touchAction = previousTouchAction
     }
   }, [enabled, handleTouchStart, handleTouchMove, handleTouchEnd])
 
-  return { containerRef, translateX, isSwiping, progress, transitionStyle }
+  return { containerRef, translateX, isSwiping, transitionStyle }
 }

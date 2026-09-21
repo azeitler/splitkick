@@ -1,6 +1,6 @@
 [package]
 name = "jean-server"
-version = "1.0.1"
+version = "0.1.73"
 edition = "2021"
 
 [dependencies]

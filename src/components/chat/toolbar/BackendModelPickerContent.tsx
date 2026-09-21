@@ -1,4 +1,4 @@
-import { Check, RefreshCw, Star, Zap } from '@/components/icons/reicon'
+import { Check, RefreshCw, Star, Zap } from 'lucide-react'
 import {
   useCallback,
   useEffect,

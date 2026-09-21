@@ -7,7 +7,7 @@ import {
   ListTodo,
   XCircle,
   X,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import type { Todo } from '@/types/chat'
 import { cn } from '@/lib/utils'
 import {

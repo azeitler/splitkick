@@ -1139,9 +1139,6 @@ fn execute_naming(app: &AppHandle, request: &NamingRequest) {
                 stage: NamingStage::Generation,
             };
             let _ = app.emit_all("naming-failed", &error);
-            if request.generate_session_name {
-                let _ = app.emit_all("session-naming-failed", &error);
-            }
             return;
         }
     };
@@ -1184,13 +1181,6 @@ fn execute_naming(app: &AppHandle, request: &NamingRequest) {
             }
         } else {
             log::warn!("No session name in response");
-            let error = NamingError {
-                session_id: Some(request.session_id.clone()),
-                worktree_id: request.worktree_id.clone(),
-                error: "Naming response did not include a session name".to_string(),
-                stage: NamingStage::Generation,
-            };
-            let _ = app.emit_all("session-naming-failed", &error);
         }
     }
 
@@ -1250,16 +1240,6 @@ pub fn spawn_naming_task(app: AppHandle, request: NamingRequest) {
         request.generate_session_name,
         request.generate_branch_name
     );
-
-    if request.generate_session_name {
-        let _ = app.emit_all(
-            "session-naming-started",
-            &serde_json::json!({
-                "session_id": request.session_id,
-                "worktree_id": request.worktree_id,
-            }),
-        );
-    }
 
     std::thread::spawn(move || {
         execute_naming(&app, &request);

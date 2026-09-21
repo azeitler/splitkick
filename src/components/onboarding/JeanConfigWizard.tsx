@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { FileCode2, Plus, X } from '@/components/icons/reicon'
+import { FileCode2, Plus, X } from 'lucide-react'
 import {
   Dialog,
   DialogContent,
@@ -14,7 +14,6 @@ import { Label } from '@/components/ui/label'
 import { useProjectsStore } from '@/store/projects-store'
 import { useProjects, useSaveJeanConfig } from '@/services/projects'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
-import { generateId } from '@/lib/uuid'
 
 export function JeanConfigWizard() {
   const open = useProjectsStore(s => s.jeanConfigWizardOpen)
@@ -38,7 +37,7 @@ function JeanConfigWizardContent() {
   const [teardownScript, setTeardownScript] = useState('')
   const [runScripts, setRunScripts] = useState<
     { id: string; value: string }[]
-  >(() => [{ id: generateId(), value: '' }])
+  >(() => [{ id: crypto.randomUUID(), value: '' }])
   const [ports, setPorts] = useState<
     { id: string; port: string; label: string; host: string }[]
   >([])
@@ -234,7 +233,7 @@ function JeanConfigWizardContent() {
               onClick={() =>
                 setRunScripts([
                   ...runScripts,
-                  { id: generateId(), value: '' },
+                  { id: crypto.randomUUID(), value: '' },
                 ])
               }
             >
@@ -307,7 +306,7 @@ function JeanConfigWizardContent() {
                 setPorts([
                   ...ports,
                   {
-                    id: generateId(),
+                    id: crypto.randomUUID(),
                     port: '',
                     label: '',
                     host: '',

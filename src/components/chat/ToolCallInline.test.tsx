@@ -43,23 +43,6 @@ function clickExpandTrigger() {
 }
 
 describe('ToolCallInline', () => {
-  it('keeps a tool open when streaming content is replaced by persisted content', () => {
-    const toolCall = {
-      id: 'tool-remount-open-state',
-      name: 'Read',
-      input: { file_path: '/tmp/remount.ts' },
-    }
-    const firstRender = render(<ToolCallInline toolCall={toolCall} />)
-
-    fireEvent.click(screen.getByText('remount.ts'))
-    expect(screen.getByText('Path: /tmp/remount.ts')).toBeInTheDocument()
-
-    firstRender.unmount()
-    render(<ToolCallInline toolCall={toolCall} />)
-
-    expect(screen.getByText('Path: /tmp/remount.ts')).toBeInTheDocument()
-  })
-
   it('keeps clickable file details at the compact tool-row font size', () => {
     render(
       <ToolCallInline
@@ -869,28 +852,6 @@ describe('Jean MCP tool helpers', () => {
 })
 
 describe('StackedGroup', () => {
-  it('keeps a group open when streaming content is replaced by persisted content', () => {
-    const items = [
-      {
-        type: 'tool' as const,
-        tool: {
-          id: 'stacked-remount-open-state',
-          name: 'Read',
-          input: { file_path: '/tmp/group-remount.ts' },
-        },
-      },
-    ]
-    const firstRender = render(<StackedGroup items={items} />)
-
-    fireEvent.click(screen.getByText('1 Read'))
-    expect(screen.getByText('group-remount.ts')).toBeInTheDocument()
-
-    firstRender.unmount()
-    render(<StackedGroup items={items} />)
-
-    expect(screen.getByText('group-remount.ts')).toBeInTheDocument()
-  })
-
   it('keeps nested Read file details at the same compact size as Grep/Bash', () => {
     render(
       <StackedGroup

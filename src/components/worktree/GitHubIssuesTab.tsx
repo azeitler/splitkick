@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { Loader2, Search, RefreshCw, AlertCircle } from '@/components/icons/reicon'
+import { Loader2, Search, RefreshCw, AlertCircle } from 'lucide-react'
 import { isGhAuthError } from '@/services/github'
 import { GhAuthError } from '@/components/shared/GhAuthError'
 import { ScrollArea } from '@/components/ui/scroll-area'
@@ -32,7 +32,6 @@ export interface GitHubIssuesTabProps {
   setSelectedIndex: (index: number) => void
   onSelectIssue: (issue: GitHubIssue, background?: boolean) => void
   onInvestigateIssue: (issue: GitHubIssue, background?: boolean) => void
-  onInvestigateIssueInNewSession?: (issue: GitHubIssue) => void
   onBulkInvestigateIssues?: (issues: GitHubIssue[]) => void | Promise<void>
   onPreviewIssue: (issue: GitHubIssue) => void
   creatingFromNumber: number | null
@@ -59,7 +58,6 @@ export function GitHubIssuesTab({
   setSelectedIndex,
   onSelectIssue,
   onInvestigateIssue,
-  onInvestigateIssueInNewSession,
   onBulkInvestigateIssues,
   onPreviewIssue,
   creatingFromNumber,
@@ -202,11 +200,6 @@ export function GitHubIssuesTab({
                 onMouseEnter={() => setSelectedIndex(index)}
                 onClick={bg => onSelectIssue(issue, bg)}
                 onInvestigate={bg => onInvestigateIssue(issue, bg)}
-                onInvestigateInNewSession={
-                  onInvestigateIssueInNewSession
-                    ? () => onInvestigateIssueInNewSession(issue)
-                    : undefined
-                }
                 onPreview={() => onPreviewIssue(issue)}
                 onLabelClick={handleLabelClick}
               />

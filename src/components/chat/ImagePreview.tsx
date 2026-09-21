@@ -1,7 +1,6 @@
 import { useCallback } from 'react'
-import { X, Loader2 } from '@/components/icons/reicon'
+import { X, Loader2 } from 'lucide-react'
 import { invoke } from '@/lib/transport'
-import { parseServerResourceKey } from '@/lib/server-resource'
 import type { PendingImage } from '@/types/chat'
 import { ImageLightbox } from './ImageLightbox'
 import {
@@ -17,8 +16,6 @@ interface ImagePreviewProps {
   onRemove: (imageId: string) => void
   /** Whether removal is disabled (e.g., while sending) */
   disabled?: boolean
-  /** Session that owns the pending image path. */
-  sessionId?: string
 }
 
 /**
@@ -29,11 +26,7 @@ export function ImagePreview({
   images,
   onRemove,
   disabled,
-  sessionId,
 }: ImagePreviewProps) {
-  const serverId = sessionId
-    ? parseServerResourceKey(sessionId)?.serverId
-    : undefined
   const handleRemove = useCallback(
     async (e: React.MouseEvent, image: PendingImage) => {
       // Prevent the click from bubbling to the lightbox
@@ -43,10 +36,7 @@ export function ImagePreview({
 
       // Delete the file from disk
       try {
-        await invoke('delete_pasted_image', {
-          path: image.path,
-          ...(sessionId ? { sessionId } : {}),
-        })
+        await invoke('delete_pasted_image', { path: image.path })
       } catch (error) {
         console.error('Failed to delete image:', error)
         // Still remove from UI even if delete fails
@@ -55,7 +45,7 @@ export function ImagePreview({
       // Remove from store
       onRemove(image.id)
     },
-    [disabled, onRemove, sessionId]
+    [disabled, onRemove]
   )
 
   if (images.length === 0) return null
@@ -72,7 +62,6 @@ export function ImagePreview({
             <>
               <ImageLightbox
                 src={image.path}
-                serverId={serverId}
                 alt={image.filename}
                 thumbnailClassName="h-16 w-16 object-cover rounded-md border border-border/50 bg-muted cursor-pointer hover:border-primary/50 transition-colors"
               />

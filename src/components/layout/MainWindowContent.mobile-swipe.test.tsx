@@ -181,8 +181,7 @@ describe('MainWindowContent mobile swipe terminal', () => {
       fireTouch(target, 'touchmove', 280)
     })
 
-    // The panel edge stays under the finger: 400px wide container - 280px.
-    expect(target).toHaveStyle({ transform: 'translateX(-120px)' })
+    expect(target).toHaveStyle({ transform: 'translateX(-112px)' })
     expect(useTerminalStore.getState().terminalVisible).toBe(false)
   })
 
@@ -260,33 +259,5 @@ describe('MainWindowContent mobile swipe terminal', () => {
     // Gesture disabled while open — no extra terminal
     expect(useTerminalStore.getState().terminals['wt-1']?.length).toBe(before)
     expect(useTerminalStore.getState().terminalVisible).toBe(true)
-  })
-})
-
-describe('MainWindowContent mobile chat gestures', () => {
-  beforeEach(() => {
-    useUIStore.setState({
-      leftSidebarVisible: false,
-      fileBrowserVisible: false,
-      sessionChatModalOpen: false,
-      sessionChatModalWorktreeId: null,
-    })
-    useChatStore.setState({
-      activeWorktreePath: '/tmp/wt',
-      activeWorktreeId: 'wt-1',
-    })
-    useProjectsStore.setState({ selectedProjectId: 'proj-1' })
-  })
-
-  it('does not expose a right-edge file-browser swipe target', async () => {
-    render(<MainWindowContent />)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('chat-window')).toBeInTheDocument()
-    })
-    expect(
-      screen.queryByTestId('mobile-swipe-open-file-browser')
-    ).not.toBeInTheDocument()
-    expect(useUIStore.getState().fileBrowserVisible).toBe(false)
   })
 })

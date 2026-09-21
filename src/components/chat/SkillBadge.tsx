@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Wand2, Loader2, X } from '@/components/icons/reicon'
+import { Wand2, Loader2, X } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import {
   Dialog,

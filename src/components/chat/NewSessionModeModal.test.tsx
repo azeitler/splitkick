@@ -19,7 +19,6 @@ let kimiInstalled: boolean
 let isMobile: boolean
 let defaultExecutionMode: 'plan' | 'build' | 'yolo'
 let defaultBackend: 'claude' | 'codex'
-const cliStatusTargets = new Map<string, string | undefined>()
 
 vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({
@@ -59,23 +58,17 @@ vi.mock('@/hooks/use-mobile', () => ({
 }))
 
 vi.mock('@/services/claude-cli', () => ({
-  useClaudeCliStatus: (options?: { serverId?: string }) => {
-    cliStatusTargets.set('claude', options?.serverId)
-    return {
-      data: { installed: true, path: '/usr/local/bin/claude' },
-      isLoading: false,
-    }
-  },
+  useClaudeCliStatus: () => ({
+    data: { installed: true, path: '/usr/local/bin/claude' },
+    isLoading: false,
+  }),
 }))
 
 vi.mock('@/services/codex-cli', () => ({
-  useCodexCliStatus: (options?: { serverId?: string }) => {
-    cliStatusTargets.set('codex', options?.serverId)
-    return {
-      data: { installed: true, path: '/usr/local/bin/codex' },
-      isLoading: false,
-    }
-  },
+  useCodexCliStatus: () => ({
+    data: { installed: true, path: '/usr/local/bin/codex' },
+    isLoading: false,
+  }),
 }))
 
 vi.mock('@/services/opencode-cli', () => ({
@@ -141,7 +134,6 @@ vi.mock('@/services/kimi-cli', () => ({
 describe('NewSessionModeModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    cliStatusTargets.clear()
     mutate.mockReset()
     invoke.mockReset()
     sessionsData = { sessions: [] }
@@ -173,20 +165,6 @@ describe('NewSessionModeModal', () => {
       terminalPanelOpen: {},
       modalTerminalOpen: {},
     })
-  })
-
-  it('checks CLI availability on the worktree owning server', () => {
-    useUIStore.getState().openNewSessionModeModal({
-      worktreeId: 'remote-1:worktree-1',
-      worktreePath: '/remote/project',
-      origin: 'canvas',
-      intent: 'picker',
-    })
-
-    render(<NewSessionModeModal />)
-
-    expect(cliStatusTargets.get('claude')).toBe('remote-1')
-    expect(cliStatusTargets.get('codex')).toBe('remote-1')
   })
 
   it('defaults Enter to a normal Jean chat session', () => {

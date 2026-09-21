@@ -42,10 +42,7 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
     }
 
     if wsl.enabled {
-        // WSL has no Jean-managed PI installation yet. Resolve the selected
-        // distro's executable so npm shebangs can use the matching sibling Node
-        // runtime even when the non-login WSL environment has a different PATH.
-        return find_pi_in_path().unwrap_or_else(|| PathBuf::from("pi"));
+        return PathBuf::from("pi");
     }
 
     get_cli_binary_path(app).unwrap_or_else(|_| PathBuf::from(CLI_BINARY_NAME))

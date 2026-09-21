@@ -1,4 +1,4 @@
-import { X } from '@/components/icons/reicon'
+import { X } from 'lucide-react'
 import {
   Tooltip,
   TooltipTrigger,

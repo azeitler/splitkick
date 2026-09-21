@@ -1,5 +1,5 @@
 import { memo, useEffect, useState } from 'react'
-import { ChevronRight, Github, Heart } from '@/components/icons/reicon'
+import { ChevronRight, Github, Heart } from 'lucide-react'
 import { BackendLabel } from '@/components/ui/backend-label'
 import { useUIStore } from '@/store/ui-store'
 import { useSwipeBack } from '@/hooks/useSwipeBack'

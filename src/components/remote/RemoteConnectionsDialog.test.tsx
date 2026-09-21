@@ -12,9 +12,6 @@ const {
   invoke,
   isNativeApp,
   listenLocal,
-  setRemoteConnectionEnabled,
-  setLocalDashboardEnabled,
-  remoteConnections,
 } = vi.hoisted(() => ({
   addRemoteConnection: vi.fn(() => ({ id: 'remote-1' })),
   selectConnection: vi.fn(),
@@ -30,15 +27,6 @@ const {
   listenLocal: vi.fn(async () => () => {
     // no-op unsubscribe
   }),
-  setRemoteConnectionEnabled: vi.fn(),
-  setLocalDashboardEnabled: vi.fn(),
-  remoteConnections: [] as {
-    id: string
-    name: string
-    url: string
-    token: string
-    enabled: boolean
-  }[],
 }))
 
 vi.mock('@/lib/remote-connections', () => ({
@@ -68,11 +56,8 @@ vi.mock('@/lib/remote-connections', () => ({
     }
   },
   selectConnection,
-  setRemoteConnectionEnabled,
-  setLocalDashboardEnabled,
-  useLocalDashboardEnabled: () => true,
   updateRemoteConnection: vi.fn(),
-  useRemoteConnections: () => remoteConnections,
+  useRemoteConnections: () => [],
 }))
 
 vi.mock('@/lib/remote-version', () => ({
@@ -93,8 +78,6 @@ vi.mock('@/lib/remote-version', () => ({
 
 vi.mock('@/lib/environment', () => ({
   isNativeApp: () => isNativeApp(),
-  // These tests render the main window, where native aggregates servers.
-  aggregatesServers: () => isNativeApp(),
 }))
 
 vi.mock('@/lib/transport', () => ({
@@ -112,7 +95,6 @@ describe('RemoteConnectionsDialog', () => {
     })
     warnRemoteVersionMismatch.mockReturnValue(false)
     isNativeApp.mockReturnValue(false)
-    remoteConnections.length = 0
   })
 
   it('uses the title bar tooltip instead of the native browser tooltip', async () => {
@@ -129,74 +111,6 @@ describe('RemoteConnectionsDialog', () => {
       timeout: 3000,
     })
     expect(labels.length).toBeGreaterThan(0)
-  })
-
-  it('changes combined dashboard inclusion without reloading', async () => {
-    isNativeApp.mockReturnValue(true)
-    invoke.mockResolvedValue([])
-    remoteConnections.push({
-      id: 'remote-1',
-      name: 'Build server',
-      url: 'https://jean.example.com',
-      token: 'secret',
-      enabled: true,
-    })
-    const reloadApp = vi.fn()
-    render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
-    await waitFor(() => expect(fetchRemoteServerInfo).toHaveBeenCalled())
-    fireEvent.click(
-      screen.getByRole('checkbox', {
-        name: 'Include Build server in combined dashboard',
-      })
-    )
-
-    expect(setRemoteConnectionEnabled).toHaveBeenCalledWith('remote-1', false)
-    expect(reloadApp).not.toHaveBeenCalled()
-    // Toggling inclusion does not open the connection's window.
-    expect(invoke).not.toHaveBeenCalledWith(
-      'open_connection_window',
-      expect.anything()
-    )
-  })
-
-  it('can exclude Local from the combined dashboard without switching it', () => {
-    isNativeApp.mockReturnValue(true)
-    invoke.mockResolvedValue([])
-    const reloadApp = vi.fn()
-    render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
-    fireEvent.click(
-      screen.getByRole('checkbox', {
-        name: 'Include Local in combined dashboard',
-      })
-    )
-
-    expect(setLocalDashboardEnabled).toHaveBeenCalledWith(false)
-    expect(selectConnection).not.toHaveBeenCalled()
-    expect(reloadApp).not.toHaveBeenCalled()
-  })
-
-  it('does not expose multi-server dashboard controls in Web Access', async () => {
-    remoteConnections.push({
-      id: 'remote-1',
-      name: 'Build server',
-      url: 'https://jean.example.com',
-      token: 'secret',
-      enabled: true,
-    })
-    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
-    await waitFor(() => expect(fetchRemoteServerInfo).toHaveBeenCalled())
-
-    expect(
-      screen.queryByRole('checkbox', {
-        name: 'Include Build server in combined dashboard',
-      })
-    ).not.toBeInTheDocument()
   })
 
   it('adds and selects a remote from a complete Web Access URL', async () => {

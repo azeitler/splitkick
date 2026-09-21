@@ -9,7 +9,7 @@ import {
   RotateCcw,
   MessageSquare,
   GitBranch,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,

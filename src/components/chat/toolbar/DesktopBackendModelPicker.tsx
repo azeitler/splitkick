@@ -1,4 +1,4 @@
-import { ChevronsUpDown, Zap } from '@/components/icons/reicon'
+import { ChevronsUpDown, Zap } from 'lucide-react'
 import { useCallback, useMemo, useState } from 'react'
 import {
   Popover,

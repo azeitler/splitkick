@@ -8,9 +8,8 @@ import {
   Plus,
   Server,
   Trash2,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -28,7 +27,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { aggregatesServers, isNativeApp } from '@/lib/environment'
+import { isNativeApp } from '@/lib/environment'
 import { cn } from '@/lib/utils'
 import {
   LOCAL_CONNECTION_ID,
@@ -38,11 +37,8 @@ import {
   parseOptionalSshPort,
   parseRemoteConnectionInput,
   removeRemoteConnection,
-  setRemoteConnectionEnabled,
-  setLocalDashboardEnabled,
   updateRemoteConnection,
   useRemoteConnections,
-  useLocalDashboardEnabled,
   type RemoteConnection,
 } from '@/lib/remote-connections'
 import { DISMISS_TRANSIENT_UI_EVENT } from '@/lib/dismiss-transient-ui'
@@ -96,19 +92,11 @@ type VersionState =
   | { status: 'ready'; version: string | null }
   | { status: 'error'; message: string }
 
-interface RemoteConnectionsDialogProps {
-  open?: boolean
-  onOpenChange?: (open: boolean) => void
-  showTrigger?: boolean
-  reloadApp?: () => void
-}
-
 export function RemoteConnectionsDialog({
-  open: controlledOpen,
-  onOpenChange,
-  showTrigger = true,
   reloadApp = () => window.location.reload(),
-}: RemoteConnectionsDialogProps = {}) {
+}: {
+  reloadApp?: () => void
+}) {
   const connections = useRemoteConnections()
   // The connection this window drives. On the desktop this is `local` in the
   // main window and the pinned remote in a connection window.
@@ -119,19 +107,7 @@ export function RemoteConnectionsDialog({
   const [openIds, setOpenIds] = useState<string[]>([])
   const localVersion = getLocalJeanVersion()
   const native = isNativeApp()
-  // Combined-dashboard toggles only mean something in the native main window;
-  // a connection window shows its one remote and aggregates nothing.
-  const aggregates = aggregatesServers()
-  const localDashboardEnabled = useLocalDashboardEnabled()
-  const [internalOpen, setInternalOpen] = useState(false)
-  const open = controlledOpen ?? internalOpen
-  const setOpen = useCallback(
-    (nextOpen: boolean) => {
-      if (controlledOpen === undefined) setInternalOpen(nextOpen)
-      onOpenChange?.(nextOpen)
-    },
-    [controlledOpen, onOpenChange]
-  )
+  const [open, setOpen] = useState(false)
   const [editingId, setEditingId] = useState<EditorMode>(null)
   const [addMode, setAddMode] = useState<AddMode>('url')
   const [form, setForm] = useState(EMPTY_URL_FORM)
@@ -473,9 +449,6 @@ export function RemoteConnectionsDialog({
         sshPort,
       })
       await activateConnection(connection.id, reloadApp)
-      setInstalling(false)
-      setProgress(null)
-      setEditingId(null)
       setOpen(false)
     } catch (installError) {
       setError(
@@ -508,33 +481,30 @@ export function RemoteConnectionsDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {showTrigger && (
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <DialogTrigger asChild>
-              <Button
-                aria-label="Jean connections"
-                variant="ghost"
-                size="icon"
-                className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
-              >
-                <Server className="size-3.5" />
-                {remoteActive && (
-                  <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-green-500" />
-                )}
-              </Button>
-            </DialogTrigger>
-          </TooltipTrigger>
-          <TooltipContent>Jean connections</TooltipContent>
-        </Tooltip>
-      )}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>
+            <Button
+              aria-label="Jean connections"
+              variant="ghost"
+              size="icon"
+              className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
+            >
+              <Server className="size-3.5" />
+              {remoteActive && (
+                <span className="absolute right-0.5 top-0.5 size-1.5 rounded-full bg-green-500" />
+              )}
+            </Button>
+          </DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>Jean connections</TooltipContent>
+      </Tooltip>
       {/* Above RemoteConnectionRecovery (z-100) so Edit connection works while offline. */}
       <DialogContent className="sm:max-w-md z-[110]" overlayClassName="z-[110]">
         <DialogHeader>
           <DialogTitle>Jean connections</DialogTitle>
           <DialogDescription>
-            Open a Jean server in its own window, or include it in the combined
-            dashboard.
+            Connect this client to Local or a remote Jean Web Access server.
           </DialogDescription>
         </DialogHeader>
 
@@ -827,8 +797,6 @@ export function RemoteConnectionsDialog({
               active={activeId === LOCAL_CONNECTION_ID}
               connecting={connectingId === LOCAL_CONNECTION_ID}
               onSelect={() => void switchTo(LOCAL_CONNECTION_ID)}
-              enabled={aggregates ? localDashboardEnabled : undefined}
-              onEnabledChange={aggregates ? setLocalDashboardEnabled : undefined}
             />
             {connections.map(connection => {
               const versionState = versions[connection.id]
@@ -857,13 +825,6 @@ export function RemoteConnectionsDialog({
                   onSelect={() => void switchTo(connection.id)}
                   onEdit={() => beginEdit(connection)}
                   onDelete={() => handleDelete(connection.id)}
-                  enabled={aggregates ? connection.enabled !== false : undefined}
-                  onEnabledChange={
-                    aggregates
-                      ? enabled =>
-                          setRemoteConnectionEnabled(connection.id, enabled)
-                      : undefined
-                  }
                 />
               )
             })}
@@ -946,8 +907,6 @@ function ConnectionRow({
   onSelect,
   onEdit,
   onDelete,
-  enabled,
-  onEnabledChange,
 }: {
   name: string
   detail: string
@@ -958,8 +917,6 @@ function ConnectionRow({
   onSelect: () => void
   onEdit?: () => void
   onDelete?: () => void
-  enabled?: boolean
-  onEnabledChange?: (enabled: boolean) => void
 }) {
   const hasActions = Boolean(onEdit || onDelete)
 
@@ -1035,16 +992,6 @@ function ConnectionRow({
           </div>
         )}
       </div>
-      {onEnabledChange && (
-        <label className="ml-4 mt-1.5 flex items-center gap-2 text-xs text-muted-foreground">
-          <Checkbox
-            checked={enabled}
-            onCheckedChange={checked => onEnabledChange(checked === true)}
-            aria-label={`Include ${name} in combined dashboard`}
-          />
-          Include in combined dashboard
-        </label>
-      )}
     </div>
   )
 }

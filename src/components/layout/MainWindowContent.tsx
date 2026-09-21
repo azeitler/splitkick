@@ -7,7 +7,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { Button } from '@/components/ui/button'
 import { Kbd } from '@/components/ui/kbd'
-import { Plus, Loader2 } from '@/components/icons/reicon'
+import { Plus, Loader2 } from 'lucide-react'
 import { HomeView } from '@/components/home/HomeView'
 import { isFolder } from '@/types/projects'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
@@ -96,10 +96,7 @@ export function MainWindowContent({
   const setAddProjectDialogOpen = useProjectsStore(
     state => state.setAddProjectDialogOpen
   )
-  const { data: projects = [], isError: projectsLoadError } = useProjects()
-  const selectedProject = projects.find(
-    project => project.id === selectedProjectId
-  )
+  const { data: projects = [] } = useProjects()
   const [backendCheckReady, setBackendCheckReady] = useState(false)
   useEffect(() => scheduleIdleWork(() => setBackendCheckReady(true), 1500), [])
 
@@ -114,11 +111,7 @@ export function MainWindowContent({
   const awaitingBackendCheck = showWelcome && !backendCheckReady
   const setupIncomplete =
     shouldCheckBackends && !backendsLoading && installedBackends.length === 0
-  const showAddButton =
-    showWelcome &&
-    projects.length === 0 &&
-    !projectsLoadError &&
-    !setupIncomplete
+  const showAddButton = showWelcome && projects.length === 0 && !setupIncomplete
 
   const handleProjectClick = useCallback((projectId: string) => {
     const { selectProject, expandProject } = useProjectsStore.getState()
@@ -149,77 +142,61 @@ export function MainWindowContent({
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [showAddButton, setAddProjectDialogOpen])
 
-  const nonChatContent =
-    selectedProjectId && selectedProject ? (
-      <Suspense fallback={<JeanLoadingScreen />}>
-        <ProjectCanvasView
-          key={selectedProjectId}
-          projectId={selectedProjectId}
-          project={selectedProject}
-        />
-      </Suspense>
-    ) : selectedProjectId ? (
-      <JeanLoadingScreen />
-    ) : children ? (
-      children
-    ) : projectsLoadError && projects.length === 0 ? (
-      <div
-        className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center font-sans"
-        role="alert"
-      >
-        <h1 className="text-2xl font-bold text-foreground">
-          Unable to load Jean projects
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          Check the projects sidebar for recovery details.
-        </p>
-      </div>
-    ) : realProjects.length > 0 ? (
-      <HomeView
-        projects={realProjects}
-        onProjectClick={handleProjectClick}
-        onAddProject={() => setAddProjectDialogOpen(true)}
+  const nonChatContent = selectedProjectId ? (
+    <Suspense fallback={<JeanLoadingScreen />}>
+      <ProjectCanvasView
+        key={selectedProjectId}
+        projectId={selectedProjectId}
       />
-    ) : (
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 font-sans">
-        <h1 className="text-4xl font-bold text-foreground">Welcome to Jean!</h1>
-        {awaitingBackendCheck || backendsLoading ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            <span>Calling Jean…</span>
-          </div>
-        ) : setupIncomplete ? (
-          <div className="flex flex-col items-center gap-3">
-            <p className="text-sm text-muted-foreground">
-              Complete setup to start adding projects.
-            </p>
-            <Button
-              variant="outline"
-              size="lg"
-              onClick={() =>
-                useUIStore.setState({
-                  onboardingManuallyTriggered: true,
-                  onboardingDismissed: false,
-                  onboardingOpen: true,
-                })
-              }
-            >
-              Complete Setup
-            </Button>
-          </div>
-        ) : (
+    </Suspense>
+  ) : children ? (
+    children
+  ) : realProjects.length > 0 ? (
+    <HomeView
+      projects={realProjects}
+      onProjectClick={handleProjectClick}
+      onAddProject={() => setAddProjectDialogOpen(true)}
+    />
+  ) : (
+    <div className="flex flex-1 flex-col items-center justify-center gap-6 font-sans">
+      <h1 className="text-4xl font-bold text-foreground">Welcome to Jean!</h1>
+      {awaitingBackendCheck || backendsLoading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>Calling Jean…</span>
+        </div>
+      ) : setupIncomplete ? (
+        <div className="flex flex-col items-center gap-3">
+          <p className="text-sm text-muted-foreground">
+            Complete setup to start adding projects.
+          </p>
           <Button
             variant="outline"
             size="lg"
-            onClick={() => setAddProjectDialogOpen(true)}
+            onClick={() =>
+              useUIStore.setState({
+                onboardingManuallyTriggered: true,
+                onboardingDismissed: false,
+                onboardingOpen: true,
+              })
+            }
           >
-            <Plus className="mr-2 h-4 w-4" />
-            Add Your First Project
-            <Kbd className="ml-2 h-5 px-1.5 text-[10px]">↵</Kbd>
+            Complete Setup
           </Button>
-        )}
-      </div>
-    )
+        </div>
+      ) : (
+        <Button
+          variant="outline"
+          size="lg"
+          onClick={() => setAddProjectDialogOpen(true)}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Add Your First Project
+          <Kbd className="ml-2 h-5 px-1.5 text-[10px]">↵</Kbd>
+        </Button>
+      )}
+    </div>
+  )
 
   return (
     <div

@@ -13,7 +13,7 @@ import {
   Package,
   FileCode,
   ExternalLink,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import {
   Dialog,
   DialogContent,

@@ -1,4 +1,4 @@
-import { ArrowUpToLine, Plus, Trash2 } from '@/components/icons/reicon'
+import { ArrowUpToLine, Plus, Trash2 } from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,

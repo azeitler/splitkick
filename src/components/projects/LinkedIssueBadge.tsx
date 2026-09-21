@@ -1,4 +1,4 @@
-import { CircleDot } from '@/components/icons/reicon'
+import { CircleDot } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface LinkedIssueBadgeProps {

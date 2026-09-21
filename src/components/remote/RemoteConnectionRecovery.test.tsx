@@ -54,8 +54,8 @@ describe('RemoteConnectionRecovery', () => {
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument()
     expect(
-      screen.queryByRole('button', { name: 'Switch to Local' })
-    ).not.toBeInTheDocument()
+      screen.getByRole('button', { name: 'Switch to Local' })
+    ).toBeInTheDocument()
   })
 
   it('uses a z-index above dialogs and menus', () => {

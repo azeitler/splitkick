@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import userEvent from '@testing-library/user-event'
-import { Zap } from '@/components/icons/reicon'
+import { Zap } from 'lucide-react'
 import { fireEvent, render, screen, within } from '@/test/test-utils'
 import { MobileSettingsMenu } from './MobileSettingsMenu'
 import * as platform from '@/lib/platform'
@@ -137,7 +137,7 @@ describe('MobileSettingsMenu', () => {
       await user.click(screen.getByRole('button', { name: /settings/i }))
 
       const effortItem = screen.getByText('Effort').closest('[role="menuitem"]')
-      const effortIcon = effortItem?.querySelector('svg')
+      const effortIcon = effortItem?.querySelector('svg.lucide-brain')
       expect(effortIcon).not.toHaveClass('mr-2')
     } finally {
       Object.defineProperty(window, 'innerWidth', {
@@ -171,7 +171,7 @@ describe('MobileSettingsMenu', () => {
     await user.click(screen.getByRole('button', { name: /settings/i }))
 
     const mcpItem = screen.getByText('MCP').closest('[role="menuitem"]')
-    const mcpIcon = mcpItem?.querySelector('svg')
+    const mcpIcon = mcpItem?.querySelector('svg.lucide-plug')
     expect(mcpItem).toHaveAttribute('aria-disabled', 'true')
     expect(mcpIcon).not.toHaveClass('mr-2')
     expect(mcpItem?.querySelector('svg.lucide-chevron-right')).toBeNull()
@@ -406,7 +406,7 @@ describe('MobileSettingsMenu', () => {
     expect(
       within(prRow as HTMLElement).queryByText('Open')
     ).not.toBeInTheDocument()
-    expect(prRow?.querySelector('svg')).toBeInTheDocument()
+    expect(prRow?.querySelector('svg.lucide-external-link')).toBeInTheDocument()
 
     await user.click(screen.getByText('PR #9999'))
     expect(openSpy).toHaveBeenCalledWith(
@@ -454,8 +454,9 @@ describe('MobileSettingsMenu', () => {
     const portItem = screen
       .getByText('App (localhost:1420)')
       .closest('[role="menuitem"]')
-    expect(githubItem?.querySelector('svg')).toBeInTheDocument()
-    expect(portItem?.querySelectorAll('svg').length).toBeGreaterThanOrEqual(2)
+    expect(githubItem?.querySelector('svg.lucide-external-link')).toBeTruthy()
+    expect(portItem?.querySelector('svg.lucide-globe')).toBeTruthy()
+    expect(portItem?.querySelector('svg.lucide-external-link')).toBeTruthy()
 
     await user.click(screen.getByText('App (localhost:1420)'))
     expect(openSpy).toHaveBeenCalledWith('http://localhost:1420')

@@ -1,4 +1,5 @@
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
+import { useTerminalStore } from '@/store/terminal-store'
 import { useChatStore } from '@/store/chat-store'
 import { TerminalView } from './TerminalView'
 
@@ -45,31 +46,48 @@ const WorktreeTerminals = memo(function WorktreeTerminals({
 })
 
 /**
- * Container that renders the active worktree's terminal surface only.
- * Switching worktrees detaches the previous renderer; the terminal instance
- * module preserves it when possible and applies a bounded LRU to old stopped
- * renderers, keeping inactive projects from retaining a full xterm DOM tree.
+ * Container that renders terminals for ALL worktrees, showing only the active one.
+ * This keeps terminals mounted across worktree switches, preserving:
+ * - xterm.js output buffer
+ * - Running processes
+ * - Scroll position
  */
 export function TerminalPanel({ isCollapsed, onExpand }: TerminalPanelProps) {
+  // Subscribe to terminals object (stable reference when unchanged)
+  const terminals = useTerminalStore(state => state.terminals)
   const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const worktreePaths = useChatStore(state => state.worktreePaths)
-  const activePath = activeWorktreeId
-    ? (worktreePaths[activeWorktreeId] ?? activeWorktreePath)
-    : null
+
+  // Memoize worktree IDs to render - include active even if no terminals yet
+  // (TerminalView auto-creates first terminal on mount)
+  const worktreeIdsToRender = useMemo(() => {
+    const ids = new Set(Object.keys(terminals))
+    if (activeWorktreeId) {
+      ids.add(activeWorktreeId)
+    }
+    return Array.from(ids)
+  }, [terminals, activeWorktreeId])
 
   return (
     <div className="relative h-full w-full overflow-hidden">
-      {activeWorktreeId && activePath ? (
-        <WorktreeTerminals
-          key={activeWorktreeId}
-          worktreeId={activeWorktreeId}
-          worktreePath={activePath}
-          isActive
-          isCollapsed={isCollapsed}
-          onExpand={onExpand}
-        />
-      ) : null}
+      {worktreeIdsToRender.map(worktreeId => {
+        const path =
+          worktreePaths[worktreeId] ??
+          (worktreeId === activeWorktreeId ? activeWorktreePath : undefined)
+        if (!path) return null
+
+        return (
+          <WorktreeTerminals
+            key={worktreeId}
+            worktreeId={worktreeId}
+            worktreePath={path}
+            isActive={worktreeId === activeWorktreeId}
+            isCollapsed={isCollapsed}
+            onExpand={onExpand}
+          />
+        )
+      })}
     </div>
   )
 }

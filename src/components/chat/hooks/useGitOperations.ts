@@ -604,8 +604,7 @@ export function useGitOperations({
         const result = await gitPush(
           activeWorktreePath,
           worktree?.pr_number,
-          remote,
-          activeWorktreeId ?? undefined
+          remote
         )
         triggerImmediateGitPoll()
         if (result.permissionDenied) {
@@ -975,9 +974,6 @@ export function useGitOperations({
             ).finally(() => {
               queryClient.invalidateQueries({
                 queryKey: chatQueryKeys.sessions(activeWorktreeId),
-              })
-              queryClient.invalidateQueries({
-                queryKey: chatQueryKeys.unreadSessionCount(),
               })
               queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
             })

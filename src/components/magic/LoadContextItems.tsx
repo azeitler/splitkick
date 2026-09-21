@@ -12,7 +12,7 @@ import {
   ShieldAlert,
   Trash2,
   X,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import {
   Tooltip,
   TooltipTrigger,

@@ -22,11 +22,7 @@ import {
 import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
-import {
-  canOpenInEditor,
-  canOpenInFinder,
-  canOpenInTerminal,
-} from '@/lib/environment'
+import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import {
@@ -38,6 +34,7 @@ import {
   Settings,
   Plus,
   FileJson,
+  Clock3,
   Activity,
   AlertCircle,
   CircleDot,
@@ -56,7 +53,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Tag,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Tooltip,
@@ -97,7 +94,8 @@ import {
 import { Spinner } from '@/components/ui/spinner'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
 import {
-  useProjectBootstrap,
+  useWorktrees,
+  useProjects,
   useJeanConfig,
   isTauri,
   useCreateBaseSession,
@@ -125,7 +123,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
-import { isBaseSession, type Project, type Worktree } from '@/types/projects'
+import { isBaseSession, type Worktree } from '@/types/projects'
 import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
 import type { LabelData, Session, WorktreeSessions } from '@/types/chat'
 import { NewIssuesBadge } from '@/components/shared/NewIssuesBadge'
@@ -133,6 +131,7 @@ import { OpenPRsBadge } from '@/components/shared/OpenPRsBadge'
 import { FailedRunsBadge } from '@/components/shared/FailedRunsBadge'
 import { countUnreadFailedWorkflowRuns } from '@/components/shared/workflow-run-utils'
 import { SecurityAlertsBadge } from '@/components/shared/SecurityAlertsBadge'
+import { PlanDialog } from '@/components/chat/PlanDialog'
 import { SessionChatModal } from '@/components/chat/SessionChatModal'
 import {
   ProjectIssuesColumn,
@@ -164,7 +163,6 @@ import {
 import {
   type SessionCardData,
   computeSessionCardData,
-  createSessionCardDataCache,
   groupCardsByStatus,
   flattenGroups,
   isActionableWaitingStatus,
@@ -205,9 +203,9 @@ import {
 import {
   CANVAS_FILTER_TABS,
   getCanvasFilterTabCount,
-  getCanvasWorktreeSearchTerms,
   isLabelFilterTab,
   matchesCanvasFilterTab,
+  matchesCanvasWorktreeSearch,
   shouldShowCanvasWorktreeSection,
   type CanvasFilterTab,
   type CanvasPredefinedFilterTab,
@@ -255,7 +253,6 @@ import {
 } from '@/lib/drag-and-drop/worktree-reorder-ux'
 import { openCanvasConflictResolution } from './conflict-resolution-navigation'
 import { getCanvasDiffRequest } from './canvas-diff-request'
-import { resolveModalWorktreeSnapshot } from './modal-worktree-snapshot'
 
 interface ProjectCanvasViewProps {
   projectId: string
@@ -267,7 +264,6 @@ interface ProjectCanvasViewProps {
   mobilePresentation?: 'modal' | 'push'
   /** Phone layout only — closes the project modal from a header control. */
   onDismiss?: () => void
-  project: Project
 }
 
 const EMPTY_PINNED_LABELS: LabelData[] = []
@@ -277,33 +273,6 @@ interface WorktreeSection {
   worktree: Worktree
   cards: SessionCardData[]
   isPending?: boolean
-}
-
-function useCanvasRowVisibility() {
-  const elementRef = useRef<HTMLDivElement | null>(null)
-  const [isVisible, setIsVisible] = useState(true)
-
-  useEffect(() => {
-    const element = elementRef.current
-    if (!element || typeof IntersectionObserver === 'undefined') return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        const nextIsVisible = entry?.isIntersecting ?? true
-        setIsVisible(previous =>
-          previous === nextIsVisible ? previous : nextIsVisible
-        )
-      },
-      // Keep nearby rows warm so keyboard navigation and short scrolls do not
-      // churn their subscriptions at the viewport edge.
-      { rootMargin: '600px 0px' }
-    )
-
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [])
-
-  return { elementRef, isVisible }
 }
 
 function canManuallyReorderWorktree(worktree: Worktree): boolean {
@@ -394,10 +363,7 @@ function SortableCanvasWorktreeSection({
       ref={elementRef}
       data-pdnd-worktree-id={section.worktree.id}
       data-pdnd-worktree-scope={DRAG_SCOPE_CANVAS_WORKTREE_LIST}
-      className={cn(
-        'relative transition-opacity [content-visibility:auto] [contain-intrinsic-size:0_220px]',
-        isDragging && 'opacity-40'
-      )}
+      className={cn('relative transition-opacity', isDragging && 'opacity-40')}
     >
       <DropIndicator edge={closestEdge} insetClassName="left-0 right-0" />
       {!disabled && (
@@ -436,12 +402,6 @@ export function getCanvasHighlight(
     worktreeId: item.worktreeId,
     sessionId: item.card?.session.id,
   }
-}
-
-export function shouldWaitForCanvasRestorePreferences(
-  preferences: { restore_last_session: boolean } | undefined
-): boolean {
-  return preferences === undefined
 }
 
 type ActiveStatus =
@@ -538,7 +498,6 @@ function getSessionMetrics(cards: SessionCardData[]) {
 function WorktreeSectionHeader({
   worktree,
   projectId,
-  gitSyncButton,
   defaultBranch,
   openPRs,
   cards,
@@ -556,7 +515,6 @@ function WorktreeSectionHeader({
 }: {
   worktree: Worktree
   projectId: string
-  gitSyncButton: boolean
   defaultBranch: string
   openPRs?: { number: number; headRefName: string }[]
   cards?: SessionCardData[]
@@ -580,7 +538,6 @@ function WorktreeSectionHeader({
   onResolveConflicts?: (worktree: Worktree) => void
   disableTextSelection?: boolean
 }) {
-  const { elementRef: rowVisibilityRef, isVisible } = useCanvasRowVisibility()
   const stackedBaseBranch = getStackedBaseBranch(
     worktree.base_branch,
     worktree.branch,
@@ -593,7 +550,9 @@ function WorktreeSectionHeader({
     defaultBranch
   )
   const isBase = isBaseSession(worktree)
-  const { data: gitStatus } = useGitStatus(isVisible ? worktree.id : null)
+  const { data: gitStatus } = useGitStatus(worktree.id)
+  const { data: preferences } = usePreferences()
+  const gitSyncButton = preferences?.git_sync_button ?? false
 
   const behindCount =
     gitStatus?.behind_count ?? worktree.cached_behind_count ?? 0
@@ -643,8 +602,7 @@ function WorktreeSectionHeader({
           const result = await gitPush(
             worktree.path,
             worktree.pr_number,
-            remote,
-            worktree.id
+            remote
           )
           triggerImmediateGitPoll()
           fetchWorktreesStatus(projectId)
@@ -755,7 +713,6 @@ function WorktreeSectionHeader({
 
   const row = (
     <div
-      ref={rowVisibilityRef}
       className={cn(
         'group relative border border-transparent transition-colors',
         showDetails
@@ -796,12 +753,10 @@ function WorktreeSectionHeader({
               <span className="text-[9px]">⌘{shortcutNumber}</span>
             </kbd>
           )}
-          {isVisible && (
-            <TerminalStatusIndicator
-              worktreeId={worktree.id}
-              iconSize="h-3 w-3"
-            />
-          )}
+          <TerminalStatusIndicator
+            worktreeId={worktree.id}
+            iconSize="h-3 w-3"
+          />
           <span className="flex min-w-0 flex-1 flex-col gap-1 font-medium sm:flex-row sm:items-center sm:gap-1.5">
             <span className="flex min-w-0 items-center gap-1.5">
               <span className="min-w-0 flex-1 truncate">{worktree.name}</span>
@@ -976,7 +931,10 @@ function WorktreeSectionHeader({
               </span>
             ))}
             {lastActivity && (
-              <span className="rounded px-2 py-0.5">{lastActivity}</span>
+              <span className="inline-flex items-center gap-1 rounded px-2 py-0.5">
+                <Clock3 className="h-3 w-3" />
+                {lastActivity}
+              </span>
             )}
             {onRowClick && (
               <span className="ml-auto hidden text-[11px] opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 sm:inline-flex">
@@ -1011,7 +969,6 @@ export function ProjectCanvasView({
   projectId,
   mobilePresentation,
   onDismiss,
-  project,
 }: ProjectCanvasViewProps) {
   const { data: preferences } = usePreferences()
   const worktreeSortMode = useProjectsStore(
@@ -1039,13 +996,10 @@ export function ProjectCanvasView({
   const openInEditor = useOpenWorktreeInEditor()
 
   const [searchQuery, setSearchQuery] = useState('')
-  const activeFilterTab = useProjectsStore(
-    state =>
-      (state.projectCanvasActiveFilters[projectId] ?? 'all') as CanvasFilterTab
-  )
+  const [activeFilterTab, setActiveFilterTab] = useState<CanvasFilterTab>('all')
   const isMobile = useIsMobile()
+  const canOpenLocally = canOpenNativeApps()
   const canOpenEditor = canOpenInEditor()
-  const canOpenTerminal = canOpenInTerminal()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
   const showWorktreeLabelContextMenu = shouldShowWorktreeLabelContextMenu({
     isMobile,
@@ -1055,10 +1009,12 @@ export function ProjectCanvasView({
     isMobile,
   })
 
+  // Get project info
+  const { data: projects = [], isLoading: projectsLoading } = useProjects()
+  const project = projects.find(p => p.id === projectId)
+
   // Open PRs: used to link a worktree's base_branch to a PR number in row badges
-  const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open', {
-    ownerId: projectId ?? undefined,
-  })
+  const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open')
 
   // Mobile-only: GitHub status counts for project dropdown menu items.
   // Trigger gh auth query directly so it works on web/mobile access (App.tsx
@@ -1069,16 +1025,11 @@ export function ProjectCanvasView({
   const { data: mobileIssueResult } = useGitHubIssues(
     project?.path ?? null,
     'open',
-    {
-      enabled: mobileGitHubEnabled,
-      staleTime: BADGE_STALE_TIME,
-      ownerId: projectId ?? undefined,
-    }
+    { enabled: mobileGitHubEnabled, staleTime: BADGE_STALE_TIME }
   )
   const { data: mobileOpenPRs } = useGitHubPRs(project?.path ?? null, 'open', {
     enabled: mobileGitHubEnabled,
     staleTime: BADGE_STALE_TIME,
-    ownerId: projectId ?? undefined,
   })
   const { data: mobileAlerts } = useDependabotAlerts(
     project?.path ?? null,
@@ -1114,9 +1065,9 @@ export function ProjectCanvasView({
     [mobileWorkflowRuns?.runs, seenFailedWorkflowRunIds]
   )
 
-  // Load worktrees and session lists only for the selected project canvas.
+  // Get worktrees (+ seed session lists in the same backend round-trip)
   const { data: worktrees = [], isLoading: worktreesLoading } =
-    useProjectBootstrap(projectId)
+    useWorktrees(projectId)
 
   // Filter worktrees: include ready, pending, and error (exclude deleting)
   const visibleWorktrees = useMemo(() => {
@@ -1166,8 +1117,8 @@ export function ProjectCanvasView({
   useEffect(() => {
     if (!isLabelFilterTab(activeFilterTab)) return
     if (pinnedLabelTabs.some(tab => tab.value === activeFilterTab)) return
-    useProjectsStore.getState().setProjectCanvasActiveFilter(projectId, 'all')
-  }, [activeFilterTab, pinnedLabelTabs, projectId])
+    setActiveFilterTab('all')
+  }, [activeFilterTab, pinnedLabelTabs])
 
   const assignedWorktreeLabels = useMemo(() => {
     const labels: LabelData[] = []
@@ -1198,34 +1149,31 @@ export function ProjectCanvasView({
   )
 
   // Load sessions for all worktrees dynamically using useQueries.
-  // Project bootstrap seeds these keys; staleTime
+  // Bootstrap (via useWorktrees → bootstrap_project) seeds these keys; staleTime
   // avoids an immediate N-way refetch waterfall over WebSocket on project open.
-  const sessionQueryOptions = useMemo(
-    () =>
-      readyWorktrees.map(wt => ({
-        queryKey: [...chatQueryKeys.sessions(wt.id), 'with-counts'],
-        queryFn: async (): Promise<WorktreeSessions> => {
-          if (!hasBackendTransport() || !wt.id || !wt.path) {
-            return {
-              worktree_id: wt.id,
-              sessions: [],
-              active_session_id: null,
-              version: 2,
-            }
+  const sessionQueries = useQueries({
+    queries: readyWorktrees.map(wt => ({
+      queryKey: [...chatQueryKeys.sessions(wt.id), 'with-counts'],
+      queryFn: async (): Promise<WorktreeSessions> => {
+        if (!hasBackendTransport() || !wt.id || !wt.path) {
+          return {
+            worktree_id: wt.id,
+            sessions: [],
+            active_session_id: null,
+            version: 2,
           }
-          return invoke<WorktreeSessions>('get_sessions', {
-            worktreeId: wt.id,
-            worktreePath: wt.path,
-            includeMessageCounts: true,
-          })
-        },
-        enabled: !!wt.id && !!wt.path,
-        staleTime: 1000 * 60 * 5,
-        gcTime: 1000 * 60 * 2,
-      })),
-    [readyWorktrees]
-  )
-  const sessionQueries = useQueries({ queries: sessionQueryOptions })
+        }
+        return invoke<WorktreeSessions>('get_sessions', {
+          worktreeId: wt.id,
+          worktreePath: wt.path,
+          includeMessageCounts: true,
+        })
+      },
+      enabled: !!wt.id && !!wt.path,
+      staleTime: 1000 * 60 * 5,
+      gcTime: 1000 * 60 * 5,
+    })),
+  })
 
   // Derive a stable fingerprint from query data to avoid re-computing
   // sessionsByWorktreeId when useQueries returns a new array with same data.
@@ -1271,7 +1219,6 @@ export function ProjectCanvasView({
   // Use shared store state hook
   const storeState = useCanvasStoreState()
   const queryClient = useQueryClient()
-  const sessionCardDataCache = useMemo(() => createSessionCardDataCache(), [])
 
   // Sessions pinned to the project root. sessionsByWorktreeId already holds
   // every session in the project, so this costs no extra fetch. Pins that no
@@ -1387,8 +1334,6 @@ export function ProjectCanvasView({
   const worktreeSections: WorktreeSection[] = useMemo(() => {
     const result: WorktreeSection[] = []
     const latestActivityByWorktreeId = new Map<string, number>()
-    const normalizedSearchQuery = searchQuery.trim().toLowerCase()
-    const hasSearchQuery = normalizedSearchQuery.length > 0
 
     // Add pending worktrees first
     const sortedPending = [...pendingWorktrees].sort(
@@ -1396,14 +1341,7 @@ export function ProjectCanvasView({
     )
     for (const worktree of sortedPending) {
       if (!matchesCanvasFilterTab(worktree, activeFilterTab)) continue
-      if (
-        hasSearchQuery &&
-        !getCanvasWorktreeSearchTerms(worktree).some(term =>
-          term.includes(normalizedSearchQuery)
-        )
-      ) {
-        continue
-      }
+      if (!matchesCanvasWorktreeSearch(worktree, searchQuery)) continue
       latestActivityByWorktreeId.set(worktree.id, worktree.created_at)
       // Include pending worktrees even without sessions - show setup card
       result.push({ worktree, cards: [], isPending: true })
@@ -1414,32 +1352,29 @@ export function ProjectCanvasView({
       if (!matchesCanvasFilterTab(worktree, activeFilterTab)) continue
       const sessionData = sessionsByWorktreeId.get(worktree.id)
       const sessions = sessionData?.sessions ?? []
-      const worktreeMatchesSearch =
-        !hasSearchQuery ||
-        getCanvasWorktreeSearchTerms(worktree).some(term =>
-          term.includes(normalizedSearchQuery)
-        )
+      const worktreeMatchesSearch = matchesCanvasWorktreeSearch(
+        worktree,
+        searchQuery
+      )
 
-      // Filter sessions based on search query (includes labels). Worktree
-      // metadata is normalized once per worktree, not once per session.
-      const filteredSessions = hasSearchQuery
+      // Filter sessions based on search query (includes labels)
+      const filteredSessions = searchQuery.trim()
         ? sessions.filter(session => {
+            const q = searchQuery.trim().toLowerCase()
             return (
+              session.name.toLowerCase().includes(q) ||
               worktreeMatchesSearch ||
-              session.name.toLowerCase().includes(normalizedSearchQuery) ||
-              (session.label?.name ?? '')
-                .toLowerCase()
-                .includes(normalizedSearchQuery) ||
+              (session.label?.name ?? '').toLowerCase().includes(q) ||
               (storeState.sessionLabels[session.id]?.name ?? '')
                 .toLowerCase()
-                .includes(normalizedSearchQuery)
+                .includes(q)
             )
           })
         : sessions
 
       // Compute card data for each session
       const cards = filteredSessions.map(session =>
-        sessionCardDataCache(session, storeState)
+        computeSessionCardData(session, storeState)
       )
 
       // Sort: labeled first, grouped by label name, then unlabeled
@@ -1462,7 +1397,7 @@ export function ProjectCanvasView({
       // Keep every worktree available, including those without a session yet.
       if (
         shouldShowCanvasWorktreeSection(worktree) &&
-        (!hasSearchQuery || worktreeMatchesSearch || grouped.length > 0)
+        (!searchQuery.trim() || worktreeMatchesSearch || grouped.length > 0)
       ) {
         readySections.push({ worktree, cards: grouped })
       }
@@ -1485,7 +1420,6 @@ export function ProjectCanvasView({
     readyWorktrees,
     pendingWorktrees,
     sessionsByWorktreeId,
-    sessionCardDataCache,
     storeState,
     searchQuery,
     worktreeSortMode,
@@ -1794,13 +1728,6 @@ export function ProjectCanvasView({
     worktreeId: string
     worktreePath: string
   } | null>(null)
-  const selectedModalWorktreeSnapshotRef = useRef<Worktree | null>(null)
-  const selectedModalWorktree = resolveModalWorktreeSnapshot(
-    selectedWorktreeModal?.worktreeId ?? null,
-    worktrees,
-    selectedModalWorktreeSnapshotRef.current
-  )
-  selectedModalWorktreeSnapshotRef.current = selectedModalWorktree
 
   useEffect(() => {
     const reloadState = consumeWebReloadState(projectId)
@@ -2194,10 +2121,6 @@ export function ProjectCanvasView({
   // Auto-select session when dashboard opens (visual selection only, no modal unless restore_last_session is on)
   // Prefers last opened per project, then persisted active session per worktree, falls back to first card
   useEffect(() => {
-    // The canvas data can already be cached when the user returns from a
-    // remote project. Do not make the one-time reopen decision before local
-    // preferences have loaded, or `restore_last_session` is treated as false.
-    if (shouldWaitForCanvasRestorePreferences(preferences)) return
     if (selectedIndex !== null || selectedWorktreeModal) return
     if (flatCards.length === 0) return
 
@@ -2443,9 +2366,9 @@ export function ProjectCanvasView({
     (value: CanvasFilterTab) => {
       if (value === activeFilterTab) return
       suppressNextRestoreAutoOpenRef.current = true
-      useProjectsStore.getState().setProjectCanvasActiveFilter(projectId, value)
+      setActiveFilterTab(value)
     },
-    [activeFilterTab, projectId]
+    [activeFilterTab]
   )
 
   const handleFilterTabKeyboardNav = useCallback(
@@ -2540,10 +2463,18 @@ export function ProjectCanvasView({
   // Get selected card for shortcut events
   const selectedCard = selectedFlatCard?.card ?? null
 
-  // Shortcut events for plan approval
-  useCanvasShortcutEvents({
+  // Shortcut events (plan, approve) - must be before keyboard nav to get dialog states
+  const {
+    planDialogPath,
+    planDialogContent,
+    planApprovalContext,
+    planDialogCard,
+    closePlanDialog,
+  } = useCanvasShortcutEvents({
     selectedCard,
     enabled: !selectedWorktreeModal && selectedIndex !== null,
+    worktreeId: selectedFlatCard?.worktreeId ?? '',
+    worktreePath: selectedFlatCard?.worktreePath ?? '',
     onPlanApproval: (card, updatedPlan) =>
       card.session.backend === 'cursor'
         ? handleClearContextApprovalBuild(card, updatedPlan)
@@ -2956,7 +2887,11 @@ export function ProjectCanvasView({
 
   // Keyboard navigation - disable when any modal/dialog is open
   const isModalOpen =
-    !!selectedWorktreeModal || worktreeLabelModalOpen || !!labelDeleteTarget
+    !!selectedWorktreeModal ||
+    !!planDialogPath ||
+    !!planDialogContent ||
+    worktreeLabelModalOpen ||
+    !!labelDeleteTarget
   const { cardRefs } = useCanvasKeyboardNav({
     cards: flatCards,
     selectedIndex,
@@ -2969,6 +2904,81 @@ export function ProjectCanvasView({
     enabled: !isModalOpen,
     onSelectionChange: syncSelectionToStore,
   })
+
+  // Handle approve from dialog (with updated plan content)
+  // Cursor can't switch modes on a resumed session, so redirect to clear-context (new session)
+  const isDialogCardCursor = planDialogCard?.session.backend === 'cursor'
+  const handleDialogApprove = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard) {
+        if (isDialogCardCursor) {
+          handleClearContextApprovalBuild(planDialogCard, updatedPlan)
+        } else {
+          handlePlanApproval(planDialogCard, updatedPlan)
+        }
+      }
+    },
+    [
+      planDialogCard,
+      handlePlanApproval,
+      handleClearContextApprovalBuild,
+      isDialogCardCursor,
+    ]
+  )
+
+  const handleDialogApproveYolo = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard) {
+        if (isDialogCardCursor) {
+          handleClearContextApproval(planDialogCard, updatedPlan)
+        } else {
+          handlePlanApprovalYolo(planDialogCard, updatedPlan)
+        }
+      }
+    },
+    [
+      planDialogCard,
+      handlePlanApprovalYolo,
+      handleClearContextApproval,
+      isDialogCardCursor,
+    ]
+  )
+
+  const handleDialogClearContextApprove = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard) {
+        handleClearContextApproval(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, handleClearContextApproval]
+  )
+
+  const handleDialogClearContextApproveBuild = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard) {
+        handleClearContextApprovalBuild(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, handleClearContextApprovalBuild]
+  )
+
+  const handleDialogWorktreeApprove = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard && handleWorktreeApproval) {
+        handleWorktreeApproval(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, handleWorktreeApproval]
+  )
+
+  const handleDialogWorktreeApproveYolo = useCallback(
+    (updatedPlan: string) => {
+      if (planDialogCard && handleWorktreeApprovalYolo) {
+        handleWorktreeApprovalYolo(planDialogCard, updatedPlan)
+      }
+    },
+    [planDialogCard, handleWorktreeApprovalYolo]
+  )
 
   // Listen for close-session-or-worktree event to handle CMD+W
   useEffect(() => {
@@ -3132,6 +3142,7 @@ export function ProjectCanvasView({
 
   // Check if loading
   const isLoading =
+    projectsLoading ||
     worktreesLoading ||
     (readyWorktrees.length > 0 &&
       readyWorktrees.some(wt => !sessionsByWorktreeId.has(wt.id)))
@@ -3327,9 +3338,7 @@ export function ProjectCanvasView({
                       </>
                     )}
 
-                    {(canOpenEditor ||
-                      canOpenTerminal ||
-                      canOpenInFinder(project.serverId)) && (
+                    {(canOpenEditor || canOpenLocally) && (
                       <>
                         <DropdownMenuSeparator />
 
@@ -3347,7 +3356,7 @@ export function ProjectCanvasView({
                           </DropdownMenuItem>
                         )}
 
-                        {canOpenInFinder(project.serverId) && (
+                        {canOpenLocally && (
                           <DropdownMenuItem
                             onSelect={() => openInFinder.mutate(project.path)}
                           >
@@ -3356,7 +3365,7 @@ export function ProjectCanvasView({
                           </DropdownMenuItem>
                         )}
 
-                        {canOpenTerminal && (
+                        {canOpenLocally && (
                           <DropdownMenuItem
                             onSelect={() =>
                               openInTerminal.mutate({
@@ -3370,7 +3379,7 @@ export function ProjectCanvasView({
                           </DropdownMenuItem>
                         )}
 
-                        {canOpenInFinder(project.serverId) && (
+                        {canOpenLocally && (
                           <>
                             <DropdownMenuSeparator />
 
@@ -3387,11 +3396,9 @@ export function ProjectCanvasView({
                       </>
                     )}
 
-                    {!canOpenEditor &&
-                      !canOpenTerminal &&
-                      !canOpenInFinder(project.serverId) && (
-                        <DropdownMenuSeparator />
-                      )}
+                    {!canOpenEditor && !canOpenLocally && (
+                      <DropdownMenuSeparator />
+                    )}
 
                     <DropdownMenuItem
                       onSelect={() => openOnGitHub.mutate(projectId)}
@@ -3585,10 +3592,7 @@ export function ProjectCanvasView({
                       : 'Hide recent sessions, activity and issues'}
                   </TooltipContent>
                 </Tooltip>
-                <OpenInButton
-                  worktreePath={project.path}
-                  serverId={project.serverId}
-                />
+                <OpenInButton worktreePath={project.path} />
                 <ScriptsButton
                   projectId={project.id}
                   worktreePath={project.path}
@@ -3854,9 +3858,6 @@ export function ProjectCanvasView({
                               <WorktreeSectionHeader
                                 worktree={section.worktree}
                                 projectId={projectId}
-                                gitSyncButton={
-                                  preferences?.git_sync_button ?? true
-                                }
                                 defaultBranch={project.default_branch}
                                 openPRs={openPRs}
                                 cards={section.cards}
@@ -3922,6 +3923,51 @@ export function ProjectCanvasView({
         </div>
       </div>
 
+      {/* Plan Dialog */}
+      {planDialogPath ? (
+        <PlanDialog
+          filePath={planDialogPath}
+          isOpen={true}
+          onClose={closePlanDialog}
+          editable={true}
+          disabled={planDialogCard?.isSending ?? false}
+          approvalContext={planApprovalContext ?? undefined}
+          onApprove={handleDialogApprove}
+          onApproveYolo={handleDialogApproveYolo}
+          onClearContextApprove={handleDialogClearContextApprove}
+          onClearContextBuildApprove={handleDialogClearContextApproveBuild}
+          onWorktreeBuildApprove={
+            handleWorktreeApproval ? handleDialogWorktreeApprove : undefined
+          }
+          onWorktreeYoloApprove={
+            handleWorktreeApprovalYolo
+              ? handleDialogWorktreeApproveYolo
+              : undefined
+          }
+        />
+      ) : planDialogContent ? (
+        <PlanDialog
+          content={planDialogContent}
+          isOpen={true}
+          onClose={closePlanDialog}
+          editable={true}
+          disabled={planDialogCard?.isSending ?? false}
+          approvalContext={planApprovalContext ?? undefined}
+          onApprove={handleDialogApprove}
+          onApproveYolo={handleDialogApproveYolo}
+          onClearContextApprove={handleDialogClearContextApprove}
+          onClearContextBuildApprove={handleDialogClearContextApproveBuild}
+          onWorktreeBuildApprove={
+            handleWorktreeApproval ? handleDialogWorktreeApprove : undefined
+          }
+          onWorktreeYoloApprove={
+            handleWorktreeApprovalYolo
+              ? handleDialogWorktreeApproveYolo
+              : undefined
+          }
+        />
+      ) : null}
+
       {/* Worktree Label Modal */}
       <LabelModal
         key={worktreeLabelTarget?.worktreeId ?? 'wt-label'}
@@ -3977,9 +4023,7 @@ export function ProjectCanvasView({
       <SessionChatModal
         worktreeId={selectedWorktreeModal?.worktreeId ?? ''}
         worktreePath={selectedWorktreeModal?.worktreePath ?? ''}
-        worktree={selectedModalWorktree}
-        project={project ?? null}
-        isOpen={!!selectedWorktreeModal && !!selectedModalWorktree && !!project}
+        isOpen={!!selectedWorktreeModal}
         onClose={() => setSelectedWorktreeModal(null)}
         onRequestCloseWorktree={() => {
           if (selectedWorktreeModal) {

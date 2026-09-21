@@ -12,7 +12,7 @@ import {
   Star,
   StarOff,
   Trash2,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { useRef } from 'react'
 import { toast } from 'sonner'
 import {

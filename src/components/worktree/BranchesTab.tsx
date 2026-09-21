@@ -1,4 +1,4 @@
-import { Loader2, Search, RefreshCw, AlertCircle } from '@/components/icons/reicon'
+import { Loader2, Search, RefreshCw, AlertCircle } from 'lucide-react'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Input } from '@/components/ui/input'
 import {

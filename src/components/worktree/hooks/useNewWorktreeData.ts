@@ -70,9 +70,7 @@ export function useNewWorktreeData(
     isFetching: isRefetchingIssues,
     error: issuesError,
     refetch: refetchIssues,
-  } = useGitHubIssues(selectedProject?.path ?? null, issueState, {
-    ownerId: selectedProjectId ?? undefined,
-  })
+  } = useGitHubIssues(selectedProject?.path ?? null, issueState)
   const issues = issueResult?.issues
 
   // GitHub PRs
@@ -83,9 +81,7 @@ export function useNewWorktreeData(
     isFetching: isRefetchingPRs,
     error: prsError,
     refetch: refetchPRs,
-  } = useGitHubPRs(selectedProject?.path ?? null, prState, {
-    ownerId: selectedProjectId ?? undefined,
-  })
+  } = useGitHubPRs(selectedProject?.path ?? null, prState)
 
   // Debounced search for GitHub API
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
@@ -259,7 +255,6 @@ export function useNewWorktreeData(
     selectedProject,
     hasBaseSession,
     baseSession,
-    worktrees: worktrees ?? [],
     jeanConfig,
 
     // Issues

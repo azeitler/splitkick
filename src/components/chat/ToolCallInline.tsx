@@ -29,7 +29,7 @@ import {
   List,
   Code,
   Activity,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import type { ToolCall } from '@/types/chat'
 import type { StackableItem } from './tool-call-utils'
 import { Markdown } from '@/components/ui/markdown'
@@ -41,34 +41,6 @@ import {
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
 import { InlineFileDiff } from './InlineFileDiff'
-
-// Streaming tool calls are replaced by persisted message tool calls when a run
-// finishes. Keep explicit user choices through that remount so an open tool
-// does not close while the user is reading it.
-const rememberedExpansion = new Map<string, boolean>()
-const MAX_REMEMBERED_EXPANSIONS = 1000
-
-function useRememberedExpansion(key: string, defaultOpen: boolean) {
-  const [isOpen, setIsOpenState] = useState(
-    () => rememberedExpansion.get(key) ?? defaultOpen
-  )
-  const setIsOpen = useCallback(
-    (open: boolean) => {
-      if (
-        !rememberedExpansion.has(key) &&
-        rememberedExpansion.size >= MAX_REMEMBERED_EXPANSIONS
-      ) {
-        const oldestKey = rememberedExpansion.keys().next().value
-        if (oldestKey) rememberedExpansion.delete(oldestKey)
-      }
-      rememberedExpansion.set(key, open)
-      setIsOpenState(open)
-    },
-    [key]
-  )
-
-  return [isOpen, setIsOpen] as const
-}
 
 /** Placeholder outputs that add no value next to already-rendered tool details. */
 function isPlaceholderToolOutput(output: string | undefined | null): boolean {
@@ -435,8 +407,7 @@ export function ToolCallInline({
   isIncomplete,
 }: ToolCallInlineProps) {
   const { data: preferences } = usePreferences()
-  const [isOpen, setIsOpen] = useRememberedExpansion(
-    `tool:${toolCall.id}`,
+  const [isOpen, setIsOpen] = useState(
     preferences?.expand_tool_calls_by_default ?? false
   )
   const { icon, label, detail, filePath, expandedContent } =
@@ -546,8 +517,7 @@ export function TaskCallInline({
   isIncomplete,
 }: TaskCallInlineProps) {
   const { data: preferences } = usePreferences()
-  const [isOpen, setIsOpen] = useRememberedExpansion(
-    `task:${taskToolCall.id}`,
+  const [isOpen, setIsOpen] = useState(
     preferences?.expand_tool_calls_by_default ?? false
   )
   const input = taskToolCall.input as Record<string, unknown>
@@ -677,13 +647,7 @@ export function StackedGroup({
   isIncomplete,
 }: StackedGroupProps) {
   const { data: preferences } = usePreferences()
-  const firstItem = items[0]
-  const groupKey =
-    firstItem?.type === 'thinking'
-      ? firstItem.key
-      : (firstItem?.tool.id ?? 'empty')
-  const [isOpen, setIsOpen] = useRememberedExpansion(
-    `stack:${groupKey}`,
+  const [isOpen, setIsOpen] = useState(
     preferences?.expand_tool_calls_by_default ?? false
   )
 
@@ -820,8 +784,7 @@ interface SubToolItemProps {
  */
 function SubToolItem({ toolCall, onFileClick }: SubToolItemProps) {
   const { data: preferences } = usePreferences()
-  const [isOpen, setIsOpen] = useRememberedExpansion(
-    `subtool:${toolCall.id}`,
+  const [isOpen, setIsOpen] = useState(
     preferences?.expand_tool_calls_by_default ?? false
   )
   const { icon, label, detail, filePath, expandedContent } =

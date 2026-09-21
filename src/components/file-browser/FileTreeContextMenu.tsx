@@ -7,7 +7,7 @@ import {
   Globe,
   MessageSquarePlus,
   Terminal,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import {
   ContextMenu,
   ContextMenuContent,

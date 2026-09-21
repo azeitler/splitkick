@@ -52,51 +52,16 @@ import {
   preferResolvedCliCommand,
   resolveBackendCliPath,
 } from '@/services/cli-binary'
-import type {
-  RecentWorktreeItem,
-  StoredReviewResults,
-  Worktree,
-} from '@/types/projects'
+import type { StoredReviewResults, Worktree } from '@/types/projects'
 import {
   isWsDisconnectError,
   preserveQueryCacheOnError,
 } from '@/lib/query-error'
-import { useConsolidatedAllSessions } from './multi-server-sessions'
 
 /** Default number of recent runs loaded on initial session fetch. */
 export const INITIAL_RUN_LIMIT = 25
 /** Number of older runs to load per scroll-up batch. */
 export const OLDER_RUN_BATCH = 25
-
-/** Move a continued session to its new position in every cached Recent page. */
-export function touchRecentSessionCaches(
-  queryClient: QueryClient,
-  sessionId: string,
-  timestamp: number
-): void {
-  queryClient.setQueriesData<{ items: RecentWorktreeItem[] }>(
-    { queryKey: ['recent-worktrees'] },
-    old => {
-      if (!old?.items.some(item => item.session.id === sessionId)) return old
-      const items = old.items
-        .map(item =>
-          item.session.id === sessionId
-            ? {
-                ...item,
-                lastActivityAt: timestamp,
-                session: {
-                  ...item.session,
-                  last_message_at: timestamp,
-                  updated_at: timestamp,
-                },
-              }
-            : item
-        )
-        .sort((left, right) => right.lastActivityAt - left.lastActivityAt)
-      return { ...old, items }
-    }
-  )
-}
 
 export function cleanupSessionTerminalForRemovedSession(
   worktreeId: string,
@@ -305,7 +270,6 @@ export const chatQueryKeys = {
       searchQuery,
       resultLimit,
     ] as const,
-  unreadSessionCount: () => ['unread-session-count'] as const,
 }
 
 export interface NativeCliHistorySession {
@@ -399,7 +363,7 @@ export function useSessions(
     },
     enabled: !!worktreeId && !!worktreePath,
     staleTime: 1000 * 60 * 5, // 5 minutes - enables instant tab bar rendering from cache
-    gcTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 5,
     refetchOnMount: true, // Respects staleTime; status changes pushed via streaming/cache:invalidate events
   })
 }
@@ -640,25 +604,24 @@ export async function prefetchSessions(
  * Used by Load Context modal to show sessions from anywhere
  */
 export function useAllSessions(enabled = true) {
-  return useConsolidatedAllSessions(enabled)
-}
-
-/**
- * Load only the unread-session count for the title-bar badge.
- * Full cross-project session data remains an explicit unread-popover query.
- */
-export function fetchUnreadSessionCount(): Promise<number> {
-  // Let TanStack Query handle failures. Returning zero here would replace a
-  // valid cached count during a temporary transport or backend failure.
-  return invoke<number>('get_unread_session_count')
-}
-
-export function useUnreadSessionCount() {
   return useQuery({
-    queryKey: chatQueryKeys.unreadSessionCount(),
-    queryFn: fetchUnreadSessionCount,
-    staleTime: 1000 * 60,
-    gcTime: 1000 * 60 * 2,
+    queryKey: ['all-sessions'],
+    queryFn: async (): Promise<AllSessionsResponse> => {
+      try {
+        logger.debug('Loading all sessions')
+        const response = await invoke<AllSessionsResponse>('list_all_sessions')
+        logger.info('All sessions loaded', {
+          entryCount: response.entries.length,
+        })
+        return response
+      } catch (error) {
+        logger.error('Failed to load all sessions', { error })
+        return { entries: [] }
+      }
+    },
+    enabled,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+    gcTime: 1000 * 60 * 5,
   })
 }
 
@@ -1192,15 +1155,10 @@ export function useCloseSession() {
 
       // Drop from the finished-session bell (reads from ['all-sessions']).
       removeSessionFromAllSessionsCache(queryClient, sessionId)
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.unreadSessionCount(),
-      })
       queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
 
       // Clear all session-scoped state
-      useChatStore
-        .getState()
-        .clearSessionState(sessionId, { removeReferences: true })
+      useChatStore.getState().clearSessionState(sessionId)
       clearSessionScrollState(sessionId)
       cleanupSessionTerminalForRemovedSession(worktreeId, sessionId)
 
@@ -1275,15 +1233,10 @@ export function useArchiveSession() {
 
       // Drop from the finished-session bell (reads from ['all-sessions']).
       removeSessionFromAllSessionsCache(queryClient, sessionId)
-      queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.unreadSessionCount(),
-      })
       queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
 
       // Clear all session-scoped state
-      useChatStore
-        .getState()
-        .clearSessionState(sessionId, { removeReferences: true })
+      useChatStore.getState().clearSessionState(sessionId)
       clearSessionScrollState(sessionId)
       cleanupSessionTerminalForRemovedSession(worktreeId, sessionId)
 
@@ -1916,11 +1869,6 @@ export function useSendMessage() {
       // Batch the optimistic user message AND sending state together so React
       // renders both in a single pass (no two-phase scroll: message then placeholder).
       useChatStore.getState().addSendingSession(sessionId)
-      touchRecentSessionCaches(
-        queryClient,
-        sessionId,
-        optimisticUserMessage.timestamp
-      )
 
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(sessionId),
@@ -3034,10 +2982,7 @@ export async function persistRequeueFront(
  */
 export function isDuplicateSendError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? '')
-  return (
-    message.includes('already has an active request') ||
-    message.includes('already has a Running run')
-  )
+  return message.includes('already has an active request')
 }
 
 /**

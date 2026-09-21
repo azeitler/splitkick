@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { useChatStore } from '@/store/chat-store'
 import { copyToClipboard } from '@/lib/clipboard'
-import { AlertTriangle, Copy, Check } from '@/components/icons/reicon'
+import { AlertTriangle, Copy, Check } from 'lucide-react'
 
 interface ChatErrorFallbackProps {
   error: Error

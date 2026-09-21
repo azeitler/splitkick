@@ -15,7 +15,7 @@ import { useKimiCliStatus, useKimiCliAuth } from '@/services/kimi-cli'
 import { useGhCliStatus, useGhCliAuth } from '@/services/gh-cli'
 import { useUIStore } from '@/store/ui-store'
 import { isNativeApp } from '@/lib/environment'
-import { Loader2 } from '@/components/icons/reicon'
+import { Loader2 } from 'lucide-react'
 
 function handleCompleteSetup() {
   useUIStore.setState({

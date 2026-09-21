@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { BarChart3 } from '@/components/icons/reicon'
+import { BarChart3 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Popover,

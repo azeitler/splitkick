@@ -1,4 +1,4 @@
-import { Star } from '@/components/icons/reicon'
+import { Star } from 'lucide-react'
 
 /** The small star that marks a starred session on its row. */
 export function StarGlyph() {

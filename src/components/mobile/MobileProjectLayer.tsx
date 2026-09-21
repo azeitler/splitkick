@@ -11,7 +11,6 @@ import { cn } from '@/lib/utils'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
-import { useProjects } from '@/services/projects'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { JeanLoadingScreen } from '@/components/shared/JeanLoadingScreen'
 import { hasQueuedSessionOpen } from './mobile-nav-utils'
@@ -77,7 +76,6 @@ export function MobileProjectLayer({
   animate: boolean
 }) {
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
-  const { data: projects } = useProjects()
   const sessionOpen = useUIStore(state => state.sessionChatModalOpen)
 
   const [layer, setLayer] = useState<LayerState | null>(() =>
@@ -166,7 +164,6 @@ export function MobileProjectLayer({
   if (!layer) return null
 
   const isPush = layer.entry === 'push'
-  const project = projects?.find(p => p.id === layer.projectId)
   const exiting = layer.phase === 'exit'
 
   return (
@@ -201,17 +198,12 @@ export function MobileProjectLayer({
       }
     >
       <Suspense fallback={isPush ? null : <JeanLoadingScreen />}>
-        {project ? (
-          <ProjectCanvasView
-            key={layer.projectId}
-            projectId={layer.projectId}
-            project={project}
-            mobilePresentation={layer.entry}
-            onDismiss={returnToTabRoot}
-          />
-        ) : isPush ? null : (
-          <JeanLoadingScreen />
-        )}
+        <ProjectCanvasView
+          key={layer.projectId}
+          projectId={layer.projectId}
+          mobilePresentation={layer.entry}
+          onDismiss={returnToTabRoot}
+        />
       </Suspense>
     </div>
   )

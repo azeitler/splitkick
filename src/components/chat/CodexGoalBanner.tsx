@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { X } from '@/components/icons/reicon'
+import { X } from 'lucide-react'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { useChatStore } from '@/store/chat-store'

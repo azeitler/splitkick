@@ -1,4 +1,4 @@
-import type { LucideIcon } from '@/components/icons/reicon'
+import type { LucideIcon } from 'lucide-react'
 import {
   Bot,
   CircleDot,
@@ -6,7 +6,7 @@ import {
   GitPullRequestArrow,
   Home,
   ShieldAlert,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { getWorktreeLabels } from '@/lib/worktree-labels'
 import {
   createLabelFilter,
@@ -112,32 +112,6 @@ export function matchesCanvasFilterTab(
   }
 }
 
-/**
- * Return the lower-cased worktree fields that the canvas search indexes.
- *
- * Keep each field as a separate term so a query cannot match across two
- * unrelated fields after they are joined. The canvas evaluates these terms
- * once per worktree instead of rebuilding/normalizing them for every session.
- */
-export function getCanvasWorktreeSearchTerms(worktree: Worktree): string[] {
-  const values = [
-    worktree.name,
-    worktree.branch,
-    ...getWorktreeLabels(worktree).map(label => label.name),
-    worktree.pr_number != null ? worktree.pr_number.toString() : null,
-    worktree.issue_number != null ? worktree.issue_number.toString() : null,
-    worktree.linear_issue_identifier ?? null,
-    worktree.security_alert_number != null
-      ? worktree.security_alert_number.toString()
-      : null,
-    worktree.advisory_ghsa_id ?? null,
-  ]
-
-  return values
-    .filter((value): value is string => value != null && value.length > 0)
-    .map(value => value.toLowerCase())
-}
-
 export function getCanvasFilterTabCount(
   worktrees: Worktree[],
   tab: CanvasPredefinedFilterTab
@@ -153,8 +127,20 @@ export function matchesCanvasWorktreeSearch(
   const query = searchQuery.trim().toLowerCase()
   if (!query) return true
 
-  return getCanvasWorktreeSearchTerms(worktree).some(term =>
-    term.includes(query)
+  return (
+    worktree.name.toLowerCase().includes(query) ||
+    worktree.branch.toLowerCase().includes(query) ||
+    getWorktreeLabels(worktree).some(label =>
+      label.name.toLowerCase().includes(query)
+    ) ||
+    (worktree.pr_number != null &&
+      worktree.pr_number.toString().includes(query)) ||
+    (worktree.issue_number != null &&
+      worktree.issue_number.toString().includes(query)) ||
+    (worktree.linear_issue_identifier ?? '').toLowerCase().includes(query) ||
+    (worktree.security_alert_number != null &&
+      worktree.security_alert_number.toString().includes(query)) ||
+    (worktree.advisory_ghsa_id ?? '').toLowerCase().includes(query)
   )
 }
 

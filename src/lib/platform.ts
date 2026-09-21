@@ -66,12 +66,11 @@ export async function openExternal(
 
 /**
  * Returns the correct modifier key symbol based on platform and environment.
- * Mac native app uses ⌘. Web access uses the explicit Ctrl label because Cmd
- * is intercepted and the Control glyph is not available in all browser fonts.
+ * Mac native app uses ⌘, Mac web uses ⌃ (Ctrl works in browser, Cmd is intercepted).
  */
 export const getModifierSymbol = (): string => {
   if (!isClientMacOS) return 'Ctrl'
-  return isNativeApp() ? '⌘' : 'Ctrl'
+  return isNativeApp() ? '⌘' : '⌃'
 }
 
 /**

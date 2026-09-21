@@ -2939,7 +2939,6 @@ pub(crate) fn parse_grok_run_to_message(
         execution_mode: run.execution_mode.clone(),
         thinking_level: run.thinking_level.clone(),
         effort_level: run.effort_level.clone(),
-        custom_profile_name: None,
         recovered: run.recovered,
         usage: response.usage.or_else(|| run.usage.clone()),
     })
@@ -3395,7 +3394,7 @@ fn handle_acp_client_request(
             };
             if let Some(terminal) = terminals.get(terminal_id) {
                 if let Ok(mut child) = terminal.child.lock() {
-                    crate::platform::kill_and_reap(&mut child);
+                    let _ = child.kill();
                 }
             }
             send_acp_response(stdin, id, serde_json::json!({}))

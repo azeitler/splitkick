@@ -1,5 +1,5 @@
 import { useEffect, useRef, useCallback, useMemo, memo, useState } from 'react'
-import { Plus, X, Minus, Terminal, ChevronUp } from '@/components/icons/reicon'
+import { Plus, X, Minus, Terminal, ChevronUp } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import { middleClickClose } from '@/lib/middle-click'
 import { useTerminal } from '@/hooks/useTerminal'
@@ -258,7 +258,7 @@ export function TerminalView({
     removeTerminal,
     reorderPanelTerminals,
     setActiveTerminal,
-    setTerminalVisibleForWorktree,
+    setTerminalVisible,
     setTerminalPanelOpen,
   } = useTerminalStore.getState()
   const uiStateInitialized = useUIStore(state => state.uiStateInitialized)
@@ -310,16 +310,11 @@ export function TerminalView({
       ).filter(isPanelTerminal)
       if (remaining.length === 0) {
         setTerminalPanelOpen(worktreeId, false)
-        setTerminalVisibleForWorktree(worktreeId, false)
+        setTerminalVisible(false)
         useTerminalStore.getState().setModalTerminalOpen(worktreeId, false)
       }
     },
-    [
-      worktreeId,
-      removeTerminal,
-      setTerminalPanelOpen,
-      setTerminalVisibleForWorktree,
-    ]
+    [worktreeId, removeTerminal, setTerminalPanelOpen, setTerminalVisible]
   )
 
   const handleCloseTerminal = useCallback(
@@ -382,8 +377,8 @@ export function TerminalView({
   )
 
   const handleMinimize = useCallback(() => {
-    setTerminalVisibleForWorktree(worktreeId, false)
-  }, [setTerminalVisibleForWorktree, worktreeId])
+    setTerminalVisible(false)
+  }, [setTerminalVisible])
 
   const handleCloseAll = useCallback(() => {
     const panelTerminals = (

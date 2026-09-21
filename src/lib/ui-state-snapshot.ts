@@ -69,8 +69,6 @@ export function getCurrentUIState(): UIState {
     inputDrafts,
     pendingImages,
     pendingTextFiles,
-    pendingFiles,
-    pendingSkills,
     dismissedSetupScripts,
     reviewSidebarVisible,
     lastOpenedPerProject,
@@ -166,21 +164,6 @@ export function getCurrentUIState(): UIState {
     input_drafts: inputDrafts,
     pending_images: serializePendingImages(pendingImages),
     pending_text_files: serializePendingTextFiles(pendingTextFiles),
-    pending_files: Object.fromEntries(
-      Object.entries(pendingFiles).map(([sessionId, files]) => [
-        sessionId,
-        files.map(file => ({
-          id: file.id,
-          relative_path: file.relativePath,
-          source_root_path: file.sourceRootPath,
-          source_project_id: file.sourceProjectId,
-          source_project_name: file.sourceProjectName,
-          extension: file.extension,
-          is_directory: file.isDirectory,
-        })),
-      ])
-    ),
-    pending_skills: pendingSkills,
     dismissed_setup_scripts: Object.keys(dismissedSetupScripts),
     // Review sidebar visibility
     review_sidebar_visible: reviewSidebarVisible,

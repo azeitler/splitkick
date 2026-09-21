@@ -6,7 +6,7 @@ import {
   RotateCcw,
   Sparkles,
   X,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {

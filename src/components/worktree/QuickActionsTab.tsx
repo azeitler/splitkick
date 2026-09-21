@@ -8,7 +8,7 @@ import {
   Plus,
   Settings,
   Star,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import {
   Tooltip,
   TooltipTrigger,

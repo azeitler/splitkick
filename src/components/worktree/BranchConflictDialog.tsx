@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { GitBranch, Plus } from '@/components/icons/reicon'
+import { GitBranch, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   AlertDialog,

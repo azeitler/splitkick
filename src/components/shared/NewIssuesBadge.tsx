@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { CircleDot } from '@/components/icons/reicon'
+import { CircleDot } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Tooltip,
@@ -31,9 +31,8 @@ export function NewIssuesBadge({
   const isAuthenticated = authData?.authenticated ?? false
 
   const { data: issueResult } = useGitHubIssues(projectPath, 'open', {
-    enabled: isAuthenticated || projectId.includes(':'),
+    enabled: isAuthenticated,
     staleTime: BADGE_STALE_TIME,
-    ownerId: projectId,
   })
 
   const totalCount = issueResult?.totalCount ?? 0

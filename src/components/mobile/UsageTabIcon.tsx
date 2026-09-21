@@ -1,4 +1,4 @@
-import { BarChart3 } from '@/components/icons/reicon'
+import { BarChart3 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usageSeverity } from '@/components/preferences/panes/UsagePane'
 import { RING_CLASS, type PeakUsage } from '@/components/titlebar/UsagePopover'

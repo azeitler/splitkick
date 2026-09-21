@@ -14,7 +14,7 @@ import {
   Sparkles,
   Terminal,
   type LucideIcon,
-} from '@/components/icons/reicon'
+} from 'lucide-react'
 import type { PreferencePane } from '@/store/ui-store'
 import type { CliBackend } from '@/types/preferences'
 import { ClaudeIcon } from '@/components/icons/ClaudeIcon'

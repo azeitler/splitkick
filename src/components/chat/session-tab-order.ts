@@ -18,15 +18,19 @@ export function sortSessionCardsForTabs(
 /**
  * Resolve which session ChatWindow should mount in SessionChatModal.
  *
- * Keep the store's active session while session-list queries refresh. A
- * transient response can be empty or omit the active session. Selecting the
- * first returned session here would move the user without an explicit action.
- * Removal handlers select the next session before they clear the old one.
+ * When the sessions query is transiently empty (invalidate after send, web
+ * reconnect), keep the store's active session so ChatWindow is not unmounted —
+ * unmounting blanks the modal and shows FloatingDock instead of chat input.
  */
 export function resolveModalSessionId(
   activeSessionId: string | undefined,
   sessionIds: readonly string[]
 ): string | null {
-  if (activeSessionId) return activeSessionId
+  if (
+    activeSessionId &&
+    (sessionIds.length === 0 || sessionIds.includes(activeSessionId))
+  ) {
+    return activeSessionId
+  }
   return sessionIds[0] ?? null
 }

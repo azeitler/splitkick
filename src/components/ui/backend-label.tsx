@@ -1,5 +1,5 @@
 import type { ForwardRefExoticComponent, RefAttributes } from 'react'
-import type { LucideProps } from '@/components/icons/reicon'
+import type { LucideProps } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { ClaudeIcon } from '@/components/icons/ClaudeIcon'

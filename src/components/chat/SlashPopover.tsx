@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react'
-import { Terminal, Wand2 } from '@/components/icons/reicon'
+import { Terminal, Wand2 } from 'lucide-react'
 import {
   Command,
   CommandEmpty,

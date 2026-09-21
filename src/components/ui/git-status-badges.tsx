@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ArrowDownUp } from '@/components/icons/reicon'
+import { ArrowDown, ArrowUp, ArrowDownUp } from 'lucide-react'
 import {
   Tooltip,
   TooltipTrigger,

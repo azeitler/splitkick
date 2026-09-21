@@ -191,16 +191,6 @@ export function useCommandContext(
 
     const sessionId = getActiveSession(activeWorktreeId)
     if (!sessionId) return
-    if (useChatStore.getState().isSending(sessionId)) {
-      notify(
-        'Wait for the current session to finish before clearing context.',
-        undefined,
-        {
-          type: 'info',
-        }
-      )
-      return
-    }
     const worktreePath =
       useChatStore.getState().getWorktreePath(activeWorktreeId) ??
       useChatStore.getState().activeWorktreePath
@@ -688,7 +678,7 @@ export function useCommandContext(
       return
     }
 
-    const { addTerminal, setTerminalPanelOpen, setTerminalVisibleForWorktree } =
+    const { addTerminal, setTerminalPanelOpen, setTerminalVisible } =
       useTerminalStore.getState()
     const terminals = useTerminalStore
       .getState()
@@ -701,7 +691,7 @@ export function useCommandContext(
     } else {
       // Just show the panel
       setTerminalPanelOpen(selectedWorktreeId, true)
-      setTerminalVisibleForWorktree(selectedWorktreeId, true)
+      setTerminalVisible(true)
     }
   }, [])
 
@@ -901,18 +891,6 @@ export function useCommandContext(
     return true
   }, [])
 
-  const hasCurrentSessionRunning = useCallback(() => {
-    const chatState = useChatStore.getState()
-    const uiState = useUIStore.getState()
-    const worktreeId = uiState.sessionChatModalOpen
-      ? uiState.sessionChatModalWorktreeId
-      : chatState.activeWorktreeId
-    if (!worktreeId) return false
-
-    const sessionId = chatState.getActiveSession(worktreeId)
-    return sessionId ? chatState.isSending(sessionId) : false
-  }, [])
-
   return useMemo(
     () => ({
       // Query client
@@ -1001,7 +979,6 @@ export function useCommandContext(
 
       // State getters
       hasActiveSession,
-      hasCurrentSessionRunning,
       hasActiveWorktree,
       hasSelectedProject,
       hasInstalledBackend,
@@ -1067,7 +1044,6 @@ export function useCommandContext(
       hasMultipleSessions,
       hasMultipleWorktrees,
       hasRunScript,
-      hasCurrentSessionRunning,
       getCurrentTheme,
       getCurrentModel,
       getCurrentThinkingLevel,

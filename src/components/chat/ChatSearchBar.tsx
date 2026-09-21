@@ -6,7 +6,7 @@ import {
   useState,
 } from 'react'
 import { useUIStore } from '@/store/ui-store'
-import { ChevronUp, ChevronDown, X } from '@/components/icons/reicon'
+import { ChevronUp, ChevronDown, X } from 'lucide-react'
 
 interface ChatSearchBarProps {
   scrollContainerRef: React.RefObject<HTMLElement | null>

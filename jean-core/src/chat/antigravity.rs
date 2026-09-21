@@ -33,40 +33,6 @@ fn permission_diagnostic(response: &AntigravityResponse) -> Option<&str> {
     })
 }
 
-/// Message for a CLI that exited without emitting a terminal event and without
-/// producing any output. Diagnostics are unparsed CLI lines, so only the last few
-/// are surfaced — the tail is where a startup or auth failure prints.
-fn exit_without_result_error(diagnostics: &[String]) -> String {
-    const MAX_DIAGNOSTIC_LINES: usize = 5;
-    let base = "Antigravity CLI exited before it produced a result. Open Settings → Antigravity CLI to check authentication and permissions.";
-    let start = diagnostics.len().saturating_sub(MAX_DIAGNOSTIC_LINES);
-    let tail = diagnostics[start..].join("\n");
-    if tail.is_empty() {
-        base.to_string()
-    } else {
-        format!("{base}\n\n{tail}")
-    }
-}
-
-/// The process is gone without a terminal `result` event. Run the same checks
-/// the terminal-event path runs, then fail when nothing was produced — otherwise
-/// a crashed run reports success.
-fn finalize_dead_process_response(
-    mut response: AntigravityResponse,
-) -> Result<AntigravityResponse, String> {
-    response.content = response.content.trim().to_string();
-    if let Some(error) = response.terminal_error.take() {
-        return Err(error);
-    }
-    if let Some(denial) = permission_diagnostic(&response) {
-        return Err(format!("Antigravity permission denied: {denial}"));
-    }
-    if !response.cancelled && response.content.is_empty() && response.tool_calls.is_empty() {
-        return Err(exit_without_result_error(&response.diagnostics));
-    }
-    Ok(response)
-}
-
 pub struct AntigravityExecutionOptions<'a> {
     pub app: &'a AppHandle,
     pub jean_session_id: &'a str,
@@ -453,7 +419,6 @@ pub(crate) fn parse_antigravity_run_to_message(
         execution_mode: run.execution_mode.clone(),
         thinking_level: run.thinking_level.clone(),
         effort_level: run.effort_level.clone(),
-        custom_profile_name: None,
         recovered: run.recovered,
         usage: response.usage.or_else(|| run.usage.clone()),
     })
@@ -545,7 +510,7 @@ pub fn execute_antigravity(
             callback(pid);
         }
         if !super::registry::register_process(options.jean_session_id.to_string(), pid) {
-            crate::platform::kill_and_reap(&mut child);
+            let _ = child.kill();
             return Err("Antigravity run cancelled before it started".to_string());
         }
         let stdout = child
@@ -567,7 +532,6 @@ pub fn execute_antigravity(
             terminal_error: None,
             diagnostics: vec![],
         };
-        let mut saw_terminal_event = false;
         for line in BufReader::new(stdout).lines() {
             let line =
                 line.map_err(|error| format!("Failed to read Antigravity output: {error}"))?;
@@ -575,9 +539,7 @@ pub fn execute_antigravity(
                 .map_err(|error| format!("Failed to save Antigravity output: {error}"))?;
             if let Ok(value) = serde_json::from_str::<Value>(&line) {
                 let before = response.content_blocks.len();
-                if merge_event(&mut response, &value) {
-                    saw_terminal_event = true;
-                }
+                merge_event(&mut response, &value);
                 emit_new(
                     options.app,
                     options.jean_session_id,
@@ -596,17 +558,7 @@ pub fn execute_antigravity(
         if !status.success() {
             return Err("Antigravity CLI exited before it completed. Open Settings → Antigravity CLI to check authentication and permissions.".to_string());
         }
-        if !saw_terminal_event {
-            let response = finalize_dead_process_response(response)?;
-            return Ok(finish_antigravity_response(
-                options.app,
-                options.jean_session_id,
-                options.worktree_id,
-                options.execution_mode,
-                response,
-            ));
-        }
-        if let Some(error) = response.terminal_error.take() {
+        if let Some(error) = response.terminal_error.clone() {
             return Err(error);
         }
         if let Some(denial) = permission_diagnostic(&response) {
@@ -665,7 +617,8 @@ pub fn tail_antigravity_output(
             }
         }
         if !crate::platform::is_process_alive(pid) && start.elapsed() > Duration::from_secs(2) {
-            return finalize_dead_process_response(response);
+            response.content = response.content.trim().to_string();
+            return Ok(response);
         }
         std::thread::sleep(next_poll_interval(had_data, start.elapsed()));
     }
@@ -853,83 +806,5 @@ mod tests {
             terminal_error: None,
             diagnostics: vec![],
         }
-    }
-
-    #[test]
-    fn exit_without_result_surfaces_the_last_diagnostics() {
-        assert!(!exit_without_result_error(&[]).contains("\n\n"));
-
-        let lines: Vec<String> = (1..=8).map(|n| format!("line {n}")).collect();
-        let message = exit_without_result_error(&lines);
-        assert!(message.ends_with("line 4\nline 5\nline 6\nline 7\nline 8"));
-        assert!(!message.contains("line 3"));
-    }
-
-    #[test]
-    fn dead_process_without_output_is_an_error() {
-        let Err(err) = finalize_dead_process_response(empty_response()) else {
-            panic!("empty dead process should be an error");
-        };
-        assert!(err.contains("exited before it produced a result"));
-        assert!(!err.contains("\n\n"));
-
-        let mut with_diagnostics = empty_response();
-        with_diagnostics.diagnostics = vec!["auth failed".to_string()];
-        let Err(err) = finalize_dead_process_response(with_diagnostics) else {
-            panic!("dead process with diagnostics should be an error");
-        };
-        assert!(err.contains("auth failed"));
-    }
-
-    #[test]
-    fn dead_process_cancelled_or_with_output_is_ok() {
-        let mut cancelled = empty_response();
-        cancelled.cancelled = true;
-        assert!(finalize_dead_process_response(cancelled).unwrap().cancelled);
-
-        let mut with_content = empty_response();
-        with_content.content = "  hello  ".to_string();
-        assert_eq!(
-            finalize_dead_process_response(with_content)
-                .unwrap()
-                .content,
-            "hello"
-        );
-
-        let mut with_tool = empty_response();
-        with_tool.tool_calls.push(ToolCall {
-            id: "t1".to_string(),
-            name: "run_command".to_string(),
-            input: Value::Null,
-            output: None,
-            parent_tool_use_id: None,
-        });
-        assert_eq!(
-            finalize_dead_process_response(with_tool)
-                .unwrap()
-                .tool_calls
-                .len(),
-            1
-        );
-    }
-
-    #[test]
-    fn dead_process_honors_terminal_and_permission_failures() {
-        let mut failed = empty_response();
-        failed.terminal_error = Some("question needs input".to_string());
-        failed.content = "partial".to_string();
-        let Err(err) = finalize_dead_process_response(failed) else {
-            panic!("terminal_error should fail the dead-process path");
-        };
-        assert_eq!(err, "question needs input");
-
-        let mut denied = empty_response();
-        denied
-            .diagnostics
-            .push("Tool command(git) was soft-denied by permission policy".to_string());
-        let Err(err) = finalize_dead_process_response(denied) else {
-            panic!("permission denial should fail the dead-process path");
-        };
-        assert!(err.starts_with("Antigravity permission denied:"));
     }
 }
