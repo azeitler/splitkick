@@ -9,21 +9,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
-- **The browser pane opens more than HTML now.** Double-click in the Files
-  sidebar, or click a path in a chat answer, and an image, an SVG, a PDF, a
-  movie or a text file opens in the pane beside the chat. Only HTML did before;
-  everything else went to the file viewer. Source files, archives and anything
-  else the web view cannot draw still open there, and "Open" in the right-click
-  menu always uses the file viewer.
-
-  Markdown and plain text are drawn by Jean itself, not by the web view. A `.md`
-  opens as a formatted page — headings, tables, task lists and code blocks with a
-  copy button — and a `.txt` or a `.log` as monospace text. The web view would
-  have shown a Markdown file as its own source, and it reads a `file://` text
-  file as Latin-1, because such a file carries no character set, so an em dash in
-  a UTF-8 file would show as `â€"`. Reload reads the file from disk again, which
-  is how you see an edit an agent has just made. Back, Forward and Grab do
-  nothing for a file Jean draws itself, and are greyed out.
+- **Markdown and text files open as a readable page in the browser pane.** A
+  `.md` file opens as a formatted page — headings, tables, task lists and code
+  blocks with a copy button — and a `.txt` or a `.log` as monospace text. Before,
+  the pane showed a Markdown file as its own source, and an em dash in a UTF-8
+  text file came out as `â€"`. Reload reads the file from disk again, which is how
+  you see an edit an agent has just made. Back, Forward and Grab do nothing for a
+  file Jean draws itself, and are greyed out.
 
 ### Fixed
 
@@ -181,6 +173,24 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   embedded browser, like a file path in backticks already did. Code with
   anything else in it, and an address of another kind (`postgres://`), stay
   code.
+
+## [0.1.73-z.10] - 2026-09-14
+
+### Added
+
+- **The browser pane opens more than HTML now.** Double-click in the Files
+  sidebar, or click a path in a chat answer, and an image, an SVG, a PDF, a
+  movie or a text file opens in the pane beside the chat. Only HTML did before;
+  everything else went to the file viewer. Source files, archives and anything
+  else the web view cannot draw still open there, and "Open" in the right-click
+  menu always uses the file viewer.
+
+  Markdown and plain text are a partial case worth knowing about: the web view
+  shows them as text, but a `file://` text file carries no character set, so the
+  web view reads it as Latin-1 and an em dash in a UTF-8 file shows as `â€"`.
+  The file viewer renders Markdown properly and is one right-click away.
+
+### Fixed
 
 - **A file the browser pane cannot find now says so.** The pane showed a
   spinner that never stopped. The web view fails a missing file in a callback
@@ -995,7 +1005,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.9...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.10...HEAD
+[0.1.73-z.10]: https://github.com/azeitler/jean/compare/v0.1.73-z.9...v0.1.73-z.10
 [0.1.73-z.9]: https://github.com/azeitler/jean/compare/v0.1.73-z.8...v0.1.73-z.9
 [0.1.73-z.8]: https://github.com/azeitler/jean/compare/v0.1.73-z.7...v0.1.73-z.8
 [0.1.73-z.7]: https://github.com/azeitler/jean/compare/v0.1.73-z.6...v0.1.73-z.7
