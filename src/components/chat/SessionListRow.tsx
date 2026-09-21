@@ -2,14 +2,13 @@ import { forwardRef, useCallback } from 'react'
 import {
   Archive,
   Copy,
-  FileText,
   Pause,
   Pencil,
   Play,
   RefreshCw,
   Shield,
   Trash2,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
 import { copyToClipboard } from '@/lib/clipboard'
@@ -39,6 +38,7 @@ import {
 import { SessionLabelsSubmenu } from './LabelsSubmenu'
 import { SessionStatusMenu } from './SessionStatusMenu'
 import { canReconnectSession } from '@/services/chat'
+import { useChatStore } from '@/store/chat-store'
 
 export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
   function SessionListRow(
@@ -48,7 +48,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
       onSelect,
       onArchive,
       onDelete,
-      onPlanView,
       onApprove,
       onYolo,
       onClearContextApprove,
@@ -68,6 +67,9 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
     ref
   ) {
     const config = statusConfig[card.status]
+    const isGeneratingName = useChatStore(
+      state => state.namingSessionIds[card.session.id] ?? false
+    )
     const handleSetStatusOverride =
       onSetStatusOverride ??
       (onToggleReview
@@ -80,7 +82,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
             }
           }
         : undefined)
-    const hasPlan = !!(card.planFilePath || card.planContent)
     const resumeCommand = getResumeCommand(card.session)
     const canReconnect = canReconnectSession(card.session)
     const renameInputRef = useCallback((node: HTMLInputElement | null) => {
@@ -149,8 +150,10 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
                 className="flex-1 min-w-0 bg-transparent text-base outline-none ring-1 ring-ring rounded px-1 md:text-sm"
               />
             ) : (
-              <span className="flex-1 truncate text-sm">
-                {card.session.name}
+              <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-sm">
+                <span className="truncate">
+                  {isGeneratingName ? 'Generating…' : card.session.name}
+                </span>
               </span>
             )}
 
@@ -338,11 +341,6 @@ export const SessionListRow = forwardRef<HTMLDivElement, SessionCardProps>(
               Reconnect
             </ContextMenuItem>
           )}
-          <ContextMenuSeparator />
-          <ContextMenuItem disabled={!hasPlan} onSelect={onPlanView}>
-            <FileText className="mr-2 h-4 w-4" />
-            Plan
-          </ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem variant="destructive" onSelect={onDelete}>
             <Trash2 className="mr-2 h-4 w-4" />

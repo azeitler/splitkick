@@ -1,4 +1,4 @@
-import { ChevronLeft, type LucideIcon } from 'lucide-react'
+import { ChevronLeft, type LucideIcon } from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import type { HomeSessionEntry } from '@/components/home/home-utils'

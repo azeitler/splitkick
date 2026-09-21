@@ -9,7 +9,7 @@ import {
   ScanEye,
   XCircle,
   type LucideIcon,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import { openUrl } from '@tauri-apps/plugin-opener'
 import { formatRelativeTime } from '@/lib/relative-time'

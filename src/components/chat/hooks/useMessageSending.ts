@@ -156,6 +156,21 @@ export function useMessageSending({
     (queuedMsg: QueuedMessage) => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
+      const store = useChatStore.getState()
+      if (store.isSending(activeSessionId)) {
+        console.log(
+          `[Send] sendMessageNow ENQUEUING sessionId=${activeSessionId} (session is sending)`
+        )
+        store.enqueueMessage(activeSessionId, queuedMsg)
+        persistEnqueue(
+          activeWorktreeId,
+          activeWorktreePath,
+          activeSessionId,
+          queuedMsg
+        )
+        return
+      }
+
       console.log(
         `[Send] sendMessageNow sessionId=${activeSessionId} worktreeId=${activeWorktreeId}`
       )
@@ -286,10 +301,10 @@ export function useMessageSending({
   // Form submit handler
   const handleSubmit = useCallback(
     async (
-      e: React.FormEvent,
+      e: React.FormEvent | undefined,
       options?: { forceSteer?: boolean }
     ) => {
-      e.preventDefault()
+      e?.preventDefault()
 
       const {
         inputDrafts,
@@ -426,8 +441,8 @@ export function useMessageSending({
           return
         }
 
-        // /goal <objective>: persist goal, then start work in the configured
-        // mode so the active goal is not left as passive metadata.
+        // /goal <objective>: persist goal metadata, then start the work in the
+        // configured mode through Jean's normal turn lifecycle.
         try {
           await invoke('codex_goal_set', {
             worktreeId,
@@ -444,7 +459,10 @@ export function useMessageSending({
           configuredGoalMode === 'yolo' ? 'yolo' : 'build'
         setExecutionMode(sessionId, goalMode)
         executionModeRef.current = goalMode
-        message = `Work toward the active goal:\n\n${arg}`
+        // The app-server goal is metadata only. Run the work through Jean's
+        // normal turn lifecycle so progress, cancellation, and recovery stay
+        // connected to the composer and the persisted RunEntry.
+        message = `Complete this goal in the current turn:\n\n${arg}`
         startedCodexGoalTurn = true
       }
       if (!startedCodexGoalTurn && textMessage.startsWith('/')) {

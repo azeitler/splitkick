@@ -16,12 +16,16 @@ import {
   getRemotePollInterval,
   triggerImmediateRemotePoll,
   getGitDiff,
+  areGitStatusValuesEqual,
+  syncRecentRowsWithGitStatus,
   useGitStatus,
+  useGitStatusEvents,
   useAppFocusTracking,
   useWorktreePolling,
   performGitPull,
   performGitSync,
   type WorktreePollingInfo,
+  type GitStatusEvent,
 } from './git-status'
 
 const mockInvoke = vi.fn()
@@ -82,6 +86,28 @@ const createWrapper = (queryClient: QueryClient) => {
   return Wrapper
 }
 
+const createGitStatus = (
+  overrides: Partial<GitStatusEvent> = {}
+): GitStatusEvent => ({
+  worktree_id: 'wt-123',
+  current_branch: 'feature/test',
+  base_branch: 'main',
+  base_remote: undefined,
+  behind_count: 0,
+  ahead_count: 1,
+  has_updates: false,
+  checked_at: 100,
+  uncommitted_added: 0,
+  uncommitted_removed: 0,
+  branch_diff_added: 10,
+  branch_diff_removed: 2,
+  base_branch_ahead_count: 0,
+  base_branch_behind_count: 0,
+  worktree_ahead_count: 1,
+  unpushed_count: 1,
+  ...overrides,
+})
+
 describe('git-status service', () => {
   let queryClient: QueryClient
 
@@ -93,11 +119,16 @@ describe('git-status service', () => {
       value: 1024,
     })
     mockToast.loading.mockReturnValue('toast-1')
+    mockListen.mockResolvedValue(vi.fn())
     mockIsWorktreeRunningNonPlan.mockReturnValue(false)
     mockWsConnected = true
     // Mock Tauri environment
     const { isTauri } = vi.mocked(await import('@/services/projects'))
     isTauri.mockReturnValue(true)
+    const { updateWorktreeCachedStatus } = vi.mocked(
+      await import('@/services/projects')
+    )
+    updateWorktreeCachedStatus.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
@@ -114,6 +145,74 @@ describe('git-status service', () => {
         'git-status',
         'wt-123',
       ])
+    })
+  })
+
+  describe('areGitStatusValuesEqual', () => {
+    it('ignores polling timestamps when status values are unchanged', () => {
+      expect(
+        areGitStatusValuesEqual(
+          createGitStatus({ checked_at: 100 }),
+          createGitStatus({ checked_at: 200 })
+        )
+      ).toBe(true)
+    })
+
+    it('detects repository status changes', () => {
+      expect(
+        areGitStatusValuesEqual(
+          createGitStatus(),
+          createGitStatus({ uncommitted_added: 1 })
+        )
+      ).toBe(false)
+    })
+  })
+
+  describe('syncRecentRowsWithGitStatus', () => {
+    const createRecentRow = (sessionType: 'base' | 'worktree') =>
+      ({
+        added: 99,
+        removed: 88,
+        worktree: { id: 'wt-123', session_type: sessionType },
+      }) as Parameters<typeof syncRecentRowsWithGitStatus>[0][number]
+
+    it('uses working-tree and branch changes for a worktree session', () => {
+      const row = createRecentRow('worktree')
+      const result = syncRecentRowsWithGitStatus(
+        [row],
+        createGitStatus({
+          uncommitted_added: 2,
+          uncommitted_removed: 3,
+          branch_diff_added: 5,
+          branch_diff_removed: 7,
+        })
+      )
+
+      expect(result[0]).toMatchObject({ added: 7, removed: 10 })
+    })
+
+    it('uses only working-tree changes for a base session', () => {
+      const result = syncRecentRowsWithGitStatus(
+        [createRecentRow('base')],
+        createGitStatus({
+          uncommitted_added: 2,
+          uncommitted_removed: 3,
+          branch_diff_added: 50,
+          branch_diff_removed: 70,
+        })
+      )
+
+      expect(result[0]).toMatchObject({ added: 2, removed: 3 })
+    })
+
+    it('keeps the same array when the event belongs to another worktree', () => {
+      const rows = [createRecentRow('worktree')]
+      expect(
+        syncRecentRowsWithGitStatus(
+          rows,
+          createGitStatus({ worktree_id: 'other' })
+        )
+      ).toBe(rows)
     })
   })
 
@@ -583,6 +682,53 @@ describe('git-status service', () => {
 
       expect(result.current.data?.behind_count).toBe(5)
       expect(result.current.data?.ahead_count).toBe(2)
+    })
+  })
+
+  describe('useGitStatusEvents', () => {
+    it('updates the live UI cache for status already persisted by the backend', async () => {
+      const staleStatus = createGitStatus({ uncommitted_added: 12 })
+      const freshStatus = createGitStatus({
+        uncommitted_added: 0,
+        cache_persisted: true,
+      })
+      queryClient.setQueryData(
+        gitStatusQueryKeys.worktree('wt-123'),
+        staleStatus
+      )
+      queryClient.setQueryData(['recent-worktrees', 'projects', 10, null], {
+        items: [
+          {
+            added: 12,
+            removed: 4,
+            worktree: { id: 'wt-123', session_type: 'worktree' },
+          },
+        ],
+      })
+
+      renderHook(() => useGitStatusEvents(), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      await waitFor(() => expect(mockListen).toHaveBeenCalled())
+      const statusHandler = mockListen.mock.calls.find(
+        ([eventName]) => eventName === 'git:status-update'
+      )?.[1] as (event: { payload: GitStatusEvent }) => void
+
+      statusHandler({ payload: freshStatus })
+
+      expect(
+        queryClient.getQueryData(gitStatusQueryKeys.worktree('wt-123'))
+      ).toEqual(freshStatus)
+      expect(
+        queryClient.getQueryData<{
+          items: { added: number; removed: number }[]
+        }>(['recent-worktrees', 'projects', 10, null])?.items[0]
+      ).toMatchObject({ added: 10, removed: 2 })
+      const { updateWorktreeCachedStatus } = vi.mocked(
+        await import('@/services/projects')
+      )
+      expect(updateWorktreeCachedStatus).not.toHaveBeenCalled()
     })
   })
 

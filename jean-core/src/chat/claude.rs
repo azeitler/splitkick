@@ -46,10 +46,11 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 - One task per subagent for focused execution\n\
 \n\
 ### 4. Self-Improvement Loop\n\
-- After ANY correction from the user: update '.ai/lessons.md' with the pattern\n\
-- Write rules for yourself that prevent the same mistake\n\
-- Ruthlessly iterate on these lessons until mistake rate drops\n\
+- Only update '.ai/lessons.md' for general, project-wide learning that applies across features\n\
+- Do not add feature-specific, bug-fix-specific, or small/local lessons\n\
+- Remove narrow or specific entries when you detect them\n\
 - Review lessons at session start for relevant project\n\
+- Keep '.ai/lessons.md' concise by merging duplicate rules and removing obsolete entries\n\
 \n\
 ### 5. Verification Before Done\n\
 - Never mark a task complete without proving it works\n\
@@ -57,6 +58,7 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 - Ask yourself: \"Would a staff engineer approve this?\"\n\
 - Run tests, check logs, demonstrate correctness\n\
 - Before UI, HTTP, browser, or end-to-end verification, call Jean MCP `get_run_environments` and test against the returned url/port/command when a Run environment is available.\n\
+- For the current selected project, if there is no other browser testing method, use the Agent Browser when it is available.\n\
 \n\
 ### 6. Demand Elegance (Balanced)\n\
 - For non-trivial changes: pause and ask \"is there a more elegant way?\"\n\
@@ -71,12 +73,14 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 - Go fix failing CI tests without being told how\n\
 \n\
 ## Task Management\n\
-1. **Plan First**: Write plan to '.ai/todo.md' with checkable items\n\
-2. **Verify Plan**: Check in before starting implementation\n\
-3. **Track Progress**: Mark items complete as you go\n\
-4. **Explain Changes**: High-level summary at each step\n\
-5. **Document Results**: Add review to '.ai/todo.md'\n\
-6. **Capture Lessons**: Update '.ai/lessons.md' after corrections\n\
+1. **Reset Task File**: At the start of a new task, replace '.ai/todo.md' instead of appending to it\n\
+2. **Plan First**: Write plan to '.ai/todo.md' with checkable items\n\
+3. **Verify Plan**: Check in before starting implementation\n\
+4. **Track Progress**: Mark items complete as you go\n\
+5. **Explain Changes**: High-level summary at each step\n\
+6. **Document Results**: Add review to '.ai/todo.md'\n\
+7. **Capture Lessons**: Update '.ai/lessons.md' only for general, project-wide learning; remove narrow entries\n\
+8. **Keep Task File Untracked**: Never add '.ai/todo.md' to Git\n\
 \n\
 ## Core Principles\n\
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.\n\
@@ -84,11 +88,6 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 - **Clickable References**: When output mentions issues, PRs, security advisories/alerts, Linear issues, or other external resources, include clickable links when available so users can open them directly.\n\
 - **No Laziness**: Find root causes. No temporary fixes. Senior developer standards.\n\
 - **Minimal Impact**: Changes should only touch what's necessary. Avoid introducing bugs.\n\
-\n\
-## GitHub Issue and Discussion Discovery\n\
-- After making changes and before the final response, search the current repository's existing GitHub issues and discussions for items completely fixed by the changes, related items, and similar reports or discussions.\n\
-- Include the results in both the main response and the `## Recap`, with clickable links when available, and label each item as fully fixed, related, or similar. If no matches are found or the search is unavailable, say so explicitly.\n\
-- Do not claim an issue is fixed unless the changes fully satisfy it. Do not close or update issues or discussions unless the user explicitly asks.\n\
 \n\
 ## Jean Worktree Policy\n\
 - Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.\n\
@@ -169,15 +168,6 @@ struct ToolUseEvent {
     parent_tool_use_id: Option<String>,
 }
 
-/// Payload for done events sent to frontend
-#[derive(serde::Serialize, Clone)]
-struct DoneEvent {
-    session_id: String,
-    worktree_id: String, // Kept for backward compatibility
-    /// Always false for Claude (uses ExitPlanMode tool calls instead)
-    waiting_for_plan: bool,
-}
-
 /// Payload for error events sent to frontend
 #[derive(serde::Serialize, Clone)]
 pub struct ErrorEvent {
@@ -191,7 +181,7 @@ pub struct ErrorEvent {
 pub struct CancelledEvent {
     pub session_id: String,
     pub worktree_id: String, // Kept for backward compatibility
-    pub undo_send: bool,     // True only when the prompt never started (restore to input)
+    pub undo_send: bool,     // True when the user turn should be removed from history
     pub emitted_at_ms: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub run_id: Option<String>,
@@ -1733,15 +1723,6 @@ pub fn tail_claude_output(
                         // so the socket task does not wait out the park timeout.
                         super::claude_dialog::cancel_session(session_id);
 
-                        let done_event = DoneEvent {
-                            session_id: session_id.to_string(),
-                            worktree_id: worktree_id.to_string(),
-                            waiting_for_plan: false,
-                        };
-                        if let Err(e) = app.emit_all("chat:done", &done_event) {
-                            log::error!("Failed to emit done event: {e}");
-                        }
-
                         return Ok(ClaudeResponse {
                             content: full_content,
                             session_id: claude_session_id,
@@ -2034,16 +2015,6 @@ pub fn tail_claude_output(
                                             }
                                             // Release a dialog parked just before the kill.
                                             super::claude_dialog::cancel_session(session_id);
-
-                                            // Emit done event so frontend knows streaming is complete
-                                            let done_event = DoneEvent {
-                                                session_id: session_id.to_string(),
-                                                worktree_id: worktree_id.to_string(),
-                                                waiting_for_plan: false,
-                                            };
-                                            if let Err(e) = app.emit_all("chat:done", &done_event) {
-                                                log::error!("Failed to emit done event: {e}");
-                                            }
 
                                             // Return partial response (blocking tool is already in tool_calls)
                                             return Ok(ClaudeResponse {
@@ -2650,22 +2621,6 @@ pub fn tail_claude_output(
         );
     }
 
-    // Emit done event unless the user explicitly cancelled (cancel_process
-    // already emitted chat:cancelled in that case, avoid double event).
-    // When the process died naturally (not user cancel) but produced content,
-    // we still emit chat:done so the frontend properly transitions from
-    // streaming to persisted state (#209).
-    if !user_cancelled {
-        let done_event = DoneEvent {
-            session_id: session_id.to_string(),
-            worktree_id: worktree_id.to_string(),
-            waiting_for_plan: false,
-        };
-        if let Err(e) = app.emit_all("chat:done", &done_event) {
-            log::error!("Failed to emit done event: {e}");
-        }
-    }
-
     log::trace!(
         "Tailing complete: {} chars, {} tool calls, cancelled: {cancelled}",
         full_content.len(),
@@ -2833,20 +2788,29 @@ mod tests {
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("get_run_environments"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
             .contains("test against its `url`, port, and startup command"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("use the Agent Browser when it is available"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("no other browser testing method"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("VERY IMPORTANT: Keep Code Simple"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
             .contains("Always implement the simplest maintainable solution"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Clickable References"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("include clickable links when available"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains(
+            "At the start of a new task, replace '.ai/todo.md' instead of appending to it"
+        ));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("Only update '.ai/lessons.md' for general, project-wide learning"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Never add '.ai/todo.md' to Git"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("Do not add feature-specific, bug-fix-specific, or small/local lessons"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
+            .contains("Remove narrow or specific entries when you detect them"));
+        assert!(!DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("After ANY correction from the user"));
     }
 
     #[test]
-    fn default_global_system_prompt_requires_github_discovery_after_changes() {
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("GitHub Issue and Discussion Discovery"));
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
-            .contains("search the current repository's existing GitHub issues and discussions"));
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
-            .contains("Include the results in both the main response and the `## Recap`"));
+    fn default_global_system_prompt_does_not_require_github_discovery() {
+        assert!(!DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("GitHub Issue and Discussion Discovery"));
     }
 
     #[test]

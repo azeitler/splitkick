@@ -21,7 +21,7 @@ interface MobileFileBrowserProps {
 }
 
 /**
- * Mobile file browser as a left overlay drawer (same pattern as projects sidebar).
+ * Mobile file browser as a right overlay drawer.
  */
 export function MobileFileBrowser({
   open,
@@ -43,7 +43,7 @@ export function MobileFileBrowser({
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
       <SheetContent
-        side="left"
+        side="right"
         showCloseButton={false}
         onOpenAutoFocus={e => e.preventDefault()}
         onInteractOutside={e => {
@@ -58,7 +58,7 @@ export function MobileFileBrowser({
             e.preventDefault()
           }
         }}
-        className="bg-sidebar text-sidebar-foreground w-[min(90vw,var(--mobile-file-browser-width))] gap-0 border-r p-0 sm:max-w-[min(90vw,var(--mobile-file-browser-width))]"
+        className="bg-sidebar text-sidebar-foreground w-[min(90vw,var(--mobile-file-browser-width))] gap-0 border-l p-0 sm:max-w-[min(90vw,var(--mobile-file-browser-width))]"
         style={
           {
             '--mobile-file-browser-width': `${width}px`,
@@ -73,7 +73,7 @@ export function MobileFileBrowser({
           </SheetDescription>
         </SheetHeader>
         <Suspense fallback={null}>
-          <FileBrowserSidebar hideCloseButton={false} />
+          <FileBrowserSidebar />
         </Suspense>
       </SheetContent>
     </Sheet>

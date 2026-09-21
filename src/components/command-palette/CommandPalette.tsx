@@ -10,7 +10,12 @@ import {
   useSessionMessageSearch,
   MIN_SESSION_SEARCH_LEN,
 } from '@/services/chat'
-import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
+import {
+  convertFileSrc,
+  convertProjectFileSrc,
+  convertServerFileSrc,
+  convertServerProjectFileSrc,
+} from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import { formatRelativeTime } from '@/lib/relative-time'
 import { navigateToProject, navigateToSession } from '@/lib/navigate-to-session'
@@ -29,7 +34,13 @@ import {
 import { getAllCommands, executeCommand } from '@/lib/commands'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import type { SessionSearchHit } from '@/types/chat'
-import { Monitor, Server, Loader2, MessageSquareText } from 'lucide-react'
+import {
+  Monitor,
+  Server,
+  Loader2,
+  MessageSquareText,
+} from '@/components/icons/reicon'
+import { isNativeApp } from '@/lib/environment'
 import {
   LOCAL_CONNECTION_ID,
   getActiveConnectionId,
@@ -37,6 +48,7 @@ import {
   useRemoteConnections,
 } from '@/lib/remote-connections'
 import { activateConnection } from '@/lib/connection-windows'
+import { LOCAL_SERVER_ID } from '@/types/server-resource'
 import {
   CommandDialog,
   CommandInput,
@@ -70,6 +82,7 @@ interface ProjectCommand {
   id: string
   label: string
   description?: string
+  serverName: string
   avatarUrl: string | null
   avatarFallback: string
   group: string
@@ -104,6 +117,7 @@ export function CommandPalette({
   // another group in the same list.
   const [mode, setMode] = useState<PaletteMode>('quick')
   const isMobile = useIsMobile()
+  const native = isNativeApp()
   const remoteConnections = useRemoteConnections()
   const activeConnectionId = getActiveConnectionId()
 
@@ -127,6 +141,14 @@ export function CommandPalette({
     state => state.projectAccessTimestamps
   )
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
+  const selectedProject = projects.find(
+    project => project.id === selectedProjectId
+  )
+  // The server the user is working on: the selected project's owner, else the
+  // connection this window talks to. Its projects lead the switch list.
+  const activeServerId = selectedProject
+    ? (selectedProject.serverId ?? LOCAL_SERVER_ID)
+    : activeConnectionId
 
   const connectionCommands = useMemo((): ConnectionCommand[] => {
     const connections: ConnectionCommand[] = [
@@ -198,13 +220,17 @@ export function CommandPalette({
 
   // Create dynamic project commands (sorted by last-accessed, most recent first).
   // Every project is listed, but the current one sorts last: the top of a switch
-  // list should be where you would go, not where you already are.
+  // list should be where you would go, not where you already are. Projects on
+  // the active server come before those on other servers.
   const projectCommands = useMemo((): ProjectCommand[] => {
     return projects
       .filter(p => !p.is_folder)
       .sort((a, b) => {
         if (a.id === selectedProjectId) return 1
         if (b.id === selectedProjectId) return -1
+        const aIsActive = (a.serverId ?? LOCAL_SERVER_ID) === activeServerId
+        const bIsActive = (b.serverId ?? LOCAL_SERVER_ID) === activeServerId
+        if (aIsActive !== bIsActive) return aIsActive ? -1 : 1
         const aTime = projectAccessTimestamps[a.id] ?? 0
         const bTime = projectAccessTimestamps[b.id] ?? 0
         return bTime - aTime
@@ -212,19 +238,47 @@ export function CommandPalette({
       .map(project => ({
         id: `goto-project-${project.id}`,
         label: project.name,
-        description: project.id === selectedProjectId ? 'Current' : 'Open',
-        avatarUrl:
-          project.avatar_path && appDataDir
-            ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
-            : project.default_avatar_path
-              ? convertProjectFileSrc(project.default_avatar_path)
-              : null,
+        // Web Access only ever sees its own server, so naming it adds nothing.
+        description:
+          project.id === selectedProjectId
+            ? 'Current'
+            : native
+              ? `Open on ${project.serverName ?? 'Local'}`
+              : 'Open',
+        serverName: project.serverName ?? 'Local',
+        avatarUrl: project.avatar_path
+          ? project.serverId
+            ? convertServerFileSrc(project.serverId, project.avatar_path)
+            : appDataDir
+              ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
+              : null
+          : project.default_avatar_path
+            ? project.serverId
+              ? convertServerProjectFileSrc(
+                  project.serverId,
+                  project.default_avatar_path
+                )
+              : convertProjectFileSrc(project.default_avatar_path)
+            : null,
         avatarFallback: project.name[0]?.toUpperCase() ?? '?',
         group: 'projects',
-        keywords: ['project', 'switch', 'open', project.name.toLowerCase()],
+        keywords: [
+          'project',
+          'switch',
+          'open',
+          project.name.toLowerCase(),
+          (project.serverName ?? 'local').toLowerCase(),
+        ],
         execute: () => navigateToProject(project.id),
       }))
-  }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId])
+  }, [
+    projects,
+    appDataDir,
+    projectAccessTimestamps,
+    selectedProjectId,
+    native,
+    activeServerId,
+  ])
 
   // Quick only: projects whose name equals or starts with the query jump above
   // every other result, so a project's first letters then Enter is the fastest
@@ -676,7 +730,9 @@ function renderProjectRow(
   return (
     <CommandItem
       key={cmd.id}
-      value={`${cmd.label} ${cmd.description ?? ''} ${cmd.keywords.join(' ')}`}
+      // The id keeps same-named projects on two servers distinct: cmdk treats
+      // rows sharing a value as one. It goes last so it does not skew scoring.
+      value={`${cmd.label} ${cmd.description ?? ''} ${cmd.keywords.join(' ')} ${cmd.id}`}
       keywords={pinned ? [PINNED_KEYWORD] : undefined}
       onSelect={() => onSelect(cmd)}
       className="items-start"

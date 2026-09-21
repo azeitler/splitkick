@@ -1,5 +1,5 @@
 import React from 'react'
-import { Search, type LucideIcon } from 'lucide-react'
+import { Search, type LucideIcon } from '@/components/icons/reicon'
 import {
   Command,
   CommandEmpty,

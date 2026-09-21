@@ -6,7 +6,7 @@ import {
   Github,
   ChevronDown,
   Settings,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import {
   DropdownMenu,
@@ -28,17 +28,23 @@ import {
 } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { getOpenInDefaultLabel } from '@/types/preferences'
-import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
+import {
+  canOpenInEditor,
+  canOpenInFinder,
+  canOpenInTerminal,
+} from '@/lib/environment'
 import { useUIStore } from '@/store/ui-store'
 
 interface OpenInButtonProps {
   worktreePath: string
+  serverId?: string
   branch?: string | null
   className?: string
 }
 
 export function OpenInButton({
   worktreePath,
+  serverId,
   branch,
   className,
 }: OpenInButtonProps) {
@@ -49,8 +55,9 @@ export function OpenInButton({
   const openInFinder = useOpenWorktreeInFinder()
   const openOnGitHub = useOpenBranchOnGitHub()
 
-  const canNative = canOpenNativeApps()
+  const canFinder = canOpenInFinder(serverId)
   const canEditor = canOpenInEditor()
+  const canTerminal = canOpenInTerminal()
 
   const openAction = useCallback(
     (target: string) => {
@@ -90,15 +97,17 @@ export function OpenInButton({
   const effectiveDefault =
     preferred === 'editor' && canEditor
       ? 'editor'
-      : (preferred === 'terminal' || preferred === 'finder') && canNative
+      : preferred === 'terminal' && canTerminal
         ? preferred
-        : preferred === 'github' && branch
-          ? 'github'
-          : canEditor
-            ? 'editor'
-            : branch
-              ? 'github'
-              : 'editor'
+        : preferred === 'finder' && canFinder
+          ? preferred
+          : preferred === 'github' && branch
+            ? 'github'
+            : canEditor
+              ? 'editor'
+              : branch
+                ? 'github'
+                : 'editor'
 
   const defaultLabel = getOpenInDefaultLabel(
     effectiveDefault,
@@ -106,17 +115,17 @@ export function OpenInButton({
     preferences?.terminal
   )
 
-  if (!canEditor && !canNative) return null
+  if (!canEditor && !canTerminal && !canFinder) return null
 
   return (
     <div
-      className={`hidden items-center rounded-md border border-border/50 bg-muted/50 sm:inline-flex ${className ?? ''}`}
+      className={`hidden h-7 items-center rounded-md border border-border/50 bg-muted/50 sm:inline-flex ${className ?? ''}`}
     >
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
-            className="h-7 rounded-r-none border-0 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+            className="h-full rounded-r-none border-0 px-2.5 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => openAction(effectiveDefault)}
           >
             Open in {defaultLabel}
@@ -130,7 +139,7 @@ export function OpenInButton({
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-6 rounded-l-none border-0 px-0 text-muted-foreground hover:text-foreground"
+            className="h-full w-6 rounded-l-none border-0 px-0 text-muted-foreground hover:text-foreground"
           >
             <ChevronDown className="h-3 w-3" />
           </Button>
@@ -146,7 +155,7 @@ export function OpenInButton({
               )}
             </DropdownMenuItem>
           )}
-          {canNative && (
+          {canTerminal && (
             <DropdownMenuItem onSelect={() => openAction('terminal')}>
               <Terminal className="h-4 w-4" />
               {getOpenInDefaultLabel(
@@ -156,7 +165,7 @@ export function OpenInButton({
               )}
             </DropdownMenuItem>
           )}
-          {canNative && (
+          {canFinder && (
             <DropdownMenuItem onSelect={() => openAction('finder')}>
               <FolderOpen className="h-4 w-4" />
               Finder

@@ -6,7 +6,7 @@ import {
   ExternalLink,
   GitPullRequest,
   Loader2,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { openExternal } from '@/lib/platform'
 import {

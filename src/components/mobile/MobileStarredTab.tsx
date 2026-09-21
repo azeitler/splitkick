@@ -1,5 +1,5 @@
 import { memo, useMemo } from 'react'
-import { Star } from 'lucide-react'
+import { Star } from '@/components/icons/reicon'
 import { useAllSessions } from '@/services/chat'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { useProjectsStore } from '@/store/projects-store'

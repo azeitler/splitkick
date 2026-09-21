@@ -11,9 +11,13 @@ const {
   navigateToSession,
   reloadApp,
   selectConnection,
+  selectProject,
   setCommandPaletteOpen,
   showToast,
   warnRemoteVersionMismatch,
+  isNativeApp,
+  getActiveConnectionId,
+  projectStoreState,
 } = vi.hoisted(() => ({
   fetchRemoteServerInfo: vi.fn(async () => ({
     ok: true,
@@ -25,9 +29,16 @@ const {
   navigateToProject: vi.fn(),
   navigateToSession: vi.fn(),
   selectConnection: vi.fn(),
+  selectProject: vi.fn(),
   setCommandPaletteOpen: vi.fn(),
   showToast: vi.fn(),
   warnRemoteVersionMismatch: vi.fn(() => false),
+  isNativeApp: vi.fn(() => true),
+  getActiveConnectionId: vi.fn(() => 'remote-1'),
+  projectStoreState: {
+    projectAccessTimestamps: {} as Record<string, number>,
+    selectedProjectId: null as string | null,
+  },
 }))
 
 const searchCalls: { query: string; enabled: boolean }[] = []
@@ -104,7 +115,7 @@ const defaultProjects = [
 ]
 
 // Projects for the current test. The default list unless a test replaces it.
-let projectsData = defaultProjects
+let projectsData: typeof defaultProjects = defaultProjects
 
 vi.mock('@/services/projects', () => ({
   useProjects: () => ({ data: projectsData }),
@@ -168,8 +179,10 @@ vi.mock('@/services/chat', () => ({
 }))
 
 vi.mock('@/store/projects-store', () => ({
-  useProjectsStore: (selector: (state: unknown) => unknown) =>
-    selector({ projectAccessTimestamps: {}, selectedProjectId: 'project-1' }),
+  useProjectsStore: Object.assign(
+    (selector: (state: unknown) => unknown) => selector(projectStoreState),
+    { getState: () => ({ selectProject }) }
+  ),
 }))
 
 vi.mock('@/lib/commands', () => ({
@@ -179,7 +192,7 @@ vi.mock('@/lib/commands', () => ({
 
 vi.mock('@/lib/remote-connections', () => ({
   LOCAL_CONNECTION_ID: 'local',
-  getActiveConnectionId: () => 'remote-1',
+  getActiveConnectionId,
   getRemoteConnections: () => remoteConnections,
   markConnectionSwitch,
   selectConnection,
@@ -190,6 +203,17 @@ vi.mock('@/lib/remote-version', () => ({
   fetchRemoteServerInfo,
   warnRemoteVersionMismatch,
 }))
+
+vi.mock('@/lib/environment', () => ({ isNativeApp }))
+
+// Every describe starts from the fork defaults: two local projects, the first
+// one selected, Web Access (no server names).
+beforeEach(() => {
+  projectsData = defaultProjects
+  projectStoreState.selectedProjectId = 'project-1'
+  isNativeApp.mockReturnValue(false)
+  getActiveConnectionId.mockReturnValue('remote-1')
+})
 
 /** The mode tabs carry the same words as the group headings, so scope to one. */
 function groupHeading(text: string): HTMLElement {
@@ -209,6 +233,8 @@ describe('CommandPalette connections', () => {
       webBuildId: '0.1.69-test',
     })
     warnRemoteVersionMismatch.mockReturnValue(false)
+    // The reload flow below is Web Access; the desktop opens a window instead.
+    isNativeApp.mockReturnValue(false)
   })
 
   it('lists localhost and inactive remote connections', () => {
@@ -261,6 +287,124 @@ describe('CommandPalette connections', () => {
     expect(fetchRemoteServerInfo).not.toHaveBeenCalled()
     expect(warnRemoteVersionMismatch).not.toHaveBeenCalled()
     expect(showToast).not.toHaveBeenCalled()
+  })
+})
+
+/** Rows of the Projects group only; Recent Sessions lead the Quick tab. */
+function projectOptions(): HTMLElement[] {
+  const group = groupHeading('Projects').closest('[cmdk-group]')
+  if (!group) throw new Error('no Projects group')
+  return Array.from(group.querySelectorAll<HTMLElement>('[cmdk-item]'))
+}
+
+const serverProjects = [
+  {
+    id: 'project-1',
+    name: 'Jean',
+    path: '/projects/jean',
+    is_folder: false,
+  },
+  {
+    id: 'remote-2:project-1',
+    name: 'Jean',
+    path: '/projects/jean',
+    is_folder: false,
+    serverId: 'remote-2',
+    serverName: 'Build server',
+  },
+  {
+    id: 'remote-1:project-2',
+    name: 'Active Tool',
+    path: '/projects/active-tool',
+    is_folder: false,
+    serverId: 'remote-1',
+    serverName: 'Active server',
+  },
+  {
+    id: 'remote-2:project-2',
+    name: 'Build Tool',
+    path: '/projects/build-tool',
+    is_folder: false,
+    serverId: 'remote-2',
+    serverName: 'Build server',
+  },
+  {
+    id: 'project-2',
+    name: 'Local Tool',
+    path: '/projects/local-tool',
+    is_folder: false,
+  },
+]
+
+describe('CommandPalette projects across servers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    projectsData = serverProjects
+    isNativeApp.mockReturnValue(true)
+    getActiveConnectionId.mockReturnValue('remote-1')
+    projectStoreState.selectedProjectId = null
+  })
+
+  it('uses unique project values and shows the owning server', () => {
+    render(<CommandPalette />)
+
+    const projectRows = projectOptions().filter(row =>
+      row.textContent?.includes('Jean')
+    )
+    expect(projectRows).toHaveLength(2)
+    expect(projectRows[0]?.getAttribute('data-value')).not.toBe(
+      projectRows[1]?.getAttribute('data-value')
+    )
+    expect(screen.getAllByText('Open on Local')).not.toHaveLength(0)
+    expect(screen.getAllByText('Open on Build server')).not.toHaveLength(0)
+  })
+
+  it('does not show a redundant Local server label in Web Access', () => {
+    isNativeApp.mockReturnValue(false)
+
+    render(<CommandPalette />)
+
+    expect(screen.queryByText('Open on Local')).not.toBeInTheDocument()
+    expect(screen.queryByText('Open on Build server')).not.toBeInTheDocument()
+  })
+
+  it('shows projects from the active instance first before and after filtering', () => {
+    render(<CommandPalette />)
+
+    const visibleProjectNames = () =>
+      projectOptions().map(row =>
+        row.textContent?.replace(/^./, '').replace(/Open on .*/, '')
+      )
+
+    expect(visibleProjectNames()[0]).toBe('Active Tool')
+
+    fireEvent.change(
+      screen.getByPlaceholderText('Type a command or search...'),
+      { target: { value: 'tool' } }
+    )
+
+    expect(visibleProjectNames()).toEqual([
+      'Active Tool',
+      'Build Tool',
+      'Local Tool',
+    ])
+  })
+
+  it('treats unscoped projects as local when local is active', () => {
+    getActiveConnectionId.mockReturnValue('local')
+
+    render(<CommandPalette />)
+
+    expect(projectOptions()[0]).toHaveTextContent('Jean')
+  })
+
+  it('uses the selected project owner as the active instance', () => {
+    getActiveConnectionId.mockReturnValue('local')
+    projectStoreState.selectedProjectId = 'remote-2:project-1'
+
+    render(<CommandPalette />)
+
+    expect(projectOptions()[0]).toHaveTextContent('Build Tool')
   })
 })
 

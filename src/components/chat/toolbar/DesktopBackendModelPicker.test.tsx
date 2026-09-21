@@ -40,6 +40,7 @@ const envMocks = vi.hoisted(() => ({
 vi.mock('@/services/model-catalog', async importOriginal => ({
   ...(await importOriginal<typeof ModelCatalogModule>()),
   useModelCatalog: () => ({ data: undefined }),
+  useRefreshModelCatalog: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 vi.mock('@/lib/environment', async importOriginal => ({

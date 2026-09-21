@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { ChevronDown, FlaskConical } from 'lucide-react'
+import { ChevronDown, FlaskConical } from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'

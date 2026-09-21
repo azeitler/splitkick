@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { render, screen } from '@/test/test-utils'
 import { MessageDiffModal, undoEdit, patchFromEdits } from './MessageDiffModal'
 import { useState, type ReactNode } from 'react'
+import userEvent from '@testing-library/user-event'
+import { invoke } from '@/lib/transport'
 
 let tauriAvailable = false
 let editorAvailable = false
@@ -38,6 +40,7 @@ vi.mock('@/lib/transport', () => ({
       }
       return mockFileContent
     }
+    if (cmd === 'open_file_in_default_app') return undefined
     throw new Error(`unexpected invoke: ${cmd}`)
   }),
 }))
@@ -54,7 +57,6 @@ vi.mock('@pierre/diffs/edit', () => ({
   // Constructable stub; pierre-edit does `new Editor(options)`.
   Editor: vi.fn(),
 }))
-
 const patch = `Index: src/example.ts
 ===================================================================
 --- src/example.ts
@@ -99,6 +101,7 @@ describe('patchFromEdits', () => {
 
 describe('MessageDiffModal header', () => {
   beforeEach(() => {
+    vi.mocked(invoke).mockClear()
     tauriAvailable = false
     editorAvailable = false
     mobile = false
@@ -183,6 +186,30 @@ describe('MessageDiffModal header', () => {
     const closeButton = screen.getByRole('button', { name: 'Close' })
 
     expect(openButton.parentElement).toBe(closeButton.parentElement)
+  })
+
+  it('opens a relative remote file under its worktree path', async () => {
+    editorAvailable = true
+
+    render(
+      <MessageDiffModal
+        isOpen
+        onClose={vi.fn()}
+        filePath="apps/server/src/integration_routes.rs"
+        worktreePath="/srv/jean/project"
+        edits={[]}
+        patch={patch}
+      />
+    )
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: /Open in Editor/i })
+    )
+
+    expect(invoke).toHaveBeenCalledWith('open_file_in_default_app', {
+      path: '/srv/jean/project/apps/server/src/integration_routes.rs',
+      editor: undefined,
+    })
   })
 
   it('hides the open-in-editor button on mobile', async () => {

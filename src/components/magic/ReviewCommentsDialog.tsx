@@ -19,7 +19,7 @@ import {
   XCircle,
   MessageCircle,
   CalendarClock,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   Dialog,
   DialogContent,

@@ -54,6 +54,7 @@ vi.mock('@/lib/terminal-instances', () => ({
 }))
 
 import { useUIStatePersistence } from './useUIStatePersistence'
+import { flushUIStateBeforeRelaunch } from '@/lib/ui-state-relaunch'
 
 function createWrapper(queryClient: QueryClient) {
   return function Wrapper({ children }: PropsWithChildren) {
@@ -83,7 +84,7 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
       isSuccess: true,
     })
     mockUseProjects.mockReturnValue({ data: [], isSuccess: true })
-    mockUseSaveUIState.mockReturnValue({ mutate: mockSaveUIState })
+    mockUseSaveUIState.mockReturnValue({ mutateAsync: mockSaveUIState })
 
     useTerminalStore.setState({
       terminals: {},
@@ -112,8 +113,64 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
       inputDrafts: {},
       pendingImages: {},
       pendingTextFiles: {},
+      pendingFiles: {},
+      pendingSkills: {},
       dismissedSetupScripts: {},
     })
+    useProjectsStore.setState({ projectCanvasSettings: {} })
+  })
+
+  it('does not send client-only project canvas settings to the server', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useProjectsStore
+      .getState()
+      .setProjectCanvasWorktreeSortMode('server-1:project-1', 'last_activity')
+
+    await new Promise(resolve => setTimeout(resolve, 600))
+    expect(mockSaveUIState).not.toHaveBeenCalled()
+  })
+
+  it('saves the latest active session before a native relaunch', async () => {
+    nativeApp = true
+    mockSaveUIState.mockResolvedValue(undefined)
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    const { unmount } = renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+    useChatStore.getState().setActiveSession('worktree-1', 'session-latest', {
+      markOpened: false,
+    })
+
+    await flushUIStateBeforeRelaunch()
+
+    expect(mockSaveUIState).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        active_session_ids: { 'worktree-1': 'session-latest' },
+      })
+    )
+    unmount()
   })
 
   it('restores unsent input drafts for every session', async () => {
@@ -360,6 +417,58 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
   })
 
+  it('restores unsent regular file and skill attachments', async () => {
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({
+        pending_files: {
+          'session-1': [
+            {
+              id: 'file-1',
+              relative_path: 'src/main.ts',
+              source_root_path: '/repo',
+              source_project_id: 'project-1',
+              source_project_name: 'Jean',
+              extension: 'ts',
+              is_directory: false,
+            },
+          ],
+        },
+        pending_skills: {
+          'session-1': [
+            { id: 'skill-1', name: 'review', path: '/skills/review.md' },
+          ],
+        },
+      }),
+      isSuccess: true,
+    })
+
+    const queryClient = new QueryClient()
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useChatStore.getState().pendingFiles).toEqual({
+        'session-1': [
+          {
+            id: 'file-1',
+            relativePath: 'src/main.ts',
+            sourceRootPath: '/repo',
+            sourceProjectId: 'project-1',
+            sourceProjectName: 'Jean',
+            extension: 'ts',
+            isDirectory: false,
+          },
+        ],
+      })
+      expect(useChatStore.getState().pendingSkills).toEqual({
+        'session-1': [
+          { id: 'skill-1', name: 'review', path: '/skills/review.md' },
+        ],
+      })
+    })
+  })
+
   it('debounces persistence when a session input draft changes', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
@@ -387,7 +496,7 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     )
   })
 
-  it('debounces persistence when zen mode changes', async () => {
+  it('does not send client-only zen mode to the server', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {
         queries: { retry: false },
@@ -404,11 +513,8 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
 
     useUIStore.getState().setZenMode(true)
 
-    await waitFor(() => {
-      expect(mockSaveUIState).toHaveBeenCalledWith(
-        expect.objectContaining({ zen_mode: true })
-      )
-    })
+    await new Promise(resolve => setTimeout(resolve, 600))
+    expect(mockSaveUIState).not.toHaveBeenCalled()
   })
 
   it('debounces persistence when pending images or text files change', async () => {
@@ -468,6 +574,57 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
                 filename: 'paste-1.txt',
                 size: 12,
               },
+            ],
+          },
+        })
+      )
+    })
+  })
+
+  it('debounces persistence when regular file or skill attachments change', async () => {
+    const queryClient = new QueryClient()
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useChatStore.getState().addPendingFile('session-1', {
+      id: 'file-1',
+      relativePath: 'src/main.ts',
+      sourceRootPath: '/repo',
+      sourceProjectId: 'project-1',
+      sourceProjectName: 'Jean',
+      extension: 'ts',
+      isDirectory: false,
+    })
+    useChatStore.getState().addPendingSkill('session-1', {
+      id: 'skill-1',
+      name: 'review',
+      path: '/skills/review.md',
+    })
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          pending_files: {
+            'session-1': [
+              {
+                id: 'file-1',
+                relative_path: 'src/main.ts',
+                source_root_path: '/repo',
+                source_project_id: 'project-1',
+                source_project_name: 'Jean',
+                extension: 'ts',
+                is_directory: false,
+              },
+            ],
+          },
+          pending_skills: {
+            'session-1': [
+              { id: 'skill-1', name: 'review', path: '/skills/review.md' },
             ],
           },
         })

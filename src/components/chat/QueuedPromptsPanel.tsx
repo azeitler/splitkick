@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import { Check, ChevronRight, Clock, Paperclip, Pencil, Play, X } from 'lucide-react'
+import { Check, ChevronRight, Clock, Paperclip, Pencil, Play, X } from '@/components/icons/reicon'
 import {
   Collapsible,
   CollapsibleContent,

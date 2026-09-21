@@ -7,9 +7,10 @@ describe('ChatWindow running snapshot hydration', () => {
     'utf8'
   )
 
-  it('hydrates a restored running session when live streaming state is empty', () => {
+  it('hydrates the persisted snapshot even when live chunks arrive before the query', () => {
     expect(source).toMatch(
-      /hasLiveStreamingState[\s\S]*?if \(isSending && hasLiveStreamingState\) return[\s\S]*?hydrateRunningSnapshot\(deferredSessionId, lastMsg, \{[\s\S]*?allowWhileSending: true,[\s\S]*?dedupeReplayedOutput: true/
+      /lastMsg\.id\.startsWith\('running-'\)[\s\S]*?hydrateRunningSnapshot\(deferredSessionId, lastMsg, \{[\s\S]*?allowWhileSending: true,[\s\S]*?dedupeReplayedOutput: true/
     )
+    expect(source).not.toContain('if (isSending && hasLiveStreamingState) return')
   })
 })

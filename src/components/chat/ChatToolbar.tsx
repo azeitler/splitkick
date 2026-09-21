@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { Zap } from 'lucide-react'
+import { Zap } from '@/components/icons/reicon'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import { invoke } from '@/lib/transport'
 import { cn } from '@/lib/utils'
@@ -146,6 +146,8 @@ export const ChatToolbar = memo(function ChatToolbar({
   onCancel,
   willSteer,
   steerWithModifier,
+  canSteer,
+  onSteer,
   queuedMessageCount,
   availableMcpServers,
   enabledMcpServers,
@@ -427,7 +429,12 @@ export const ChatToolbar = memo(function ChatToolbar({
       setWorktreeLoading(worktreeId, 'push')
       const opToast = dismissibleToast.loading('Pushing changes...')
       try {
-        const result = await gitPush(activeWorktreePath, prNumber, remote)
+        const result = await gitPush(
+          activeWorktreePath,
+          prNumber,
+          remote,
+          worktreeId
+        )
         triggerImmediateGitPoll()
         if (projectId) fetchWorktreesStatus(projectId)
         if (result.permissionDenied) {
@@ -517,6 +524,7 @@ export const ChatToolbar = memo(function ChatToolbar({
               hasIssueContexts={loadedIssueContexts.length > 0}
               hasSentryContexts={loadedSentryContexts.length > 0}
               hasPrContexts={loadedPRContexts.length > 0}
+              hasAdvisoryContexts={loadedAdvisoryContexts.length > 0}
               onSaveContext={onSaveContext}
               onLoadContext={onLoadContext}
               onCommit={onCommit}
@@ -685,8 +693,10 @@ export const ChatToolbar = memo(function ChatToolbar({
               canSend={canSend}
               willSteer={willSteer}
               steerWithModifier={steerWithModifier}
+              canSteer={canSteer}
               queuedMessageCount={queuedMessageCount}
               onCancel={onCancel}
+              onSteer={onSteer}
             />
           </div>
         </div>

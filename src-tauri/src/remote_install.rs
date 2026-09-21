@@ -406,12 +406,33 @@ fn try_read_existing_token(user: &str, host: &str, ssh_port: u16) -> Option<(Str
     None
 }
 
-/// Build the remote bash install script.
-pub fn build_install_remote_script(jean_port: u16, user_install: bool) -> String {
-    let install_args = if user_install {
-        format!("--user-install --host 0.0.0.0 --port {jean_port} --token \"$TOKEN\" -y")
+fn set_existing_server_name(
+    user: &str,
+    host: &str,
+    ssh_port: u16,
+    mode: &str,
+    name: &str,
+) -> Result<(), String> {
+    let name = shell_escape(name);
+    let command = if mode == "system" {
+        format!(
+            "sudo -n sed -i '/^JEAN_SERVER_NAME=/d' /etc/jean-server.env && printf '%s\\n' {name} | sudo -n sed 's/^/JEAN_SERVER_NAME=/' | sudo -n tee -a /etc/jean-server.env >/dev/null && sudo -n systemctl restart jean-server"
+        )
     } else {
-        format!("--host 0.0.0.0 --port {jean_port} --token \"$TOKEN\" -y")
+        format!(
+            "sed -i '/^JEAN_SERVER_NAME=/d' \"$HOME/.config/jean-server/jean-server.env\" && printf '%s\\n' {name} | sed 's/^/JEAN_SERVER_NAME=/' >> \"$HOME/.config/jean-server/jean-server.env\" && systemctl --user restart jean-server"
+        )
+    };
+    run_ssh_ok(user, host, ssh_port, &command).map(|_| ())
+}
+
+/// Build the remote bash install script.
+pub fn build_install_remote_script(jean_port: u16, user_install: bool, name: &str) -> String {
+    let name_arg = format!(" --name {}", shell_escape(name));
+    let install_args = if user_install {
+        format!("--user-install --host 0.0.0.0 --port {jean_port} --token \"$TOKEN\"{name_arg} -y")
+    } else {
+        format!("--host 0.0.0.0 --port {jean_port} --token \"$TOKEN\"{name_arg} -y")
     };
     let sudo_prefix = if user_install {
         String::new()
@@ -452,6 +473,7 @@ fn run_install(
     ssh_port: u16,
     jean_port: u16,
     force_user_install: Option<bool>,
+    name: &str,
 ) -> Result<(String, String, String), String> {
     let mut log = String::new();
     let modes: Vec<(bool, &str)> = match force_user_install {
@@ -467,7 +489,7 @@ fn run_install(
             "install",
             &format!("Installing jean-server ({mode_name} install)…"),
         );
-        let script = build_install_remote_script(jean_port, user_install);
+        let script = build_install_remote_script(jean_port, user_install, name);
         let (code, stdout, stderr) = run_ssh(user, host, ssh_port, &script)?;
         log.push_str(&format!("--- {mode_name} install ---\n"));
         if !stdout.is_empty() {
@@ -565,6 +587,8 @@ pub fn install_remote_jean_server(
     if let Some((token, mode)) = try_read_existing_token(&user, &host, ssh_port) {
         log.push_str(&format!("Found existing env token ({mode})\n"));
         if check_remote_ready(&url, &token).is_ok() {
+            set_existing_server_name(&user, &host, ssh_port, &mode, &name)?;
+            wait_until_ready(&app, &url, &token)?;
             emit_progress(&app, "done", "Existing jean-server is ready.");
             return Ok(InstallRemoteResult {
                 name,
@@ -580,8 +604,15 @@ pub fn install_remote_jean_server(
     }
 
     // 3) Install
-    let (token, mode, install_log) =
-        run_install(&app, &user, &host, ssh_port, jean_port, input.user_install)?;
+    let (token, mode, install_log) = run_install(
+        &app,
+        &user,
+        &host,
+        ssh_port,
+        jean_port,
+        input.user_install,
+        &name,
+    )?;
     log.push_str(&install_log);
 
     // 4) Wait until healthy from this client
@@ -654,15 +685,16 @@ JEAN_INSTALL_TOKEN=abc123+/=
 
     #[test]
     fn install_script_includes_flags() {
-        let system = build_install_remote_script(3456, false);
+        let system = build_install_remote_script(3456, false, "Dev Server");
         assert!(system.contains("sudo -n"));
         assert!(system.contains("--host 0.0.0.0"));
         assert!(system.contains("--port 3456"));
+        assert!(system.contains("--name 'Dev Server'"));
         assert!(system.contains("JEAN_INSTALL_TOKEN="));
         assert!(!system.contains("--user-install"));
         assert!(system.contains(INSTALL_SCRIPT_URL));
 
-        let user = build_install_remote_script(4000, true);
+        let user = build_install_remote_script(4000, true, "Dev Server");
         assert!(user.contains("--user-install"));
         assert!(user.contains("--port 4000"));
         assert!(!user.contains("sudo -n"));

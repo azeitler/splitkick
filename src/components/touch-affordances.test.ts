@@ -92,7 +92,7 @@ describe('chat breakpoint parity', () => {
     // A landscape phone is ~844px, so sm: made these hover-only.
     const source = read('src/components/chat/SessionChatModal.tsx')
     expect(source).toContain('md:opacity-0 md:group-hover/tab:opacity-60')
-    expect(source).toContain('hidden md:flex')
+    expect(source).toContain('hidden 2xl:flex')
   })
 
   it('hides the keyboard focus hint where there is no keyboard', () => {

@@ -27,7 +27,6 @@ export type KeybindingAction =
   | 'approve_plan_clear_context_build'
   | 'approve_plan_worktree_build'
   | 'approve_plan_worktree_yolo'
-  | 'open_plan'
   | 'restore_last_archived'
   | 'focus_canvas_search'
   | 'toggle_terminal'
@@ -93,7 +92,6 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   approve_plan_clear_context_build: 'mod+shift+enter',
   approve_plan_worktree_build: 'mod+alt+enter',
   approve_plan_worktree_yolo: 'mod+alt+y',
-  open_plan: 'p',
   restore_last_archived: 'mod+shift+alt+t',
   focus_canvas_search: 'slash',
   toggle_terminal: 'mod+backquote',
@@ -283,14 +281,6 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     category: 'chat',
   },
   {
-    action: 'open_plan',
-    label: 'Open plan',
-    description: 'Open the plan dialog for the selected session',
-    default_shortcut: 'p',
-    category: 'chat',
-  },
-
-  {
     action: 'new_worktree',
     label: 'New worktree',
     description: 'Create a new worktree in the current project',
@@ -462,7 +452,8 @@ export function formatShortcutDisplay(
   if (!shortcut) return ''
 
   // On macOS web, Cmd shortcuts are intercepted by the browser.
-  // Ctrl+key already works (both map to "mod"), so show ⌃ instead of ⌘.
+  // Ctrl+key already works (both map to "mod"). Use a text label because the
+  // Control glyph is not available in all browser fonts.
   const isWeb =
     typeof window !== 'undefined' && !('__TAURI_INTERNALS__' in window)
   const useMacCtrl = isClientMacOS && isWeb
@@ -472,7 +463,7 @@ export function formatShortcutDisplay(
     .map(part => {
       switch (part) {
         case 'mod':
-          return useMacCtrl ? '⌃' : isClientMacOS ? '⌘' : 'Ctrl'
+          return useMacCtrl ? 'Ctrl' : isClientMacOS ? '⌘' : 'Ctrl'
         case 'shift':
           return isClientMacOS ? '⇧' : 'Shift'
         case 'alt':

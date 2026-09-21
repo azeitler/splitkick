@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react'
-import { Bot, Settings, Plug, FileJson, Cable } from 'lucide-react'
+import { Bot, Settings, Plug, FileJson, Cable } from '@/components/icons/reicon'
 import { ModalCloseButton } from '@/components/ui/modal-close-button'
 import {
   Breadcrumb,

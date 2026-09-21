@@ -5,8 +5,8 @@ import {
   FileText,
   HelpCircle,
   Loader2,
-} from 'lucide-react'
-import type { LucideIcon } from 'lucide-react'
+} from '@/components/icons/reicon'
+import type { LucideIcon } from '@/components/icons/reicon'
 import type { Session } from '@/types/chat'
 
 export const FINISHED_UNREAD_STATUSES = ['completed', 'cancelled', 'crashed']
@@ -16,6 +16,7 @@ export function hasPendingSessionApproval(session: Session): boolean {
   return (
     (session.pending_codex_command_approval_requests?.length ?? 0) > 0 ||
     (session.pending_codex_permission_requests?.length ?? 0) > 0 ||
+    (session.pending_opencode_permission_requests?.length ?? 0) > 0 ||
     (session.pending_codex_user_input_requests?.length ?? 0) > 0 ||
     (session.pending_codex_mcp_elicitation_requests?.length ?? 0) > 0 ||
     (session.pending_codex_dynamic_tool_call_requests?.length ?? 0) > 0 ||
@@ -83,7 +84,8 @@ const PINNED_COMPLETED_DISPLAY: SessionStatusDisplay = {
  * the project canvas. Returns null when there is nothing worth showing.
  */
 export function getSessionStatus(
-  session: Session
+  session: Session,
+  isSending = false
 ): SessionStatusDisplay | null {
   const hasPermission =
     (session.pending_codex_permission_requests?.length ?? 0) > 0 ||
@@ -123,6 +125,14 @@ export function getSessionStatus(
       icon: HelpCircle,
       label: 'Input required',
       className: 'text-yellow-500',
+    }
+  }
+  // A live send outranks a stale waiting flag left from the previous turn.
+  if (isSending) {
+    return {
+      icon: Loader2,
+      label: 'Running',
+      className: 'text-green-500 animate-spin',
     }
   }
   if (session.waiting_for_input) {

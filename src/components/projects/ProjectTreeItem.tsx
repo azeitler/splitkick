@@ -4,11 +4,14 @@ import {
   ArrowDownUp,
   ArrowUp,
   ChevronDown,
-  Plus,
   Search,
-  Settings,
-} from 'lucide-react'
-import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
+} from '@/components/icons/reicon'
+import {
+  convertFileSrc,
+  convertProjectFileSrc,
+  convertServerFileSrc,
+  convertServerProjectFileSrc,
+} from '@/lib/transport'
 import { cn } from '@/lib/utils'
 import { sidebarRowId } from '@/lib/navigate-to-session'
 import { SessionSortMenu } from './SessionSortMenu'
@@ -19,6 +22,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import { useRemotePicker } from '@/hooks/useRemotePicker'
 import {
   useAppDataDir,
@@ -48,29 +52,63 @@ import { WorktreeList } from './WorktreeList'
 import { ProjectContextMenu } from './ProjectContextMenu'
 import { SessionFilterInput } from './SessionFilterInput'
 import { useSessionFilter } from './useSessionFilter'
+import { matchesProjectSearch, matchesWorktreeSearch } from './project-search'
 
 interface ProjectTreeItemProps {
   project: Project
+  searchQuery?: string
 }
 
-export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
+const STATUS_BADGES_MIN_SIDEBAR_WIDTH = 320
+
+export function shouldShowProjectStatusBadges(
+  sidebarWidth: number,
+  isMobile: boolean,
+  isExpanded: boolean,
+  isSelected: boolean
+): boolean {
+  return (
+    !isMobile &&
+    sidebarWidth >= STATUS_BADGES_MIN_SIDEBAR_WIDTH &&
+    (isExpanded || isSelected)
+  )
+}
+
+export function ProjectTreeItem({
+  project,
+  searchQuery = '',
+}: ProjectTreeItemProps) {
   const isMobile = useIsMobile()
+  const sidebarWidth = useSidebarWidth()
+  const isOffline = project.offline === true
   const { data: preferences } = usePreferences()
-  const gitSyncButton = preferences?.git_sync_button ?? false
+  const gitSyncButton = preferences?.git_sync_button ?? true
   const {
     expandedProjectIds,
     selectedProjectId,
     selectProject,
     toggleProjectExpanded,
-    openProjectSettings,
   } = useProjectsStore()
-  const { data: worktrees = [] } = useWorktrees(project.id)
-  const { data: appDataDir = '' } = useAppDataDir()
-  const hasWorktrees = worktrees.length > 0
-  const isExpanded = hasWorktrees && expandedProjectIds.has(project.id)
-  const setNewWorktreeModalOpen = useUIStore(
-    state => state.setNewWorktreeModalOpen
+  const isProjectExpanded = expandedProjectIds.has(project.id)
+  const shouldLoadWorktrees =
+    !isOffline &&
+    (Boolean(searchQuery) ||
+      isProjectExpanded ||
+      selectedProjectId === project.id)
+  const { data: worktrees = [], isLoading: worktreesLoading } = useWorktrees(
+    project.id,
+    {
+      enabled: shouldLoadWorktrees,
+    }
   )
+  const { data: appDataDir = '' } = useAppDataDir()
+  const hasWorktrees =
+    !isOffline && (worktrees.length > 0 || (project.worktree_count ?? 0) > 0)
+  const projectMatchesSearch = matchesProjectSearch(project, searchQuery)
+  const hasMatchingWorktree = worktrees.some(worktree =>
+    matchesWorktreeSearch(worktree, searchQuery)
+  )
+  const isExpanded = hasWorktrees && (Boolean(searchQuery) || isProjectExpanded)
 
   // Session filter across every workspace of this project. An active filter
   // reveals the workspaces without touching the persisted expansion state, so
@@ -88,21 +126,32 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
 
   // Build avatar URL from relative path
   const avatarUrl =
-    project.avatar_path && appDataDir && !imgError
-      ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
+    project.avatar_path && !imgError
+      ? project.serverId
+        ? convertServerFileSrc(project.serverId, project.avatar_path)
+        : appDataDir
+          ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
+          : null
       : project.default_avatar_path && !imgError
-        ? convertProjectFileSrc(project.default_avatar_path)
+        ? project.serverId
+          ? convertServerProjectFileSrc(
+              project.serverId,
+              project.default_avatar_path
+            )
+          : convertProjectFileSrc(project.default_avatar_path)
         : null
 
   // Fetch git status for all worktrees when project is expanded
-  useFetchWorktreesStatus(project.id, showWorktrees)
+  useFetchWorktreesStatus(project.id, showWorktrees && !searchQuery)
 
   // Check if base session exists
   const hasBaseSession = worktrees.some(w => isBaseSession(w))
 
   // Get base branch status from any worktree (all have it)
   const firstWorktree = worktrees[0]
-  const { data: gitStatus } = useGitStatus(firstWorktree?.id ?? null)
+  const { data: gitStatus } = useGitStatus(
+    searchQuery ? null : (firstWorktree?.id ?? null)
+  )
 
   // Only show on project line when no base session
   const baseBranchBehindCount = !hasBaseSession
@@ -122,7 +171,12 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
 
   // Project is only selected if it's the selected project AND no worktree is active
   const isSelected = selectedProjectId === project.id && !activeWorktreeId
-  const showStatusBadges = !isMobile && (isExpanded || isSelected)
+  const showStatusBadges = shouldShowProjectStatusBadges(
+    sidebarWidth,
+    isMobile,
+    isExpanded,
+    isSelected
+  )
 
   // Inline rename (double-click), matching folder/worktree patterns
   const [isEditing, setIsEditing] = useState(false)
@@ -150,7 +204,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
   // already has worktrees. It never changes the open/closed state; the chevron
   // does that, the same as a workspace row.
   const handleClick = useCallback(() => {
-    if (isEditing) return
+    if (isEditing || isOffline) return
 
     selectProject(project.id)
     clearActiveWorktree()
@@ -160,16 +214,23 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
     if (isMobile) {
       useUIStore.getState().setLeftSidebarVisible(false)
     }
-  }, [isEditing, project.id, selectProject, clearActiveWorktree, isMobile])
+  }, [
+    isEditing,
+    isOffline,
+    project.id,
+    selectProject,
+    clearActiveWorktree,
+    isMobile,
+  ])
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
-      if (isEditing) return
+      if (isEditing || isOffline) return
       setEditName(project.name)
       setIsEditing(true)
     },
-    [isEditing, project.name]
+    [isEditing, isOffline, project.name]
   )
 
   const handleSubmitRename = useCallback(
@@ -218,17 +279,6 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
     [toggleFilter]
   )
 
-  const handleAddWorktree = useCallback(
-    (e: React.MouseEvent) => {
-      e.stopPropagation()
-      // Select this project first so the modal knows which project to use
-      selectProject(project.id)
-      // Open the New Session modal
-      setNewWorktreeModalOpen(true)
-    },
-    [project.id, selectProject, setNewWorktreeModalOpen]
-  )
-
   const handleBasePull = useCallback(
     async (e: React.MouseEvent) => {
       e.stopPropagation()
@@ -250,7 +300,12 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
       pickRemoteOrRun(async remote => {
         const opToast = dismissibleToast.loading('Pushing changes...')
         try {
-          const result = await gitPush(project.path, undefined, remote)
+          const result = await gitPush(
+            project.path,
+            undefined,
+            remote,
+            project.id
+          )
           fetchWorktreesStatus(project.id)
           if (result.permissionDenied) {
             opToast.error('Push failed', {
@@ -296,13 +351,23 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
     ]
   )
 
+  if (
+    searchQuery &&
+    !projectMatchesSearch &&
+    !worktreesLoading &&
+    !hasMatchingWorktree
+  ) {
+    return null
+  }
+
   return (
     <ProjectContextMenu project={project}>
       <div>
         {/* Project Row */}
         <div
           className={cn(
-            'group relative flex cursor-pointer items-center gap-1.5 px-2 py-1.5 overflow-hidden transition-colors duration-150',
+            'group relative flex items-center gap-1.5 px-2 py-1.5 overflow-hidden transition-colors duration-150',
+            isOffline ? 'cursor-default opacity-70' : 'cursor-pointer',
             isSelected
               ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
               : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
@@ -352,6 +417,11 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
                   noun="workspace"
                 />
               )}
+              {isOffline && (
+                <span className="shrink-0 rounded bg-amber-500/10 px-1 py-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                  Offline
+                </span>
+              )}
               {hasWorktrees && (
                 <button
                   type="button"
@@ -378,7 +448,8 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
           )}
 
           {/* Base branch pull/push indicators (when no base session) */}
-          {gitSyncButton &&
+          {!isOffline &&
+          gitSyncButton &&
           (baseBranchBehindCount > 0 || baseBranchAheadCount > 0) ? (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -453,8 +524,8 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
             </>
           )}
 
-          {showStatusBadges && (
-            <div className="hidden items-center gap-1 sm:flex">
+          {!isOffline && showStatusBadges && (
+            <div className="flex items-center gap-1">
               <NewIssuesBadge
                 projectPath={project.path}
                 projectId={project.id}
@@ -491,39 +562,6 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
 
           {/* Sort sessions — shown under the same condition as the filter */}
           {hasWorktrees && <SessionSortMenu projectId={project.id} />}
-
-          {/* Settings */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={e => {
-                  e.stopPropagation()
-                  openProjectSettings(project.id)
-                }}
-                aria-label="Project settings"
-                className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-              >
-                <Settings className="size-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Project settings</TooltipContent>
-          </Tooltip>
-
-          {/* Add Worktree */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleAddWorktree}
-                aria-label="New worktree"
-                className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-              >
-                <Plus className="size-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>New worktree</TooltipContent>
-          </Tooltip>
         </div>
 
         {filter.isOpen && (
@@ -547,6 +585,9 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
             sessionFilterQuery={filter.activeQuery}
             sessionFilterOpen={filter.isOpen}
             onSessionSelected={closeFilter}
+            searchQuery={projectMatchesSearch ? '' : searchQuery}
+            searchActive={Boolean(searchQuery)}
+            loadSessionCounts={!searchQuery}
           />
         )}
       </div>

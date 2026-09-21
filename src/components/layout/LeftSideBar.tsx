@@ -8,7 +8,12 @@ interface LeftSideBarProps {
 
 export function LeftSideBar({ children, className }: LeftSideBarProps) {
   return (
-    <div className={cn('flex h-full flex-col bg-sidebar', className)}>
+    <div
+      className={cn(
+        'flex h-full flex-col bg-sidebar dark:bg-[#0b0b0b]',
+        className
+      )}
+    >
       <ProjectsSidebar />
       {children}
     </div>

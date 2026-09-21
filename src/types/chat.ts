@@ -180,6 +180,8 @@ export interface ChatMessage {
   thinking_level?: ThinkingLevel
   /** Effort level when this message was sent (user messages only, Opus 4.6) */
   effort_level?: EffortLevel
+  /** Provider/custom profile used when this message was sent (user messages only) */
+  custom_profile_name?: string
   /** True if this message was recovered from a crash */
   recovered?: boolean
   /** Token usage for this message (assistant messages only) */
@@ -208,6 +210,10 @@ export interface DeniedMessageContext {
 export interface Session {
   /** Unique session identifier (UUID v4) */
   id: string
+  /** Client-only owner for a resource loaded from a remote Jean server. */
+  serverId?: string
+  /** Original server-local id when `id` is a composite client key. */
+  resourceId?: string
   /** Display name ("Session 1", or user-customized name) */
   name: string
   /** Order index for tab ordering (0-indexed) */
@@ -546,12 +552,14 @@ export interface ErrorEvent {
 }
 
 /**
- * Event payload for cancellation from Rust (user pressed Escape)
+ * Event payload for cancellation from Rust (user pressed Escape).
+ * undo_send only indicates whether the user turn should be removed from
+ * history; a prompt with no streamed output may still be restored when false.
  */
 export interface CancelledEvent {
   session_id: string
   worktree_id: string // Kept for backward compatibility
-  undo_send: boolean // True only when the prompt never started (restore to input)
+  undo_send: boolean
   emitted_at_ms: number
   run_id?: string
 }
@@ -1336,6 +1344,14 @@ export interface SaveImageResponse {
   path: string
 }
 
+/** Raw image data read from the local native clipboard. */
+export interface ClipboardImageData {
+  /** Base64-encoded image bytes without a data URL prefix. */
+  data: string
+  /** MIME type for the encoded image. */
+  mimeType: string
+}
+
 // ============================================================================
 // Text Paste Types (for large text pastes in chat)
 // ============================================================================
@@ -1368,6 +1384,14 @@ export interface SaveTextResponse {
   /** Full path to the saved text file */
   path: string
   /** Size in bytes */
+  size: number
+}
+
+/** Response from saving an arbitrary uploaded file. */
+export interface SaveFileResponse {
+  id: string
+  filename: string
+  path: string
   size: number
 }
 
@@ -1681,6 +1705,10 @@ export interface AllSessionsEntry {
   worktree_name: string
   worktree_path: string
   sessions: Session[]
+  /** Owning Jean instance. Present on native multi-server results. */
+  serverId?: string
+  /** Display name of the owning Jean instance. */
+  serverName?: string
 }
 
 /**

@@ -6,11 +6,11 @@ import React, {
   useRef,
   type FC,
 } from 'react'
-import { invoke } from '@/lib/transport'
+import { invoke, signOutOfWebAccess } from '@/lib/transport'
 import { loginArgsForBackend } from '@/lib/cli-auth'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { Loader2, Check, ChevronsUpDown, Play } from 'lucide-react'
+import { Loader2, Check, ChevronsUpDown, LogOut, Play } from '@/components/icons/reicon'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -203,7 +203,11 @@ import {
   formatJeanVersionLabel,
 } from '@/lib/remote-version'
 import type { ThinkingLevel, EffortLevel } from '@/types/chat'
-import { hasBackend, isNativeApp } from '@/lib/environment'
+import {
+  hasBackend,
+  isNativeApp,
+  webAccessServerLabel,
+} from '@/lib/environment'
 import { isWindows, openExternal } from '@/lib/platform'
 import { isNewerVersion } from '@/lib/version-utils'
 import { cn } from '@/lib/utils'
@@ -3194,7 +3198,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               description="Prompts sent while Codex is working are injected into the current turn instead of queued"
             >
               <Switch
-                checked={preferences?.codex_auto_steer_enabled ?? true}
+                checked={preferences?.codex_auto_steer_enabled ?? false}
                 onCheckedChange={handleCodexAutoSteerToggle}
               />
             </InlineField>
@@ -3301,7 +3305,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               description="Text-only prompts sent while OpenCode is working are injected into the current turn instead of queued (attachments always queue)"
             >
               <Switch
-                checked={preferences?.opencode_auto_steer_enabled ?? true}
+                checked={preferences?.opencode_auto_steer_enabled ?? false}
                 onCheckedChange={handleOpenCodeAutoSteerToggle}
               />
             </InlineField>
@@ -3460,7 +3464,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               description="Text-only prompts sent while PI is working are injected into the current turn instead of queued (attachments always queue)"
             >
               <Switch
-                checked={preferences?.pi_auto_steer_enabled ?? true}
+                checked={preferences?.pi_auto_steer_enabled ?? false}
                 onCheckedChange={handlePiAutoSteerToggle}
               />
             </InlineField>
@@ -3663,7 +3667,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                 description="Text-only prompts sent while Grok is working are injected into the current turn instead of queued (attachments always queue)"
               >
                 <Switch
-                  checked={preferences?.grok_auto_steer_enabled ?? true}
+                  checked={preferences?.grok_auto_steer_enabled ?? false}
                   onCheckedChange={handleGrokAutoSteerToggle}
                 />
               </InlineField>
@@ -4131,7 +4135,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                             ? commandCodeModelOptions
                             : effectiveBuildBackend === 'grok'
                               ? grokModelOptions
-                            : remoteClaudeModelOptions
+                              : remoteClaudeModelOptions
                         ).map(option => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
@@ -4378,7 +4382,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                             ? commandCodeModelOptions
                             : effectiveYoloBackend === 'grok'
                               ? grokModelOptions
-                            : remoteClaudeModelOptions
+                              : remoteClaudeModelOptions
                         ).map(option => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
@@ -4562,6 +4566,18 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                   ))}
                 </SelectContent>
               </Select>
+            </InlineField>
+
+            <InlineField
+              label="Combined git sync button"
+              description="Replace separate Pull and Push badges with one Sync button that does both"
+            >
+              <Switch
+                checked={preferences?.git_sync_button ?? true}
+                onCheckedChange={checked => {
+                  patchPreferences.mutate({ git_sync_button: checked })
+                }}
+              />
             </InlineField>
 
             <InlineField
@@ -5024,6 +5040,30 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
             </div>
           </SettingsSection>
         </>
+      )}
+
+      {isGeneralScope && isWebAccessView && (
+        <SettingsSection
+          title="This browser"
+          description="You are signed in to this Jean server with an access token kept in this browser."
+          anchorId="pref-general-section-session"
+          variant="card"
+        >
+          <InlineField
+            label={webAccessServerLabel()}
+            description="Signing out forgets the token on this device only. The server keeps running and your other devices stay signed in."
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              className="sm:ml-auto"
+              onClick={signOutOfWebAccess}
+            >
+              <LogOut className="size-3.5" />
+              Sign out
+            </Button>
+          </InlineField>
+        </SettingsSection>
       )}
 
       <AlertDialog

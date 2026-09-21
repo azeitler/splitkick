@@ -215,6 +215,22 @@ pub async fn dispatch_command(
             let result = crate::projects::bootstrap_project(app.clone(), project_id).await?;
             to_value(result)
         }
+        "get_recent_worktrees" => {
+            let project_ids: Option<Vec<String>> = field_opt(&args, "projectIds", "project_ids")?;
+            let offset: Option<usize> = from_field_opt(&args, "offset")?;
+            let limit: Option<usize> = from_field_opt(&args, "limit")?;
+            let include_session_id: Option<String> =
+                field_opt(&args, "includeSessionId", "include_session_id")?;
+            let result = crate::projects::get_recent_worktrees(
+                app.clone(),
+                project_ids,
+                offset,
+                limit,
+                include_session_id,
+            )
+            .await?;
+            to_value(result)
+        }
         "get_worktree" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let result = crate::projects::get_worktree(app.clone(), worktree_id).await?;
@@ -745,7 +761,8 @@ pub async fn dispatch_command(
             let worktree_ahead_count: Option<u32> =
                 field_opt(&args, "worktreeAheadCount", "worktree_ahead_count")?;
             let unpushed_count: Option<u32> = field_opt(&args, "unpushedCount", "unpushed_count")?;
-            crate::projects::update_worktree_cached_status(
+            let base_branch: Option<String> = field_opt(&args, "baseBranch", "base_branch")?;
+            let changed = crate::projects::update_worktree_cached_status(
                 app.clone(),
                 worktree_id,
                 branch,
@@ -761,9 +778,12 @@ pub async fn dispatch_command(
                 base_branch_behind_count,
                 worktree_ahead_count,
                 unpushed_count,
+                base_branch,
             )
             .await?;
-            emit_cache_invalidation(app, &["projects"]);
+            if changed {
+                emit_cache_invalidation(app, &["projects"]);
+            }
             Ok(Value::Null)
         }
         "list_worktree_files" => {
@@ -847,11 +867,13 @@ pub async fn dispatch_command(
         }
         "remove_issue_context" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: Option<String> = field_opt(&args, "worktreeId", "worktree_id")?;
             let issue_number: u32 = field(&args, "issueNumber", "issue_number")?;
             let project_path: String = field(&args, "projectPath", "project_path")?;
             crate::projects::remove_issue_context(
                 app.clone(),
                 session_id,
+                worktree_id,
                 issue_number,
                 project_path,
             )
@@ -1163,6 +1185,10 @@ pub async fn dispatch_command(
                 crate::chat::search::search_session_messages(app.clone(), query, options).await?;
             to_value(result)
         }
+        "get_unread_session_count" => {
+            let result = crate::chat::get_unread_session_count(app.clone()).await?;
+            to_value(result)
+        }
         "start_background_investigation" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
@@ -1182,6 +1208,8 @@ pub async fn dispatch_command(
             )?;
             let execution_mode: Option<String> =
                 field_opt(&args, "executionMode", "execution_mode")?;
+            let force_new_session: Option<bool> =
+                field_opt(&args, "forceNewSession", "force_new_session")?;
             let result = crate::jean_mcp_core::start_background_investigation(
                 app.clone(),
                 worktree_id,
@@ -1196,6 +1224,7 @@ pub async fn dispatch_command(
                 ai_language,
                 parallel_execution_prompt,
                 execution_mode,
+                force_new_session,
             )
             .await?;
             to_value(result)
@@ -2427,6 +2456,12 @@ pub async fn dispatch_command(
             let result = crate::chat::save_pasted_text(app.clone(), content, filename).await?;
             to_value(result)
         }
+        "save_pasted_file" => {
+            let data: String = from_field(&args, "data")?;
+            let filename: String = from_field(&args, "filename")?;
+            let result = crate::chat::save_pasted_file(app.clone(), data, filename).await?;
+            to_value(result)
+        }
         "update_pasted_text" => {
             let path: String = from_field(&args, "path")?;
             let content: String = from_field(&args, "content")?;
@@ -2904,6 +2939,10 @@ pub async fn dispatch_command(
         }
         "get_agent_browser_status" => {
             let result = crate::agent_browser::get_agent_browser_status(app.clone()).await?;
+            to_value(result)
+        }
+        "check_agent_browser_update" => {
+            let result = crate::agent_browser::check_agent_browser_update(app.clone()).await?;
             to_value(result)
         }
         "ensure_agent_browser_profile" => {

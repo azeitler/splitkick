@@ -451,12 +451,12 @@ mod tests {
         });
     }
 
-    /// The dialog role must work while the user-facing Jean MCP server is off,
-    /// because `--permission-prompt-tool` naming an unresolvable tool kills the
-    /// run with exit=1 at the first permission check.
+    /// The dialog role must answer `permission_prompt`, because
+    /// `--permission-prompt-tool` naming an unresolvable tool kills the run
+    /// with exit=1 at the first permission check.
     #[cfg(unix)]
     #[test]
-    fn a_full_role_tool_is_refused_but_the_dialog_role_is_not() {
+    fn the_dialog_role_answers_permission_prompts() {
         use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 
         let temp = tempfile::tempdir().unwrap();
@@ -469,10 +469,6 @@ mod tests {
             .unwrap();
 
         runtime.block_on(async {
-            let mut prefs = crate::load_preferences(app.clone()).await.unwrap();
-            prefs.jean_mcp_enabled = false;
-            crate::save_preferences(app.clone(), prefs).await.unwrap();
-
             let handle = super::start_socket_server(app.clone(), socket.clone(), "secret".into())
                 .await
                 .expect("socket server");
@@ -496,21 +492,7 @@ mod tests {
                 }
             };
 
-            let refused = ask(serde_json::json!({
-                "token": "secret", "source": "anon", "depth": 0, "role": "full",
-                "name": "list_all_sessions", "arguments": {},
-            }))
-            .await;
-            assert!(
-                refused["error"]["message"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .contains("Jean MCP is disabled"),
-                "{refused}"
-            );
-
-            // Same socket, dialog role: answered, not refused. A non-dialog tool
-            // takes the plan-mode default arm rather than the preference gate.
+            // A non-dialog tool takes the plan-mode default arm.
             let allowed = ask(serde_json::json!({
                 "token": "secret", "source": "anon", "depth": 0, "role": "dialog",
                 "name": "permission_prompt",

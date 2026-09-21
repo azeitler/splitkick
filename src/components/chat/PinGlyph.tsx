@@ -1,4 +1,4 @@
-import { Pin } from 'lucide-react'
+import { Pin } from '@/components/icons/reicon'
 
 /** The small pin that marks a session pinned to its project, on its row. */
 export function PinGlyph() {

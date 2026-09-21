@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown } from '@/components/icons/reicon'
 import { CollapsedCountBadge } from '@/components/projects/CollapsedCountBadge'
 import { cn } from '@/lib/utils'
 

@@ -231,12 +231,17 @@ describe('CompactStreamingTicker', () => {
     )
 
     const ticker = screen.getByRole('button', { name: /FileChange/ })
-    const editedFiles = screen.getByText('Edited 1 file:')
+    const editedFiles = screen.getByRole('button', { name: 'Edited 1 file' })
 
     expect(editedFiles).toBeVisible()
     expect(ticker.closest('.rounded-md.border')).not.toContainElement(
       editedFiles
     )
+    fireEvent.click(ticker)
+    expect(
+      screen.getAllByRole('button', { name: 'Edited 1 file' })
+    ).toHaveLength(1)
+    fireEvent.click(editedFiles)
     expect(
       screen.getByRole('button', {
         name: /View changes to CompactStreamingTicker\.tsx/,

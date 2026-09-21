@@ -1,8 +1,7 @@
 import { useMemo } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { invoke } from '@/lib/transport'
 import { toast } from 'sonner'
-import { useAllSessions } from '@/services/chat'
+import { useAllSessions, useSessionMessageSearch } from '@/services/chat'
 import {
   useGitHubIssues,
   useGitHubPRs,
@@ -39,7 +38,12 @@ import {
   useLoadedSentryContexts,
   useSentryIssues,
 } from '@/services/sentry'
-import type { SavedContextsResponse } from '@/types/chat'
+import {
+  listSavedContexts,
+  renameSavedContext,
+  savedContextsQueryKey,
+} from '@/services/saved-contexts'
+import { filterLoadContextSessions } from '../load-context-sessions'
 
 interface UseLoadContextDataOptions {
   open: boolean
@@ -134,7 +138,9 @@ export function useLoadContextData({
     isFetching: isRefetchingIssues,
     error: issuesError,
     refetch: refetchIssues,
-  } = useGitHubIssues(worktreePath, issueState)
+  } = useGitHubIssues(worktreePath, issueState, {
+    ownerId: projectId ?? undefined,
+  })
   const issues = issueResult?.issues
 
   // GitHub security alerts query
@@ -163,7 +169,9 @@ export function useLoadContextData({
     isFetching: isRefetchingPRs,
     error: prsError,
     refetch: refetchPRs,
-  } = useGitHubPRs(worktreePath, prState)
+  } = useGitHubPRs(worktreePath, prState, {
+    ownerId: projectId ?? undefined,
+  })
 
   // Fetch saved contexts
   const {
@@ -172,8 +180,8 @@ export function useLoadContextData({
     error: contextsError,
     refetch: refetchContexts,
   } = useQuery({
-    queryKey: ['session-context'],
-    queryFn: () => invoke<SavedContextsResponse>('list_saved_contexts'),
+    queryKey: savedContextsQueryKey(projectId),
+    queryFn: () => listSavedContexts(projectId),
     enabled: open,
     staleTime: 1000 * 60 * 5,
   })
@@ -184,6 +192,11 @@ export function useLoadContextData({
 
   // Debounced search query for GitHub API search
   const debouncedSearchQuery = useDebouncedValue(searchQuery, 300)
+
+  const { data: sessionMessageSearch } = useSessionMessageSearch(
+    debouncedSearchQuery,
+    open
+  )
 
   // GitHub search queries (triggered when local filter may miss results)
   const { data: searchedIssues, isFetching: isSearchingIssues } =
@@ -303,27 +316,26 @@ export function useLoadContextData({
     if (!allSessionsData?.entries) return []
 
     const attachedSlugs = new Set(attachedSavedContexts?.map(c => c.slug) ?? [])
-
-    return allSessionsData.entries.flatMap(entry => {
-      const query = searchQuery ? searchQuery.toLowerCase() : ''
-      const filteredSessions = entry.sessions.filter(s => {
-        if (s.messages.length === 0) return false
-        if (s.id === activeSessionId) return false
-        // Hide sessions already injected as session-ref-* attached contexts
-        if (attachedSlugs.has(`session-ref-${s.id}`)) return false
-        if (!query) return true
-        return (
-          s.name.toLowerCase().includes(query) ||
-          entry.project_name.toLowerCase().includes(query) ||
-          entry.worktree_name.toLowerCase().includes(query) ||
-          s.messages.some(m => m.content.toLowerCase().includes(query))
-        )
-      })
-      return filteredSessions.length > 0
-        ? [{ ...entry, sessions: filteredSessions }]
+    const contentMatchIds = new Set(
+      debouncedSearchQuery.trim() === searchQuery.trim()
+        ? (sessionMessageSearch?.hits.map(hit => hit.session_id) ?? [])
         : []
+    )
+
+    return filterLoadContextSessions(allSessionsData.entries, {
+      searchQuery,
+      activeSessionId,
+      attachedSlugs,
+      contentMatchIds,
     })
-  }, [allSessionsData, searchQuery, activeSessionId, attachedSavedContexts])
+  }, [
+    allSessionsData,
+    searchQuery,
+    debouncedSearchQuery,
+    sessionMessageSearch,
+    activeSessionId,
+    attachedSavedContexts,
+  ])
 
   // Filter Linear issues locally, merge with search results, exclude already loaded ones
   const filteredLinearIssues = useMemo(() => {
@@ -376,7 +388,7 @@ export function useLoadContextData({
       filename: string
       newName: string
     }) => {
-      await invoke('rename_saved_context', { filename, newName })
+      await renameSavedContext(filename, newName, projectId)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['session-context'] })

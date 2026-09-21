@@ -19,6 +19,7 @@ import type {
   Session,
   WorktreeSessions,
 } from '@/types/chat'
+import type { RecentWorktreeItem } from '@/types/projects'
 import { disposeTerminal, startHeadless } from '@/lib/terminal-instances'
 import { toast } from 'sonner'
 import { useCommandContext } from './use-command-context'
@@ -109,7 +110,14 @@ export function useWindowKeyboardFocusRestore() {
 
   useEffect(() => {
     if (!isNativeApp() || isMobile) return
-    return installWindowKeyboardFocusRestore()
+    return installWindowKeyboardFocusRestore({
+      subscribeToNativeFocus: async handler => {
+        const { getCurrentWindow } = await import('@tauri-apps/api/window')
+        return getCurrentWindow().onFocusChanged(event => {
+          handler(event.payload)
+        })
+      },
+    })
   }, [isMobile])
 }
 
@@ -138,8 +146,8 @@ export function allowsKeybindingRepeat(action: KeybindingAction): boolean {
  * Apply backend `cache:invalidate` keys to the React Query client.
  * Shared by the debounced multi-client sync listener.
  *
- * `sessions` also invalidates `['all-sessions']` (finished/unread bell) which
- * is intentionally outside `chatQueryKeys.all` (`['chat']`).
+ * `sessions` also invalidates the finished/unread badge and popover queries,
+ * which are intentionally outside the normal per-worktree cache.
  */
 export function applyCacheInvalidationKeys(
   queryClient: QueryClient,
@@ -154,6 +162,17 @@ export function applyCacheInvalidationKeys(
         // UnreadBell / useUnreadCount read from this separate key.
         queryClient.invalidateQueries({
           queryKey: ['all-sessions'],
+        })
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.unreadSessionCount(),
+        })
+        queryClient.invalidateQueries({
+          queryKey: ['recent-worktrees'],
+        })
+        break
+      case 'recent-worktrees':
+        queryClient.invalidateQueries({
+          queryKey: ['recent-worktrees'],
         })
         break
       case 'projects':
@@ -237,6 +256,21 @@ export function applySessionRenamedToCaches(
     })
     return changed ? { ...old, entries } : old
   })
+  queryClient.setQueriesData<{ items: RecentWorktreeItem[] }>(
+    { queryKey: ['recent-worktrees'] },
+    old => {
+      if (!old) return old
+      let changed = false
+      const items = old.items.map(item => {
+        if (item.session.id !== sessionId || item.session.name === newName) {
+          return item
+        }
+        changed = true
+        return { ...item, session: { ...item.session, name: newName } }
+      })
+      return changed ? { ...old, items } : old
+    }
+  )
 }
 
 export function shouldAllowKeybindingThroughOpenOverlay(
@@ -253,6 +287,12 @@ export function shouldAllowKeybindingThroughOpenOverlay(
   }
 
   return action === 'open_in_modal' && uiState.gitDiffModalOpen
+}
+
+export function hasBlockingOpenOverlay(): boolean {
+  return !!document.querySelector(
+    '[role="dialog"][data-state="open"]:not([data-terminal-host]), [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]'
+  )
 }
 
 function getFocusedTerminalElement(): HTMLElement | null {
@@ -340,7 +380,7 @@ export function closeActiveTerminalTabForShortcut(): boolean {
   ).filter(isPanelTerminal)
   if (remaining.length === 0) {
     terminalStore.setTerminalPanelOpen(worktreeId, false)
-    terminalStore.setTerminalVisible(false)
+    terminalStore.setTerminalVisibleForWorktree(worktreeId, false)
     terminalStore.setModalTerminalOpen(worktreeId, false)
   }
 
@@ -380,7 +420,6 @@ function executeKeybindingAction(
 ) {
   // Canvas-only actions: blocked when the session chat modal is open
   const CANVAS_ONLY_ACTIONS = new Set<KeybindingAction>([
-    'open_plan',
     'restore_last_archived',
     'focus_canvas_search',
   ])
@@ -656,10 +695,6 @@ function executeKeybindingAction(
       window.dispatchEvent(new CustomEvent('approve-plan-worktree-yolo'))
       break
     }
-    case 'open_plan':
-      logger.debug('Keybinding: open_plan')
-      window.dispatchEvent(new CustomEvent('open-plan'))
-      break
     case 'restore_last_archived':
       logger.debug('Keybinding: restore_last_archived')
       window.dispatchEvent(new CustomEvent('restore-last-archived'))
@@ -887,9 +922,7 @@ export function useMainWindowEventListeners() {
       const uiState = useUIStore.getState()
       if (
         !shouldAllowKeybindingThroughOpenOverlay(matchedAction, uiState) &&
-        document.querySelector(
-          '[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]'
-        )
+        hasBlockingOpenOverlay()
       )
         return
       if (
@@ -1210,12 +1243,21 @@ export function useMainWindowEventListeners() {
         ),
 
         // Session naming events (automatic session renaming based on first message)
+        listen<{ session_id: string }>('session-naming-started', event => {
+          useChatStore
+            .getState()
+            .setSessionNaming(event.payload.session_id, true)
+        }),
+
         listen<{
           session_id: string
           worktree_id: string
           old_name: string
           new_name: string
         }>('session-renamed', event => {
+          useChatStore
+            .getState()
+            .setSessionNaming(event.payload.session_id, false)
           logger.info('Session renamed', {
             sessionId: event.payload.session_id,
             worktreeId: event.payload.worktree_id,
@@ -1237,6 +1279,9 @@ export function useMainWindowEventListeners() {
           queryClient.invalidateQueries({
             queryKey: ['all-sessions'],
           })
+          queryClient.invalidateQueries({
+            queryKey: ['recent-worktrees'],
+          })
         }),
 
         listen<{
@@ -1245,6 +1290,9 @@ export function useMainWindowEventListeners() {
           error: string
           stage: string
         }>('session-naming-failed', event => {
+          useChatStore
+            .getState()
+            .setSessionNaming(event.payload.session_id, false)
           logger.warn('Session naming failed', {
             sessionId: event.payload.session_id,
             worktreeId: event.payload.worktree_id,

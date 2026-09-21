@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react'
-import { Star } from 'lucide-react'
+import { Star } from '@/components/icons/reicon'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { computeSessionCardData } from '@/components/chat/session-card-utils'
 import {

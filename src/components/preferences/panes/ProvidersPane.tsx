@@ -1,6 +1,6 @@
 import React, { useState } from 'react'
 import { invoke } from '@/lib/transport'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'

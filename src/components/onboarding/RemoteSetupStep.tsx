@@ -1,11 +1,12 @@
 /**
  * Onboarding remote setup: install jean-server over SSH or connect an existing
- * Web Access URL. On success, selects the connection and reloads so CLI setup
- * (if needed) continues against the remote.
+ * Web Access URL. On success, the desktop opens the remote in a connection
+ * window of its own (and adds it to the main window's combined dashboard);
+ * Web Access selects the connection and reloads.
  */
 
 import { useEffect, useState, type FormEvent } from 'react'
-import { HardDriveDownload, Link2, Loader2 } from 'lucide-react'
+import { HardDriveDownload, Link2, Loader2 } from '@/components/icons/reicon'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -46,10 +47,13 @@ const EMPTY_INSTALL_FORM = {
 type AddMode = 'url' | 'install'
 
 interface RemoteSetupStepProps {
+  /** Continue onboarding once the remote is added and opened. */
+  onComplete?: () => void
   reloadApp?: () => void
 }
 
 export function RemoteSetupStep({
+  onComplete,
   reloadApp = () => window.location.reload(),
 }: RemoteSetupStepProps) {
   const native = isNativeApp()
@@ -115,7 +119,10 @@ export function RemoteSetupStep({
       }
 
       const connection = addRemoteConnection(input)
+      // Opens the remote in its own window on the desktop; Web Access swaps
+      // the connection in place and reloads.
       await activateConnection(connection.id, reloadApp)
+      onComplete?.()
     } catch (submitError) {
       setError(
         submitError instanceof Error ? submitError.message : String(submitError)
@@ -183,6 +190,7 @@ export function RemoteSetupStep({
         sshPort,
       })
       await activateConnection(connection.id, reloadApp)
+      onComplete?.()
     } catch (installError) {
       setError(
         installError instanceof Error

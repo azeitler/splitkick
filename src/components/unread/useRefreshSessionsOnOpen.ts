@@ -1,5 +1,6 @@
 import { useEffect } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import { chatQueryKeys } from '@/services/chat'
 
 /**
  * Refetch the all-sessions cache whenever a session is opened.
@@ -12,8 +13,12 @@ export function useRefreshSessionsOnOpen(): void {
   const queryClient = useQueryClient()
 
   useEffect(() => {
-    const handler = () =>
+    const handler = () => {
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.unreadSessionCount(),
+      })
       queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
+    }
     window.addEventListener('session-opened', handler)
     return () => window.removeEventListener('session-opened', handler)
   }, [queryClient])

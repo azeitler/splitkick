@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
-import { BellDot, Loader2, CheckCircle2 } from 'lucide-react'
+import { BellDot, Loader2, CheckCircle2 } from '@/components/icons/reicon'
 import {
   Popover,
   PopoverTrigger,
@@ -12,9 +12,11 @@ import {
 } from '@/components/ui/tooltip'
 import { Kbd } from '@/components/ui/kbd'
 import { cn } from '@/lib/utils'
-import { invoke } from '@/lib/transport'
+import { invoke, invokeForServer } from '@/lib/transport'
+import { parseServerResourceKey } from '@/lib/server-resource'
 import { useQueryClient } from '@tanstack/react-query'
-import { useAllSessions } from '@/services/chat'
+import { chatQueryKeys, useAllSessions } from '@/services/chat'
+import { useChatStore } from '@/store/chat-store'
 import { useUnreadCount } from './useUnreadCount'
 import { useRefreshSessionsOnOpen } from './useRefreshSessionsOnOpen'
 import { formatShortcutDisplay } from '@/types/keybindings'
@@ -32,6 +34,8 @@ interface UnreadItem {
   worktreeId: string
   worktreeName: string
   worktreePath: string
+  serverId?: string
+  serverName?: string
 }
 
 export function UnreadBell() {
@@ -43,7 +47,8 @@ export function UnreadBell() {
   const showDesktopKeyboardAffordances = isNativeApp() && !isMobile
   const queryClient = useQueryClient()
   const unreadCount = useUnreadCount()
-  const { data: allSessions, isLoading } = useAllSessions(open)
+  const { data: allSessions, isLoading, isFetching } = useAllSessions(open)
+  const sendingSessionIds = useChatStore(state => state.sendingSessionIds)
   // Listen for command palette event to open the popover
   useEffect(() => {
     const handler = () => setOpen(true)
@@ -55,15 +60,12 @@ export function UnreadBell() {
   // Invalidate cache each time popover opens
   useEffect(() => {
     if (open) {
+      queryClient.invalidateQueries({
+        queryKey: chatQueryKeys.unreadSessionCount(),
+      })
       queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
       setFocusedIndex(0)
-      // Snapshot fallback: if popover was opened via command palette / external
-      // event (bypassing handleOpenChange), seed the snapshot here so subsequent
-      // status flips can't drain the rendered list. No-op if already set.
-      setSnapshotItems(prev => prev ?? unreadItems)
     }
-    // unreadItems intentionally omitted: snapshot only on open transition.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, queryClient])
 
   // Invalidate when any session is opened (so the count stays fresh)
@@ -103,12 +105,23 @@ export function UnreadBell() {
             worktreeId: entry.worktree_id,
             worktreeName: entry.worktree_name,
             worktreePath: entry.worktree_path,
+            serverId: entry.serverId,
+            serverName: entry.serverName,
           })
         }
       }
     }
     return results.sort((a, b) => b.session.updated_at - a.session.updated_at)
   }, [allSessions])
+
+  // Use cached unread rows immediately while the open-triggered refetch runs.
+  // Only defer an empty snapshot because it can be stale and would hide rows
+  // that arrive with the refetch.
+  useEffect(() => {
+    if (!open || !allSessions || (isFetching && unreadItems.length === 0))
+      return
+    setSnapshotItems(prev => prev ?? unreadItems)
+  }, [allSessions, isFetching, open, unreadItems])
 
   // Items rendered inside the popover. While open, prefer the snapshot taken at
   // open time so a queued prompt restarting a session (status flip → unread=false)
@@ -140,8 +153,14 @@ export function UnreadBell() {
   )
 
   const markSessionsOpened = useCallback(
-    async (sessionIds: string[]) => {
-      const ids = [...new Set(sessionIds)].filter(Boolean)
+    async (items: UnreadItem[]) => {
+      const uniqueItems = items.filter(
+        (item, index) =>
+          item.session.id &&
+          items.findIndex(other => other.session.id === item.session.id) ===
+            index
+      )
+      const ids = uniqueItems.map(item => item.session.id)
       if (ids.length === 0) return
 
       const idSet = new Set(ids)
@@ -151,16 +170,40 @@ export function UnreadBell() {
       markSessionsReadOptimistically(ids)
 
       try {
-        if (ids.length === 1) {
-          await invoke('set_session_last_opened', {
-            sessionId: ids[0],
-          })
-        } else {
-          await invoke('set_sessions_last_opened_bulk', { sessionIds: ids })
+        const groups = new Map<string, UnreadItem[]>()
+        for (const item of uniqueItems) {
+          const serverId = item.serverId ?? ''
+          groups.set(serverId, [...(groups.get(serverId) ?? []), item])
         }
+        await Promise.all(
+          [...groups].map(async ([serverId, serverItems]) => {
+            const resourceIds = serverItems.map(item => {
+              const parsed = parseServerResourceKey(item.session.id)
+              return parsed?.serverId === serverId
+                ? parsed.resourceId
+                : item.session.id
+            })
+            const command =
+              resourceIds.length === 1
+                ? 'set_session_last_opened'
+                : 'set_sessions_last_opened_bulk'
+            const args =
+              resourceIds.length === 1
+                ? { sessionId: resourceIds[0] }
+                : { sessionIds: resourceIds }
+            if (serverId) {
+              await invokeForServer(serverId, command, args)
+            } else {
+              await invoke(command, args)
+            }
+          })
+        )
       } catch {
         // Cache invalidation below will reconcile optimistic state.
       } finally {
+        queryClient.invalidateQueries({
+          queryKey: chatQueryKeys.unreadSessionCount(),
+        })
         queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
         window.dispatchEvent(
           new CustomEvent('session-opened', { detail: { sessionIds: ids } })
@@ -171,13 +214,12 @@ export function UnreadBell() {
   )
 
   const handleMarkAllRead = useCallback(async () => {
-    const ids = displayItems.map(item => item.session.id)
-    await markSessionsOpened(ids)
+    await markSessionsOpened(displayItems)
   }, [displayItems, markSessionsOpened])
 
   const handleMarkOneRead = useCallback(
     async (item: UnreadItem) => {
-      await markSessionsOpened([item.session.id])
+      await markSessionsOpened([item])
       // Adjust focus: stay at same index or move up if at end
       setFocusedIndex(i => {
         const newTotal = displayItems.length - 1
@@ -198,34 +240,29 @@ export function UnreadBell() {
 
       // Mark read AFTER auto-open is queued so unreadCount->0 unmount can't race
       // the modal-open path. Bell popover closes via the unreadCount===0 check.
-      void markSessionsOpened([item.session.id])
+      void markSessionsOpened([item])
       setOpen(false)
     },
     [markSessionsOpened]
   )
 
   const handleTriggerClick = useCallback(
-    (e: React.MouseEvent<HTMLButtonElement>) => {
-      // Single finished session: navigate directly. Captures session id at click
-      // time, immune to status flips that would otherwise drop unreadCount→0
-      // and unmount the popover before the user can pick the item.
-      const only = unreadItems.length === 1 ? unreadItems[0] : null
-      if (only) {
-        e.preventDefault()
-        handleSelect(only)
-        return
+    () => {
+      if (allSessions && (!isFetching || unreadItems.length > 0)) {
+        setSnapshotItems(unreadItems)
       }
-      setSnapshotItems(unreadItems)
     },
-    [unreadItems, handleSelect]
+    [allSessions, isFetching, unreadItems]
   )
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
-      if (next) setSnapshotItems(unreadItems)
+      if (next && allSessions && (!isFetching || unreadItems.length > 0)) {
+        setSnapshotItems(unreadItems)
+      }
       setOpen(next)
     },
-    [unreadItems]
+    [allSessions, isFetching, unreadItems]
   )
 
   const handleKeyDown = useCallback(
@@ -340,7 +377,8 @@ export function UnreadBell() {
           </div>
         )}
 
-        {isLoading ? (
+        {isLoading ||
+        (isFetching && snapshotItems === null && unreadItems.length === 0) ? (
           <div className="flex items-center justify-center py-6">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           </div>
@@ -351,7 +389,10 @@ export function UnreadBell() {
         ) : (
           <div className="max-h-[min(400px,60vh)] overflow-y-auto p-1">
             {displayItems.map((item, idx) => {
-              const status = getSessionStatus(item.session)
+              const status = getSessionStatus(
+                item.session,
+                sendingSessionIds[item.session.id] ?? false
+              )
               const StatusIcon = status?.icon ?? CheckCircle2
 
               return (
@@ -377,6 +418,11 @@ export function UnreadBell() {
                       <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/50 shrink-0">
                         {item.projectName}
                       </span>
+                      {item.serverName && (
+                        <span className="truncate text-[11px] text-muted-foreground/50">
+                          · {item.serverName}
+                        </span>
+                      )}
                       <span className="text-[11px] text-muted-foreground/40 shrink-0 ml-auto">
                         {formatRelativeTime(item.session.updated_at)}
                       </span>

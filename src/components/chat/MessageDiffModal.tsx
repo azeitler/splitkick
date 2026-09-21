@@ -14,7 +14,7 @@ import {
   Loader2,
   ExternalLink,
   X,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
@@ -29,13 +29,14 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip'
 import { cn } from '@/lib/utils'
-import { getFilename } from '@/lib/path-utils'
+import { getFilename, joinPaths } from '@/lib/path-utils'
 import { getHunkLineStats } from '@/lib/diff-stats'
 import { useTheme } from '@/hooks/use-theme'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { usePreferences } from '@/services/preferences'
 import { invoke } from '@/lib/transport'
 import { canOpenInEditor } from '@/lib/environment'
+import { FilePathCopyRow } from './FilePathCopyRow'
 
 function DiffBlock({
   fileName,
@@ -183,6 +184,13 @@ export function MessageDiffModal({
   const { theme } = useTheme()
   const { data: preferences } = usePreferences()
 
+  const resolvedFilePath = useMemo(() => {
+    const isAbsolute = /^(?:[A-Za-z]:[\\/]|[\\/])/.test(filePath)
+    return worktreePath && !isAbsolute
+      ? joinPaths(worktreePath, filePath)
+      : filePath
+  }, [filePath, worktreePath])
+
   const resolvedThemeType = useMemo((): 'dark' | 'light' => {
     if (theme === 'system') {
       return window.matchMedia('(prefers-color-scheme: dark)').matches
@@ -193,16 +201,22 @@ export function MessageDiffModal({
   }, [theme])
 
   const relativePath = useMemo(() => {
-    if (worktreePath && filePath.startsWith(worktreePath + '/')) {
-      return filePath.slice(worktreePath.length + 1)
+    const normalizedFilePath = resolvedFilePath.replace(/\\/g, '/')
+    const normalizedWorktreePath = worktreePath?.replace(/\\/g, '/')
+    if (
+      normalizedWorktreePath &&
+      normalizedFilePath.startsWith(`${normalizedWorktreePath}/`)
+    ) {
+      return normalizedFilePath.slice(normalizedWorktreePath.length + 1)
     }
     return getFilename(filePath)
-  }, [filePath, worktreePath])
+  }, [filePath, resolvedFilePath, worktreePath])
 
   // ── Current change: final file → reverse this message's edits → full-file diff ──
   const { data: fileContent, isLoading: isLoadingFile } = useQuery({
-    queryKey: ['file-content', filePath],
-    queryFn: () => invoke<string>('read_file_content', { path: filePath }),
+    queryKey: ['file-content', resolvedFilePath],
+    queryFn: () =>
+      invoke<string>('read_file_content', { path: resolvedFilePath }),
     enabled: isOpen && !patch,
     staleTime: 10_000,
   })
@@ -291,7 +305,7 @@ export function MessageDiffModal({
   const openFileMutation = useMutation({
     mutationFn: () =>
       invoke('open_file_in_default_app', {
-        path: filePath,
+        path: resolvedFilePath,
         editor: preferences?.editor,
       }),
   })
@@ -318,19 +332,24 @@ export function MessageDiffModal({
         showCloseButton={false}
       >
         <div className="flex shrink-0 flex-col gap-2 border-b border-border/60 px-4 pb-3 pt-4 pr-24 sm:flex-row sm:items-center sm:border-0 sm:px-0 sm:pb-0 sm:pt-0 sm:pr-24">
-          <DialogTitle className="flex w-full min-w-0 items-center gap-2 sm:w-auto">
-            <FileText className="h-4 w-4 shrink-0" />
-            <span className="truncate">{getFilename(filePath)}</span>
-            {hasCurrentStats && (
-              <span className="shrink-0 font-mono text-sm font-semibold">
-                <span className="text-green-500">
-                  +{currentStats.additions}
+          <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto">
+            <DialogTitle className="flex min-w-0 items-center gap-2">
+              <FileText className="h-4 w-4 shrink-0" />
+              <span className="truncate">{getFilename(filePath)}</span>
+              {hasCurrentStats && (
+                <span className="shrink-0 font-mono text-sm font-semibold">
+                  <span className="text-green-500">
+                    +{currentStats.additions}
+                  </span>
+                  <span className="mx-1 text-muted-foreground">/</span>
+                  <span className="text-red-500">
+                    -{currentStats.deletions}
+                  </span>
                 </span>
-                <span className="mx-1 text-muted-foreground">/</span>
-                <span className="text-red-500">-{currentStats.deletions}</span>
-              </span>
-            )}
-          </DialogTitle>
+              )}
+            </DialogTitle>
+            <FilePathCopyRow filePath={filePath} iconOnly />
+          </div>
 
           <div className="absolute right-4 top-4 flex items-center gap-1 sm:right-5">
             {!isMobile && canOpenInEditor() && (

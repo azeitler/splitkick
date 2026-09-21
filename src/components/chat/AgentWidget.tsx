@@ -7,7 +7,7 @@ import {
   Users,
   XCircle,
   X,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import type { CodexAgent } from '@/types/chat'
 import { cn } from '@/lib/utils'
 import {

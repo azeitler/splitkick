@@ -5,10 +5,9 @@ import {
   ArrowUpToLine,
   BookmarkPlus,
   Bug,
+  Sentry,
   Eye,
   FileText,
-  FlaskConical,
-  FolderOpen,
   GitBranchPlus,
   GitFork,
   GitCommitHorizontal,
@@ -18,9 +17,10 @@ import {
   Link2,
   MessageSquare,
   RefreshCw,
+  ShieldAlert,
   Undo2,
   Wand2,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -38,6 +38,7 @@ interface MobileToolbarMenuProps {
   hasIssueContexts: boolean
   hasSentryContexts?: boolean
   hasPrContexts: boolean
+  hasAdvisoryContexts?: boolean
 
   onSaveContext: () => void
   onLoadContext: () => void
@@ -59,6 +60,7 @@ export function MobileToolbarMenu({
   hasIssueContexts,
   hasSentryContexts = false,
   hasPrContexts,
+  hasAdvisoryContexts = false,
   onSaveContext,
   onLoadContext,
   onCommit,
@@ -89,36 +91,12 @@ export function MobileToolbarMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align={isMobile ? 'end' : 'start'}
-        className="w-56 max-h-[min(80vh,640px)] overflow-y-auto"
+        className={cn(
+          'max-h-[min(80vh,640px)] overflow-y-auto',
+          isMobile ? 'w-[calc(100vw-1rem)] max-w-none grid grid-cols-2' : 'w-56'
+        )}
       >
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
-          Test
-        </div>
-        <DropdownMenuItem
-          onClick={() => {
-            setMenuOpen(false)
-            window.dispatchEvent(
-              new CustomEvent('magic-command', {
-                detail: { command: 'smoke-test' },
-              })
-            )
-          }}
-        >
-          <FlaskConical className="h-4 w-4" />
-          Smoke Test
-          <span
-            className={cn(
-              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
-              isMobile && 'hidden'
-            )}
-          >
-            X
-          </span>
-        </DropdownMenuItem>
-
-        <DropdownMenuSeparator />
-
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="col-span-2 px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Context
         </div>
         <DropdownMenuItem onClick={onSaveContext}>
@@ -134,15 +112,15 @@ export function MobileToolbarMenu({
           </span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onLoadContext}>
-          <FolderOpen className="h-4 w-4" />
-          Load Context
+          <MessageSquare className="h-4 w-4" />
+          Inject Context
           <span
             className={cn(
               'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
               isMobile && 'hidden'
             )}
           >
-            L
+            J
           </span>
         </DropdownMenuItem>
         <DropdownMenuItem
@@ -207,9 +185,31 @@ export function MobileToolbarMenu({
           </span>
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => {
+            setMenuOpen(false)
+            window.dispatchEvent(
+              new CustomEvent('magic-command', {
+                detail: { command: 'check-github-issues' },
+              })
+            )
+          }}
+        >
+          <Bug className="h-4 w-4" />
+          Check GitHub Issues
+          <span
+            className={cn(
+              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+              isMobile && 'hidden'
+            )}
+          >
+            Q
+          </span>
+        </DropdownMenuItem>
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <DropdownMenuSeparator className="col-span-2" />
+
+        <div className="col-span-2 px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Commit
         </div>
         <DropdownMenuItem onClick={onCommit}>
@@ -254,9 +254,9 @@ export function MobileToolbarMenu({
           </span>
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="col-span-2" />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="col-span-2 px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Sync
         </div>
         <DropdownMenuItem onClick={handleSyncClick}>
@@ -296,9 +296,9 @@ export function MobileToolbarMenu({
           </span>
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="col-span-2" />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="col-span-2 px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Pull Request
         </div>
         <DropdownMenuItem onClick={onOpenPr}>
@@ -311,6 +311,25 @@ export function MobileToolbarMenu({
             )}
           >
             O
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => {
+            setMenuOpen(false)
+            window.dispatchEvent(
+              new CustomEvent('magic-option', { detail: 'link-pr' })
+            )
+          }}
+        >
+          <Link2 className="h-4 w-4" />
+          Link PR
+          <span
+            className={cn(
+              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+              isMobile && 'hidden'
+            )}
+          >
+            B
           </span>
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onReview}>
@@ -362,9 +381,9 @@ export function MobileToolbarMenu({
           </span>
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="col-span-2" />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="col-span-2 px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Release
         </div>
         <DropdownMenuItem
@@ -374,7 +393,7 @@ export function MobileToolbarMenu({
           }}
         >
           <FileText className="h-4 w-4" />
-          Release Notes
+          Generate Release Notes
           <span
             className={cn(
               'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
@@ -391,7 +410,7 @@ export function MobileToolbarMenu({
           }}
         >
           <RefreshCw className="h-4 w-4" />
-          PR Description
+          Generate PR Description
           <span
             className={cn(
               'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
@@ -402,9 +421,9 @@ export function MobileToolbarMenu({
           </span>
         </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="col-span-2" />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="col-span-2 px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Investigate
         </div>
         <DropdownMenuItem
@@ -422,7 +441,11 @@ export function MobileToolbarMenu({
             )
           }}
         >
-          <Bug className="h-4 w-4" />
+          {hasIssueContexts ? (
+            <Bug className="h-4 w-4" />
+          ) : (
+            <Sentry className="h-4 w-4" />
+          )}
           Issue
           <span
             className={cn(
@@ -456,10 +479,33 @@ export function MobileToolbarMenu({
             A
           </span>
         </DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!hasAdvisoryContexts}
+          onClick={() => {
+            if (!hasAdvisoryContexts) return
+            setMenuOpen(false)
+            window.dispatchEvent(
+              new CustomEvent('magic-command', {
+                detail: { command: 'investigate', type: 'advisory' },
+              })
+            )
+          }}
+        >
+          <ShieldAlert className="h-4 w-4" />
+          Advisory
+          <span
+            className={cn(
+              'ml-auto text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded',
+              isMobile && 'hidden'
+            )}
+          >
+            Y
+          </span>
+        </DropdownMenuItem>
 
-        <DropdownMenuSeparator />
+        <DropdownMenuSeparator className="col-span-2" />
 
-        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
+        <div className="col-span-2 px-2 py-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wide">
           Branch
         </div>
         <DropdownMenuItem onClick={onMerge}>

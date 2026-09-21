@@ -1,12 +1,18 @@
 import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
-import { convertFileSrc, convertProjectFileSrc } from '@/lib/transport'
+import { Plus } from '@/components/icons/reicon'
+import {
+  convertFileSrc,
+  convertProjectFileSrc,
+  convertServerFileSrc,
+  convertServerProjectFileSrc,
+} from '@/lib/transport'
 import type { Project } from '@/types/projects'
 import { useAppDataDir } from '@/services/projects'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Kbd } from '@/components/ui/kbd'
 import { HOME_FILTER_MIN_ITEMS } from '@/components/home/home-utils'
+import { LOCAL_SERVER_ID } from '@/types/server-resource'
 
 /**
  * The projects section of the Home view.
@@ -36,10 +42,19 @@ export function ProjectCard({
   const imgError = imgErrorKey === avatarKey
 
   const avatarUrl =
-    project.avatar_path && appDataDir && !imgError
-      ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
+    project.avatar_path && !imgError
+      ? project.serverId
+        ? convertServerFileSrc(project.serverId, project.avatar_path)
+        : appDataDir
+          ? convertFileSrc(`${appDataDir}/${project.avatar_path}`)
+          : null
       : project.default_avatar_path && !imgError
-        ? convertProjectFileSrc(project.default_avatar_path)
+        ? project.serverId
+          ? convertServerProjectFileSrc(
+              project.serverId,
+              project.default_avatar_path
+            )
+          : convertProjectFileSrc(project.default_avatar_path)
         : null
 
   return (
@@ -75,11 +90,47 @@ export function WelcomeProjectGrid({
   const [search, setSearch] = useState('')
   const { data: appDataDir = '' } = useAppDataDir()
 
-  const filtered = useMemo(() => {
-    if (!search.trim()) return projects
-    const q = search.toLowerCase()
-    return projects.filter(p => p.name.toLowerCase().includes(q))
+  const projectGroups = useMemo(() => {
+    const filtered = search.trim()
+      ? projects.filter(project =>
+          project.name.toLowerCase().includes(search.toLowerCase())
+        )
+      : projects
+    const groups = new Map<
+      string,
+      { serverName: string; projects: Project[] }
+    >()
+
+    for (const project of filtered) {
+      const serverId = project.serverId ?? LOCAL_SERVER_ID
+      const group = groups.get(serverId)
+
+      if (group) {
+        group.projects.push(project)
+      } else {
+        groups.set(serverId, {
+          serverName:
+            serverId === LOCAL_SERVER_ID
+              ? 'Local'
+              : (project.serverName ?? serverId),
+          projects: [project],
+        })
+      }
+    }
+
+    return [...groups.entries()]
+      .map(([serverId, group]) => ({ serverId, ...group }))
+      .sort((a, b) => {
+        if (a.serverId === LOCAL_SERVER_ID) return -1
+        if (b.serverId === LOCAL_SERVER_ID) return 1
+        return a.serverName.localeCompare(b.serverName)
+      })
   }, [projects, search])
+
+  const filteredProjectCount = projectGroups.reduce(
+    (total, group) => total + group.projects.length,
+    0
+  )
 
   return (
     <section className="flex w-full min-w-0 flex-col gap-3">
@@ -97,18 +148,30 @@ export function WelcomeProjectGrid({
         )}
       </div>
 
-      <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
-        {filtered.map(project => (
-          <ProjectCard
-            key={project.id}
-            project={project}
-            appDataDir={appDataDir}
-            onClick={() => onProjectClick(project.id)}
-          />
+      <div className="flex w-full flex-col gap-6">
+        {projectGroups.map(group => (
+          <div key={group.serverId} className="flex flex-col gap-3">
+            {/* One local group needs no heading; servers only split a real mix. */}
+            {projectGroups.length > 1 && (
+              <h3 className="text-xs font-medium text-muted-foreground">
+                {group.serverName}
+              </h3>
+            )}
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-3">
+              {group.projects.map(project => (
+                <ProjectCard
+                  key={project.id}
+                  project={project}
+                  appDataDir={appDataDir}
+                  onClick={() => onProjectClick(project.id)}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 
-      {filtered.length === 0 && search && (
+      {filteredProjectCount === 0 && search && (
         <p className="text-sm text-muted-foreground">
           No projects match &ldquo;{search}&rdquo;
         </p>

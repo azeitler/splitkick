@@ -262,6 +262,61 @@ describe('useMessageSending Codex /goal', () => {
     expect(sendMessage.mutate).not.toHaveBeenCalled()
   })
 
+  it('queues direct magic prompts without clearing an active turn', () => {
+    useChatStore.setState({
+      sendingSessionIds: { 'session-1': true },
+      streamingContents: { 'session-1': 'Active response' },
+      activeToolCalls: {
+        'session-1': [
+          {
+            id: 'tool-1',
+            name: 'Read',
+            input: {},
+            status: 'running',
+          },
+        ],
+      },
+    })
+    const { result, sendMessage } = renderUseMessageSending({
+      inputValue: 'unused',
+    })
+
+    act(() => {
+      result.current.sendMessageNow({
+        id: 'magic-prompt-1',
+        message: 'Check GitHub issues',
+        pendingImages: [],
+        pendingFiles: [],
+        pendingSkills: [],
+        pendingTextFiles: [],
+        model: 'gpt-5.5',
+        provider: null,
+        executionMode: 'plan',
+        thinkingLevel: 'off',
+        backend: 'codex',
+        queuedAt: Date.now(),
+      })
+    })
+
+    expect(useChatStore.getState().messageQueues['session-1']).toEqual([
+      expect.objectContaining({
+        id: 'magic-prompt-1',
+        message: 'Check GitHub issues',
+      }),
+    ])
+    expect(useChatStore.getState().streamingContents['session-1']).toBe(
+      'Active response'
+    )
+    expect(useChatStore.getState().activeToolCalls['session-1']).toHaveLength(1)
+    expect(persistEnqueue).toHaveBeenCalledWith(
+      'worktree-1',
+      '/tmp/worktree',
+      'session-1',
+      expect.objectContaining({ id: 'magic-prompt-1' })
+    )
+    expect(sendMessage.mutate).not.toHaveBeenCalled()
+  })
+
   it('blocks send when the selected backend is installed but not authenticated', async () => {
     mockInstalledBackends.installedBackends = ['claude', 'codex']
     mockBackendAuthStatuses.authByBackend = {
@@ -306,7 +361,7 @@ describe('useMessageSending Codex /goal', () => {
     expect(sendMessage.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
         executionMode: 'build',
-        message: 'Work toward the active goal:\n\nShip the feature',
+        message: 'Complete this goal in the current turn:\n\nShip the feature',
         backend: 'codex',
       }),
       expect.any(Object)
@@ -329,7 +384,7 @@ describe('useMessageSending Codex /goal', () => {
     expect(sendMessage.mutate).toHaveBeenCalledWith(
       expect.objectContaining({
         executionMode: 'yolo',
-        message: 'Work toward the active goal:\n\nShip the feature',
+        message: 'Complete this goal in the current turn:\n\nShip the feature',
       }),
       expect.any(Object)
     )
@@ -601,9 +656,10 @@ describe('useMessageSending Codex auto-steer', () => {
     })
   })
 
-  it('steers the running codex turn instead of queueing by default', async () => {
+  it('steers the running codex turn when auto-steer is enabled', async () => {
     vi.mocked(steerCodexTurn).mockResolvedValue(undefined)
     const { result, sendMessage } = renderUseMessageSending({
+      autoSteer: true,
       inputValue: 'also check the tests',
     })
 
@@ -630,6 +686,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { result, sendMessage } = renderUseMessageSending({
       selectedBackend: 'pi',
       selectedModel: 'pi/openai-codex/gpt-5.5',
+      piAutoSteer: true,
       inputValue: 'also inspect pi',
     })
 
@@ -656,6 +713,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { result, sendMessage } = renderUseMessageSending({
       selectedBackend: 'grok',
       selectedModel: 'grok/grok-4.5',
+      grokAutoSteer: true,
       inputValue: 'also inspect grok',
     })
 
@@ -677,11 +735,12 @@ describe('useMessageSending Codex auto-steer', () => {
     expect(sendMessage.mutate).not.toHaveBeenCalled()
   })
 
-  it('steers the running opencode turn instead of queueing by default', async () => {
+  it('steers the running opencode turn when auto-steer is enabled', async () => {
     vi.mocked(steerOpencodeTurn).mockResolvedValue(undefined)
     const { result, sendMessage } = renderUseMessageSending({
       selectedBackend: 'opencode',
       selectedModel: 'opencode/gpt-5.5',
+      opencodeAutoSteer: true,
       inputValue: 'also inspect opencode',
     })
 
@@ -707,6 +766,7 @@ describe('useMessageSending Codex auto-steer', () => {
   it('steers codex attachments instead of queueing when auto-steer is enabled', async () => {
     vi.mocked(steerCodexTurn).mockResolvedValue(undefined)
     const { result } = renderUseMessageSending({
+      autoSteer: true,
       inputValue: 'please inspect',
     })
     useChatStore.setState({
@@ -738,9 +798,8 @@ describe('useMessageSending Codex auto-steer', () => {
     expect(persistEnqueue).not.toHaveBeenCalled()
   })
 
-  it('queues instead of steering when auto-steer is disabled', async () => {
+  it('queues instead of steering by default', async () => {
     const { result } = renderUseMessageSending({
-      autoSteer: false,
       inputValue: 'also check the tests',
     })
 
@@ -820,6 +879,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { result } = renderUseMessageSending({
       selectedBackend: 'grok',
       selectedModel: 'grok/grok-4.5',
+      grokAutoSteer: true,
       inputValue: 'also inspect grok',
     })
     useChatStore.setState({
@@ -851,6 +911,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { result } = renderUseMessageSending({
       selectedBackend: 'grok',
       selectedModel: 'grok/grok-4.5',
+      grokAutoSteer: true,
       inputValue: 'check this paste',
     })
     useChatStore.setState({
@@ -888,6 +949,7 @@ describe('useMessageSending Codex auto-steer', () => {
     const { result } = renderUseMessageSending({
       selectedBackend: 'grok',
       selectedModel: 'grok/grok-4.5',
+      grokAutoSteer: true,
       inputValue:
         'i dont think we need to change the @AppServiceProvider.php as it worked before without it',
     })
@@ -945,6 +1007,7 @@ describe('useMessageSending Codex auto-steer', () => {
   it('falls back to queueing when steering fails', async () => {
     vi.mocked(steerCodexTurn).mockRejectedValue(new Error('turn ended'))
     const { result } = renderUseMessageSending({
+      autoSteer: true,
       inputValue: 'also check the tests',
     })
 

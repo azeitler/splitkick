@@ -90,6 +90,15 @@ partitions updates: client keys never cross the backend transport, while server
 keys continue to use backend persistence. New code can use
 `useClientPreferences()` directly.
 
+Project and worktree display state uses the same ownership rule through the
+versioned `jean-client-view-state-v1` browser storage record. This includes
+canvas sorting and filters, tree expansion, dashboard favorites, sidebar
+layout, and browser/terminal layout. Resource-keyed values must use scoped
+server resource IDs. `useClientViewStatePersistence()` migrates the legacy
+server UI-state values on first load and then makes the client record
+authoritative. Keep session data, running terminal metadata, drafts, and other
+operational state in the backend persistence paths.
+
 Servers expose `get_server_preferences`, `update_server_preferences`, and
 `get_server_capabilities`. Server preference responses omit client fields and
 redact secrets to configured flags. Updates use an opaque revision string to
@@ -129,6 +138,25 @@ Each major system has focused documentation:
 - **[Bundle Optimization](./bundle-optimization.md)** - Build size optimization
 
 Additional systems (no dedicated docs yet):
+
+- **Required agent integrations** - Jean MCP and Agent Browser are mandatory
+  runtime services. Startup always enables the Jean MCP socket, repairs the
+  supported CLI config entries, and installs Agent Browser plus Chrome for
+  Testing when they are missing. These repairs run in the background so the UI
+  and HTTP server do not wait for a first-run browser download. Legacy
+  `jean_mcp_enabled: false` values are migrated to `true`, and Agent Browser is
+  always included in effective MCP server selection. The Settings controls can
+  report status and retry a failed repair, but cannot disable either service.
+  Agent Browser installation follows the official `npm install agent-browser`
+  and `agent-browser install` flow:
+  https://github.com/vercel-labs/agent-browser#installation
+  Jean uses `agent-browser@latest` for its managed npm prefix. Do not remove
+  the explicit tag: npm otherwise keeps the existing caret range, and a range
+  such as `^0.37.1` does not accept `0.38.1` for a pre-1.0 package.
+  After startup settles, the client checks the npm registry for the latest
+  Agent Browser version. When a newer version exists, Jean shows a persistent
+  notification with **Update** and **Later** actions. Jean does not update the
+  browser until the user selects **Update**.
 
 - **Terminal** - Built-in PTY terminal emulator (`src-tauri/src/terminal/`).
   On Unix, terminals launched with a command run it through the user's
@@ -184,6 +212,13 @@ Additional systems (no dedicated docs yet):
   filesystem path to `ssh://[user@]host[:port]/path` and launches the local
   `zed` CLI (SSH fields live on the remote connection profile).
 
+  **Native multi-server scope.** The desktop client can create independent
+  background transports for enabled remote profiles. Each transport is
+  isolated by server ID. Browser Web Access does not use this manager and
+  continues to access only its serving Jean instance. New global client state
+  must use a composite `(serverId, resourceId)` identity; raw server resource
+  IDs are not globally unique.
+
   When an established WebSocket disconnects, **browser web access recovers in
   place** — it does not reload the page. A mobile browser drops the socket every
   time it suspends a background tab, and reloading there would discard the
@@ -203,6 +238,7 @@ Additional systems (no dedicated docs yet):
   canvas session modal and active session are still copied to short-lived
   `sessionStorage` (`captureWebReloadState`), which covers a manual or
   stale-version reload.
+
   1. **Backend PTY registry** (`src-tauri/src/terminal/registry.rs`) keeps the
      real `portable_pty` process alive in `TERMINAL_SESSIONS` keyed by
      `terminal_id`. The frontend is a viewer; refresh never kills the PTY.
@@ -248,6 +284,7 @@ Cursor-specific notes:
 
 - Cursor auth/status checks must use short timeouts; `cursor-agent status/about` can hang indefinitely
 - Cursor chat integration should use `cursor-agent --print --output-format stream-json` and parse structured NDJSON, not terminal text scraping
+- Native Windows does not provide Cursor's OS sandbox, so Jean uses Cursor's `--sandbox disabled` allowlist mode there; enable WSL and use the Linux CLI when OS-level sandboxing is required
 - Cursor only supports `--mode plan` and `--mode ask`; build/yolo omit `--mode` (defaults to full agent) and use `--sandbox disabled --force`
 - Cursor `plan` runs synthesize an `EnterPlanMode` timeline item from Jean so the native plan banner/instructions survive streaming + JSONL reload
 - Cursor history repair should prefer complete message snapshots / repeated-prefix cleanup; avoid destructive suffix trimming during reload
@@ -581,9 +618,26 @@ On Windows, npm installs can return an extensionless Unix shim before the runnab
 shim; the shared selector ranks `.exe`, `.cmd`, `.bat`, extensionless, then `.ps1`.
 
 When launching a resolved CLI path, use `crate::platform::cli_command()` instead of
-`silent_command()` directly. It keeps `CREATE_NO_WINDOW`, wraps Windows `.cmd`/`.bat` shims with
-`cmd.exe /C`, and routes commands through WSL when WSL mode is enabled. Pass the working directory
-as the `cwd` argument so WSL launches receive `wsl.exe --cd ...` rather than a host-only cwd.
+`silent_command()` directly. It keeps `CREATE_NO_WINDOW`, redirects an extensionless Windows shim to
+its `.exe`/`.cmd`/`.bat` sibling, and routes commands through WSL when WSL mode is enabled. Pass the
+working directory as the `cwd` argument so WSL launches receive `wsl.exe --cd ...` rather than a
+host-only cwd. Use `host_cli_command()` instead when the arguments are host paths that a Linux CLI
+inside the WSL distro could not act on, such as `npm install --prefix <app data dir>`.
+
+A `.cmd`/`.bat` shim cannot be launched by `CreateProcessW` directly, and the two ways to launch one
+are not interchangeable. `cli_command()` wraps it in `cmd.exe /C`, which tolerates arguments
+containing newlines — agent backends pass whole chat prompts and pretty-printed JSON schemas as
+arguments, so they need this. `host_cli_command()` instead leaves the shim as the program so
+`std::process` builds the `cmd.exe` line, escaping each argument for batch parsing, quoting the line
+so a spaced shim path such as `C:\Program Files\nodejs\npm.cmd` still parses, and passing `/d` so
+AutoRun cannot run. `std` rejects CR/LF in batch arguments, so only use `host_cli_command()` where
+arguments are simple values such as package names and paths. Do not hand-roll either wrap at a call
+site.
+
+To launch a tool by bare name from PATH (`npm`, `npx`, `node`), use
+`crate::platform::path_tool_command()`. Windows `PATH` search only appends `.exe`, so spawning bare
+`npm` cannot find the `npm.cmd` a stock Node.js install ships (issue #675). A test in
+`platform/cli_detect.rs` fails the build if `npm`/`npx` are ever spawned by bare name again.
 
 When opening a URL in the system browser, use `crate::platform::open_url_in_browser()` (also
 re-exported as `jean_core::open_url_in_browser`). On Windows it runs `cmd /c start` through

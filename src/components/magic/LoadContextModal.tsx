@@ -8,10 +8,10 @@ import {
   GitPullRequest,
   Shield,
   ShieldAlert,
-  Bug,
-} from 'lucide-react'
+  Sentry,
+} from '@/components/icons/reicon'
 import { LinearIcon } from '@/components/icons/LinearIcon'
-import type { LucideIcon } from 'lucide-react'
+import type { LucideIcon } from '@/components/icons/reicon'
 import {
   Dialog,
   DialogContent,
@@ -50,7 +50,7 @@ const TABS: Tab[] = [
   { id: 'prs', label: 'PRs', key: '3', icon: GitPullRequest },
   { id: 'security', label: 'Security', key: '4', icon: Shield },
   { id: 'linear', label: 'Linear', key: '5', icon: LinearIcon },
-  { id: 'sentry', label: 'Sentry', key: '6', icon: Bug },
+  { id: 'sentry', label: 'Sentry', key: '6', icon: Sentry },
 ]
 
 interface LoadContextModalProps {
@@ -588,7 +588,7 @@ export function LoadContextModal({
                     ) : handlers.viewingContext.type === 'linear' ? (
                       <LinearIcon className="h-4 w-4 text-violet-500" />
                     ) : handlers.viewingContext.type === 'sentry' ? (
-                      <Bug className="h-4 w-4 text-orange-500" />
+                      <Sentry className="h-4 w-4 text-orange-500" />
                     ) : (
                       <FolderOpen className="h-4 w-4 text-blue-500" />
                     )}

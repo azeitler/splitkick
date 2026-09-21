@@ -1,5 +1,5 @@
 import { useCallback, useState, useRef, useEffect } from 'react'
-import { Folder, FolderOpen } from 'lucide-react'
+import { Folder, FolderOpen } from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import type { Project } from '@/types/projects'
 import { useProjectsStore } from '@/store/projects-store'
@@ -151,7 +151,7 @@ export function FolderTreeItem({
               onBlur={() => handleSubmitRename(true)}
               onKeyDown={handleKeyDown}
               aria-label="Rename folder"
-              className="flex-1 bg-transparent text-base outline-none ring-1 ring-primary/50 rounded px-1 md:text-sm"
+              className="min-w-0 flex-1 bg-transparent text-base outline-none ring-1 ring-primary/50 rounded px-1 md:text-sm"
               onClick={e => e.stopPropagation()}
               autoFocus
             />

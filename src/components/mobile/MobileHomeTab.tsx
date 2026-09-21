@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react'
-import { Archive, Plus, Settings } from 'lucide-react'
+import { Archive, Plus, Settings } from '@/components/icons/reicon'
 import type { Project } from '@/types/projects'
 import { useAllSessions } from '@/services/chat'
 import { useAppDataDir } from '@/services/projects'

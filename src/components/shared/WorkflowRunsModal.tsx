@@ -15,7 +15,7 @@ import {
   Loader2,
   Wand2,
   RefreshCw,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import {
   Tooltip,
   TooltipTrigger,
@@ -62,6 +62,7 @@ import {
   getLatestFailedWorkflowRuns,
   isFailedWorkflowRun,
   isReusableWorkflowInvestigationSession,
+  resolveOpenWorkflowWorktree,
 } from './workflow-run-utils'
 
 function timeAgo(dateString: string): string {
@@ -450,8 +451,23 @@ export function WorkflowRunsModal() {
 
       // Final fallback: use active worktree
       if (!targetWorktreeId || !targetWorktreePath) {
-        targetWorktreeId = useChatStore.getState().activeWorktreeId
-        targetWorktreePath = useChatStore.getState().activeWorktreePath
+        const chatState = useChatStore.getState()
+        const modalWorktreeId = useUIStore.getState().sessionChatModalWorktreeId
+        const cachedWorktreeLists = queryClient
+          .getQueriesData<Worktree[]>({
+            queryKey: projectsQueryKeys.all,
+          })
+          .flatMap(([queryKey, data]) =>
+            queryKey[1] === 'worktrees' && Array.isArray(data) ? [data] : []
+          )
+        const openWorktree = resolveOpenWorkflowWorktree(
+          chatState.activeWorktreeId,
+          chatState.activeWorktreePath,
+          modalWorktreeId,
+          cachedWorktreeLists
+        )
+        targetWorktreeId = openWorktree?.id ?? null
+        targetWorktreePath = openWorktree?.path ?? null
       }
 
       if (!targetWorktreeId || !targetWorktreePath) {

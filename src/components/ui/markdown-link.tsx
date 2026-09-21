@@ -1,5 +1,5 @@
 import { useContext, useState, type MouseEvent, type ReactNode } from 'react'
-import { ExternalLink } from 'lucide-react'
+import { ExternalLink } from '@/components/icons/reicon'
 import {
   Tooltip,
   TooltipTrigger,

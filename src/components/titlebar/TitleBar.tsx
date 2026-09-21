@@ -26,7 +26,7 @@ import {
   Search,
   Settings,
   X,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { goBack, goForward } from '@/lib/navigation-history'
 import { useNavigationHistoryStore } from '@/store/navigation-history-store'
 import { usePreferences } from '@/services/preferences'
@@ -39,15 +39,18 @@ import { CLI_DISPLAY_NAMES, resolveCliPathUpdateAction } from '@/lib/cli-update'
 import type { PendingCliUpdate } from '@/store/ui-store'
 import { toast } from 'sonner'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
-import { isNativeApp } from '@/lib/environment'
+import { aggregatesServers, isNativeApp } from '@/lib/environment'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
-import { releaseUrlForVersion } from '@/lib/release-url'
 import { applyServerUpdate } from '@/hooks/useServerUpdateCheck'
 import { LinuxWindowControls } from './LinuxWindowControls'
 import { UsagePopover } from './UsagePopover'
 import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
+import { useRemoteConnections } from '@/lib/remote-connections'
+import { useProjectsStore } from '@/store/projects-store'
+import { resolveHeaderServerLabel } from './server-context'
+import { MinimizedCliUpdate } from './MinimizedCliUpdate'
 
 /** The desktop title bar's icon buttons. A phone's title bar has none. */
 const titleBarButtonClass =
@@ -87,6 +90,16 @@ export function TitleBar({
       DEFAULT_KEYBINDINGS.toggle_file_browser) as string
   )
   const native = isNativeApp()
+  // Only the main window mixes servers, so only it needs to say which one the
+  // selected project lives on. A connection window names its remote in the
+  // window title instead.
+  const aggregates = aggregatesServers()
+  const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
+  const remoteConnections = useRemoteConnections()
+  const serverLabel = resolveHeaderServerLabel(
+    selectedProjectId,
+    remoteConnections
+  )
 
   const [appVersion, setAppVersion] = useState<string>(FALLBACK_APP_VERSION)
   useEffect(() => {
@@ -150,8 +163,8 @@ export function TitleBar({
         {!zenMode && (
           <div
             className={cn(
-              'relative z-10 flex items-center gap-1 pt-1',
-              native && isClientMacOS ? 'pl-[80px]' : 'pl-2'
+              'relative z-10 flex items-center gap-1',
+              native && isClientMacOS ? 'mac-titlebar-actions' : 'pl-2 pt-1'
             )}
           >
             <Tooltip>
@@ -238,11 +251,21 @@ export function TitleBar({
         className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[50%] px-2"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        {!hideTitle && (
-          <span className="block truncate text-sm font-medium text-foreground/80">
-            {title}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {!hideTitle && (
+            <span className="block truncate text-sm font-medium text-foreground/80">
+              {title}
+            </span>
+          )}
+          {aggregates && (
+            <span
+              className="flex shrink-0 items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+              aria-label={`Current Jean server: ${serverLabel}`}
+            >
+              {serverLabel}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Right side - Unread badge, updates, links, version + Windows/Linux
@@ -254,6 +277,7 @@ export function TitleBar({
         <UnreadBell />
         {!zenMode && (
           <>
+            <MinimizedCliUpdate />
             <CliUpdatesIndicator />
             <ServerUpdateIndicator />
             {appVersion && <UpdateIndicator />}
@@ -290,15 +314,6 @@ export function TitleBar({
               </TooltipTrigger>
               <TooltipContent>Sponsor</TooltipContent>
             </Tooltip>
-            {appVersion && (
-              <button
-                type="button"
-                onClick={() => openExternal(releaseUrlForVersion(appVersion))}
-                className="px-1.5 text-[0.625rem] text-foreground/40 transition-colors cursor-pointer hover:text-foreground/60"
-              >
-                v{appVersion}
-              </button>
-            )}
           </>
         )}
         {native && isClientLinux && <LinuxWindowControls />}

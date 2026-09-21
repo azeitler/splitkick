@@ -9,10 +9,9 @@ import {
   ArrowDownUp,
   ArrowUp,
   ChevronDown,
-  GitBranch,
   Pause,
   Search,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import {
   SessionContextMenuItems,
@@ -137,6 +136,7 @@ export function WorktreeItem({
   const loadingOperation = useChatStore(
     state => state.worktreeLoadingOperations[worktree.id] ?? null
   )
+  const namingSessionIds = useChatStore(state => state.namingSessionIds)
   const isSelected = selectedWorktreeId === worktree.id
   const isBase = isBaseSession(worktree)
 
@@ -765,7 +765,8 @@ export function WorktreeItem({
           const result = await gitPush(
             worktree.path,
             worktree.pr_number,
-            remote
+            remote,
+            worktree.id
           )
           triggerImmediateGitPoll()
           fetchWorktreesStatus(projectId)
@@ -796,7 +797,7 @@ export function WorktreeItem({
     [pickRemoteOrRun, worktree.path, worktree.pr_number, projectId]
   )
 
-  const gitSyncButton = preferences?.git_sync_button ?? false
+  const gitSyncButton = preferences?.git_sync_button ?? true
 
   const handleSync = useCallback(
     (e: React.MouseEvent) => {
@@ -851,7 +852,7 @@ export function WorktreeItem({
 
   return (
     <div>
-      <WorktreeContextMenu actions={menuActions}>
+      <WorktreeContextMenu actions={menuActions} serverId={worktree.serverId}>
         <div
           role="button"
           tabIndex={0}
@@ -945,17 +946,6 @@ export function WorktreeItem({
                   <Search className="size-3" />
                 </button>
               )}
-              {/* Show branch name only when different from displayed name */}
-              {(() => {
-                const displayBranch =
-                  gitStatus?.current_branch ?? worktree.branch
-                return displayBranch !== worktree.name ? (
-                  <span className="ml-0.5 inline-flex max-w-[80px] items-center gap-0.5 truncate text-xs text-muted-foreground">
-                    <GitBranch className="h-2.5 w-2.5" />
-                    {displayBranch}
-                  </span>
-                ) : null
-              })()}
             </span>
           )}
 
@@ -1115,6 +1105,8 @@ export function WorktreeItem({
                 {group.cards.map(card => {
                   const config = statusConfig[card.status]
                   const isRenaming = renamingSessionId === card.session.id
+                  const isGeneratingName =
+                    namingSessionIds[card.session.id] ?? false
                   const sessionActivityAt = getSessionActivityTimestamp(
                     card.session
                   )
@@ -1161,7 +1153,9 @@ export function WorktreeItem({
                             className="flex-1 truncate min-w-0 text-xs"
                             title={`${config.label}: ${card.session.name || 'Untitled'}`}
                           >
-                            {card.session.name || 'Untitled'}
+                            {isGeneratingName
+                              ? 'Generating…'
+                              : card.session.name || 'Untitled'}
                           </span>
                           {starredIds.has(card.session.id) && <StarGlyph />}
                           {pinnedIds.has(card.session.id) && <PinGlyph />}

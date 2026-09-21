@@ -20,7 +20,7 @@ function TouchProbe({
   edge?: 'left' | 'right'
   visualFeedback?: boolean
 }) {
-  const { containerRef, translateX, isSwiping } = useSwipeBack({
+  const { containerRef, translateX, isSwiping, progress } = useSwipeBack({
     onSwipeBack,
     enabled,
     animateToEnd,
@@ -34,6 +34,7 @@ function TouchProbe({
       ref={containerRef}
       data-testid="swipe-target"
       data-translate={translateX}
+      data-progress={progress}
       data-swiping={isSwiping ? 'true' : 'false'}
       style={{ width: 400, height: 600 }}
     />
@@ -120,6 +121,19 @@ describe('useSwipeBack', () => {
     expect(onSwipeBack).toHaveBeenCalledTimes(1)
   })
 
+  it('reserves horizontal touch movement while the gesture is enabled', () => {
+    const { getByTestId, rerender } = render(
+      <TouchProbe onSwipeBack={vi.fn()} />
+    )
+    const el = getByTestId('swipe-target')
+
+    expect(el.style.touchAction).toBe('pan-y')
+
+    rerender(<TouchProbe onSwipeBack={vi.fn()} enabled={false} />)
+
+    expect(el.style.touchAction).toBeFalsy()
+  })
+
   it('resets finger-tracked feedback after opening an overlay', () => {
     const onSwipeBack = vi.fn()
     const { getByTestId } = render(
@@ -136,7 +150,8 @@ describe('useSwipeBack', () => {
       fireTouch(el, 'touchstart', 8)
       fireTouch(el, 'touchmove', 180)
     })
-    expect(el).toHaveAttribute('data-translate', '172')
+    expect(el).toHaveAttribute('data-translate', '180')
+    expect(el).toHaveAttribute('data-progress', '1')
 
     act(() => {
       fireTouch(el, 'touchend', 180)

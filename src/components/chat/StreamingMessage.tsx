@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo } from 'react'
-import { Activity, Loader2 } from 'lucide-react'
+import { Activity, Loader2 } from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { Markdown } from '@/components/ui/markdown'
 import type {
@@ -84,6 +84,8 @@ interface StreamingMessageProps {
   areQuestionsSkipped: (sessionId: string) => boolean
   /** Callback to copy a steered user prompt */
   onCopySteeredText?: (text: string) => void
+  /** Hide the edited-files summary when a compact parent renders it outside. */
+  hideEditedFiles?: boolean
 }
 
 /**
@@ -103,6 +105,7 @@ export const StreamingMessage = memo(function StreamingMessage({
   getSubmittedAnswers,
   areQuestionsSkipped,
   onCopySteeredText,
+  hideEditedFiles = false,
 }: StreamingMessageProps) {
   const resolvedPlan = useMemo(
     () =>
@@ -454,7 +457,7 @@ export const StreamingMessage = memo(function StreamingMessage({
         )}
 
         {/* Show edited files during streaming */}
-        <EditedFilesDisplay toolCalls={toolCalls} />
+        {!hideEditedFiles && <EditedFilesDisplay toolCalls={toolCalls} />}
       </div>
     </MessageThreadContextMenu>
   )

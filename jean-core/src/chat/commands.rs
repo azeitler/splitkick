@@ -2,7 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::Stdio;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -12,17 +11,19 @@ use tauri::AppHandle;
 use uuid::Uuid;
 
 use super::naming::{spawn_naming_task, NamingRequest};
-use super::registry::{cancel_process, cancel_process_if_running};
+use super::registry::{
+    cancel_process, cancel_process_if_running, has_active_send, release_active_send, SendClaim,
+};
 use super::run_log;
 use super::storage::{
     cleanup_combined_context_files, delete_session_data, get_base_index_path, get_data_dir,
-    get_index_path, get_session_dir, load_metadata, load_sessions, save_metadata,
-    with_existing_metadata_mut, with_metadata_mut, with_sessions_mut,
+    get_index_path, get_session_dir, load_index, load_metadata, load_sessions, save_metadata,
+    with_existing_metadata_mut, with_index_mut, with_metadata_mut, with_sessions_mut,
 };
 use super::types::{
     AllSessionsEntry, AllSessionsResponse, Backend, ChatMessage, ClaudeContext, EffortLevel,
-    LabelData, MessageRole, PendingFork, RunStatus, Session, ThinkingLevel, WorktreeIndex,
-    WorktreeSessions,
+    LabelData, MessageRole, PendingFork, RunStatus, Session, SessionUnreadSummary, ThinkingLevel,
+    WorktreeIndex, WorktreeSessions,
 };
 use crate::claude_cli::resolve_cli_binary;
 use crate::http_server::EmitExt;
@@ -36,7 +37,7 @@ const QUEUE_DEFAULT_ALLOWED_TOOLS: [&str; 4] = ["Bash(git:*)", "Read", "Glob", "
 const IMAGE_ONLY_DEFAULT_PROMPT: &str = "Please check this image and tell me what is wrong.";
 const TEXT_ONLY_DEFAULT_PROMPT: &str = "Please check the attached text as reference.";
 
-fn resumed_grok_tail_error_event(
+fn resumed_tail_error_event(
     session_id: &str,
     worktree_id: &str,
     error: &str,
@@ -107,20 +108,6 @@ When specifying subagent_type for Task tool calls, always use the fully qualifie
 static BACKEND_QUEUE_DRAINING: Lazy<Mutex<HashSet<String>>> =
     Lazy::new(|| Mutex::new(HashSet::new()));
 
-/// Sessions with a `send_chat_message` call currently in flight.
-///
-/// The registry-based "actively managed" guard only catches duplicates after a
-/// process/turn is registered, leaving a window where two concurrent sends
-/// (frontend queue processor vs backend queue drain vs another client) both
-/// pass the check and spawn duplicate runs. This claim is taken atomically at
-/// `send_chat_message` entry and held for the whole call — unless cancel
-/// releases it early so a follow-up send is not stuck (#329).
-///
-/// Values are generation tokens so an early cancel release cannot be clobbered
-/// by a later `Drop` from the cancelled claim after a new claim was acquired.
-static ACTIVE_SENDS: Lazy<Mutex<HashMap<String, u64>>> = Lazy::new(|| Mutex::new(HashMap::new()));
-static SEND_CLAIM_GENERATION: AtomicU64 = AtomicU64::new(1);
-
 /// Whether a session has no prior user messages for auto-naming purposes.
 ///
 /// After the NDJSON migration, `Session.messages` is always empty (messages are
@@ -149,57 +136,16 @@ fn should_auto_name_branch(worktree: Option<&Worktree>) -> bool {
                 // Existing-branch worktrees record that branch as their own base.
                 // Its user-selected name must be preserved.
                 && worktree.base_branch.as_deref() != Some(worktree.branch.as_str())
+                // Only Jean's random placeholder names are eligible. Names created
+                // from PRs, issues, alerts, Sentry, or explicit user input already
+                // describe the work and must survive the first prompt.
+                && crate::projects::is_generated_workspace_name(&worktree.name)
         })
         .unwrap_or(true)
 }
 
-/// RAII claim on a session's send slot — released on drop (any return path).
-struct SendClaim {
-    session_id: String,
-    generation: u64,
-}
-
-impl SendClaim {
-    fn try_acquire(session_id: &str) -> Option<Self> {
-        let mut active = ACTIVE_SENDS.lock().unwrap();
-        if active.contains_key(session_id) {
-            return None;
-        }
-        let generation = SEND_CLAIM_GENERATION.fetch_add(1, Ordering::Relaxed);
-        active.insert(session_id.to_string(), generation);
-        Some(Self {
-            session_id: session_id.to_string(),
-            generation,
-        })
-    }
-}
-
-impl Drop for SendClaim {
-    fn drop(&mut self) {
-        let mut active = ACTIVE_SENDS.lock().unwrap();
-        // Only clear if we still own the slot — cancel may have released early
-        // and a newer send may already hold a different generation.
-        if active.get(&self.session_id) == Some(&self.generation) {
-            active.remove(&self.session_id);
-        }
-    }
-}
-
-/// Release the in-flight send claim for a session after cancel so a follow-up
-/// prompt is not rejected with "Session already has an active request" while
-/// the cancelled worker finishes teardown (#329).
-fn release_active_send(session_id: &str) {
-    if ACTIVE_SENDS.lock().unwrap().remove(session_id).is_some() {
-        log::info!("[SendChat] released active send claim after cancel session={session_id}");
-    }
-}
-
-fn has_active_send(session_id: &str) -> bool {
-    ACTIVE_SENDS.lock().unwrap().contains_key(session_id)
-}
-
 fn should_forward_cancel_request(session_id: &str) -> bool {
-    has_active_send(session_id) || super::registry::is_session_actively_managed(session_id)
+    super::registry::is_session_actively_managed(session_id)
 }
 
 fn clear_stale_pending_cancel_before_send(session_id: &str) {
@@ -261,11 +207,18 @@ fn resolve_codex_global_system_prompt(
     preferences_prompt: Option<&str>,
     execution_mode: Option<&str>,
 ) -> String {
-    preferences_prompt
+    if let Some(custom_prompt) = preferences_prompt
         .map(str::trim)
         .filter(|prompt| !is_codex_default_global_system_prompt(prompt))
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| codex_default_global_system_prompt(execution_mode))
+    {
+        return custom_prompt.to_string();
+    }
+
+    format!(
+        "{}\n\n{}",
+        crate::default_global_system_prompt(),
+        codex_default_global_system_prompt(execution_mode)
+    )
 }
 
 fn append_codex_execution_mode_instruction(parts: &mut Vec<String>, execution_mode: Option<&str>) {
@@ -417,9 +370,14 @@ fn should_clear_stale_resumed_claude_session(
     has_tool_calls: bool,
     has_content_blocks: bool,
     has_usage: bool,
-    _was_cancelled: bool,
+    was_cancelled: bool,
 ) -> bool {
-    was_resuming && !has_content && !has_tool_calls && !has_content_blocks && !has_usage
+    was_resuming
+        && !was_cancelled
+        && !has_content
+        && !has_tool_calls
+        && !has_content_blocks
+        && !has_usage
 }
 
 fn default_model_for_backend(
@@ -450,6 +408,14 @@ fn normalize_optional_string(value: Option<String>) -> Option<String> {
     value
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
+}
+
+fn resolve_global_system_prompt(preferences_prompt: Option<&str>) -> String {
+    preferences_prompt
+        .map(str::trim)
+        .filter(|prompt| !prompt.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(crate::default_global_system_prompt)
 }
 
 /// Resolve the model used for a send.
@@ -492,17 +458,10 @@ fn build_kimi_system_prompt(
     if let Some(language) = ai_language.map(str::trim).filter(|value| !value.is_empty()) {
         parts.push(format!("Respond to the user in {language}."));
     }
-    if let Ok(preferences) = crate::load_preferences_sync(app) {
-        if let Some(prompt) = preferences
-            .magic_prompts
-            .global_system_prompt
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-        {
-            parts.push(prompt.to_string());
-        }
-    }
+    let preferences = crate::load_preferences_sync(app).ok();
+    parts.push(resolve_global_system_prompt(preferences.as_ref().and_then(
+        |prefs| prefs.magic_prompts.global_system_prompt.as_deref(),
+    )));
     if let Some(prompt) = parallel_prompt
         .map(str::trim)
         .filter(|value| !value.is_empty())
@@ -873,6 +832,94 @@ pub async fn list_all_sessions(app: AppHandle) -> Result<AllSessionsResponse, St
 
     log::trace!("Found {} worktree entries with sessions", entries.len());
     Ok(AllSessionsResponse { entries })
+}
+
+/// Return only the unread-session count across all projects.
+///
+/// The unread badge does not need session objects or message history. Keeping
+/// this result as a scalar prevents the frontend from retaining every session
+/// in a global TanStack Query cache just to render a badge.
+pub async fn get_unread_session_count(app: AppHandle) -> Result<usize, String> {
+    log::trace!("Counting unread sessions across all worktrees");
+
+    let projects_data = load_projects_data(&app)?;
+    let mut unread_count = 0;
+
+    for project in &projects_data.projects {
+        for worktree in projects_data
+            .worktrees_for_project(&project.id)
+            .into_iter()
+            .filter(|worktree| worktree.archived_at.is_none())
+        {
+            let index = load_index(&app, &worktree.id)?;
+            let mut legacy_summaries = HashMap::new();
+
+            for entry in &index.sessions {
+                if entry.archived_at.is_some() {
+                    continue;
+                }
+
+                let summary = if let Some(summary) = &entry.unread_summary {
+                    summary.clone()
+                } else {
+                    // Older indexes do not contain summaries. Read each legacy
+                    // metadata file once, then persist the compact result so
+                    // future count checks stay index-only.
+                    match load_metadata(&app, &entry.id) {
+                        Ok(Some(metadata)) => {
+                            let summary = metadata.to_unread_summary();
+                            legacy_summaries.insert(entry.id.clone(), summary.clone());
+                            summary
+                        }
+                        Ok(None) => {
+                            let summary = SessionUnreadSummary::default();
+                            legacy_summaries.insert(entry.id.clone(), summary.clone());
+                            summary
+                        }
+                        Err(error) => {
+                            log::warn!(
+                                "Failed to load legacy unread metadata for session {}: {error}",
+                                entry.id
+                            );
+                            continue;
+                        }
+                    }
+                };
+
+                if summary.is_unread() {
+                    unread_count += 1;
+                }
+            }
+
+            if !legacy_summaries.is_empty() {
+                let migration_result = with_index_mut(&app, &worktree.id, |index| {
+                    for (session_id, summary) in &legacy_summaries {
+                        if let Some(entry) = index.find_session_mut(session_id) {
+                            if entry.unread_summary.is_none() {
+                                entry.unread_summary = Some(summary.clone());
+                            }
+                        }
+                    }
+                    Ok(())
+                });
+                if let Err(error) = migration_result {
+                    log::warn!(
+                        "Failed to persist unread index migration for worktree {}: {error}",
+                        worktree.id
+                    );
+                }
+            }
+        }
+    }
+
+    Ok(unread_count)
+}
+
+fn is_unread_session(session: &Session) -> bool {
+    if session.archived_at.is_some() {
+        return false;
+    }
+    SessionUnreadSummary::from_session(session).is_unread()
 }
 
 /// Get a single session with message history.
@@ -1891,8 +1938,10 @@ fn plan_mode_content_waits_for_approval(
     // rejected WebFetch in plan mode) must not park the session on plan approval.
     // Grok waits only when a real/synthetic ExitPlanMode tool is present
     // (`has_blocking_tool` path via inject_synthetic_plan on plan-like content).
-    matches!(backend, Backend::Codex | Backend::Opencode | Backend::Kimi)
-        && execution_mode == Some("plan")
+    matches!(
+        backend,
+        Backend::Claude | Backend::Codex | Backend::Opencode | Backend::Kimi
+    ) && execution_mode == Some("plan")
         && has_content
         && !has_plan_tool
 }
@@ -2005,10 +2054,8 @@ pub async fn close_session(
             };
         }
 
-        // When the last non-archived session is closed, leave the worktree empty
-        // (active_session_id = None). Frontend navigates to the project picker
-        // (issue #501) instead of auto-creating a fallback "Session 1".
         // If non-archived sessions remain but active is unset, pick the first.
+        // The command creates a new empty session after this write when none remain.
         let first_non_archived = sessions
             .sessions
             .iter()
@@ -2026,6 +2073,23 @@ pub async fn close_session(
         );
         Ok(sessions.active_session_id.clone())
     })?;
+
+    if new_active.is_none() {
+        let session = create_session(
+            app.clone(),
+            worktree_id,
+            worktree_path,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await?;
+        return Ok(Some(session.id));
+    }
 
     emit_sessions_cache_invalidation(&app);
     Ok(new_active)
@@ -2122,10 +2186,8 @@ pub async fn archive_session(
         };
         sessions.active_session_id = new_active;
 
-        // When the last non-archived session is archived/deleted, leave the worktree
-        // empty (active_session_id = None). Frontend navigates to the project picker
-        // (issue #501) instead of auto-creating a fallback "Session 1".
         // If non-archived sessions remain but active is unset, pick the first.
+        // The command creates a new empty session after this write when none remain.
         let first_non_archived = sessions
             .sessions
             .iter()
@@ -2150,6 +2212,23 @@ pub async fn archive_session(
         }
         Ok(sessions.active_session_id.clone())
     })?;
+
+    if new_active.is_none() {
+        let session = create_session(
+            app.clone(),
+            worktree_id,
+            worktree_path,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        )
+        .await?;
+        return Ok(Some(session.id));
+    }
 
     emit_sessions_cache_invalidation(&app);
     Ok(new_active)
@@ -2810,26 +2889,25 @@ pub async fn send_chat_message(
 
     clear_stale_pending_cancel_before_send(&session_id);
 
-    // Guard: atomically claim the session's send slot for the duration of this
-    // call. Closes the race window where two concurrent sends (queue processor
-    // vs backend drain vs another client) both pass the registry check below
-    // before either registers a process.
-    let Some(_send_claim) = SendClaim::try_acquire(&session_id) else {
-        log::warn!(
-            "[SendChat] REJECTED session={session_id} — concurrent send in flight (duplicate send)"
-        );
-        return Err("Session already has an active request".to_string());
-    };
-
-    // Guard: reject if this session already has an active process being tailed.
-    // Without this, a double-send (frontend race, page reload, etc.) creates
-    // duplicate run entries and orphans the first process in the registry.
+    // Check existing managed work before taking our own active-send claim.
+    // is_session_actively_managed includes active-send claims, so checking it
+    // after acquisition would reject every new send as its own duplicate.
     if super::registry::is_session_actively_managed(&session_id) {
         log::warn!(
             "[SendChat] REJECTED session={session_id} — already actively managed (duplicate send)"
         );
         return Err("Session already has an active request".to_string());
     }
+
+    // Atomically claim the session's send slot for the duration of this call.
+    // Two callers can pass the check above concurrently, but only one can take
+    // this claim before either caller registers a process.
+    let Some(_send_claim) = SendClaim::try_acquire(&session_id) else {
+        log::warn!(
+            "[SendChat] REJECTED session={session_id} — concurrent send in flight (duplicate send)"
+        );
+        return Err("Session already has an active request".to_string());
+    };
 
     // Load sessions
     let mut sessions = load_sessions(&app, &worktree_path, &worktree_id)?;
@@ -3361,6 +3439,15 @@ pub async fn send_chat_message(
         custom_profile_name.as_deref(),
     )?;
 
+    // Recent sessions are built from run metadata. Invalidate only after the
+    // run is durable so a new session's first prompt cannot race the refetch.
+    if let Err(e) = app.emit_all(
+        "cache:invalidate",
+        &serde_json::json!({ "keys": ["recent-worktrees"] }),
+    ) {
+        log::error!("Failed to emit cache:invalidate for recent sessions: {e}");
+    }
+
     // Get file paths for detached execution
     let input_file = run_log_writer.input_file_path()?;
     let output_file = run_log_writer.output_file_path()?;
@@ -3678,6 +3765,14 @@ pub async fn send_chat_message(
                                 );
                             }
 
+                            let waiting_for_plan = thread_execution_mode.as_deref() == Some("plan")
+                                && !response.content.is_empty()
+                                && !response.tool_calls.iter().any(is_pending_plan_tool_call)
+                                && !response
+                                    .tool_calls
+                                    .iter()
+                                    .any(is_pending_question_tool_call);
+
                             break Ok((
                                 pid,
                                 UnifiedResponse {
@@ -3686,7 +3781,7 @@ pub async fn send_chat_message(
                                     tool_calls: response.tool_calls,
                                     content_blocks: response.content_blocks,
                                     cancelled: response.cancelled,
-                                    waiting_for_plan: false,
+                                    waiting_for_plan,
                                     error_emitted: false,
                                     usage: response.usage,
                                     backend: Backend::Claude,
@@ -4164,7 +4259,7 @@ pub async fn send_chat_message(
                             tool_calls: response.tool_calls,
                             content_blocks: response.content_blocks,
                             cancelled: response.cancelled,
-                            waiting_for_plan: false,
+                            waiting_for_plan: response.waiting_for_plan,
                             error_emitted: response.error_emitted,
                             usage: response.usage,
                             backend: Backend::Codex,
@@ -4232,24 +4327,13 @@ pub async fn send_chat_message(
                         }
                     }
 
-                    // Global system prompt from preferences
-                    if let Ok(prefs_path) = crate::get_preferences_path(&thread_app) {
-                        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
-                            if let Ok(prefs) =
-                                serde_json::from_str::<crate::AppPreferences>(&contents)
-                            {
-                                if let Some(prompt) = prefs
-                                    .magic_prompts
-                                    .global_system_prompt
-                                    .as_deref()
-                                    .map(|s| s.trim())
-                                    .filter(|s| !s.is_empty())
-                                {
-                                    system_prompt_parts.push(prompt.to_string());
-                                }
-                            }
-                        }
-                    }
+                    // Global system prompt from preferences, with the shared default fallback.
+                    let preferences = crate::load_preferences_sync(&thread_app).ok();
+                    system_prompt_parts.push(resolve_global_system_prompt(
+                        preferences
+                            .as_ref()
+                            .and_then(|prefs| prefs.magic_prompts.global_system_prompt.as_deref()),
+                    ));
 
                     // Parallel execution prompt
                     if let Some(prompt) = &thread_parallel_prompt {
@@ -4531,7 +4615,11 @@ pub async fn send_chat_message(
                 ) {
                     Ok(response) => {
                         let waiting_for_plan = thread_execution_mode.as_deref() == Some("plan")
-                            && !response.content.is_empty();
+                            && !response.content.is_empty()
+                            && !response
+                                .tool_calls
+                                .iter()
+                                .any(is_pending_question_tool_call);
                         Ok((
                             // OpenCode has no child process PID; use 0 as a sentinel.
                             // Crash recovery checks run.pid via is_process_alive — None means
@@ -4587,23 +4675,10 @@ pub async fn send_chat_message(
                         }
                     }
 
-                    if let Ok(prefs_path) = crate::get_preferences_path(&thread_app) {
-                        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
-                            if let Ok(prefs) =
-                                serde_json::from_str::<crate::AppPreferences>(&contents)
-                            {
-                                if let Some(prompt) = prefs
-                                    .magic_prompts
-                                    .global_system_prompt
-                                    .as_deref()
-                                    .map(|s| s.trim())
-                                    .filter(|s| !s.is_empty())
-                                {
-                                    parts.push(prompt.to_string());
-                                }
-                            }
-                        }
-                    }
+                    let preferences = crate::load_preferences_sync(&thread_app).ok();
+                    parts.push(resolve_global_system_prompt(preferences.as_ref().and_then(
+                        |prefs| prefs.magic_prompts.global_system_prompt.as_deref(),
+                    )));
 
                     if let Some(prompt) = &thread_parallel_prompt {
                         let prompt = prompt.trim();
@@ -4765,23 +4840,10 @@ pub async fn send_chat_message(
                         }
                     }
 
-                    if let Ok(prefs_path) = crate::get_preferences_path(&thread_app) {
-                        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
-                            if let Ok(prefs) =
-                                serde_json::from_str::<crate::AppPreferences>(&contents)
-                            {
-                                if let Some(prompt) = prefs
-                                    .magic_prompts
-                                    .global_system_prompt
-                                    .as_deref()
-                                    .map(|s| s.trim())
-                                    .filter(|s| !s.is_empty())
-                                {
-                                    parts.push(prompt.to_string());
-                                }
-                            }
-                        }
-                    }
+                    let preferences = crate::load_preferences_sync(&thread_app).ok();
+                    parts.push(resolve_global_system_prompt(preferences.as_ref().and_then(
+                        |prefs| prefs.magic_prompts.global_system_prompt.as_deref(),
+                    )));
 
                     if let Some(prompt) = &thread_parallel_prompt {
                         let prompt = prompt.trim();
@@ -4908,23 +4970,10 @@ pub async fn send_chat_message(
                         }
                     }
 
-                    if let Ok(prefs_path) = crate::get_preferences_path(&thread_app) {
-                        if let Ok(contents) = std::fs::read_to_string(&prefs_path) {
-                            if let Ok(prefs) =
-                                serde_json::from_str::<crate::AppPreferences>(&contents)
-                            {
-                                if let Some(prompt) = prefs
-                                    .magic_prompts
-                                    .global_system_prompt
-                                    .as_deref()
-                                    .map(|s| s.trim())
-                                    .filter(|s| !s.is_empty())
-                                {
-                                    parts.push(prompt.to_string());
-                                }
-                            }
-                        }
-                    }
+                    let preferences = crate::load_preferences_sync(&thread_app).ok();
+                    parts.push(resolve_global_system_prompt(preferences.as_ref().and_then(
+                        |prefs| prefs.magic_prompts.global_system_prompt.as_deref(),
+                    )));
 
                     if let Some(prompt) = &thread_parallel_prompt {
                         let prompt = prompt.trim();
@@ -4995,6 +5044,15 @@ pub async fn send_chat_message(
 
                     if super::should_include_recap_instruction(&thread_app, thread_include_recap) {
                         parts.push(super::RECAP_INSTRUCTION.to_string());
+                    }
+
+                    let loaded_context = super::context_instructions::build_loaded_context_content(
+                        &thread_app,
+                        &thread_session_id,
+                        &thread_worktree_id,
+                    );
+                    if !loaded_context.is_empty() {
+                        parts.push(loaded_context);
                     }
 
                     if parts.is_empty() {
@@ -5452,6 +5510,7 @@ pub async fn send_chat_message(
             execution_mode: None,
             thinking_level: None,
             effort_level: None,
+            custom_profile_name: None,
             recovered: false,
             usage: None,
         });
@@ -5563,6 +5622,7 @@ pub async fn send_chat_message(
             execution_mode: None,
             thinking_level: None,
             effort_level: None,
+            custom_profile_name: None,
             recovered: false,
             usage: None,
         });
@@ -5586,12 +5646,14 @@ pub async fn send_chat_message(
     let is_plan_mode_with_content = if response_backend == Backend::Commandcode {
         unified_response.waiting_for_plan
     } else {
+        // A turn that ends on a pending question waits for the answer, not
+        // for plan approval.
         plan_mode_content_waits_for_approval(
             &response_backend,
             execution_mode.as_deref(),
             has_content,
             has_plan_tool,
-        )
+        ) && !has_question_tool
     };
 
     // Create assistant message with tool calls and content blocks
@@ -5611,6 +5673,7 @@ pub async fn send_chat_message(
         execution_mode: None,
         thinking_level: None,
         effort_level: None,
+        custom_profile_name: None,
         recovered: false,
         usage: unified_response.usage.clone(),
     };
@@ -5712,14 +5775,18 @@ pub async fn send_chat_message(
                     }
                     .to_string(),
                 );
+                if !has_question_tool {
+                    session.pending_plan_message_id = Some(assistant_msg_id.clone());
+                }
             } else if is_plan_mode_with_content {
-                // Codex/OpenCode plan-mode with content → waiting for plan approval
+                // Plain-text plan-mode response → waiting for plan approval
                 session.waiting_for_input = true;
                 session.is_reviewing = false;
                 if session.status_override.as_deref() == Some("review") {
                     session.status_override = None;
                 }
                 session.waiting_for_input_type = Some("plan".to_string());
+                session.pending_plan_message_id = Some(assistant_msg_id.clone());
             } else {
                 // Normal completion
                 apply_non_waiting_completion_state(session);
@@ -5734,6 +5801,19 @@ pub async fn send_chat_message(
 
     // Emit cache invalidation so all clients (native + web) refetch authoritative state
     emit_sessions_cache_invalidation(&app);
+
+    // Claude and Codex send the authoritative completion event after the run log
+    // and session metadata are persisted. This also carries plain-text plan state.
+    if matches!(response_backend, Backend::Claude | Backend::Codex) && !was_cancelled {
+        let _ = app.emit_all(
+            "chat:done",
+            &serde_json::json!({
+                "session_id": session_id,
+                "worktree_id": worktree_id,
+                "waiting_for_plan": is_plan_mode_with_content,
+            }),
+        );
+    }
 
     if was_cancelled {
         log::info!("[SendChat] EXIT session={session_id} reason=cancelled_with_content");
@@ -5759,6 +5839,10 @@ pub async fn clear_session_history(
     session_id: String,
 ) -> Result<(), String> {
     log::trace!("Clearing chat history for session: {session_id}");
+
+    if super::registry::is_session_actively_managed(&session_id) {
+        return Err("Cannot clear context while the session is running".to_string());
+    }
 
     // Delete NDJSON run data first (outside lock - separate file)
     if let Err(e) = delete_session_data(&app, &session_id) {
@@ -5856,6 +5940,28 @@ pub async fn set_session_effort_level(
         if let Some(session) = sessions.find_session_mut(&session_id) {
             session.selected_effort_level = Some(effort_level);
             log::trace!("Effort level selection saved");
+            Ok(())
+        } else {
+            Err(format!("Session not found: {session_id}"))
+        }
+    })
+}
+
+/// Set the selected execution mode for a session.
+pub async fn set_session_execution_mode(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    session_id: String,
+    execution_mode: String,
+) -> Result<(), String> {
+    if !matches!(execution_mode.as_str(), "plan" | "build" | "yolo") {
+        return Err(format!("Unsupported execution mode: {execution_mode}"));
+    }
+
+    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+        if let Some(session) = sessions.find_session_mut(&session_id) {
+            session.selected_execution_mode = Some(execution_mode);
             Ok(())
         } else {
             Err(format!("Session not found: {session_id}"))
@@ -6050,10 +6156,17 @@ pub fn flush_pending_codex_goal(app: &AppHandle, session_id: &str, thread_id: &s
 }
 
 fn codex_goal_set_params(thread_id: &str, objective: &str) -> serde_json::Value {
+    // Keep the app-server goal paused. An active native goal owns a sequence
+    // of autonomous turns, but Jean tracks one RunEntry and one cancellable
+    // turn at a time. Starting the native runner here makes Jean report idle
+    // after its first turn while Codex continues in the background. It also
+    // makes later prompts conflict with that hidden turn. Jean sends the goal
+    // as a normal managed turn instead, which preserves streaming,
+    // cancellation, and crash recovery.
     serde_json::json!({
         "threadId": thread_id,
         "objective": objective,
-        "status": "active",
+        "status": "paused",
     })
 }
 
@@ -6359,11 +6472,7 @@ fn save_image_to_disk(
     let filename = format!("image-{timestamp}-{short_uuid}.{ext}");
     let file_path = images_dir.join(&filename);
 
-    let temp_path = file_path.with_extension("tmp");
-    std::fs::write(&temp_path, data).map_err(|e| format!("Failed to write image file: {e}"))?;
-
-    std::fs::rename(&temp_path, &file_path)
-        .map_err(|e| format!("Failed to finalize image file: {e}"))?;
+    crate::platform::write_file_atomically(&file_path, data)?;
 
     let path_str = file_path
         .to_str()
@@ -6521,6 +6630,51 @@ use super::types::{ReadTextResponse, SaveTextResponse};
 
 /// Maximum text file size in bytes (10MB)
 const MAX_TEXT_SIZE: usize = 10 * 1024 * 1024;
+const MAX_FILE_SIZE: usize = 50 * 1024 * 1024;
+
+/// Save an arbitrary uploaded file and return a path that agents can read.
+pub async fn save_pasted_file(
+    app: AppHandle,
+    data: String,
+    filename: String,
+) -> Result<SaveTextResponse, String> {
+    let bytes = STANDARD
+        .decode(&data)
+        .map_err(|error| format!("Invalid base64 data: {error}"))?;
+    if bytes.len() > MAX_FILE_SIZE {
+        return Err(format!(
+            "File too large: {} bytes. Maximum size: {MAX_FILE_SIZE} bytes (50MB)",
+            bytes.len()
+        ));
+    }
+
+    let original = std::path::Path::new(&filename)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or("attachment");
+    let safe_name: String = original
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '-' | '_') {
+                ch
+            } else {
+                '-'
+            }
+        })
+        .take(160)
+        .collect();
+    let stored_name = format!("{}-{safe_name}", &Uuid::new_v4().to_string()[..8]);
+    let file_path = get_pastes_dir(&app)?.join(&stored_name);
+    crate::platform::write_file_atomically(&file_path, &bytes)?;
+
+    Ok(SaveTextResponse {
+        id: Uuid::new_v4().to_string(),
+        filename: original.to_string(),
+        path: file_path.to_string_lossy().into_owned(),
+        size: bytes.len(),
+    })
+}
 
 /// Save pasted text to the app data directory
 ///
@@ -6547,12 +6701,7 @@ pub async fn save_pasted_text(
     let filename = pasted_text_filename(filename.as_deref());
     let file_path = pastes_dir.join(&filename);
 
-    // Write file atomically (temp file + rename)
-    let temp_path = file_path.with_extension("tmp");
-    std::fs::write(&temp_path, &content).map_err(|e| format!("Failed to write text file: {e}"))?;
-
-    std::fs::rename(&temp_path, &file_path)
-        .map_err(|e| format!("Failed to finalize text file: {e}"))?;
+    crate::platform::write_file_atomically(&file_path, content.as_bytes())?;
 
     let path_str = file_path
         .to_str()
@@ -6762,12 +6911,7 @@ pub async fn update_pasted_text(
         return Err("Invalid path: must be within allowed directories".to_string());
     }
 
-    // Write file atomically (temp file + rename)
-    let temp_path = file_path.with_extension("tmp");
-    std::fs::write(&temp_path, &content).map_err(|e| format!("Failed to write text file: {e}"))?;
-
-    std::fs::rename(&temp_path, &file_path)
-        .map_err(|e| format!("Failed to finalize text file: {e}"))?;
+    crate::platform::write_file_atomically(&file_path, content.as_bytes())?;
 
     log::trace!("Text file updated: {path}");
     Ok(size)
@@ -7429,13 +7573,7 @@ pub async fn save_context_file(
 
     let file_path = contexts_dir.join(&filename);
 
-    // Write content atomically (temp file + rename)
-    let temp_path = file_path.with_extension("tmp");
-    std::fs::write(&temp_path, &content)
-        .map_err(|e| format!("Failed to write context file: {e}"))?;
-
-    std::fs::rename(&temp_path, &file_path)
-        .map_err(|e| format!("Failed to finalize context file: {e}"))?;
+    crate::platform::write_file_atomically(&file_path, content.as_bytes())?;
 
     let path_str = file_path
         .to_str()
@@ -8107,13 +8245,7 @@ pub async fn generate_context_from_session(
             (new_filename, new_path, false)
         };
 
-    // Write content atomically
-    let temp_path = file_path.with_extension("tmp");
-    std::fs::write(&temp_path, &summary)
-        .map_err(|e| format!("Failed to write context file: {e}"))?;
-
-    std::fs::rename(&temp_path, &file_path)
-        .map_err(|e| format!("Failed to finalize context file: {e}"))?;
+    crate::platform::write_file_atomically(&file_path, summary.as_bytes())?;
 
     // Update session mapping in metadata
     metadata
@@ -8607,6 +8739,9 @@ pub async fn resume_session(
                         {
                             let _ = writer.crash();
                         }
+                        let (event_name, event) =
+                            resumed_tail_error_event(&session_id_clone, &worktree_id_clone, &error);
+                        let _ = app_clone.emit_all(event_name, &event);
                     }
                 }
             });
@@ -8769,11 +8904,8 @@ pub async fn resume_session(
                                 log::error!("Failed to mark Grok run as crashed: {e}");
                             }
                         }
-                        let (event_name, event) = resumed_grok_tail_error_event(
-                            &session_id_clone,
-                            &worktree_id_clone,
-                            &e,
-                        );
+                        let (event_name, event) =
+                            resumed_tail_error_event(&session_id_clone, &worktree_id_clone, &e);
                         let _ = app_clone.emit_all(event_name, &event);
                         return;
                     }
@@ -8947,7 +9079,8 @@ pub async fn check_resumable_sessions(
 
     // This calls recover_incomplete_runs which updates statuses and returns info.
     // Note: recover_incomplete_runs skips sessions that are actively managed
-    // (in PROCESS_REGISTRY or CANCEL_FLAGS) to avoid corrupting their metadata.
+    // (including sends still preparing a backend process) to avoid corrupting
+    // their metadata.
     let recovered = super::run_log::recover_incomplete_runs(&app)?;
 
     let mut resumable: Vec<_> = recovered.into_iter().filter(|r| r.resumable).collect();
@@ -9999,13 +10132,13 @@ async fn steer_text_into_pi_turn(
 }
 
 /// Drain steerable queued messages straight into the running Codex turn
-/// (when the `codex_auto_steer_enabled` preference is on, default true).
+/// (when the `codex_auto_steer_enabled` preference is on; default is off).
 /// Pops from the queue front in FIFO order and stops at the first message
 /// that can't be steered (attachments) so queue order is preserved.
 async fn drain_queue_into_codex_turn(app: &AppHandle, worktree_id: &str, session_id: &str) {
     let auto_steer = crate::load_preferences_sync(app)
         .map(|p| p.codex_auto_steer_enabled)
-        .unwrap_or(true);
+        .unwrap_or(false);
     if !auto_steer {
         return;
     }
@@ -10094,7 +10227,7 @@ pub(crate) fn trigger_codex_queue_steer(app: AppHandle, worktree_id: String, ses
 }
 
 /// Drain steerable queued messages into a running OpenCode session via
-/// `prompt_async` (when `opencode_auto_steer_enabled` is on, default true).
+/// `prompt_async` (when `opencode_auto_steer_enabled` is on; default is off).
 async fn drain_queue_into_opencode_turn(
     app: &AppHandle,
     worktree_id: &str,
@@ -10103,7 +10236,7 @@ async fn drain_queue_into_opencode_turn(
 ) {
     let auto_steer = crate::load_preferences_sync(app)
         .map(|p| p.opencode_auto_steer_enabled)
-        .unwrap_or(true);
+        .unwrap_or(false);
     if !auto_steer {
         return;
     }
@@ -10207,7 +10340,7 @@ pub(crate) fn trigger_opencode_queue_steer(
 async fn drain_queue_into_pi_turn(app: &AppHandle, worktree_id: &str, session_id: &str) {
     let auto_steer = crate::load_preferences_sync(app)
         .map(|p| p.pi_auto_steer_enabled)
-        .unwrap_or(true);
+        .unwrap_or(false);
     if !auto_steer {
         return;
     }
@@ -10292,11 +10425,11 @@ async fn drain_queue_into_pi_turn(app: &AppHandle, worktree_id: &str, session_id
 }
 
 /// Drain steerable queued messages into a running Grok ACP turn via
-/// `_x.ai/interject` (when `grok_auto_steer_enabled` is on, default true).
+/// `_x.ai/interject` (when `grok_auto_steer_enabled` is on; default is off).
 async fn drain_queue_into_grok_turn(app: &AppHandle, worktree_id: &str, session_id: &str) {
     let auto_steer = crate::load_preferences_sync(app)
         .map(|p| p.grok_auto_steer_enabled)
-        .unwrap_or(true);
+        .unwrap_or(false);
     if !auto_steer {
         return;
     }
@@ -10478,12 +10611,50 @@ mod tests {
     #[test]
     fn resumed_grok_host_error_uses_chat_error_event() {
         let (event_name, event) =
-            resumed_grok_tail_error_event("session-1", "worktree-1", "rate limit reached");
+            resumed_tail_error_event("session-1", "worktree-1", "rate limit reached");
 
         assert_eq!(event_name, "chat:error");
         assert_eq!(event.session_id, "session-1");
         assert_eq!(event.worktree_id, "worktree-1");
         assert_eq!(event.error, "rate limit reached");
+    }
+
+    fn unread_test_session() -> Session {
+        let mut session = Session::new("Session".to_string(), 0, Backend::Claude);
+        session.updated_at = 20;
+        session.last_opened_at = Some(10);
+        session
+    }
+
+    #[test]
+    fn unread_session_count_matches_finished_unopened_activity() {
+        let mut session = unread_test_session();
+        session.last_run_status = Some(RunStatus::Completed);
+
+        assert!(is_unread_session(&session));
+
+        session.last_opened_at = Some(session.updated_at);
+        assert!(!is_unread_session(&session));
+    }
+
+    #[test]
+    fn unread_session_count_includes_waiting_and_review_activity() {
+        let mut waiting = unread_test_session();
+        waiting.waiting_for_input = true;
+        assert!(is_unread_session(&waiting));
+
+        let mut review = unread_test_session();
+        review.review_results = Some(serde_json::json!({ "status": "completed" }));
+        assert!(is_unread_session(&review));
+    }
+
+    #[test]
+    fn archived_sessions_are_never_unread() {
+        let mut session = unread_test_session();
+        session.archived_at = Some(30);
+        session.last_run_status = Some(RunStatus::Completed);
+
+        assert!(!is_unread_session(&session));
     }
 
     #[test]
@@ -10575,10 +10746,25 @@ mod tests {
     }
 
     #[test]
-    fn newly_created_branch_can_still_be_automatically_named() {
+    fn custom_worktree_name_is_not_automatically_renamed() {
         let worktree = naming_test_worktree("random-workspace", Some("main"));
 
+        assert!(!should_auto_name_branch(Some(&worktree)));
+    }
+
+    #[test]
+    fn generated_workspace_name_can_be_automatically_renamed() {
+        let worktree = naming_test_worktree("fuzzy-tiger", Some("main"));
+
         assert!(should_auto_name_branch(Some(&worktree)));
+    }
+
+    #[test]
+    fn issue_worktree_name_is_not_automatically_renamed() {
+        let mut worktree = naming_test_worktree("issue-42-fix-login", Some("main"));
+        worktree.issue_number = Some(42);
+
+        assert!(!should_auto_name_branch(Some(&worktree)));
     }
 
     #[test]
@@ -10927,7 +11113,14 @@ mod tests {
     }
 
     #[test]
-    fn stale_resumed_claude_session_is_cleared_for_empty_cancelled_response() {
+    fn cancelled_empty_response_keeps_resumed_claude_session() {
+        assert!(!should_clear_stale_resumed_claude_session(
+            true, false, false, false, false, true
+        ));
+    }
+
+    #[test]
+    fn non_cancelled_empty_response_clears_stale_resumed_claude_session() {
         assert!(should_clear_stale_resumed_claude_session(
             true, false, false, false, false, false
         ));
@@ -11120,6 +11313,22 @@ mod tests {
     }
 
     #[test]
+    fn default_global_prompt_is_used_when_preference_is_missing_or_empty() {
+        let expected = crate::default_global_system_prompt();
+
+        assert_eq!(resolve_global_system_prompt(None), expected);
+        assert_eq!(resolve_global_system_prompt(Some("  ")), expected);
+    }
+
+    #[test]
+    fn configured_global_prompt_is_preserved() {
+        assert_eq!(
+            resolve_global_system_prompt(Some("  Custom global rule.  ")),
+            "Custom global rule."
+        );
+    }
+
+    #[test]
     fn test_codex_legacy_global_default_resolves_to_mode_specific_prompt() {
         let legacy_default = "### 1. Plan Mode Default
 - Every Codex plan-mode response that contains or revises a plan must use `update_plan`/`CodexPlan`; do not provide plain-text-only plans.
@@ -11127,12 +11336,12 @@ mod tests {
 ## Jean Worktree Policy";
 
         let yolo_prompt = resolve_codex_global_system_prompt(Some(legacy_default), Some("yolo"));
+        assert!(yolo_prompt.contains("### 4. Self-Improvement Loop"));
         assert!(!yolo_prompt.contains("Plan Mode Default"));
-        assert!(!yolo_prompt.contains("update_plan"));
-        assert!(!yolo_prompt.contains("CodexPlan"));
         assert!(yolo_prompt.contains("## Not Plan Mode"));
 
         let plan_prompt = resolve_codex_global_system_prompt(Some(legacy_default), Some("plan"));
+        assert!(plan_prompt.contains("### 4. Self-Improvement Loop"));
         assert!(plan_prompt.contains("## Plan Mode"));
         assert!(plan_prompt.contains("<proposed_plan>"));
     }
@@ -11217,7 +11426,7 @@ mod tests {
             true,
             false
         ));
-        assert!(!plan_mode_content_waits_for_approval(
+        assert!(plan_mode_content_waits_for_approval(
             &Backend::Claude,
             Some("plan"),
             true,
@@ -11373,7 +11582,7 @@ mod tests {
             serde_json::json!({
                 "threadId": "thread-123",
                 "objective": "Ship the goal UI",
-                "status": "active",
+                "status": "paused",
             })
         );
         assert!(params.get("goal").is_none());

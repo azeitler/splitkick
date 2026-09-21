@@ -6,7 +6,7 @@ import {
   ExternalLink,
   RefreshCw,
   ShieldAlert,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Input } from '@/components/ui/input'

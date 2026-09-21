@@ -6,6 +6,29 @@ const readSource = (path: string) =>
   readFileSync(join(process.cwd(), path), 'utf8')
 
 describe('SessionChatModal removal behavior', () => {
+  it('receives complete header data from the loaded project canvas', () => {
+    const modalSource = readSource('src/components/chat/SessionChatModal.tsx')
+    const canvasSource = readSource(
+      'src/components/dashboard/ProjectCanvasView.tsx'
+    )
+    const mainWindowSource = readSource(
+      'src/components/layout/MainWindowContent.tsx'
+    )
+
+    expect(modalSource).toMatch(
+      /interface SessionChatModalProps \{[\s\S]*worktree: Worktree/
+    )
+    expect(modalSource).toMatch(
+      /interface SessionChatModalProps \{[\s\S]*project: Project/
+    )
+    expect(modalSource).not.toContain('useWorktree(worktreeId)')
+    expect(modalSource).not.toContain('useProjects()')
+    expect(canvasSource).toContain('worktree={selectedModalWorktree}')
+    expect(canvasSource).toContain('project={project ?? null}')
+    expect(canvasSource).not.toContain('useProjects()')
+    expect(mainWindowSource).toContain('project={selectedProject}')
+  })
+
   it('listens for command-palette session rename requests', () => {
     const source = readSource('src/components/chat/SessionChatModal.tsx')
 
@@ -72,17 +95,25 @@ describe('SessionChatModal removal behavior', () => {
     expect(removeSessionTab).not.toContain('navigateToProjectPicker(')
   })
 
-  it('shows the empty worktree view after the last session is removed', () => {
-    const modalSource = readSource('src/components/chat/SessionChatModal.tsx')
-    const serviceSource = readSource('src/services/chat.ts')
+  it('creates and opens an empty session after the last session is removed', () => {
+    const commandSource = readSource('jean-core/src/chat/commands.rs')
+    const closeStart = commandSource.indexOf('pub async fn close_session(')
+    const closeEnd = commandSource.indexOf(
+      'pub async fn archive_session(',
+      closeStart
+    )
+    const archiveEnd = commandSource.indexOf(
+      'pub async fn unarchive_session(',
+      closeEnd
+    )
+    const closeSession = commandSource.slice(closeStart, closeEnd)
+    const archiveSession = commandSource.slice(closeEnd, archiveEnd)
 
-    expect(modalSource).toContain(
-      'No sessions yet. Create one to start chatting.'
-    )
-    expect(serviceSource).not.toContain('navigateToProjectPicker(')
-    expect(serviceSource).toContain(
-      'const { [worktreeId]: _removed, ...rest } = state.activeSessionIds'
-    )
+    for (const command of [closeSession, archiveSession]) {
+      expect(command).toContain('if new_active.is_none()')
+      expect(command).toContain('let session = create_session(')
+      expect(command).toContain('return Ok(Some(session.id))')
+    }
   })
 
   it('asks to close the worktree when Cmd+W is pressed with no sessions', () => {
@@ -108,7 +139,8 @@ describe('SessionChatModal removal behavior', () => {
     expect(source).not.toContain('{!(zenMode && isMobile) && (')
     expect(source).toContain('{!zenMode && sessions.length > 0 && (')
     expect(source).toContain('{!zenMode && (')
-    expect(source).toContain('<ModalCloseButton onClick={handleClose} />')
+    expect(source).toContain('<ModalCloseButton')
+    expect(source).toContain('onClick={handleClose}')
   })
 
   it('uses terminal-like square tab styling for session header tabs', () => {
@@ -116,7 +148,7 @@ describe('SessionChatModal removal behavior', () => {
 
     expect(source).toContain('flex min-w-max items-center gap-0 py-0 px-0')
     expect(source).toContain(
-      'group/tab flex shrink-0 items-center gap-1.5 border-r border-border px-3 py-1.5 text-xs transition-colors whitespace-nowrap'
+      'group/tab flex shrink-0 items-center gap-1.5 border-r border-border/40 px-3 py-1.5 text-xs transition-colors whitespace-nowrap'
     )
     expect(source).not.toContain('group/tab flex rounded items-center')
   })
@@ -134,19 +166,6 @@ describe('SessionChatModal removal behavior', () => {
 
     expect(source).toMatch(
       /viewport\.addEventListener\('wheel',[\s\S]*\}, \[sessions\.length, zenMode\]\)/
-    )
-  })
-
-  it('keeps only the zen control in the mobile header', () => {
-    const source = readSource('src/components/chat/SessionChatModal.tsx')
-
-    expect(source).toContain('useClearSessionHistory')
-    expect(source).toContain('handleClearContext')
-    expect(source).toContain('data-testid="toggle-zen-mode"')
-    expect(source).not.toContain('aria-label="Clear context"')
-    expect(source).not.toContain('data-testid="clear-session-context"')
-    expect(source).toMatch(
-      /onSuccess:\s*\(\)\s*=>\s*window\.dispatchEvent\(new CustomEvent\('focus-chat-input'\)\)/
     )
   })
 

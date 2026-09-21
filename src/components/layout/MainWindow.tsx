@@ -73,11 +73,6 @@ const JeanConfigWizard = lazy(() =>
     default: mod.JeanConfigWizard,
   }))
 )
-const JeanMcpIntroDialog = lazy(() =>
-  import('@/components/onboarding/JeanMcpIntroDialog').then(mod => ({
-    default: mod.JeanMcpIntroDialog,
-  }))
-)
 const CliUpdateModal = lazy(() =>
   import('@/components/layout/CliUpdateModal').then(mod => ({
     default: mod.CliUpdateModal,
@@ -178,18 +173,20 @@ import { Toaster } from '@/components/ui/sonner'
 import { BrowserSidePane } from '@/components/browser/BrowserSidePane'
 import { BrowserPanel } from '@/components/browser/BrowserPanel'
 import { useBrowserEvents } from '@/hooks/useBrowserPane'
+import { parseServerResourceKey } from '@/lib/server-resource'
 import { useToasterOffset } from '@/hooks/useToasterOffset'
 import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useTerminalThemeSync } from '@/hooks/useTerminalThemeSync'
 import { useUIStore } from '@/store/ui-store'
 import { useIsHomeActive } from '@/components/home/useIsHomeActive'
 import { useProjectsStore } from '@/store/projects-store'
+import { useChatStore } from '@/store/chat-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
 import { useGlobalInputSanitizer } from '@/hooks/useGlobalInputSanitizer'
 import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
 import { useUIStatePersistence } from '@/hooks/useUIStatePersistence'
+import { useClientViewStatePersistence } from '@/hooks/useClientViewStatePersistence'
 import { useSessionStatePersistence } from '@/hooks/useSessionStatePersistence'
-import { useSessionPrefetch } from '@/hooks/useSessionPrefetch'
 import { useRestoreLastArchived } from '@/hooks/useRestoreLastArchived'
 import { useArchiveCleanup } from '@/hooks/useArchiveCleanup'
 import { usePrWorktreeSweep } from '@/hooks/usePrWorktreeSweep'
@@ -248,11 +245,12 @@ export function MainWindow() {
   const setFileBrowserVisible = useUIStore(state => state.setFileBrowserVisible)
   const viewingFilePath = useUIStore(state => state.viewingFilePath)
   const setViewingFilePath = useUIStore(state => state.setViewingFilePath)
+  const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
+  const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
   const preferencesOpen = useUIStore(state => state.preferencesOpen)
   const commitModalOpen = useUIStore(state => state.commitModalOpen)
   const onboardingOpen = useUIStore(state => state.onboardingOpen)
   const featureTourOpen = useUIStore(state => state.featureTourOpen)
-  const jeanMcpIntroOpen = useUIStore(state => state.jeanMcpIntroOpen)
   const openInModalOpen = useUIStore(state => state.openInModalOpen)
   const remotePickerOpen = useUIStore(state => state.remotePickerOpen)
   const resolveConflictsDialogOpen = useUIStore(
@@ -337,13 +335,10 @@ export function MainWindow() {
 
   // Persist UI state (last opened worktree, expanded projects)
   const { isInitialized } = useUIStatePersistence()
+  useClientViewStatePersistence(isInitialized)
 
   // Persist session-specific state (answered questions, fixed findings, etc.)
   useSessionStatePersistence()
-
-  // Prefetch sessions for the selected or expanded projects after the UI state
-  // is restored so the first render path stays light.
-  useSessionPrefetch(isInitialized ? projects : undefined)
 
   // Ref for the sidebar element to update width directly during drag
   const sidebarRef = useRef<HTMLDivElement>(null)
@@ -453,7 +448,8 @@ export function MainWindow() {
       let currentWidth = startWidth
 
       const handleMouseMove = (moveEvent: MouseEvent) => {
-        const delta = moveEvent.clientX - startX
+        // Dragging left increases width because the browser is on the right.
+        const delta = startX - moveEvent.clientX
         currentWidth = Math.min(
           MAX_FILE_BROWSER_WIDTH,
           Math.max(MIN_FILE_BROWSER_WIDTH, startWidth + delta)
@@ -483,7 +479,6 @@ export function MainWindow() {
   const shouldRenderOnboardingDialog = useRetainedMount(onboardingOpen)
   const shouldRenderFeatureTourDialog = useRetainedMount(featureTourOpen)
   const shouldRenderJeanConfigWizard = useRetainedMount(jeanConfigWizardOpen)
-  const shouldRenderJeanMcpIntroDialog = useRetainedMount(jeanMcpIntroOpen)
   const shouldRenderCliUpdateModal = useRetainedMount(cliUpdateModalOpen)
   const shouldRenderUpdateAvailableModal = useRetainedMount(
     updateModalVersion !== null
@@ -554,15 +549,13 @@ export function MainWindow() {
       <DevModeBanner />
 
       {/* Main Content Area */}
-      {/* Offset by the title bar, which is an absolute overlay. Must stay in
-          step with TitleBar's own height — see --titlebar-height in App.css. */}
-      <div className="flex flex-1 overflow-hidden pt-[var(--titlebar-height)]">
+      <div className="flex flex-1 overflow-hidden">
         {/* Desktop: in-flow left sidebar (shifts layout). Only after UI state init. */}
         {!isMobile && leftSidebarVisible && isInitialized && (
           <SidebarWidthProvider value={leftSidebarSize}>
             <div
               ref={sidebarRef}
-              className="h-full overflow-hidden"
+              className="h-full overflow-hidden bg-sidebar pt-[var(--titlebar-height)] dark:bg-[#0b0b0b]"
               style={{ width: leftSidebarSize }}
             >
               <Suspense fallback={null}>
@@ -579,37 +572,10 @@ export function MainWindow() {
             tabIndex={-1}
             aria-orientation="vertical"
             aria-label="Resize left sidebar"
-            className="relative h-full w-px bg-border"
+            className="relative h-full w-px bg-border/40"
             onMouseDown={handleResizeStart}
           >
             {/* Invisible wider hit area for easier clicking */}
-            <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
-          </div>
-        )}
-
-        {/* Desktop: file browser sidebar */}
-        {!isMobile && fileBrowserVisible && isInitialized && (
-          <div
-            ref={fileBrowserRef}
-            className="h-full overflow-hidden"
-            style={{ width: fileBrowserSize }}
-          >
-            <Suspense fallback={null}>
-              <FileBrowserSidebar />
-            </Suspense>
-          </div>
-        )}
-
-        {/* Desktop: resize handle for file browser */}
-        {!isMobile && fileBrowserVisible && isInitialized && (
-          <div
-            role="separator"
-            tabIndex={-1}
-            aria-orientation="vertical"
-            aria-label="Resize file browser"
-            className="relative h-full w-px bg-border"
-            onMouseDown={handleFileBrowserResizeStart}
-          >
             <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
           </div>
         )}
@@ -628,8 +594,10 @@ export function MainWindow() {
           </Suspense>
         )}
 
-        {/* Main Content + bottom browser panel stacked vertically */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* Main Content + bottom browser panel stacked vertically. Each column
+            is offset by the title bar, which is an absolute overlay. Must stay
+            in step with TitleBar's own height — see --titlebar-height in App.css. */}
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden pt-[var(--titlebar-height)]">
           <div className="relative min-w-0 flex-1 overflow-hidden">
             <MainWindowContent />
             <FloatingDock />
@@ -637,6 +605,33 @@ export function MainWindow() {
           {/* Browser bottom panel - native-only, pinned to bottom */}
           <BrowserPanel />
         </div>
+
+        {/* Desktop: resize handle for file browser */}
+        {!isMobile && fileBrowserVisible && isInitialized && (
+          <div
+            role="separator"
+            tabIndex={-1}
+            aria-orientation="vertical"
+            aria-label="Resize file browser"
+            className="relative z-20 h-full w-px shrink-0 cursor-col-resize bg-border/40"
+            onMouseDown={handleFileBrowserResizeStart}
+          >
+            <div className="absolute inset-y-0 z-20 -left-1.5 -right-1.5 cursor-col-resize" />
+          </div>
+        )}
+
+        {/* Desktop: file browser sidebar */}
+        {!isMobile && fileBrowserVisible && isInitialized && (
+          <div
+            ref={fileBrowserRef}
+            className="h-full overflow-hidden bg-sidebar pt-[var(--titlebar-height)]"
+            style={{ width: fileBrowserSize }}
+          >
+            <Suspense fallback={null}>
+              <FileBrowserSidebar />
+            </Suspense>
+          </div>
+        )}
 
         {/* Browser side pane - native-only, mounts on right edge */}
         <BrowserSidePane />
@@ -648,6 +643,10 @@ export function MainWindow() {
       <Suspense fallback={null}>
         <FileContentModal
           filePath={viewingFilePath}
+          serverId={
+            parseServerResourceKey(activeWorktreeId ?? selectedProjectId ?? '')
+              ?.serverId
+          }
           onClose={() => setViewingFilePath(null)}
         />
       </Suspense>
@@ -679,11 +678,6 @@ export function MainWindow() {
       {shouldRenderJeanConfigWizard && (
         <Suspense fallback={null}>
           <JeanConfigWizard />
-        </Suspense>
-      )}
-      {shouldRenderJeanMcpIntroDialog && (
-        <Suspense fallback={null}>
-          <JeanMcpIntroDialog />
         </Suspense>
       )}
       {shouldRenderCliUpdateModal && (
@@ -806,7 +800,6 @@ export function MainWindow() {
         position="bottom-right"
         offset={toasterOffset}
         mobileOffset={toasterMobileOffset}
-        expand={true}
         swipeDirections={['left', 'right', 'top', 'bottom']}
         style={{ '--width': '400px' } as CSSProperties}
         toastOptions={{

@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react'
-import { History } from 'lucide-react'
+import { History } from '@/components/icons/reicon'
 import { useAllSessions } from '@/services/chat'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { Input } from '@/components/ui/input'

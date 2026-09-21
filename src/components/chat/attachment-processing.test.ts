@@ -15,6 +15,7 @@ const { invoke, toast, storeState } = vi.hoisted(() => ({
     updatePendingImage: vi.fn(),
     removePendingImage: vi.fn(),
     addPendingTextFile: vi.fn(),
+    addPendingFile: vi.fn(),
   },
 }))
 
@@ -60,18 +61,24 @@ describe('attachment-processing', () => {
     storeState.updatePendingImage.mockReset()
     storeState.removePendingImage.mockReset()
     storeState.addPendingTextFile.mockReset()
+    storeState.addPendingFile.mockReset()
   })
 
-  it('classifies raster, svg, and unsupported files', () => {
+  it('classifies raster, text, and other files', () => {
     expect(
       classifyAttachmentFile(makeFile('photo.png', { type: 'image/png' }))
     ).toBe('raster')
     expect(classifyAttachmentFile(makeFile('vector.svg', { type: '' }))).toBe(
-      'svg'
+      'text'
     )
     expect(
       classifyAttachmentFile(makeFile('notes.txt', { type: 'text/plain' }))
-    ).toBe('unsupported')
+    ).toBe('text')
+    expect(
+      classifyAttachmentFile(
+        makeFile('archive.zip', { type: 'application/zip' })
+      )
+    ).toBe('file')
   })
 
   it('saves raster files via save_pasted_image', async () => {
@@ -100,6 +107,7 @@ describe('attachment-processing', () => {
     expect(invoke).toHaveBeenCalledWith('save_pasted_image', {
       data: expect.any(String),
       mimeType: 'image/png',
+      sessionId: 'session-1',
     })
     expect(storeState.updatePendingImage).toHaveBeenCalledWith(
       'session-1',
@@ -131,10 +139,11 @@ describe('attachment-processing', () => {
     expect(invoke).toHaveBeenCalledWith('save_pasted_image', {
       data: expect.any(String),
       mimeType: 'image/jpeg',
+      sessionId: 'session-1',
     })
   })
 
-  it('routes svg files through save_pasted_text', async () => {
+  it('routes text files through save_pasted_text and keeps the filename', async () => {
     invoke.mockResolvedValueOnce({
       id: 'txt-1',
       path: '/tmp/vector.svg',
@@ -152,6 +161,8 @@ describe('attachment-processing', () => {
 
     expect(invoke).toHaveBeenCalledWith('save_pasted_text', {
       content: '<svg></svg>',
+      filename: 'vector.svg',
+      sessionId: 'session-1',
     })
     expect(storeState.addPendingTextFile).toHaveBeenCalledWith('session-1', {
       id: 'txt-1',
@@ -176,15 +187,28 @@ describe('attachment-processing', () => {
     })
   })
 
-  it('rejects unsupported file types', async () => {
+  it('saves other files as linked file attachments', async () => {
+    invoke.mockResolvedValueOnce({
+      id: 'file-1',
+      path: '/tmp/archive.zip',
+      filename: 'archive.zip',
+      size: 5,
+    })
     await processAttachmentFile(
-      makeFile('notes.txt', { type: 'text/plain', content: 'hello' }),
+      makeFile('archive.zip', { type: 'application/zip', content: 'bytes' }),
       'session-1'
     )
 
-    expect(invoke).not.toHaveBeenCalled()
-    expect(toast.error).toHaveBeenCalledWith('Unsupported image type', {
-      description: 'Allowed types: PNG, JPEG, GIF, WebP, SVG',
+    expect(invoke).toHaveBeenCalledWith('save_pasted_file', {
+      data: expect.any(String),
+      filename: 'archive.zip',
+      sessionId: 'session-1',
+    })
+    expect(storeState.addPendingFile).toHaveBeenCalledWith('session-1', {
+      id: 'file-1',
+      relativePath: '/tmp/archive.zip',
+      extension: 'zip',
+      isDirectory: false,
     })
   })
 })

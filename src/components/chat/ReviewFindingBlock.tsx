@@ -15,7 +15,7 @@ import {
   ChevronRight,
   Wrench,
   Loader2,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import type { ReviewFinding, FindingSeverity } from '@/types/chat'
 import { getFindingKey } from './review-finding-utils'

@@ -20,7 +20,7 @@ import {
   ChevronDown,
   Eye,
   MoreHorizontal,
-} from 'lucide-react'
+} from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { getModifierSymbol } from '@/lib/platform'
 import {

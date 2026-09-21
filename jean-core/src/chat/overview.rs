@@ -794,6 +794,8 @@ mod tests {
                         Backend::Claude,
                     );
                     session.id = (*session_id).to_string();
+                    // A fixed time, so the id breaks the tie in activity order.
+                    session.updated_at = 1_000;
                     stored.sessions.push(session);
                 }
                 Ok(())

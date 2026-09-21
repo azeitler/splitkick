@@ -1,4 +1,4 @@
-import { Pin } from 'lucide-react'
+import { Pin } from '@/components/icons/reicon'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import { cn } from '@/lib/utils'
 import {

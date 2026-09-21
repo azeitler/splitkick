@@ -13,8 +13,6 @@ use super::config::{
     binary_exists, ensure_cli_dir, find_system_grok_binary, get_cli_binary_path, get_cli_dir,
     resolve_cli_binary,
 };
-use crate::platform::silent_command;
-
 const AUTH_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 const MODELS_CHECK_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -290,8 +288,7 @@ fn run_command_with_timeout(
             }));
         }
         if start.elapsed() >= timeout {
-            let _ = child.kill();
-            let _ = child.wait();
+            crate::platform::kill_and_reap(&mut child);
             return Ok(TimedCommandResult::TimedOut);
         }
         std::thread::sleep(Duration::from_millis(50));
@@ -347,7 +344,7 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
     let mut stdin = match child.stdin.take() {
         Some(stdin) => stdin,
         None => {
-            let _ = child.kill();
+            crate::platform::kill_and_reap(&mut child);
             return GrokAuthStatus {
                 authenticated: false,
                 error: Some("Failed to open Grok ACP stdin".to_string()),
@@ -358,7 +355,7 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
         None => {
-            let _ = child.kill();
+            crate::platform::kill_and_reap(&mut child);
             return GrokAuthStatus {
                 authenticated: false,
                 error: Some("Failed to open Grok ACP stdout".to_string()),
@@ -399,7 +396,7 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
         }
     });
     if writeln!(stdin, "{initialize}").is_err() {
-        let _ = child.kill();
+        crate::platform::kill_and_reap(&mut child);
         return GrokAuthStatus {
             authenticated: false,
             error: Some("Failed to write Grok ACP initialize request".to_string()),
@@ -418,7 +415,7 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
-                let _ = child.kill();
+                crate::platform::kill_and_reap(&mut child);
                 return GrokAuthStatus {
                     authenticated: false,
                     error: Some("Grok auth check timed out".to_string()),
@@ -430,7 +427,7 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
     };
 
     let Some(init) = init_result else {
-        let _ = child.kill();
+        crate::platform::kill_and_reap(&mut child);
         return GrokAuthStatus {
             authenticated: false,
             error: Some("Grok ACP did not return initialize result".to_string()),
@@ -438,7 +435,7 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
         };
     };
     let Some(method_id) = choose_auth_method(&init) else {
-        let _ = child.kill();
+        crate::platform::kill_and_reap(&mut child);
         return GrokAuthStatus {
             authenticated: false,
             error: Some("Run `grok login` first, or set XAI_API_KEY.".to_string()),
@@ -453,7 +450,7 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
         "params": { "methodId": method_id, "_meta": { "headless": true } }
     });
     if writeln!(stdin, "{authenticate}").is_err() {
-        let _ = child.kill();
+        crate::platform::kill_and_reap(&mut child);
         return GrokAuthStatus {
             authenticated: false,
             error: Some("Failed to write Grok ACP authenticate request".to_string()),
@@ -467,7 +464,7 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
             Ok(line) => {
                 if let Ok(value) = serde_json::from_str::<Value>(line.trim()) {
                     if value.get("id").and_then(Value::as_i64) == Some(2) {
-                        let _ = child.kill();
+                        crate::platform::kill_and_reap(&mut child);
                         if let Some(error) = value.get("error") {
                             return GrokAuthStatus {
                                 authenticated: false,
@@ -484,7 +481,7 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
                 }
             }
             Err(RecvTimeoutError::Timeout) => {
-                let _ = child.kill();
+                crate::platform::kill_and_reap(&mut child);
                 return GrokAuthStatus {
                     authenticated: false,
                     error: Some("Grok auth check timed out".to_string()),
@@ -495,7 +492,7 @@ fn check_auth_via_acp(binary: &std::path::Path) -> GrokAuthStatus {
         }
     }
 
-    let _ = child.kill();
+    crate::platform::kill_and_reap(&mut child);
     GrokAuthStatus {
         authenticated: false,
         error: Some("Grok ACP exited before authentication completed".to_string()),
@@ -669,10 +666,10 @@ pub async fn get_grok_install_command(app: AppHandle) -> Result<GrokInstallComma
 }
 
 pub async fn install_grok_cli(app: AppHandle, version: Option<String>) -> Result<(), String> {
-    crate::prerequisites::require_npm("Grok CLI")?;
+    let npm_path = crate::prerequisites::require_npm("Grok CLI")?;
     let cli_dir = ensure_cli_dir(&app)?;
     let package = grok_package(version.as_deref());
-    let output = silent_command("npm")
+    let output = crate::platform::host_cli_command(&npm_path, None)
         .args(["install", "--prefix"])
         .arg(&cli_dir)
         .arg(package)

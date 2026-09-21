@@ -1,5 +1,5 @@
 import { memo } from 'react'
-import { Tag, X } from 'lucide-react'
+import { Tag, X } from '@/components/icons/reicon'
 import { cn } from '@/lib/utils'
 import { getLabelTextColor } from '@/lib/label-colors'
 import type { LabelFilter, LabelFilterOption } from '@/lib/label-filter'

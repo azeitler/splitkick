@@ -16,6 +16,7 @@ describe('TerminalStore', () => {
       runningTerminals: new Set(),
       failedTerminals: new Set(),
       terminalVisible: false,
+      terminalVisibleByWorktree: {},
       terminalPanelOpen: {},
       terminalHeight: 30,
       modalTerminalOpen: {},
@@ -62,6 +63,19 @@ describe('TerminalStore', () => {
       expect(useTerminalStore.getState().terminalVisible).toBe(false)
     })
 
+    it('preserves terminal visibility independently across server worktrees', () => {
+      const { setTerminalVisibleForWorktree, isTerminalVisible } =
+        useTerminalStore.getState()
+
+      setTerminalVisibleForWorktree('local-worktree', true)
+      setTerminalVisibleForWorktree('remote-one:worktree', false)
+      setTerminalVisibleForWorktree('remote-two:worktree', true)
+
+      expect(isTerminalVisible('local-worktree')).toBe(true)
+      expect(isTerminalVisible('remote-one:worktree')).toBe(false)
+      expect(isTerminalVisible('remote-two:worktree')).toBe(true)
+    })
+
     it('sets terminal height', () => {
       const { setTerminalHeight } = useTerminalStore.getState()
 
@@ -99,6 +113,14 @@ describe('TerminalStore', () => {
   })
 
   describe('terminal instance management', () => {
+    it('scopes a terminal ID to the worktree server', () => {
+      const { addTerminal } = useTerminalStore.getState()
+
+      const id = addTerminal('remote%3Adev:worktree-1')
+
+      expect(id).toMatch(/^remote%3Adev:/)
+    })
+
     it('registers a run terminal started outside the UI', () => {
       useTerminalStore
         .getState()

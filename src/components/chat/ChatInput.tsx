@@ -14,6 +14,7 @@ import type {
   PendingFile,
   PendingSkill,
   ClaudeCommand,
+  ClipboardImageData,
   SaveImageResponse,
   SaveTextResponse,
   ReadTextResponse,
@@ -42,7 +43,7 @@ import {
 } from './ContextMentionPopover'
 import type { ContextMentionItem } from './hooks/useContextMentionData'
 import { processAttachmentFile } from './attachment-processing'
-import { IMAGE_ATTACHMENT_ACCEPT, MAX_TEXT_SIZE } from './image-constants'
+import { MAX_TEXT_SIZE } from './image-constants'
 import {
   listControlChars,
   sanitizeTextInputValue,
@@ -711,6 +712,7 @@ export const ChatInput = memo(function ChatInput({
         try {
           const result = await invoke<SaveTextResponse>('save_pasted_text', {
             content: text,
+            sessionId: activeSessionId,
           })
 
           useChatStore.getState().addPendingTextFile(activeSessionId, {
@@ -879,37 +881,43 @@ export const ChatInput = memo(function ChatInput({
 
       const items = e.clipboardData?.items ?? []
 
-      // First, check for image items in the clipboard
-      const imageFiles: File[] = []
+      // First, check for file items in the clipboard.
+      const attachmentFiles: File[] = []
       for (const item of items) {
-        if (!item.type.startsWith('image/')) continue
-        // Prevent the browser from also inserting any text/html fallback for
-        // image clipboard entries; mixed text is handled explicitly below.
-        e.preventDefault()
-
         const file = item.getAsFile()
         if (!file) continue
-        imageFiles.push(file)
+        // Prevent the browser from inserting a fallback representation. Mixed
+        // text is handled explicitly below.
+        e.preventDefault()
+        attachmentFiles.push(file)
       }
-      // iOS can expose an image copied from the share sheet through `files`
+      // iOS can expose a file copied from the share sheet through `files`
       // while leaving `items` empty.
       for (const file of Array.from(e.clipboardData?.files ?? [])) {
-        if (file.type.startsWith('image/') && !imageFiles.includes(file)) {
+        const isAlreadyExposedByItem = attachmentFiles.some(
+          attachmentFile =>
+            attachmentFile.name === file.name &&
+            attachmentFile.type === file.type &&
+            attachmentFile.size === file.size &&
+            attachmentFile.lastModified === file.lastModified
+        )
+        if (!isAlreadyExposedByItem) {
           e.preventDefault()
-          imageFiles.push(file)
+          attachmentFiles.push(file)
         }
       }
-      const hasImage = imageFiles.length > 0
-      // Independent per-image save; process in parallel
-      if (imageFiles.length > 0) {
+      const hasFiles = attachmentFiles.length > 0
+      if (hasFiles) {
         await Promise.all(
-          imageFiles.map(file => processAttachmentFile(file, activeSessionId))
+          attachmentFiles.map(file =>
+            processAttachmentFile(file, activeSessionId)
+          )
         )
       }
 
-      // Mixed image+text paste should preserve both parts. Because image paste
+      // Mixed file+text paste should preserve both parts. Because file paste
       // requires preventDefault(), manually apply the text branch too.
-      if (hasImage) {
+      if (hasFiles) {
         if (plainText) {
           const savedAsFile = await saveLargeTextPaste(plainText)
           if (!savedAsFile) {
@@ -935,10 +943,20 @@ export const ChatInput = memo(function ChatInput({
           loading: true,
         })
         try {
-          const result = await invoke<SaveImageResponse | null>(
+          const clipboardImage = await invoke<ClipboardImageData | null>(
             'read_clipboard_image'
           )
-          if (result) {
+          if (clipboardImage) {
+            // Clipboard access stays on the native client. Save the bytes via
+            // the active backend so the resulting path exists on that server.
+            const result = await invoke<SaveImageResponse>(
+              'save_pasted_image',
+              {
+                data: clipboardImage.data,
+                mimeType: clipboardImage.mimeType,
+                sessionId: activeSessionId,
+              }
+            )
             updatePendingImage(activeSessionId, placeholderId, {
               id: result.id,
               path: result.path,
@@ -1252,11 +1270,10 @@ export const ChatInput = memo(function ChatInput({
       <input
         ref={fileInputRef}
         type="file"
-        accept={IMAGE_ATTACHMENT_ACCEPT}
         multiple
         tabIndex={-1}
         className="sr-only"
-        aria-label="Attach images"
+        aria-label="Attach files"
         onChange={handleFileInputChange}
       />
       <Textarea

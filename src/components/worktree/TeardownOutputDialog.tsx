@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { CheckCircle2, Copy, XCircle } from 'lucide-react'
+import { CheckCircle2, Copy, XCircle } from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
 import {

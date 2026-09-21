@@ -28,8 +28,8 @@ import {
   Sparkles,
   Star,
   Terminal,
-  Bug,
-} from 'lucide-react'
+  Sentry,
+} from '@/components/icons/reicon'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import {
@@ -356,6 +356,7 @@ export function MobileSettingsMenu({
   const { data: ports = [] } = usePorts(worktree?.path ?? null)
   const { data: openPRs } = useGitHubPRs(project?.path ?? null, 'open', {
     enabled: menuOpen && !!project?.path,
+    ownerId: project?.id,
   })
   const stackedOnPR = resolveStackedOnPr(
     worktree?.base_branch && worktree.base_branch !== project?.default_branch
@@ -1166,7 +1167,7 @@ export function MobileSettingsMenu({
                         handleViewSentry(ctx)
                       }}
                     >
-                      <Bug className="h-4 w-4 text-orange-500" />
+                      <Sentry className="h-4 w-4 text-orange-500" />
                       <span className="truncate">
                         {ctx.shortId} {ctx.title}
                       </span>

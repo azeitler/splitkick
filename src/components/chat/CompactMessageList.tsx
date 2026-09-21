@@ -9,7 +9,12 @@ import {
   useRef,
   useState,
 } from 'react'
-import { ChevronRight, Loader2, Activity, Brain } from 'lucide-react'
+import {
+  ChevronRight,
+  Loader2,
+  Activity,
+  Brain,
+} from '@/components/icons/reicon'
 import { Markdown } from '@/components/ui/markdown'
 import {
   Collapsible,
@@ -233,22 +238,36 @@ function findLatestAssistantText(
     if (!message || message.role !== 'assistant') continue
 
     const blocks = coalesceContentBlocks(message.content_blocks ?? [])
-    const texts: string[] = []
-    for (const block of blocks) {
-      if (block?.type === 'text' && block.text.trim()) {
-        texts.push(block.text)
+    let lastMeaningfulBlock: ContentBlock | undefined
+    for (let i = blocks.length - 1; i >= 0; i--) {
+      const block = blocks[i]
+      if (!block) continue
+      const isEmpty =
+        (block.type === 'text' && !block.text.trim()) ||
+        (block.type === 'thinking' && !block.thinking.trim()) ||
+        (block.type === 'user_input' && !block.text.trim())
+      if (!isEmpty) {
+        lastMeaningfulBlock = block
+        break
       }
     }
-    if (texts.length === 0 && message.content?.trim()) {
-      texts.push(message.content)
-    }
-    if (texts.length === 0) continue
 
-    const combined = texts.join('\n\n')
+    // Only prose that follows all activity is a conclusion. Surfacing an
+    // earlier intro below later tool calls changes the visible timeline and
+    // duplicates that intro when the activity row is expanded after reload.
+    if (lastMeaningfulBlock && lastMeaningfulBlock.type !== 'text') return null
+
+    const text =
+      lastMeaningfulBlock?.type === 'text'
+        ? lastMeaningfulBlock.text
+        : message.content?.trim()
+    if (!text) continue
+
+    const combined = text
     if (!combined.trim()) continue
     const recap = extractRecapSection(combined)
     if (recap) return recap
-    return texts[texts.length - 1] ?? null
+    return text
   }
   return null
 }
@@ -376,6 +395,7 @@ interface CompactActivityRowProps {
       hasFollowUpMessage: boolean
       durationMs: number | null
       hideCancelledIndicator?: boolean
+      hideEditedFiles?: boolean
     }
   ) => React.ReactNode
   hasFollowUpFor: (globalIndex: number) => boolean
@@ -384,6 +404,7 @@ interface CompactActivityRowProps {
    * strip it from the latest assistant message inside the expanded body to
    * avoid duplicating the recap. */
   recapShownExternally?: boolean
+  editedFilesShownExternally?: boolean
 }
 
 function CompactActivityRow({
@@ -393,6 +414,7 @@ function CompactActivityRow({
   hasFollowUpFor,
   durationFor,
   recapShownExternally,
+  editedFilesShownExternally,
 }: CompactActivityRowProps) {
   const [isOpen, setIsOpen] = useState(false)
   const summary = useMemo(() => summarizeGroup(group), [group])
@@ -475,6 +497,7 @@ function CompactActivityRow({
                   hasFollowUpMessage: hasFollowUpFor(item.globalIndex),
                   durationMs: durationFor(item.globalIndex, item.message),
                   hideCancelledIndicator: hasCancelledMessage,
+                  hideEditedFiles: editedFilesShownExternally,
                 })}
               </div>
             ))}
@@ -847,6 +870,7 @@ export const CompactMessageList = memo(
             hasFollowUpMessage: boolean
             durationMs: number | null
             hideCancelledIndicator?: boolean
+            hideEditedFiles?: boolean
           }
         ) => (
           <MessageItem
@@ -887,6 +911,7 @@ export const CompactMessageList = memo(
             onCopyToInput={onCopyToInput}
             hideApproveButtons={hideApproveButtons}
             hideCancelledIndicator={extra.hideCancelledIndicator}
+            hideEditedFiles={extra.hideEditedFiles}
             durationMs={extra.durationMs}
           />
         ),
@@ -1033,16 +1058,14 @@ export const CompactMessageList = memo(
 
       return (
         <div className="flex flex-col w-full">
-          {(hasHiddenPrompts || hasOlderOnDisk) && (
+          {!hasHiddenPrompts && hasOlderOnDisk && (
             <button
               type="button"
               onClick={loadOlder}
-              disabled={!hasHiddenPrompts && isLoadingOlder}
+              disabled={isLoadingOlder}
               className="w-full text-center text-muted-foreground text-xs py-2 opacity-60 hover:opacity-100 transition-opacity cursor-pointer disabled:cursor-wait"
             >
-              {hasHiddenPrompts ? (
-                `↑ Load old prompts (${hiddenPromptCount})`
-              ) : isLoadingOlder ? (
+              {isLoadingOlder ? (
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Loading old prompts…
@@ -1196,9 +1219,12 @@ export const CompactMessageList = memo(
               Boolean(item.latestText) &&
               !(latestTextIsRecap && latestRunHasPlan)
             const surfaceRecap = latestTextIsRecap && showLatestText
-            const surfacedLatestToolCalls = showLatestText
-              ? item.messages.flatMap(({ message }) => message.tool_calls ?? [])
-              : []
+            const surfacedLatestToolCalls =
+              isLatestCompact && (showLatestText || hasCancelledMessage)
+                ? item.messages.flatMap(
+                    ({ message }) => message.tool_calls ?? []
+                  )
+                : []
             return (
               <div key={item.key}>
                 <CompactActivityRow
@@ -1208,16 +1234,21 @@ export const CompactMessageList = memo(
                   hasFollowUpFor={hasFollowUpFor}
                   durationFor={durationFor}
                   recapShownExternally={surfaceRecap}
+                  editedFilesShownExternally={
+                    surfacedLatestToolCalls.length > 0
+                  }
                 />
-                {showLatestText && (
+                {(showLatestText || surfacedLatestToolCalls.length > 0) && (
                   <div className="pb-4">
-                    <Markdown
-                      streaming={false}
-                      messageId={item.key}
-                      sessionId={sessionId}
-                    >
-                      {item.latestText ?? ''}
-                    </Markdown>
+                    {showLatestText && (
+                      <Markdown
+                        streaming={false}
+                        messageId={item.key}
+                        sessionId={sessionId}
+                      >
+                        {item.latestText ?? ''}
+                      </Markdown>
+                    )}
                     {surfacedLatestToolCalls.length > 0 && (
                       <EditedFilesDisplay
                         toolCalls={surfacedLatestToolCalls}

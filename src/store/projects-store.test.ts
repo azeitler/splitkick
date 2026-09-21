@@ -12,6 +12,9 @@ describe('ProjectsStore', () => {
       starredSessions: [],
       starredSectionCollapsed: false,
       projectRailHidden: false,
+      projectCanvasActiveFilters: {},
+      sidebarServerFilter: null,
+      sidebarActiveTab: 'projects',
       githubDashboardFavoriteProjectIds: [],
       addProjectDialogOpen: false,
       projectSettingsDialogOpen: false,
@@ -237,6 +240,24 @@ describe('ProjectsStore', () => {
   })
 
   describe('project canvas settings', () => {
+    it('stores client view filters by scoped owner', () => {
+      const state = useProjectsStore.getState()
+
+      state.setProjectCanvasActiveFilter('server-1:project-1', 'manual')
+      state.setSidebarServerFilter('server-1')
+
+      expect(useProjectsStore.getState().projectCanvasActiveFilters).toEqual({
+        'server-1:project-1': 'manual',
+      })
+      expect(useProjectsStore.getState().sidebarServerFilter).toBe('server-1')
+    })
+
+    it('stores the selected sidebar tab', () => {
+      useProjectsStore.getState().setSidebarActiveTab('recent')
+
+      expect(useProjectsStore.getState().sidebarActiveTab).toBe('recent')
+    })
+
     it('stores worktree sort mode per project', () => {
       const { setProjectCanvasWorktreeSortMode } = useProjectsStore.getState()
 

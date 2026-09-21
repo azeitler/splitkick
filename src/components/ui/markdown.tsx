@@ -23,7 +23,13 @@ import { LocalPathRootContext, resolveLocalPath } from '@/lib/chat-links'
 import { MarkdownLink } from '@/components/ui/markdown-link'
 import { escapeMarkdownImageDestinations } from '@/lib/markdown-image-escape'
 import { getFilename } from '@/lib/path-utils'
-import { Copy, Check, Table, ListChecks, ImageOff } from 'lucide-react'
+import {
+  Copy,
+  Check,
+  Table,
+  ListChecks,
+  ImageOff,
+} from '@/components/icons/reicon'
 import { toast } from 'sonner'
 import { copyToClipboard } from '@/lib/clipboard'
 import {

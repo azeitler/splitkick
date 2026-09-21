@@ -30,6 +30,7 @@ const refreshOpencodeModelsMutateAsync = vi.fn()
 vi.mock('@/services/model-catalog', async importOriginal => ({
   ...(await importOriginal<typeof ModelCatalogModule>()),
   useModelCatalog: () => ({ data: undefined }),
+  useRefreshModelCatalog: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 vi.mock('@/services/opencode-cli', () => ({
@@ -743,6 +744,10 @@ describe('BackendModelPickerContent', () => {
       />
     )
 
+    await user.type(
+      screen.getByPlaceholderText(/search codex models/i),
+      'GPT 5.6 Sol'
+    )
     await user.keyboard('{ArrowDown}')
     await user.keyboard('{Meta>}f{/Meta}')
 

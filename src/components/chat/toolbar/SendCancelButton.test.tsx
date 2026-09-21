@@ -1,13 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { render, screen } from '@/test/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen } from '@/test/test-utils'
 import { SendCancelButton } from './SendCancelButton'
 
-const { useIsMobileMock } = vi.hoisted(() => ({
-  useIsMobileMock: vi.fn(() => false),
-}))
+const runtime = vi.hoisted(() => ({ isMobile: false, isNative: true }))
 
 vi.mock('@/hooks/use-mobile', () => ({
-  useIsMobile: () => useIsMobileMock(),
+  useIsMobile: () => runtime.isMobile,
 }))
 
 vi.mock('@/lib/platform', () => ({
@@ -16,7 +14,16 @@ vi.mock('@/lib/platform', () => ({
   isMacOS: true,
 }))
 
+vi.mock('@/lib/environment', () => ({
+  isNativeApp: () => runtime.isNative,
+}))
+
 describe('SendCancelButton', () => {
+  beforeEach(() => {
+    runtime.isMobile = false
+    runtime.isNative = true
+  })
+
   it('renders a generic Send label while idle', () => {
     const { container } = render(
       <SendCancelButton
@@ -129,18 +136,71 @@ describe('SendCancelButton', () => {
       cancel.compareDocumentPosition(queue) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
   })
+
+  it('offers separate Queue and Steer actions in Web Access', () => {
+    runtime.isNative = false
+    const onSteer = vi.fn()
+
+    render(
+      <SendCancelButton
+        isSending
+        canSend
+        canSteer
+        onCancel={vi.fn()}
+        onSteer={onSteer}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /^queue$/i })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /^steer$/i }))
+    expect(onSteer).toHaveBeenCalledOnce()
+  })
+
+  it('offers separate Queue and Steer actions in mobile view', () => {
+    runtime.isMobile = true
+
+    render(
+      <SendCancelButton
+        isSending
+        canSend
+        canSteer
+        onCancel={vi.fn()}
+        onSteer={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /^queue$/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^steer$/i })).toBeInTheDocument()
+  })
+
+  it('keeps manual steering behind the keyboard shortcut on native desktop', () => {
+    render(
+      <SendCancelButton
+        isSending
+        canSend
+        canSteer
+        onCancel={vi.fn()}
+        onSteer={vi.fn()}
+      />
+    )
+
+    expect(screen.getByRole('button', { name: /^queue$/i })).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^steer$/i })
+    ).not.toBeInTheDocument()
+  })
 })
 
 describe('SendCancelButton touch target', () => {
   afterEach(() => {
-    useIsMobileMock.mockReturnValue(false)
+    runtime.isMobile = false
   })
 
   it('grows Send to 44px on a phone', () => {
     // The most-tapped control in the composer. Uses the component's own
     // useIsMobile rather than a viewport prefix, because the surrounding
     // toolbar is container-query driven.
-    useIsMobileMock.mockReturnValue(true)
+    runtime.isMobile = true
 
     render(
       <SendCancelButton
@@ -170,7 +230,7 @@ describe('SendCancelButton touch target', () => {
   })
 
   it('grows Cancel to 44px on a phone too', () => {
-    useIsMobileMock.mockReturnValue(true)
+    runtime.isMobile = true
 
     render(
       <SendCancelButton
