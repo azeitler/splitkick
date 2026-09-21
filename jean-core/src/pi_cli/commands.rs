@@ -6,6 +6,8 @@ use std::time::Duration;
 use tauri::AppHandle;
 
 use super::config::{find_pi_in_path, get_cli_dir, resolve_cli_binary};
+#[cfg(windows)]
+use crate::platform::silent_command;
 const PI_NPM_PACKAGE: &str = "@earendil-works/pi-coding-agent";
 
 // NOTE: These structs intentionally use snake_case on the wire (no

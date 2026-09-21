@@ -1207,14 +1207,14 @@ pub fn send_request(method: &str, params: Value) -> Result<Value, String> {
 fn send_request_with_retry(
     method: &str,
     params: Value,
-    retry_on_reconnect: bool,
+    _retry_on_reconnect: bool,
 ) -> Result<Value, String> {
     let guard = CODEX_SERVER.lock().unwrap();
     let server = guard.as_ref().ok_or("Codex app-server not running")?;
 
     if server.server_dead.load(Ordering::SeqCst) {
         #[cfg(unix)]
-        if retry_on_reconnect
+        if _retry_on_reconnect
             && matches!(server.transport, Transport::Socket { .. })
             && is_process_alive(server.server_pid)
         {
