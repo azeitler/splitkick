@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.11] - 2026-09-21
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Markdown and text files open as a readable page in the browser pane.** A
@@ -120,7 +124,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   rename is open no longer saves the half-typed name; it drops the edit. And a
   right-click inside the name field now shows the normal Cut / Copy / Paste
   menu instead of the session menu. This applies to the sidebar rows, the
-  Starred and Pinned rows, and the session tabs.
+  Starred and Pinned rows, and the session tabs. Fixes
+  [#29](https://github.com/azeitler/jean/issues/29).
 
 - **The Claude usage indicator reads the login you are actually using.** On some
   Macs the indicator never showed a number. It alternated between "Claude usage
@@ -141,8 +146,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   expired and the refresh is declined, Jean says so instead of sending the dead
   token and reporting the answer as rate-limiting.
 
-  If a Mac already has the stray item, this removes it from the picture. You can
-  also delete it directly; Claude Code's own item is not affected:
+  If a Mac already has the stray item, this removes it from the picture
+  ([#30](https://github.com/azeitler/jean/issues/30)). You can also delete it
+  directly; Claude Code's own item is not affected:
 
   ```sh
   security delete-generic-password -s "Claude Code-credentials" -a claude
@@ -164,7 +170,8 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
   Also fixed on the way: Jean stopped the Claude process on the first,
   still-empty chunk of a question or plan, so the picker or the plan would have
-  come up blank. Jean now waits until the whole tool input has arrived.
+  come up blank. Jean now waits until the whole tool input has arrived. Fixes
+  [#1](https://github.com/azeitler/jean/issues/1).
 
 - **A URL in backticks is a link now.** An agent that wrote a dev-server
   address as code — `` `http://localhost:5174/#/demo` `` — left you with text
@@ -1005,7 +1012,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.10...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.11...HEAD
+[0.1.73-z.11]: https://github.com/azeitler/jean/compare/v0.1.73-z.10...v0.1.73-z.11
 [0.1.73-z.10]: https://github.com/azeitler/jean/compare/v0.1.73-z.9...v0.1.73-z.10
 [0.1.73-z.9]: https://github.com/azeitler/jean/compare/v0.1.73-z.8...v0.1.73-z.9
 [0.1.73-z.8]: https://github.com/azeitler/jean/compare/v0.1.73-z.7...v0.1.73-z.8
