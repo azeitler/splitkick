@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { within } from '@testing-library/react'
 import { render, screen } from '@/test/test-utils'
 import { BackendModelPickerContent } from './BackendModelPickerContent'
+import type * as ModelCatalogService from '@/services/model-catalog'
 
 class ResizeObserverMock {
   observe() {
@@ -67,6 +68,12 @@ vi.mock('@/services/preferences', () => ({
     },
   }),
   usePatchPreferences: () => ({ mutate: patchPreferencesMutate }),
+}))
+
+vi.mock('@/services/model-catalog', async importOriginal => ({
+  ...(await importOriginal<typeof ModelCatalogService>()),
+  useModelCatalog: () => ({ data: undefined }),
+  useRefreshModelCatalog: () => ({ mutateAsync: vi.fn(), isPending: false }),
 }))
 
 beforeEach(() => {
