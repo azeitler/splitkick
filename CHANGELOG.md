@@ -7,7 +7,35 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **JeanZ is now built on Jean 1.0.1.** The upstream releases 1.0.0 and 1.0.1
+  are merged in. The largest upstream additions:
+  - The main window can show the projects of all your remote servers
+    together, with a server filter in the sidebar and a toggle for each
+    server in the connections dialog. A window that you opened for one remote
+    still shows only that remote.
+  - A Recent tab in the sidebar lists the worktrees you worked in last.
+  - Jean MCP and the Agent Browser are now always available to the agents.
+    Jean repairs their setup at start.
+  - A separate Steer action sends a message into a running turn. A normal
+    send waits in the queue.
+  - New MCP tools let an agent change a session's model and settings.
+  - Many fixes for Windows, Codex, Docker, and the CLI paths.
+
 ### Changed
+
+- **The sidebar has the upstream layout.** It has two tabs, Projects and
+  Recent, one search field for projects and worktrees, and a footer with
+  Settings and the version. The Home row, Starred, the per-project session
+  filter and the sort menu stay.
+  - A project row no longer has its own Settings and New worktree buttons.
+    Use the project's context menu or the project page.
+  - The version moved from the title bar to the sidebar footer.
+  - New folder is a button next to Add project. Archived opens from the
+    command palette and the dock menu.
+- **All icons come from one icon set.** Upstream replaced its icons, so some
+  icons look a little different.
 
 - **On a phone, Jean is navigated with tabs instead of a drawer.** A floating
   bar at the bottom has four tabs — Home, Starred, History and Usage — and a

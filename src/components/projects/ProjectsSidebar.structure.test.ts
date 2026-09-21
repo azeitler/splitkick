@@ -135,4 +135,14 @@ describe('ProjectsSidebar server filter', () => {
     expect(sidebar).toContain('v{appVersion}')
     expect(titleBar).not.toContain('v{appVersion}')
   })
+
+  it('keeps a way to create a folder next to Add project', () => {
+    const source = readFileSync(
+      'src/components/projects/ProjectsSidebar.tsx',
+      'utf8'
+    )
+
+    expect(source).toContain('aria-label="New folder"')
+    expect(source).toContain("createFolder.mutate({ name: 'New Folder' })")
+  })
 })

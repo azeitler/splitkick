@@ -3,6 +3,7 @@ import {
   Plus,
   AlertTriangle,
   ChevronDown,
+  FolderPlus,
   Search,
   Server,
   Settings,
@@ -25,7 +26,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { useProjects } from '@/services/projects'
+import { useCreateFolder, useProjects } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -63,6 +64,7 @@ export function ProjectsSidebar() {
     refetch,
   } = useProjects()
   const { setAddProjectDialogOpen } = useProjectsStore()
+  const createFolder = useCreateFolder()
   const sidebarWidth = useSidebarWidth()
   const isMobile = useIsMobile()
   const [backendCheckReady, setBackendCheckReady] = useState(false)
@@ -193,6 +195,22 @@ export function ProjectsSidebar() {
                     </button>
                   </TooltipTrigger>
                   <TooltipContent>Add project</TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-muted text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                      onClick={() =>
+                        createFolder.mutate({ name: 'New Folder' })
+                      }
+                      disabled={createFolder.isPending}
+                      aria-label="New folder"
+                    >
+                      <FolderPlus className="size-3.5" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent>New folder</TooltipContent>
                 </Tooltip>
               </div>
             </div>
