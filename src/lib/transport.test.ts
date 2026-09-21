@@ -325,6 +325,22 @@ describe('transport bootstrap', () => {
     })
   })
 
+  it('keeps path-routed local Open In commands on native Tauri handlers', async () => {
+    const tauriInvoke = vi.fn().mockResolvedValue(undefined)
+    const transport = await loadNativeTransportModule(tauriInvoke)
+    const { registerServerResourcePath } =
+      await import('./server-command-routing')
+    registerServerResourcePath('local', '/Users/jean/project')
+
+    await transport.invoke('open_worktree_in_finder', {
+      worktreePath: '/Users/jean/project',
+    })
+
+    expect(tauriInvoke).toHaveBeenCalledWith('open_worktree_in_finder', {
+      worktreePath: '/Users/jean/project',
+    })
+  })
+
   it('opens remote worktrees in local Zed via ssh:// targets', async () => {
     const tauriInvoke = vi.fn().mockResolvedValue(undefined)
     const transport = await loadRemoteNativeTransportModule(

@@ -293,6 +293,14 @@ export async function invoke<T>(
       await import('./server-command-routing')
     const routed = resolveServerCommand(args)
     if (routed) {
+      // Path ownership can route local worktree actions before the normal
+      // desktop-only branch below. Keep local shell actions on their native
+      // Tauri handlers instead of sending them through the guarded HTTP
+      // dispatcher.
+      if (routed.serverId === 'local' && DESKTOP_ONLY_COMMANDS.has(command)) {
+        const { invoke: tauriInvoke } = await import('@tauri-apps/api/core')
+        return tauriInvoke<T>(command, routed.args)
+      }
       // Editor opens are local desktop actions even when path ownership routes
       // the remaining worktree commands to a remote Jean server.
       if (routed.serverId !== 'local' && !isNativeOpenAllowed()) {
