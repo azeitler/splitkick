@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **The usage screen and popover show which account you use.** Each backend
+  line starts with the signed-in email, for example `you@example.com · max`.
+  Claude reads it from `~/.claude.json` and Codex from its login token. Grok
+  shows it when its user endpoint sends one. The MCP `get_usage` tool also
+  returns it as `accountEmail`.
+
 ## [1.0.1-z.12] - 2026-09-21
 
 Built on Jean 1.0.1.

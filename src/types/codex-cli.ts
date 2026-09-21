@@ -53,6 +53,8 @@ export interface CodexAdditionalUsageLimit {
 
 export interface CodexUsageSnapshot {
   planType: string | null
+  /** Signed-in account email, when the backend exposes it. */
+  accountEmail?: string | null
   session: CodexUsageWindowSnapshot | null
   weekly: CodexUsageWindowSnapshot | null
   reviews: CodexUsageWindowSnapshot | null

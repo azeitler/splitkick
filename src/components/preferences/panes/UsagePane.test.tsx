@@ -74,6 +74,7 @@ describe('UsagePane', () => {
     mocks.useClaudeUsage.mockReturnValue(
       idleQuery({
         planType: 'pro',
+        accountEmail: 'claude@example.com',
         session: {
           usedPercent: 22,
           resetsAt: Math.floor(Date.now() / 1000) + 3600,
@@ -97,6 +98,10 @@ describe('UsagePane', () => {
     expect(screen.getByText('Claude')).toBeInTheDocument()
     expect(screen.getByText('pro')).toBeInTheDocument()
     expect(screen.getByText('Extra: 1.5 / 50')).toBeInTheDocument()
+    expect(screen.getByText('claude@example.com')).toBeInTheDocument()
+    expect(
+      screen.getByTitle('claude@example.com · pro · Extra: 1.5 / 50')
+    ).toBeInTheDocument()
     expect(screen.getByText('Session')).toBeInTheDocument()
     expect(screen.getByText('Sonnet')).toBeInTheDocument()
   })
@@ -105,6 +110,7 @@ describe('UsagePane', () => {
     mocks.useCodexUsage.mockReturnValue(
       idleQuery({
         planType: 'pro',
+        accountEmail: 'codex@example.com',
         session: {
           usedPercent: 12.5,
           resetsAt: Math.floor(Date.now() / 1000) + 3600,
@@ -127,6 +133,7 @@ describe('UsagePane', () => {
 
     expect(screen.getByText('Codex')).toBeInTheDocument()
     expect(screen.getByText('Credits remaining: 3')).toBeInTheDocument()
+    expect(screen.getByText('codex@example.com')).toBeInTheDocument()
     expect(screen.getByText('12.5%')).toBeInTheDocument()
   })
 

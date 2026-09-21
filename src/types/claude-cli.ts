@@ -59,6 +59,8 @@ export interface ClaudeUsageWindowSnapshot {
 
 export interface ClaudeUsageSnapshot {
   planType: string | null
+  /** Signed-in account email, when the backend exposes it. */
+  accountEmail?: string | null
   session: ClaudeUsageWindowSnapshot | null
   weekly: ClaudeUsageWindowSnapshot | null
   sonnetWeekly: ClaudeUsageWindowSnapshot | null

@@ -46,6 +46,8 @@ export interface GrokProductUsageSnapshot {
 
 export interface GrokUsageSnapshot {
   planType: string | null
+  /** Signed-in account email, when the backend exposes it. */
+  accountEmail?: string | null
   /** Overall weekly credit usage */
   weekly: GrokUsageWindowSnapshot | null
   /** Grok Build product usage (primary CLI product) */

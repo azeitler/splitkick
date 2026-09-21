@@ -86,6 +86,9 @@ pub struct CodexAdditionalUsageLimit {
 #[serde(rename_all = "camelCase")]
 pub struct CodexUsageSnapshot {
     pub plan_type: Option<String>,
+    /// Signed-in account email, from the `id_token` in Codex auth.
+    #[serde(default)]
+    pub account_email: Option<String>,
     pub session: Option<CodexUsageWindowSnapshot>,
     pub weekly: Option<CodexUsageWindowSnapshot>,
     pub reviews: Option<CodexUsageWindowSnapshot>,
@@ -609,6 +612,27 @@ fn load_codex_auth_from_keychain() -> Option<CodexAuthFile> {
     parse_auth_payload(&payload)
 }
 
+fn codex_account_email(auth: &CodexAuthFile) -> Option<String> {
+    email_from_id_token(auth.tokens.as_ref()?.id_token.as_deref()?)
+}
+
+/// Reads the `email` claim from a JWT payload. The signature is not checked:
+/// the token only labels the account in the UI.
+fn email_from_id_token(id_token: &str) -> Option<String> {
+    use base64::Engine as _;
+    let payload = id_token.split('.').nth(1)?;
+    let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload.trim_end_matches('='))
+        .ok()?;
+    let claims: Value = serde_json::from_slice(&bytes).ok()?;
+    claims
+        .get("email")?
+        .as_str()
+        .map(str::trim)
+        .filter(|email| !email.is_empty())
+        .map(str::to_string)
+}
+
 fn load_codex_auth_for_binary(
     binary_path: Option<&str>,
 ) -> Result<(CodexAuthSource, CodexAuthFile), String> {
@@ -640,7 +664,6 @@ fn load_codex_auth_for_binary(
     Err("Codex auth not found. Run `codex` to authenticate.".to_string())
 }
 
-#[allow(dead_code)]
 fn load_codex_auth() -> Result<(CodexAuthSource, CodexAuthFile), String> {
     load_codex_auth_for_binary(None)
 }
@@ -756,6 +779,7 @@ pub(crate) fn codex_usage_snapshot_from_app_server_rate_limits(
 
     Ok(CodexUsageSnapshot {
         plan_type: rate_limits.plan_type,
+        account_email: None,
         session: map_app_server_rate_limit_window(rate_limits.primary),
         weekly: map_app_server_rate_limit_window(rate_limits.secondary),
         reviews: None,
@@ -770,7 +794,11 @@ pub(crate) fn update_codex_usage_from_app_server_rate_limits(
     app: &AppHandle,
     params: &Value,
 ) -> Result<CodexUsageSnapshot, String> {
-    let snapshot = codex_usage_snapshot_from_app_server_rate_limits(params, current_unix_secs())?;
+    let mut snapshot =
+        codex_usage_snapshot_from_app_server_rate_limits(params, current_unix_secs())?;
+    snapshot.account_email = load_codex_auth()
+        .ok()
+        .and_then(|(_, auth)| codex_account_email(&auth));
     save_cached_codex_usage(&snapshot, snapshot.fetched_at);
     let _ = app.emit_all("codex-cli:usage-updated", &snapshot);
     Ok(snapshot)
@@ -1349,6 +1377,7 @@ pub async fn get_codex_usage(app: AppHandle) -> Result<CodexUsageSnapshot, Strin
 
     let snapshot = CodexUsageSnapshot {
         plan_type: usage.plan_type,
+        account_email: codex_account_email(&auth),
         session,
         weekly,
         reviews,
@@ -2579,6 +2608,20 @@ fn extract_zip_binary_bytes(archive_content: &[u8], target: &str) -> Result<Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn email_from_id_token_reads_email_claim() {
+        use base64::Engine as _;
+        let encode = |v: serde_json::Value| {
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(v.to_string())
+        };
+        let token = format!("h.{}.s", encode(serde_json::json!({"email": "a@b.co"})));
+        assert_eq!(email_from_id_token(&token).as_deref(), Some("a@b.co"));
+        let no_email = format!("h.{}.s", encode(serde_json::json!({"sub": "x"})));
+        assert_eq!(email_from_id_token(&no_email), None);
+        assert_eq!(email_from_id_token("not-a-jwt"), None);
+        assert_eq!(email_from_id_token("h.!!!.s"), None);
+    }
     use std::io::{Cursor, Write};
 
     fn make_test_zip(entries: &[(&str, &[u8])]) -> Vec<u8> {

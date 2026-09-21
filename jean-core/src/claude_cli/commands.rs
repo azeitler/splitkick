@@ -625,6 +625,9 @@ pub struct ClaudeUsageWindowSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct ClaudeUsageSnapshot {
     pub plan_type: Option<String>,
+    /// Signed-in account email, from `oauthAccount` in `~/.claude.json`.
+    #[serde(default)]
+    pub account_email: Option<String>,
     pub session: Option<ClaudeUsageWindowSnapshot>,
     pub weekly: Option<ClaudeUsageWindowSnapshot>,
     pub sonnet_weekly: Option<ClaudeUsageWindowSnapshot>,
@@ -952,6 +955,27 @@ fn load_credentials_from_keychain() -> Option<(String, ClaudeCredentialsFile)> {
         .filter_map(|account| read_keychain_item(&account).map(|creds| (account, creds)))
         .collect();
     pick_freshest_credentials(candidates)
+}
+
+/// Reads the signed-in account email from `~/.claude.json`. Claude Code keeps
+/// the OAuth profile there under `oauthAccount`. Returns `None` in WSL mode.
+fn read_claude_account_email() -> Option<String> {
+    if crate::platform::get_wsl_config().enabled {
+        return None;
+    }
+    let path = dirs::home_dir()?.join(".claude.json");
+    let raw = std::fs::read_to_string(path).ok()?;
+    email_from_claude_config(&serde_json::from_str(&raw).ok()?)
+}
+
+fn email_from_claude_config(config: &Value) -> Option<String> {
+    config
+        .get("oauthAccount")?
+        .get("emailAddress")?
+        .as_str()
+        .map(str::trim)
+        .filter(|email| !email.is_empty())
+        .map(str::to_string)
 }
 
 fn load_claude_credentials() -> Result<(ClaudeCredentialSource, ClaudeCredentialsFile), String> {
@@ -1580,6 +1604,7 @@ pub(crate) async fn get_claude_usage_with_source(
             .claude_ai_oauth
             .as_ref()
             .and_then(|o| o.subscription_type.clone()),
+        account_email: read_claude_account_email(),
         session: map_window(usage.five_hour),
         weekly: map_window(usage.seven_day),
         sonnet_weekly: map_window(usage.seven_day_sonnet),
@@ -1665,6 +1690,15 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn email_from_claude_config_reads_oauth_account() {
+        let config = serde_json::json!({"oauthAccount": {"emailAddress": " a@b.co "}});
+        assert_eq!(email_from_claude_config(&config).as_deref(), Some("a@b.co"));
+        let blank = serde_json::json!({"oauthAccount": {"emailAddress": ""}});
+        assert_eq!(email_from_claude_config(&blank), None);
+        assert_eq!(email_from_claude_config(&serde_json::json!({})), None);
+    }
 
     #[test]
     fn wsl_credentials_path_uses_wsl_home() {

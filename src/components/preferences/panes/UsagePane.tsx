@@ -176,7 +176,10 @@ function MetaLine({ items }: { items: (string | null | undefined)[] }) {
   const parts = items.filter((p): p is string => !!p && p.length > 0)
   if (parts.length === 0) return null
   return (
-    <p className="truncate text-xs text-muted-foreground">
+    <p
+      className="truncate text-xs text-muted-foreground"
+      title={parts.join(' · ')}
+    >
       {parts.map((part, i) => (
         <React.Fragment key={part}>
           {i > 0 ? (
@@ -355,7 +358,9 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
 
     return (
       <div className="space-y-2">
-        <MetaLine items={[data.planType ?? 'Unknown', extra]} />
+        <MetaLine
+          items={[data.accountEmail, data.planType ?? 'Unknown', extra]}
+        />
         <div className="space-y-1.5">
           <UsageRow label="Session" usage={data.session} />
           <UsageRow label="Weekly" usage={data.weekly} />
@@ -411,7 +416,9 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
 
     return (
       <div className="space-y-2">
-        <MetaLine items={[data.planType ?? 'Unknown', credits]} />
+        <MetaLine
+          items={[data.accountEmail, data.planType ?? 'Unknown', credits]}
+        />
         {data.rateLimitReachedType ? (
           <InlineStatus tone="error">
             Rate limit reached ({data.rateLimitReachedType.replace(/_/g, ' ')})
@@ -485,7 +492,14 @@ export const UsagePane: React.FC<UsagePaneProps> = ({
 
     return (
       <div className="space-y-2">
-        <MetaLine items={[data.planType ?? 'Unknown', codeAccess, period]} />
+        <MetaLine
+          items={[
+            data.accountEmail,
+            data.planType ?? 'Unknown',
+            codeAccess,
+            period,
+          ]}
+        />
         <div className="space-y-1.5">
           <UsageRow label="Grok Build" usage={data.session} />
           <UsageRow label="Weekly credits" usage={data.weekly} />

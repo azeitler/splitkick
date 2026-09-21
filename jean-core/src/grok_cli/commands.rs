@@ -93,6 +93,9 @@ pub struct GrokProductUsageSnapshot {
 #[serde(rename_all = "camelCase")]
 pub struct GrokUsageSnapshot {
     pub plan_type: Option<String>,
+    /// Signed-in account email, from the Grok CLI user endpoint.
+    #[serde(default)]
+    pub account_email: Option<String>,
     /// Overall weekly credit usage percent from billing config.
     pub weekly: Option<GrokUsageWindowSnapshot>,
     /// Grok Build product usage (primary CLI product).
@@ -1240,6 +1243,13 @@ fn snapshot_from_payloads(
             }
         });
 
+    let account_email = user.and_then(|u| {
+        string_field(u, &["email", "emailAddress", "email_address"]).or_else(|| {
+            u.get("user")
+                .and_then(|inner| string_field(inner, &["email"]))
+        })
+    });
+
     let has_grok_code_access = user.and_then(|u| {
         u.get("hasGrokCodeAccess")
             .or_else(|| u.get("has_grok_code_access"))
@@ -1260,6 +1270,7 @@ fn snapshot_from_payloads(
 
     GrokUsageSnapshot {
         plan_type,
+        account_email,
         weekly: map_usage_window(weekly_percent, period_end.as_deref()),
         session: map_usage_window(build_percent, period_end.as_deref()),
         products,
@@ -1455,6 +1466,18 @@ mod tests {
         assert_eq!(snap.products.len(), 2);
         assert_eq!(snap.frequent_used, Some(1.0));
         assert_eq!(snap.has_grok_code_access, Some(true));
+        assert_eq!(snap.account_email, None);
+    }
+
+    #[test]
+    fn snapshot_reads_account_email_from_user_payload() {
+        let billing = serde_json::json!({});
+        let flat = serde_json::json!({"email": "a@b.co"});
+        let nested = serde_json::json!({"user": {"email": "c@d.co"}});
+        let snap = snapshot_from_payloads(&billing, Some(&flat), None, 1);
+        assert_eq!(snap.account_email.as_deref(), Some("a@b.co"));
+        let snap = snapshot_from_payloads(&billing, Some(&nested), None, 1);
+        assert_eq!(snap.account_email.as_deref(), Some("c@d.co"));
     }
 
     #[test]
