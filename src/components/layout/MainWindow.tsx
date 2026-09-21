@@ -186,6 +186,7 @@ import { useGlobalInputSanitizer } from '@/hooks/useGlobalInputSanitizer'
 import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
 import { useUIStatePersistence } from '@/hooks/useUIStatePersistence'
 import { useClientViewStatePersistence } from '@/hooks/useClientViewStatePersistence'
+import { useRemoteExpansionImport } from '@/hooks/useRemoteExpansionImport'
 import { useSessionStatePersistence } from '@/hooks/useSessionStatePersistence'
 import { useRestoreLastArchived } from '@/hooks/useRestoreLastArchived'
 import { useArchiveCleanup } from '@/hooks/useArchiveCleanup'
@@ -336,6 +337,7 @@ export function MainWindow() {
   // Persist UI state (last opened worktree, expanded projects)
   const { isInitialized } = useUIStatePersistence()
   useClientViewStatePersistence(isInitialized)
+  useRemoteExpansionImport(isInitialized)
 
   // Persist session-specific state (answered questions, fixed findings, etc.)
   useSessionStatePersistence()

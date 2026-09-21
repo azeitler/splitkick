@@ -7,6 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Remote projects open the rows they had open in their old windows.**
+  Before 1.0, each remote had a window of its own, and that window saved its
+  expanded projects, folders and workspaces on the remote. The main window
+  now shows remote projects itself, so after the update every remote row
+  started collapsed. The first time a remote is online, JeanZ now reads that
+  saved expansion once and opens the same rows. Rows you already opened or
+  closed keep their state.
+
 ## [1.0.1-z.13] - 2026-09-21
 
 Built on Jean 1.0.1.
