@@ -89,6 +89,22 @@ export function isAbsolutePath(path: string): boolean {
   return path.startsWith('/') || /^[a-zA-Z]:[\\/]/.test(path)
 }
 
+/**
+ * Whether a path starts at the user's home directory (`~` or `~/…`).
+ *
+ * Only the backend can expand it: the frontend does not know the home
+ * directory, and with a remote backend it is another machine's home anyway.
+ * `~user/…` is not recognised.
+ *
+ * @example
+ * isHomeRelativePath('~/Downloads/report.html') // true
+ * isHomeRelativePath('~') // true
+ * isHomeRelativePath('docs/~draft.md') // false
+ */
+export function isHomeRelativePath(path: string): boolean {
+  return /^~(?:[\\/]|$)/.test(path)
+}
+
 /** Extensions a web view renders as a page when it loads the file from disk. */
 const HTML_EXTENSIONS = new Set(['.html', '.htm', '.xhtml', '.xht', '.shtml'])
 

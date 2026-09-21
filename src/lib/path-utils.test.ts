@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   browsableExtensions,
   isBrowsableFile,
+  isHomeRelativePath,
   isHtmlFile,
   isMarkdownFile,
   isPaneTextUrl,
@@ -107,6 +108,20 @@ describe('isVideoFile', () => {
     ['page.html', false],
   ])('%s -> %s', (path, expected) => {
     expect(isVideoFile(path)).toBe(expected)
+  })
+})
+
+describe('isHomeRelativePath', () => {
+  it.each([
+    ['~/Downloads/report.html', true],
+    ['~', true],
+    ['~\\Documents\\a.md', true],
+    ['~root/a.md', false],
+    ['docs/~draft.md', false],
+    ['/Users/me/a.md', false],
+    ['a.md', false],
+  ])('%s -> %s', (path, expected) => {
+    expect(isHomeRelativePath(path)).toBe(expected)
   })
 })
 

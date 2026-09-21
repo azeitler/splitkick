@@ -9,7 +9,8 @@
  * Instead the session's own evidence orders a list of candidates, and the
  * backend reports which of them exist:
  *
- * 1. An absolute reference is itself, and only needs confirming.
+ * 1. An absolute reference is itself, and only needs confirming. So is a
+ *    home-relative one (`~/…`), which the backend expands.
  * 2. Absolute paths the session's tool calls touched, newest first. A Read or
  *    an Edit records where the agent really was, which no string can tell you.
  * 3. The roots: the worktree, and any root the caller adds (a linked project).
@@ -25,6 +26,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { LocalPathRootContext, toLocalReferencePath } from '@/lib/chat-links'
 import {
   isAbsolutePath,
+  isHomeRelativePath,
   joinPaths,
   normalizePath,
   splitFileRefSuffix,
@@ -181,6 +183,9 @@ export function buildFileReferenceCandidates(
   if (!raw) return []
 
   if (isAbsolutePath(raw)) return [raw]
+  // Home-relative names one place. The backend expands `~`; no root or tool
+  // call can say anything more about it.
+  if (isHomeRelativePath(raw)) return [raw]
 
   const relative = normalizePath(raw).replace(/^\.\//, '')
   if (!relative) return []

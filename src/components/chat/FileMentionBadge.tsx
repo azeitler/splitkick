@@ -11,7 +11,7 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Markdown } from '@/components/ui/markdown'
 import { cn } from '@/lib/utils'
 import { getExtension, getExtensionColor } from '@/lib/file-colors'
-import { getFilename, joinPaths } from '@/lib/path-utils'
+import { getFilename, isHomeRelativePath, joinPaths } from '@/lib/path-utils'
 import { useFileReference } from '@/lib/file-reference'
 import { FileReferencePicker } from '@/components/ui/file-reference-picker'
 import { MissingFileReferenceExplanation } from '@/components/ui/missing-file-reference'
@@ -102,8 +102,13 @@ export function FileMentionBadge({
       return
     }
     // While the resolution is still in flight, fall back to the mention as
-    // written — the preview reports its own read error if that is wrong.
-    void loadFile(reference.path ?? joinPaths(extraRoots[0] ?? '', path))
+    // written — the preview reports its own read error if that is wrong. A
+    // `~/…` mention has no such fallback: only the backend can expand it.
+    const fallback = isHomeRelativePath(path)
+      ? null
+      : joinPaths(extraRoots[0] ?? '', path)
+    const target = reference.path ?? fallback
+    if (target) void loadFile(target)
   }, [isDirectory, isMissing, reference, loadFile, extraRoots, path])
 
   const badge = (

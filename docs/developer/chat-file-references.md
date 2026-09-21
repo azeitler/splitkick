@@ -16,7 +16,14 @@ a dead link looked exactly like a live one until it was clicked.
 `useFileReference(ref)` in `src/lib/file-reference.ts` orders the places the
 file could be and asks the backend which of them exist.
 
-1. **An absolute reference** is itself. It still gets confirmed.
+1. **An absolute reference** is itself. It still gets confirmed. So is a
+   **home-relative** one (`~/Downloads/report.html`): the frontend passes it
+   through untouched, and `resolve_file_reference` expands `~` with
+   `dirs::home_dir()`. Only the backend can — the frontend does not know the
+   home directory, and on a remote connection the file is in the backend's
+   home. A missing `~/…` file is not searched for in the worktree: it names
+   one place, and a worktree file with the same tail is not what was meant.
+   `~user/…` is not expanded.
 2. **Paths the session's tool calls touched**, newest first. A Read or an Edit
    records an absolute `file_path`, which is the only record of where the
    agent really was. A reference matches one when it is its tail at a

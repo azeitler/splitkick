@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { FileQuestionMark } from 'lucide-react'
+import { isHomeRelativePath } from '@/lib/path-utils'
 import {
   Tooltip,
   TooltipContent,
@@ -22,8 +23,10 @@ export function MissingFileReferenceExplanation({
     <div className="flex max-w-72 flex-col gap-1">
       <span className="font-medium">No file at {reference}</span>
       <span className="text-xs opacity-80">
-        Jean checked the files this session touched and searched the worktree,
-        so this is not a link. It becomes one if a later turn creates the file.
+        {isHomeRelativePath(reference)
+          ? 'Jean looked for it in the home folder, so this is not a link.'
+          : 'Jean checked the files this session touched and searched the worktree, so this is not a link.'}{' '}
+        It becomes one if a later turn creates the file.
       </span>
     </div>
   )

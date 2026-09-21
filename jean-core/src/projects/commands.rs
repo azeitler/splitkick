@@ -5745,6 +5745,30 @@ fn normalize_lexically(path: &Path) -> PathBuf {
     out
 }
 
+/// The part of a home-relative path after `~`, or `None` when the path does
+/// not start at home. `~` alone yields `Some("")`. `~user/…` is not expanded.
+fn home_relative_tail(path: &str) -> Option<&str> {
+    if path == "~" {
+        return Some("");
+    }
+    path.strip_prefix("~/").or_else(|| path.strip_prefix("~\\"))
+}
+
+/// Expand a leading `~` to the home directory of the machine Jean runs on.
+///
+/// Agents write `~/Downloads/report.html` all the time, and the frontend
+/// cannot expand it: it does not know the home directory, and with a remote
+/// backend the file is in the backend's home, not the client's. A path that
+/// does not start with `~` comes back unchanged. When there is no home
+/// directory, the path is returned as written and simply will not exist.
+fn expand_home(path: &str) -> PathBuf {
+    match (home_relative_tail(path), dirs::home_dir()) {
+        (Some(""), Some(home)) => home,
+        (Some(tail), Some(home)) => home.join(tail),
+        _ => PathBuf::from(path),
+    }
+}
+
 /// Whether `relative` ends with `reference` at a separator boundary.
 ///
 /// `src/lib/api.ts` matches the reference `lib/api.ts` but not `ib/api.ts`.
@@ -5834,6 +5858,9 @@ fn search_worktree_for_reference(root: &Path, reference: &str) -> Vec<PathBuf> {
 ///
 /// Returning every match, not only the first, lets the UI ask the user which
 /// `README.md` they meant instead of guessing.
+///
+/// A candidate that starts with `~` is expanded to the home directory here,
+/// because only the backend knows it.
 pub async fn resolve_file_reference(
     reference: String,
     candidates: Vec<String>,
@@ -5852,7 +5879,7 @@ pub async fn resolve_file_reference(
             if candidate.is_empty() {
                 continue;
             }
-            let path = normalize_lexically(Path::new(candidate));
+            let path = normalize_lexically(&expand_home(candidate));
             let display = path.to_string_lossy().to_string();
             if !seen.insert(display.clone()) {
                 continue;
@@ -5862,8 +5889,12 @@ pub async fn resolve_file_reference(
             }
         }
 
+        // A home-relative reference names one place. If it is not there, a
+        // worktree file that happens to end in `Downloads/report.html` is not
+        // what the user meant, so do not offer one.
+        let home_relative = home_relative_tail(&reference).is_some();
         let mut searched = false;
-        if found.is_empty() {
+        if found.is_empty() && !home_relative {
             if let Some(root) = search_root.as_deref().filter(|r| !r.is_empty()) {
                 let root = Path::new(root);
                 if root.is_dir() {
@@ -14274,6 +14305,65 @@ mod tests {
             normalize_lexically(Path::new("../outside.md")),
             PathBuf::from("../outside.md")
         );
+    }
+
+    #[test]
+    fn expand_home_expands_only_a_leading_tilde() {
+        let home = dirs::home_dir().expect("home dir");
+        assert_eq!(expand_home("~"), home);
+        assert_eq!(expand_home("~/Downloads/a.md"), home.join("Downloads/a.md"));
+        // Not home-relative: unchanged.
+        assert_eq!(expand_home("/repo/a.md"), PathBuf::from("/repo/a.md"));
+        assert_eq!(
+            expand_home("docs/~draft.md"),
+            PathBuf::from("docs/~draft.md")
+        );
+        // `~user` is another user's home, which this does not look up.
+        assert_eq!(expand_home("~root/a.md"), PathBuf::from("~root/a.md"));
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_expands_a_home_relative_candidate() {
+        let home = dirs::home_dir().expect("home dir");
+        let dir = tempfile::tempdir_in(&home).expect("temp dir in home");
+        let name = dir
+            .path()
+            .file_name()
+            .expect("dir name")
+            .to_string_lossy()
+            .to_string();
+        std::fs::write(dir.path().join("notes.md"), "hi\n").expect("notes");
+
+        let reference = format!("~/{name}/notes.md");
+        let resolved = resolve_file_reference(reference.clone(), vec![reference], None)
+            .await
+            .expect("resolve");
+
+        assert_eq!(
+            resolved.path,
+            Some(dir.path().join("notes.md").to_string_lossy().to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_does_not_search_for_a_missing_home_path() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        // A worktree file whose tail matches the home path must not stand in.
+        std::fs::create_dir_all(root.join("Downloads")).expect("downloads");
+        std::fs::write(root.join("Downloads/jean-missing-7f3a.md"), "x\n").expect("decoy");
+
+        let reference = "~/Downloads/jean-missing-7f3a.md".to_string();
+        let resolved = resolve_file_reference(
+            reference.clone(),
+            vec![reference],
+            Some(root.to_string_lossy().to_string()),
+        )
+        .await
+        .expect("resolve");
+
+        assert_eq!(resolved.path, None);
+        assert!(!resolved.searched);
     }
 
     #[tokio::test]

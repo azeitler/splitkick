@@ -44,7 +44,7 @@ const SEG = '[\\p{L}\\p{N}_.@%+=-]+'
 const PATH =
   `(?:file:\\/\\/\\/?(?:[A-Za-z]:\\/)?(?:${SEG}\\/)*${SEG}\\.(?:${EXT})` +
   `|[A-Za-z]:[\\\\/](?:${SEG}[\\\\/])*${SEG}\\.(?:${EXT})` +
-  `|(?:\\.{1,2}\\/|\\/)?(?:${SEG}\\/)*${SEG}\\.(?:${EXT}))` +
+  `|(?:~\\/|\\.{1,2}\\/|\\/)?(?:${SEG}\\/)*${SEG}\\.(?:${EXT}))` +
   '(?:#[\\p{L}\\p{N}._-]*)?'
 // The path must start the text or follow whitespace or an opening bracket or
 // quote, and must not run on into more path characters (`index.html.bak`).

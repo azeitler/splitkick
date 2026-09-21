@@ -206,6 +206,47 @@ describe('file references in a chat answer', () => {
     )
   })
 
+  it('opens a home-relative file at the path the backend expanded', async () => {
+    const expanded = '/Users/me/Downloads/report.md'
+    resolveWith(expanded)
+
+    renderThread('Saved to [the report](~/Downloads/report.md).')
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('resolve_file_reference', {
+        reference: '~/Downloads/report.md',
+        candidates: ['~/Downloads/report.md'],
+        searchRoot: WORKTREE,
+      })
+    )
+    const link = () => screen.getByRole('link', { name: 'the report' })
+    await waitFor(() =>
+      expect(link()).toHaveAttribute('data-file-reference', 'found')
+    )
+    fireEvent.click(link())
+
+    expect(useUIStore.getState().viewingFilePath).toBe(expanded)
+  })
+
+  it('says it looked in the home folder for a missing ~/ file', async () => {
+    resolveWith()
+
+    renderThread('Saved to [the report](~/Downloads/gone.md).')
+
+    const marker = () =>
+      screen
+        .getByText('the report')
+        .closest('[data-file-reference]') as HTMLElement
+    await waitFor(() =>
+      expect(marker()).toHaveAttribute('data-file-reference', 'missing')
+    )
+    fireEvent.focus(marker())
+
+    expect(
+      (await screen.findAllByText(/looked for it in the home folder/)).length
+    ).toBeGreaterThan(0)
+  })
+
   it('leaves a web link alone', async () => {
     resolveWith()
 

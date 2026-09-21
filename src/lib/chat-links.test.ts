@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { classifyChatLink, openChatLink } from './chat-links'
+import { classifyChatLink, openChatLink, resolveLocalPath } from './chat-links'
 import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import { openExternal } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
@@ -161,5 +161,19 @@ describe('openChatLink', () => {
 
     expect(openChatLink('mailto:a@b.c')).toBe(false)
     expect(openChatLink('#top')).toBe(false)
+  })
+})
+
+describe('resolveLocalPath with a home-relative path', () => {
+  it('does not join ~/… onto the root', () => {
+    // `<root>/~/a.md` never exists; only the backend can expand `~`.
+    expect(resolveLocalPath('~/Downloads/a.md', '/repo/worktree')).toBeNull()
+    expect(resolveLocalPath('~', '/repo/worktree')).toBeNull()
+  })
+
+  it('still joins a name that merely contains a tilde', () => {
+    expect(resolveLocalPath('docs/~draft.md', '/repo/worktree')).toBe(
+      '/repo/worktree/docs/~draft.md'
+    )
   })
 })

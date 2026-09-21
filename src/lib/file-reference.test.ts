@@ -98,6 +98,16 @@ describe('buildFileReferenceCandidates', () => {
     ])
   })
 
+  it('passes a home-relative reference through for the backend to expand', () => {
+    expect(
+      buildFileReferenceCandidates('~/Downloads/report.html', {
+        roots: ['/repo/worktree'],
+        // A tool call whose tail matches must not win: `~` names one place.
+        knownPaths: ['/repo/worktree/Downloads/report.html'],
+      })
+    ).toEqual(['~/Downloads/report.html'])
+  })
+
   it('decodes a file URL and drops its fragment', () => {
     expect(
       buildFileReferenceCandidates('file:///my%20docs/api.md#top', evidence)

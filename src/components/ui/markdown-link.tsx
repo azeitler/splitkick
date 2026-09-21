@@ -87,7 +87,10 @@ export function MarkdownLink({
       setPickerOpen(true)
       return
     }
-    if (open(system)) event.preventDefault()
+    // A local href (`docs/a.md`, `~/a.md`) means nothing to the web view, so
+    // it must never navigate by itself — not even in the moment before a
+    // `~/…` reference, which has no fallback path, has resolved.
+    if (open(system) || kind !== 'web') event.preventDefault()
   }
 
   const link = (

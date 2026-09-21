@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import {
   isBrowsableFile,
+  isHomeRelativePath,
   splitFileRefSuffix,
   toFileUrl,
 } from '@/lib/path-utils'
@@ -80,6 +81,10 @@ export function resolveLocalPath(
   if (path === null) return null
 
   if (path.startsWith('/') || WINDOWS_DRIVE_RE.test(path)) return path
+  // `~/…` is not relative to any root, and only the backend knows the home
+  // directory (`resolve_file_reference` expands it). Joining it onto the
+  // worktree would name `<worktree>/~/…`, which never exists.
+  if (isHomeRelativePath(path)) return null
 
   const root = rootPath || useChatStore.getState().activeWorktreePath
   if (!root) return null

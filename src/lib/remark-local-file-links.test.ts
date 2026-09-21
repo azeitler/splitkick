@@ -18,6 +18,25 @@ function linkUrls(nodes: MdastNode[]): string[] {
 }
 
 describe('remarkLocalFileLinks', () => {
+  it('links a home-relative path in text', () => {
+    const nodes = run(
+      paragraph({
+        type: 'text',
+        value: 'Saved to ~/Downloads/report.html and ~/notes.md.',
+      })
+    )
+
+    expect(linkUrls(nodes)).toEqual(['~/Downloads/report.html', '~/notes.md'])
+  })
+
+  it('does not treat a tilde inside a name as home', () => {
+    const nodes = run(
+      paragraph({ type: 'text', value: 'See draft~/x.html here.' })
+    )
+
+    expect(linkUrls(nodes)).not.toContain('~/x.html')
+  })
+
   it('links absolute, relative, Windows and file:// HTML paths in text', () => {
     const nodes = run(
       paragraph({
@@ -44,8 +63,7 @@ describe('remarkLocalFileLinks', () => {
     const nodes = run(
       paragraph({
         type: 'text',
-        value:
-          'Keep index.html.bak, main.rs, the .html suffix, app.html5 and ~/x.html.',
+        value: 'Keep index.html.bak, main.rs, the .html suffix and app.html5.',
       })
     )
 
