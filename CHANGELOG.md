@@ -117,6 +117,32 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   reload, because the page's code is genuinely out of date. Native remote clients
   keep the recovery screen they had.
 
+- **The Claude usage indicator reads the login you are actually using.** On some
+  Macs the indicator never showed a number. It alternated between "Claude usage
+  API is rate-limiting requests" and "Claude session expired", while Claude
+  itself kept working.
+
+  The login keychain can hold more than one item named `Claude Code-credentials`,
+  and Jean asked for one without naming an account, so macOS returned whichever
+  came first. Worse, Jean had created the duplicate itself: after refreshing a
+  token it wrote the result under the account `claude`, while Claude Code stores
+  its own item under your macOS user name. From then on Jean read a copy that
+  nobody refreshed, and once it expired Jean was stuck with it.
+
+  Jean now looks at every candidate item and takes the one that expires last, so
+  an old copy can no longer win. A refreshed token is written back to the item it
+  came from, never to a new one — which also removes the risk of rotating Claude
+  Code's refresh token away and logging the CLI out. When a token is already
+  expired and the refresh is declined, Jean says so instead of sending the dead
+  token and reporting the answer as rate-limiting.
+
+  If a Mac already has the stray item, this removes it from the picture. You can
+  also delete it directly; Claude Code's own item is not affected:
+
+  ```sh
+  security delete-generic-password -s "Claude Code-credentials" -a claude
+  ```
+
 - **Claude asks you questions and presents plans again.** Since Claude Code
   2.1.187 a Claude session could not show the question picker or a plan to
   approve: it fell back to a plain-text numbered list, and plan mode ended

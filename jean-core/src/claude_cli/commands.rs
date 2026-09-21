@@ -677,8 +677,14 @@ enum ClaudeCredentialSource {
         distro: String,
         path: String,
     },
+    /// The `account` is the keychain item the credentials were *read* from, so a
+    /// write-back updates that same item. Claude Code stores its item under the
+    /// macOS user name; hard-coding an account here created a second item that
+    /// shadowed the real one on every read (azeitler/jean#30).
     #[cfg(target_os = "macos")]
-    Keychain,
+    Keychain {
+        account: String,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -822,10 +828,73 @@ fn read_wsl_claude_credentials(distro: &str, path: &str) -> Result<ClaudeCredent
     parse_claude_credentials(&raw)
 }
 
+/// The account Jean wrote under before azeitler/jean#30. Still read, because on a
+/// machine that never re-ran `claude` the duplicate Jean created may hold the only
+/// credentials left.
 #[cfg(target_os = "macos")]
-fn load_credentials_from_keychain() -> Option<ClaudeCredentialsFile> {
+const CLAUDE_KEYCHAIN_LEGACY_ACCOUNT: &str = "claude";
+
+/// The macOS user name. Claude Code stores its keychain item under this account.
+#[cfg(target_os = "macos")]
+fn macos_user_account() -> Option<String> {
+    for key in ["USER", "LOGNAME"] {
+        if let Ok(value) = std::env::var(key) {
+            let trimmed = value.trim();
+            if !trimmed.is_empty() {
+                return Some(trimmed.to_string());
+            }
+        }
+    }
+    dirs::home_dir()?
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+}
+
+#[cfg(target_os = "macos")]
+/// Pull `acct` out of `security`'s attribute dump. The line is either
+/// `"acct"<blob>="alice"` or, for a non-ASCII name, `"acct"<blob>=0x616C  "alic\303\251"`,
+/// so take the last quoted run.
+///
+/// The hex form's readable part is octal-escaped and does not round-trip: reading it
+/// back with `-a` finds nothing. That costs us only a candidate, because
+/// `macos_user_account` supplies the same account correctly encoded.
+fn parse_keychain_account(attributes: &str) -> Option<String> {
+    attributes.lines().find_map(|line| {
+        let rest = line.trim().strip_prefix("\"acct\"")?;
+        let end = rest.rfind('"')?;
+        let start = rest[..end].rfind('"')? + 1;
+        let value = &rest[start..end];
+        (!value.is_empty()).then(|| value.to_string())
+    })
+}
+
+/// Account of the item `security` returns when no `-a` is given. This is the lookup
+/// that used to pick the stale duplicate, so its result is one candidate among
+/// several rather than the answer.
+#[cfg(target_os = "macos")]
+fn default_keychain_account() -> Option<String> {
     let output = silent_command("security")
-        .args(["find-generic-password", "-s", CLAUDE_KEYCHAIN_SERVICE, "-w"])
+        .args(["find-generic-password", "-s", CLAUDE_KEYCHAIN_SERVICE])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    parse_keychain_account(&String::from_utf8_lossy(&output.stdout))
+}
+
+/// Read the item for `account`, or `None` when it does not exist.
+#[cfg(target_os = "macos")]
+fn read_keychain_item(account: &str) -> Option<ClaudeCredentialsFile> {
+    let output = silent_command("security")
+        .args([
+            "find-generic-password",
+            "-s",
+            CLAUDE_KEYCHAIN_SERVICE,
+            "-a",
+            account,
+            "-w",
+        ])
         .output()
         .ok()?;
     if !output.status.success() {
@@ -833,6 +902,56 @@ fn load_credentials_from_keychain() -> Option<ClaudeCredentialsFile> {
     }
     let payload = String::from_utf8_lossy(&output.stdout).trim().to_string();
     parse_credentials_json(&payload)
+}
+
+#[cfg(target_os = "macos")]
+/// Choose the item Claude Code is actually using.
+///
+/// The login keychain can hold several items under one service name. Jean's own
+/// pre-#30 write-back created one, and because the account-less lookup returns
+/// whichever item comes first, that duplicate kept winning long after it expired.
+/// Ranking by expiry means a stale copy can never win.
+///
+/// Callers must pass the least trustworthy candidate first: `max_by_key` keeps the
+/// last of equal keys, so on a tie the user's own item beats Jean's old duplicate.
+fn pick_freshest_credentials(
+    candidates: Vec<(String, ClaudeCredentialsFile)>,
+) -> Option<(String, ClaudeCredentialsFile)> {
+    candidates
+        .into_iter()
+        .filter(|(_, creds)| credentials_have_access_token(creds))
+        .max_by_key(|(_, creds)| {
+            creds
+                .claude_ai_oauth
+                .as_ref()
+                .and_then(oauth_expires_at_ms)
+                .unwrap_or(0)
+        })
+}
+
+/// Returns the account the credentials came from, so the write-back updates that
+/// same item instead of creating another one.
+#[cfg(target_os = "macos")]
+fn load_credentials_from_keychain() -> Option<(String, ClaudeCredentialsFile)> {
+    let mut accounts: Vec<String> = Vec::new();
+    for account in [
+        Some(CLAUDE_KEYCHAIN_LEGACY_ACCOUNT.to_string()),
+        default_keychain_account(),
+        macos_user_account(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if !accounts.contains(&account) {
+            accounts.push(account);
+        }
+    }
+
+    let candidates = accounts
+        .into_iter()
+        .filter_map(|account| read_keychain_item(&account).map(|creds| (account, creds)))
+        .collect();
+    pick_freshest_credentials(candidates)
 }
 
 fn load_claude_credentials() -> Result<(ClaudeCredentialSource, ClaudeCredentialsFile), String> {
@@ -860,10 +979,9 @@ fn load_claude_credentials() -> Result<(ClaudeCredentialSource, ClaudeCredential
     // over a potentially stale ~/.claude/.credentials.json.
     #[cfg(target_os = "macos")]
     {
-        if let Some(parsed) = load_credentials_from_keychain() {
-            if credentials_have_access_token(&parsed) {
-                return Ok((ClaudeCredentialSource::Keychain, parsed));
-            }
+        if let Some((account, parsed)) = load_credentials_from_keychain() {
+            // `pick_freshest_credentials` already dropped items with no access token.
+            return Ok((ClaudeCredentialSource::Keychain { account }, parsed));
         }
     }
 
@@ -944,7 +1062,7 @@ fn reload_claude_credentials_from_source(
             read_wsl_claude_credentials(distro, path)
         }
         #[cfg(target_os = "macos")]
-        ClaudeCredentialSource::Keychain => load_credentials_from_keychain()
+        ClaudeCredentialSource::Keychain { account } => read_keychain_item(account)
             .ok_or_else(|| "Claude keychain credentials unavailable on re-read".to_string()),
     }
 }
@@ -975,7 +1093,7 @@ fn persist_claude_credentials(
                 .map_err(|e| format!("Failed to write Claude credentials inside WSL: {e}"))
         }
         #[cfg(target_os = "macos")]
-        ClaudeCredentialSource::Keychain => {
+        ClaudeCredentialSource::Keychain { account } => {
             let output = silent_command("security")
                 .args([
                     "add-generic-password",
@@ -983,7 +1101,7 @@ fn persist_claude_credentials(
                     "-s",
                     CLAUDE_KEYCHAIN_SERVICE,
                     "-a",
-                    "claude",
+                    account,
                     "-w",
                     &payload,
                 ])
@@ -1007,17 +1125,29 @@ fn persist_claude_credentials(
 /// Jean previously returned true here, which rotated tokens too aggressively and contributed
 /// to the logout loop.
 fn token_needs_refresh(oauth: &ClaudeOauthCredentials, now_ms: u64) -> bool {
-    let Some(expires_at) = oauth.expires_at else {
+    let Some(expires_ms) = oauth_expires_at_ms(oauth) else {
         return false;
-    };
-    // Claude stores expires_at as epoch milliseconds.
-    let expires_ms = if expires_at > 1_000_000_000_000 {
-        expires_at
-    } else {
-        expires_at.saturating_mul(1000)
     };
     let refresh_buffer_ms = 5 * 60 * 1000;
     now_ms.saturating_add(refresh_buffer_ms) >= expires_ms
+}
+
+/// Expiry in epoch milliseconds. Claude stores milliseconds; older items used
+/// seconds, so normalize before comparing.
+fn oauth_expires_at_ms(oauth: &ClaudeOauthCredentials) -> Option<u64> {
+    let expires_at = oauth.expires_at?;
+    Some(if expires_at > 1_000_000_000_000 {
+        expires_at
+    } else {
+        expires_at.saturating_mul(1000)
+    })
+}
+
+/// Past its expiry, with no buffer. `token_needs_refresh` is also true for a token
+/// that is merely close to expiry and still works; this is true only once the token
+/// cannot work any more, so a failed refresh must not be followed by a request.
+fn token_is_expired(oauth: &ClaudeOauthCredentials, now_ms: u64) -> bool {
+    oauth_expires_at_ms(oauth).is_some_and(|expires_ms| now_ms >= expires_ms)
 }
 
 fn oauth_has_usage_scope(oauth: &ClaudeOauthCredentials) -> bool {
@@ -1334,10 +1464,26 @@ pub(crate) async fn get_claude_usage_with_source(
         .unwrap_or(0);
     if token_needs_refresh(&oauth, now_ms) {
         log::trace!("Claude usage fetch requires token refresh (source={request_source})");
-        if let Some(refreshed_token) =
-            refresh_claude_access_token(&usage_client, &source, &mut credentials).await?
-        {
-            access_token = refreshed_token;
+        match refresh_claude_access_token(&usage_client, &source, &mut credentials).await? {
+            Some(refreshed_token) => access_token = refreshed_token,
+            // The refresh was declined for a reason other than `invalid_grant`, so the
+            // old token stands. Harmless while it is merely near expiry. Already past
+            // it, the usage request earns a 429 or 401 that Jean reports as
+            // "rate-limiting", which sends the user looking in the wrong place
+            // (azeitler/jean#30).
+            None if token_is_expired(&oauth, now_ms) => {
+                if let Some(stale) = load_stale_cached_claude_usage(now_secs) {
+                    log::warn!(
+                        "Claude access token expired and could not be refreshed; serving stale cache (source={request_source})"
+                    );
+                    return Ok(stale);
+                }
+                return Err(
+                    "Claude access token expired and the refresh was declined. Claude itself may still be working — run `claude` once so Jean reads a current login."
+                        .to_string(),
+                );
+            }
+            None => {}
         }
     }
 
@@ -1593,6 +1739,220 @@ mod tests {
             ..Default::default()
         };
         assert!(token_needs_refresh(&secs, now_ms));
+    }
+
+    /// A token inside the 5-minute refresh buffer still works. Only one past its
+    /// expiry must block the usage request (azeitler/jean#30).
+    #[test]
+    fn token_is_expired_is_stricter_than_token_needs_refresh() {
+        let now_ms = 1_700_000_000_000u64;
+
+        let near = ClaudeOauthCredentials {
+            expires_at: Some(now_ms + 60_000), // 1 minute left
+            ..Default::default()
+        };
+        assert!(token_needs_refresh(&near, now_ms));
+        assert!(!token_is_expired(&near, now_ms));
+
+        let dead = ClaudeOauthCredentials {
+            expires_at: Some(now_ms - 1), // one millisecond ago
+            ..Default::default()
+        };
+        assert!(token_needs_refresh(&dead, now_ms));
+        assert!(token_is_expired(&dead, now_ms));
+
+        // Missing expiry means "do not force rotation", so it is not expired either.
+        let unknown = ClaudeOauthCredentials {
+            expires_at: None,
+            ..Default::default()
+        };
+        assert!(!token_is_expired(&unknown, now_ms));
+
+        // Legacy seconds form normalizes the same way.
+        let secs = ClaudeOauthCredentials {
+            expires_at: Some(now_ms / 1000 - 60),
+            ..Default::default()
+        };
+        assert!(token_is_expired(&secs, now_ms));
+    }
+
+    #[cfg(target_os = "macos")]
+    fn keychain_item(expires_at: Option<u64>, has_token: bool) -> ClaudeCredentialsFile {
+        ClaudeCredentialsFile {
+            claude_ai_oauth: Some(ClaudeOauthCredentials {
+                access_token: has_token.then(|| "token".to_string()),
+                expires_at,
+                ..Default::default()
+            }),
+            ..Default::default()
+        }
+    }
+
+    /// The bug in azeitler/jean#30: two items under one service name, and the
+    /// account-less lookup kept returning the expired one Jean wrote itself.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn picks_the_fresh_item_over_a_stale_duplicate() {
+        let now_ms = 1_700_000_000_000u64;
+        let picked = pick_freshest_credentials(vec![
+            (
+                "claude".to_string(),
+                keychain_item(Some(now_ms - 177 * 86_400_000), true),
+            ),
+            (
+                "alice".to_string(),
+                keychain_item(Some(now_ms + 3 * 3_600_000), true),
+            ),
+        ])
+        .expect("an item with an access token");
+
+        assert_eq!(picked.0, "alice");
+    }
+
+    /// Order of the candidates must not matter — only the expiry does.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn picks_the_fresh_item_whichever_order_it_arrives_in() {
+        let now_ms = 1_700_000_000_000u64;
+        let picked = pick_freshest_credentials(vec![
+            (
+                "alice".to_string(),
+                keychain_item(Some(now_ms + 3 * 3_600_000), true),
+            ),
+            (
+                "claude".to_string(),
+                keychain_item(Some(now_ms - 177 * 86_400_000), true),
+            ),
+        ])
+        .expect("an item with an access token");
+
+        assert_eq!(picked.0, "alice");
+    }
+
+    /// A single item wins even with no expiry, so a machine that only ever had
+    /// Jean's own item keeps working.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn picks_a_lone_item_without_an_expiry() {
+        let picked =
+            pick_freshest_credentials(vec![("claude".to_string(), keychain_item(None, true))])
+                .expect("the only item");
+
+        assert_eq!(picked.0, "claude");
+    }
+
+    /// Callers pass the least trustworthy candidate first, so a tie goes to the
+    /// user's own item rather than Jean's legacy duplicate.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn breaks_a_tie_in_favour_of_the_last_candidate() {
+        let picked = pick_freshest_credentials(vec![
+            ("claude".to_string(), keychain_item(None, true)),
+            ("alice".to_string(), keychain_item(None, true)),
+        ])
+        .expect("an item with an access token");
+
+        assert_eq!(picked.0, "alice");
+    }
+
+    /// An item with no access token is not a candidate, however fresh it looks.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn skips_items_without_an_access_token() {
+        let now_ms = 1_700_000_000_000u64;
+        let picked = pick_freshest_credentials(vec![
+            (
+                "alice".to_string(),
+                keychain_item(Some(now_ms + 86_400_000), false),
+            ),
+            (
+                "claude".to_string(),
+                keychain_item(Some(now_ms + 3_600_000), true),
+            ),
+        ])
+        .expect("the item that has a token");
+
+        assert_eq!(picked.0, "claude");
+
+        assert!(pick_freshest_credentials(vec![(
+            "alice".to_string(),
+            keychain_item(Some(now_ms + 86_400_000), false),
+        )])
+        .is_none());
+    }
+
+    /// Reads the real login keychain, so it needs a Mac with a `claude` login and it
+    /// will ask for keychain access. This is the check azeitler/jean#30 can only pass
+    /// on the affected machine:
+    ///
+    /// ```sh
+    /// cargo test --manifest-path jean-core/Cargo.toml --lib \
+    ///   reports_the_real_keychain_item -- --ignored --nocapture
+    /// ```
+    ///
+    /// It fails if the item Jean picks is not the one with the newest expiry — which
+    /// is exactly what the stale duplicate used to cause.
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "reads the real login keychain and prompts for access"]
+    fn reports_the_real_keychain_item() {
+        let Some((account, creds)) = load_credentials_from_keychain() else {
+            panic!("no Claude credentials in the keychain — run `claude` to log in first");
+        };
+        let picked_expiry = creds
+            .claude_ai_oauth
+            .as_ref()
+            .and_then(oauth_expires_at_ms)
+            .unwrap_or(0);
+
+        println!("Jean picked account {account:?}, expires_at_ms {picked_expiry}");
+
+        for candidate in [CLAUDE_KEYCHAIN_LEGACY_ACCOUNT.to_string()]
+            .into_iter()
+            .chain(default_keychain_account())
+            .chain(macos_user_account())
+        {
+            let expiry = read_keychain_item(&candidate)
+                .and_then(|c| c.claude_ai_oauth.as_ref().and_then(oauth_expires_at_ms));
+            println!("  candidate {candidate:?}: expires_at_ms {expiry:?}");
+            if let Some(expiry) = expiry {
+                assert!(
+                    picked_expiry >= expiry,
+                    "picked {account:?} ({picked_expiry}) but {candidate:?} is newer ({expiry})"
+                );
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn parses_the_account_out_of_security_attributes() {
+        let attributes = r#"keychain: "/Users/alice/Library/Keychains/login.keychain-db"
+version: 512
+class: "genp"
+attributes:
+    0x00000007 <blob>="Claude Code-credentials"
+    "acct"<blob>="alice"
+    "svce"<blob>="Claude Code-credentials"
+"#;
+        assert_eq!(
+            parse_keychain_account(attributes),
+            Some("alice".to_string())
+        );
+
+        // A non-ASCII name is printed as hex plus an octal-escaped readable form. We
+        // return that form verbatim; it will not match a real account, and
+        // `macos_user_account` is what covers the case.
+        let hex = "    \"acct\"<blob>=0x616C6963C3A9  \"alic\\303\\251\"\n";
+        assert_eq!(
+            parse_keychain_account(hex),
+            Some("alic\\303\\251".to_string())
+        );
+
+        assert_eq!(
+            parse_keychain_account("attributes:\n    \"svce\"<blob>=\"x\"\n"),
+            None
+        );
     }
 
     #[test]
