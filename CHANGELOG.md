@@ -39,9 +39,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   failing all of those Jean searches the worktree for a path that ends with the
   reference. A reference that matches several files (twelve packages, one
   `README.md` each) asks which one you mean instead of choosing for you. A
-  reference that matches nothing is no longer drawn as a link: the text stays,
-  and says why when you point at it. A file the agent writes during the turn
-  becomes a link by itself when the turn ends.
+  reference that matches nothing is no longer a link: it keeps its place in
+  the text with a question-mark icon, and pointing at it explains what Jean
+  checked. A file the agent writes during the turn becomes a link by itself
+  when the turn ends.
 
 - **The chat composer stays above the keyboard on a phone.** Tapping the input
   used to push the composer and its toolbar under the on-screen keyboard, so you

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { FileIcon, FolderIcon, Loader2 } from 'lucide-react'
+import { FileIcon, FileQuestionMark, FolderIcon, Loader2 } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import {
   Dialog,
@@ -14,6 +14,7 @@ import { getExtension, getExtensionColor } from '@/lib/file-colors'
 import { getFilename, joinPaths } from '@/lib/path-utils'
 import { useFileReference } from '@/lib/file-reference'
 import { FileReferencePicker } from '@/components/ui/file-reference-picker'
+import { MissingFileReferenceExplanation } from '@/components/ui/missing-file-reference'
 import {
   Tooltip,
   TooltipTrigger,
@@ -121,6 +122,11 @@ export function FileMentionBadge({
     >
       {isDirectory ? (
         <FolderIcon className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+      ) : isMissing ? (
+        <FileQuestionMark
+          aria-label="File not found"
+          className="h-3.5 w-3.5 shrink-0 text-muted-foreground"
+        />
       ) : (
         <FileIcon
           className={cn('h-3.5 w-3.5 shrink-0', getExtensionColor(extension))}
@@ -153,7 +159,11 @@ export function FileMentionBadge({
           )}
         </TooltipTrigger>
         <TooltipContent>
-          {isMissing ? `${label} — no file here by that name` : label}
+          {isMissing ? (
+            <MissingFileReferenceExplanation reference={label} />
+          ) : (
+            label
+          )}
         </TooltipContent>
       </Tooltip>
 

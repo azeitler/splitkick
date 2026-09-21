@@ -90,17 +90,44 @@ describe('file references in a chat answer', () => {
     )
   })
 
-  it('draws no link at all when no such file exists', async () => {
+  it('marks a missing file with a question mark instead of a link', async () => {
     resolveWith()
 
     renderThread('See [the API](docs/gone.md).')
 
+    // Re-query each time: the link is replaced once the resolution lands.
+    const marker = () =>
+      screen.getByText('the API').closest('[data-file-reference]')
     await waitFor(() =>
-      expect(screen.queryByRole('link', { name: 'the API' })).toBeNull()
+      expect(marker()).toHaveAttribute('data-file-reference', 'missing')
     )
-    // The text survives; only the promise of opening it is withdrawn.
-    expect(screen.getByText('the API')).toBeInTheDocument()
+    // Still marked as a file, but nothing to click.
+    expect(screen.queryByRole('link', { name: 'the API' })).toBeNull()
+    expect(screen.getByLabelText('File not found')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByText('the API'))
     expect(useUIStore.getState().viewingFilePath).toBeNull()
+  })
+
+  it('explains the missing link in a tooltip', async () => {
+    resolveWith()
+
+    renderThread('See [the API](docs/gone.md).')
+
+    const marker = () =>
+      screen
+        .getByText('the API')
+        .closest('[data-file-reference]') as HTMLElement
+    await waitFor(() =>
+      expect(marker()).toHaveAttribute('data-file-reference', 'missing')
+    )
+    // Keyboard users reach it too: the marker takes the link's tab stop.
+    expect(marker()).toHaveAttribute('tabindex', '0')
+    fireEvent.focus(marker())
+
+    expect(
+      (await screen.findAllByText('No file at docs/gone.md')).length
+    ).toBeGreaterThan(0)
   })
 
   it('asks which file was meant when several match', async () => {

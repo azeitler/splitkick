@@ -6,12 +6,15 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip'
 import { FileReferencePicker } from '@/components/ui/file-reference-picker'
+import { MissingFileReference } from '@/components/ui/missing-file-reference'
 import {
   canOpenInEmbeddedBrowser,
   classifyChatLink,
   LocalPathRootContext,
   openChatLink,
+  toLocalReferencePath,
 } from '@/lib/chat-links'
+import { splitFileRefSuffix } from '@/lib/path-utils'
 import { useFileReference } from '@/lib/file-reference'
 
 const LINK_CLASS = 'underline underline-offset-2 hover:text-foreground'
@@ -27,8 +30,9 @@ const LINK_CLASS = 'underline underline-offset-2 hover:text-foreground'
  * - One file → a link that opens exactly that file, wherever it turned out
  *   to be, rather than whatever the worktree root plus the reference spells.
  * - Several → a link that asks which one.
- * - None → plain text. A link that can only open an error is worse than no
- *   link, because it looks the same as one that works.
+ * - None → no link, but still marked as a file, with a question-mark icon
+ *   and a tooltip that says why. A link that can only open an error is worse
+ *   than no link, because it looks the same as one that works.
  */
 export function MarkdownLink({
   href,
@@ -66,17 +70,13 @@ export function MarkdownLink({
 
   if (reference.status === 'missing') {
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            data-file-reference="missing"
-            className="underline decoration-dotted underline-offset-2 text-muted-foreground"
-          >
-            {children}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent>No file here by that name</TooltipContent>
-      </Tooltip>
+      <MissingFileReference
+        reference={
+          toLocalReferencePath(splitFileRefSuffix(href ?? '')[0]) ?? href ?? ''
+        }
+      >
+        {children}
+      </MissingFileReference>
     )
   }
 

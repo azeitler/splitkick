@@ -35,16 +35,22 @@ what lets the UI ask rather than guess.
 
 ## What the UI does with the answer
 
-| Result       | Link                                    | Mention badge         |
-| ------------ | --------------------------------------- | --------------------- |
-| one match    | opens exactly that path                 | previews that path    |
-| more matches | click opens `FileReferencePicker`       | same                  |
-| no match     | plain text, tooltip explains            | dimmed, dashed, inert |
-| resolving    | the old join, so nothing feels sluggish | the old join          |
-| failed       | the old join                            | the old join          |
+| Result       | Link                                          | Mention badge                     |
+| ------------ | --------------------------------------------- | --------------------------------- |
+| one match    | opens exactly that path                       | previews that path                |
+| more matches | click opens `FileReferencePicker`             | same                              |
+| no match     | no link: dotted text, question-mark icon, tip | question-mark icon, dimmed, inert |
+| resolving    | the old join, so nothing feels sluggish       | the old join                      |
+| failed       | the old join                                  | the old join                      |
 
 Not drawing a link is the part worth defending. A link that can only open an
-error is worse than no link, because it looks the same as one that works.
+error is worse than no link, because it looks the same as one that works. The
+reference is still marked as a file, though — dotted underline and a
+question-mark icon — because plain text would hide that the answer named a file
+at all. `MissingFileReference` in `src/components/ui/missing-file-reference.tsx`
+draws it; its tooltip says what was checked, so "not found" does not read as
+"did not try". The marker is focusable and takes the tab stop the link would
+have had, so the explanation is reachable from the keyboard.
 
 ## Publishing the evidence
 

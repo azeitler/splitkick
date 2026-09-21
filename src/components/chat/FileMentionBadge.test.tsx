@@ -97,6 +97,8 @@ describe('FileMentionBadge', () => {
       expect.anything()
     )
     expect(screen.queryByRole('dialog')).toBeNull()
+    // The file icon becomes a question mark, so the badge says why.
+    expect(screen.getByLabelText('File not found')).toBeInTheDocument()
   })
 
   it('asks which file was meant when several match', async () => {
