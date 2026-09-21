@@ -49,9 +49,9 @@ import { toast } from 'sonner'
 import {
   useSessions,
   useCreateSession,
-  useClearSessionHistory,
   reconnectNativeCliSession,
 } from '@/services/chat'
+import { requestClearSessionContext } from './ClearContextConfirmDialog'
 import { resolveBackendCliPath } from '@/services/cli-binary'
 import { usePreferences } from '@/services/preferences'
 import {
@@ -420,7 +420,6 @@ export function SessionChatModal({
   )
 
   const createSession = useCreateSession()
-  const clearSessionHistory = useClearSessionHistory()
   // Inline tab rename. Shared with the sidebar rows, so a rename started from
   // the context menu, a double-click or the command palette behaves the same.
   const {
@@ -636,19 +635,13 @@ export function SessionChatModal({
   }, [worktreeId, worktreePath])
 
   const handleClearContext = useCallback(() => {
-    if (!currentSessionId || clearSessionHistory.isPending) return
-    clearSessionHistory.mutate(
-      {
-        worktreeId,
-        worktreePath,
-        sessionId: currentSessionId,
-      },
-      {
-        onSuccess: () =>
-          window.dispatchEvent(new CustomEvent('focus-chat-input')),
-      }
-    )
-  }, [clearSessionHistory, currentSessionId, worktreeId, worktreePath])
+    if (!currentSessionId) return
+    requestClearSessionContext({
+      worktreeId,
+      worktreePath,
+      sessionId: currentSessionId,
+    })
+  }, [currentSessionId, worktreeId, worktreePath])
 
   useEffect(() => {
     if (!isOpen) return

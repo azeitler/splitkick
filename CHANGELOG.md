@@ -7,6 +7,36 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **JeanZ is built on Jean 0.1.73 again.** The merge of upstream Jean 1.0.1
+  in 1.0.1-z.12 is reverted. It caused errors that were hard to find: in the
+  desktop app with remote servers, some sessions showed only your own
+  messages, answers appeared above their questions, and the pinned sessions
+  in the sidebar switched on and off while an agent ran. All JeanZ changes
+  stay, including the account email on the usage screen from 1.0.1-z.13.
+  - These upstream 1.0 features are gone again: the combined view of all
+    servers in the main window, the Recent tab and the new sidebar layout,
+    and the Steer action. A remote opens in its own window again, as before.
+  - **Install this build by hand, one time.** A copy on 1.0.1-z.12 or
+    1.0.1-z.13 does not offer it as an update, because 0.1.73 counts as an
+    older version. Open the DMG from the release page and drag JeanZ to
+    Applications. After that, updates arrive in the app again.
+- **Clear context asks before it deletes.** Clearing a session removes its
+  history and the backend's resume id, and it cannot be undone. JeanZ now
+  shows a confirmation first.
+
+### Fixed
+
+- **A question from the agent keeps its options.** Jean stopped the Claude
+  CLI when the last piece of a question or plan arrived. That could happen
+  before the CLI wrote the finished tool call to its output. The question
+  showed while it was live, but after a session switch or a restart only its
+  first sentence was left. Jean now stops the CLI only after the finished
+  tool call is saved. A question whose options are missing now says so and
+  points you to the message box. Fixes
+  [#32](https://github.com/azeitler/jean/issues/32).
+
 ## [1.0.1-z.13] - 2026-09-21
 
 Built on Jean 1.0.1.

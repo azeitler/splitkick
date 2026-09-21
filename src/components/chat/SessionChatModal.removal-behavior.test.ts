@@ -139,13 +139,18 @@ describe('SessionChatModal removal behavior', () => {
 
   it('keeps only the zen control in the mobile header', () => {
     const source = readSource('src/components/chat/SessionChatModal.tsx')
+    // Clearing asks for confirmation first; the dialog owns the mutation.
+    const dialog = readSource(
+      'src/components/chat/ClearContextConfirmDialog.tsx'
+    )
 
-    expect(source).toContain('useClearSessionHistory')
+    expect(source).toContain('requestClearSessionContext(')
     expect(source).toContain('handleClearContext')
     expect(source).toContain('data-testid="toggle-zen-mode"')
     expect(source).not.toContain('aria-label="Clear context"')
     expect(source).not.toContain('data-testid="clear-session-context"')
-    expect(source).toMatch(
+    expect(dialog).toContain('useClearSessionHistory')
+    expect(dialog).toMatch(
       /onSuccess:\s*\(\)\s*=>\s*window\.dispatchEvent\(new CustomEvent\('focus-chat-input'\)\)/
     )
   })

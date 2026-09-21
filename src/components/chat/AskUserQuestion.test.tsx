@@ -41,6 +41,43 @@ describe('AskUserQuestion', () => {
     // noop for test
   }
 
+  // azeitler/jean#32: the options never arrived, and the block rendered only
+  // the intro sentence with nothing to answer.
+  it('says so when a question arrives without options', () => {
+    const onSubmit = vi.fn()
+    render(
+      <AskUserQuestion
+        toolCallId="tool-empty"
+        questions={[]}
+        onSubmit={onSubmit}
+        introText="Before I commit, I need two decisions in this worktree."
+      />
+    )
+
+    expect(
+      screen.getByText('Before I commit, I need two decisions in this worktree.')
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/its options did not arrive\. Answer in the message box/)
+    ).toBeInTheDocument()
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
+    expect(screen.queryByRole('button')).not.toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+
+  it('keeps the answered summary for an answered question even without options', () => {
+    render(
+      <AskUserQuestion
+        toolCallId="tool-empty-answered"
+        questions={[]}
+        onSubmit={noopSubmit}
+        readOnly
+      />
+    )
+
+    expect(screen.queryByText(/its options did not arrive/)).not.toBeInTheDocument()
+  })
+
   it('shows persisted answer labels in the collapsed summary and expanded content', () => {
     render(
       <AskUserQuestion

@@ -17,7 +17,12 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible'
-import { ChevronRight, CheckCircle2, Circle } from 'lucide-react'
+import {
+  AlertTriangle,
+  ChevronRight,
+  CheckCircle2,
+  Circle,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatShortcutDisplay, DEFAULT_KEYBINDINGS } from '@/types/keybindings'
 import type { Question, QuestionAnswer } from '@/types/chat'
@@ -270,6 +275,29 @@ export function AskUserQuestion({
           </CollapsibleContent>
         </div>
       </Collapsible>
+    )
+  }
+
+  // A question whose options never arrived (azeitler/jean#32). Without this
+  // the block below renders only the intro sentence: no options, no buttons,
+  // and a turn that looks finished but cannot be answered. Say so, and point
+  // at the message box, which always works.
+  if (questions.length === 0) {
+    return (
+      <div className="my-3 min-w-0 rounded border border-muted bg-muted/30 p-4 text-sm">
+        {introText && (
+          <div className="mb-3 text-muted-foreground">
+            <Markdown>{introText}</Markdown>
+          </div>
+        )}
+        <div className="flex items-start gap-2 text-muted-foreground">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-yellow-500" />
+          <span>
+            The agent asked a question, but its options did not arrive. Answer
+            in the message box instead.
+          </span>
+        </div>
+      </div>
     )
   }
 

@@ -37,6 +37,7 @@ import {
   startCodeReviewsSequentially,
 } from '@/lib/code-review-configs'
 import { generateId } from '@/lib/uuid'
+import { requestClearSessionContext } from '@/components/chat/ClearContextConfirmDialog'
 
 /**
  * Command context hook - provides essential actions for commands
@@ -196,22 +197,12 @@ export function useCommandContext(
       useChatStore.getState().activeWorktreePath
     if (!worktreePath) return
 
-    try {
-      await invoke('clear_session_history', {
-        worktreeId: activeWorktreeId,
-        worktreePath,
-        sessionId,
-      })
-      await queryClient.invalidateQueries({
-        queryKey: chatQueryKeys.session(sessionId),
-      })
-      notify('Chat history cleared', undefined, { type: 'success' })
-      window.dispatchEvent(new CustomEvent('focus-chat-input'))
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      notify(message, undefined, { type: 'error' })
-    }
-  }, [queryClient])
+    requestClearSessionContext({
+      worktreeId: activeWorktreeId,
+      worktreePath,
+      sessionId,
+    })
+  }, [])
 
   // Sessions - Rename session
   const renameSession = useCallback(() => {

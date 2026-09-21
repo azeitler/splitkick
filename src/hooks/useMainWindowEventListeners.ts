@@ -421,7 +421,7 @@ function executeKeybindingAction(
     }
     case 'clear_session_context':
       logger.debug('Keybinding: clear_session_context')
-      window.dispatchEvent(new CustomEvent('clear-session-context'))
+      void commandContext.clearSessionHistory()
       break
     case 'open_preferences':
       logger.debug('Keybinding: open_preferences')

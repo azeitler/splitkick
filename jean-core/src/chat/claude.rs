@@ -276,69 +276,6 @@ fn compact_metadata_from_system_message(msg: &serde_json::Value) -> Option<Compa
         })
 }
 
-#[derive(Debug, Clone)]
-struct StreamToolUse {
-    index: usize,
-    id: String,
-    name: String,
-    input: serde_json::Value,
-}
-
-fn stream_event_tool_use(msg: &serde_json::Value) -> Option<StreamToolUse> {
-    let event = msg.get("event")?;
-    if event.get("type").and_then(|v| v.as_str()) != Some("content_block_start") {
-        return None;
-    }
-
-    let block = event.get("content_block")?;
-    if block.get("type").and_then(|v| v.as_str()) != Some("tool_use") {
-        return None;
-    }
-
-    Some(StreamToolUse {
-        index: event.get("index")?.as_u64()? as usize,
-        id: block.get("id")?.as_str()?.to_string(),
-        name: block.get("name")?.as_str()?.to_string(),
-        input: block
-            .get("input")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null),
-    })
-}
-
-/// The streamed input of a tool call, once it has fully arrived.
-///
-/// With `--include-partial-messages`, a tool's input arrives as a run of
-/// `input_json_delta` events, and the very first delta is usually empty. The
-/// blocking-tool path (AskUserQuestion / ExitPlanMode) used to treat an empty
-/// buffer as "the input is the `{}` from `content_block_start`" and SIGKILL the
-/// CLI on that first delta — before the plan or the questions had streamed, so
-/// the UI received a plan tool with nothing to present.
-///
-/// A top-level JSON object only parses once its closing brace has arrived, so a
-/// successful parse of a non-empty buffer means the input is complete.
-fn streamed_tool_input_if_complete(buffer: &str) -> Option<serde_json::Value> {
-    if buffer.trim().is_empty() {
-        return None;
-    }
-    serde_json::from_str(buffer).ok()
-}
-
-fn stream_event_input_delta(msg: &serde_json::Value) -> Option<(usize, &str)> {
-    let event = msg.get("event")?;
-    if event.get("type").and_then(|v| v.as_str()) != Some("content_block_delta") {
-        return None;
-    }
-
-    let index = event.get("index")?.as_u64()? as usize;
-    let delta = event.get("delta")?;
-    if delta.get("type").and_then(|v| v.as_str()) != Some("input_json_delta") {
-        return None;
-    }
-
-    Some((index, delta.get("partial_json")?.as_str()?))
-}
-
 // =============================================================================
 // Detached Claude CLI execution
 // =============================================================================
@@ -428,6 +365,22 @@ fn split_fast_model(model: &str) -> (&str, bool) {
         Some(base) => (base, true),
         None => (model, false),
     }
+}
+
+/// Tools that end a Claude turn: Jean kills the CLI and hands the call to the
+/// UI (question picker, plan approval), then continues in a new turn.
+///
+/// The kill must happen on the finished `assistant` message, never on a
+/// `stream_event`. Jean tails the CLI's output file and rebuilds chat history
+/// from that same file (`run_log::parse_run_to_message`, which reads only
+/// `assistant` lines). Killing on the last streamed input chunk could land
+/// before the CLI wrote the finished tool call, leaving the run log with
+/// fragments only: the live view showed the question, but any rebuild — a
+/// session switch, a restart, a remote session loaded from its server — showed
+/// the intro sentence and nothing after it (azeitler/jean#32). When Jean reads
+/// the `assistant` line, it is already on disk, so the kill cannot lose it.
+fn is_blocking_tool(name: &str) -> bool {
+    matches!(name, "AskUserQuestion" | "ExitPlanMode")
 }
 
 fn claude_permission_mode(execution_mode: Option<&str>, running_as_root: bool) -> &'static str {
@@ -1527,10 +1480,6 @@ pub fn tail_claude_output(
     let mut tool_calls: Vec<ToolCall> = Vec::new();
     let mut content_blocks: Vec<ContentBlock> = Vec::new();
     let mut seen_tool_use_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-    let mut pending_stream_tools: std::collections::HashMap<usize, StreamToolUse> =
-        std::collections::HashMap::new();
-    let mut pending_stream_tool_inputs: std::collections::HashMap<usize, String> =
-        std::collections::HashMap::new();
     let mut completed = false;
     let mut cancelled = false;
     let mut user_cancelled = false; // True only for explicit user cancel (not process death)
@@ -1653,107 +1602,6 @@ pub fn tail_claude_output(
             // stream — flush buffered text first to preserve event ordering.
             if msg_type != "assistant" {
                 flush_pending_chunks(app, session_id, worktree_id, &run_id, &mut chunk_coalescer);
-            }
-
-            if msg_type == "stream_event" {
-                if let Some(tool) = stream_event_tool_use(&msg) {
-                    pending_stream_tool_inputs.remove(&tool.index);
-                    pending_stream_tools.insert(tool.index, tool);
-                    continue;
-                }
-
-                if let Some((index, partial_json)) = stream_event_input_delta(&msg) {
-                    let Some(pending_tool) = pending_stream_tools.get(&index).cloned() else {
-                        continue;
-                    };
-
-                    if seen_tool_use_ids.contains(&pending_tool.id) {
-                        continue;
-                    }
-
-                    let input_buf = pending_stream_tool_inputs.entry(index).or_default();
-                    input_buf.push_str(partial_json);
-
-                    let Some(input) = streamed_tool_input_if_complete(input_buf) else {
-                        continue;
-                    };
-
-                    if pending_tool.name == "AskUserQuestion" || pending_tool.name == "ExitPlanMode"
-                    {
-                        let id = pending_tool.id.clone();
-                        let name = pending_tool.name.clone();
-                        seen_tool_use_ids.insert(id.clone());
-                        tool_calls.push(ToolCall {
-                            id: id.clone(),
-                            name: name.clone(),
-                            input: input.clone(),
-                            output: None,
-                            parent_tool_use_id: current_parent_tool_use_id.clone(),
-                        });
-                        content_blocks.push(ContentBlock::ToolUse {
-                            tool_call_id: id.clone(),
-                        });
-
-                        let event = ToolUseEvent {
-                            session_id: session_id.to_string(),
-                            worktree_id: worktree_id.to_string(),
-                            id: id.clone(),
-                            name: name.clone(),
-                            input: input.clone(),
-                            parent_tool_use_id: current_parent_tool_use_id.clone(),
-                        };
-                        if let Err(e) = app.emit_all("chat:tool_use", &event) {
-                            log::error!("Failed to emit tool_use: {e}");
-                        }
-
-                        let block_event = ToolBlockEvent {
-                            session_id: session_id.to_string(),
-                            worktree_id: worktree_id.to_string(),
-                            tool_call_id: id,
-                        };
-                        if let Err(e) = app.emit_all("chat:tool_block", &block_event) {
-                            log::error!("Failed to emit tool_block: {e}");
-                        }
-
-                        log::trace!(
-                            "Detected blocking tool {name} from stream_event, killing detached process"
-                        );
-                        #[cfg(unix)]
-                        unsafe {
-                            libc::kill(pid as i32, libc::SIGKILL);
-                        }
-                        #[cfg(windows)]
-                        {
-                            let _ = crate::platform::silent_command("taskkill")
-                                .args(["/F", "/PID", &pid.to_string()])
-                                .output();
-                        }
-                        // The CLI may have reached the permission check and parked
-                        // on the jean-dialog server just before the kill; release it
-                        // so the socket task does not wait out the park timeout.
-                        super::claude_dialog::cancel_session(session_id);
-
-                        let done_event = DoneEvent {
-                            session_id: session_id.to_string(),
-                            worktree_id: worktree_id.to_string(),
-                            waiting_for_plan: false,
-                        };
-                        if let Err(e) = app.emit_all("chat:done", &done_event) {
-                            log::error!("Failed to emit done event: {e}");
-                        }
-
-                        return Ok(ClaudeResponse {
-                            content: full_content,
-                            session_id: claude_session_id,
-                            tool_calls,
-                            content_blocks,
-                            cancelled: false,
-                            usage: None,
-                        });
-                    }
-
-                    continue;
-                }
             }
 
             match msg_type {
@@ -2017,8 +1865,10 @@ pub fn tail_claude_output(
                                             log::error!("Failed to emit tool_block: {e}");
                                         }
 
-                                        // Check for blocking tools - kill process and return
-                                        if name == "AskUserQuestion" || name == "ExitPlanMode" {
+                                        // Blocking tools end the turn here: kill the CLI and
+                                        // hand the call to the UI. This is the only place that
+                                        // may do it — see `is_blocking_tool`.
+                                        if is_blocking_tool(&name) {
                                             log::trace!("Detected blocking tool {name}, killing detached process");
 
                                             // Kill the detached process
@@ -2850,51 +2700,6 @@ mod tests {
     }
 
     #[test]
-    fn extracts_tool_use_from_stream_event_content_block_start() {
-        let msg = serde_json::json!({
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_start",
-                "index": 2,
-                "content_block": {
-                    "type": "tool_use",
-                    "id": "toolu_question",
-                    "name": "AskUserQuestion",
-                    "input": {
-                        "questions": "[{\"question\":\"Pick one\",\"options\":[{\"label\":\"A\"}]}]"
-                    }
-                }
-            }
-        });
-
-        let tool = stream_event_tool_use(&msg).expect("tool_use should be extracted");
-
-        assert_eq!(tool.id, "toolu_question");
-        assert_eq!(tool.name, "AskUserQuestion");
-        assert_eq!(
-            tool.input.get("questions").and_then(|value| value.as_str()),
-            Some("[{\"question\":\"Pick one\",\"options\":[{\"label\":\"A\"}]}]")
-        );
-    }
-
-    #[test]
-    fn extracts_stream_event_input_json_delta() {
-        let msg = serde_json::json!({
-            "type": "stream_event",
-            "event": {
-                "type": "content_block_delta",
-                "index": 2,
-                "delta": {
-                    "type": "input_json_delta",
-                    "partial_json": "{\"questions\":"
-                }
-            }
-        });
-
-        assert_eq!(stream_event_input_delta(&msg), Some((2, "{\"questions\":")));
-    }
-
-    #[test]
     fn mcp_config_auto_allows_server_and_wildcard_tools() {
         let config = r#"{
             "mcpServers": {
@@ -2914,45 +2719,119 @@ mod tests {
         assert!(args.contains(&"mcp__github__*".to_string()));
     }
 
-    /// Regression for session 469345db: the plan was never presented because the
-    /// blocking-tool path SIGKILLed the CLI on ExitPlanMode's first, empty
-    /// `input_json_delta` — before any of the plan had streamed.
-    #[test]
-    fn blocking_tool_input_waits_for_the_complete_streamed_json() {
-        // Exactly what the failing run logged: content_block_start, then "".
-        let deltas = [
-            "",
-            "{\"plan\": \"# Plan",
-            ": dummy files\\n- create 10 txt files",
-            "\\n- fill with lorem ipsum\"",
-            "}",
-        ];
-        let mut buffer = String::new();
-        let mut first_ready_at = None;
-        for (i, delta) in deltas.iter().enumerate() {
-            buffer.push_str(delta);
-            if let Some(input) = streamed_tool_input_if_complete(&buffer) {
-                first_ready_at = Some(i);
-                assert!(
-                    input["plan"].as_str().unwrap().contains("lorem ipsum"),
-                    "acted on an incomplete plan: {input}"
-                );
-                break;
-            }
+    /// A question as Claude Code 2.1.278 streams it (trimmed from a recorded
+    /// run): the tool starts with an empty input, the input arrives as JSON
+    /// chunks, and only then does the CLI write the finished `assistant` line.
+    const ASK_USER_QUESTION_2_1_278: &str = r#"{"_run_meta":true}
+{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_01Lv4dCPuqvZvaUGPuMtCBTo","name":"AskUserQuestion","input":{},"caller":{"type":"direct"}}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"questions\": [{\"question\":\""}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"ate.\"}]}]"}}}
+{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"}"}}}
+{"type":"assistant","message":{"id":"msg_011CfGfC9WdAo8YtWKyppmko","role":"assistant","content":[{"type":"tool_use","id":"toolu_01Lv4dCPuqvZvaUGPuMtCBTo","name":"AskUserQuestion","input":{"questions":[{"question":"Which branch should I commit to?","header":"Branch","multiSelect":false,"options":[{"label":"staging","description":"Commit to the staging branch."},{"label":"main","description":"Commit to the main branch."}]},{"question":"Should I squash the commits?","header":"Squash","multiSelect":false,"options":[{"label":"Squash","description":"Combine the changes into a single commit."},{"label":"Don't squash","description":"Keep the commits separate."}]}]},"caller":{"type":"direct"}}]}}
+{"type":"stream_event","event":{"type":"content_block_stop","index":0}}"#;
+
+    fn claude_run() -> crate::chat::types::RunEntry {
+        use crate::chat::types::{Backend, RunEntry, RunStatus};
+
+        RunEntry {
+            run_id: "run-issue-32".to_string(),
+            user_message_id: "user-issue-32".to_string(),
+            user_message: "commit this".to_string(),
+            model: Some("claude-opus-5".to_string()),
+            execution_mode: Some("build".to_string()),
+            thinking_level: None,
+            effort_level: None,
+            backend: Some(Backend::Claude),
+            custom_profile_name: None,
+            started_at: 1,
+            ended_at: Some(2),
+            status: RunStatus::Completed,
+            assistant_message_id: Some("assistant-issue-32".to_string()),
+            cancelled: false,
+            recovered: false,
+            claude_session_id: None,
+            pid: None,
+            usage: None,
+            codex_thread_id: None,
+            codex_turn_id: None,
+            cursor_chat_id: None,
+            grok_session_id: None,
+            kimi_session_id: None,
+            antigravity_session_id: None,
+            checkpoint_id: None,
         }
-        assert_eq!(
-            first_ready_at,
-            Some(deltas.len() - 1),
-            "must wait for the closing brace, not act on the empty first delta"
-        );
+    }
+
+    fn rebuilt_questions(lines: &[String]) -> Vec<serde_json::Value> {
+        let message = super::super::run_log::parse_run_to_message(lines, &claude_run()).unwrap();
+        message
+            .tool_calls
+            .iter()
+            .filter(|tool| tool.name == "AskUserQuestion")
+            .flat_map(|tool| {
+                tool.input["questions"]
+                    .as_array()
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .collect()
+    }
+
+    /// Why Jean must not kill on a stream event (azeitler/jean#32): chat
+    /// history is rebuilt from the run log, which only reads finished
+    /// `assistant` lines. A log that ends on the last streamed input chunk —
+    /// where the removed stream-event kill fired — has no question at all.
+    #[test]
+    fn a_run_log_cut_at_the_last_input_chunk_loses_the_question() {
+        let lines: Vec<String> = ASK_USER_QUESTION_2_1_278
+            .lines()
+            .map(String::from)
+            .collect();
+        let last_chunk = lines
+            .iter()
+            .rposition(|l| l.contains("input_json_delta"))
+            .unwrap();
+        assert!(rebuilt_questions(&lines[..=last_chunk]).is_empty());
+    }
+
+    /// Jean kills on the first finished `assistant` line that holds a
+    /// blocking tool. Everything Jean has read by then is on disk, so the
+    /// rebuilt history keeps the question and every option.
+    #[test]
+    fn the_kill_point_keeps_the_question_in_the_run_log() {
+        let lines: Vec<String> = ASK_USER_QUESTION_2_1_278
+            .lines()
+            .map(String::from)
+            .collect();
+        let kill_at = lines
+            .iter()
+            .position(|l| {
+                let msg: serde_json::Value = serde_json::from_str(l).unwrap();
+                msg["type"] == "assistant"
+                    && msg["message"]["content"].as_array().is_some_and(|blocks| {
+                        blocks.iter().any(|b| {
+                            b["type"] == "tool_use"
+                                && is_blocking_tool(b["name"].as_str().unwrap_or_default())
+                        })
+                    })
+            })
+            .expect("the fixture holds a finished AskUserQuestion");
+
+        let questions = rebuilt_questions(&lines[..=kill_at]);
+        assert_eq!(questions.len(), 2);
+        assert_eq!(questions[0]["question"], "Which branch should I commit to?");
+        assert_eq!(questions[0]["options"].as_array().unwrap().len(), 2);
+        assert_eq!(questions[1]["options"][1]["label"], "Don't squash");
     }
 
     #[test]
-    fn empty_or_whitespace_buffers_are_never_ready() {
-        assert!(streamed_tool_input_if_complete("").is_none());
-        assert!(streamed_tool_input_if_complete("   ").is_none());
-        assert!(streamed_tool_input_if_complete("{\"questions\": [").is_none());
-        assert!(streamed_tool_input_if_complete("{}").is_some());
+    fn only_question_and_plan_tools_end_the_turn() {
+        assert!(is_blocking_tool("AskUserQuestion"));
+        assert!(is_blocking_tool("ExitPlanMode"));
+        for tool in ["EnterPlanMode", "Write", "Bash", "ToolSearch", "question"] {
+            assert!(!is_blocking_tool(tool), "{tool} must not end the turn");
+        }
     }
 
     /// Claude consumes the permission-prompt tool internally and keeps it out
