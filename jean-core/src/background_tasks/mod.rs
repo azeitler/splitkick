@@ -103,6 +103,16 @@ fn should_poll_local(
     is_immediate || poll_interval_elapsed(now, last, configured_interval_secs)
 }
 
+fn take_immediate_poll_requests(
+    immediate_poll: &AtomicBool,
+    immediate_remote_poll: &AtomicBool,
+) -> (bool, bool) {
+    (
+        immediate_poll.swap(false, Ordering::Relaxed),
+        immediate_remote_poll.swap(false, Ordering::Relaxed),
+    )
+}
+
 fn wait_for_wake_signal(wake_signal: &WakeSignal, duration: Duration) {
     let (lock, cvar) = &**wake_signal;
     let guard = lock.lock().unwrap();
@@ -354,6 +364,12 @@ impl BackgroundTaskManager {
                     let guard = active_worktree.lock().unwrap();
                     guard.clone()
                 };
+                // Consume both wake requests before checking worktree capabilities.
+                // If a request cannot run (for example, a remote refresh on a
+                // worktree without a PR), leaving it set makes the loop skip its
+                // wait forever and consume a full CPU core.
+                let (is_immediate_local, is_immediate_remote) =
+                    take_immediate_poll_requests(&immediate_poll, &immediate_remote_poll);
 
                 // Active worktree ID for excluding from sweep
                 let active_worktree_id = worktree_info.as_ref().map(|i| i.worktree_id.clone());
@@ -378,7 +394,6 @@ impl BackgroundTaskManager {
                         let times = last_local_poll_times.lock().unwrap();
                         times.get(&info.worktree_id).copied()
                     };
-                    let is_immediate_local = immediate_poll.swap(false, Ordering::Relaxed);
                     let local_interval = poll_interval_secs.load(Ordering::Relaxed);
 
                     let should_poll_local_now =
@@ -428,9 +443,6 @@ impl BackgroundTaskManager {
                             times.get(&info.worktree_id).copied()
                         };
                         let remote_interval = remote_poll_interval_secs.load(Ordering::Relaxed);
-                        let is_immediate_remote =
-                            immediate_remote_poll.swap(false, Ordering::Relaxed);
-
                         let should_poll_remote = is_immediate_remote
                             || poll_interval_elapsed(now, last_remote, remote_interval);
 
@@ -884,5 +896,17 @@ mod tests {
         assert!(!should_poll_local(159, Some(100), false, 60));
         assert!(should_poll_local(160, Some(100), false, 60));
         assert!(should_poll_local(101, Some(100), true, 600));
+    }
+
+    #[test]
+    fn immediate_poll_requests_are_consumed_together() {
+        let local = AtomicBool::new(true);
+        let remote = AtomicBool::new(true);
+
+        assert_eq!(take_immediate_poll_requests(&local, &remote), (true, true));
+        assert_eq!(
+            take_immediate_poll_requests(&local, &remote),
+            (false, false)
+        );
     }
 }
