@@ -163,7 +163,9 @@ Built on Jean 0.1.73.
   the text with a question-mark icon, and pointing at it explains what Jean
   checked. A file the agent writes during the turn becomes a link by itself
   when the turn ends. A path that starts with `~/` opens in your home folder —
-  on a remote connection, the home folder of the machine Jean runs on.
+  on a remote connection, the home folder of the machine Jean runs on. A path
+  that starts with `../` opens the folder above the worktree, or, when the
+  agent was working in a subfolder, the file it really touched there.
 
 - **The chat composer stays above the keyboard on a phone.** Tapping the input
   used to push the composer and its toolbar under the on-screen keyboard, so you

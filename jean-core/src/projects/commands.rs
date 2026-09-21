@@ -5728,17 +5728,24 @@ const REFERENCE_SEARCH_MAX_MATCHES: usize = 8;
 /// under `/var` into `/private/var` on macOS and makes the path the user sees
 /// disagree with the one they gave.
 fn normalize_lexically(path: &Path) -> PathBuf {
+    use std::path::Component;
+
     let mut out = PathBuf::new();
     for component in path.components() {
         match component {
-            std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => {
-                // Keep `..` when there is nothing to pop (a relative path that
-                // climbs above its own root).
-                if !out.pop() {
-                    out.push("..");
+            Component::CurDir => {}
+            Component::ParentDir => match out.components().next_back() {
+                // A real directory: step out of it.
+                Some(Component::Normal(_)) => {
+                    out.pop();
                 }
-            }
+                // Nothing is above the root; `/..` is `/`.
+                Some(Component::RootDir) | Some(Component::Prefix(_)) => {}
+                // Empty, or already climbing (`../..`): the base is unknown,
+                // so the climb is kept rather than silently dropped. Popping
+                // here would turn `../../x` into `x`.
+                _ => out.push(".."),
+            },
             other => out.push(other.as_os_str()),
         }
     }
@@ -5789,8 +5796,21 @@ fn path_tail_matches(relative: &str, reference: &str) -> bool {
 /// checkout cannot stall the click that asked for it.
 fn search_worktree_for_reference(root: &Path, reference: &str) -> Vec<PathBuf> {
     let needle = reference.replace('\\', "/");
-    let needle = needle.trim_start_matches("./").trim_start_matches('/');
-    if needle.is_empty() {
+    // A leading `./` or `../` says where the reference started, which is what
+    // this search does not know: it is the last resort because no base
+    // worked. Match on what follows. `../shared/api.md` from an agent working
+    // in `packages/web` is `packages/shared/api.md`, and the tail finds it.
+    let mut needle = needle.trim_start_matches('/');
+    loop {
+        if let Some(rest) = needle.strip_prefix("./") {
+            needle = rest;
+        } else if let Some(rest) = needle.strip_prefix("../") {
+            needle = rest;
+        } else {
+            break;
+        }
+    }
+    if needle.is_empty() || needle == "." || needle == ".." {
         return Vec::new();
     }
 
@@ -14304,6 +14324,72 @@ mod tests {
         assert_eq!(
             normalize_lexically(Path::new("../outside.md")),
             PathBuf::from("../outside.md")
+        );
+        // A chain of climbs stays a chain.
+        assert_eq!(
+            normalize_lexically(Path::new("../../outside.md")),
+            PathBuf::from("../../outside.md")
+        );
+        assert_eq!(
+            normalize_lexically(Path::new("a/../../outside.md")),
+            PathBuf::from("../outside.md")
+        );
+        // Nothing is above the root.
+        assert_eq!(
+            normalize_lexically(Path::new("/repo/../../outside.md")),
+            PathBuf::from("/outside.md")
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_resolves_a_parent_relative_root_join() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let base = dir.path();
+        std::fs::create_dir_all(base.join("worktree")).expect("worktree");
+        std::fs::create_dir_all(base.join("sibling")).expect("sibling");
+        std::fs::write(base.join("sibling/notes.md"), "hi\n").expect("notes");
+
+        // What the frontend sends for `../sibling/notes.md`: the root join.
+        let candidate = base
+            .join("worktree/../sibling/notes.md")
+            .to_string_lossy()
+            .to_string();
+        let resolved =
+            resolve_file_reference("../sibling/notes.md".to_string(), vec![candidate], None)
+                .await
+                .expect("resolve");
+
+        // Reported without the `..`, so the path the user sees is clean.
+        assert_eq!(
+            resolved.path,
+            Some(base.join("sibling/notes.md").to_string_lossy().to_string())
+        );
+    }
+
+    #[tokio::test]
+    async fn resolve_file_reference_searches_the_tail_of_a_parent_relative_reference() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let root = dir.path();
+        std::fs::create_dir_all(root.join("packages/shared")).expect("shared");
+        std::fs::write(root.join("packages/shared/api.md"), "x\n").expect("api");
+
+        // An agent working in packages/web wrote `../shared/api.md`.
+        let resolved = resolve_file_reference(
+            "../shared/api.md".to_string(),
+            vec![root.join("../shared/api.md").to_string_lossy().to_string()],
+            Some(root.to_string_lossy().to_string()),
+        )
+        .await
+        .expect("resolve");
+
+        assert!(resolved.searched);
+        assert_eq!(
+            resolved.path,
+            Some(
+                root.join("packages/shared/api.md")
+                    .to_string_lossy()
+                    .to_string()
+            )
         );
     }
 

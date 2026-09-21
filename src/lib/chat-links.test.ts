@@ -177,3 +177,20 @@ describe('resolveLocalPath with a home-relative path', () => {
     )
   })
 })
+
+describe('resolveLocalPath with .. segments', () => {
+  it('joins a parent-relative path without leaving .. in it', () => {
+    expect(resolveLocalPath('../shared/api.md', '/repo/worktree')).toBe(
+      '/repo/shared/api.md'
+    )
+    expect(resolveLocalPath('../../notes.md', '/repo/worktree')).toBe(
+      '/notes.md'
+    )
+  })
+
+  it('cleans an absolute path that holds ..', () => {
+    expect(resolveLocalPath('/repo/worktree/../x.md', '/other')).toBe(
+      '/repo/x.md'
+    )
+  })
+})

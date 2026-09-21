@@ -206,6 +206,45 @@ describe('file references in a chat answer', () => {
     )
   })
 
+  it('opens a ../ reference at the file the session touched', async () => {
+    const touched = '/repo/worktree/packages/shared/api.md'
+    const threadMessages: ChatMessage[] = [
+      {
+        id: 'm2',
+        session_id: 's1',
+        role: 'assistant',
+        content: '',
+        timestamp: 0,
+        tool_calls: [{ id: 't2', name: 'Read', input: { file_path: touched } }],
+      },
+    ]
+    function ParentThread() {
+      useFileReferenceEvidence({
+        worktreePath: WORKTREE,
+        messages: threadMessages,
+      })
+      return <Markdown>{'See [the API](../shared/api.md).'}</Markdown>
+    }
+    resolveWith(touched)
+
+    render(<ParentThread />)
+
+    await waitFor(() =>
+      expect(invokeMock).toHaveBeenCalledWith('resolve_file_reference', {
+        reference: '../shared/api.md',
+        candidates: [touched, '/repo/shared/api.md'],
+        searchRoot: WORKTREE,
+      })
+    )
+    const link = () => screen.getByRole('link', { name: 'the API' })
+    await waitFor(() =>
+      expect(link()).toHaveAttribute('data-file-reference', 'found')
+    )
+    fireEvent.click(link())
+
+    expect(useUIStore.getState().viewingFilePath).toBe(touched)
+  })
+
   it('opens a home-relative file at the path the backend expanded', async () => {
     const expanded = '/Users/me/Downloads/report.md'
     resolveWith(expanded)

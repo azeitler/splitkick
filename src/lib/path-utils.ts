@@ -105,6 +105,49 @@ export function isHomeRelativePath(path: string): boolean {
   return /^~(?:[\\/]|$)/.test(path)
 }
 
+const DOT_SEGMENT_RE = /(^|[\\/])\.{1,2}([\\/]|$)/
+
+/**
+ * Resolve `.` and `..` segments without touching the filesystem.
+ *
+ * A path without such segments comes back exactly as given, separators
+ * included. Otherwise it comes back with forward slashes, which every
+ * platform Jean runs on accepts. In an absolute path nothing climbs above
+ * the root. In a relative path a leading `..` is kept, because the base it
+ * climbs out of is not known here. UNC paths are left alone.
+ *
+ * @example
+ * normalizeDotSegments('/repo/worktree/../shared/api.md') // '/repo/shared/api.md'
+ * normalizeDotSegments('a/../../x.md') // '../x.md'
+ * normalizeDotSegments('C:\\repo\\..\\x.md') // 'C:/x.md'
+ * normalizeDotSegments('docs/api.md') // 'docs/api.md'
+ */
+export function normalizeDotSegments(path: string): string {
+  if (!DOT_SEGMENT_RE.test(path)) return path
+  const normalized = normalizePath(path)
+  if (normalized.startsWith('//')) return path
+
+  const drive = /^[a-zA-Z]:/.exec(normalized)?.[0] ?? ''
+  const rest = normalized.slice(drive.length)
+  const absolute = rest.startsWith('/')
+
+  const out: string[] = []
+  for (const segment of rest.split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      const last = out[out.length - 1]
+      if (last !== undefined && last !== '..') out.pop()
+      else if (!absolute) out.push('..')
+      continue
+    }
+    out.push(segment)
+  }
+
+  const body = out.join('/')
+  if (absolute) return `${drive}/${body}`
+  return body || '.'
+}
+
 /** Extensions a web view renders as a page when it loads the file from disk. */
 const HTML_EXTENSIONS = new Set(['.html', '.htm', '.xhtml', '.xht', '.shtml'])
 

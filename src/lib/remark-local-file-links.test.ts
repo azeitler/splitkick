@@ -29,6 +29,17 @@ describe('remarkLocalFileLinks', () => {
     expect(linkUrls(nodes)).toEqual(['~/Downloads/report.html', '~/notes.md'])
   })
 
+  it('links a parent-relative path, however far it climbs', () => {
+    const nodes = run(
+      paragraph({
+        type: 'text',
+        value: 'See ../docs/a.md and ../../b.html now.',
+      })
+    )
+
+    expect(linkUrls(nodes)).toEqual(['../docs/a.md', '../../b.html'])
+  })
+
   it('does not treat a tilde inside a name as home', () => {
     const nodes = run(
       paragraph({ type: 'text', value: 'See draft~/x.html here.' })

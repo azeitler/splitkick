@@ -98,6 +98,42 @@ describe('buildFileReferenceCandidates', () => {
     ])
   })
 
+  it('matches a tool call on what follows a leading ../', () => {
+    // An agent working in packages/web wrote `../shared/api.md`.
+    expect(
+      buildFileReferenceCandidates('../shared/api.md', {
+        roots: ['/repo/worktree'],
+        knownPaths: ['/repo/worktree/packages/shared/api.md'],
+      })
+    ).toEqual([
+      '/repo/worktree/packages/shared/api.md',
+      // The plain reading: one level above the worktree, without the `..`.
+      '/repo/shared/api.md',
+    ])
+  })
+
+  it('climbs as many levels as the reference says', () => {
+    expect(
+      buildFileReferenceCandidates('../../notes.md', {
+        roots: ['/home/me/jean/project/worktree'],
+        knownPaths: [],
+      })
+    ).toEqual(['/home/me/jean/notes.md'])
+  })
+
+  it('collapses a .. in the middle of a reference', () => {
+    expect(
+      buildFileReferenceCandidates('docs/../README.md', {
+        roots: ['/repo/worktree'],
+        knownPaths: [],
+      })
+    ).toEqual(['/repo/worktree/README.md'])
+  })
+
+  it('offers nothing for a reference that is only ..', () => {
+    expect(buildFileReferenceCandidates('..', evidence)).toEqual(['/repo'])
+  })
+
   it('passes a home-relative reference through for the backend to expand', () => {
     expect(
       buildFileReferenceCandidates('~/Downloads/report.html', {

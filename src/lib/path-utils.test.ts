@@ -8,6 +8,7 @@ import {
   isPaneTextUrl,
   isTextFile,
   isVideoFile,
+  normalizeDotSegments,
   splitFileRefSuffix,
   toFileUrl,
 } from './path-utils'
@@ -108,6 +109,37 @@ describe('isVideoFile', () => {
     ['page.html', false],
   ])('%s -> %s', (path, expected) => {
     expect(isVideoFile(path)).toBe(expected)
+  })
+})
+
+describe('normalizeDotSegments', () => {
+  it.each([
+    ['/repo/worktree/../shared/api.md', '/repo/shared/api.md'],
+    ['/repo/./docs/./api.md', '/repo/docs/api.md'],
+    ['/repo/../../outside.md', '/outside.md'],
+    ['a/../b.md', 'b.md'],
+    ['a/../../x.md', '../x.md'],
+    ['../../x.md', '../../x.md'],
+    ['./x.md', 'x.md'],
+    ['C:\\repo\\..\\x.md', 'C:/x.md'],
+    ['..', '..'],
+    ['a/..', '.'],
+  ])('%s -> %s', (path, expected) => {
+    expect(normalizeDotSegments(path)).toBe(expected)
+  })
+
+  it('leaves a path without dot segments exactly as given', () => {
+    expect(normalizeDotSegments('C:\\repo\\api.md')).toBe('C:\\repo\\api.md')
+    expect(normalizeDotSegments('/repo/.env')).toBe('/repo/.env')
+    expect(normalizeDotSegments('/repo/..hidden/a.md')).toBe(
+      '/repo/..hidden/a.md'
+    )
+  })
+
+  it('leaves a UNC path alone', () => {
+    expect(normalizeDotSegments('//host/share/../x.md')).toBe(
+      '//host/share/../x.md'
+    )
   })
 })
 

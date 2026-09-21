@@ -4,6 +4,7 @@ import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import {
   isBrowsableFile,
   isHomeRelativePath,
+  normalizeDotSegments,
   splitFileRefSuffix,
   toFileUrl,
 } from '@/lib/path-utils'
@@ -80,7 +81,9 @@ export function resolveLocalPath(
   const path = toLocalReferencePath(ref)
   if (path === null) return null
 
-  if (path.startsWith('/') || WINDOWS_DRIVE_RE.test(path)) return path
+  if (path.startsWith('/') || WINDOWS_DRIVE_RE.test(path)) {
+    return normalizeDotSegments(path)
+  }
   // `~/…` is not relative to any root, and only the backend knows the home
   // directory (`resolve_file_reference` expands it). Joining it onto the
   // worktree would name `<worktree>/~/…`, which never exists.
@@ -89,7 +92,10 @@ export function resolveLocalPath(
   const root = rootPath || useChatStore.getState().activeWorktreePath
   if (!root) return null
   const separator = root.includes('\\') ? '\\' : '/'
-  return `${root.replace(/[\\/]+$/, '')}${separator}${path.replace(/^[\\/]+/, '')}`
+  // `../x.md` must open `<parent>/x.md`, not a path with `..` left in it.
+  return normalizeDotSegments(
+    `${root.replace(/[\\/]+$/, '')}${separator}${path.replace(/^[\\/]+/, '')}`
+  )
 }
 
 /** Classify a link href without touching any store (safe during render). */

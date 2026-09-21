@@ -28,6 +28,7 @@ import {
   isAbsolutePath,
   isHomeRelativePath,
   joinPaths,
+  normalizeDotSegments,
   normalizePath,
   splitFileRefSuffix,
 } from '@/lib/path-utils'
@@ -187,19 +188,29 @@ export function buildFileReferenceCandidates(
   // call can say anything more about it.
   if (isHomeRelativePath(raw)) return [raw]
 
-  const relative = normalizePath(raw).replace(/^\.\//, '')
-  if (!relative) return []
+  // `a/../b.md` is `b.md`; a leading `..` stays, because the base it climbs
+  // out of is exactly what is unknown.
+  const relative = normalizeDotSegments(normalizePath(raw))
+  if (!relative || relative === '.') return []
+
+  // What follows the leading `../` segments. A tool call can only be matched
+  // on this part: an absolute path never spells `..`. An agent working in
+  // `packages/web` that writes `../shared/api.md` touched
+  // `…/packages/shared/api.md`, and the tail is how that is found.
+  const tail = relative.replace(/^(?:\.\.\/)+/, '')
 
   const out: string[] = []
   const push = (path: string) => {
     if (path && !out.includes(path)) out.push(path)
   }
 
-  for (const known of evidence.knownPaths) {
-    if (pathTailMatches(normalizePath(known), relative)) push(known)
+  if (tail && tail !== '..') {
+    for (const known of evidence.knownPaths) {
+      if (pathTailMatches(normalizePath(known), tail)) push(known)
+    }
   }
   for (const root of evidence.roots) {
-    if (root) push(joinPaths(root, relative))
+    if (root) push(normalizeDotSegments(joinPaths(root, relative)))
   }
 
   return out

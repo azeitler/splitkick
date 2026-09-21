@@ -24,15 +24,22 @@ file could be and asks the backend which of them exist.
    home. A missing `~/…` file is not searched for in the worktree: it names
    one place, and a worktree file with the same tail is not what was meant.
    `~user/…` is not expanded.
-2. **Paths the session's tool calls touched**, newest first. A Read or an Edit
+2. **A parent-relative reference** (`../shared/api.md`) climbs out of a base
+   Jean does not know — the worktree, or a subdirectory the agent was working
+   in. Both readings are offered: tool calls are matched on the part after
+   the leading `../` segments (an absolute path never spells `..`), and the
+   root join is offered with its `..` resolved (`normalizeDotSegments`, and
+   `normalize_lexically` on the backend). The worktree search matches that
+   same tail. A `..` in the middle (`docs/../README.md`) is collapsed first.
+3. **Paths the session's tool calls touched**, newest first. A Read or an Edit
    records an absolute `file_path`, which is the only record of where the
    agent really was. A reference matches one when it is its tail at a
    separator boundary: `docs/api.md` matches
    `/repo/packages/web/docs/api.md`, and `cs/api.md` does not.
-3. **The roots**, joined with the reference: any root the caller adds (a
+4. **The roots**, joined with the reference: any root the caller adds (a
    linked project, for `FileMentionBadge`), then `LocalPathRootContext`, then
    the store's active worktree.
-4. **A bounded search of the worktree**, run by the backend only when nothing
+5. **A bounded search of the worktree**, run by the backend only when nothing
    above exists. Breadth-first, skipping `node_modules` and friends, capped at
    20,000 entries and 8 matches, shallowest match first.
 
