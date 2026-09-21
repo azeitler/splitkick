@@ -36,33 +36,12 @@ describe('title bar height and safe area', () => {
   })
 })
 
-describe('title bar touch targets', () => {
-  it('grows every bar button to 44px below the mobile breakpoint', () => {
-    // On a phone the title bar is the only tap path to the sidebar, the file
-    // browser and Settings.
+describe('the desktop title bar', () => {
+  it('keeps its compact 24px buttons', () => {
+    // The phone title bar has no buttons; see TitleBar.phone.test.tsx.
     expect(titleBar).toContain(
-      "'size-11 md:size-6 rounded-none text-foreground/70 hover:text-foreground'"
+      "'size-6 rounded-none text-foreground/70 hover:text-foreground'"
     )
-    expect(titleBar).not.toContain("'h-6 w-6 rounded-none")
-    expect(titleBar).not.toContain('"h-6 w-6 rounded-none')
-  })
-
-  it('centres the taller buttons in the taller bar', () => {
-    expect(titleBar).toContain('pt-0 md:pt-1')
-    expect(titleBar).not.toContain("'flex items-center pt-1'")
-  })
-
-  it('frees phone width by dropping the desktop vanity links', () => {
-    // GitHub / Sponsor / version cost ~72px of a 375px bar and are reachable
-    // from Settings and Home.
-    expect(titleBar).toMatch(/\{!isMobile && \(\s*<>/)
-    expect(titleBar).toContain('releaseUrlForVersion(appVersion)')
-  })
-
-  it('hides the absolutely centred title on a phone', () => {
-    // A centred max-w-[50%] title collides with both clusters at 375px; the
-    // mobile zen branch already shows the title inline.
-    expect(titleBar).toContain(') : isMobile ? null : (')
   })
 })
 

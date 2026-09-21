@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act, screen, waitFor } from '@testing-library/react'
-import { createRef } from 'react'
 import { MainWindowContent } from './MainWindowContent'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore } from '@/store/chat-store'
@@ -32,6 +31,10 @@ vi.mock('@/lib/idle', () => ({
 
 vi.mock('@/components/chat/ChatWindow', () => ({
   ChatWindow: () => <div data-testid="chat-window">Chat</div>,
+}))
+
+vi.mock('@/components/mobile/MobileTabShell', () => ({
+  MobileTabShell: () => <div data-testid="mobile-tab-shell">Tabs</div>,
 }))
 
 vi.mock('@/components/dashboard/ProjectCanvasView', () => ({
@@ -71,7 +74,7 @@ function fireTouch(
   el.dispatchEvent(event)
 }
 
-describe('MainWindowContent mobile swipe open sidebar', () => {
+describe('MainWindowContent phone layout routing', () => {
   beforeEach(() => {
     useUIStore.setState({
       leftSidebarVisible: false,
@@ -85,24 +88,17 @@ describe('MainWindowContent mobile swipe open sidebar', () => {
     useProjectsStore.setState({ selectedProjectId: 'proj-1' })
   })
 
-  it('keeps the canvas stationary while the sidebar overlay owns the swipe', async () => {
-    const swipeContainerRef = createRef<HTMLDivElement>()
-    render(<MainWindowContent sidebarSwipeContainerRef={swipeContainerRef} />)
+  it('renders the tab shell for a selected project, not the bare canvas', async () => {
+    // The project is presented by the shell's modal layer, over the tabs.
+    render(<MainWindowContent />)
 
-    const target = await screen.findByTestId('mobile-swipe-open-sidebar')
-    expect(swipeContainerRef.current).toBe(target)
-
-    act(() => {
-      fireTouch(target, 'touchstart', 8)
-      fireTouch(target, 'touchmove', 120)
-    })
-
-    expect(target).not.toHaveStyle({ transform: 'translateX(112px)' })
-    expect(screen.queryByTestId('mobile-swipe-sidebar-underlay')).toBeNull()
-    expect(useUIStore.getState().leftSidebarVisible).toBe(false)
+    expect(await screen.findByTestId('mobile-tab-shell')).toBeInTheDocument()
+    expect(screen.queryByTestId('project-canvas')).toBeNull()
+    // There is no drawer to swipe open any more.
+    expect(screen.queryByTestId('mobile-swipe-open-sidebar')).toBeNull()
   })
 
-  it('uses swipe-back on chat instead of open-sidebar target', async () => {
+  it('keeps the full-screen chat for an active worktree', async () => {
     useChatStore.setState({
       activeWorktreePath: '/tmp/wt',
       activeWorktreeId: 'wt-1',
@@ -113,7 +109,17 @@ describe('MainWindowContent mobile swipe open sidebar', () => {
     await waitFor(() => {
       expect(screen.getByTestId('chat-window')).toBeInTheDocument()
     })
-    expect(screen.queryByTestId('mobile-swipe-open-sidebar')).toBeNull()
+    expect(screen.queryByTestId('mobile-tab-shell')).toBeNull()
+  })
+
+  it('keeps the welcome screen in an empty app', async () => {
+    // No projects and none selected: nothing to navigate between yet.
+    useProjectsStore.setState({ selectedProjectId: null })
+
+    render(<MainWindowContent />)
+
+    expect(await screen.findByText('Welcome to Jean!')).toBeInTheDocument()
+    expect(screen.queryByTestId('mobile-tab-shell')).toBeNull()
   })
 })
 

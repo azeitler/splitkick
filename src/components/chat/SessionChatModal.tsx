@@ -11,6 +11,8 @@ import {
 } from 'react'
 import {
   ChevronDown,
+  ChevronLeft,
+  FolderTree,
   GitBranchPlus,
   GitPullRequestArrow,
   Maximize2,
@@ -963,8 +965,14 @@ export function SessionChatModal({
         key={worktreeId}
         ref={setSwipeContainerRef}
         className={cn(
-          'absolute inset-0 z-10 flex min-w-0 overflow-hidden bg-background pt-[3px]',
+          // pointer-events-auto: on a phone the project layer can be
+          // click-through (a session opened straight from a tab), and the
+          // session must still take its own touches.
+          'pointer-events-auto absolute inset-0 z-10 flex min-w-0 overflow-hidden bg-background pt-[3px]',
           !isMobile && 'pb-2',
+          // A session pushes onto the phone layout's stack.
+          isMobile &&
+            'motion-safe:animate-in motion-safe:slide-in-from-right motion-safe:duration-300 motion-safe:ease-out',
           hasBottomDock ? 'flex-col' : 'flex-row'
         )}
         data-testid="session-chat-modal-swipe"
@@ -1028,6 +1036,18 @@ export function SessionChatModal({
                 )}
               >
                 <div className="flex items-center gap-2 min-w-0">
+                  {isMobile && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="-ml-3 size-11 shrink-0 text-muted-foreground"
+                      aria-label="Back"
+                      data-testid="session-modal-back"
+                      onClick={handleClose}
+                    >
+                      <ChevronLeft className="size-5" />
+                    </Button>
+                  )}
                   <h2 className="text-sm font-medium min-w-0 flex-1 truncate">
                     {project && !isMobile && (
                       <span className="text-muted-foreground font-normal">
@@ -1106,13 +1126,29 @@ export function SessionChatModal({
                   )}
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  {/* The phone title bar is only a title, so the file
+                      browser opens from the session it browses. */}
+                  {isMobile && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-11 text-muted-foreground"
+                      aria-label="Show file browser"
+                      data-testid="session-modal-file-browser"
+                      onClick={() =>
+                        useUIStore.getState().setFileBrowserVisible(true)
+                      }
+                    >
+                      <FolderTree className="size-4" />
+                    </Button>
+                  )}
                   {isMobile && (
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <Button
                           variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-xs"
+                          size="icon"
+                          className="size-11 text-muted-foreground"
                           aria-label={
                             zenMode ? 'Exit zen mode' : 'Enter zen mode'
                           }
@@ -1121,9 +1157,9 @@ export function SessionChatModal({
                           onClick={toggleZenMode}
                         >
                           {zenMode ? (
-                            <Minimize2 className="h-3 w-3" />
+                            <Minimize2 className="size-4" />
                           ) : (
-                            <Maximize2 className="h-3 w-3" />
+                            <Maximize2 className="size-4" />
                           )}
                         </Button>
                       </TooltipTrigger>
@@ -1282,7 +1318,7 @@ export function SessionChatModal({
                           </div>
                         )}
                       </div>
-                      <ModalCloseButton onClick={handleClose} />
+                      {!isMobile && <ModalCloseButton onClick={handleClose} />}
                     </>
                   )}
                 </div>

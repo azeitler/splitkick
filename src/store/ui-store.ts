@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
+import type { MobileTab } from '@/types/ui-state'
 import type { CliType } from '@/lib/cli-update'
 import { mergeSeenFailedWorkflowRunIds } from '@/components/shared/workflow-run-utils'
 
@@ -165,6 +166,8 @@ interface UIState {
   pendingProjectHomeId: string | null
   /** Whether a session chat modal is open (for magic command keybinding checks) */
   sessionChatModalOpen: boolean
+  /** The phone layout's selected bottom tab. Persisted. */
+  mobileActiveTab: MobileTab
   /** Whether the chat toolbar is mounted — used to hide the global FloatingDock
    *  because its burger-menu counterpart now lives in the chat toolbar. */
   chatToolbarMounted: boolean
@@ -297,6 +300,7 @@ interface UIState {
     sessionId?: string
   }
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
+  setMobileActiveTab: (tab: MobileTab) => void
   setSessionPrimarySurface: (
     sessionId: string,
     surface: WorktreePrimarySurface
@@ -401,6 +405,7 @@ export const useUIStore = create<UIState>()(
       pendingSidebarRevealId: null,
       pendingProjectHomeId: null,
       sessionChatModalOpen: false,
+      mobileActiveTab: 'home',
       sessionChatModalWorktreeId: null,
       sessionPrimarySurface: {},
       sessionTerminalIds: {},
@@ -1102,6 +1107,14 @@ export const useUIStore = create<UIState>()(
           },
           undefined,
           'setSessionChatModalOpen'
+        ),
+
+      setMobileActiveTab: (tab: MobileTab) =>
+        set(
+          state =>
+            state.mobileActiveTab === tab ? state : { mobileActiveTab: tab },
+          undefined,
+          'setMobileActiveTab'
         ),
 
       setSessionPrimarySurface: (

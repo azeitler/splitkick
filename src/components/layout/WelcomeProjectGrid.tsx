@@ -21,7 +21,8 @@ interface WelcomeProjectGridProps {
   onAddProject: () => void
 }
 
-function ProjectCard({
+/** A project with its avatar. Shared with the phone layout's Home tab. */
+export function ProjectCard({
   project,
   appDataDir,
   onClick,

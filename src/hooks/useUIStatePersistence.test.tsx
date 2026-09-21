@@ -1124,6 +1124,81 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
   })
 
+  it('persists and restores the phone layout tab', async () => {
+    useUIStore.setState({ mobileActiveTab: 'home' })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(
+        new QueryClient({
+          defaultOptions: {
+            queries: { retry: false },
+            mutations: { retry: false },
+          },
+        })
+      ),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useUIStore.getState().setMobileActiveTab('history')
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({ mobile_active_tab: 'history' })
+      )
+    })
+
+    // And the saved tab comes back on the next load.
+    useUIStore.setState({ mobileActiveTab: 'home' })
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({ mobile_active_tab: 'starred' }),
+      isSuccess: true,
+    })
+    useUIStore.setState({ uiStateInitialized: false })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(
+        new QueryClient({
+          defaultOptions: {
+            queries: { retry: false },
+            mutations: { retry: false },
+          },
+        })
+      ),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().mobileActiveTab).toBe('starred')
+    })
+  })
+
+  it('ignores a persisted tab it does not know', async () => {
+    // A hand-edited file, or one written by a build with a different set of
+    // tabs, must not leave the shell rendering no tab at all.
+    useUIStore.setState({ mobileActiveTab: 'home' })
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({
+        mobile_active_tab: 'inbox' as unknown as 'home',
+      }),
+      isSuccess: true,
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(
+        new QueryClient({
+          defaultOptions: {
+            queries: { retry: false },
+            mutations: { retry: false },
+          },
+        })
+      ),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+    expect(useUIStore.getState().mobileActiveTab).toBe('home')
+  })
+
   it('persists the per-project session sort with snake_case keys', async () => {
     const queryClient = new QueryClient({
       defaultOptions: {

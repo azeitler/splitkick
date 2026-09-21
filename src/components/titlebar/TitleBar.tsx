@@ -49,14 +49,9 @@ import { LinuxWindowControls } from './LinuxWindowControls'
 import { UsagePopover } from './UsagePopover'
 import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
 
-/**
- * On a phone the title bar is the only tap path to the sidebar, the file
- * browser and Settings, so its buttons grow to 44px there. The buttons sit at
- * `gap-1`, so the `after:-inset-2` hit-area trick used elsewhere would overlap
- * neighbours — grow the visual box instead, together with `--titlebar-height`.
- */
+/** The desktop title bar's icon buttons. A phone's title bar has none. */
 const titleBarButtonClass =
-  'size-11 md:size-6 rounded-none text-foreground/70 hover:text-foreground'
+  'size-6 rounded-none text-foreground/70 hover:text-foreground'
 
 interface TitleBarProps {
   className?: string
@@ -82,8 +77,6 @@ export function TitleBar({
   const commandContext = useCommandContext()
   const { data: preferences } = usePreferences()
   const isMobile = useIsMobile()
-  /** Mobile zen: single header line in the title bar (name + exit). */
-  const mobileZen = zenMode && isMobile
 
   const sidebarShortcut = formatShortcutDisplay(
     (preferences?.keybindings?.toggle_left_sidebar ||
@@ -105,19 +98,45 @@ export function TitleBar({
       .catch(() => setAppVersion(FALLBACK_APP_VERSION))
   }, [native])
 
+  const barClass = cn(
+    'relative flex h-[var(--titlebar-height)] w-full shrink-0 items-center justify-between',
+    // Pad out the status bar / notch so items-center centres the content in
+    // the strip below it, while the background still paints behind it.
+    'pt-[var(--safe-area-top)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)]',
+    'bg-background/80 md:px-2',
+    native ? 'z-[60]' : 'z-50',
+    className
+  )
+  const dragRegion = native ? { 'data-tauri-drag-region': true } : {}
+
+  // A phone's title bar is only its title. What the desktop bar carries lives
+  // in the tab bar there: Settings (with usage around its icon, updates and the
+  // About links), the unread count on Home, and the file browser in the session
+  // header. Zen mode hides the tab bar and the session header, so the exit stays.
+  if (isMobile) {
+    return (
+      <div {...dragRegion} className={barClass} data-testid="titlebar-mobile">
+        <span className="min-w-0 flex-1 truncate px-12 text-center text-sm font-semibold text-foreground">
+          {hideTitle ? '' : title}
+        </span>
+        {zenMode && (
+          <Button
+            onClick={toggleZenMode}
+            variant="ghost"
+            size="icon"
+            className="absolute right-[calc(var(--safe-area-right)+0.25rem)] bottom-0 size-11 rounded-none text-foreground/70 hover:text-foreground"
+            aria-label="Exit zen mode"
+            data-testid="toggle-zen-mode"
+          >
+            <Minimize2 className="size-4" />
+          </Button>
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div
-      {...(native ? { 'data-tauri-drag-region': true } : {})}
-      className={cn(
-        'relative flex h-[var(--titlebar-height)] w-full shrink-0 items-center justify-between',
-        // Pad out the status bar / notch so items-center centres the controls in
-        // the strip below it, while the background still paints behind it.
-        'pt-[var(--safe-area-top)] pl-[var(--safe-area-left)] pr-[var(--safe-area-right)]',
-        'bg-background/80 md:px-2',
-        native ? 'z-[60]' : 'z-50',
-        className
-      )}
-    >
+    <div {...dragRegion} className={barClass}>
       {/* Left side - Window Controls + Left Actions (hidden in zen mode) */}
       <div
         className="flex items-center"
@@ -131,7 +150,7 @@ export function TitleBar({
         {!zenMode && (
           <div
             className={cn(
-              'relative z-10 flex items-center gap-1 pt-0 md:pt-1',
+              'relative z-10 flex items-center gap-1 pt-1',
               native && isClientMacOS ? 'pl-[80px]' : 'pl-2'
             )}
           >
@@ -209,118 +228,76 @@ export function TitleBar({
             </Tooltip>
             {native && <RemoteConnectionsDialog />}
             <UsagePopover />
-            {!isMobile && <NavigationButtons />}
+            <NavigationButtons />
           </div>
         )}
       </div>
 
-      {/* Center - Title (inlined left in mobile zen) */}
-      {mobileZen ? (
-        <div
-          className="relative z-10 flex min-w-0 flex-1 items-center pl-3 pr-1"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          <span className="truncate text-sm font-semibold text-foreground">
-            {hideTitle ? '' : title}
+      {/* Center - Title */}
+      <div
+        className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[50%] px-2"
+        style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        {!hideTitle && (
+          <span className="block truncate text-sm font-medium text-foreground/80">
+            {title}
           </span>
-        </div>
-      ) : isMobile ? null : (
-        <div
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[50%] px-2"
-          style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
-        >
-          {!hideTitle && (
-            <span className="block truncate text-sm font-medium text-foreground/80">
-              {title}
-            </span>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Right side - Unread badge, updates, links, version + Windows/Linux
           window controls. Only the unread badge survives zen mode. */}
       <div
-        className={cn('flex items-center pt-0 md:pt-1', isMobile && 'pr-2')}
+        className="flex items-center pt-1"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         <UnreadBell />
-        {mobileZen && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                onClick={toggleZenMode}
-                variant="ghost"
-                size="icon"
-                className={titleBarButtonClass}
-                aria-label="Exit zen mode"
-                data-testid="toggle-zen-mode"
-              >
-                <Minimize2 className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              Exit zen mode{' '}
-              <kbd className="ml-1 text-[0.625rem] opacity-60">
-                {formatShortcutDisplay(
-                  (preferences?.keybindings?.toggle_zen_mode ||
-                    DEFAULT_KEYBINDINGS.toggle_zen_mode) as string
-                )}
-              </kbd>
-            </TooltipContent>
-          </Tooltip>
-        )}
         {!zenMode && (
           <>
             <CliUpdatesIndicator />
             <ServerUpdateIndicator />
             {appVersion && <UpdateIndicator />}
-            {!isMobile && (
-              <>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={() =>
-                        openExternal('https://github.com/coollabsio/jean')
-                      }
-                      variant="ghost"
-                      size="icon"
-                      className={titleBarButtonClass}
-                    >
-                      <Github className="size-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>GitHub</TooltipContent>
-                </Tooltip>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      onClick={() =>
-                        openExternal('https://jean.build/sponsorships/')
-                      }
-                      variant="ghost"
-                      size="icon"
-                      className={cn(
-                        titleBarButtonClass,
-                        'text-pink-500 hover:text-pink-400'
-                      )}
-                    >
-                      <Heart className="size-3.5" />
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>Sponsor</TooltipContent>
-                </Tooltip>
-                {appVersion && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      openExternal(releaseUrlForVersion(appVersion))
-                    }
-                    className="px-1.5 text-[0.625rem] text-foreground/40 transition-colors cursor-pointer hover:text-foreground/60"
-                  >
-                    v{appVersion}
-                  </button>
-                )}
-              </>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={() =>
+                    openExternal('https://github.com/coollabsio/jean')
+                  }
+                  variant="ghost"
+                  size="icon"
+                  className={titleBarButtonClass}
+                >
+                  <Github className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>GitHub</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  onClick={() =>
+                    openExternal('https://jean.build/sponsorships/')
+                  }
+                  variant="ghost"
+                  size="icon"
+                  className={cn(
+                    titleBarButtonClass,
+                    'text-pink-500 hover:text-pink-400'
+                  )}
+                >
+                  <Heart className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Sponsor</TooltipContent>
+            </Tooltip>
+            {appVersion && (
+              <button
+                type="button"
+                onClick={() => openExternal(releaseUrlForVersion(appVersion))}
+                className="px-1.5 text-[0.625rem] text-foreground/40 transition-colors cursor-pointer hover:text-foreground/60"
+              >
+                v{appVersion}
+              </button>
             )}
           </>
         )}
@@ -420,7 +397,7 @@ function NavigationButtons() {
   )
 }
 
-function CliUpdatesIndicator() {
+export function CliUpdatesIndicator() {
   const updates = useUIStore(state => state.availableCliUpdates)
   const dismissCliUpdateNotice = useUIStore(
     state => state.dismissCliUpdateNotice
@@ -519,7 +496,7 @@ function CliUpdatesIndicator() {
   )
 }
 
-function ServerUpdateIndicator() {
+export function ServerUpdateIndicator() {
   const pending = useUIStore(state => state.pendingServerUpdate)
   if (!pending) return null
 
@@ -558,7 +535,7 @@ function ServerUpdateIndicator() {
   )
 }
 
-function UpdateIndicator() {
+export function UpdateIndicator() {
   const pendingVersion = useUIStore(state => state.pendingUpdateVersion)
   const readyVersion = useUIStore(state => state.updateReadyVersion)
   const isInstalling = useUIStore(state => state.isUpdateInstalling)

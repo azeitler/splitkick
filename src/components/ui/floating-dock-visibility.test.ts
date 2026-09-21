@@ -8,4 +8,17 @@ describe('shouldHideFloatingDock', () => {
     expect(shouldHideFloatingDock(false, true)).toBe(true)
     expect(shouldHideFloatingDock(false, false)).toBe(false)
   })
+
+  it('gives the phone tab root corner to the search button', () => {
+    expect(shouldHideFloatingDock(true, false, true)).toBe(true)
+  })
+
+  it('keeps the dock inside a project or session on a phone', () => {
+    expect(shouldHideFloatingDock(true, false, false)).toBe(false)
+  })
+
+  it('keeps the desktop dock at the root', () => {
+    // Desktop Home has no tab bar competing for the corner.
+    expect(shouldHideFloatingDock(false, false, true)).toBe(false)
+  })
 })

@@ -292,8 +292,7 @@ export function FloatingDock() {
       plan: grokUsage.data?.planType ?? null,
       session: grokUsage.data?.session?.usedPercent ?? null,
       weekly: grokUsage.data?.weekly?.usedPercent ?? null,
-      available:
-        !!grokStatus.data?.installed && !!grokAuth.data?.authenticated,
+      available: !!grokStatus.data?.installed && !!grokAuth.data?.authenticated,
     },
   ].filter(entry => entry.available)
 
@@ -468,7 +467,11 @@ export function FloatingDock() {
     chatToolbarMounted ||
     isTerminalSession ||
     reviewSurfaceMounted ||
-    shouldHideFloatingDock(isMobile, zenMode)
+    shouldHideFloatingDock(
+      isMobile,
+      zenMode,
+      !selectedProjectId && !activeWorktreeId
+    )
   )
     return null
 

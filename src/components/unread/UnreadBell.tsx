@@ -16,6 +16,7 @@ import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import { useAllSessions } from '@/services/chat'
 import { useUnreadCount } from './useUnreadCount'
+import { useRefreshSessionsOnOpen } from './useRefreshSessionsOnOpen'
 import { formatShortcutDisplay } from '@/types/keybindings'
 import type { Session } from '@/types/chat'
 import { useIsMobile } from '@/hooks/use-mobile'
@@ -66,12 +67,7 @@ export function UnreadBell() {
   }, [open, queryClient])
 
   // Invalidate when any session is opened (so the count stays fresh)
-  useEffect(() => {
-    const handler = () =>
-      queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
-    window.addEventListener('session-opened', handler)
-    return () => window.removeEventListener('session-opened', handler)
-  }, [queryClient])
+  useRefreshSessionsOnOpen()
 
   // Clear snapshot when popover fully closes
   useEffect(() => {

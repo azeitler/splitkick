@@ -70,26 +70,6 @@ describe('touch affordances', () => {
   })
 })
 
-describe('mobile drawer layering', () => {
-  it('keeps the projects sidebar above the file browser', () => {
-    // Both are left sheets; DOM order used to decide, and the lazily-portalled
-    // file browser always won — it dimmed the primary navigation (issue #28).
-    const fileBrowser = read(
-      'src/components/file-browser/MobileFileBrowser.tsx'
-    )
-    expect(fileBrowser).toContain('overlayClassName="z-[78]"')
-    expect(fileBrowser).toContain('z-[78] w-[min(90vw')
-    // The projects drawer stays on the sheet default.
-    expect(read('src/components/layout/MobileLeftSidebar.tsx')).not.toContain(
-      'z-['
-    )
-    // The backdrop is restylable at all — SheetContent renders it internally.
-    expect(read('src/components/ui/sheet.tsx')).toContain(
-      '{modal && <SheetOverlay className={overlayClassName} />}'
-    )
-  })
-})
-
 describe('chat breakpoint parity', () => {
   it('still pairs md: with the mobile breakpoint', () => {
     // md: is only the right partner for useIsMobile while this holds.

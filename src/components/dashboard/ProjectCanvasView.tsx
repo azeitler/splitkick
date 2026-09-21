@@ -26,6 +26,7 @@ import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { dismissibleToast } from '@/lib/dismissible-toast'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import {
+  ChevronDown,
   Search,
   X,
   MoreHorizontal,
@@ -255,6 +256,14 @@ import { getCanvasDiffRequest } from './canvas-diff-request'
 
 interface ProjectCanvasViewProps {
   projectId: string
+  /**
+   * Phone layout only — how `MobileProjectLayer` presents the canvas. `push`
+   * means a session was opened straight from a tab, so the canvas itself stays
+   * invisible and the tab shows through behind the session.
+   */
+  mobilePresentation?: 'modal' | 'push'
+  /** Phone layout only — closes the project modal from a header control. */
+  onDismiss?: () => void
 }
 
 const EMPTY_PINNED_LABELS: LabelData[] = []
@@ -956,7 +965,11 @@ function WorktreeSectionHeader({
   )
 }
 
-export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
+export function ProjectCanvasView({
+  projectId,
+  mobilePresentation,
+  onDismiss,
+}: ProjectCanvasViewProps) {
   const { data: preferences } = usePreferences()
   const worktreeSortMode = useProjectsStore(
     state =>
@@ -3171,12 +3184,30 @@ export function ProjectCanvasView({ projectId }: ProjectCanvasViewProps) {
 
   return (
     <div className="relative flex h-full flex-col">
-      <div className="flex-1 flex flex-col overflow-auto">
+      <div
+        className={cn(
+          'flex-1 flex flex-col overflow-auto',
+          mobilePresentation === 'push' && 'invisible'
+        )}
+        aria-hidden={mobilePresentation === 'push' || undefined}
+      >
         {/* Header and filters - sticky together over content */}
         <div className="sticky top-0 z-10 bg-background/60 backdrop-blur-md">
           <div className="relative grid grid-cols-[auto_1fr_auto] items-center gap-4 px-4 py-2 sm:py-3 border-b border-border/30 sm:min-h-[61px]">
             <div className="flex flex-col shrink-0">
               <div className="flex items-center gap-2">
+                {onDismiss && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="-ml-2 size-11 shrink-0 text-muted-foreground"
+                    aria-label="Close project"
+                    data-testid="mobile-close-project"
+                    onClick={onDismiss}
+                  >
+                    <ChevronDown className="size-5" />
+                  </Button>
+                )}
                 <h2 className="truncate text-lg font-semibold">
                   {project.name}
                 </h2>

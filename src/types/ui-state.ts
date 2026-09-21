@@ -13,6 +13,25 @@
 import type { LabelData } from '@/types/chat'
 
 /** A starred session (mirrors the Rust StarredSessionEntry). */
+/**
+ * A bottom tab of the phone layout. Below the mobile breakpoint the app is
+ * navigated by these tabs; a project opens as a modal over them and a
+ * session pushes on top of the project.
+ */
+export type MobileTab = 'home' | 'starred' | 'history' | 'usage'
+
+export const MOBILE_TABS: readonly MobileTab[] = [
+  'home',
+  'starred',
+  'history',
+  'usage',
+]
+
+/** Narrow a persisted value, which may predate a tab or be hand-edited. */
+export function isMobileTab(value: unknown): value is MobileTab {
+  return MOBILE_TABS.includes(value as MobileTab)
+}
+
 export interface StarredSessionEntry {
   project_id: string
   worktree_id: string
@@ -90,6 +109,8 @@ export interface UIState {
   starred_sessions_collapsed?: boolean
   /** Whether the project canvas hides its Home rail */
   project_rail_hidden?: boolean
+  /** The phone layout's selected bottom tab; absent means Home */
+  mobile_active_tab?: MobileTab | null
   /** Left sidebar width in pixels, defaults to 250 */
   left_sidebar_size?: number
   /** Left sidebar visibility, defaults to false */
@@ -195,6 +216,7 @@ export const defaultUIState: UIState = {
   starred_sessions: [],
   starred_sessions_collapsed: false,
   project_rail_hidden: false,
+  mobile_active_tab: null,
   left_sidebar_size: 250,
   left_sidebar_visible: false,
   file_browser_size: 280,

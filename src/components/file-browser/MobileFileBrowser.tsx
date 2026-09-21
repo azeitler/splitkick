@@ -58,8 +58,7 @@ export function MobileFileBrowser({
             e.preventDefault()
           }
         }}
-        overlayClassName="z-[78]"
-        className="bg-sidebar text-sidebar-foreground z-[78] w-[min(90vw,var(--mobile-file-browser-width))] gap-0 border-r p-0 sm:max-w-[min(90vw,var(--mobile-file-browser-width))]"
+        className="bg-sidebar text-sidebar-foreground w-[min(90vw,var(--mobile-file-browser-width))] gap-0 border-r p-0 sm:max-w-[min(90vw,var(--mobile-file-browser-width))]"
         style={
           {
             '--mobile-file-browser-width': `${width}px`,

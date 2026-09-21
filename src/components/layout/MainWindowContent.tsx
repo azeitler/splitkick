@@ -1,11 +1,4 @@
-import {
-  Suspense,
-  lazy,
-  useCallback,
-  useEffect,
-  useState,
-  type RefObject,
-} from 'react'
+import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -27,6 +20,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { JeanLoadingScreen } from '@/components/shared/JeanLoadingScreen'
+import { MobileTabShell } from '@/components/mobile/MobileTabShell'
 
 const ChatWindow = lazy(() =>
   import('@/components/chat/ChatWindow').then(mod => ({
@@ -43,13 +37,11 @@ const ProjectCanvasView = lazy(() =>
 interface MainWindowContentProps {
   children?: React.ReactNode
   className?: string
-  sidebarSwipeContainerRef?: RefObject<HTMLDivElement | null>
 }
 
 export function MainWindowContent({
   children,
   className,
-  sidebarSwipeContainerRef,
 }: MainWindowContentProps) {
   const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const activeWorktreeId = useChatStore(state => state.activeWorktreeId)
@@ -275,18 +267,16 @@ export function MainWindowContent({
             </Suspense>
           </div>
         </div>
+      ) : isMobile && (realProjects.length > 0 || selectedProjectId) ? (
+        // The phone layout: tabs at the root, a project as a modal over them.
+        // An empty app keeps the welcome screen below — there is nothing to
+        // navigate between yet.
+        <MobileTabShell projects={projects} />
       ) : (
         <div
-          ref={isMobile ? sidebarSwipeContainerRef : undefined}
           className="relative flex h-full w-full min-w-0 flex-col bg-background"
-          data-testid="mobile-swipe-open-sidebar"
+          data-testid="main-window-content"
         >
-          {sidebarSwipeContainerRef && (
-            <div
-              className="pointer-events-none absolute left-0 top-1/2 z-50 h-10 w-1 -translate-y-1/2 rounded-r-full bg-muted-foreground/20"
-              aria-hidden
-            />
-          )}
           {nonChatContent}
         </div>
       )}

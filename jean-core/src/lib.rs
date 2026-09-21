@@ -3084,6 +3084,12 @@ pub struct UIState {
     #[serde(default)]
     pub project_rail_hidden: bool,
 
+    /// The phone layout's selected bottom tab (`home`, `starred`, `history`,
+    /// `usage`).
+    /// Absent means Home. Kept as a string so the frontend owns the set of tabs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mobile_active_tab: Option<String>,
+
     /// Favorited projects shown first in the GitHub Dashboard
     #[serde(default)]
     pub github_dashboard_favorite_project_ids: Vec<String>,
@@ -3247,6 +3253,7 @@ impl Default for UIState {
             starred_sessions: Vec::new(),
             starred_sessions_collapsed: false,
             project_rail_hidden: false,
+            mobile_active_tab: None,
             github_dashboard_favorite_project_ids: Vec::new(),
             last_opened_per_project: std::collections::HashMap::new(),
             seen_failed_workflow_run_ids: Vec::new(),
@@ -4808,6 +4815,26 @@ mod starred_sessions_tests {
         // A state file written before the rail existed must load with it shown.
         let old: UIState = serde_json::from_str("{}").unwrap();
         assert!(!old.project_rail_hidden);
+    }
+
+    #[test]
+    fn the_mobile_tab_round_trips_and_defaults_to_home() {
+        let starred = UIState {
+            mobile_active_tab: Some("starred".to_string()),
+            ..UIState::default()
+        };
+        let json = serde_json::to_string(&starred).unwrap();
+        assert!(json.contains(r#""mobile_active_tab":"starred""#));
+
+        let parsed: UIState = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.mobile_active_tab.as_deref(), Some("starred"));
+
+        // A state file written before the tabs existed loads with no tab, which
+        // the frontend reads as Home, and writes no key back.
+        let old: UIState = serde_json::from_str("{}").unwrap();
+        assert!(old.mobile_active_tab.is_none());
+        let rewritten = serde_json::to_string(&old).unwrap();
+        assert!(!rewritten.contains("mobile_active_tab"));
     }
 
     #[test]

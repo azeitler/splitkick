@@ -175,18 +175,15 @@ const CloseWorktreeDialog = lazy(() =>
 )
 import { FloatingDock } from '@/components/ui/floating-dock'
 import { Toaster } from '@/components/ui/sonner'
-import { MobileLeftSidebar } from './MobileLeftSidebar'
 import { BrowserSidePane } from '@/components/browser/BrowserSidePane'
 import { BrowserPanel } from '@/components/browser/BrowserPanel'
 import { useBrowserEvents } from '@/hooks/useBrowserPane'
 import { useToasterOffset } from '@/hooks/useToasterOffset'
 import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useTerminalThemeSync } from '@/hooks/useTerminalThemeSync'
-import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { useUIStore } from '@/store/ui-store'
 import { useIsHomeActive } from '@/components/home/useIsHomeActive'
 import { useProjectsStore } from '@/store/projects-store'
-import { useChatStore } from '@/store/chat-store'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
 import { useGlobalInputSanitizer } from '@/hooks/useGlobalInputSanitizer'
 import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
@@ -241,7 +238,6 @@ export function MainWindow() {
   const leftSidebarVisible = useUIStore(state => state.leftSidebarVisible)
   const leftSidebarSize = useUIStore(state => state.leftSidebarSize)
   const setLeftSidebarSize = useUIStore(state => state.setLeftSidebarSize)
-  const setLeftSidebarVisible = useUIStore(state => state.setLeftSidebarVisible)
   // Home has no project or worktree to browse, so the file browser stays out
   // of the way there without touching the persisted visibility preference.
   const isHomeActive = useIsHomeActive()
@@ -277,8 +273,6 @@ export function MainWindow() {
   const updateModalVersion = useUIStore(state => state.updateModalVersion)
   const githubDashboardOpen = useUIStore(state => state.githubDashboardOpen)
   const newSessionModeTarget = useUIStore(state => state.newSessionModeTarget)
-  const sessionChatModalOpen = useUIStore(state => state.sessionChatModalOpen)
-  const activeWorktreePath = useChatStore(state => state.activeWorktreePath)
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
   const addProjectDialogOpen = useProjectsStore(
     state => state.addProjectDialogOpen
@@ -294,17 +288,6 @@ export function MainWindow() {
 
   const isMobile = useIsMobile()
   const isTouch = useIsTouchDevice()
-  const canSwipeOpenSidebar =
-    isMobile &&
-    !activeWorktreePath &&
-    !leftSidebarVisible &&
-    !sessionChatModalOpen
-  const swipeOpenSidebar = useSwipeBack({
-    onSwipeBack: useCallback(() => {
-      useUIStore.getState().setLeftSidebarVisible(true)
-    }, []),
-    enabled: canSwipeOpenSidebar,
-  })
   const swipeDown = useSwipeDown({
     onSwipeDown: useCallback(() => {
       useUIStore.getState().setCommandPaletteOpen(true)
@@ -631,17 +614,8 @@ export function MainWindow() {
           </div>
         )}
 
-        {/* Mobile: overlay drawer — does not shift main content; backdrop dismisses */}
-        {isMobile && isInitialized && (
-          <MobileLeftSidebar
-            open={leftSidebarVisible}
-            onOpenChange={setLeftSidebarVisible}
-            width={leftSidebarSize}
-            isDragging={swipeOpenSidebar.isSwiping}
-            dragOffset={swipeOpenSidebar.translateX}
-            dragTransition={swipeOpenSidebar.transitionStyle}
-          />
-        )}
+        {/* Mobile has no project drawer: MobileTabShell's tabs are the
+            navigation (see docs/developer/mobile-layout.md). */}
 
         {/* Mobile: file browser overlay drawer */}
         {isMobile && isInitialized && (
@@ -657,11 +631,7 @@ export function MainWindow() {
         {/* Main Content + bottom browser panel stacked vertically */}
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <div className="relative min-w-0 flex-1 overflow-hidden">
-            <MainWindowContent
-              sidebarSwipeContainerRef={
-                canSwipeOpenSidebar ? swipeOpenSidebar.containerRef : undefined
-              }
-            />
+            <MainWindowContent />
             <FloatingDock />
           </div>
           {/* Browser bottom panel - native-only, pinned to bottom */}

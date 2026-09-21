@@ -7,6 +7,36 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **On a phone, Jean is navigated with tabs instead of a drawer.** A floating
+  bar at the bottom has four tabs — Home, Starred, History and Usage — and a
+  round search button beside it that opens the command palette. The drawer that
+  held the whole desktop project tree, four levels deep, is gone, and so is the
+  swipe that opened it.
+  - **Home** lists what needs you (sessions that finished since you last
+    looked), the session you had open last, and every project, grouped by
+    folder. The gear top right opens Settings.
+  - **Starred** lists your starred sessions. On a phone they were easy to miss
+    in the drawer; now they have a tab.
+  - **History** lists the sessions you opened, most recently opened first —
+    ordered by when you looked, not by when an agent last wrote.
+  - **Usage** shows your plan usage. Its icon is a ring that fills to your
+    highest limit and turns amber, then red, as you approach it.
+
+  A project opens as a sheet that slides up over the tabs, and a session slides
+  in from the right. The back arrow, or a swipe from the left edge, takes you
+  back one step. A session opened from Starred, History, search or the unread
+  count goes straight back to where you opened it, not to a project you never
+  looked at. The tab you were on comes back after a reload.
+
+- **On a phone, the title bar shows only the title.** Its buttons all moved to
+  where you use them: Settings behind the gear on Home, the usage badge onto the
+  Usage tab, the unread count onto the Home tab, updates and the About links
+  onto the Settings page, and the file browser into the session header. In zen
+  mode the title bar keeps its exit button, because zen hides every other way
+  out. Nothing changes on the desktop.
+
 ## [0.1.73-z.11] - 2026-09-21
 
 Built on Jean 0.1.73.

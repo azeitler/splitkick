@@ -63,7 +63,7 @@ export function findPeakUsage(
  * highest one. Shares its query keys with the dock badge and the Settings
  * pane, so it adds no backend calls of its own.
  */
-function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
+export function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
   const claudeStatus = useClaudeCliStatus()
   const claudeAuth = useClaudeCliAuth({
     enabled: !!claudeStatus.data?.installed,
@@ -98,7 +98,7 @@ function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
   ])
 }
 
-const RING_CLASS: Record<UsageSeverity, string> = {
+export const RING_CLASS: Record<UsageSeverity, string> = {
   normal: 'text-primary',
   warning: 'text-amber-500',
   critical: 'text-destructive',
