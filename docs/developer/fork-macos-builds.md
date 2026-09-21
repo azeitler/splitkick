@@ -11,20 +11,21 @@ merge conflict on every `git merge upstream/main`. Tauri supports build flavors
 through `tauri build -c <file>`, which merges an overlay into the base config, so
 the flavor lives in a separate file that upstream never touches.
 
-| File                                 | Role                                                                  |
-| ------------------------------------ | --------------------------------------------------------------------- |
-| `src-tauri/tauri.fork.conf.json`     | The overlay: name, window title, icons, updater and signing overrides |
-| `src-tauri/icons-fork/`              | The JeanZ icon set                                                    |
-| `src-tauri/icons-fork/web/`          | The JeanZ favicon and apple-touch-icon                                |
-| `scripts/generate-fork-icon.mjs`     | Regenerates both icon sets                                            |
-| `scripts/web-branding.mjs`           | Product name and hashed web icons for the flavor being built          |
-| `scripts/build-fork-macos.sh`        | Local build, identical to CI                                          |
-| `scripts/jeanz-version.mjs`          | Resolves the next release version                                     |
-| `src/lib/release-url.ts`             | Points the title bar version badge at the right repository            |
-| `src/lib/build-info.ts`              | Exposes `PRODUCT_NAME` to the frontend                                |
-| `.github/workflows/preflight.yml`    | Build, sign, notarize and publish                                     |
-| `src/test/tauri-fork-config.test.ts` | Guards the overlay against dropped fields                             |
-| `scripts/web-branding.test.mjs`      | Guards the artwork, the hashed filenames and the product name         |
+| File                                 | Role                                                                                                                                                                    |
+| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src-tauri/tauri.fork.conf.json`     | The overlay: name, window title, icons, updater and signing overrides                                                                                                   |
+| `src-tauri/icons-fork/`              | The JeanZ icon set                                                                                                                                                      |
+| `src-tauri/icons-fork/web/`          | The JeanZ favicon and apple-touch-icon                                                                                                                                  |
+| `scripts/generate-fork-icon.mjs`     | Regenerates both icon sets                                                                                                                                              |
+| `scripts/web-branding.mjs`           | Product name and hashed web icons for the flavor being built                                                                                                            |
+| `scripts/build-fork-macos.sh`        | Local build, identical to CI                                                                                                                                            |
+| `scripts/jeanz-version.mjs`          | Resolves the next release version                                                                                                                                       |
+| `src/lib/release-url.ts`             | Points the title bar version badge at the right repository                                                                                                              |
+| `jean-core/src/server_update/mod.rs` | Web Access host-update check: reads the JeanZ feed, not upstream's (`desktop_manifest_url`), and compares the bundle version with its `-z.N` suffix (`release_version`) |
+| `src/lib/build-info.ts`              | Exposes `PRODUCT_NAME` to the frontend                                                                                                                                  |
+| `.github/workflows/preflight.yml`    | Build, sign, notarize and publish                                                                                                                                       |
+| `src/test/tauri-fork-config.test.ts` | Guards the overlay against dropped fields                                                                                                                               |
+| `scripts/web-branding.test.mjs`      | Guards the artwork, the hashed filenames and the product name                                                                                                           |
 
 Two rules apply to the overlay:
 

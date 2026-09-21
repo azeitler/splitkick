@@ -239,6 +239,10 @@ fn initialize_core(app: &mut tauri::App) -> Result<jean_core::RuntimeContext, St
     // inside the shared directory.
     let product_name = resolve_product_name(app);
     log::info!("Starting as product {product_name:?}");
+    // The bundle version, including a JeanZ build's `-z.N` suffix, which only
+    // exists in the Tauri config CI builds with — never in Cargo.toml. The
+    // Web Access host-update check compares it against the release feed.
+    jean_core::set_release_version(app.package_info().version.to_string());
     let core =
         jean_core::RuntimeContext::new_with_product_name(app_data_dir, resource_dir, product_name)?;
     let event_app = app.handle().clone();

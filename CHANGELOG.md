@@ -37,6 +37,22 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   mode the title bar keeps its exit button, because zen hides every other way
   out. Nothing changes on the desktop.
 
+### Fixed
+
+- **Web Access no longer offers an update JeanZ cannot install.** When upstream
+  Jean published 1.0.0, a phone connected to JeanZ showed "Update Available —
+  Version 1.0.0 is ready on the host Jean app". Tapping Update did nothing: the
+  host checked upstream's release feed, while JeanZ installs only its own
+  builds, signed with a different key. The check now reads the JeanZ feed, the
+  same one the app's own updater uses.
+
+  Two things had to change with it, or real JeanZ updates would never have
+  reached the phone. The check now compares against the version the build was
+  released as — `0.1.73-z.11`, not the plain `0.1.73` it used to report — and
+  it orders JeanZ builds by their `-z` number, so `z.12` counts as newer than
+  `z.11`. The alert stops once a JeanZ build with this fix is installed on the
+  host.
+
 ## [0.1.73-z.11] - 2026-09-21
 
 Built on Jean 0.1.73.

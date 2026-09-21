@@ -27,6 +27,20 @@ const MANIFEST_URL: &str =
     "https://github.com/coollabsio/jean/releases/latest/download/server-latest.json";
 const DESKTOP_MANIFEST_URL: &str =
     "https://github.com/coollabsio/jean/releases/latest/download/latest.json";
+/// The JeanZ build flavor publishes its own releases, and its native updater
+/// reads this feed (`src-tauri/tauri.fork.conf.json`). The Web Access check
+/// must read the same one: against upstream's feed it offered upstream builds
+/// JeanZ cannot install — they are signed with a different key.
+const DESKTOP_MANIFEST_URL_JEANZ: &str =
+    "https://github.com/azeitler/jean/releases/latest/download/latest.json";
+
+/// The desktop release feed for this build flavor.
+fn desktop_manifest_url(product_name: Option<&str>) -> &'static str {
+    match product_name {
+        Some(crate::PRODUCT_NAME_JEANZ) => DESKTOP_MANIFEST_URL_JEANZ,
+        _ => DESKTOP_MANIFEST_URL,
+    }
+}
 const USER_AGENT: &str = "jean-server-updater";
 const RESTART_GRACE: Duration = Duration::from_secs(1);
 
@@ -97,11 +111,11 @@ struct DesktopUpdateManifest {
 /// Headless hosts use `server-latest.json`. Desktop hosts (Web Access on the
 /// native app, including macOS/Windows) use desktop `latest.json` so web
 /// clients can show the same update badge/modal as the native shell.
-pub async fn check_server_update(_app: &AppHandle) -> Result<ServerUpdateStatus, String> {
+pub async fn check_server_update(app: &AppHandle) -> Result<ServerUpdateStatus, String> {
     if is_headless_host() {
         check_headless_server_update().await
     } else {
-        check_desktop_host_update().await
+        check_desktop_host_update(app.product_name()).await
     }
 }
 
@@ -150,9 +164,13 @@ async fn check_headless_server_update() -> Result<ServerUpdateStatus, String> {
     })
 }
 
-async fn check_desktop_host_update() -> Result<ServerUpdateStatus, String> {
-    let current_version = crate::app_version().to_string();
-    let manifest = fetch_desktop_manifest().await?;
+async fn check_desktop_host_update(
+    product_name: Option<&str>,
+) -> Result<ServerUpdateStatus, String> {
+    // The released version, as the native updater sees it — a JeanZ build's
+    // `-z.N` suffix is not in the Cargo version.
+    let current_version = crate::release_version().to_string();
+    let manifest = fetch_desktop_manifest(desktop_manifest_url(product_name)).await?;
     let latest = normalize_version(&manifest.version);
     let available = is_newer_version(&latest, &current_version);
 
@@ -255,7 +273,7 @@ async fn apply_desktop_host_update(app: AppHandle) -> Result<ServerUpdateApplyRe
         ));
     }
 
-    let status = check_desktop_host_update().await?;
+    let status = check_desktop_host_update(app.product_name()).await?;
     let latest = status
         .latest_version
         .clone()
@@ -323,7 +341,7 @@ async fn fetch_manifest(url: &str) -> Result<ServerUpdateManifest, String> {
         .map_err(|e| format!("Invalid server update manifest: {e}"))
 }
 
-async fn fetch_desktop_manifest() -> Result<DesktopUpdateManifest, String> {
+async fn fetch_desktop_manifest(url: &str) -> Result<DesktopUpdateManifest, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .user_agent(USER_AGENT)
@@ -331,7 +349,7 @@ async fn fetch_desktop_manifest() -> Result<DesktopUpdateManifest, String> {
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
     let response = client
-        .get(DESKTOP_MANIFEST_URL)
+        .get(url)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch desktop update manifest: {e}"))?;
@@ -658,26 +676,72 @@ fn is_newer_version(candidate: &str, current: &str) -> bool {
     compare_versions(candidate, current) > 0
 }
 
+/// Compare two versions with semver precedence, including the prerelease.
+///
+/// The prerelease part matters for JeanZ: its builds are `0.1.73-z.11`,
+/// `0.1.73-z.12`, … on the same upstream version, so ignoring everything after
+/// `-` made every JeanZ build look equal and hid real updates. The rules are
+/// semver's: a version with a prerelease sorts below the same version without
+/// one; identifiers compare numerically when both are numbers, as ASCII
+/// otherwise, and a number sorts below text. Build metadata (`+…`) is ignored.
 fn compare_versions(a: &str, b: &str) -> i32 {
-    let a_parts = version_parts(a);
-    let b_parts = version_parts(b);
-    let len = a_parts.len().max(b_parts.len());
+    let (a_main, a_pre) = split_version(a);
+    let (b_main, b_pre) = split_version(b);
+
+    let len = a_main.len().max(b_main.len());
     for i in 0..len {
-        let av = a_parts.get(i).copied().unwrap_or(0);
-        let bv = b_parts.get(i).copied().unwrap_or(0);
+        let av = a_main.get(i).copied().unwrap_or(0);
+        let bv = b_main.get(i).copied().unwrap_or(0);
         if av != bv {
             return if av > bv { 1 } else { -1 };
         }
     }
-    0
+
+    match (a_pre, b_pre) {
+        (None, None) => 0,
+        (None, Some(_)) => 1,
+        (Some(_), None) => -1,
+        (Some(a_pre), Some(b_pre)) => compare_prerelease(&a_pre, &b_pre),
+    }
 }
 
-fn version_parts(version: &str) -> Vec<u32> {
+fn compare_prerelease(a: &str, b: &str) -> i32 {
+    let mut a_ids = a.split('.');
+    let mut b_ids = b.split('.');
+    loop {
+        let ordering = match (a_ids.next(), b_ids.next()) {
+            (None, None) => return 0,
+            (None, Some(_)) => return -1,
+            (Some(_), None) => return 1,
+            (Some(x), Some(y)) => match (x.parse::<u64>(), y.parse::<u64>()) {
+                (Ok(xn), Ok(yn)) => xn.cmp(&yn),
+                (Ok(_), Err(_)) => std::cmp::Ordering::Less,
+                (Err(_), Ok(_)) => std::cmp::Ordering::Greater,
+                (Err(_), Err(_)) => x.cmp(y),
+            },
+        };
+        match ordering {
+            std::cmp::Ordering::Less => return -1,
+            std::cmp::Ordering::Greater => return 1,
+            std::cmp::Ordering::Equal => {}
+        }
+    }
+}
+
+/// Numeric core and optional prerelease of a version string.
+fn split_version(version: &str) -> (Vec<u32>, Option<String>) {
     let cleaned = normalize_version(version);
-    let main = cleaned.split('-').next().unwrap_or(&cleaned);
-    main.split('.')
+    let without_build = cleaned.split('+').next().unwrap_or(&cleaned);
+    let (main, pre) = match without_build.split_once('-') {
+        Some((main, pre)) if !pre.is_empty() => (main, Some(pre.to_string())),
+        Some((main, _)) => (main, None),
+        None => (without_build, None),
+    };
+    let parts = main
+        .split('.')
         .map(|part| part.parse::<u32>().unwrap_or(0))
-        .collect()
+        .collect();
+    (parts, pre)
 }
 
 #[cfg(test)]
@@ -693,6 +757,54 @@ mod tests {
         assert!(is_newer_version("v0.2.0", "0.1.99"));
         assert!(!is_newer_version("0.1.67", "0.1.67"));
         assert!(!is_newer_version("0.1.66", "0.1.67"));
+    }
+
+    #[test]
+    fn orders_jeanz_builds_by_their_prerelease_counter() {
+        // JeanZ releases share the upstream version and differ only in `-z.N`.
+        assert!(is_newer_version("0.1.73-z.12", "0.1.73-z.11"));
+        assert!(!is_newer_version("0.1.73-z.11", "0.1.73-z.11"));
+        assert!(!is_newer_version("0.1.73-z.10", "0.1.73-z.11"));
+        // The counter is numeric, so z.10 is newer than z.9 (not ASCII order).
+        assert!(is_newer_version("0.1.73-z.10", "0.1.73-z.9"));
+        // The counter never restarts, even across an upstream bump.
+        assert!(is_newer_version("0.2.0-z.13", "0.1.73-z.12"));
+    }
+
+    #[test]
+    fn follows_semver_prerelease_precedence() {
+        // A prerelease sorts below the plain version it precedes.
+        assert!(is_newer_version("0.1.73", "0.1.73-z.11"));
+        assert!(!is_newer_version("0.1.73-z.11", "0.1.73"));
+        // Numeric identifiers sort below text; more identifiers sort higher.
+        assert!(is_newer_version("1.0.0-alpha", "1.0.0-1"));
+        assert!(is_newer_version("1.0.0-alpha.1", "1.0.0-alpha"));
+        // Build metadata never makes a version newer.
+        assert!(!is_newer_version("0.1.73+abc", "0.1.73"));
+    }
+
+    #[test]
+    fn jeanz_reads_its_own_release_feed() {
+        // Against upstream's feed, a JeanZ host offered upstream 1.0.0 to
+        // Web Access clients: a build it cannot install, signed with a
+        // different key.
+        assert_eq!(
+            desktop_manifest_url(Some(crate::PRODUCT_NAME_JEANZ)),
+            DESKTOP_MANIFEST_URL_JEANZ
+        );
+        assert_eq!(desktop_manifest_url(Some("Jean")), DESKTOP_MANIFEST_URL);
+        assert_eq!(desktop_manifest_url(None), DESKTOP_MANIFEST_URL);
+    }
+
+    #[test]
+    fn the_jeanz_feed_matches_the_native_updater() {
+        // Both must read one feed, or Web Access and the app disagree about
+        // whether an update exists.
+        let overlay = include_str!("../../../src-tauri/tauri.fork.conf.json");
+        assert!(
+            overlay.contains(DESKTOP_MANIFEST_URL_JEANZ),
+            "tauri.fork.conf.json no longer points its updater at {DESKTOP_MANIFEST_URL_JEANZ}"
+        );
     }
 
     #[test]
