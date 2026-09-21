@@ -60,10 +60,10 @@ describe('touchRecentSessionCaches', () => {
     touchRecentSessionCaches(queryClient, 'old', 300)
 
     const result = queryClient.getQueryData<{
-      items: Array<{
+      items: {
         lastActivityAt: number
         session: Session
-      }>
+      }[]
     }>(key)
     expect(result?.items.map(item => item.session.id)).toEqual(['old', 'new'])
     expect(result?.items[0]?.lastActivityAt).toBe(300)
