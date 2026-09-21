@@ -117,6 +117,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   reload, because the page's code is genuinely out of date. Native remote clients
   keep the recovery screen they had.
 
+- **Renaming a session from its right-click menu stays open.** Choosing
+  Rename sometimes flashed the name field and closed it again, or saved the
+  name before you had typed anything. The menu handed focus back to the row as
+  it closed, and a short timer only usually beat it. The field now opens only
+  after the menu has fully closed, so nothing takes focus from it.
+
+  Two related slips are fixed with it. Right-clicking another session while a
+  rename is open no longer saves the half-typed name; it drops the edit. And a
+  right-click inside the name field now shows the normal Cut / Copy / Paste
+  menu instead of the session menu. This applies to the sidebar rows, the
+  Starred and Pinned rows, and the session tabs.
+
 - **The Claude usage indicator reads the login you are actually using.** On some
   Macs the indicator never showed a number. It alternated between "Claude usage
   API is rate-limiting requests" and "Claude session expired", while Claude

@@ -68,7 +68,7 @@ export function SessionShortcutRows({
     setRenameValue,
     renameInputRef,
     startRename,
-    submitRename,
+    handleRenameBlur,
     handleRenameKeyDown,
   } = useSessionRename()
   const [labelModalOpen, setLabelModalOpen] = useState(false)
@@ -131,7 +131,7 @@ export function SessionShortcutRows({
                 type="text"
                 value={renameValue}
                 onChange={e => setRenameValue(e.target.value)}
-                onBlur={() => submitRename(session.name)}
+                onBlur={e => handleRenameBlur(e, session.name)}
                 onKeyDown={e => handleRenameKeyDown(e, session.name)}
                 onClick={e => e.stopPropagation()}
                 className="w-full min-w-0 bg-transparent text-xs outline-none"
@@ -174,16 +174,13 @@ export function SessionShortcutRows({
 
         return (
           <ContextMenu key={shortcut.sessionId}>
-            <ContextMenuTrigger asChild>
+            {/* Disabled while renaming: a right-click in the input gets the
+                text menu, not the session menu. */}
+            <ContextMenuTrigger asChild disabled={isRenaming}>
               {isRenaming ? (
                 // An <input> cannot live inside a <button>, so the row
                 // degrades to a plain container while renaming.
-                <div
-                  onContextMenuCapture={closeOpenSessionContextMenus}
-                  className={rowClassName}
-                >
-                  {rowContent}
-                </div>
+                <div className={rowClassName}>{rowContent}</div>
               ) : (
                 <button
                   type="button"

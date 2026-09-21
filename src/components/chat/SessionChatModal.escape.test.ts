@@ -36,7 +36,14 @@ describe('SessionChatModal and the Escape key', () => {
 
   it('keeps the rename field cancelling on Escape', () => {
     // A rename is a small, local edit: Escape there means "drop this edit".
-    expect(source).toContain("} else if (e.key === 'Escape') {")
-    expect(source).toContain('setRenamingSessionId(null)')
+    // The tab rename uses the shared hook, which owns that branch.
+    const renameHook = readFileSync(
+      join(process.cwd(), 'src/components/chat/hooks/useSessionRename.ts'),
+      'utf8'
+    )
+    expect(source).toContain('useSessionRename()')
+    expect(source).toContain('handleRenameKeyDown(e, session.name)')
+    expect(renameHook).toContain("} else if (e.key === 'Escape') {")
+    expect(renameHook).toContain('cancelRename()')
   })
 })

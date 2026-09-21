@@ -521,7 +521,7 @@ export function WorktreeItem({
     setRenameValue,
     renameInputRef,
     startRename,
-    submitRename,
+    handleRenameBlur,
     handleRenameKeyDown,
   } = useSessionRename()
   const handleStartRename = useCallback(
@@ -1148,7 +1148,7 @@ export function WorktreeItem({
                           type="text"
                           value={renameValue}
                           onChange={e => setRenameValue(e.target.value)}
-                          onBlur={() => submitRename(card.session.name)}
+                          onBlur={e => handleRenameBlur(e, card.session.name)}
                           onKeyDown={e =>
                             handleRenameKeyDown(e, card.session.name)
                           }
@@ -1198,7 +1198,9 @@ export function WorktreeItem({
                   )
                   return (
                     <ContextMenu key={card.session.id}>
-                      <ContextMenuTrigger asChild>
+                      {/* Disabled while renaming: a right-click in the input
+                          gets the text menu, not the session menu. */}
+                      <ContextMenuTrigger asChild disabled={isRenaming}>
                         {isRenaming ? (
                           // An <input> cannot live inside a <button>, so the
                           // row degrades to a plain container while renaming.
@@ -1207,7 +1209,6 @@ export function WorktreeItem({
                               'session',
                               card.session.id
                             )}
-                            onContextMenuCapture={closeOpenSessionContextMenus}
                             className={rowClassName}
                           >
                             {rowContent}

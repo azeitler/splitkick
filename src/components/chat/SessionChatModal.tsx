@@ -48,7 +48,6 @@ import {
   useSessions,
   useCreateSession,
   useClearSessionHistory,
-  useRenameSession,
   reconnectNativeCliSession,
 } from '@/services/chat'
 import { resolveBackendCliPath } from '@/services/cli-binary'
@@ -103,6 +102,7 @@ import {
   SessionContextMenuItems,
   closeOpenSessionContextMenus,
 } from './SessionContextMenuItems'
+import { useSessionRename } from './hooks/useSessionRename'
 import { WorktreeDropdownMenu } from '@/components/projects/WorktreeDropdownMenu'
 import { LabelModal } from './LabelModal'
 import { useSessionArchive } from './hooks/useSessionArchive'
@@ -417,53 +417,23 @@ export function SessionChatModal({
     labelSessionId ? (state.sessionLabels[labelSessionId] ?? null) : null
   )
 
-  // Rename session state
-  const renameSession = useRenameSession()
   const createSession = useCreateSession()
   const clearSessionHistory = useClearSessionHistory()
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
-    null
-  )
-  const [renameValue, setRenameValue] = useState('')
-  // Start rename immediately (for double-click)
-  const handleStartRenameImmediate = useCallback(
-    (sessionId: string, currentName: string) => {
-      setRenameValue(currentName)
-      setRenamingSessionId(sessionId)
-    },
-    []
-  )
-  // Delay rename start so the input renders after the context menu fully closes
-  // (Radix restores focus to the trigger on close, which would steal focus from the input)
+  // Inline tab rename. Shared with the sidebar rows, so a rename started from
+  // the context menu, a double-click or the command palette behaves the same.
+  const {
+    renamingSessionId,
+    renameValue,
+    setRenameValue,
+    renameInputRef,
+    startRename,
+    handleRenameBlur,
+    handleRenameKeyDown,
+  } = useSessionRename()
   const handleStartRename = useCallback(
-    (sessionId: string, currentName: string) => {
-      setRenameValue(currentName)
-      setTimeout(() => setRenamingSessionId(sessionId), 200)
-    },
-    []
-  )
-
-  const handleRenameSubmit = useCallback(
-    (sessionId: string) => {
-      const newName = renameValue.trim()
-      if (newName && newName !== sessions.find(s => s.id === sessionId)?.name) {
-        renameSession.mutate({ worktreeId, worktreePath, sessionId, newName })
-      }
-      setRenamingSessionId(null)
-    },
-    [renameValue, worktreeId, worktreePath, renameSession, sessions]
-  )
-
-  const handleRenameKeyDown = useCallback(
-    (e: React.KeyboardEvent, sessionId: string) => {
-      if (e.key === 'Enter') {
-        e.preventDefault()
-        handleRenameSubmit(sessionId)
-      } else if (e.key === 'Escape') {
-        setRenamingSessionId(null)
-      }
-    },
-    [handleRenameSubmit]
+    (sessionId: string, currentName: string) =>
+      startRename({ sessionId, currentName, worktreeId, worktreePath }),
+    [startRename, worktreeId, worktreePath]
   )
 
   useEffect(() => {
@@ -477,8 +447,7 @@ export function SessionChatModal({
       const session = sessions.find(s => s.id === sessionId)
       if (!session || session.archived_at) return
 
-      setRenameValue(session.name)
-      setRenamingSessionId(session.id)
+      handleStartRename(session.id, session.name)
     }
 
     window.addEventListener(
@@ -490,14 +459,7 @@ export function SessionChatModal({
         'command:rename-session',
         handleRenameSessionCommand as EventListener
       )
-  }, [isOpen, sessions])
-
-  const renameInputRef = useCallback((node: HTMLInputElement | null) => {
-    if (node) {
-      node.focus()
-      node.select()
-    }
-  }, [])
+  }, [isOpen, sessions, handleStartRename])
 
   // Session archive/delete handlers
   const { handleArchiveSession, handleDeleteSession } = useSessionArchive({
@@ -1366,7 +1328,12 @@ export function SessionChatModal({
                     const sessionLabel = card.label
                     return (
                       <ContextMenu key={session.id}>
-                        <ContextMenuTrigger asChild>
+                        {/* Disabled while renaming: a right-click in the input
+                            gets the text menu, not the session menu. */}
+                        <ContextMenuTrigger
+                          asChild
+                          disabled={renamingSessionId === session.id}
+                        >
                           <div
                             data-session-id={session.id}
                             // The active tab is otherwise only a colour.
@@ -1375,10 +1342,7 @@ export function SessionChatModal({
                             onClick={() => handleTabClick(session.id)}
                             onAuxClick={e => handleTabAuxClick(e, session)}
                             onDoubleClick={() =>
-                              handleStartRenameImmediate(
-                                session.id,
-                                session.name
-                              )
+                              handleStartRename(session.id, session.name)
                             }
                             className={cn(
                               'group/tab flex shrink-0 items-center gap-1.5 border-r border-border px-3 py-1.5 text-xs transition-colors whitespace-nowrap cursor-pointer',
@@ -1414,9 +1378,9 @@ export function SessionChatModal({
                                 type="text"
                                 value={renameValue}
                                 onChange={e => setRenameValue(e.target.value)}
-                                onBlur={() => handleRenameSubmit(session.id)}
+                                onBlur={e => handleRenameBlur(e, session.name)}
                                 onKeyDown={e =>
-                                  handleRenameKeyDown(e, session.id)
+                                  handleRenameKeyDown(e, session.name)
                                 }
                                 onPointerDown={e => e.stopPropagation()}
                                 onClick={e => e.stopPropagation()}

@@ -13,6 +13,7 @@ import {
   StarOff,
   Trash2,
 } from 'lucide-react'
+import { useRef } from 'react'
 import { toast } from 'sonner'
 import {
   ContextMenuContent,
@@ -40,6 +41,7 @@ import {
 interface SessionContextMenuItemsProps {
   card: SessionCardData
   worktreeId: string
+  /** Called once the menu has closed, so the host can open its input at once. */
   onRename: (sessionId: string, currentName: string) => void
   /** Opens the label modal, used by the "Manage labels…" submenu item. */
   onManageLabels: (sessionId: string) => void
@@ -90,10 +92,29 @@ export function SessionContextMenuItems({
     state.starredSessions.some(star => star.sessionId === session.id)
   )
   const resumeCommand = getResumeCommand(session)
+  // Rename starts only once the menu has closed. Starting it from onSelect
+  // races the menu: Radix still traps focus while the menu is open and returns
+  // it to the row when it closes, and either one blurs the new input, which
+  // commits the rename the moment it opens (azeitler/jean#29).
+  const renameOnCloseRef = useRef(false)
 
   return (
-    <ContextMenuContent className={contentClassName}>
-      <ContextMenuItem onSelect={() => onRename(session.id, session.name)}>
+    <ContextMenuContent
+      className={contentClassName}
+      onCloseAutoFocus={e => {
+        if (!renameOnCloseRef.current) return
+        renameOnCloseRef.current = false
+        // Radix fires this after the menu unmounts. Skipping the focus return
+        // leaves nothing to take focus from the input the host mounts next.
+        e.preventDefault()
+        onRename(session.id, session.name)
+      }}
+    >
+      <ContextMenuItem
+        onSelect={() => {
+          renameOnCloseRef.current = true
+        }}
+      >
         <Pencil className="mr-2 h-4 w-4" />
         Rename
       </ContextMenuItem>

@@ -10,8 +10,8 @@ export interface SessionRenameTarget {
 }
 
 /**
- * Inline session rename: the row swaps its name for a text input, and Enter or
- * blur commits.
+ * Inline session rename: the row swaps its name for a text input. Enter or a
+ * real move elsewhere commits; Escape cancels.
  *
  * The target is captured at start rather than bound at hook time, so one hook
  * serves rows from several worktrees (the pinned section). Only one rename is
@@ -20,51 +20,58 @@ export interface SessionRenameTarget {
  * Pass the live name to `submitRename` / `handleRenameKeyDown` when you have
  * it, so an unchanged name is compared against the current value rather than
  * the value from when the menu opened.
+ *
+ * Starting from the session context menu needs no delay:
+ * `SessionContextMenuItems` calls `onRename` from the menu's
+ * `onCloseAutoFocus`, after the menu has unmounted, and cancels the focus
+ * return that used to steal focus from the input (azeitler/jean#29).
  */
 export function useSessionRename() {
   const renameSession = useRenameSession()
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(
+    null
+  )
   const [renameValue, setRenameValue] = useState('')
   const targetRef = useRef<SessionRenameTarget | null>(null)
-  const startTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inputNodeRef = useRef<HTMLInputElement | null>(null)
 
   // Focus and select the input as soon as it mounts.
   const renameInputRef = useCallback((node: HTMLInputElement | null) => {
+    inputNodeRef.current = node
     if (node) {
       node.focus()
       node.select()
     }
   }, [])
 
-  useEffect(() => {
-    return () => {
-      if (startTimerRef.current) clearTimeout(startTimerRef.current)
-    }
-  }, [])
-
-  const startRenameImmediate = useCallback((target: SessionRenameTarget) => {
+  const startRename = useCallback((target: SessionRenameTarget) => {
     targetRef.current = target
     setRenameValue(target.currentName)
     setRenamingSessionId(target.sessionId)
   }, [])
 
-  // Delay rename start so the input renders after the context menu fully closes
-  // (Radix restores focus to the trigger on close, which would steal focus).
-  const startRename = useCallback((target: SessionRenameTarget) => {
-    targetRef.current = target
-    setRenameValue(target.currentName)
-    if (startTimerRef.current) clearTimeout(startTimerRef.current)
-    startTimerRef.current = setTimeout(
-      () => setRenamingSessionId(target.sessionId),
-      200
-    )
-  }, [])
-
   const cancelRename = useCallback(() => {
-    if (startTimerRef.current) clearTimeout(startTimerRef.current)
     targetRef.current = null
     setRenamingSessionId(null)
   }, [])
+
+  // A right-click anywhere but the input cancels the rename. It opens a menu,
+  // the menu takes focus, and the blur would otherwise save a half-typed name.
+  // It must run on pointerdown, in the capture phase: Chromium moves focus to
+  // the clicked row on mousedown, before any contextmenu event. A right-click
+  // inside the input is left alone, so its own cut / copy / paste menu works.
+  useEffect(() => {
+    if (!renamingSessionId) return
+    const onPointerDown = (e: PointerEvent) => {
+      if (e.button !== 2) return
+      const input = inputNodeRef.current
+      if (input && e.target instanceof Node && input.contains(e.target)) return
+      cancelRename()
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () =>
+      document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [renamingSessionId, cancelRename])
 
   const submitRename = useCallback(
     (currentName?: string) => {
@@ -85,6 +92,21 @@ export function useSessionRename() {
     [renameValue, renameSession]
   )
 
+  // Losing focus to a menu is not a decision to save. That covers a touch
+  // long-press and the keyboard menu key, which the right-click guard above
+  // does not see.
+  const handleRenameBlur = useCallback(
+    (e: React.FocusEvent, currentName?: string) => {
+      const next = e.relatedTarget
+      if (next instanceof Element && next.closest('[role="menu"]')) {
+        cancelRename()
+        return
+      }
+      submitRename(currentName)
+    },
+    [cancelRename, submitRename]
+  )
+
   const handleRenameKeyDown = useCallback(
     (e: React.KeyboardEvent, currentName?: string) => {
       if (e.key === 'Enter') {
@@ -103,9 +125,9 @@ export function useSessionRename() {
     setRenameValue,
     renameInputRef,
     startRename,
-    startRenameImmediate,
     submitRename,
     cancelRename,
+    handleRenameBlur,
     handleRenameKeyDown,
   }
 }

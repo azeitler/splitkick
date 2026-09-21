@@ -201,7 +201,7 @@ describe('PinnedSessionsSection', () => {
     })
 
     // The row's own worktree — not some worktree bound once for the section.
-    // Rename starts on a short delay, so the input is awaited.
+    // The input mounts once the menu has closed, so it is awaited.
     it('renames against the row worktree', async () => {
       renderRow()
       const user = await openRowMenu('Investigation')
@@ -217,6 +217,72 @@ describe('PinnedSessionsSection', () => {
         sessionId: 's-1',
         newName: 'Renamed',
       })
+    })
+
+    // azeitler/jean#29: the menu returned focus to the row as it closed,
+    // which blurred the new input and committed the rename on the spot.
+    it('keeps the rename input focused and selected after the menu closes', async () => {
+      renderRow()
+      const user = await openRowMenu('Investigation')
+      await user.click(await screen.findByText('Rename'))
+
+      const input = (await screen.findByDisplayValue(
+        'Investigation'
+      )) as HTMLInputElement
+      // Radix hands focus back on a timer after the menu unmounts; outlast it.
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(input).toBeInTheDocument()
+      expect(input).toHaveFocus()
+      expect(input.selectionStart).toBe(0)
+      expect(input.selectionEnd).toBe('Investigation'.length)
+      expect(renameMutate).not.toHaveBeenCalled()
+    })
+
+    it('does not save a half-typed name when another row is right-clicked', async () => {
+      render(
+        <PinnedSessionsSection
+          rows={[
+            entry('s-1', 'Investigation', 'feature-a'),
+            entry('s-2', 'Review', 'feature-b'),
+          ]}
+          variant="canvas"
+          projectId="p-1"
+          onOpen={vi.fn()}
+        />
+      )
+      const user = await openRowMenu('Investigation')
+      await user.click(await screen.findByText('Rename'))
+      const input = await screen.findByDisplayValue('Investigation')
+      await user.clear(input)
+      await user.type(input, 'Half-typ')
+
+      await user.pointer({
+        keys: '[MouseRight]',
+        target: screen.getByText('Review'),
+      })
+
+      expect(renameMutate).not.toHaveBeenCalled()
+      expect(screen.queryByDisplayValue('Half-typ')).not.toBeInTheDocument()
+      // The other row's menu still opens as usual.
+      expect(await screen.findByRole('menu')).toBeInTheDocument()
+    })
+
+    // A right-click in the text field is how you paste. It must reach the
+    // native text menu, not open the session menu or end the edit.
+    it('leaves a right-click inside the input to the text field', async () => {
+      renderRow()
+      const user = await openRowMenu('Investigation')
+      await user.click(await screen.findByText('Rename'))
+      const input = await screen.findByDisplayValue('Investigation')
+      await new Promise(resolve => setTimeout(resolve, 50))
+
+      await user.pointer({ keys: '[MouseRight]', target: input })
+
+      expect(screen.queryByRole('menu')).not.toBeInTheDocument()
+      expect(input).toBeInTheDocument()
+      expect(renameMutate).not.toHaveBeenCalled()
     })
 
     it('archives against the row worktree', async () => {
