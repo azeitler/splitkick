@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.14] - 2026-09-21
+
+Built on Jean 0.1.73.
+
 ### Changed
 
 - **JeanZ is built on Jean 0.1.73 again.** The merge of upstream Jean 1.0.1
@@ -1133,7 +1137,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v1.0.1-z.13...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.14...HEAD
+[0.1.73-z.14]: https://github.com/azeitler/jean/compare/v1.0.1-z.13...v0.1.73-z.14
 [1.0.1-z.13]: https://github.com/azeitler/jean/compare/v1.0.1-z.12...v1.0.1-z.13
 [1.0.1-z.12]: https://github.com/azeitler/jean/compare/v0.1.73-z.11...v1.0.1-z.12
 [0.1.73-z.11]: https://github.com/azeitler/jean/compare/v0.1.73-z.10...v0.1.73-z.11
