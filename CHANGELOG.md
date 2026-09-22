@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Markdown file in the browser pane is no longer covered by another tab.**
+  With more than one tab open, the page of a tab you were not looking at could
+  sit on top of a Markdown or text file, so the document was hidden behind a
+  web page. Every tab loads its page when the pane opens, and a tab that was
+  not active put its page over the pane instead of out of sight. It now goes
+  out of sight at once, and stays there until you switch to it.
+
 ## [0.1.73-z.14] - 2026-09-21
 
 Built on Jean 0.1.73.

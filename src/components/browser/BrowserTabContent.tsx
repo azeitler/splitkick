@@ -183,16 +183,38 @@ const BrowserWebviewContent = memo(function BrowserWebviewContent({
       if (cancelled) return
       const exists = await browserBackend.hasActive(tabId)
       if (cancelled) return
-      lastBoundsRef.current = bounds
+      // Every tab mounts a body, active or not, so an inactive tab gets its
+      // webview here too. A new child webview is visible, and the active-flag
+      // effect below cannot hide it: it ran before initialisation and bailed
+      // out. So an inactive tab is created straight into the parking spot.
+      // Read the ref, not `isActive`: this closure is from the effect's run.
+      const startActive = isActiveRef.current
+      const target = startActive ? bounds : OFFSCREEN_BOUNDS
+      lastBoundsRef.current = target
       try {
         if (exists) {
-          await browserBackend.setBounds(tabId, bounds)
+          await browserBackend.setBounds(tabId, target)
         } else if (initialUrl) {
-          await browserBackend.create(tabId, initialUrl, bounds)
+          await browserBackend.create(tabId, initialUrl, target)
         }
         initializedRef.current = true
-        if (isActive) {
+        // Decide again after the await. The tab may have become active or
+        // inactive meanwhile, and that flip found `initializedRef` false and
+        // did nothing. Or the body unmounted, and its cleanup parked a
+        // webview that did not exist yet.
+        if (!cancelled && isActiveRef.current) {
+          if (!startActive) {
+            const next = measure()
+            if (next) {
+              lastBoundsRef.current = next
+              await browserBackend.setBounds(tabId, next)
+            }
+          }
           await browserBackend.setVisible(tabId, true)
+        } else {
+          lastBoundsRef.current = OFFSCREEN_BOUNDS
+          await browserBackend.setBounds(tabId, OFFSCREEN_BOUNDS)
+          await browserBackend.setVisible(tabId, false)
         }
       } catch (err) {
         console.error(`[browser] init failed for tab ${tabId}:`, err)

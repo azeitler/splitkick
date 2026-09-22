@@ -180,6 +180,14 @@ Consequences elsewhere:
 - `BrowserToolbar` disables Back, Forward and Grab for a text tab.
 - `BrowserTextContent` writes the tab's loading and error state, so the tab
   pill spinner and the error overlay work the same for both renderers.
+- A text tab depends on every **other** tab's webview being out of sight.
+  Every tab mounts a body, so an inactive web tab creates its webview too, and
+  a new child webview is visible. `commit()` in `BrowserTabContent` therefore
+  creates an inactive tab straight into `OFFSCREEN_BOUNDS` and hides it, and
+  decides again after the `await`: the tab may have flipped active, or the
+  body may have unmounted (web → text) while the webview was being created.
+  Before this, an inactive tab's page sat over the pane. The active tab's own
+  webview usually covered it, but a text tab has none.
 
 ## Why a load must never hang
 
