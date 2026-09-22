@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { invoke as transportInvoke } from '@/lib/transport'
 import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { setWsConnected } from '@/lib/environment'
+import { useUIStore } from '@/store/ui-store'
 import { useCliVersionCheck } from './useCliVersionCheck'
 
 const mockState = {
@@ -31,6 +32,12 @@ const mockState = {
     path: null as string | null,
   },
 }
+
+const { isMobileMock } = vi.hoisted(() => ({
+  isMobileMock: vi.fn(() => false),
+}))
+
+vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => isMobileMock() }))
 
 vi.mock('@/lib/transport', () => ({
   invoke: vi.fn().mockResolvedValue({}),
@@ -191,6 +198,32 @@ describe('useCliVersionCheck', () => {
     setWsConnected(false)
     delete (window as Window & { __TAURI_INTERNALS__?: unknown })
       .__TAURI_INTERNALS__
+  })
+
+  it('does nothing on a phone, even with CLI data already cached', async () => {
+    // The host's desktop window runs the check. A phone used to run it too:
+    // CLI update toasts on the phone, and a second background update on the
+    // host. The mocked hooks return data regardless of `enabled`, as a cache
+    // filled by the Preferences dialog would.
+    isMobileMock.mockReturnValue(true)
+    useUIStore.setState({ availableCliUpdates: [] })
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    )
+
+    renderHook(() => useCliVersionCheck(), { wrapper })
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000)
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5_000)
+    })
+    await Promise.resolve()
+
+    expect(transportInvoke).not.toHaveBeenCalled()
+    expect(useUIStore.getState().availableCliUpdates).toEqual([])
+    isMobileMock.mockReturnValue(false)
   })
 
   it('runs mobile-safe CLI updates through the shared transport invoke', async () => {

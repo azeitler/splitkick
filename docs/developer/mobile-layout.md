@@ -13,19 +13,22 @@ Below the breakpoint `MainWindowContent` renders `MobileTabShell`
 is no project drawer: a floating pill of four tabs is the navigation, with a
 separate round search button beside it that opens the command palette.
 
-| Tab     | Shows                                                                                       | Data                                                                |
-| ------- | ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Home    | Unread, a "Continue" row, then every project grouped by folder, then Add project / Archived | `unreadSessions`, `recentlyOpenedSessions()[0]`, `useProjects`      |
-| Starred | starred sessions in star order                                                              | `resolveStarredSessions` over `useAllSessions`                      |
-| History | sessions you opened, most recently opened first                                             | `recentlyOpenedSessions` — sorted by `last_opened_at`, not activity |
-| Usage   | plan usage of every signed-in backend, nothing else                                         | `UsagePane`                                                         |
+| Tab     | Shows                                                                                                                                                                                                    | Data                                                                                 |
+| ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Home    | "Continue" first, then a Sessions / Projects switch: Unread and Recent, or every project grouped by folder with Add project / Archived. The switch lives in `ui-store.mobileHomeSegment` (not persisted) | `recentlyOpenedSessions()[0]`, `unreadSessions`, `flattenAllSessions`, `useProjects` |
+| Starred | starred sessions in star order                                                                                                                                                                           | `resolveStarredSessions` over `useAllSessions`                                       |
+| History | sessions you opened, most recently opened first                                                                                                                                                          | `recentlyOpenedSessions` — sorted by `last_opened_at`, not activity                  |
+| Usage   | plan usage of every signed-in backend, nothing else                                                                                                                                                      | `UsagePane`                                                                          |
 
 The active tab is persisted as `mobile_active_tab` in the UI state.
 
-**The phone title bar is only the title.** `TitleBar` returns a title-only bar
-below the breakpoint — the one exception is the zen exit, because zen hides the
-tab bar and the session header, the only other ways out. Everything the desktop
-title bar carries has a home on the phone:
+**A phone has no title bar.** `MainWindow` renders `TitleBar` on a phone only
+in zen mode, where it holds the only exit (zen hides the tab bar and the session
+header); otherwise the content is offset by `--safe-area-top` alone. The bar
+only repeated the app name — at the tab root and in a project — and toggling it
+per screen would make the content jump as a project opens. The one thing it did
+say, the project name inside a session, is in the session header now. What the
+desktop title bar carries has a home on the phone:
 
 | Desktop title bar                | Phone                                                                                                                                                                                                |
 | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -89,6 +92,17 @@ The rest of the phone shell: `MobileFileBrowser` is a left `Sheet`, the chat
 toolbar swaps its desktop controls for `MobileToolbarMenu` /
 `MobileSettingsMenu` / `MobileBackendModelPickerSheet`, and the corner
 `FloatingDock` hides at the tab root, where that corner belongs to search.
+
+The tab bar sits low, concentric with the display's rounded corners: bottom
+padding `max(0.5rem, --safe-area-bottom − 0.75rem)` (22pt on an iPhone, inside
+its 34pt home-indicator inset, as iOS's own floating tab bar does) and 20pt at
+the sides.
+
+`useCliVersionCheck` does not run on a phone. The host's desktop window runs
+it; a phone on Web Access used to run it too, showing CLI update toasts and —
+with auto-update on — starting a second background update on the host. The
+effect bails out explicitly, not only through disabled queries, because those
+share a cache with the Preferences dialog.
 
 The Settings page is local state in `MobileTabShell`, not a store field: it is
 a page pushed over Home, not a navigation level the rest of the app opens. It

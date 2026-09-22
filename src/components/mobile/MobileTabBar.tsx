@@ -70,7 +70,11 @@ export function MobileTabBar() {
       aria-label="Main"
       data-testid="mobile-tab-bar"
       // Under the project layer (z-[2]), which covers it while a project is open.
-      className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] flex items-center gap-3 px-4 pb-[calc(var(--safe-area-bottom)+0.75rem)]"
+      // Low, and concentric with the rounded display corners: on an iPhone the
+      // corner radius is about 55pt and the pill's 32pt, so a ~22pt inset
+      // traces the corner. That sits inside the 34pt home-indicator inset, as
+      // iOS's own floating tab bar does; without an inset it keeps 0.5rem.
+      className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] flex items-center gap-3 px-5 pb-[max(0.5rem,calc(var(--safe-area-bottom)_-_0.75rem))]"
     >
       <div
         role="tablist"

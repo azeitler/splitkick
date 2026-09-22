@@ -109,10 +109,11 @@ export function TitleBar({
   )
   const dragRegion = native ? { 'data-tauri-drag-region': true } : {}
 
-  // A phone's title bar is only its title. What the desktop bar carries lives
-  // in the tab bar there: Settings (with usage around its icon, updates and the
-  // About links), the unread count on Home, and the file browser in the session
-  // header. Zen mode hides the tab bar and the session header, so the exit stays.
+  // A phone shows the title bar only in zen mode (see MainWindow), where it is
+  // the one way out: zen hides the tab bar and the session header. Everything
+  // the desktop bar carries lives elsewhere on a phone — Settings behind the
+  // Home gear, usage on the Usage tab, the unread count on Home, the file
+  // browser in the session header.
   if (isMobile) {
     return (
       <div {...dragRegion} className={barClass} data-testid="titlebar-mobile">

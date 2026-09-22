@@ -61,8 +61,9 @@ test.use({
   },
 })
 
-/** The project card on the Home tab (the Continue row names the project too). */
-function projectCard(page: import('@playwright/test').Page) {
+/** The project card on the Home tab's Projects list. */
+async function projectCard(page: import('@playwright/test').Page) {
+  await page.getByTestId('mobile-home-segment-projects').click()
   return page
     .getByTestId('mobile-home-projects')
     .getByRole('button', { name: 'Phone Project' })
@@ -90,11 +91,11 @@ test.describe('Phone navigation', () => {
     ])
     await expect(mockPage.getByRole('button', { name: 'Search' })).toBeVisible()
 
-    await expect(projectCard(mockPage)).toBeVisible()
-    // Continue offers the most recently opened session.
+    // Continue comes first and offers the most recently opened session.
     await expect(mockPage.getByTestId('mobile-home-continue')).toContainText(
       'Opened recently'
     )
+    await expect(await projectCard(mockPage)).toBeVisible()
   })
 
   test('has no project drawer', async ({ mockPage }) => {
@@ -120,7 +121,7 @@ test.describe('Phone navigation', () => {
   test('opens a project as a modal and closes it back to the tab', async ({
     mockPage,
   }) => {
-    await projectCard(mockPage).click()
+    await (await projectCard(mockPage)).click()
 
     const layer = mockPage.getByTestId('mobile-project-layer')
     await expect(layer).toHaveAttribute('data-entry', 'modal')
@@ -157,10 +158,23 @@ test.describe('Phone navigation', () => {
     await expect(mockPage.getByTestId('mobile-tab-history')).toBeVisible()
   })
 
-  test('the title bar is only the title', async ({ mockPage }) => {
-    const bar = mockPage.getByTestId('titlebar-mobile')
-    await expect(bar).toBeVisible()
-    await expect(bar.getByRole('button')).toHaveCount(0)
+  test('has no title bar', async ({ mockPage }) => {
+    await expect(mockPage.getByTestId('mobile-tab-home')).toBeVisible()
+    await expect(mockPage.getByTestId('titlebar-mobile')).toHaveCount(0)
+  })
+
+  test('the tab bar sits low, inside the home-indicator inset', async ({
+    mockPage,
+  }) => {
+    // Chromium reports no safe area, so the fallback applies: 0.5rem. In rem,
+    // not px: the harness runs at a zoom that scales the root font size.
+    const bar = mockPage.getByTestId('mobile-tab-bar')
+    const inRem = await bar.evaluate(
+      el =>
+        parseFloat(getComputedStyle(el).paddingBottom) /
+        parseFloat(getComputedStyle(document.documentElement).fontSize)
+    )
+    expect(inRem).toBe(0.5)
   })
 
   test('the Usage tab shows plan usage only', async ({ mockPage }) => {

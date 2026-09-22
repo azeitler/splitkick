@@ -83,7 +83,10 @@ describe('MobileTabShell', () => {
     mocks.sessions = { entries: [] }
     mocks.navigateToSession.mockClear()
     mocks.navigateToProject.mockClear()
-    useUIStore.setState({ mobileActiveTab: 'home' })
+    useUIStore.setState({
+      mobileActiveTab: 'home',
+      mobileHomeSegment: 'sessions',
+    })
     useProjectsStore.setState({ selectedProjectId: null, starredSessions: [] })
   })
 
@@ -106,26 +109,19 @@ describe('MobileTabShell', () => {
   })
 
   describe('Home', () => {
-    it('groups projects by folder', () => {
+    it('puts Continue first, above the Sessions and Projects switch', () => {
+      withSessions([session('latest', { last_opened_at: 900 })])
       renderShell()
 
-      const list = screen.getByTestId('mobile-home-projects')
-      expect(within(list).getByText('Clients')).toBeInTheDocument()
-      expect(within(list).getByText('jean')).toBeInTheDocument()
-      expect(within(list).getByText('acme')).toBeInTheDocument()
+      const continueRow = screen.getByTestId('mobile-home-continue')
+      const segments = screen.getByTestId('mobile-home-segments')
+      expect(
+        continueRow.compareDocumentPosition(segments) &
+          Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy()
     })
 
-    it('opens a project on its home page', async () => {
-      const user = userEvent.setup()
-      renderShell()
-
-      await user.click(screen.getByRole('button', { name: /acme/ }))
-
-      expect(mocks.navigateToProject).toHaveBeenCalledWith('acme')
-      expect(useUIStore.getState().pendingProjectHomeId).toBe('acme')
-    })
-
-    it('offers the last opened session to continue', () => {
+    it('offers only the last opened session to continue', () => {
       withSessions([
         session('older', { last_opened_at: 100 }),
         session('latest', { last_opened_at: 900 }),
@@ -144,40 +140,109 @@ describe('MobileTabShell', () => {
       expect(screen.queryByTestId('mobile-home-continue')).toBeNull()
     })
 
-    it('lists unread sessions first, as the desktop bell does', () => {
-      withSessions([
-        session('finished', {
-          last_run_status: 'completed',
-          updated_at: 500,
-          last_opened_at: 100,
-        }),
-        session('seen', {
-          last_run_status: 'completed',
-          updated_at: 500,
-          last_opened_at: 900,
-        }),
-      ])
+    it('switches between Sessions and Projects', async () => {
+      const user = userEvent.setup()
       renderShell()
 
-      const list = screen.getByTestId('mobile-home-unread')
-      expect(within(list).getByText('finished')).toBeInTheDocument()
-      expect(within(list).queryByText('seen')).toBeNull()
+      expect(screen.getByRole('tab', { name: 'Sessions' })).toHaveAttribute(
+        'aria-selected',
+        'true'
+      )
+      expect(screen.queryByTestId('mobile-home-projects')).toBeNull()
+
+      await user.click(screen.getByRole('tab', { name: 'Projects' }))
+
+      expect(screen.getByTestId('mobile-home-projects')).toBeInTheDocument()
+      expect(useUIStore.getState().mobileHomeSegment).toBe('projects')
     })
 
-    it('has no Unread section when everything is seen', () => {
+    it('keeps the chosen list when coming back to Home', () => {
+      // Tabs unmount, so the choice lives in the store.
+      useUIStore.setState({ mobileHomeSegment: 'projects' })
       renderShell()
-      expect(screen.queryByTestId('mobile-home-unread')).toBeNull()
+      expect(screen.getByTestId('mobile-home-projects')).toBeInTheDocument()
     })
 
-    it('keeps the drawer footer actions', () => {
-      renderShell()
+    describe('Sessions', () => {
+      it('lists unread sessions first, as the desktop bell does', () => {
+        withSessions([
+          session('finished', {
+            last_run_status: 'completed',
+            updated_at: 500,
+            last_opened_at: 100,
+          }),
+          session('seen', {
+            last_run_status: 'completed',
+            updated_at: 500,
+            last_opened_at: 900,
+          }),
+        ])
+        renderShell()
 
-      expect(
-        screen.getByRole('button', { name: 'Add project' })
-      ).toBeInTheDocument()
-      expect(
-        screen.getByRole('button', { name: 'Archived' })
-      ).toBeInTheDocument()
+        const list = screen.getByTestId('mobile-home-unread')
+        expect(within(list).getByText('finished')).toBeInTheDocument()
+        expect(within(list).queryByText('seen')).toBeNull()
+      })
+
+      it('lists every other session under Recent, without repeating rows', () => {
+        withSessions([
+          session('continue-me', { last_opened_at: 900 }),
+          session('finished', {
+            last_run_status: 'completed',
+            updated_at: 500,
+            last_opened_at: 100,
+          }),
+          session('quiet', { last_message_at: 300 }),
+        ])
+        renderShell()
+
+        const recent = screen.getByTestId('mobile-home-recent')
+        expect(within(recent).getByText('quiet')).toBeInTheDocument()
+        // Already shown as Continue and in Unread.
+        expect(within(recent).queryByText('continue-me')).toBeNull()
+        expect(within(recent).queryByText('finished')).toBeNull()
+      })
+
+      it('says when there is nothing else to show', () => {
+        renderShell()
+        expect(screen.getByText('No other sessions')).toBeInTheDocument()
+      })
+    })
+
+    describe('Projects', () => {
+      beforeEach(() => {
+        useUIStore.setState({ mobileHomeSegment: 'projects' })
+      })
+
+      it('groups projects by folder', () => {
+        renderShell()
+
+        const list = screen.getByTestId('mobile-home-projects')
+        expect(within(list).getByText('Clients')).toBeInTheDocument()
+        expect(within(list).getByText('jean')).toBeInTheDocument()
+        expect(within(list).getByText('acme')).toBeInTheDocument()
+      })
+
+      it('opens a project on its home page', async () => {
+        const user = userEvent.setup()
+        renderShell()
+
+        await user.click(screen.getByRole('button', { name: /acme/ }))
+
+        expect(mocks.navigateToProject).toHaveBeenCalledWith('acme')
+        expect(useUIStore.getState().pendingProjectHomeId).toBe('acme')
+      })
+
+      it('keeps the drawer footer actions', () => {
+        renderShell()
+
+        expect(
+          screen.getByRole('button', { name: 'Add project' })
+        ).toBeInTheDocument()
+        expect(
+          screen.getByRole('button', { name: 'Archived' })
+        ).toBeInTheDocument()
+      })
     })
   })
 

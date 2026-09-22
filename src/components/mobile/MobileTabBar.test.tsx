@@ -88,11 +88,15 @@ describe('MobileTabBar', () => {
     expect(screen.queryByRole('tab', { name: 'Search' })).toBeNull()
   })
 
-  it('floats above the home indicator with 44px+ targets', () => {
+  it('sits low, concentric with rounded display corners, with 44px+ targets', () => {
     render(<MobileTabBar />)
-    expect(screen.getByTestId('mobile-tab-bar').className).toContain(
-      'pb-[calc(var(--safe-area-bottom)+0.75rem)]'
+    const bar = screen.getByTestId('mobile-tab-bar')
+    // Inside the home-indicator inset (34pt on an iPhone → 22pt), as iOS's
+    // own floating tab bar does; 0.5rem where there is no inset.
+    expect(bar.className).toContain(
+      'pb-[max(0.5rem,calc(var(--safe-area-bottom)_-_0.75rem))]'
     )
+    expect(bar).toHaveClass('px-5')
     // Tabs fill the 64px pill less its padding; the search button is 64px.
     expect(screen.getByRole('tablist')).toHaveClass('h-16')
     expect(screen.getByRole('button', { name: 'Search' })).toHaveClass(

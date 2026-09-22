@@ -27,6 +27,9 @@ export const MOBILE_TABS: readonly MobileTab[] = [
   'usage',
 ]
 
+/** The two lists of the phone's Home tab, switched below Continue. */
+export type MobileHomeSegment = 'sessions' | 'projects'
+
 /** Narrow a persisted value, which may predate a tab or be hand-edited. */
 export function isMobileTab(value: unknown): value is MobileTab {
   return MOBILE_TABS.includes(value as MobileTab)

@@ -7,6 +7,23 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **On a phone, Home puts where you left off first, then switches between
+  sessions and projects.** Continue — the session you had open last — now
+  comes first, above a Sessions | Projects switch. Sessions lists what finished
+  since you last looked, then every other session by latest activity, with a
+  filter. Projects lists your projects, grouped by folder. The switch keeps your
+  choice while you move between tabs.
+
+- **A phone has no title bar any more.** It only repeated the app's name, so
+  the screen gets that space back. In a session, the header now names the
+  project, the one thing the bar used to add. Zen mode keeps the bar, because
+  it holds the only way out of zen.
+
+- **The phone tab bar sits lower, following the rounded screen corners** —
+  inside the home-indicator area, as iOS's own floating tab bar does.
+
 ### Fixed
 
 - **A Markdown file in the browser pane is no longer covered by another tab.**
@@ -15,6 +32,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   web page. Every tab loads its page when the pane opens, and a tab that was
   not active put its page over the pane instead of out of sight. It now goes
   out of sight at once, and stays there until you switch to it.
+
+- **A phone no longer shows CLI update alerts, or starts CLI updates.** Over Web
+  Access the phone ran the same CLI version check as the desktop: it showed
+  update toasts, and with automatic updates on it started a second update on
+  the host alongside the desktop's own. The phone now leaves this to the
+  desktop.
 
 ## [0.1.73-z.14] - 2026-09-21
 

@@ -76,6 +76,28 @@ describe('stacking on a phone', () => {
   })
 })
 
+describe('a phone has no title bar', () => {
+  const mainWindow = read('src/components/layout/MainWindow.tsx')
+
+  it('renders it only in zen mode, where it holds the only exit', () => {
+    expect(mainWindow).toContain('const showTitleBar = !isMobile || zenMode')
+    expect(mainWindow).toMatch(/\{showTitleBar && \(\s*<TitleBar/)
+  })
+
+  it('still clears the status bar and the notch without it', () => {
+    expect(mainWindow).toMatch(
+      /showTitleBar\s*\?\s*'pt-\[var\(--titlebar-height\)\]'\s*:\s*'pt-\[var\(--safe-area-top\)\]'/
+    )
+  })
+
+  it('names the project in the session header instead', () => {
+    const modal = read('src/components/chat/SessionChatModal.tsx')
+    expect(modal).toMatch(
+      /\{project && isMobile && \([\s\S]{0,300}session-modal-project-name/
+    )
+  })
+})
+
 describe('the drawer is retired on a phone', () => {
   it('is gone, with its sidebar swipe', () => {
     expect(existsSync('src/components/layout/MobileLeftSidebar.tsx')).toBe(

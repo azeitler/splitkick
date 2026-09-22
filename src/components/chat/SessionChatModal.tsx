@@ -1042,6 +1042,16 @@ export function SessionChatModal({
                     </Button>
                   )}
                   <h2 className="text-sm font-medium min-w-0 flex-1 truncate">
+                    {/* A phone has no title bar, which used to name the
+                        project; name it here, above the worktree. */}
+                    {project && isMobile && (
+                      <span
+                        className="block truncate text-[11px] font-normal leading-tight text-muted-foreground"
+                        data-testid="session-modal-project-name"
+                      >
+                        {project.name}
+                      </span>
+                    )}
                     {project && !isMobile && (
                       <span className="text-muted-foreground font-normal">
                         <button

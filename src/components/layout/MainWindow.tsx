@@ -288,6 +288,12 @@ export function MainWindow() {
   )
 
   const isMobile = useIsMobile()
+  const zenMode = useUIStore(state => state.zenMode)
+  // A phone has no title bar: each screen carries its own heading (the tab's
+  // large title, the project header, the session header), and the bar only
+  // ever repeated the app name. Zen is the exception — it hides the tab bar
+  // and the session header, so the bar holds the only way out of zen.
+  const showTitleBar = !isMobile || zenMode
   const isTouch = useIsTouchDevice()
   const swipeDown = useSwipeDown({
     onSwipeDown: useCallback(() => {
@@ -549,15 +555,28 @@ export function MainWindow() {
       )}
 
       {/* Title Bar - semi-transparent overlay */}
-      <TitleBar title={windowTitle} className="absolute top-0 left-0 right-0" />
+      {showTitleBar && (
+        <TitleBar
+          title={windowTitle}
+          className="absolute top-0 left-0 right-0"
+        />
+      )}
 
       {/* Dev Mode Banner */}
       <DevModeBanner />
 
       {/* Main Content Area */}
       {/* Offset by the title bar, which is an absolute overlay. Must stay in
-          step with TitleBar's own height — see --titlebar-height in App.css. */}
-      <div className="flex flex-1 overflow-hidden pt-[var(--titlebar-height)]">
+          step with TitleBar's own height — see --titlebar-height in App.css.
+          Without a bar, still clear the status bar and the notch. */}
+      <div
+        className={cn(
+          'flex flex-1 overflow-hidden',
+          showTitleBar
+            ? 'pt-[var(--titlebar-height)]'
+            : 'pt-[var(--safe-area-top)]'
+        )}
+      >
         {/* Desktop: in-flow left sidebar (shifts layout). Only after UI state init. */}
         {!isMobile && leftSidebarVisible && isInitialized && (
           <SidebarWidthProvider value={leftSidebarSize}>

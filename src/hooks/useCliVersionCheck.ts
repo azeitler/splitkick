@@ -8,6 +8,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useIsMobile } from '@/hooks/use-mobile'
 import { invoke } from '@/lib/transport'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -141,7 +142,12 @@ function resolveCliInfo(
  * Should be called once in App.tsx.
  */
 export function useCliVersionCheck() {
-  const shouldCheck = hasBackend()
+  const isMobile = useIsMobile()
+  // Not on a phone. The host's own desktop window runs this check; a phone
+  // connected over Web Access used to run it as well, which put CLI update
+  // toasts on the phone and — with auto-update on — started a second
+  // background update on the host alongside the desktop's own.
+  const shouldCheck = hasBackend() && !isMobile
   const queryClient = useQueryClient()
   const { data: preferences, isLoading: preferencesLoading } = usePreferences()
   const { data: claudePathInfo } = useClaudePathDetection({
@@ -213,6 +219,10 @@ export function useCliVersionCheck() {
   const isInitialCheckRef = useRef(true)
 
   useEffect(() => {
+    // The disabled queries are not enough on their own: they share a cache
+    // with the Preferences dialog, so on a phone they can still hold data.
+    if (!shouldCheck) return
+
     let delayedUpdateTimer: ReturnType<typeof setTimeout> | null = null
     // Keys marked notified for a delayed auto-update; rolled back if the timer is cleared.
     let delayedUpdateKeys: string[] = []
@@ -412,6 +422,7 @@ export function useCliVersionCheck() {
     coderabbitVersionsLoading,
     commandcodeVersionsLoading,
     preferencesLoading,
+    shouldCheck,
     preferences?.auto_update_ai_backends,
     preferences?.claude_cli_source,
     preferences?.codex_cli_source,
