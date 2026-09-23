@@ -7,9 +7,11 @@ import { usePreferences } from '@/services/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import type { Session } from '@/types/chat'
+import { DraftGlyph } from './DraftGlyph'
 import { LabelModal } from './LabelModal'
 import { PinGlyph } from './PinGlyph'
 import { StarGlyph } from './StarGlyph'
+import { useDraftSessionIds } from './hooks/useDraftSessionIds'
 import { useSessionRemoval } from './hooks/useSessionArchive'
 import { useSessionRename } from './hooks/useSessionRename'
 import {
@@ -80,6 +82,8 @@ export function SessionShortcutRows({
       ? (state.sessionLabels[labelTargetSessionId] ?? null)
       : null
   )
+  // Sessions holding an unsent message, so a row can show the draft pencil.
+  const draftSessionIds = useDraftSessionIds()
   const starredSessions = useProjectsStore(state => state.starredSessions)
   const starredIds = useMemo(
     () => new Set(starredSessions.map(star => star.sessionId)),
@@ -125,6 +129,7 @@ export function SessionShortcutRows({
               label={config.label}
               className="h-1.5 w-1.5 shrink-0"
             />
+            {draftSessionIds.has(shortcut.sessionId) && <DraftGlyph />}
             {isRenaming ? (
               <input
                 ref={renameInputRef}

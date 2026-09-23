@@ -620,3 +620,60 @@ describe('WorktreeItem row click', () => {
     )
   })
 })
+
+describe('WorktreeItem draft pencil', () => {
+  beforeEach(() => {
+    mocks.sessions = [
+      session('a', 'Auth Refactor'),
+      session('b', 'Billing dashboard'),
+    ]
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(['wt-1']),
+    })
+    useChatStore.setState({
+      inputDrafts: {},
+      pendingImages: {},
+      pendingTextFiles: {},
+    })
+  })
+
+  afterEach(() => {
+    useChatStore.setState({
+      inputDrafts: {},
+      pendingImages: {},
+      pendingTextFiles: {},
+    })
+  })
+
+  it('marks only the session holding an unsent message', () => {
+    useChatStore.setState({ inputDrafts: { a: 'half a thought' } })
+    renderItem({})
+
+    expect(screen.getAllByTestId('draft-glyph')).toHaveLength(1)
+    expect(
+      screen.getByTitle('Idle: Auth Refactor').parentElement
+    ).toContainElement(screen.getByTestId('draft-glyph'))
+  })
+
+  it('marks no session when every draft is empty', () => {
+    useChatStore.setState({ inputDrafts: { a: '   ' } })
+    renderItem({})
+
+    expect(screen.queryByTestId('draft-glyph')).toBeNull()
+  })
+
+  it('marks a session that only holds a pasted image', () => {
+    useChatStore.setState({
+      pendingImages: {
+        b: [{ id: 'img-1', path: '/tmp/img-1.png', filename: 'img-1.png' }],
+      },
+    })
+    renderItem({})
+
+    expect(screen.getAllByTestId('draft-glyph')).toHaveLength(1)
+    expect(
+      screen.getByTitle('Idle: Billing dashboard').parentElement
+    ).toContainElement(screen.getByTestId('draft-glyph'))
+  })
+})

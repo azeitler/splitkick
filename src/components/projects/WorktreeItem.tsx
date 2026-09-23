@@ -48,6 +48,7 @@ import { useSessionArchive } from '@/components/chat/hooks/useSessionArchive'
 import { useSessionRename } from '@/components/chat/hooks/useSessionRename'
 import { StarGlyph } from '@/components/chat/StarGlyph'
 import { PinGlyph } from '@/components/chat/PinGlyph'
+import { DraftGlyph } from '@/components/chat/DraftGlyph'
 import { middleClickClose } from '@/lib/middle-click'
 import {
   decideWorktreeMiddleClose,
@@ -62,6 +63,7 @@ import {
   statusConfig,
 } from '@/components/chat/session-card-utils'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
+import { useDraftSessionIds } from '@/components/chat/hooks/useDraftSessionIds'
 import {
   defaultSessionSortDirection,
   getSessionActivityTimestamp,
@@ -379,6 +381,9 @@ export function WorktreeItem({
   )
 
   const storeState = useCanvasStoreState()
+
+  // Sessions holding an unsent message, so a row can show the draft pencil.
+  const draftSessionIds = useDraftSessionIds()
 
   // Card data is only rendered by the expanded session list, so skip the
   // O(sessions × messages) computation entirely for collapsed rows.
@@ -1142,6 +1147,7 @@ export function WorktreeItem({
                       {card.status === 'paused' && (
                         <Pause className="h-3 w-3 shrink-0 text-muted-foreground" />
                       )}
+                      {draftSessionIds.has(card.session.id) && <DraftGlyph />}
                       {isRenaming ? (
                         <input
                           ref={renameInputRef}

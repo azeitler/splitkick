@@ -99,6 +99,8 @@ import {
   sortSessionCardsForTabs,
 } from './session-tab-order'
 import { useCanvasStoreState } from './hooks/useCanvasStoreState'
+import { useDraftSessionIds } from './hooks/useDraftSessionIds'
+import { DraftGlyph } from './DraftGlyph'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import {
   SessionContextMenuItems,
@@ -315,6 +317,8 @@ export function SessionChatModal({
   const currentSession = sessions.find(s => s.id === currentSessionId) ?? null
   // Canonical store state shared with canvas for consistent status derivation.
   const storeState = useCanvasStoreState()
+  // Sessions holding an unsent message, so a tab can show the draft pencil.
+  const draftSessionIds = useDraftSessionIds()
   // Compute card data once per session — same derivation as ProjectCanvasView,
   // so canvas badges and modal tab badges stay in sync.
   const cards = useMemo(
@@ -1411,6 +1415,7 @@ export function SessionChatModal({
                             {status === 'paused' && (
                               <Pause className="h-3 w-3 shrink-0 text-muted-foreground" />
                             )}
+                            {draftSessionIds.has(session.id) && <DraftGlyph />}
                             {renamingSessionId === session.id ? (
                               <input
                                 ref={renameInputRef}

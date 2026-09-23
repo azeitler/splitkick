@@ -7,6 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **A session with an unsent message now shows a pencil in front of its name.**
+  A half-written prompt already survived a tab switch and a restart, but
+  nothing said so: the tab and the sidebar row looked the same as an empty
+  session, and you only found the draft by opening it again. The pencil appears
+  on the session tab, on the sidebar row, and on a starred or pinned row, and it
+  counts a pasted image or a pasted text file as a draft too — not only typed
+  text. It goes as soon as the message is sent.
+
 ### Changed
 
 - **Picking a project in CMD+K opens the session you last had open there.**
@@ -35,10 +45,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 ### Fixed
 
 - **A remote Jean no longer shows a permanent "Update available".** The badge
-  meant the *host* you are connected to needed updating, but it used the same
+  meant the _host_ you are connected to needed updating, but it used the same
   wording and the same place as this app's own update, so it read as a phantom
   offer while the local app was current. It now says **Host update**, names the
-  host version in the tooltip, and follows the install: *Updating host…*, then
+  host version in the tooltip, and follows the install: _Updating host…_, then
   **Restart host** once the download is done — the host cannot ask anyone to
   restart it, because nobody is sitting there. Requesting an update no longer
   reports success before anything is installed, a host busy with sessions says
