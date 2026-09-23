@@ -671,7 +671,9 @@ describe('CommandPalette pinned project matches', () => {
     fireEvent.click(screen.getByText('Second project'))
 
     expect(setCommandPaletteOpen).toHaveBeenCalledWith(false)
-    expect(navigateToProject).toHaveBeenCalledWith('project-2')
+    expect(navigateToProject).toHaveBeenCalledWith('project-2', {
+      openLastSession: true,
+    })
   })
 
   it('selects the pinned project first, so Enter goes straight there', () => {

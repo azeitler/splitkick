@@ -9,6 +9,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **Picking a project in CMD+K opens the session you last had open there.**
+  Switching projects used to land on the project page with nothing open, and
+  you then had to find the session you had left. Now the session you last
+  opened in that project opens at once, just like a session result in the
+  palette. When there is none, or it was archived or deleted since, you get
+  the project page as before. Fixes
+  [#22](https://github.com/azeitler/jean/issues/22).
+
 - **On a phone, Home puts where you left off first, then switches between
   sessions and projects.** Continue — the session you had open last — now
   comes first, above a Sessions | Projects switch. Sessions lists what finished

@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { navigateToProject, navigateToSession } from './navigate-to-session'
 import { queryClient } from './query-client'
 import { projectsQueryKeys } from '@/services/projects'
+import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
+import type { AllSessionsResponse, Session } from '@/types/chat'
 import type { Project } from '@/types/projects'
 
 function project(id: string, parentId?: string): Project {
@@ -177,5 +179,147 @@ describe('navigateToProject', () => {
     expect(
       useProjectsStore.getState().expandedProjectIds.has('project-1')
     ).toBe(false)
+  })
+})
+
+// azeitler/jean#22: a project picked in CMD+K reopens the session the user
+// last had open there, and falls back to the canvas whenever that session
+// cannot be confirmed from data that is already loaded.
+describe('navigateToProject with openLastSession', () => {
+  const last = { worktreeId: 'wt-1', sessionId: 'session-1' }
+
+  function session(id: string, archivedAt?: number): Session {
+    return { id, name: id, archived_at: archivedAt } as Session
+  }
+
+  function seedAllSessions(sessions: Session[]) {
+    queryClient.setQueryData<AllSessionsResponse>(['all-sessions'], {
+      entries: [
+        {
+          project_id: 'project-1',
+          project_name: 'project-1',
+          worktree_id: 'wt-1',
+          worktree_name: 'main',
+          worktree_path: '/tmp/project-1',
+          sessions,
+        },
+      ],
+    })
+  }
+
+  beforeEach(() => {
+    queryClient.clear()
+    queryClient.setQueryData(projectsQueryKeys.list(), [project('project-1')])
+    useProjectsStore.setState({
+      selectedProjectId: null,
+      selectedWorktreeId: null,
+      expandedProjectIds: new Set<string>(),
+      expandedFolderIds: new Set<string>(),
+      expandedWorktreeIds: new Set<string>(),
+    })
+    useChatStore.setState({
+      lastOpenedPerProject: { 'project-1': last },
+    })
+    useUIStore.setState({
+      pendingSidebarRevealId: null,
+      pendingAutoOpenSessionIds: {},
+      autoOpenSessionWorktreeIds: new Set<string>(),
+    })
+  })
+
+  function openedSession() {
+    return useUIStore.getState().pendingAutoOpenSessionIds['wt-1']
+  }
+
+  function expectCanvasOnly() {
+    expect(useProjectsStore.getState().selectedProjectId).toBe('project-1')
+    expect(useUIStore.getState().pendingAutoOpenSessionIds).toEqual({})
+    expect(useUIStore.getState().pendingSidebarRevealId).toBe(
+      'project:project-1'
+    )
+  }
+
+  it('opens the last session through the session path', () => {
+    seedAllSessions([session('session-1')])
+
+    navigateToProject('project-1', { openLastSession: true })
+
+    expect(useProjectsStore.getState().selectedProjectId).toBe('project-1')
+    expect(useProjectsStore.getState().selectedWorktreeId).toBe('wt-1')
+    expect(openedSession()).toBe('session-1')
+    expect(useUIStore.getState().pendingSidebarRevealId).toBe(
+      'session:session-1'
+    )
+  })
+
+  it('opens it in the project that is already current too', () => {
+    seedAllSessions([session('session-1')])
+    useProjectsStore.setState({ selectedProjectId: 'project-1' })
+
+    navigateToProject('project-1', { openLastSession: true })
+
+    expect(openedSession()).toBe('session-1')
+  })
+
+  it('shows the canvas when the project has no last session', () => {
+    seedAllSessions([session('session-1')])
+    useChatStore.setState({ lastOpenedPerProject: {} })
+
+    navigateToProject('project-1', { openLastSession: true })
+
+    expectCanvasOnly()
+  })
+
+  it('shows the canvas when the last session was archived', () => {
+    seedAllSessions([session('session-1', 1_700_000_000)])
+
+    navigateToProject('project-1', { openLastSession: true })
+
+    expectCanvasOnly()
+  })
+
+  it('shows the canvas when the last session was deleted', () => {
+    seedAllSessions([session('another-session')])
+
+    navigateToProject('project-1', { openLastSession: true })
+
+    expectCanvasOnly()
+  })
+
+  // Never guess: an unloaded list cannot confirm the session exists.
+  it('shows the canvas when the session list is not loaded', () => {
+    navigateToProject('project-1', { openLastSession: true })
+
+    expectCanvasOnly()
+  })
+
+  // The worktree list leaves archived worktrees out.
+  it('shows the canvas when the worktree was archived', () => {
+    seedAllSessions([session('session-1')])
+    queryClient.setQueryData(projectsQueryKeys.worktrees('project-1'), [
+      { id: 'wt-other' },
+    ])
+
+    navigateToProject('project-1', { openLastSession: true })
+
+    expectCanvasOnly()
+  })
+
+  // A project the sidebar never showed has no worktree list yet; the session
+  // list alone is enough then.
+  it('opens the session when the worktree list is not loaded', () => {
+    seedAllSessions([session('session-1')])
+
+    navigateToProject('project-1', { openLastSession: true })
+
+    expect(openedSession()).toBe('session-1')
+  })
+
+  it('keeps the canvas-only behaviour without the option', () => {
+    seedAllSessions([session('session-1')])
+
+    navigateToProject('project-1')
+
+    expectCanvasOnly()
   })
 })

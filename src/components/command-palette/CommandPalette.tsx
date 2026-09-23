@@ -222,7 +222,9 @@ export function CommandPalette({
         avatarFallback: project.name[0]?.toUpperCase() ?? '?',
         group: 'projects',
         keywords: ['project', 'switch', 'open', project.name.toLowerCase()],
-        execute: () => navigateToProject(project.id),
+        // Switching projects is usually a return to where you were, so the
+        // last session there opens too; the canvas shows when there is none.
+        execute: () => navigateToProject(project.id, { openLastSession: true }),
       }))
   }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId])
 
