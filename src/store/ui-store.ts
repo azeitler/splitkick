@@ -112,6 +112,12 @@ interface UIState {
   fileBrowserSize: number
   /** Absolute path of file open in the global FileContentModal (null = closed) */
   viewingFilePath: string | null
+  /**
+   * What to show as the file's name, when it differs from the path Jean
+   * opened. A chat reference resolves to somewhere on disk, but the user
+   * wrote `~/Downloads/a.png` and wants to read that back, not its expansion.
+   */
+  viewingFileLabel: string | null
   rightSidebarVisible: boolean
   commandPaletteOpen: boolean
   preferencesOpen: boolean
@@ -242,7 +248,7 @@ interface UIState {
   toggleFileBrowser: () => void
   setFileBrowserVisible: (visible: boolean) => void
   setFileBrowserSize: (size: number) => void
-  setViewingFilePath: (path: string | null) => void
+  setViewingFilePath: (path: string | null, label?: string | null) => void
   toggleRightSidebar: () => void
   setRightSidebarVisible: (visible: boolean) => void
   toggleCommandPalette: () => void
@@ -384,6 +390,7 @@ export const useUIStore = create<UIState>()(
       fileBrowserVisible: false,
       fileBrowserSize: 280,
       viewingFilePath: null,
+      viewingFileLabel: null,
       rightSidebarVisible: false,
       commandPaletteOpen: false,
       preferencesOpen: false,
@@ -543,10 +550,12 @@ export const useUIStore = create<UIState>()(
           'setFileBrowserSize'
         ),
 
-      setViewingFilePath: path =>
+      setViewingFilePath: (path, label = null) =>
         set(
           state =>
-            state.viewingFilePath === path ? state : { viewingFilePath: path },
+            state.viewingFilePath === path && state.viewingFileLabel === label
+              ? state
+              : { viewingFilePath: path, viewingFileLabel: label },
           undefined,
           'setViewingFilePath'
         ),

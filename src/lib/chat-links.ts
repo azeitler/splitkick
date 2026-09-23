@@ -187,6 +187,11 @@ export function openChatLink(
     return true
   }
 
+  // What the user wrote. The reference is resolved to open the file, but the
+  // resolved path is not what belongs on screen: `~/Downloads/a.png` must
+  // read back as `~/Downloads/a.png`.
+  const label = toLocalReferencePath(splitFileRefSuffix(href)[0]) ?? href
+
   if (kind === 'page' && canOpenInEmbeddedBrowser(kind)) {
     const page = resolvedPath
       ? {
@@ -199,7 +204,7 @@ export function openChatLink(
       openPathInSystem(page.path)
       return true
     }
-    void openUrlInEmbeddedBrowser(page.url).then(opened => {
+    void openUrlInEmbeddedBrowser(page.url, label).then(opened => {
       if (!opened) openPathInSystem(page.path)
     })
     return true
@@ -212,6 +217,6 @@ export function openChatLink(
       rootPath
     )
   if (!path) return false
-  useUIStore.getState().setViewingFilePath(path)
+  useUIStore.getState().setViewingFilePath(path, label)
   return true
 }

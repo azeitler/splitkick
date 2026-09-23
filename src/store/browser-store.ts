@@ -48,7 +48,7 @@ interface BrowserState {
   isBottomPanelOpen: (worktreeId: string) => boolean
 
   // Tab actions
-  addTab: (worktreeId: string, url?: string) => string
+  addTab: (worktreeId: string, url?: string, label?: string | null) => string
   removeTab: (worktreeId: string, tabId: string) => void
   setActiveTab: (worktreeId: string, tabId: string) => void
   updateTab: (tabId: string, patch: Partial<Omit<BrowserTab, 'id'>>) => void
@@ -132,7 +132,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
   isModalOpen: worktreeId => get().modalOpen[worktreeId] ?? false,
   isBottomPanelOpen: worktreeId => get().bottomPanelOpen[worktreeId] ?? false,
 
-  addTab: (worktreeId, url = DEFAULT_NEW_TAB_URL) => {
+  addTab: (worktreeId, url = DEFAULT_NEW_TAB_URL, label = null) => {
     const id = generateId()
     // about:blank loads instantly with no `browser:loaded` event — skip
     // the spinner state entirely so the tab pill doesn't stay loading.
@@ -140,6 +140,7 @@ export const useBrowserStore = create<BrowserState>((set, get) => ({
       id,
       worktreeId,
       url,
+      label,
       title: '',
       isLoading: !isBlankTabUrl(url),
       error: null,

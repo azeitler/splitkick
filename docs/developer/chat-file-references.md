@@ -66,6 +66,38 @@ draws it; its tooltip says what was checked, so "not found" does not read as
 "did not try". The marker is focusable and takes the tab stop the link would
 have had, so the explanation is reachable from the keyboard.
 
+## The reference is what is shown
+
+Resolution decides which file to open. It does not decide what to print. A
+reference is written for a person — `~/Downloads/report.png` — and its
+expansion is noise, so the written form travels beside the resolved path:
+
+- `openChatLink()` passes it as the second argument of
+  `openUrlInEmbeddedBrowser()` and as the `label` of `setViewingFilePath()`.
+- `BrowserTab.label` feeds the address bar and the tab name
+  (`shownUrl()` in `BrowserToolbar`). Navigating the tab elsewhere drops it,
+  because it then describes nothing. Enter on an untouched label re-opens the
+  same tab rather than going through `normalizeUrl()`, which would read
+  `~/a.png` as a host name.
+- `useUIStore.viewingFileLabel` feeds the file viewer's title and subtitle.
+
+The picker is the exception. It lists real files to choose between, so it
+shows where each one is, shortened against the shared root.
+
+## Parsing a path out of an answer
+
+Two things in an answer's text destroy a path before any of the above runs:
+
+- **A single tilde.** GFM reads `~x~` as strikethrough, so iCloud's
+  `com~apple~CloudDocs` arrived as `com<del>apple</del>CloudDocs` and the
+  reference was already wrong. `remarkGfm` is configured with
+  `singleTilde: false`.
+- **A space.** The prose rule in `remark-local-file-links` cannot allow
+  spaces: nothing says where "see report file.html" ends. A line that holds
+  nothing but one path is unambiguous, though, so that case is matched whole.
+  The line must start at a root, and must hold exactly one path — otherwise
+  `/tmp/a.png and /tmp/b.png` would become a single link.
+
 ## Publishing the evidence
 
 `ChatWindow` calls `useFileReferenceEvidence({ worktreePath, messages,

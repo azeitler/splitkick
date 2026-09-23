@@ -52,6 +52,11 @@ function isImageFile(filename: string | null | undefined): boolean {
 interface FileContentModalProps {
   /** File path to display, or null to close the modal */
   filePath: string | null
+  /**
+   * Shown in place of `filePath`. A chat reference is resolved before it is
+   * opened, and the resolved path is not what the user wrote or wants to see.
+   */
+  displayPath?: string | null
   /** Callback when modal is closed */
   onClose: () => void
 }
@@ -109,7 +114,11 @@ interface FileBase64Content {
   mimeType: string
 }
 
-export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
+export function FileContentModal({
+  filePath,
+  displayPath,
+  onClose,
+}: FileContentModalProps) {
   const [content, setContent] = useState<string | null>(null)
   const [editedContent, setEditedContent] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -221,7 +230,13 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
     }
   }, [filePath, loadFileContent, loadImageContent])
 
-  const filename = filePath ? getFilename(filePath) : filePath
+  // The name follows what is shown, so a `~/…` reference reads back as it
+  // was written. The content still comes from the resolved `filePath`.
+  const filename = displayPath
+    ? getFilename(displayPath)
+    : filePath
+      ? getFilename(filePath)
+      : filePath
 
   const isImage = isImageFile(filename)
   const isMarkdown = isMarkdownFile(filename)
@@ -356,7 +371,7 @@ export function FileContentModal({ filePath, onClose }: FileContentModalProps) {
           </div>
           {filePath && (
             <span className="text-muted-foreground font-normal text-xs break-all [overflow-wrap:anywhere]">
-              {filePath}
+              {displayPath || filePath}
             </span>
           )}
         </DialogTitle>

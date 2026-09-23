@@ -74,15 +74,19 @@ describe('Markdown links', () => {
     )
 
     fireEvent.click(screen.getByRole('link', { name: 'out/report.html' }))
+    // The second argument is what the answer wrote: the pane shows that,
+    // not the file URL the reference resolved to.
     expect(openUrlInEmbeddedBrowser).toHaveBeenCalledWith(
-      'file:///repo/wt/out/report.html'
+      'file:///repo/wt/out/report.html',
+      'out/report.html'
     )
 
     const codeLink = screen.getByRole('link', { name: '/tmp/other.html' })
     expect(codeLink.querySelector('code')).not.toBeNull()
     fireEvent.click(codeLink)
     expect(openUrlInEmbeddedBrowser).toHaveBeenCalledWith(
-      'file:///tmp/other.html'
+      'file:///tmp/other.html',
+      '/tmp/other.html'
     )
 
     expect(screen.queryByRole('link', { name: 'src/app.ts' })).toBeNull()
@@ -106,7 +110,8 @@ describe('Markdown links', () => {
     expect(link.getAttribute('href')).toBe('file:///tmp/report.html')
     fireEvent.click(link)
     expect(openUrlInEmbeddedBrowser).toHaveBeenCalledWith(
-      'file:///tmp/report.html'
+      'file:///tmp/report.html',
+      '/tmp/report.html'
     )
   })
 

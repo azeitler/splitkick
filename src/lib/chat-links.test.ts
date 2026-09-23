@@ -120,7 +120,9 @@ describe('openChatLink', () => {
     openChatLink('out/my%20report.html#summary')
 
     expect(openUrlInEmbeddedBrowser).toHaveBeenCalledWith(
-      'file:///repo/wt/out/my%20report.html#summary'
+      'file:///repo/wt/out/my%20report.html#summary',
+      // The pane shows what was written, decoded, not the file URL.
+      'out/my report.html'
     )
     expect(useUIStore.getState().viewingFilePath).toBeNull()
   })
@@ -191,6 +193,47 @@ describe('resolveLocalPath with .. segments', () => {
   it('cleans an absolute path that holds ..', () => {
     expect(resolveLocalPath('/repo/worktree/../x.md', '/other')).toBe(
       '/repo/x.md'
+    )
+  })
+})
+
+describe('openChatLink keeps the written reference for display', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    setEnvironment({ native: true, local: true })
+    useUIStore.getState().setViewingFilePath(null)
+  })
+
+  it('opens the resolved file but labels the viewer with what was written', () => {
+    expect(
+      openChatLink('~/Downloads/data.json', {
+        resolvedPath: '/Users/me/Downloads/data.json',
+      })
+    ).toBe(true)
+
+    const state = useUIStore.getState()
+    expect(state.viewingFilePath).toBe('/Users/me/Downloads/data.json')
+    expect(state.viewingFileLabel).toBe('~/Downloads/data.json')
+  })
+
+  it('gives the pane the written reference too', () => {
+    openChatLink('~/Downloads/report.html', {
+      resolvedPath: '/Users/me/Downloads/report.html',
+    })
+
+    expect(openUrlInEmbeddedBrowser).toHaveBeenCalledWith(
+      'file:///Users/me/Downloads/report.html',
+      '~/Downloads/report.html'
+    )
+  })
+
+  it('decodes an encoded reference for display', () => {
+    openChatLink('file:///Users/me/My%20Files/a.json', {
+      resolvedPath: '/Users/me/My Files/a.json',
+    })
+
+    expect(useUIStore.getState().viewingFileLabel).toBe(
+      '/Users/me/My Files/a.json'
     )
   })
 })

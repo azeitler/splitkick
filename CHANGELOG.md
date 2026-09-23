@@ -57,6 +57,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   it was cut off, so the last items — Archive and Delete Session — could not be
   reached.
 
+- **A file path with spaces or tildes in a chat answer is no longer broken.**
+  An iCloud path such as `…/Mobile Documents/com~apple~CloudDocs/…` lost its
+  tildes: Markdown read `~apple~` as struck-through text, so the folder name
+  became `comappleCloudDocs` and the file could never be found. Only the
+  `~~like this~~` form strikes through now. A path with spaces was also cut at
+  its first space, and the fragment after the last space became the link. A
+  path that stands alone on its line is now taken whole, spaces and all.
+
+- **A file reference keeps the form you wrote.** The file viewer, the browser
+  pane and its address bar showed the full path Jean had resolved, so
+  `~/Downloads/report.png` came back as
+  `/Users/you/Downloads/report.png`. The resolved path is used to find and
+  open the file, and what you wrote is what you see.
+
 - **A Markdown file in the browser pane is no longer covered by another tab.**
   With more than one tab open, the page of a tab you were not looking at could
   sit on top of a Markdown or text file, so the document was hidden behind a

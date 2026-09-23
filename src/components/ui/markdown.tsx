@@ -14,6 +14,7 @@ import {
 } from 'react'
 import type { Components, UrlTransform } from 'react-markdown'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
+import type { PluggableList } from 'unified'
 import rehypeRaw from 'rehype-raw'
 import remarkGfm from 'remark-gfm'
 import remend from 'remend'
@@ -390,7 +391,9 @@ function TableBlock({ children, tableOffset }: TableBlockProps) {
                 type="button"
                 onClick={handleToggleChecklist}
                 className={checklistEnabled ? activeBtnClass : btnClass}
-                aria-label={checklistEnabled ? 'Turn off checklist' : 'Toggle checklist'}
+                aria-label={
+                  checklistEnabled ? 'Turn off checklist' : 'Toggle checklist'
+                }
                 aria-pressed={checklistEnabled}
               >
                 <ListChecks className="size-4" />
@@ -403,7 +406,12 @@ function TableBlock({ children, tableOffset }: TableBlockProps) {
         )}
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" onClick={() => handleCopy('markdown')} aria-label="Copy as Markdown" className={btnClass}>
+            <button
+              type="button"
+              onClick={() => handleCopy('markdown')}
+              aria-label="Copy as Markdown"
+              className={btnClass}
+            >
               {copiedFormat === 'markdown' ? (
                 <Check className="size-4" />
               ) : (
@@ -415,7 +423,12 @@ function TableBlock({ children, tableOffset }: TableBlockProps) {
         </Tooltip>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button type="button" onClick={() => handleCopy('tsv')} aria-label="Copy for spreadsheet" className={btnClass}>
+            <button
+              type="button"
+              onClick={() => handleCopy('tsv')}
+              aria-label="Copy for spreadsheet"
+              className={btnClass}
+            >
               {copiedFormat === 'tsv' ? (
                 <Check className="size-4" />
               ) : (
@@ -650,8 +663,12 @@ const compactComponents: Components = {
 // remarkFixInterruptedLists runs after GFM so task lists are already parsed,
 // then nests orphan sibling ULs under the preceding OL item (issue #200).
 // remarkLocalFileLinks runs after GFM so web autolinks are already links.
-const remarkPlugins = [
-  remarkGfm,
+// `singleTilde: false`: GFM reads `~x~` as strikethrough, which eats the
+// tildes out of a real path — iCloud's `com~apple~CloudDocs` rendered as
+// `com<del>apple</del>CloudDocs`, so the path was wrong before any link logic
+// saw it. Only the `~~x~~` form strikes through now.
+const remarkPlugins: PluggableList = [
+  [remarkGfm, { singleTilde: false }],
   remarkFixInterruptedLists,
   remarkLocalFileLinks,
 ]

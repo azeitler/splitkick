@@ -17,6 +17,10 @@
  *
  * Two rules, because prose and inline code carry different certainty:
  *
+ * - **A line that is nothing but a path** is taken whole, spaces included.
+ *   The ends of the line delimit it, so `/Users/me/Mobile Documents/a.png`
+ *   has only one reading. The line must start at a root, and hold one path:
+ *   `/tmp/a.png and /tmp/b.png` falls back to the rule below.
  * - **Plain text** uses a conservative pattern. A path must not hold spaces,
  *   because prose gives no way to tell where "see report file.html" ends.
  *   Letters of any script are allowed, so `übersicht-日本.html` matches.
@@ -57,6 +61,34 @@ const LOCAL_FILE_PATH_RE = new RegExp(
   'giu'
 )
 
+// A line that is nothing but one path. Spaces are allowed here, because the
+// ends of the line delimit the path — `/Users/me/Mobile Documents/a.png` has
+// no other reading. The prose rule cannot do this: in "see report file.html"
+// nothing says where the name starts.
+//
+// The line must begin at a root (`/`, `~/`, a drive, or `file://`), so a
+// sentence is never swallowed whole.
+const STANDALONE_PATH_RE = new RegExp(
+  `^(?:file:\\/\\/|~\\/|\\/|[A-Za-z]:[\\\\/])[^\\n]*\\.(?:${EXT})(?:#[\\p{L}\\p{N}._-]*)?$`,
+  'iu'
+)
+
+// Every place a browsable extension ends a word. Two of them on one line mean
+// two paths (`/tmp/a.png and /tmp/b.png`), so the line is not one path and
+// the conservative rule handles it.
+const EXTENSION_ENDING_RE = new RegExp(
+  `\\.(?:${EXT})(?:#[\\p{L}\\p{N}._-]*)?(?![\\p{L}\\p{N}/\\\\-])`,
+  'giu'
+)
+
+/** The whole line as one path, or null when it is not one. */
+function standalonePath(line: string): string | null {
+  const value = line.trim()
+  if (!value || !STANDALONE_PATH_RE.test(value)) return null
+  EXTENSION_ENDING_RE.lastIndex = 0
+  return value.match(EXTENSION_ENDING_RE)?.length === 1 ? value : null
+}
+
 /** Nodes whose text must stay as written. */
 const SKIP = new Set([
   'link',
@@ -94,7 +126,20 @@ function linkTo(url: string, child: MdastNode): MdastNode {
   return { type: 'link', url, title: null, children: [child] }
 }
 
-function splitText(value: string): MdastNode[] | null {
+/** Link the paths in one line, which holds no newline of its own. */
+function splitLine(value: string): MdastNode[] | null {
+  const whole = standalonePath(value)
+  if (whole) {
+    const start = value.indexOf(whole)
+    const parts: MdastNode[] = []
+    if (start > 0) parts.push({ type: 'text', value: value.slice(0, start) })
+    parts.push(linkTo(whole, { type: 'text', value: whole }))
+    const end = start + whole.length
+    if (end < value.length)
+      parts.push({ type: 'text', value: value.slice(end) })
+    return parts
+  }
+
   const parts: MdastNode[] = []
   let last = 0
   for (const match of value.matchAll(LOCAL_FILE_PATH_RE)) {
@@ -110,6 +155,25 @@ function splitText(value: string): MdastNode[] | null {
   if (last < value.length)
     parts.push({ type: 'text', value: value.slice(last) })
   return parts
+}
+
+function splitText(value: string): MdastNode[] | null {
+  // Line by line: a soft break inside a paragraph keeps one text node, and a
+  // path is standalone per line, not per node.
+  const lines = value.split('\n')
+  const parts: MdastNode[] = []
+  let changed = false
+  lines.forEach((line, index) => {
+    if (index > 0) parts.push({ type: 'text', value: '\n' })
+    const split = splitLine(line)
+    if (split) {
+      parts.push(...split)
+      changed = true
+    } else if (line) {
+      parts.push({ type: 'text', value: line })
+    }
+  })
+  return changed ? parts : null
 }
 
 function visit(node: MdastNode): void {

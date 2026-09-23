@@ -18,6 +18,66 @@ function linkUrls(nodes: MdastNode[]): string[] {
 }
 
 describe('remarkLocalFileLinks', () => {
+  it('links a path with spaces when the line is nothing else', () => {
+    const real =
+      '/Users/me/Library/Mobile Documents/com~apple~CloudDocs/Projects/House/07_Ausführung/renders/07_bestueckt.png'
+    const nodes = run(paragraph({ type: 'text', value: real }))
+
+    expect(linkUrls(nodes)).toEqual([real])
+  })
+
+  it('links a standalone home path and a Windows path with spaces', () => {
+    expect(
+      linkUrls(run(paragraph({ type: 'text', value: '~/My Files/a b.png' })))
+    ).toEqual(['~/My Files/a b.png'])
+    expect(
+      linkUrls(run(paragraph({ type: 'text', value: 'C:\\My Files\\a b.png' })))
+    ).toEqual(['C:\\My Files\\a b.png'])
+  })
+
+  it('takes each standalone path of a multi-line node', () => {
+    const nodes = run(
+      paragraph({
+        type: 'text',
+        value: '/Users/me/a b.png\n/Users/me/c d.png',
+      })
+    )
+
+    expect(linkUrls(nodes)).toEqual(['/Users/me/a b.png', '/Users/me/c d.png'])
+    // The line break survives.
+    expect(nodes.map(n => n.value).filter(Boolean)).toContain('\n')
+  })
+
+  it('keeps surrounding whitespace of a standalone path', () => {
+    const nodes = run(
+      paragraph({ type: 'text', value: '  /Users/me/a b.png ' })
+    )
+
+    expect(linkUrls(nodes)).toEqual(['/Users/me/a b.png'])
+    expect(nodes[0]).toEqual({ type: 'text', value: '  ' })
+    expect(nodes.at(-1)).toEqual({ type: 'text', value: ' ' })
+  })
+
+  it('does not swallow a line that holds two paths', () => {
+    const nodes = run(
+      paragraph({ type: 'text', value: '/tmp/a.png and /tmp/b.png' })
+    )
+
+    expect(linkUrls(nodes)).toEqual(['/tmp/a.png', '/tmp/b.png'])
+  })
+
+  it('does not treat a sentence that ends in a file name as one path', () => {
+    const nodes = run(
+      paragraph({
+        type: 'text',
+        value: 'Open the report called summary.html',
+      })
+    )
+
+    // No root at the start of the line, so the conservative rule applies.
+    expect(linkUrls(nodes)).toEqual(['summary.html'])
+  })
+
   it('links a home-relative path in text', () => {
     const nodes = run(
       paragraph({

@@ -248,6 +248,7 @@ export function MainWindow() {
   const setFileBrowserSize = useUIStore(state => state.setFileBrowserSize)
   const setFileBrowserVisible = useUIStore(state => state.setFileBrowserVisible)
   const viewingFilePath = useUIStore(state => state.viewingFilePath)
+  const viewingFileLabel = useUIStore(state => state.viewingFileLabel)
   const setViewingFilePath = useUIStore(state => state.setViewingFilePath)
   const preferencesOpen = useUIStore(state => state.preferencesOpen)
   const commitModalOpen = useUIStore(state => state.commitModalOpen)
@@ -668,6 +669,7 @@ export function MainWindow() {
       <Suspense fallback={null}>
         <FileContentModal
           filePath={viewingFilePath}
+          displayPath={viewingFileLabel}
           onClose={() => setViewingFilePath(null)}
         />
       </Suspense>

@@ -18,6 +18,12 @@ export interface BrowserTab {
   /** Last URL that successfully reached browser:loaded. Used to detect WKWebView fallback-to-previous on failed nav. */
   lastLoadedUrl?: string | null
   /**
+   * What to show instead of `url`: the reference a chat answer wrote, before
+   * it was resolved and turned into a `file://` URL. Nobody wants to read
+   * `file:///Users/me/Library/Mobile%20Documents/…` back.
+   */
+  label?: string | null
+  /**
    * Bumped by `reloadTab`. A text tab has no web view to call
    * `browser_reload` on, so this is how Reload reaches `BrowserTextContent`.
    */

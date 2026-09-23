@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { isPaneTextUrl, toFileUrl } from '@/lib/path-utils'
+import { getFilename, isPaneTextUrl, toFileUrl } from '@/lib/path-utils'
 import { cn } from '@/lib/utils'
 import { isBlankTabUrl, useBrowserStore } from '@/store/browser-store'
 import { browserBackend, useBrowserTabActions } from '@/hooks/useBrowserPane'
@@ -29,6 +29,14 @@ import { toast } from 'sonner'
 const EMPTY_TABS: BrowserTab[] = []
 
 const displayUrl = (u: string): string => (isBlankTabUrl(u) ? '' : u)
+
+/**
+ * What the URL bar shows: the reference the chat answer wrote, when a tab was
+ * opened from one. `~/Downloads/a.png` reads back as itself, not as the
+ * `file://` URL its resolution produced.
+ */
+const shownUrl = (tab: BrowserTab | null): string =>
+  tab?.label || displayUrl(tab?.url ?? '')
 
 interface BrowserToolbarProps {
   worktreeId: string
@@ -89,7 +97,11 @@ const TabPill = memo(function TabPill({
   } catch {
     urlLabel = tab.url
   }
+  // A tab opened from a chat reference is named after it, not after the path
+  // the reference resolved to.
+  if (tab.label) urlLabel = getFilename(tab.label)
   const label = tab.title || urlLabel || 'New Tab'
+  const fullLabel = tab.label || tab.title || tab.url
   return (
     <div
       className={cn(
@@ -98,7 +110,7 @@ const TabPill = memo(function TabPill({
           ? 'border-border bg-background text-foreground'
           : 'border-transparent bg-muted/40 text-muted-foreground hover:bg-muted'
       )}
-      title={tab.title || tab.url}
+      title={fullLabel}
     >
       <button
         type="button"
@@ -106,7 +118,7 @@ const TabPill = memo(function TabPill({
         aria-selected={isActive}
         className="flex min-w-0 flex-1 items-center gap-1.5 text-left outline-none"
         onClick={handleClick}
-        title={tab.title || tab.url}
+        title={fullLabel}
       >
         {tab.isLoading ? (
           <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
@@ -139,21 +151,23 @@ export const BrowserToolbar = memo(function BrowserToolbar({
   const activeTab = tabs.find(t => t.id === activeTabId) ?? null
 
   const activeUrl = activeTab?.url ?? ''
+  const activeShown = shownUrl(activeTab)
   // A text tab is rendered by React and owns no webview, so history and Grab
   // have nothing to act on.
   const isTextTab = isPaneTextUrl(activeUrl)
-  const [draftUrl, setDraftUrl] = useState(() => displayUrl(activeUrl))
+  const [draftUrl, setDraftUrl] = useState(() => activeShown)
   const [editing, setEditing] = useState(false)
-  // Track last synced (url, editing) so external navigations and blur refresh the
-  // draft without an effect. Hide synthetic DEFAULT_NEW_TAB_URL data: URLs.
-  const [synced, setSynced] = useState({ url: activeUrl, editing: false })
+  // Track last synced (shown url, editing) so external navigations and blur
+  // refresh the draft without an effect. Hide synthetic DEFAULT_NEW_TAB_URL
+  // data: URLs.
+  const [synced, setSynced] = useState({ url: activeShown, editing: false })
   const inputRef = useRef<HTMLInputElement | null>(null)
 
   // Adjust state during render (React-recommended) instead of effect-as-handler.
-  if (activeUrl !== synced.url || editing !== synced.editing) {
-    setSynced({ url: activeUrl, editing })
+  if (activeShown !== synced.url || editing !== synced.editing) {
+    setSynced({ url: activeShown, editing })
     if (!editing) {
-      setDraftUrl(displayUrl(activeUrl))
+      setDraftUrl(activeShown)
     }
   }
 
@@ -201,12 +215,18 @@ export const BrowserToolbar = memo(function BrowserToolbar({
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault()
-      const target = normalizeUrl(draftUrl)
+      // Enter on an untouched label means "this tab", not a new address:
+      // the label is a reference, and normalizeUrl would read `~/a.png` as a
+      // host name.
+      const target =
+        activeTab?.label && draftUrl === activeTab.label
+          ? activeTab.url
+          : normalizeUrl(draftUrl)
       if (!target) return
       void actions.navigate(target)
       setEditing(false)
     },
-    [actions, draftUrl]
+    [actions, draftUrl, activeTab?.label, activeTab?.url]
   )
 
   return (

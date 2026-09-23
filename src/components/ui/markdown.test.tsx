@@ -378,4 +378,23 @@ describe('Markdown', () => {
     expect(container.textContent).toContain("I'll add SQLite")
     expect(container.textContent).not.toContain("I'lladd")
   })
+
+  it('keeps the tildes of an iCloud path instead of striking them through', () => {
+    // GFM reads `~apple~` as strikethrough, which silently rewrote the folder
+    // name: `com~apple~CloudDocs` came out as `comappleCloudDocs`.
+    const path =
+      '/Users/me/Library/Mobile Documents/com~apple~CloudDocs/Paperwork/x.png'
+    const { container } = render(<Markdown>{path}</Markdown>)
+
+    expect(container.textContent).toBe(path)
+    expect(container.querySelector('del')).toBeNull()
+    // The whole path, spaces and all, is one link.
+    expect(screen.getByRole('link')).toHaveTextContent(path)
+  })
+
+  it('still strikes through the double-tilde form', () => {
+    const { container } = render(<Markdown>{'a ~~gone~~ b'}</Markdown>)
+
+    expect(container.querySelector('del')?.textContent).toBe('gone')
+  })
 })

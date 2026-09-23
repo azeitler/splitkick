@@ -338,6 +338,10 @@ export async function navigateBrowserTab(
 ): Promise<void> {
   if (!isNativeApp()) return
   const s = useBrowserStore.getState()
+  // The label belongs to the reference that opened the tab. Once the tab goes
+  // somewhere else, the URL is all there is to show.
+  const tab = findTab(s, tabId)
+  if (tab?.label && tab.url !== url) s.updateTab(tabId, { label: null })
   // A local text file has no webview: BrowserTextContent reads it and reports
   // the load itself, so there is nothing to navigate and no load that can
   // hang. The nonce makes it read again even when the URL did not change.
@@ -403,7 +407,10 @@ export function resolveBrowserSurfaceTarget(): BrowserSurfaceTarget | null {
  * tab creates its webview on mount with the URL, so no navigate call is
  * needed for it. Returns false when there is no browser surface to show.
  */
-export async function openUrlInEmbeddedBrowser(url: string): Promise<boolean> {
+export async function openUrlInEmbeddedBrowser(
+  url: string,
+  label?: string | null
+): Promise<boolean> {
   if (!isNativeApp()) return false
   const target = resolveBrowserSurfaceTarget()
   if (!target) return false
@@ -415,13 +422,14 @@ export async function openUrlInEmbeddedBrowser(url: string): Promise<boolean> {
 
   if (existing) {
     store.setActiveTab(target.worktreeId, existing.id)
+    store.updateTab(existing.id, { label: label ?? null })
     // A text tab has no webview; navigateBrowserTab makes it read the file
     // again, which is the point of navigating a URL the tab already shows.
     if (isPaneTextUrl(url) || (await browserBackend.hasActive(existing.id))) {
       await navigateBrowserTab(existing.id, url)
     }
   } else {
-    store.addTab(target.worktreeId, url)
+    store.addTab(target.worktreeId, url, label)
   }
 
   if (target.surface === 'modal') {
