@@ -127,6 +127,15 @@ pub async fn dispatch_command(
             let result = crate::server_update::apply_server_update(app.clone()).await?;
             to_value(result)
         }
+        // Host desktop shell only: reports how its Tauri updater run is going
+        // so remote clients can show progress and confirm the relaunch.
+        "report_host_update_state" => {
+            let phase: crate::server_update::HostInstallPhase = from_field(&args, "phase")?;
+            let version: Option<String> = from_field_opt(&args, "version")?;
+            let message: Option<String> = from_field_opt(&args, "message")?;
+            crate::server_update::report_host_update_state(app, phase, version, message)?;
+            Ok(Value::Null)
+        }
         "load_preferences" => {
             let result = crate::load_preferences(app.clone()).await?;
             to_value(result)

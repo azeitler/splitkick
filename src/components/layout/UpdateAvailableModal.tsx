@@ -8,7 +8,6 @@ import {
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/store/ui-store'
-import { isNativeApp } from '@/lib/environment'
 
 function handleUpdateLater() {
   const modalVersion = useUIStore.getState().updateModalVersion
@@ -26,14 +25,13 @@ export function UpdateAvailableModal() {
   const readyVersion = useUIStore(state => state.updateReadyVersion)
   const isInstalling = useUIStore(state => state.isUpdateInstalling)
   const isOpen = version !== null
-  const native = isNativeApp()
 
   const handleUpdate = () => {
     const targetVersion = version
     useUIStore.getState().setUpdateModalVersion(null)
-    // Keep sticky version so web/host apply can read it if the native
-    // pendingUpdateRef is empty. If already installed, install-pending-update
-    // relaunches instead of re-downloading (#507).
+    // Keep the sticky badge so the user still has an affordance while the
+    // download runs. If already installed, install-pending-update relaunches
+    // instead of re-downloading (#507).
     if (targetVersion) {
       useUIStore.getState().setPendingUpdateVersion(targetVersion)
     }
@@ -47,11 +45,11 @@ export function UpdateAvailableModal() {
       ? 'Downloading…'
       : 'Update Now'
 
+  // Host updates never land here — they are their own title-bar badge
+  // (ServerUpdateIndicator), so this modal only ever means *this* app.
   const description = isReady
     ? `Version ${version} is installed. Restart to apply it.`
-    : native
-      ? `Version ${version} is ready to install.`
-      : `Version ${version} is ready on the host Jean app. Updating will download and install there, then restart the host.`
+    : `Version ${version} is ready to install.`
 
   return (
     <Dialog

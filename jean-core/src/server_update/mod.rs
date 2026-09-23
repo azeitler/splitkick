@@ -73,6 +73,72 @@ pub enum HostUpdateChannel {
     Desktop,
 }
 
+/// How far the host desktop shell has got with a remotely requested install.
+///
+/// A Web Access client cannot run an installer, so it asks the host to. The
+/// host then downloads in its own process, which takes minutes and can fail —
+/// without this the remote client had to guess, reported "installed" straight
+/// away, and re-offered the same version on the next check.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum HostInstallPhase {
+    /// Nothing requested, or the host finished updating.
+    #[default]
+    Idle,
+    /// Asked, host shell has not started downloading yet.
+    Requested,
+    /// Tauri updater is downloading/installing on the host.
+    Downloading,
+    /// Installed on the host; it must relaunch to apply. The user confirms
+    /// that from the remote client — nobody is sitting at the host.
+    Ready,
+    /// The host install failed; `message` carries the reason.
+    Failed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct HostInstallState {
+    pub phase: HostInstallPhase,
+    pub version: Option<String>,
+    pub message: Option<String>,
+}
+
+static HOST_INSTALL: std::sync::Mutex<Option<HostInstallState>> = std::sync::Mutex::new(None);
+
+fn host_install_state() -> HostInstallState {
+    HOST_INSTALL
+        .lock()
+        .ok()
+        .and_then(|state| state.clone())
+        .unwrap_or_default()
+}
+
+fn set_host_install_state(state: HostInstallState) {
+    if let Ok(mut current) = HOST_INSTALL.lock() {
+        *current = Some(state);
+    }
+}
+
+/// Record how the host install is going and tell every connected client.
+///
+/// Called by the host desktop shell around its Tauri updater run; remote
+/// clients render the phase on the title-bar badge.
+pub fn report_host_update_state(
+    app: &AppHandle,
+    phase: HostInstallPhase,
+    version: Option<String>,
+    message: Option<String>,
+) -> Result<(), String> {
+    let state = HostInstallState {
+        phase,
+        version,
+        message,
+    };
+    set_host_install_state(state.clone());
+    app.emit_all("host:update-state", &state)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ServerUpdateStatus {
@@ -86,6 +152,10 @@ pub struct ServerUpdateStatus {
     pub reason: Option<String>,
     #[serde(default)]
     pub channel: HostUpdateChannel,
+    /// Progress of a remotely requested install on a desktop host. Always
+    /// idle on the server channel, which installs in this process.
+    #[serde(default)]
+    pub host_install: HostInstallState,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -133,6 +203,7 @@ async fn check_headless_server_update() -> Result<ServerUpdateStatus, String> {
                 can_update: false,
                 reason: Some(reason.clone()),
                 channel: HostUpdateChannel::Server,
+                host_install: HostInstallState::default(),
             });
         }
     }
@@ -161,6 +232,7 @@ async fn check_headless_server_update() -> Result<ServerUpdateStatus, String> {
         can_update,
         reason,
         channel: HostUpdateChannel::Server,
+        host_install: HostInstallState::default(),
     })
 }
 
@@ -173,6 +245,12 @@ async fn check_desktop_host_update(
     let manifest = fetch_desktop_manifest(desktop_manifest_url(product_name)).await?;
     let latest = normalize_version(&manifest.version);
     let available = is_newer_version(&latest, &current_version);
+
+    // The host caught up (it relaunched into the new build), so a leftover
+    // "ready to restart" phase would keep the remote badge alive forever.
+    if !available {
+        set_host_install_state(HostInstallState::default());
+    }
 
     Ok(ServerUpdateStatus {
         update_available: available,
@@ -187,6 +265,7 @@ async fn check_desktop_host_update(
             None
         },
         channel: HostUpdateChannel::Desktop,
+        host_install: host_install_state(),
     })
 }
 
@@ -264,13 +343,36 @@ pub async fn apply_server_update(app: AppHandle) -> Result<ServerUpdateApplyResu
 }
 
 async fn apply_desktop_host_update(app: AppHandle) -> Result<ServerUpdateApplyResult, String> {
+    // Guards both halves: the download replaces the app bundle and the restart
+    // kills the running CLIs, so neither may run over a busy host. The remote
+    // client reports this and keeps its offer — an update is never forced.
     let running = crate::chat::registry::get_running_sessions();
     if !running.is_empty() {
         return Err(format!(
-            "Cannot update Jean while {} session{} running. Stop active sessions first.",
+            "Cannot update the host Jean while {} session{} running on it. Stop them first.",
             running.len(),
             if running.len() == 1 { " is" } else { "s are" }
         ));
+    }
+
+    // Second press once the host finished downloading: the remote client is
+    // where the user is, so it — not the host — confirms the relaunch.
+    let pending = host_install_state();
+    if pending.phase == HostInstallPhase::Ready {
+        let version = pending
+            .version
+            .clone()
+            .unwrap_or_else(|| crate::release_version().to_string());
+        app.emit_all(
+            "host:relaunch-after-update",
+            &serde_json::json!({ "version": version }),
+        )?;
+        return Ok(ServerUpdateApplyResult {
+            success: true,
+            version: version.clone(),
+            message: format!("Restarting the host to apply {version}"),
+            restart_scheduled: true,
+        });
     }
 
     let status = check_desktop_host_update(app.product_name()).await?;
@@ -280,6 +382,7 @@ async fn apply_desktop_host_update(app: AppHandle) -> Result<ServerUpdateApplyRe
         .unwrap_or_else(|| crate::app_version().to_string());
 
     if !status.update_available {
+        set_host_install_state(HostInstallState::default());
         return Ok(ServerUpdateApplyResult {
             success: true,
             version: status.current_version,
@@ -288,7 +391,14 @@ async fn apply_desktop_host_update(app: AppHandle) -> Result<ServerUpdateApplyRe
         });
     }
 
-    // Native App.tsx listens and runs @tauri-apps/plugin-updater.
+    // Native App.tsx listens and runs @tauri-apps/plugin-updater, then reports
+    // back through `report_host_update_state`.
+    report_host_update_state(
+        &app,
+        HostInstallPhase::Requested,
+        Some(latest.clone()),
+        None,
+    )?;
     app.emit_all(
         "host:install-desktop-update",
         &serde_json::json!({ "version": latest }),
@@ -750,6 +860,48 @@ mod tests {
     use flate2::write::GzEncoder;
     use flate2::Compression;
     use tar::Builder;
+
+    /// The remote client sends the phase as camelCase JSON; a mismatch here
+    /// silently pinned the badge to "Host update" forever.
+    #[test]
+    fn host_install_phase_round_trips_as_camel_case() {
+        let state = HostInstallState {
+            phase: HostInstallPhase::Downloading,
+            version: Some("0.1.73-z.15".to_string()),
+            message: None,
+        };
+        let json = serde_json::to_string(&state).unwrap();
+        assert!(json.contains("\"phase\":\"downloading\""));
+        let back: HostInstallState = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, state);
+    }
+
+    #[test]
+    fn host_install_state_defaults_to_idle_for_older_clients() {
+        let status: ServerUpdateStatus = serde_json::from_str(
+            r#"{"updateAvailable":false,"currentVersion":"1.0.0","latestVersion":null,
+                "notes":null,"canUpdate":false,"reason":null}"#,
+        )
+        .unwrap();
+        assert_eq!(status.host_install.phase, HostInstallPhase::Idle);
+        assert_eq!(status.channel, HostUpdateChannel::Server);
+    }
+
+    #[test]
+    fn stores_and_reads_back_the_host_install_phase() {
+        set_host_install_state(HostInstallState {
+            phase: HostInstallPhase::Ready,
+            version: Some("0.1.73-z.15".to_string()),
+            message: None,
+        });
+        assert_eq!(host_install_state().phase, HostInstallPhase::Ready);
+
+        // A check that finds nothing new resets it, so the badge can clear
+        // after the host relaunched into the new build.
+        set_host_install_state(HostInstallState::default());
+        assert_eq!(host_install_state().phase, HostInstallPhase::Idle);
+        assert_eq!(host_install_state().version, None);
+    }
 
     #[test]
     fn compares_semver_versions() {

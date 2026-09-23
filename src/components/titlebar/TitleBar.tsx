@@ -45,6 +45,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
 import { releaseUrlForVersion } from '@/lib/release-url'
 import { applyServerUpdate } from '@/hooks/useServerUpdateCheck'
+import { hostUpdateBadge, hostUpdateLabel } from '@/lib/host-update-badge'
 import { LinuxWindowControls } from './LinuxWindowControls'
 import { UsagePopover } from './UsagePopover'
 import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
@@ -497,19 +498,30 @@ export function CliUpdatesIndicator() {
   )
 }
 
+/**
+ * Update waiting on the **host** this client is connected to — never this
+ * app's own update, which is `UpdateIndicator`. A desktop host installs with
+ * its own updater, so the badge walks the install phases and ends on "Restart
+ * host", the confirmation the host cannot ask for itself.
+ */
 export function ServerUpdateIndicator() {
   const pending = useUIStore(state => state.pendingServerUpdate)
   if (!pending) return null
 
+  const { label, tooltip, busy } = hostUpdateBadge(pending)
+
   const handleClick = () => {
     if (!pending.canUpdate) {
-      toast.info(`jean-server ${pending.latestVersion} is available`, {
-        id: 'server-update-available',
-        description:
-          pending.reason ||
-          'This host cannot self-update. Replace the binary or image manually.',
-        duration: 12_000,
-      })
+      toast.info(
+        `${hostUpdateLabel(pending.channel)} ${pending.latestVersion} is available`,
+        {
+          id: 'server-update-available',
+          description:
+            pending.reason ||
+            'This host cannot self-update. Replace the binary or image manually.',
+          duration: 12_000,
+        }
+      )
       return
     }
     void applyServerUpdate(pending.latestVersion)
@@ -521,17 +533,15 @@ export function ServerUpdateIndicator() {
         <button
           type="button"
           onClick={handleClick}
-          className="mr-1.5 flex items-center gap-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary hover:bg-primary/25 transition-colors cursor-pointer"
+          disabled={busy}
+          data-testid="host-update-indicator"
+          className="mr-1.5 flex items-center gap-1 rounded-md bg-primary/15 px-1.5 py-0.5 text-[0.625rem] font-medium text-primary hover:bg-primary/25 transition-colors cursor-pointer disabled:opacity-70 disabled:cursor-default"
         >
           <ArrowUpCircle className="size-3.5" />
-          Server update
+          {label}
         </button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">
-        {pending.canUpdate
-          ? `Update jean-server to v${pending.latestVersion} (currently v${pending.currentVersion})`
-          : `jean-server v${pending.latestVersion} available — ${pending.reason || 'manual update required'}`}
-      </TooltipContent>
+      <TooltipContent side="bottom">{tooltip}</TooltipContent>
     </Tooltip>
   )
 }

@@ -21,9 +21,20 @@ describe('web connection header', () => {
     expect(source).not.toContain('native && isLinux')
   })
 
-  it('shows a sticky jean-server update control in the title bar', () => {
+  it('shows a sticky host update control in the title bar', () => {
     expect(source).toContain('ServerUpdateIndicator')
     expect(source).toContain('pendingServerUpdate')
-    expect(source).toContain('Server update')
+    expect(source).toContain('hostUpdateBadge')
+  })
+
+  it('never renders a host update as this app own update', () => {
+    // `Update available` belongs to UpdateIndicator (pendingUpdateVersion).
+    // Labelling a host update that way is the bug this split fixed.
+    const hostIndicator = source.slice(
+      source.indexOf('export function ServerUpdateIndicator'),
+      source.indexOf('export function UpdateIndicator')
+    )
+    expect(hostIndicator).not.toContain('Update available')
+    expect(hostIndicator).not.toContain('pendingUpdateVersion')
   })
 })

@@ -67,6 +67,7 @@ import {
 import { useGrokCliStatus, useGrokCliAuth } from './services/grok-cli'
 import { useKimiCliStatus, useKimiCliAuth } from './services/kimi-cli'
 import { useUIStore } from './store/ui-store'
+import type { HostInstallPhase } from './store/ui-store'
 import {
   resolveInstallPendingAction,
   shouldOfferUpdateCheck,
@@ -230,21 +231,22 @@ function App() {
     await relaunch()
   }, [])
 
+  /** Returns whether the package is on disk and the app can relaunch. */
   const installAppUpdate = useCallback(
     async (update: {
       version: string
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       downloadAndInstall: (cb: (event: any) => void) => Promise<void>
-    }) => {
+    }): Promise<boolean> => {
       const ui = useUIStore.getState()
 
       // Already installed this session — only relaunch is needed (#507).
       if (ui.updateReadyVersion) {
         await relaunchApp()
-        return
+        return true
       }
       if (ui.isUpdateInstalling) {
-        return
+        return false
       }
 
       let totalBytes = 0
@@ -311,6 +313,7 @@ function App() {
             },
           },
         })
+        return true
       } catch (updateError) {
         const errorStr = String(updateError)
         logger.error(`Update installation failed: ${errorStr}`)
@@ -329,6 +332,7 @@ function App() {
             duration: 8000,
           })
         }
+        return false
       }
     },
     [relaunchApp]
@@ -337,9 +341,31 @@ function App() {
   /** Native shell: run Tauri updater when a web client requests desktop install. */
   const runNativeDesktopUpdateInstall = useCallback(async () => {
     if (!isNativeApp()) return
+    // The requester is on another machine and cannot see this app's toasts, so
+    // every outcome goes back over the WebSocket as an install phase.
+    const report = (
+      phase: HostInstallPhase,
+      version?: string,
+      message?: string
+    ) => {
+      void invoke('report_host_update_state', {
+        phase,
+        version: version ?? null,
+        message: message ?? null,
+      }).catch(error => {
+        logger.warn('Failed to report host update state', { error })
+      })
+    }
     try {
       if (pendingUpdateRef.current) {
-        await installAppUpdate(pendingUpdateRef.current)
+        const version = pendingUpdateRef.current.version as string
+        report('downloading', version)
+        const installed = await installAppUpdate(pendingUpdateRef.current)
+        report(
+          installed ? 'ready' : 'failed',
+          version,
+          installed ? undefined : 'The host could not install the update'
+        )
         return
       }
       const { check } = await import('@tauri-apps/plugin-updater')
@@ -348,13 +374,21 @@ function App() {
         toast.success('You are running the latest version')
         useUIStore.getState().setPendingUpdateVersion(null)
         useUIStore.getState().setUpdateModalVersion(null)
+        report('idle')
         return
       }
       pendingUpdateRef.current = update
-      await installAppUpdate(update)
+      report('downloading', update.version)
+      const installed = await installAppUpdate(update)
+      report(
+        installed ? 'ready' : 'failed',
+        update.version,
+        installed ? undefined : 'The host could not install the update'
+      )
     } catch (error) {
       logger.error('Host-requested desktop update failed', { error })
       toast.error(`Update failed: ${String(error)}`, { duration: 8000 })
+      report('failed', undefined, String(error))
     }
   }, [installAppUpdate])
 
@@ -1419,21 +1453,14 @@ function App() {
         onInstallAppUpdate(pendingUpdateRef.current)
         return
       }
-      // Already downloading — ignore duplicate install triggers (#507)
-      if (ui.isUpdateInstalling) return
-
-      // Web / remote: ask the host to install (desktop event or jean-server binary)
-      const version =
-        ui.pendingUpdateVersion || ui.updateModalVersion
-      if (!version) {
+      // Already downloading — ignore duplicate install triggers (#507).
+      // Host updates never reach here: they live in `pendingServerUpdate` and
+      // are applied from the host-update badge, not this app-update state.
+      if (!ui.isUpdateInstalling) {
         logger.warn(
           'install-pending-update fired with no version or update object'
         )
-        return
       }
-      void import('@/hooks/useServerUpdateCheck').then(({ applyServerUpdate }) =>
-        applyServerUpdate(version)
-      )
     }
     window.addEventListener('install-pending-update', handleInstallPending)
 
@@ -1665,6 +1692,20 @@ function App() {
     })
     return () => unlisten?.()
   }, [runNativeDesktopUpdateInstall])
+
+  // The download finished on this host and the remote client confirmed the
+  // restart. Nobody is here to click "Restart", so apply it now.
+  useEffect(() => {
+    if (!isNativeApp()) return
+    let unlisten: (() => void) | undefined
+    listen<{ version?: string }>('host:relaunch-after-update', () => {
+      if (!isLocalBackend()) return
+      void relaunchApp()
+    }).then(fn => {
+      unlisten = fn
+    })
+    return () => unlisten?.()
+  }, [relaunchApp])
 
   // Show loading screen while preloading initial data (web view only).
   // QuitConfirmationDialog stays mounted so X/quit can still confirm or

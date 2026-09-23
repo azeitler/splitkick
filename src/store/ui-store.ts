@@ -64,11 +64,29 @@ export interface PendingCliUpdate {
 }
 
 /** Sticky jean-server update offer for remote / Web Access clients. */
+/** How far a remotely requested install has got on a desktop host. */
+export type HostInstallPhase =
+  | 'idle'
+  | 'requested'
+  | 'downloading'
+  | 'ready'
+  | 'failed'
+
 export interface PendingServerUpdate {
   latestVersion: string
   currentVersion: string
   canUpdate: boolean
   reason?: string | null
+  /**
+   * `desktop` = the host is a native Jean app updated by its own Tauri
+   * updater; `server` = a headless jean-server that replaces its binary.
+   * Both are the *host*, never this client's own app update.
+   */
+  channel: 'server' | 'desktop'
+  /** Desktop hosts only — drives the badge between offer and restart. */
+  hostInstallPhase: HostInstallPhase
+  /** Failure reason from the host install, when the phase is `failed`. */
+  hostInstallMessage?: string | null
 }
 
 export type CliLoginModalType =
@@ -211,8 +229,9 @@ interface UIState {
   /** True while downloadAndInstall is in progress */
   isUpdateInstalling: boolean
   /**
-   * Pending jean-server update (remote / Web Access) — sticky title-bar
-   * indicator so dismissing the toast does not lose the offer.
+   * Pending update of the *host* this client is connected to (remote / Web
+   * Access), headless or desktop — sticky title-bar indicator so dismissing
+   * the toast does not lose the offer. Never this app's own update.
    */
   pendingServerUpdate: PendingServerUpdate | null
   /** CLI updates detected — shown as badge+popover in title bar */
@@ -1358,7 +1377,10 @@ export const useUIStore = create<UIState>()(
               prev.latestVersion === update.latestVersion &&
               prev.currentVersion === update.currentVersion &&
               prev.canUpdate === update.canUpdate &&
-              prev.reason === update.reason
+              prev.reason === update.reason &&
+              prev.channel === update.channel &&
+              prev.hostInstallPhase === update.hostInstallPhase &&
+              prev.hostInstallMessage === update.hostInstallMessage
             ) {
               return state
             }

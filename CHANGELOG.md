@@ -34,6 +34,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A remote Jean no longer shows a permanent "Update available".** The badge
+  meant the *host* you are connected to needed updating, but it used the same
+  wording and the same place as this app's own update, so it read as a phantom
+  offer while the local app was current. It now says **Host update**, names the
+  host version in the tooltip, and follows the install: *Updating host…*, then
+  **Restart host** once the download is done — the host cannot ask anyone to
+  restart it, because nobody is sitting there. Requesting an update no longer
+  reports success before anything is installed, a host busy with sessions says
+  so and keeps the offer, and the badge disappears by itself once the host runs
+  the new version.
+
 - **Letting go of the right button no longer runs a context-menu item.** Near
   the bottom of the window the menu moves up to fit on screen, which put an
   item right under the pointer. Releasing the button then ran that item and
