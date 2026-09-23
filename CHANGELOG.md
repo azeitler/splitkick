@@ -34,6 +34,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Letting go of the right button no longer runs a context-menu item.** Near
+  the bottom of the window the menu moves up to fit on screen, which put an
+  item right under the pointer. Releasing the button then ran that item and
+  closed the menu, so you could archive or delete a session you only wanted to
+  right-click. A menu now ignores the release that opened it, and waits for you
+  to choose. Clicking an item, and holding the button down and letting go on an
+  item, both still select it.
+
+- **A long context menu now scrolls.** A menu taller than the space left below
+  it was cut off, so the last items — Archive and Delete Session — could not be
+  reached.
+
 - **A Markdown file in the browser pane is no longer covered by another tab.**
   With more than one tab open, the page of a tab you were not looking at could
   sit on top of a Markdown or text file, so the document was hidden behind a
