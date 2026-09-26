@@ -1615,11 +1615,9 @@ export function useDeleteWorktree() {
       // Cleanup terminal instances for this worktree
       disposeAllWorktreeTerminals(worktreeId)
 
-      // Clear chat if the deleted worktree was active
-      const { activeWorktreeId, clearActiveWorktree } = useChatStore.getState()
-      if (activeWorktreeId === worktreeId) {
-        clearActiveWorktree()
-      }
+      // Close the chat on it and drop it from the launch-restore maps, so
+      // the next start does not resolve a worktree the canvas cannot show.
+      useChatStore.getState().forgetWorktree(worktreeId)
 
       // Clear selection if this worktree was selected
       const { selectedWorktreeId, selectWorktree } = useProjectsStore.getState()
@@ -1687,11 +1685,9 @@ export function useArchiveWorktree() {
       // Cleanup terminal instances for this worktree
       disposeAllWorktreeTerminals(worktreeId)
 
-      // Clear chat if this worktree was active
-      const { activeWorktreeId, clearActiveWorktree } = useChatStore.getState()
-      if (activeWorktreeId === worktreeId) {
-        clearActiveWorktree()
-      }
+      // Close the chat on it and drop it from the launch-restore maps, so
+      // the next start does not resolve a worktree the canvas cannot show.
+      useChatStore.getState().forgetWorktree(worktreeId)
 
       // Clear selection if this worktree was selected
       const { selectedWorktreeId, selectWorktree } = useProjectsStore.getState()
@@ -1832,9 +1828,13 @@ export function usePermanentlyDeleteWorktree() {
       logger.info('Worktree permanently deleted')
       return worktreeId
     },
-    onSuccess: () => {
+    onSuccess: worktreeId => {
       // Invalidate archived worktrees query (event listener will also handle this)
       queryClient.invalidateQueries({ queryKey: ['archived-worktrees'] })
+
+      // Close the chat on it and drop it from the launch-restore maps, so
+      // the next start does not resolve a worktree the canvas cannot show.
+      useChatStore.getState().forgetWorktree(worktreeId)
       toast.success('Worktree permanently deleted')
     },
     onError: error => {
@@ -1932,11 +1932,9 @@ export function useCloseBaseSession() {
       // Cleanup terminal instances for this worktree
       disposeAllWorktreeTerminals(worktreeId)
 
-      // Clear chat if the closed session was active
-      const { activeWorktreeId, clearActiveWorktree } = useChatStore.getState()
-      if (activeWorktreeId === worktreeId) {
-        clearActiveWorktree()
-      }
+      // Close the chat on it and drop it from the launch-restore maps, so
+      // the next start does not resolve a worktree the canvas cannot show.
+      useChatStore.getState().forgetWorktree(worktreeId)
 
       toast.success('Session closed')
     },
@@ -1983,11 +1981,9 @@ export function useCloseBaseSessionClean() {
       // Cleanup terminal instances for this worktree
       disposeAllWorktreeTerminals(worktreeId)
 
-      // Clear chat if the closed session was active
-      const { activeWorktreeId, clearActiveWorktree } = useChatStore.getState()
-      if (activeWorktreeId === worktreeId) {
-        clearActiveWorktree()
-      }
+      // Close the chat on it and drop it from the launch-restore maps, so
+      // the next start does not resolve a worktree the canvas cannot show.
+      useChatStore.getState().forgetWorktree(worktreeId)
 
       toast.success('Session closed')
     },
@@ -2033,11 +2029,9 @@ export function useCloseBaseSessionArchive() {
       // Cleanup terminal instances for this worktree
       disposeAllWorktreeTerminals(worktreeId)
 
-      // Clear chat if the closed session was active
-      const { activeWorktreeId, clearActiveWorktree } = useChatStore.getState()
-      if (activeWorktreeId === worktreeId) {
-        clearActiveWorktree()
-      }
+      // Close the chat on it and drop it from the launch-restore maps, so
+      // the next start does not resolve a worktree the canvas cannot show.
+      useChatStore.getState().forgetWorktree(worktreeId)
 
       toast.success('Session archived & closed')
     },

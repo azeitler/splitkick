@@ -1330,6 +1330,84 @@ describe('ChatStore', () => {
     })
   })
 
+  describe('launch-restore cleanup', () => {
+    beforeEach(() => {
+      useChatStore.setState({
+        activeWorktreeId: 'worktree-1',
+        activeWorktreePath: '/tmp/worktree-1',
+        lastActiveWorktreeId: 'worktree-1',
+        activeSessionIds: {
+          'worktree-1': 'session-1',
+          'worktree-2': 'session-2',
+        },
+        worktreePaths: {
+          'worktree-1': '/tmp/worktree-1',
+          'worktree-2': '/tmp/worktree-2',
+        },
+        sessionWorktreeMap: {
+          'session-1': 'worktree-1',
+          'session-2': 'worktree-2',
+        },
+        lastOpenedPerProject: {
+          'project-1': { worktreeId: 'worktree-1', sessionId: 'session-1' },
+          'project-2': { worktreeId: 'worktree-2', sessionId: 'session-2' },
+        },
+      })
+    })
+
+    it('forgets every reference to a removed worktree', () => {
+      useChatStore.getState().forgetWorktree('worktree-1')
+
+      const state = useChatStore.getState()
+      expect(state.activeSessionIds).toEqual({ 'worktree-2': 'session-2' })
+      expect(state.worktreePaths).toEqual({ 'worktree-2': '/tmp/worktree-2' })
+      expect(state.sessionWorktreeMap).toEqual({ 'session-2': 'worktree-2' })
+      expect(state.lastOpenedPerProject).toEqual({
+        'project-2': { worktreeId: 'worktree-2', sessionId: 'session-2' },
+      })
+      expect(state.activeWorktreeId).toBeNull()
+      expect(state.activeWorktreePath).toBeNull()
+      expect(state.lastActiveWorktreeId).toBeNull()
+    })
+
+    it('leaves the state untouched for a worktree it does not know', () => {
+      const before = useChatStore.getState()
+
+      useChatStore.getState().forgetWorktree('worktree-unknown')
+
+      const after = useChatStore.getState()
+      expect(after.activeSessionIds).toBe(before.activeSessionIds)
+      expect(after.worktreePaths).toBe(before.worktreePaths)
+      expect(after.sessionWorktreeMap).toBe(before.sessionWorktreeMap)
+      expect(after.lastOpenedPerProject).toBe(before.lastOpenedPerProject)
+    })
+
+    it('drops a closed session from the last-opened map', () => {
+      useChatStore
+        .getState()
+        .clearSessionState('session-1', { removeReferences: true })
+
+      const state = useChatStore.getState()
+      expect(state.lastOpenedPerProject).toEqual({
+        'project-2': { worktreeId: 'worktree-2', sessionId: 'session-2' },
+      })
+      expect(state.sessionWorktreeMap).toEqual({ 'session-2': 'worktree-2' })
+    })
+
+    it('keeps a session that only had its history cleared', () => {
+      useChatStore.getState().clearSessionState('session-1')
+
+      const state = useChatStore.getState()
+      expect(state.lastOpenedPerProject['project-1']).toEqual({
+        worktreeId: 'worktree-1',
+        sessionId: 'session-1',
+      })
+      expect(state.sessionWorktreeMap['session-1']).toBe('worktree-1')
+      // The session is still open, so the worktree keeps pointing at it.
+      expect(state.activeSessionIds['worktree-1']).toBe('session-1')
+    })
+  })
+
   describe('input drafts', () => {
     it('sets and clears input draft', () => {
       const { setInputDraft, clearInputDraft } = useChatStore.getState()

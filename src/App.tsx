@@ -47,6 +47,7 @@ import MainWindow from './components/layout/MainWindow'
 import { ThemeProvider } from './components/ThemeProvider'
 import ErrorBoundary from './components/ErrorBoundary'
 import { shouldSurfaceGlobalError } from '@/lib/global-error-utils'
+import { relaunchAfterUIStateSave } from '@/lib/ui-state-relaunch'
 import { useClaudeCliStatus, useClaudeCliAuth } from './services/claude-cli'
 import {
   useCodexCliStatus,
@@ -228,7 +229,7 @@ function App() {
 
   const relaunchApp = useCallback(async () => {
     const { relaunch } = await import('@tauri-apps/plugin-process')
-    await relaunch()
+    await relaunchAfterUIStateSave(relaunch)
   }, [])
 
   /** Returns whether the package is on disk and the app can relaunch. */

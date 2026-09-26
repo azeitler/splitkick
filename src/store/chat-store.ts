@@ -379,6 +379,8 @@ interface ChatUIState {
     worktreeId: string,
     sessionId: string
   ) => void
+  /** Drop every reference to a worktree that was archived or deleted. */
+  forgetWorktree: (worktreeId: string) => void
   registerWorktreePath: (worktreeId: string, path: string) => void
   getWorktreePath: (worktreeId: string) => string | undefined
 
@@ -701,7 +703,14 @@ interface ChatUIState {
   failSession: (sessionId: string) => void
 
   // Actions - Unified session state cleanup (for close/archive)
-  clearSessionState: (sessionId: string) => void
+  clearSessionState: (
+    sessionId: string,
+    /**
+     * Also drop the restore maps that name this session. Pass true when the
+     * session is gone (close, archive), false when it stays (clear history).
+     */
+    options?: { removeReferences?: boolean }
+  ) => void
 
   // Actions - Compaction tracking
   setCompacting: (sessionId: string, compacting: boolean) => void
@@ -1268,6 +1277,59 @@ export const useChatStore = create<ChatUIState>()(
           },
           undefined,
           'setLastOpenedForProject'
+        ),
+
+      // A removed worktree must not stay named in the restore maps: launch
+      // would resolve a worktree the canvas no longer shows and reopen
+      // nothing. Archive is included because an archived worktree is hidden
+      // too; unarchiving falls back to the worktree's first session.
+      forgetWorktree: worktreeId =>
+        set(
+          state => {
+            const updates: Partial<ChatUIState> = {}
+
+            if (worktreeId in state.activeSessionIds) {
+              const { [worktreeId]: _active, ...rest } = state.activeSessionIds
+              updates.activeSessionIds = rest
+            }
+            if (worktreeId in state.worktreePaths) {
+              const { [worktreeId]: _path, ...rest } = state.worktreePaths
+              updates.worktreePaths = rest
+            }
+
+            const mappedSessions = Object.entries(
+              state.sessionWorktreeMap
+            ).filter(([, mapped]) => mapped !== worktreeId)
+            if (
+              mappedSessions.length !==
+              Object.keys(state.sessionWorktreeMap).length
+            ) {
+              updates.sessionWorktreeMap = Object.fromEntries(mappedSessions)
+            }
+
+            const liveProjects = Object.entries(
+              state.lastOpenedPerProject
+            ).filter(([, entry]) => entry.worktreeId !== worktreeId)
+            if (
+              liveProjects.length !==
+              Object.keys(state.lastOpenedPerProject).length
+            ) {
+              updates.lastOpenedPerProject = Object.fromEntries(liveProjects)
+            }
+
+            if (state.activeWorktreeId === worktreeId) {
+              updates.activeWorktreeId = null
+              updates.activeWorktreePath = null
+            }
+            if (state.lastActiveWorktreeId === worktreeId) {
+              updates.lastActiveWorktreeId = null
+            }
+
+            // No reference: return the same state so no subscriber wakes.
+            return Object.keys(updates).length === 0 ? state : updates
+          },
+          undefined,
+          'forgetWorktree'
         ),
 
       registerWorktreePath: (worktreeId, path) =>
@@ -3533,7 +3595,7 @@ export const useChatStore = create<ChatUIState>()(
         ),
 
       // Unified session state cleanup (for close/archive)
-      clearSessionState: sessionId =>
+      clearSessionState: (sessionId, { removeReferences = false } = {}) =>
         set(
           state => {
             const { [sessionId]: _approved, ...restApproved } =
@@ -3576,7 +3638,34 @@ export const useChatStore = create<ChatUIState>()(
             const { [sessionId]: _checkedRows, ...restTableCheckedRows } =
               state.tableCheckedRows
 
+            // `lastOpenedPerProject` names a session by id, so a session that
+            // is gone has to leave it, or launch restore resolves a session
+            // the canvas cannot show and reopens nothing. Only when the
+            // session itself is gone — clearing its history keeps it.
+            // `activeSessionIds` is left to the caller, which already moves
+            // the worktree to the neighbouring session.
+            let lastOpenedPerProject = state.lastOpenedPerProject
+            let sessionWorktreeMap = state.sessionWorktreeMap
+            if (removeReferences) {
+              const liveProjects = Object.entries(
+                state.lastOpenedPerProject
+              ).filter(([, entry]) => entry.sessionId !== sessionId)
+              if (
+                liveProjects.length !==
+                Object.keys(state.lastOpenedPerProject).length
+              ) {
+                lastOpenedPerProject = Object.fromEntries(liveProjects)
+              }
+              if (sessionId in state.sessionWorktreeMap) {
+                const { [sessionId]: _mapped, ...rest } =
+                  state.sessionWorktreeMap
+                sessionWorktreeMap = rest
+              }
+            }
+
             return {
+              lastOpenedPerProject,
+              sessionWorktreeMap,
               approvedTools: restApproved,
               pendingPermissionDenials: restDenials,
               pendingCodexCommandApprovalRequests: restCommandReqs,

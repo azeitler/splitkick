@@ -1158,7 +1158,9 @@ export function useCloseSession() {
       queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
 
       // Clear all session-scoped state
-      useChatStore.getState().clearSessionState(sessionId)
+      useChatStore
+        .getState()
+        .clearSessionState(sessionId, { removeReferences: true })
       clearSessionScrollState(sessionId)
       cleanupSessionTerminalForRemovedSession(worktreeId, sessionId)
 
@@ -1236,7 +1238,9 @@ export function useArchiveSession() {
       queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
 
       // Clear all session-scoped state
-      useChatStore.getState().clearSessionState(sessionId)
+      useChatStore
+        .getState()
+        .clearSessionState(sessionId, { removeReferences: true })
       clearSessionScrollState(sessionId)
       cleanupSessionTerminalForRemovedSession(worktreeId, sessionId)
 

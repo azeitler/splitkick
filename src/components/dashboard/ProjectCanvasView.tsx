@@ -426,6 +426,18 @@ function isLabelFilterTabItem(
   return isLabelFilterTab(tab.value)
 }
 
+/**
+ * The launch restore decision is made once, from the first render that holds a
+ * populated canvas. Preferences are a separate query and can still be loading
+ * then, which would read `restore_last_session` as `false` and silently drop
+ * the reopen.
+ */
+export function shouldWaitForCanvasRestorePreferences(
+  preferences: { restore_last_session: boolean } | undefined
+): boolean {
+  return preferences === undefined
+}
+
 function getActiveStatus(cards: SessionCardData[]): ActiveStatus {
   // Actionable waiting (plan/input/permission/codex queues) collapses only at
   // the worktree *summary* level — individual cards keep distinct statuses.
@@ -2121,6 +2133,11 @@ export function ProjectCanvasView({
   // Auto-select session when dashboard opens (visual selection only, no modal unless restore_last_session is on)
   // Prefers last opened per project, then persisted active session per worktree, falls back to first card
   useEffect(() => {
+    // The canvas data can already be cached when the user returns from a
+    // remote project, and the bootstrap seeds every session list in one
+    // round-trip. Do not make the one-time reopen decision before local
+    // preferences have loaded, or `restore_last_session` is treated as false.
+    if (shouldWaitForCanvasRestorePreferences(preferences)) return
     if (selectedIndex !== null || selectedWorktreeModal) return
     if (flatCards.length === 0) return
 
@@ -2176,7 +2193,10 @@ export function ProjectCanvasView({
       }
     }
 
-    // Second: check the last active worktree's session
+    // Second: check the last active worktree's session. That is a real last
+    // active session, so it reopens like the last opened one. The two
+    // fallbacks below are selection only — neither names a session the user
+    // left open, and opening an arbitrary one on launch would be wrong.
     if (targetIndex === -1 && lastActiveWorktreeId) {
       const lastActiveSessionId = activeSessionIds[lastActiveWorktreeId]
       if (lastActiveSessionId) {
@@ -2187,6 +2207,9 @@ export function ProjectCanvasView({
             fc.card.session.id === lastActiveSessionId
           ) {
             targetIndex = fc.globalIndex
+            if (preferences?.restore_last_session) {
+              shouldAutoOpenModal = true
+            }
             break
           }
         }
@@ -2245,7 +2268,7 @@ export function ProjectCanvasView({
     selectedIndex,
     selectedWorktreeModal,
     projectId,
-    preferences?.restore_last_session,
+    preferences,
     openWorktreeModal,
   ])
 

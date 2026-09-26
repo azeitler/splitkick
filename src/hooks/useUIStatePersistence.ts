@@ -15,6 +15,8 @@ import { isLocalBackend } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import { getCurrentUIState } from '@/lib/ui-state-snapshot'
+import { flushUIState } from '@/lib/ui-state-flush'
+import { registerUIStateRelaunchSaver } from '@/lib/ui-state-relaunch'
 import type { BrowserTab } from '@/types/browser'
 import type {
   PendingImage,
@@ -23,26 +25,44 @@ import type {
 } from '@/types/chat'
 import { isMobileTab, type UIState } from '@/types/ui-state'
 
-// Simple debounce implementation
+// Simple debounce implementation.
+// `flush` applies the pending call now, so a save that is still waiting out its
+// delay is not lost when the window closes or the app relaunches. The latest
+// args are kept outside the timer closure so a flush writes the newest
+// snapshot, not the one the timer happened to capture.
 function debounce<T extends (...args: Parameters<T>) => void>(
   fn: T,
   delay: number
-): T & { cancel: () => void } {
+): T & { cancel: () => void; flush: () => void } {
   let timeoutId: ReturnType<typeof setTimeout> | null = null
+  let pendingArgs: unknown[] | null = null
 
   const debounced = ((...args: Parameters<T>) => {
     if (timeoutId) clearTimeout(timeoutId)
+    pendingArgs = args
     timeoutId = setTimeout(() => {
-      fn(...args)
       timeoutId = null
+      const argsToApply = pendingArgs
+      pendingArgs = null
+      if (argsToApply) fn(...(argsToApply as Parameters<T>))
     }, delay)
-  }) as T & { cancel: () => void }
+  }) as T & { cancel: () => void; flush: () => void }
 
   debounced.cancel = () => {
     if (timeoutId) {
       clearTimeout(timeoutId)
       timeoutId = null
     }
+    pendingArgs = null
+  }
+
+  debounced.flush = () => {
+    if (timeoutId === null || pendingArgs === null) return
+    clearTimeout(timeoutId)
+    timeoutId = null
+    const argsToApply = pendingArgs
+    pendingArgs = null
+    fn(...(argsToApply as Parameters<T>))
   }
 
   return debounced
@@ -73,9 +93,35 @@ export function useUIStatePersistence() {
     }, 500)
 
     return () => {
-      debouncedSaveRef.current?.cancel()
+      debouncedSaveRef.current?.flush()
     }
   }, [saveUIState])
+
+  // The last active session is part of the debounced snapshot. Flush it when
+  // the window is closing, so a session switch made in the last 500 ms is
+  // still there on the next launch.
+  useEffect(() => {
+    const flushPendingSave = () => {
+      debouncedSaveRef.current?.flush()
+    }
+
+    window.addEventListener('beforeunload', flushPendingSave)
+    window.addEventListener('pagehide', flushPendingSave)
+    return () => {
+      window.removeEventListener('beforeunload', flushPendingSave)
+      window.removeEventListener('pagehide', flushPendingSave)
+    }
+  }, [])
+
+  // An in-app relaunch (update install) tears the webview down without a
+  // close event, so it asks for the write itself and waits for it.
+  useEffect(() => {
+    registerUIStateRelaunchSaver(async () => {
+      debouncedSaveRef.current?.cancel()
+      await flushUIState()
+    })
+    return () => registerUIStateRelaunchSaver(null)
+  }, [])
 
   // Step 1: Initialize stores from persisted state (once, when projects are loaded)
   useEffect(() => {
@@ -1215,7 +1261,7 @@ export function useUIStatePersistence() {
       unsubChat()
       unsubTerminal()
       unsubBrowser()
-      debouncedSaveRef.current?.cancel()
+      debouncedSaveRef.current?.flush()
       logger.debug('UI state persistence subscriptions cleaned up')
     }
   }, [isInitialized])

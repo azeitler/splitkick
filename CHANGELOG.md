@@ -44,6 +44,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Restarting Jean opens the session you left, not just the project.** The
+  app came back on the project page with nothing open, although "Restore last
+  session" was on. The project page loads its worktrees and their sessions in
+  one go, so it could be ready before Jean had read your settings — and an
+  unread setting counts as off, after which the decision was already made and
+  never taken again. Jean now waits for the settings before it decides. Two
+  further gaps went with it: a session you switched to in the last half second
+  before quitting was never written down, and so was lost on the next start;
+  and a session or workspace you had closed, archived or deleted stayed on
+  record as the last one open, which restored nothing at all.
+
 - **A remote Jean no longer shows a permanent "Update available".** The badge
   meant the _host_ you are connected to needed updating, but it used the same
   wording and the same place as this app's own update, so it read as a phantom

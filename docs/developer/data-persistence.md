@@ -532,6 +532,35 @@ const unsubProjects = useProjectsStore.subscribe(state => {
 })
 ```
 
+### Restoring the Last Active Session
+
+The session the user left is restored from three fields of the blob:
+`active_project_id`, `active_session_ids` (worktree → session) and
+`last_opened_per_project` (project → `{worktree_id, session_id}`).
+
+Two rules keep this working:
+
+**Write the pending snapshot before the app dies.** The 500 ms debounce is too
+slow for "switch session, then quit". `debounce()` therefore exposes `flush()`,
+and `useUIStatePersistence` calls it on `beforeunload`, on `pagehide`, and in
+both teardowns. An in-app relaunch has no close event, so `App.relaunchApp`
+goes through `relaunchAfterUIStateSave()` (`src/lib/ui-state-relaunch.ts`),
+which awaits `flushUIState()` and relaunches from a `finally` either way.
+
+**Decide with complete data.** `ProjectCanvasView`'s restore effect is
+one-shot: it commits `setSelectedIndex`, and every later run returns at the
+`selectedIndex !== null` guard. `bootstrap_project` seeds the worktree list and
+every session list in one round-trip, so the canvas can be fully populated
+while `usePreferences()` is still loading — and `restore_last_session` would
+read as `false`. `shouldWaitForCanvasRestorePreferences(preferences)` holds the
+decision until preferences land.
+
+Dead ids must leave the maps, or restore resolves a session the canvas cannot
+show and silently opens nothing: `useChatStore.forgetWorktree(worktreeId)` runs
+from every worktree removal in `src/services/projects.ts`, and
+`clearSessionState(sessionId, { removeReferences: true })` from session close
+and archive — but not from "clear history", where the session stays.
+
 ### Keybindings Persistence
 
 Keybindings are stored in preferences.json with a migration pattern:
