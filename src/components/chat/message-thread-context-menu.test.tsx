@@ -427,6 +427,28 @@ describe('MessageThreadContextMenu — Reveal in the file manager', () => {
     )
   })
 
+  // The backend looked and found nothing, so Reveal could only raise an error
+  // toast. The fallback join covers the resolving state, not this verdict.
+  it('offers no reveal for a file the backend reports as missing', async () => {
+    mocks.invoke.mockImplementation(async (command: string) =>
+      command === 'resolve_file_reference'
+        ? { path: null, candidates: [], searched: true }
+        : undefined
+    )
+    openMenuOn('gone', 'docs/gone.md')
+
+    expect(
+      await screen.findByRole('menuitem', { name: /copy url/i })
+    ).toBeInTheDocument()
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith(
+        'resolve_file_reference',
+        expect.anything()
+      )
+    )
+    expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBeNull()
+  })
+
   it('offers no reveal for a web link', async () => {
     openMenuOn('the docs', 'https://example.com/docs')
 

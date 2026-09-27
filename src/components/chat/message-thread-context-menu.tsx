@@ -138,8 +138,11 @@ export function MessageThreadContextMenu({
   // Resolved, not joined: the reference may name a file outside the worktree,
   // or start with `~`. Falls back to the plain join while that is in flight.
   const reference = useFileReference(linkHref, { enabled: isLocalFileLink })
+  // The fallback join covers the resolving state, not a verdict: on `missing`
+  // the backend has looked and found nothing, so offering Reveal would only
+  // produce an error toast.
   const revealTarget =
-    isLocalFileLink && canOpenNativeApps()
+    isLocalFileLink && canOpenNativeApps() && reference.status !== 'missing'
       ? (reference.path ??
         resolveLocalPath(splitFileRefSuffix(linkHref)[0], rootPath))
       : null
