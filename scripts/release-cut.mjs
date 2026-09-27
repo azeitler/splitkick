@@ -86,6 +86,41 @@ export function cutChangelog(
   )
 }
 
+/**
+ * Tag refs on `origin`, over SSH or — when the key is locked — over the API.
+ *
+ * Only the remote knows which numbers are taken. Local tags can be behind, and
+ * cutting to a number another build already published is the mistake this
+ * script exists to stop, so a resolver that cannot reach the remote refuses
+ * instead of falling back to them.
+ */
+function remoteTags(cwd) {
+  try {
+    return listRemoteTags(cwd, { quiet: true })
+  } catch {
+    // `git ls-remote` needs the SSH key; an agent that has locked it fails
+    // here while `gh`, which holds its own token, still works.
+  }
+
+  try {
+    const out = execFileSync(
+      'gh',
+      ['api', '--paginate', `repos/${REPO}/tags`, '--jq', '.[].name'],
+      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+    )
+    return out.split('\n').filter(Boolean)
+  } catch {
+    console.error(
+      'Cannot read the tags on origin: `git ls-remote` failed (SSH key locked?) ' +
+        'and `gh api` did not work either.\n' +
+        'Only the remote knows which version numbers are taken, so this refuses ' +
+        'rather than cut to a number a build may already have published.\n' +
+        'Unlock your SSH key, or authenticate gh, then run it again.'
+    )
+    process.exit(1)
+  }
+}
+
 /** A CI build already running will take the next number before this cut does. */
 function runningBuild(cwd) {
   try {
@@ -122,7 +157,7 @@ function main() {
   const { version: upstream } = JSON.parse(
     readFileSync(resolve(root, 'src-tauri/tauri.conf.json'), 'utf8')
   )
-  const refs = listRemoteTags(root)
+  const refs = remoteTags(root)
   const version = nextVersion(upstream, refs)
   const previous = previousTag(refs)
 

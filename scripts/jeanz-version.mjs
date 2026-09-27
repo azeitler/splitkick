@@ -86,11 +86,17 @@ export function nextVersion(upstream, refs) {
   return `${upstream}-z.${highestSequence(refs) + 1}`
 }
 
-/** Tag refs on `origin`, read live — the only source that knows what is taken. */
-export function listRemoteTags(cwd) {
+/**
+ * Tag refs on `origin`, read live — the only source that knows what is taken.
+ *
+ * `quiet` hides git's stderr, for a caller that has a second way to read the
+ * tags and would otherwise print a scary failure before succeeding.
+ */
+export function listRemoteTags(cwd, { quiet = false } = {}) {
   const output = execFileSync('git', ['ls-remote', '--tags', 'origin'], {
     cwd,
     encoding: 'utf8',
+    ...(quiet ? { stdio: ['ignore', 'pipe', 'ignore'] } : {}),
   })
 
   // Every line is `<sha>\t<ref>`.
