@@ -91,4 +91,48 @@ describe('window-close helpers', () => {
     expect(mockDestroy).not.toHaveBeenCalled()
     expect(mockInvoke).not.toHaveBeenCalled()
   })
+
+  // The quit path destroys the webview, so no page unload fires. A session
+  // switch made in the last 500 ms only survives if the write finishes first.
+  it('writes the pending UI state before it destroys the window', async () => {
+    const { registerUIStateSaver } = await import('./ui-state-teardown')
+    const order: string[] = []
+    let finishSave: (() => void) | undefined
+    registerUIStateSaver(
+      () =>
+        new Promise<void>(resolve => {
+          order.push('save-started')
+          finishSave = () => {
+            order.push('save-finished')
+            resolve()
+          }
+        })
+    )
+    mockDestroy.mockImplementation(() => {
+      order.push('destroyed')
+      return Promise.resolve()
+    })
+
+    const { destroyAppWindow } = await import('./window-close')
+    const pending = destroyAppWindow()
+    await Promise.resolve()
+
+    expect(mockDestroy).not.toHaveBeenCalled()
+    finishSave?.()
+    await pending
+
+    expect(order).toEqual(['save-started', 'save-finished', 'destroyed'])
+    registerUIStateSaver(null)
+  })
+
+  it('still quits when the UI state write fails', async () => {
+    const { registerUIStateSaver } = await import('./ui-state-teardown')
+    registerUIStateSaver(() => Promise.reject(new Error('save failed')))
+
+    const { destroyAppWindow } = await import('./window-close')
+    await destroyAppWindow()
+
+    expect(mockDestroy).toHaveBeenCalledOnce()
+    registerUIStateSaver(null)
+  })
 })

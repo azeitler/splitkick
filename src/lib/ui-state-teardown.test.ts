@@ -1,19 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  flushUIStateBeforeRelaunch,
-  registerUIStateRelaunchSaver,
+  flushUIStateBeforeTeardown,
+  registerUIStateSaver,
   relaunchAfterUIStateSave,
-} from './ui-state-relaunch'
+} from './ui-state-teardown'
 
 describe('UI state persistence before relaunch', () => {
   beforeEach(() => {
-    registerUIStateRelaunchSaver(null)
+    registerUIStateSaver(null)
   })
 
   it('waits for the latest UI state to save before it relaunches', async () => {
     const order: string[] = []
     let finishSave: (() => void) | undefined
-    registerUIStateRelaunchSaver(
+    registerUIStateSaver(
       () =>
         new Promise<void>(resolve => {
           order.push('save-started')
@@ -41,14 +41,14 @@ describe('UI state persistence before relaunch', () => {
   it('does not block relaunch when persistence is not mounted', async () => {
     const relaunch = vi.fn().mockResolvedValue(undefined)
 
-    await flushUIStateBeforeRelaunch()
+    await flushUIStateBeforeTeardown()
     await relaunchAfterUIStateSave(relaunch)
 
     expect(relaunch).toHaveBeenCalledOnce()
   })
 
   it('still relaunches when the UI state save fails', async () => {
-    registerUIStateRelaunchSaver(() => Promise.reject(new Error('save failed')))
+    registerUIStateSaver(() => Promise.reject(new Error('save failed')))
     const relaunch = vi.fn().mockResolvedValue(undefined)
 
     await expect(relaunchAfterUIStateSave(relaunch)).rejects.toThrow(

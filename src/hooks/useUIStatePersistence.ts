@@ -16,7 +16,7 @@ import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
 import { getCurrentUIState } from '@/lib/ui-state-snapshot'
 import { flushUIState } from '@/lib/ui-state-flush'
-import { registerUIStateRelaunchSaver } from '@/lib/ui-state-relaunch'
+import { registerUIStateSaver } from '@/lib/ui-state-teardown'
 import type { BrowserTab } from '@/types/browser'
 import type {
   PendingImage,
@@ -116,11 +116,11 @@ export function useUIStatePersistence() {
   // An in-app relaunch (update install) tears the webview down without a
   // close event, so it asks for the write itself and waits for it.
   useEffect(() => {
-    registerUIStateRelaunchSaver(async () => {
+    registerUIStateSaver(async () => {
       debouncedSaveRef.current?.cancel()
       await flushUIState()
     })
-    return () => registerUIStateRelaunchSaver(null)
+    return () => registerUIStateSaver(null)
   }, [])
 
   // Step 1: Initialize stores from persisted state (once, when projects are loaded)

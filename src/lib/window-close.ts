@@ -12,11 +12,23 @@
  */
 
 import { hasBackend, isNativeApp } from './environment'
+import { logger } from './logger'
 import { invoke } from './transport'
+import { flushUIStateBeforeTeardown } from './ui-state-teardown'
 
 export const SESSION_CHECK_TIMEOUT_MS = 1500
 
 export async function destroyAppWindow(): Promise<void> {
+  // `destroy()` tears the webview down without a page unload, so neither
+  // `beforeunload` nor `pagehide` fires and a debounced UI-state write made in
+  // the last 500 ms would be lost — the session you switched to just before
+  // quitting would not be the one that reopens. Wait for that write first, and
+  // never let a failed one keep the window open.
+  try {
+    await flushUIStateBeforeTeardown()
+  } catch (error) {
+    logger.warn('UI state save before quit failed', { error })
+  }
   const { getCurrentWindow } = await import('@tauri-apps/api/window')
   await getCurrentWindow().destroy()
 }

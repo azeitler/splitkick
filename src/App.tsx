@@ -47,7 +47,7 @@ import MainWindow from './components/layout/MainWindow'
 import { ThemeProvider } from './components/ThemeProvider'
 import ErrorBoundary from './components/ErrorBoundary'
 import { shouldSurfaceGlobalError } from '@/lib/global-error-utils'
-import { relaunchAfterUIStateSave } from '@/lib/ui-state-relaunch'
+import { relaunchAfterUIStateSave } from '@/lib/ui-state-teardown'
 import { useClaudeCliStatus, useClaudeCliAuth } from './services/claude-cli'
 import {
   useCodexCliStatus,
