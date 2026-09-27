@@ -150,6 +150,25 @@ pub(crate) fn sanitize_forked_run(run: &mut RunEntry, now_ts: u64) {
     }
 }
 
+/// Drop the turn that is still in flight from the runs a fork copies.
+///
+/// A turn that runs while the user forks is half-written: the fork would show a
+/// partial answer, and Claude's transcript would hold the partial turn too. So the
+/// fork starts from the last finished turn. Only the last run can be in flight,
+/// because `run_log::start_run` refuses a second concurrent run.
+///
+/// Returns whether a run was dropped. The caller then must not use a native fork,
+/// since the backend's transcript still contains the dropped turn.
+pub(crate) fn drop_in_flight_run(runs: &mut Vec<RunEntry>) -> bool {
+    let in_flight = runs
+        .last()
+        .is_some_and(|run| matches!(run.status, RunStatus::Running | RunStatus::Resumable));
+    if in_flight {
+        runs.pop();
+    }
+    in_flight
+}
+
 /// Keep the runs a fork should inherit, given the message the user forked from.
 ///
 /// * `None` — keep every run (a plain fork of the whole session).
@@ -403,10 +422,6 @@ pub async fn fork_session_in_place(
 ) -> Result<Session, String> {
     log::trace!("Forking session {session_id} in place (worktree {worktree_id})");
 
-    if super::registry::is_session_actively_managed(&session_id) {
-        return Err("Cannot fork a session while it is running. Wait for the turn to finish, or cancel it first.".to_string());
-    }
-
     let sessions = storage::load_sessions_by_id(&app, &worktree_id)?;
     let source_session = sessions
         .find_session(&session_id)
@@ -421,12 +436,16 @@ pub async fn fork_session_in_place(
 
     let created_at = now();
     let mut kept_runs = truncate_runs_at_message(&source_runs, from_message_id.as_deref())?;
+    let dropped_in_flight = drop_in_flight_run(&mut kept_runs);
     for run in &mut kept_runs {
         sanitize_forked_run(run, created_at);
     }
     let kept_run_ids: Vec<String> = kept_runs.iter().map(|r| r.run_id.clone()).collect();
 
-    let strategy = fork_strategy(&source_session.backend, from_message_id.is_some());
+    let strategy = fork_strategy(
+        &source_session.backend,
+        from_message_id.is_some() || dropped_in_flight,
+    );
     let order = sessions.sessions.len() as u32;
     let mut forked_session = prepare_forked_session(&source_session, order, created_at, strategy);
     forked_session.message_count = Some(rendered_message_count(&kept_runs));
@@ -666,6 +685,53 @@ mod tests {
         let runs = three_runs();
         let error = truncate_runs_at_message(&runs, Some("nope")).expect_err("unknown id");
         assert!(error.contains("nope"), "{error}");
+    }
+
+    // ---- drop_in_flight_run --------------------------------------------
+
+    #[test]
+    fn drop_in_flight_removes_a_trailing_running_turn() {
+        for status in [RunStatus::Running, RunStatus::Resumable] {
+            let mut runs = three_runs();
+            runs[2].status = status;
+
+            assert!(drop_in_flight_run(&mut runs));
+            let ids: Vec<&str> = runs.iter().map(|r| r.run_id.as_str()).collect();
+            assert_eq!(
+                ids,
+                vec!["r1", "r2"],
+                "the fork starts from the last finished turn"
+            );
+        }
+    }
+
+    #[test]
+    fn drop_in_flight_keeps_finished_turns() {
+        for status in [
+            RunStatus::Completed,
+            RunStatus::Cancelled,
+            RunStatus::Crashed,
+        ] {
+            let mut runs = three_runs();
+            runs[2].status = status;
+
+            assert!(!drop_in_flight_run(&mut runs));
+            assert_eq!(runs.len(), 3);
+        }
+        assert!(!drop_in_flight_run(&mut Vec::new()));
+    }
+
+    #[test]
+    fn a_fork_taken_mid_turn_never_forks_claude_natively() {
+        let mut runs = three_runs();
+        runs[2].status = RunStatus::Running;
+        let dropped = drop_in_flight_run(&mut runs);
+
+        assert_eq!(
+            fork_strategy(&Backend::Claude, dropped),
+            PendingFork::Handoff,
+            "Claude's transcript holds the half-finished turn"
+        );
     }
 
     // ---- sanitize_forked_run -------------------------------------------

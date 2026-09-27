@@ -62,5 +62,6 @@ answer questions about the earlier conversation from the first message you send.
 
 ## Limits
 
-- You cannot fork a session while a turn is running. Wait for it to finish, or cancel it.
+- You can fork a session while a turn is running. The fork starts from the last finished
+  answer; the running turn stays in the original session only.
 - Forking from a message needs that message to be part of the session's stored history.

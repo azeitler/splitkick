@@ -2584,16 +2584,18 @@ pub async fn fork_session_to_worktree(
     let result = (|| -> Result<ForkSessionToWorktreeResponse, String> {
         copy_dirty_worktree_state(source_path, &worktree_path)?;
 
-        // A worktree fork always copies the whole history, so it may use the
-        // backend's own branch support when there is any (Claude --fork-session).
-        let strategy = fork::fork_strategy(&source_session.backend, false);
-        let mut forked_session =
-            fork::prepare_forked_session(&source_session, 0, created_at, strategy);
         let source_metadata = crate::chat::storage::load_metadata(&app, &source_session_id)?;
         let mut kept_runs = source_metadata
             .as_ref()
             .map(|metadata| metadata.runs.clone())
             .unwrap_or_default();
+        // A worktree fork copies the whole finished history, so it may use the
+        // backend's own branch support when there is any (Claude --fork-session) —
+        // unless a turn is in flight, which the backend's transcript already holds.
+        let dropped_in_flight = fork::drop_in_flight_run(&mut kept_runs);
+        let strategy = fork::fork_strategy(&source_session.backend, dropped_in_flight);
+        let mut forked_session =
+            fork::prepare_forked_session(&source_session, 0, created_at, strategy);
         for run in &mut kept_runs {
             fork::sanitize_forked_run(run, created_at);
         }

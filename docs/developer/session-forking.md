@@ -40,6 +40,16 @@ menu. All of them go through `useSessionFork()`.
 - A `Running` or `Resumable` status becomes `Crashed`. `run_log::start_run` refuses a
   second concurrent `Running` run, so without this the fork's very first send would fail.
 
+## Forking while a turn runs
+
+A fork is allowed while the source session runs. `drop_in_flight_run` removes the last
+run when it is `Running` or `Resumable`, so the fork starts from the last finished turn
+and never shows a half-written answer. The source turn is not touched.
+
+When a run was dropped, both fork shapes pass `truncated = true` to `fork_strategy`, so
+a Claude fork takes the handoff path: Claude's own transcript already holds the
+half-finished turn, and `--fork-session` would branch from it.
+
 ## Truncating at a message
 
 `truncate_runs_at_message(runs, message_id)` decides what the fork inherits:

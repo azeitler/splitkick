@@ -44,6 +44,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **You can fork a session while its turn is still running.** The in-place fork
+  refused with "Cannot fork a session while it is running". Now both fork
+  shapes start from the last finished answer and leave the running turn in the
+  original session. The worktree fork no longer copies the half-written turn as
+  a crashed one, and a Claude fork taken mid-turn no longer branches from it.
+
 - **Restarting Jean opens the session you left, not just the project.** The
   app came back on the project page with nothing open, although "Restore last
   session" was on. The project page loads its worktrees and their sessions in
