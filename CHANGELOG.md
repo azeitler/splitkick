@@ -17,6 +17,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   counts a pasted image or a pasted text file as a draft too — not only typed
   text. It goes as soon as the message is sent.
 
+- **Reveal a file from a chat answer in Finder.** Right-click a file path in an
+  answer and choose _Reveal in Finder_ — _Explorer_ on Windows, _Files_ on
+  Linux — to show the file in its folder. It reveals the file the reference
+  resolved to, so `~/Downloads/report.png` and a path inside a monorepo package
+  both land on the right one. The item appears only for a local file, and only
+  where Jean can reach that machine's file manager.
+
 ### Changed
 
 - **Picking a project in CMD+K opens the session you last had open there.**

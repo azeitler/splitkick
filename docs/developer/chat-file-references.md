@@ -81,6 +81,12 @@ expansion is noise, so the written form travels beside the resolved path:
   `~/a.png` as a host name.
 - `useUIStore.viewingFileLabel` feeds the file viewer's title and subtitle.
 
+`MessageThreadContextMenu` adds _Reveal in {file manager}_ for a local file
+link. It reveals `useFileReference().path`, falling back to the plain join
+while the resolution is in flight, and hides itself unless
+`canOpenNativeApps()` — a path on a remote backend's disk is not this
+machine's to reveal. `useRevealPathInFileManager()` does the work.
+
 The picker is the exception. It lists real files to choose between, so it
 shows where each one is, shortened against the shared root.
 

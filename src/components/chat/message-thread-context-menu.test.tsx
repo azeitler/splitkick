@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@/test/test-utils'
 import userEvent from '@testing-library/user-event'
 import type * as ChatLinks from '@/lib/chat-links'
 import type * as Environment from '@/lib/environment'
+import type * as Transport from '@/lib/transport'
+import { useChatStore } from '@/store/chat-store'
 import {
   getTrimmedSelectionText,
   MessageThreadContextMenu,
@@ -15,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   toastError: vi.fn(),
   openChatLink: vi.fn(),
   isLocalBackend: vi.fn(() => true),
+  invoke: vi.fn(),
 }))
 
 vi.mock('@/lib/clipboard', () => ({
@@ -30,6 +33,16 @@ vi.mock('@/lib/environment', async importOriginal => ({
   ...(await importOriginal<typeof Environment>()),
   isNativeApp: () => true,
   isLocalBackend: () => mocks.isLocalBackend(),
+  // The real one reads the module's own isLocalBackend, which the line above
+  // cannot reach.
+  canOpenNativeApps: () => mocks.isLocalBackend(),
+  // What `isTauri()` in services/projects really is: a backend exists.
+  hasBackend: () => true,
+}))
+
+vi.mock('@/lib/transport', async importOriginal => ({
+  ...(await importOriginal<typeof Transport>()),
+  invoke: (...args: unknown[]) => mocks.invoke(...args),
 }))
 
 vi.mock('sonner', () => ({
@@ -82,6 +95,9 @@ describe('MessageThreadContextMenu', () => {
     mocks.copyToClipboard.mockResolvedValue(undefined)
     mocks.openChatLink.mockReset()
     mocks.isLocalBackend.mockReturnValue(true)
+    mocks.invoke.mockReset()
+    mocks.invoke.mockResolvedValue(undefined)
+    useChatStore.setState({ activeWorktreePath: '/repo/wt' })
   })
 
   it('opens a web link in the default browser', async () => {
@@ -349,5 +365,100 @@ describe('MessageThreadContextMenu', () => {
     expect(item).toHaveAttribute('data-disabled')
 
     window.getSelection = original
+  })
+})
+
+describe('MessageThreadContextMenu — Reveal in the file manager', () => {
+  const REVEALED = '/repo/wt/docs/notes.md'
+
+  beforeEach(() => {
+    mocks.isLocalBackend.mockReturnValue(true)
+    mocks.invoke.mockReset()
+    mocks.invoke.mockImplementation(async (command: string) =>
+      command === 'resolve_file_reference'
+        ? { path: REVEALED, candidates: [REVEALED], searched: false }
+        : undefined
+    )
+    useChatStore.setState({ activeWorktreePath: '/repo/wt' })
+  })
+
+  const openMenuOn = (label: string, href: string) => {
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <a href={href}>{label}</a>
+      </MessageThreadContextMenu>
+    )
+    fireEvent.contextMenu(screen.getByText(label))
+  }
+
+  it('reveals the path the reference resolved to', async () => {
+    const user = userEvent.setup()
+    openMenuOn('notes', 'docs/notes.md')
+
+    await user.click(
+      await screen.findByRole('menuitem', { name: /reveal in/i })
+    )
+
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('reveal_path_in_file_manager', {
+        path: REVEALED,
+      })
+    )
+  })
+
+  it('reveals a home-relative reference where the backend expanded it', async () => {
+    const expanded = '/Users/me/Downloads/report.png'
+    mocks.invoke.mockImplementation(async (command: string) =>
+      command === 'resolve_file_reference'
+        ? { path: expanded, candidates: [expanded], searched: false }
+        : undefined
+    )
+    const user = userEvent.setup()
+    openMenuOn('report', '~/Downloads/report.png')
+
+    await user.click(
+      await screen.findByRole('menuitem', { name: /reveal in/i })
+    )
+
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('reveal_path_in_file_manager', {
+        path: expanded,
+      })
+    )
+  })
+
+  it('offers no reveal for a web link', async () => {
+    openMenuOn('the docs', 'https://example.com/docs')
+
+    await screen.findByRole('menuitem', { name: /open in default browser/i })
+    expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBeNull()
+  })
+
+  it('offers no reveal when the file is on another machine', async () => {
+    mocks.isLocalBackend.mockReturnValue(false)
+    openMenuOn('notes', 'docs/notes.md')
+
+    await screen.findByRole('menuitem', { name: /copy message/i })
+    expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBeNull()
+  })
+
+  it('falls back to the plain join while the resolution is in flight', async () => {
+    mocks.invoke.mockImplementation((command: string) =>
+      command === 'resolve_file_reference'
+        ? new Promise(() => undefined)
+        : Promise.resolve(undefined)
+    )
+    const user = userEvent.setup()
+    openMenuOn('notes', 'docs/notes.md')
+
+    await user.click(
+      await screen.findByRole('menuitem', { name: /reveal in/i })
+    )
+
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('reveal_path_in_file_manager', {
+        path: '/repo/wt/docs/notes.md',
+      })
+    )
   })
 })

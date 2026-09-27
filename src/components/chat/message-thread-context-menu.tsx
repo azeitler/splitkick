@@ -1,5 +1,5 @@
 import { useCallback, useContext, useState, type ReactElement } from 'react'
-import { Copy, ExternalLink, GitFork } from 'lucide-react'
+import { Copy, ExternalLink, FolderOpen, GitFork } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   ContextMenu,
@@ -14,7 +14,13 @@ import {
   classifyChatLink,
   LocalPathRootContext,
   openChatLink,
+  resolveLocalPath,
 } from '@/lib/chat-links'
+import { canOpenNativeApps } from '@/lib/environment'
+import { useFileReference } from '@/lib/file-reference'
+import { getFileManagerName } from '@/lib/platform'
+import { splitFileRefSuffix } from '@/lib/path-utils'
+import { useRevealPathInFileManager } from '@/services/projects'
 
 /** Read the current window selection as trimmed plain text. */
 export function getTrimmedSelectionText(): string {
@@ -127,6 +133,17 @@ export function MessageThreadContextMenu({
   const canOpenInDefaultBrowser =
     linkKind === 'web' ||
     (linkKind === 'page' && canOpenInEmbeddedBrowser(linkKind))
+
+  const isLocalFileLink = linkKind === 'page' || linkKind === 'file'
+  // Resolved, not joined: the reference may name a file outside the worktree,
+  // or start with `~`. Falls back to the plain join while that is in flight.
+  const reference = useFileReference(linkHref, { enabled: isLocalFileLink })
+  const revealTarget =
+    isLocalFileLink && canOpenNativeApps()
+      ? (reference.path ??
+        resolveLocalPath(splitFileRefSuffix(linkHref)[0], rootPath))
+      : null
+  const revealPath = useRevealPathInFileManager()
   const canCopyMessage = Boolean(onCopyMessage || messageText.trim())
   const canCopySelection = selection.length > 0
 
@@ -140,6 +157,12 @@ export function MessageThreadContextMenu({
           <ContextMenuItem onSelect={handleOpenInDefaultBrowser}>
             <ExternalLink className="h-4 w-4" />
             Open in Default Browser
+          </ContextMenuItem>
+        )}
+        {revealTarget && (
+          <ContextMenuItem onSelect={() => revealPath.mutate(revealTarget)}>
+            <FolderOpen className="h-4 w-4" />
+            Reveal in {getFileManagerName()}
           </ContextMenuItem>
         )}
         {linkUrl && (
