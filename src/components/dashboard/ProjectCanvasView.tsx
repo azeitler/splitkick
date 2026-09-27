@@ -431,11 +431,17 @@ function isLabelFilterTabItem(
  * populated canvas. Preferences are a separate query and can still be loading
  * then, which would read `restore_last_session` as `false` and silently drop
  * the reopen.
+ *
+ * Gated on `isPending`, not on `data === undefined`: a failed load leaves the
+ * data undefined for good, and waiting on that forever would leave the canvas
+ * with no selected row and no keyboard navigation at all. A failed load falls
+ * through and reads the default instead.
  */
-export function shouldWaitForCanvasRestorePreferences(
-  preferences: { restore_last_session: boolean } | undefined
-): boolean {
-  return preferences === undefined
+export function shouldWaitForCanvasRestorePreferences(preferencesQuery: {
+  data: { restore_last_session: boolean } | undefined
+  isPending: boolean
+}): boolean {
+  return preferencesQuery.isPending
 }
 
 function getActiveStatus(cards: SessionCardData[]): ActiveStatus {
@@ -982,7 +988,8 @@ export function ProjectCanvasView({
   mobilePresentation,
   onDismiss,
 }: ProjectCanvasViewProps) {
-  const { data: preferences } = usePreferences()
+  const preferencesQuery = usePreferences()
+  const preferences = preferencesQuery.data
   const worktreeSortMode = useProjectsStore(
     state =>
       state.projectCanvasSettings[projectId]?.worktreeSortMode ?? 'created'
@@ -2137,7 +2144,7 @@ export function ProjectCanvasView({
     // remote project, and the bootstrap seeds every session list in one
     // round-trip. Do not make the one-time reopen decision before local
     // preferences have loaded, or `restore_last_session` is treated as false.
-    if (shouldWaitForCanvasRestorePreferences(preferences)) return
+    if (shouldWaitForCanvasRestorePreferences(preferencesQuery)) return
     if (selectedIndex !== null || selectedWorktreeModal) return
     if (flatCards.length === 0) return
 

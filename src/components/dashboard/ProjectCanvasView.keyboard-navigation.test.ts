@@ -24,9 +24,25 @@ describe('ProjectCanvasView session restoration', () => {
   const source = readFileSync(join(__dirname, 'ProjectCanvasView.tsx'), 'utf-8')
 
   it('waits for preferences before deciding whether to reopen a session', () => {
-    expect(shouldWaitForCanvasRestorePreferences(undefined)).toBe(true)
     expect(
-      shouldWaitForCanvasRestorePreferences({ restore_last_session: true })
+      shouldWaitForCanvasRestorePreferences({
+        data: undefined,
+        isPending: true,
+      })
+    ).toBe(true)
+    expect(
+      shouldWaitForCanvasRestorePreferences({
+        data: { restore_last_session: true },
+        isPending: false,
+      })
+    ).toBe(false)
+    // A failed load never settles into data, so waiting on it would leave the
+    // canvas with nothing selected and keyboard navigation dead.
+    expect(
+      shouldWaitForCanvasRestorePreferences({
+        data: undefined,
+        isPending: false,
+      })
     ).toBe(false)
   })
 
@@ -36,7 +52,7 @@ describe('ProjectCanvasView session restoration', () => {
   // opens, so the wait has to come first.
   it('gates the restore effect on preferences before the one-shot guard', () => {
     const gate = source.indexOf(
-      'if (shouldWaitForCanvasRestorePreferences(preferences)) return'
+      'if (shouldWaitForCanvasRestorePreferences(preferencesQuery)) return'
     )
     const oneShotGuard = source.indexOf(
       'if (selectedIndex !== null || selectedWorktreeModal) return'
@@ -50,7 +66,7 @@ describe('ProjectCanvasView session restoration', () => {
   it('reopens the last active worktree session, not only the last opened one', () => {
     const restoreEffect = source.slice(
       source.indexOf(
-        'if (shouldWaitForCanvasRestorePreferences(preferences)) return'
+        'if (shouldWaitForCanvasRestorePreferences(preferencesQuery)) return'
       ),
       source.indexOf('// Handle clicking on a worktree row')
     )
