@@ -7,6 +7,42 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.17] - 2026-09-27
+
+Built on Jean 0.1.73.
+
+### Added
+
+- **Reveal a file from a chat answer in Finder.** Right-click a file path in an
+  answer and choose _Reveal in Finder_ — _Explorer_ on Windows, _Files_ on
+  Linux — to show the file in its folder. It reveals the file the reference
+  resolved to, so `~/Downloads/report.png` and a path inside a monorepo package
+  both land on the right one. The item appears only for a local file, and only
+  where Jean can reach that machine's file manager.
+
+### Fixed
+
+- **You can fork a session while its turn is still running.** The in-place fork
+  refused with "Cannot fork a session while it is running". Now both fork
+  shapes start from the last finished answer and leave the running turn in the
+  original session. The worktree fork no longer copies the half-written turn as
+  a crashed one, and a Claude fork taken mid-turn no longer branches from it.
+
+- **Restarting Jean opens the session you left, not just the project.** The
+  app came back on the project page with nothing open, although "Restore last
+  session" was on. The project page loads its worktrees and their sessions in
+  one go, so it could be ready before Jean had read your settings — and an
+  unread setting counts as off, after which the decision was already made and
+  never taken again. Jean now waits for the settings before it decides. Two
+  further gaps went with it: a session you switched to in the last half second
+  before quitting was never written down, and so was lost on the next start;
+  and a session or workspace you had closed, archived or deleted stayed on
+  record as the last one open, which restored nothing at all.
+
+## [0.1.73-z.16] - 2026-09-23
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **A session with an unsent message now shows a pencil in front of its name.**
@@ -16,13 +52,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   on the session tab, on the sidebar row, and on a starred or pinned row, and it
   counts a pasted image or a pasted text file as a draft too — not only typed
   text. It goes as soon as the message is sent.
-
-- **Reveal a file from a chat answer in Finder.** Right-click a file path in an
-  answer and choose _Reveal in Finder_ — _Explorer_ on Windows, _Files_ on
-  Linux — to show the file in its folder. It reveals the file the reference
-  resolved to, so `~/Downloads/report.png` and a path inside a monorepo package
-  both land on the right one. The item appears only for a local file, and only
-  where Jean can reach that machine's file manager.
 
 ### Changed
 
@@ -50,23 +79,6 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   inside the home-indicator area, as iOS's own floating tab bar does.
 
 ### Fixed
-
-- **You can fork a session while its turn is still running.** The in-place fork
-  refused with "Cannot fork a session while it is running". Now both fork
-  shapes start from the last finished answer and leave the running turn in the
-  original session. The worktree fork no longer copies the half-written turn as
-  a crashed one, and a Claude fork taken mid-turn no longer branches from it.
-
-- **Restarting Jean opens the session you left, not just the project.** The
-  app came back on the project page with nothing open, although "Restore last
-  session" was on. The project page loads its worktrees and their sessions in
-  one go, so it could be ready before Jean had read your settings — and an
-  unread setting counts as off, after which the decision was already made and
-  never taken again. Jean now waits for the settings before it decides. Two
-  further gaps went with it: a session you switched to in the last half second
-  before quitting was never written down, and so was lost on the next start;
-  and a session or workspace you had closed, archived or deleted stayed on
-  record as the last one open, which restored nothing at all.
 
 - **A remote Jean no longer shows a permanent "Update available".** The badge
   meant the _host_ you are connected to needed updating, but it used the same
@@ -117,6 +129,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   update toasts, and with automatic updates on it started a second update on
   the host alongside the desktop's own. The phone now leaves this to the
   desktop.
+
+## [0.1.73-z.15] - 2026-09-21
+
+Built on Jean 0.1.73.
+
+### Fixed
+
+- **A `../` file path in a chat answer now finds the file.** A reference such
+  as `../shared/api.md` written from `packages/web` means
+  `packages/shared/api.md`, and nothing found it. Both readings are offered
+  now — the sibling folder and the one above the worktree — and a `..` in the
+  middle of a path is resolved before the search.
 
 ## [0.1.73-z.14] - 2026-09-21
 
@@ -1250,7 +1274,10 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.14...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.17...HEAD
+[0.1.73-z.17]: https://github.com/azeitler/jean/compare/v0.1.73-z.16...v0.1.73-z.17
+[0.1.73-z.16]: https://github.com/azeitler/jean/compare/v0.1.73-z.15...v0.1.73-z.16
+[0.1.73-z.15]: https://github.com/azeitler/jean/compare/v0.1.73-z.14...v0.1.73-z.15
 [0.1.73-z.14]: https://github.com/azeitler/jean/compare/v1.0.1-z.13...v0.1.73-z.14
 [1.0.1-z.13]: https://github.com/azeitler/jean/compare/v1.0.1-z.12...v1.0.1-z.13
 [1.0.1-z.12]: https://github.com/azeitler/jean/compare/v0.1.73-z.11...v1.0.1-z.12
