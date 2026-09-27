@@ -2596,6 +2596,10 @@ pub async fn fork_session_to_worktree(
         let strategy = fork::fork_strategy(&source_session.backend, dropped_in_flight);
         let mut forked_session =
             fork::prepare_forked_session(&source_session, 0, created_at, strategy);
+        // Recomputed, not inherited: dropping the in-flight run leaves fewer
+        // messages than the source, and a count that disagrees with the runs
+        // makes the fork read as non-empty when it holds nothing.
+        forked_session.message_count = Some(fork::rendered_message_count(&kept_runs));
         for run in &mut kept_runs {
             fork::sanitize_forked_run(run, created_at);
         }
