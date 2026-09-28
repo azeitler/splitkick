@@ -75,6 +75,7 @@ export function MessageThreadContextMenu({
   const [selection, setSelection] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
   const [linkHref, setLinkHref] = useState('')
+  const [imagePath, setImagePath] = useState('')
   const rootPath = useContext(LocalPathRootContext)
 
   const handleContextMenu = useCallback((event: React.MouseEvent) => {
@@ -85,6 +86,11 @@ export function MessageThreadContextMenu({
     // The raw attribute, not the resolved href: a relative path in a response
     // resolves against the worktree, not against the app's own origin.
     setLinkHref(anchor?.getAttribute('href') ?? '')
+    // Chat images (markdown embeds, attachment thumbnails) carry their local
+    // path. They only render after loading, so the file exists.
+    const image =
+      target instanceof Element ? target.closest('[data-local-path]') : null
+    setImagePath(image?.getAttribute('data-local-path') ?? '')
   }, [])
 
   const handleOpenChange = useCallback((open: boolean) => {
@@ -141,11 +147,13 @@ export function MessageThreadContextMenu({
   // The fallback join covers the resolving state, not a verdict: on `missing`
   // the backend has looked and found nothing, so offering Reveal would only
   // produce an error toast.
-  const revealTarget =
-    isLocalFileLink && canOpenNativeApps() && reference.status !== 'missing'
-      ? (reference.path ??
-        resolveLocalPath(splitFileRefSuffix(linkHref)[0], rootPath))
-      : null
+  const revealTarget = !canOpenNativeApps()
+    ? null
+    : imagePath ||
+      (isLocalFileLink && reference.status !== 'missing'
+        ? (reference.path ??
+          resolveLocalPath(splitFileRefSuffix(linkHref)[0], rootPath))
+        : null)
   const revealPath = useRevealPathInFileManager()
   const canCopyMessage = Boolean(onCopyMessage || messageText.trim())
   const canCopySelection = selection.length > 0

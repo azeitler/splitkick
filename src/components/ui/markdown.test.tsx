@@ -285,6 +285,25 @@ describe('Markdown', () => {
       expect(container.textContent).toContain('![a](/x y/a.png)')
     })
 
+    it('caps the inline size and opens a full-size preview on click', async () => {
+      const { container } = render(
+        <Markdown>{'![tall shot](/tmp/tall.png)'}</Markdown>
+      )
+      const image = container.querySelector('img') as HTMLImageElement
+
+      expect(image.className).toContain('max-h-[min(50vh,640px)]')
+      expect(image.closest('[data-local-path]')?.getAttribute(
+        'data-local-path'
+      )).toBe('/tmp/tall.png')
+
+      fireEvent.click(image)
+
+      const dialog = await screen.findByRole('dialog')
+      expect(dialog.querySelector('img')?.getAttribute('src')).toBe(
+        image.getAttribute('src')
+      )
+    })
+
     it('falls back to read_file_base64 when the file URL fails', async () => {
       vi.mocked(invoke).mockResolvedValueOnce({
         mimeType: 'image/png',

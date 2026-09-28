@@ -464,6 +464,45 @@ describe('MessageThreadContextMenu — Reveal in the file manager', () => {
     expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBeNull()
   })
 
+  it('reveals a chat image by its local path', async () => {
+    const user = userEvent.setup()
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <p>
+          <button type="button" data-local-path="/tmp/shot.png">
+            <img alt="shot" src="/api/files/shot.png" />
+          </button>
+        </p>
+      </MessageThreadContextMenu>
+    )
+    fireEvent.contextMenu(screen.getByAltText('shot'))
+
+    await user.click(
+      await screen.findByRole('menuitem', { name: /reveal in/i })
+    )
+
+    await waitFor(() =>
+      expect(mocks.invoke).toHaveBeenCalledWith('reveal_path_in_file_manager', {
+        path: '/tmp/shot.png',
+      })
+    )
+  })
+
+  it('offers no image reveal when the file is on another machine', async () => {
+    mocks.isLocalBackend.mockReturnValue(false)
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <p>
+          <img alt="shot" data-local-path="/tmp/shot.png" src="/x.png" />
+        </p>
+      </MessageThreadContextMenu>
+    )
+    fireEvent.contextMenu(screen.getByAltText('shot'))
+
+    await screen.findByRole('menuitem', { name: /copy message/i })
+    expect(screen.queryByRole('menuitem', { name: /reveal in/i })).toBeNull()
+  })
+
   it('falls back to the plain join while the resolution is in flight', async () => {
     mocks.invoke.mockImplementation((command: string) =>
       command === 'resolve_file_reference'

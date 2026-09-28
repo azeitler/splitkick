@@ -22,6 +22,7 @@ import { remarkFixInterruptedLists } from '@/lib/remark-fix-interrupted-lists'
 import { remarkLocalFileLinks } from '@/lib/remark-local-file-links'
 import { LocalPathRootContext, resolveLocalPath } from '@/lib/chat-links'
 import { MarkdownLink } from '@/components/ui/markdown-link'
+import { ImagePreviewDialog } from '@/components/chat/ImageLightbox'
 import { escapeMarkdownImageDestinations } from '@/lib/markdown-image-escape'
 import { getFilename } from '@/lib/path-utils'
 import { Copy, Check, Table, ListChecks, ImageOff } from 'lucide-react'
@@ -192,6 +193,7 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
       : null
   const [fallbackSrc, setFallbackSrc] = useState<string | null>(null)
   const [failed, setFailed] = useState(false)
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   const handleError = useCallback(() => {
     if (!localPath || fallbackSrc) {
@@ -230,16 +232,39 @@ function MarkdownImage({ src, alt }: { src?: string; alt?: string }) {
     )
   }
 
+  const displaySrc =
+    fallbackSrc ?? (localPath ? convertProjectFileSrc(localPath) : src)
+
+  // Capped so a tall screenshot does not fill the thread; click for full size.
   return (
-    <img
-      src={fallbackSrc ?? (localPath ? convertProjectFileSrc(localPath) : src)}
-      alt={alt || ''}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      onError={handleError}
-      className="max-w-full h-auto rounded-md my-4"
-    />
+    <>
+      <button
+        type="button"
+        title={localPath ?? undefined}
+        data-local-path={localPath ?? undefined}
+        onClick={() => setPreviewOpen(true)}
+        className="block my-4 cursor-zoom-in rounded-md focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <img
+          src={displaySrc}
+          alt={alt || ''}
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          onError={handleError}
+          className="block max-w-full max-h-[min(50vh,640px)] w-auto h-auto object-contain rounded-md"
+        />
+      </button>
+      {previewOpen && (
+        <ImagePreviewDialog
+          open={previewOpen}
+          onOpenChange={setPreviewOpen}
+          src={displaySrc}
+          alt={alt || ''}
+          path={localPath ?? undefined}
+        />
+      )}
+    </>
   )
 }
 
