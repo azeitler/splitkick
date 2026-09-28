@@ -7,6 +7,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.18] - 2026-09-28
+
+Built on Jean 0.1.73.
+
+### Added
+
+- **Images in an answer stay a sensible size, and open full size on click.**
+  An embedded image used to render at full size, so a tall screenshot filled
+  the whole thread. It now shows at most half the window high, and never more
+  than 640 px. Click it to see the full image; for a local file the preview
+  has a _Reveal in Finder_ button. Right-click an image in an answer, or an
+  image you attached, to reveal it too — only where Jean can reach that
+  machine's file manager.
+
 ## [0.1.73-z.17] - 2026-09-27
 
 Built on Jean 0.1.73.
@@ -1274,7 +1288,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.17...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.18...HEAD
+[0.1.73-z.18]: https://github.com/azeitler/jean/compare/v0.1.73-z.17...v0.1.73-z.18
 [0.1.73-z.17]: https://github.com/azeitler/jean/compare/v0.1.73-z.16...v0.1.73-z.17
 [0.1.73-z.16]: https://github.com/azeitler/jean/compare/v0.1.73-z.15...v0.1.73-z.16
 [0.1.73-z.15]: https://github.com/azeitler/jean/compare/v0.1.73-z.14...v0.1.73-z.15
