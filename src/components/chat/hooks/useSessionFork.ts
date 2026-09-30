@@ -6,7 +6,7 @@ import { chatQueryKeys } from '@/services/chat'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { projectsQueryKeys } from '@/services/projects'
-import type { Session } from '@/types/chat'
+import type { Session, WorktreeSessions } from '@/types/chat'
 import type { Worktree } from '@/types/projects'
 import { navigateToForkedSession } from '../fork-session-navigation'
 
@@ -138,6 +138,16 @@ export function useSessionFork() {
         queryClient.setQueryData<Session>(
           chatQueryKeys.session(forkedSession.id),
           forkedSession
+        )
+        // Append the fork to the cached list before selecting it (the backend
+        // appends it too). Otherwise SessionChatModal sees an active id missing
+        // from the list, falls back to the first tab, and writes that back.
+        queryClient.setQueryData<WorktreeSessions>(
+          chatQueryKeys.sessions(target.worktreeId),
+          old =>
+            old && !old.sessions.some(s => s.id === forkedSession.id)
+              ? { ...old, sessions: [...old.sessions, forkedSession] }
+              : old
         )
         queryClient.invalidateQueries({
           queryKey: chatQueryKeys.sessions(target.worktreeId),

@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A fork opens on the new session.** After _Fork session_ or _Fork from this
+  message_, Jean sometimes selected an unrelated session — the first tab — in
+  place of the fork. The fork is now selected, and stays selected.
+
 ## [0.1.73-z.18] - 2026-09-28
 
 Built on Jean 0.1.73.

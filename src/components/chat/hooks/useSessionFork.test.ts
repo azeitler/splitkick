@@ -92,6 +92,30 @@ describe('useSessionFork.forkInPlace', () => {
     expect(invalidated).toContainEqual(['all-sessions'])
   })
 
+  it('appends the fork to the cached session list before selecting it', async () => {
+    invoke.mockResolvedValue(forkedSession('new-session'))
+    const { result } = renderHook(() => useSessionFork())
+
+    await result.current.forkInPlace({
+      worktreeId: 'wt-1',
+      sessionId: 'sess-1',
+    })
+
+    const call = mocks.setQueryData.mock.calls.find(
+      ([key]) => JSON.stringify(key) === '["chat","sessions","wt-1"]'
+    )
+    expect(call).toBeDefined()
+    const update = call?.[1] as (old: unknown) => unknown
+    const old = { worktree_id: 'wt-1', sessions: [{ id: 'sess-1' }] }
+    expect(update(old)).toEqual({
+      worktree_id: 'wt-1',
+      sessions: [{ id: 'sess-1' }, forkedSession('new-session')],
+    })
+    expect(update(undefined)).toBeUndefined()
+    const withFork = { sessions: [forkedSession('new-session')] }
+    expect(update(withFork)).toBe(withFork)
+  })
+
   it('reports a failure without selecting anything', async () => {
     invoke.mockRejectedValue('session is running')
     const { result } = renderHook(() => useSessionFork())
