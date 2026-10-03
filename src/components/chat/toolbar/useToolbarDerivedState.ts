@@ -147,40 +147,35 @@ export function buildBackendModelSections({
   return sections
 }
 
-export function useToolbarDerivedState({
-  selectedBackend,
+interface UseBackendModelOptionsArgs {
+  selectedProvider: string | null
+  customCliProfiles: CustomCliProfile[]
+  installedBackends?: CliBackend[]
+  opencodeModelOptions?: { value: string; label: string }[]
+  cursorModelOptions?: { value: string; label: string }[]
+  piModelOptions?: { value: string; label: string }[]
+  commandcodeModelOptions?: { value: string; label: string }[]
+  grokModelOptions?: { value: string; label: string }[]
+  kimiModelOptions?: { value: string; label: string }[]
+}
+
+/**
+ * The model list every backend/model picker shows: remote catalog models
+ * merged with the live lists the CLIs report. Use this instead of the static
+ * `*_MODEL_OPTIONS` constants so all pickers list the same models.
+ */
+export function useBackendModelOptions({
   selectedProvider,
-  selectedModel,
+  customCliProfiles,
+  installedBackends = DEFAULT_INSTALLED_BACKENDS,
   opencodeModelOptions,
   cursorModelOptions,
   piModelOptions,
   commandcodeModelOptions,
-  customCliProfiles,
   grokModelOptions,
   kimiModelOptions,
-  installedBackends = DEFAULT_INSTALLED_BACKENDS,
-  availableMcpServers = EMPTY_MCP_SERVERS,
-  enabledMcpServers = EMPTY_ENABLED_MCP_SERVERS,
-}: UseToolbarDerivedStateArgs) {
-  const isCodex = selectedBackend === 'codex'
-  const isOpencode = selectedBackend === 'opencode'
-  const isCursor = selectedBackend === 'cursor'
-  const isPi = selectedBackend === 'pi'
-  const isCommandCode = selectedBackend === 'commandcode'
-  const isGrok = selectedBackend === 'grok'
-  const isKimi = selectedBackend === 'kimi'
-
+}: UseBackendModelOptionsArgs) {
   const { data: modelCatalog } = useModelCatalog()
-
-  const activeMcpCount = useMemo(() => {
-    const availableNames = new Set<string>()
-    for (const server of availableMcpServers) {
-      if (server.disabled) continue
-      availableNames.add(server.name)
-      availableNames.add(`${server.backend || 'claude'}:${server.name}`)
-    }
-    return enabledMcpServers.filter(name => availableNames.has(name)).length
-  }, [availableMcpServers, enabledMcpServers])
 
   const claudeModelOptions = useMemo(() => {
     if (!selectedProvider || selectedProvider === '__anthropic__') {
@@ -278,6 +273,76 @@ export function useToolbarDerivedState({
       resolvedPiModelOptions,
     ]
   )
+
+  return {
+    modelCatalog,
+    claudeModelOptions,
+    codexModelOptions,
+    opencodeModelOptions: resolvedOpencodeModelOptions,
+    cursorModelOptions: resolvedCursorModelOptions,
+    piModelOptions: resolvedPiModelOptions,
+    commandcodeModelOptions: resolvedCommandCodeModelOptions,
+    grokModelOptions: resolvedGrokModelOptions,
+    kimiModelOptions: resolvedKimiModelOptions,
+    backendModelSections,
+  }
+}
+
+export function useToolbarDerivedState({
+  selectedBackend,
+  selectedProvider,
+  selectedModel,
+  opencodeModelOptions,
+  cursorModelOptions,
+  piModelOptions,
+  commandcodeModelOptions,
+  customCliProfiles,
+  grokModelOptions,
+  kimiModelOptions,
+  installedBackends = DEFAULT_INSTALLED_BACKENDS,
+  availableMcpServers = EMPTY_MCP_SERVERS,
+  enabledMcpServers = EMPTY_ENABLED_MCP_SERVERS,
+}: UseToolbarDerivedStateArgs) {
+  const isCodex = selectedBackend === 'codex'
+  const isOpencode = selectedBackend === 'opencode'
+  const isCursor = selectedBackend === 'cursor'
+  const isPi = selectedBackend === 'pi'
+  const isCommandCode = selectedBackend === 'commandcode'
+  const isGrok = selectedBackend === 'grok'
+  const isKimi = selectedBackend === 'kimi'
+
+  const {
+    modelCatalog,
+    claudeModelOptions,
+    codexModelOptions,
+    opencodeModelOptions: resolvedOpencodeModelOptions,
+    cursorModelOptions: resolvedCursorModelOptions,
+    piModelOptions: resolvedPiModelOptions,
+    commandcodeModelOptions: resolvedCommandCodeModelOptions,
+    grokModelOptions: resolvedGrokModelOptions,
+    kimiModelOptions: resolvedKimiModelOptions,
+    backendModelSections,
+  } = useBackendModelOptions({
+    selectedProvider,
+    customCliProfiles,
+    installedBackends,
+    opencodeModelOptions,
+    cursorModelOptions,
+    piModelOptions,
+    commandcodeModelOptions,
+    grokModelOptions,
+    kimiModelOptions,
+  })
+
+  const activeMcpCount = useMemo(() => {
+    const availableNames = new Set<string>()
+    for (const server of availableMcpServers) {
+      if (server.disabled) continue
+      availableNames.add(server.name)
+      availableNames.add(`${server.backend || 'claude'}:${server.name}`)
+    }
+    return enabledMcpServers.filter(name => availableNames.has(name)).length
+  }, [availableMcpServers, enabledMcpServers])
 
   const filteredModelOptions = useMemo(() => {
     if (isCodex) return codexModelOptions

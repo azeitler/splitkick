@@ -6,6 +6,7 @@ import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useAvailableOpencodeModels } from '@/services/opencode-cli'
 import { useAvailableCursorModels } from '@/services/cursor-cli'
+import { useAvailablePiModels } from '@/services/pi-cli'
 import {
   DropdownMenuItem,
   DropdownMenuLabel,
@@ -15,17 +16,12 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
 } from '@/components/ui/dropdown-menu'
-import {
-  CODEX_MODEL_OPTIONS,
-  CURSOR_MODEL_OPTIONS,
-  MODEL_OPTIONS,
-  OPENCODE_MODEL_OPTIONS,
-} from '@/components/chat/toolbar/toolbar-options'
 import { Input } from '@/components/ui/input'
-import { buildBackendModelSections } from '@/components/chat/toolbar/useToolbarDerivedState'
+import { useBackendModelOptions } from '@/components/chat/toolbar/useToolbarDerivedState'
 import {
   formatCursorModelLabel,
   formatOpencodeModelLabel,
+  formatPiModelLabel,
 } from '@/components/chat/toolbar/toolbar-utils'
 import {
   Sheet,
@@ -74,39 +70,7 @@ interface ApprovalActionMenuProps {
   onWorktreeYoloApprove?: (override?: ApprovalModelOverride) => void
 }
 
-function getClaudeModelOptions(
-  selectedProvider: string | null | undefined,
-  customCliProfiles: CustomCliProfile[]
-): { value: string; label: string }[] {
-  if (!selectedProvider || selectedProvider === '__anthropic__') {
-    return MODEL_OPTIONS
-  }
-
-  const profile = customCliProfiles.find(p => p.name === selectedProvider)
-  let opusModel: string | undefined
-  let sonnetModel: string | undefined
-  let haikuModel: string | undefined
-  if (profile?.settings_json) {
-    try {
-      const settings = JSON.parse(profile.settings_json)
-      const env = settings?.env
-      if (env) {
-        opusModel = env.ANTHROPIC_DEFAULT_OPUS_MODEL || env.ANTHROPIC_MODEL
-        sonnetModel = env.ANTHROPIC_DEFAULT_SONNET_MODEL || env.ANTHROPIC_MODEL
-        haikuModel = env.ANTHROPIC_DEFAULT_HAIKU_MODEL || env.ANTHROPIC_MODEL
-      }
-    } catch {
-      // Ignore invalid profile JSON; fall back to short labels.
-    }
-  }
-
-  const suffix = (model?: string) => (model ? ` (${model})` : '')
-  return [
-    { value: 'opus', label: `Opus${suffix(opusModel)}` },
-    { value: 'sonnet', label: `Sonnet${suffix(sonnetModel)}` },
-    { value: 'haiku', label: `Haiku${suffix(haikuModel)}` },
-  ]
-}
+const EMPTY_PROFILES: CustomCliProfile[] = []
 
 export function ApprovalModelSubmenu({
   onSelect,
@@ -122,20 +86,16 @@ export function ApprovalModelSubmenu({
   const { data: availableCursorModels } = useAvailableCursorModels({
     enabled: installedBackends.includes('cursor'),
   })
+  const { data: availablePiModels } = useAvailablePiModels({
+    enabled: installedBackends.includes('pi'),
+  })
 
-  const selectedProvider = preferences?.default_provider ?? null
-  // Prefer the preferences array reference so useMemo is stable when empty/default.
-  const customCliProfiles = preferences?.custom_cli_profiles
-  const claudeModelOptions = useMemo(
-    () => getClaudeModelOptions(selectedProvider, customCliProfiles ?? []),
-    [selectedProvider, customCliProfiles]
-  )
   const opencodeModelOptions = useMemo(
     () =>
       availableOpencodeModels?.map(model => ({
         value: model,
         label: formatOpencodeModelLabel(model),
-      })) ?? OPENCODE_MODEL_OPTIONS,
+      })),
     [availableOpencodeModels]
   )
   const cursorModelOptions = useMemo(
@@ -145,27 +105,31 @@ export function ApprovalModelSubmenu({
             value: `cursor/${model.id}`,
             label: model.label || formatCursorModelLabel(model.id),
           }))
-        : CURSOR_MODEL_OPTIONS,
+        : undefined,
     [availableCursorModels]
   )
+  const piModelOptions = useMemo(
+    () =>
+      availablePiModels?.map(model => ({
+        value: `pi/${model.id}`,
+        label: model.label || formatPiModelLabel(model.id),
+      })),
+    [availablePiModels]
+  )
+  const { backendModelSections } = useBackendModelOptions({
+    selectedProvider: preferences?.default_provider ?? null,
+    customCliProfiles: preferences?.custom_cli_profiles ?? EMPTY_PROFILES,
+    installedBackends,
+    opencodeModelOptions,
+    cursorModelOptions,
+    piModelOptions,
+  })
 
   const [search, setSearch] = useState('')
   const [mobilePickerOpen, setMobilePickerOpen] = useState(false)
   const sections = useMemo(
-    () =>
-      buildBackendModelSections({
-        installedBackends,
-        claudeModelOptions,
-        codexModelOptions: CODEX_MODEL_OPTIONS,
-        opencodeModelOptions,
-        cursorModelOptions,
-      }).filter(section => section.options.length > 0),
-    [
-      installedBackends,
-      claudeModelOptions,
-      opencodeModelOptions,
-      cursorModelOptions,
-    ]
+    () => backendModelSections.filter(section => section.options.length > 0),
+    [backendModelSections]
   )
 
   const filteredSections = useMemo(() => {

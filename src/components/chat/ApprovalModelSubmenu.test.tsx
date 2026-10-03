@@ -11,6 +11,7 @@ import {
   ApprovalActionMenu,
   ApprovalModelSubmenu,
 } from './ApprovalModelSubmenu'
+import type * as ModelCatalogService from '@/services/model-catalog'
 
 const preferencesMock = vi.hoisted(() => ({
   data: {
@@ -40,9 +41,34 @@ if (typeof Element !== 'undefined') {
   Element.prototype.scrollIntoView = vi.fn()
 }
 
+vi.mock('@/services/model-catalog', async importOriginal => {
+  const actual = await importOriginal<typeof ModelCatalogService>()
+  return {
+    ...actual,
+    useModelCatalog: () => ({
+      data: {
+        version: 1,
+        updated_at: '2026-10-03T00:00:00Z',
+        defaults: { claude: 'claude-remote', codex: 'gpt-remote' },
+        backends: {
+          claude: {
+            models: [{ id: 'claude-remote', label: 'Claude Remote' }],
+          },
+          codex: {
+            models: [{ id: 'gpt-remote', label: 'GPT Remote' }],
+          },
+          pi: {
+            models: [{ id: 'pi/remote', label: 'PI Remote' }],
+          },
+        },
+      },
+    }),
+  }
+})
+
 vi.mock('@/hooks/useInstalledBackends', () => ({
   useInstalledBackends: () => ({
-    installedBackends: ['claude', 'codex', 'opencode', 'cursor'],
+    installedBackends: ['claude', 'codex', 'opencode', 'cursor', 'pi'],
     isLoading: false,
   }),
 }))
@@ -55,6 +81,10 @@ vi.mock('@/services/cursor-cli', () => ({
   useAvailableCursorModels: () => ({
     data: [{ id: 'composer-2', label: 'Composer 2' }],
   }),
+}))
+
+vi.mock('@/services/pi-cli', () => ({
+  useAvailablePiModels: () => ({ data: undefined }),
 }))
 
 vi.mock('@/services/preferences', () => ({
@@ -148,13 +178,13 @@ describe('ApprovalModelSubmenu', () => {
 
     await user.click(screen.getByRole('menuitem', { name: /other model/i }))
     const sheet = await screen.findByRole('dialog')
-    const modelButton = within(sheet).getByText('gpt-5.4').closest('button')
+    const modelButton = within(sheet).getByText('gpt-remote').closest('button')
     expect(modelButton).not.toBeNull()
     await user.click(modelButton as HTMLButtonElement)
 
     expect(onSelect).toHaveBeenCalledWith({
       backend: 'codex',
-      model: 'gpt-5.4',
+      model: 'gpt-remote',
     })
     expect(screen.queryByRole('dialog')).toBeNull()
   })
@@ -223,6 +253,19 @@ describe('ApprovalModelSubmenu', () => {
     expect(screen.getByText('Codex')).toBeInTheDocument()
     expect(screen.getByText('OpenCode')).toBeInTheDocument()
     expect(screen.getByText('Cursor')).toBeInTheDocument()
+    expect(screen.getByText('PI')).toBeInTheDocument()
+  })
+
+  it('lists the same catalog models as the toolbar model picker', async () => {
+    const user = userEvent.setup()
+    renderMenu()
+
+    await user.hover(screen.getByRole('menuitem', { name: /other model/i }))
+    await waitFor(() => expect(screen.getByText('Claude')).toBeInTheDocument())
+
+    expect(findModelItem('claude-remote')).toHaveTextContent('Remote')
+    expect(findModelItem('gpt-remote')).toHaveTextContent('GPT Remote')
+    expect(findModelItem('pi/remote')).toHaveTextContent('PI Remote')
   })
 
   it('filters the model list from a search input at the top', async () => {
@@ -263,13 +306,13 @@ describe('ApprovalModelSubmenu', () => {
     await user.hover(screen.getByRole('menuitem', { name: /other model/i }))
     await waitFor(() => expect(screen.getByText('Codex')).toBeInTheDocument())
 
-    fireEvent.click(findModelItem('gpt-5.4'))
+    fireEvent.click(findModelItem('gpt-remote'))
     fireEvent.click(findModelItem('openai/gpt-5.4'))
     fireEvent.click(findModelItem('cursor/composer-2'))
 
     expect(onSelect).toHaveBeenCalledWith({
       backend: 'codex',
-      model: 'gpt-5.4',
+      model: 'gpt-remote',
     })
     expect(onSelect).toHaveBeenCalledWith({
       backend: 'opencode',

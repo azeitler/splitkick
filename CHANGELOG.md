@@ -12,6 +12,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **A fork opens on the new session.** After _Fork session_ or _Fork from this
   message_, Jean sometimes selected an unrelated session — the first tab — in
   place of the fork. The fork is now selected, and stays selected.
+- **The plan approval menu lists the same models as the model picker.**
+  _Other model…_ under Yolo and Build used an old built-in list: it had no PI,
+  Command Code, Grok, Kimi or Antigravity models, and old Claude and Codex
+  models. It now uses the same model list as the chat toolbar.
+  ([#33](https://github.com/azeitler/jean/issues/33))
 
 ## [0.1.73-z.18] - 2026-09-28
 
