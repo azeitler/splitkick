@@ -985,15 +985,6 @@ fn load_claude_credentials() -> Result<ClaudeCredentialsFile, String> {
     Err("Claude credentials not found. Run `claude` to authenticate.".to_string())
 }
 
-fn oauth_access_token(creds: &ClaudeCredentialsFile) -> Option<&str> {
-    creds
-        .claude_ai_oauth
-        .as_ref()
-        .and_then(|o| o.access_token.as_deref())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-}
-
 /// Expiry in epoch milliseconds. Claude stores milliseconds; older items used
 /// seconds, so normalize before comparing.
 fn oauth_expires_at_ms(oauth: &ClaudeOauthCredentials) -> Option<u64> {

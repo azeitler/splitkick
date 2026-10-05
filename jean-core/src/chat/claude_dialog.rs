@@ -120,9 +120,12 @@ pub async fn park(
     outcome
 }
 
-/// Resolve a parked dialog. Returns false when nothing was waiting — the usual
-/// cause is a dialog that already timed out, or a UI answer arriving for a
-/// session whose run was cancelled.
+/// Resolve a parked dialog without checking that its turn still lives.
+///
+/// Test-only. Production goes through [`resolve_live`]: a shim outlives the CLI
+/// it answered for, so an unchecked resolve reports a dead turn as answered and
+/// the UI drops the follow-up message.
+#[cfg(test)]
 pub fn resolve(tool_use_id: &str, outcome: DialogOutcome) -> bool {
     let Some(pending) = PENDING.lock().unwrap().remove(tool_use_id) else {
         return false;
