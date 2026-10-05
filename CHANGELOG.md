@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Recent activity is closed until you click it.** The feed on Home and on a
+  project's home showed little more than "Session finished" rows. It is now a
+  single line under _Recent sessions_; click it to open the feed. Home uses the
+  freed column for the sessions and the projects.
+
 ### Fixed
 
 - **Claude no longer logs out with "OAuth session expired and could not be

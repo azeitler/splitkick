@@ -1,6 +1,7 @@
-import { memo, useCallback } from 'react'
+import { memo, useCallback, useState } from 'react'
 import {
   CheckCircle2,
+  ChevronRight,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequestArrow,
@@ -16,7 +17,6 @@ import { formatRelativeTime } from '@/lib/relative-time'
 import { navigateToProject, navigateToSession } from '@/lib/navigate-to-session'
 import { useRecentActivity } from '@/services/activity'
 import type { ActivityEvent, ActivityKind } from '@/types/activity'
-import { HomeSection } from './HomeSection'
 
 interface KindPresentation {
   icon: LucideIcon
@@ -76,9 +76,43 @@ interface RecentActivitySectionProps {
   projectId?: string
 }
 
+/**
+ * The activity feed, closed until asked for.
+ *
+ * The feed is mostly "Session finished" rows, which the session list above it
+ * already says. It stays one click away rather than taking a column.
+ */
 export const RecentActivitySection = memo(function RecentActivitySection({
   projectId,
 }: RecentActivitySectionProps = {}) {
+  const [open, setOpen] = useState(false)
+
+  return (
+    <section className="flex w-full min-w-0 flex-col gap-2">
+      <h2 className="text-sm font-semibold text-foreground">
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(value => !value)}
+          className="flex items-center gap-1 text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ChevronRight
+            className={cn(
+              'size-3.5 shrink-0 transition-transform',
+              open && 'rotate-90'
+            )}
+            aria-hidden="true"
+          />
+          Recent activity
+        </button>
+      </h2>
+      {/* Mounted only while open, so a closed section loads nothing. */}
+      {open && <ActivityFeed projectId={projectId} />}
+    </section>
+  )
+})
+
+function ActivityFeed({ projectId }: RecentActivitySectionProps) {
   const { data, isLoading, isError, refetch } = useRecentActivity({ projectId })
   const events = data ?? []
 
@@ -87,54 +121,44 @@ export const RecentActivitySection = memo(function RecentActivitySection({
   // (a web-access reconnect, say) must not blank a feed that was fine.
   if (isError && !data) {
     return (
-      <HomeSection title="Recent activity">
-        <p className="text-sm text-muted-foreground">
-          Could not load activity.{' '}
-          <button
-            type="button"
-            onClick={() => void refetch()}
-            className="underline underline-offset-2 transition-colors hover:text-foreground"
-          >
-            Retry
-          </button>
-        </p>
-      </HomeSection>
+      <p className="text-sm text-muted-foreground">
+        Could not load activity.{' '}
+        <button
+          type="button"
+          onClick={() => void refetch()}
+          className="underline underline-offset-2 transition-colors hover:text-foreground"
+        >
+          Retry
+        </button>
+      </p>
     )
   }
 
   if (isLoading) {
-    return (
-      <HomeSection title="Recent activity">
-        <p className="text-sm text-muted-foreground">Loading activity…</p>
-      </HomeSection>
-    )
+    return <p className="text-sm text-muted-foreground">Loading activity…</p>
   }
 
   if (events.length === 0) {
     return (
-      <HomeSection title="Recent activity">
-        <p className="text-sm text-muted-foreground">
-          Nothing yet. Finished sessions, commits, pull requests, and reviews
-          show here.
-        </p>
-      </HomeSection>
+      <p className="text-sm text-muted-foreground">
+        Nothing yet. Finished sessions, commits, pull requests, and reviews show
+        here.
+      </p>
     )
   }
 
   return (
-    <HomeSection title="Recent activity">
-      <ul className="flex flex-col divide-y divide-border/60 rounded-md border bg-muted/20">
-        {events.map(event => (
-          <ActivityRow
-            key={event.id}
-            event={event}
-            hideProjectName={!!projectId}
-          />
-        ))}
-      </ul>
-    </HomeSection>
+    <ul className="flex flex-col divide-y divide-border/60 rounded-md border bg-muted/20">
+      {events.map(event => (
+        <ActivityRow
+          key={event.id}
+          event={event}
+          hideProjectName={!!projectId}
+        />
+      ))}
+    </ul>
   )
-})
+}
 
 function ActivityRow({
   event,

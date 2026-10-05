@@ -65,6 +65,11 @@ function renderHome() {
   )
 }
 
+/** The activity feed is closed until its heading is clicked. */
+async function openActivity() {
+  await userEvent.click(screen.getByRole('button', { name: 'Recent activity' }))
+}
+
 /** `count` sessions in `jean / main`, then two in a second project. */
 function manySessions(count: number): AllSessionsResponse {
   return {
@@ -145,7 +150,21 @@ describe('HomeView', () => {
     ).toBeInTheDocument()
 
     expect(screen.getByText('newest')).toBeInTheDocument()
+  })
+
+  it('keeps the activity feed closed until its heading is clicked', async () => {
+    renderHome()
+
+    const toggle = screen.getByRole('button', { name: 'Recent activity' })
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(screen.queryByText('PR merged')).toBeNull()
+
+    await userEvent.click(toggle)
+    expect(toggle).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText('PR merged')).toBeInTheDocument()
+
+    await userEvent.click(toggle)
+    expect(screen.queryByText('PR merged')).toBeNull()
   })
 
   it('shows no Starred section while nothing is starred', () => {
@@ -245,6 +264,7 @@ describe('HomeView', () => {
       },
     ]
     renderHome()
+    await openActivity()
 
     await userEvent.click(screen.getByText('Session finished'))
     expect(mocks.navigateToSession).toHaveBeenCalledWith({
@@ -256,48 +276,48 @@ describe('HomeView', () => {
 
   it('falls back to the project when a record has no session', async () => {
     renderHome()
+    await openActivity()
 
     await userEvent.click(screen.getByText('PR merged'))
     expect(mocks.navigateToProject).toHaveBeenCalledWith('p1')
     expect(mocks.navigateToSession).not.toHaveBeenCalled()
   })
 
-  it('shows an empty state when nothing has happened yet', () => {
+  it('shows an empty state when nothing has happened yet', async () => {
     mocks.activity = []
     renderHome()
+    await openActivity()
 
     expect(
       screen.getByText(/Finished sessions, commits, pull requests, and reviews/)
     ).toBeInTheDocument()
   })
 
-  it('lays sessions, activity and projects out as three columns', () => {
+  it('lays sessions and projects out as two columns', () => {
     renderHome()
 
     const sessionsColumn = screen.getByTestId('home-column-sessions')
-    const activityColumn = screen.getByTestId('home-column-activity')
     const projectsColumn = screen.getByTestId('home-column-projects')
 
-    // Each section lives in its own column, not stacked in one flow.
-    expect(
-      within(sessionsColumn).getByRole('heading', { name: 'Recent sessions' })
-    ).toBeInTheDocument()
-    expect(
-      within(activityColumn).getByRole('heading', { name: 'Recent activity' })
-    ).toBeInTheDocument()
+    // The closed activity feed shares the sessions column, under the sessions.
+    const headings = within(sessionsColumn)
+      .getAllByRole('heading')
+      .map(heading => heading.textContent)
+    expect(headings).toEqual(['Recent sessions', 'Recent activity'])
+    expect(screen.queryByTestId('home-column-activity')).toBeNull()
     expect(
       within(projectsColumn).getByRole('heading', { name: 'Projects' })
     ).toBeInTheDocument()
 
     // Siblings of one grid, in reading order.
-    expect(sessionsColumn.parentElement).toBe(activityColumn.parentElement)
-    expect(activityColumn.nextElementSibling).toBe(projectsColumn)
+    expect(sessionsColumn.nextElementSibling).toBe(projectsColumn)
   })
 
   it('reports a failed activity load instead of claiming nothing happened', async () => {
     mocks.activityError = true
     mocks.activity = undefined
     renderHome()
+    await openActivity()
 
     expect(screen.getByText(/Could not load activity/)).toBeInTheDocument()
     expect(
@@ -308,7 +328,7 @@ describe('HomeView', () => {
     expect(mocks.refetchActivity).toHaveBeenCalled()
   })
 
-  it('keeps the loaded feed when a later refresh fails', () => {
+  it('keeps the loaded feed when a later refresh fails', async () => {
     // A refetch after `activity:appended` failed; TanStack keeps the old data.
     mocks.activityError = true
     mocks.activity = [
@@ -321,6 +341,7 @@ describe('HomeView', () => {
       },
     ]
     renderHome()
+    await openActivity()
 
     expect(screen.getByText('fix: keep the feed')).toBeInTheDocument()
     expect(screen.queryByText(/Could not load activity/)).toBeNull()

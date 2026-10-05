@@ -13,8 +13,9 @@ interface HomeViewProps {
 }
 
 /**
- * The landing view: the sessions you starred and touched last, what happened
- * since, and your projects — side by side, so everything is visible at once.
+ * The landing view: the sessions you starred and touched last, and your
+ * projects — side by side, so everything is visible at once. The activity feed
+ * sits closed under the sessions.
  *
  * Home is the state where no project and no worktree is selected. The sidebar
  * Home row clears both, and the existing UI-state persistence of
@@ -23,8 +24,9 @@ interface HomeViewProps {
  * The columns answer to the view's own width (container queries), not the
  * window's, because the sidebar takes a variable share of the window:
  * - narrow: one column, the page scrolls;
- * - `@2xl`: sessions beside activity, projects across the bottom;
- * - `@4xl`: three columns, each scrolling on its own under a fixed header.
+ * - `@2xl`: sessions beside projects;
+ * - `@4xl`: the same two columns, each scrolling on its own under a fixed
+ *   header.
  */
 export const HomeView = memo(function HomeView({
   projects,
@@ -40,25 +42,18 @@ export const HomeView = memo(function HomeView({
         <header className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold text-foreground">Home</h1>
           <p className="text-sm text-muted-foreground">
-            The sessions you touched last, what happened since, and your
-            projects.
+            The sessions you touched last, and your projects.
           </p>
         </header>
 
-        <div className="grid gap-x-6 gap-y-8 @2xl:grid-cols-2 @4xl:min-h-0 @4xl:flex-1 @4xl:grid-cols-[minmax(0,1.4fr)_minmax(0,1.1fr)_minmax(14rem,0.9fr)] @4xl:grid-rows-[minmax(0,1fr)]">
+        <div className="grid gap-x-6 gap-y-8 @2xl:grid-cols-2 @4xl:min-h-0 @4xl:flex-1 @4xl:grid-cols-[minmax(0,1.6fr)_minmax(14rem,1fr)] @4xl:grid-rows-[minmax(0,1fr)]">
           <HomeColumn testId="home-column-sessions">
             <StarredSessionsSection />
             <RecentSessionsSection />
-          </HomeColumn>
-
-          <HomeColumn testId="home-column-activity">
             <RecentActivitySection />
           </HomeColumn>
 
-          <HomeColumn
-            testId="home-column-projects"
-            className="@2xl:col-span-2 @4xl:col-span-1"
-          >
+          <HomeColumn testId="home-column-projects">
             <WelcomeProjectGrid
               projects={projects}
               onProjectClick={onProjectClick}
@@ -72,9 +67,9 @@ export const HomeView = memo(function HomeView({
 })
 
 /**
- * One Home column. In the three-column layout it scrolls on its own, so a
- * long activity feed never pushes the sessions out of view. The stable gutter
- * stops the content reflowing when a column starts to overflow.
+ * One Home column. In the wide layout it scrolls on its own, so a long session
+ * list never pushes the projects out of view. The stable gutter stops the
+ * content reflowing when a column starts to overflow.
  */
 function HomeColumn({
   testId,

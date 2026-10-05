@@ -134,8 +134,16 @@ describe('project home columns', () => {
     expect(screen.queryByText('jean / main')).not.toBeInTheDocument()
   })
 
-  it('asks the backend for its own project activity', () => {
+  it('asks the backend for its own project activity, once opened', async () => {
     renderColumns()
+
+    // Closed by default: nothing is asked for and no row shows.
+    expect(mocks.activityProjectId).toBeUndefined()
+    expect(screen.queryByText('fix the columns')).not.toBeInTheDocument()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Recent activity' })
+    )
 
     expect(mocks.activityProjectId).toBe('p1')
     expect(screen.getByText('fix the columns')).toBeInTheDocument()
