@@ -30,9 +30,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   went to a turn that had already ended: no new run started, and the session
   stayed on "running". The answer now starts a new run each time.
 - **The plan approval menu lists the same models as the model picker.**
-  _Other model…_ under Yolo and Build used an old built-in list: it had no PI,
-  Command Code, Grok, Kimi or Antigravity models, and old Claude and Codex
-  models. It now uses the same model list as the chat toolbar.
+  _Other model…_ under Yolo and Build fell back to a built-in list, so every
+  backend showed stale models — the Claude, Codex, PI, Command Code, Grok, Kimi
+  and Antigravity entries were the ones compiled in, not the ones you can pick
+  in the chat toolbar. It now uses the toolbar's list.
   ([#33](https://github.com/azeitler/jean/issues/33))
 
 ## [0.1.73-z.18] - 2026-09-28
