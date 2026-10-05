@@ -130,6 +130,30 @@ pub fn resolve(tool_use_id: &str, outcome: DialogOutcome) -> bool {
     pending.responder.send(outcome).is_ok()
 }
 
+/// Resolve a parked dialog only when its turn can still take the answer.
+///
+/// A `permission_prompt` request can reach Jean after the blocking-tool kill
+/// released the session's dialogs: the shim outlives the CLI. That waiter
+/// belongs to a dead turn, so report `false` and let the caller send the
+/// answer as a new message.
+pub fn resolve_live(
+    tool_use_id: &str,
+    outcome: DialogOutcome,
+    is_live: impl Fn(&str) -> bool,
+) -> bool {
+    let Some(pending) = PENDING.lock().unwrap().remove(tool_use_id) else {
+        return false;
+    };
+    if !is_live(&pending.session_id) {
+        // Unblock the orphaned shim so it exits.
+        let _ = pending.responder.send(DialogOutcome::Denied {
+            message: "The turn that asked this has ended.".to_string(),
+        });
+        return false;
+    }
+    pending.responder.send(outcome).is_ok()
+}
+
 /// Apply one outcome to every dialog parked for a session.
 ///
 /// Used by plan approval, which resolves the parked `ExitPlanMode` without
@@ -309,5 +333,57 @@ mod tests {
         // static, so a test that abandons an entry breaks its neighbours.
         assert_eq!(cancel_session("cancel-session-b"), 1);
         drop(rx_b);
+    }
+
+    fn park_for_test(tool_use_id: &str, session_id: &str) -> oneshot::Receiver<DialogOutcome> {
+        let (tx, rx) = oneshot::channel();
+        PENDING.lock().unwrap().insert(
+            tool_use_id.to_string(),
+            PendingDialog {
+                session_id: session_id.to_string(),
+                responder: tx,
+            },
+        );
+        rx
+    }
+
+    fn answered() -> DialogOutcome {
+        DialogOutcome::Answered {
+            answers: json!({"Which cache?": "Redis"}),
+            response: None,
+        }
+    }
+
+    /// The shim outlives the killed CLI, so its request can park after the
+    /// kill released the session. Reporting that answer as delivered made the
+    /// UI skip the follow-up message, and the answer was lost.
+    #[tokio::test]
+    async fn an_answer_for_a_dead_turn_is_not_reported_as_delivered() {
+        let rx = park_for_test("toolu_dead_turn", "dead-turn-session");
+
+        assert!(!resolve_live("toolu_dead_turn", answered(), |_| false));
+
+        // The orphaned shim is unblocked, and nothing stays parked.
+        assert!(matches!(rx.await.unwrap(), DialogOutcome::Denied { .. }));
+        assert!(!is_parked("toolu_dead_turn"));
+    }
+
+    #[tokio::test]
+    async fn an_answer_for_a_live_turn_is_delivered() {
+        let rx = park_for_test("toolu_live_turn", "live-turn-session");
+
+        assert!(resolve_live("toolu_live_turn", answered(), |session| {
+            session == "live-turn-session"
+        }));
+
+        assert!(matches!(rx.await.unwrap(), DialogOutcome::Answered { .. }));
+        assert!(!is_parked("toolu_live_turn"));
+    }
+
+    #[test]
+    fn resolve_live_reports_false_when_nothing_is_parked() {
+        assert!(!resolve_live("toolu_never_parked_live", answered(), |_| {
+            true
+        }));
     }
 }

@@ -6633,7 +6633,15 @@ pub async fn answer_claude_dialog(
     };
 
     match (tool_use_id.filter(|id| !id.is_empty()), session_id) {
-        (Some(tool_use_id), _) => Ok(claude_dialog::resolve(&tool_use_id, outcome)),
+        (Some(tool_use_id), _) => {
+            let resolved = claude_dialog::resolve_live(
+                &tool_use_id,
+                outcome,
+                super::registry::is_process_running,
+            );
+            log::info!("[ClaudeDialog] answer tool_use_id={tool_use_id} resolved={resolved}");
+            Ok(resolved)
+        }
         // Session-scoped: plan approval resolves whatever is parked without
         // threading the ExitPlanMode tool_use id through the plan UI.
         (None, Some(session_id)) => Ok(claude_dialog::resolve_session(&session_id, outcome) > 0),

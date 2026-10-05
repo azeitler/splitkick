@@ -26,6 +26,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **A fork opens on the new session.** After _Fork session_ or _Fork from this
   message_, Jean sometimes selected an unrelated session — the first tab — in
   place of the fork. The fork is now selected, and stays selected.
+- **An answer to a Claude question is no longer lost.** Sometimes the answer
+  went to a turn that had already ended: no new run started, and the session
+  stayed on "running". The answer now starts a new run each time.
 - **The plan approval menu lists the same models as the model picker.**
   _Other model…_ under Yolo and Build used an old built-in list: it had no PI,
   Command Code, Grok, Kimi or Antigravity models, and old Claude and Codex

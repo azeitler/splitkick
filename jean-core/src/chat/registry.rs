@@ -487,7 +487,6 @@ pub fn clear_pending_cancel(session_id: &str) -> bool {
 }
 
 /// Check if a session has a running process
-#[allow(dead_code)]
 pub fn is_process_running(session_id: &str) -> bool {
     lock_recover(&PROCESS_REGISTRY, "PROCESS_REGISTRY").contains_key(session_id)
 }
