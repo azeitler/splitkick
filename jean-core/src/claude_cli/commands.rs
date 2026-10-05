@@ -46,11 +46,6 @@ const CLAUDE_DIST_BUCKET: &str =
 const CLAUDE_CREDENTIALS_FILE: &str = ".claude/.credentials.json";
 const CLAUDE_KEYCHAIN_SERVICE: &str = "Claude Code-credentials";
 const CLAUDE_USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
-const CLAUDE_REFRESH_URL: &str = "https://platform.claude.com/v1/oauth/token";
-const CLAUDE_OAUTH_CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-/// Matches Claude Code / OpenUsage refresh scopes (includes file_upload).
-const CLAUDE_OAUTH_SCOPES: &str =
-    "user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 const CLAUDE_USAGE_CACHE_TTL_SECS: u64 = 5 * 60;
 /// Stale cache is still served on 429 / transient API failures (OpenUsage pattern).
 const CLAUDE_USAGE_STALE_CACHE_MAX_SECS: u64 = 6 * 60 * 60;
@@ -673,32 +668,6 @@ struct ClaudeCredentialsFile {
     extra: HashMap<String, Value>,
 }
 
-#[derive(Debug, Clone)]
-enum ClaudeCredentialSource {
-    File(PathBuf),
-    WslFile {
-        distro: String,
-        path: String,
-    },
-    /// The `account` is the keychain item the credentials were *read* from, so a
-    /// write-back updates that same item. Claude Code stores its item under the
-    /// macOS user name; hard-coding an account here created a second item that
-    /// shadowed the real one on every read (azeitler/jean#30).
-    #[cfg(target_os = "macos")]
-    Keychain {
-        account: String,
-    },
-}
-
-#[derive(Debug, Deserialize)]
-struct ClaudeRefreshResponse {
-    access_token: String,
-    #[serde(default)]
-    refresh_token: Option<String>,
-    #[serde(default)]
-    expires_in: Option<u64>,
-}
-
 #[derive(Debug, Deserialize)]
 struct ClaudeUsageWindow {
     #[serde(default, deserialize_with = "de_opt_f64")]
@@ -978,20 +947,14 @@ fn email_from_claude_config(config: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
-fn load_claude_credentials() -> Result<(ClaudeCredentialSource, ClaudeCredentialsFile), String> {
+fn load_claude_credentials() -> Result<ClaudeCredentialsFile, String> {
     let wsl = crate::platform::get_wsl_config();
     if wsl.enabled {
         let home = crate::platform::get_wsl_home_dir(&wsl.distro)?;
         let cred_path = wsl_claude_credentials_path(&home);
         let parsed = read_wsl_claude_credentials(&wsl.distro, &cred_path)?;
         if credentials_have_access_token(&parsed) {
-            return Ok((
-                ClaudeCredentialSource::WslFile {
-                    distro: wsl.distro,
-                    path: cred_path,
-                },
-                parsed,
-            ));
+            return Ok(parsed);
         }
         return Err(format!(
             "Claude credentials not found inside WSL distro {}. Run `claude` inside WSL to authenticate.",
@@ -1003,9 +966,9 @@ fn load_claude_credentials() -> Result<(ClaudeCredentialSource, ClaudeCredential
     // over a potentially stale ~/.claude/.credentials.json.
     #[cfg(target_os = "macos")]
     {
-        if let Some((account, parsed)) = load_credentials_from_keychain() {
+        if let Some((_, parsed)) = load_credentials_from_keychain() {
             // `pick_freshest_credentials` already dropped items with no access token.
-            return Ok((ClaudeCredentialSource::Keychain { account }, parsed));
+            return Ok(parsed);
         }
     }
 
@@ -1015,7 +978,7 @@ fn load_claude_credentials() -> Result<(ClaudeCredentialSource, ClaudeCredential
             .map_err(|e| format!("Failed to read Claude credentials file: {e}"))?;
         let parsed = parse_claude_credentials(&raw)?;
         if credentials_have_access_token(&parsed) {
-            return Ok((ClaudeCredentialSource::File(cred_path), parsed));
+            return Ok(parsed);
         }
     }
 
@@ -1031,131 +994,6 @@ fn oauth_access_token(creds: &ClaudeCredentialsFile) -> Option<&str> {
         .filter(|s| !s.is_empty())
 }
 
-fn oauth_refresh_token(creds: &ClaudeCredentialsFile) -> Option<&str> {
-    creds
-        .claude_ai_oauth
-        .as_ref()
-        .and_then(|o| o.refresh_token.as_deref())
-        .map(str::trim)
-        .filter(|s| !s.is_empty())
-}
-
-/// Best-effort compare-and-swap write (OpenUsage `save(ifUnchanged:)` pattern).
-/// Re-reads the live credential source and only persists if the access+refresh pair we
-/// started with is still current — avoids clobbering a concurrent `claude` re-login.
-fn persist_claude_credentials_if_unchanged(
-    source: &ClaudeCredentialSource,
-    expected_access: Option<&str>,
-    expected_refresh: Option<&str>,
-    full_data: &ClaudeCredentialsFile,
-) -> Result<bool, String> {
-    let current = match reload_claude_credentials_from_source(source) {
-        Ok(creds) => creds,
-        Err(e) => {
-            log::warn!("Claude credential re-read before persist failed: {e}");
-            // Fall through to write — better than losing a rotated refresh token on disk.
-            return persist_claude_credentials(source, full_data).map(|()| true);
-        }
-    };
-
-    let current_access = oauth_access_token(&current);
-    let current_refresh = oauth_refresh_token(&current);
-    if current_access != expected_access.map(str::trim).filter(|s| !s.is_empty())
-        || current_refresh != expected_refresh.map(str::trim).filter(|s| !s.is_empty())
-    {
-        log::info!(
-            "Claude credentials changed during refresh; skipping write to avoid clobbering login"
-        );
-        return Ok(false);
-    }
-
-    persist_claude_credentials(source, full_data)?;
-    Ok(true)
-}
-
-fn reload_claude_credentials_from_source(
-    source: &ClaudeCredentialSource,
-) -> Result<ClaudeCredentialsFile, String> {
-    match source {
-        ClaudeCredentialSource::File(path) => {
-            let raw = std::fs::read_to_string(path)
-                .map_err(|e| format!("Failed to re-read Claude credentials file: {e}"))?;
-            parse_claude_credentials(&raw)
-        }
-        ClaudeCredentialSource::WslFile { distro, path } => {
-            read_wsl_claude_credentials(distro, path)
-        }
-        #[cfg(target_os = "macos")]
-        ClaudeCredentialSource::Keychain { account } => read_keychain_item(account)
-            .ok_or_else(|| "Claude keychain credentials unavailable on re-read".to_string()),
-    }
-}
-
-fn persist_claude_credentials(
-    source: &ClaudeCredentialSource,
-    full_data: &ClaudeCredentialsFile,
-) -> Result<(), String> {
-    // Keep this minified. Claude can break on keychain values with embedded newlines.
-    let payload = serde_json::to_string(full_data)
-        .map_err(|e| format!("Failed to serialize Claude credentials: {e}"))?;
-
-    match source {
-        ClaudeCredentialSource::File(path) => {
-            if let Some(parent) = path.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| {
-                    format!(
-                        "Failed to create Claude credentials directory {}: {e}",
-                        parent.display()
-                    )
-                })?;
-            }
-            std::fs::write(path, payload)
-                .map_err(|e| format!("Failed to write Claude credentials file: {e}"))
-        }
-        ClaudeCredentialSource::WslFile { distro, path } => {
-            crate::platform::wsl_write_bytes(distro, path, payload.as_bytes())
-                .map_err(|e| format!("Failed to write Claude credentials inside WSL: {e}"))
-        }
-        #[cfg(target_os = "macos")]
-        ClaudeCredentialSource::Keychain { account } => {
-            let output = silent_command("security")
-                .args([
-                    "add-generic-password",
-                    "-U",
-                    "-s",
-                    CLAUDE_KEYCHAIN_SERVICE,
-                    "-a",
-                    account,
-                    "-w",
-                    &payload,
-                ])
-                .output()
-                .map_err(|e| format!("Failed to update Claude credentials keychain: {e}"))?;
-            if output.status.success() {
-                Ok(())
-            } else {
-                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-                Err(if stderr.is_empty() {
-                    "Failed to update Claude credentials keychain.".to_string()
-                } else {
-                    format!("Failed to update Claude credentials keychain: {stderr}")
-                })
-            }
-        }
-    }
-}
-
-/// OpenUsage: missing expires_at means "do not force-refresh" (token may still work).
-/// Jean previously returned true here, which rotated tokens too aggressively and contributed
-/// to the logout loop.
-fn token_needs_refresh(oauth: &ClaudeOauthCredentials, now_ms: u64) -> bool {
-    let Some(expires_ms) = oauth_expires_at_ms(oauth) else {
-        return false;
-    };
-    let refresh_buffer_ms = 5 * 60 * 1000;
-    now_ms.saturating_add(refresh_buffer_ms) >= expires_ms
-}
-
 /// Expiry in epoch milliseconds. Claude stores milliseconds; older items used
 /// seconds, so normalize before comparing.
 fn oauth_expires_at_ms(oauth: &ClaudeOauthCredentials) -> Option<u64> {
@@ -1167,9 +1005,8 @@ fn oauth_expires_at_ms(oauth: &ClaudeOauthCredentials) -> Option<u64> {
     })
 }
 
-/// Past its expiry, with no buffer. `token_needs_refresh` is also true for a token
-/// that is merely close to expiry and still works; this is true only once the token
-/// cannot work any more, so a failed refresh must not be followed by a request.
+/// Past its expiry, with no buffer. An expired token cannot work, so the usage
+/// request is skipped instead of earning a 401 or 429.
 fn token_is_expired(oauth: &ClaudeOauthCredentials, now_ms: u64) -> bool {
     oauth_expires_at_ms(oauth).is_some_and(|expires_ms| now_ms >= expires_ms)
 }
@@ -1228,99 +1065,6 @@ fn save_cached_claude_usage(snapshot: &ClaudeUsageSnapshot, now_secs: u64) {
     }
 }
 
-async fn refresh_claude_access_token(
-    client: &reqwest::Client,
-    source: &ClaudeCredentialSource,
-    full_data: &mut ClaudeCredentialsFile,
-) -> Result<Option<String>, String> {
-    log::trace!("Claude token refresh: starting");
-    let oauth = full_data.claude_ai_oauth.clone().ok_or_else(|| {
-        "Claude OAuth credentials missing. Run `claude` to authenticate.".to_string()
-    })?;
-    let expected_access = oauth.access_token.clone();
-    let expected_refresh = oauth.refresh_token.clone();
-    let refresh_token = expected_refresh
-        .clone()
-        .ok_or_else(|| "Claude refresh token missing. Run `claude` to authenticate.".to_string())?;
-
-    let response = client
-        .post(CLAUDE_REFRESH_URL)
-        .header(reqwest::header::CONTENT_TYPE, "application/json")
-        .header(reqwest::header::USER_AGENT, CLAUDE_USAGE_USER_AGENT)
-        .json(&serde_json::json!({
-            "grant_type": "refresh_token",
-            "refresh_token": refresh_token,
-            "client_id": CLAUDE_OAUTH_CLIENT_ID,
-            "scope": CLAUDE_OAUTH_SCOPES
-        }))
-        .send()
-        .await
-        .map_err(|e| format!("Failed to refresh Claude token: {e}"))?;
-
-    if response.status() == reqwest::StatusCode::UNAUTHORIZED
-        || response.status() == reqwest::StatusCode::BAD_REQUEST
-    {
-        let body = response.json::<Value>().await.unwrap_or(Value::Null);
-        let error_code = body
-            .get("error")
-            .and_then(|v| v.as_str())
-            .unwrap_or("token_expired");
-        if error_code == "invalid_grant" {
-            log::trace!("Claude token refresh: invalid_grant");
-            return Err("Claude session expired. Run `claude` to log in again.".to_string());
-        }
-        // OpenUsage: non-invalid_grant 400/401 may be WAF/proxy — don't force re-login.
-        log::trace!("Claude token refresh: unauthorized/bad request without invalid_grant");
-        return Ok(None);
-    }
-
-    if !response.status().is_success() {
-        log::trace!(
-            "Claude token refresh: non-success status {}, proceeding with existing token",
-            response.status()
-        );
-        return Ok(None);
-    }
-
-    let refreshed = response
-        .json::<ClaudeRefreshResponse>()
-        .await
-        .map_err(|e| format!("Failed to parse Claude refresh response JSON: {e}"))?;
-
-    // Mutate in place so flatten `extra` / scopes / rate_limit_tier are preserved.
-    let mut next_oauth = oauth;
-    next_oauth.access_token = Some(refreshed.access_token.clone());
-    if let Some(new_refresh) = refreshed.refresh_token {
-        next_oauth.refresh_token = Some(new_refresh);
-    }
-    if let Some(expires_in) = refreshed.expires_in {
-        let now_ms = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_millis() as u64)
-            .unwrap_or(0);
-        next_oauth.expires_at = Some(now_ms.saturating_add(expires_in.saturating_mul(1000)));
-    }
-
-    full_data.claude_ai_oauth = Some(next_oauth.clone());
-    match persist_claude_credentials_if_unchanged(
-        source,
-        expected_access.as_deref(),
-        expected_refresh.as_deref(),
-        full_data,
-    ) {
-        Ok(true) => log::trace!("Claude token refresh: persisted rotated credentials"),
-        Ok(false) => log::info!(
-            "Claude token refresh: using rotated token in-memory only (disk login changed)"
-        ),
-        Err(e) => {
-            log::warn!("Claude token refresh succeeded but failed to persist credentials: {e}")
-        }
-    }
-
-    log::trace!("Claude token refresh: success");
-    Ok(next_oauth.access_token)
-}
-
 /// True when Claude can run via env API key (no OAuth login required).
 fn claude_env_api_key_present() -> bool {
     std::env::var_os("ANTHROPIC_API_KEY")
@@ -1335,7 +1079,7 @@ fn claude_credentials_or_env_authenticated() -> bool {
         return true;
     }
     match load_claude_credentials() {
-        Ok((_, creds)) => credentials_have_access_token(&creds),
+        Ok(creds) => credentials_have_access_token(&creds),
         Err(_) => false,
     }
 }
@@ -1450,7 +1194,7 @@ fn claude_usage_request(client: &reqwest::Client, access_token: &str) -> reqwest
 pub(crate) async fn get_claude_usage_with_source(
     request_source: &'static str,
 ) -> Result<ClaudeUsageSnapshot, String> {
-    // Serialize usage fetches so token refresh cannot run concurrently from UI + background.
+    // Serialize usage fetches so UI + background polls share one request and cache write.
     let _usage_lock = claude_usage_fetch_lock().lock().await;
     log::trace!("Claude usage fetch start (source={request_source})");
 
@@ -1463,7 +1207,7 @@ pub(crate) async fn get_claude_usage_with_source(
         return Ok(cached);
     }
 
-    let (source, mut credentials) = load_claude_credentials()?;
+    let credentials = load_claude_credentials()?;
     let usage_client = build_usage_client()?;
 
     let oauth = credentials.claude_ai_oauth.clone().ok_or_else(|| {
@@ -1477,58 +1221,36 @@ pub(crate) async fn get_claude_usage_with_source(
         );
     }
 
-    let mut access_token = oauth
+    let access_token = oauth
         .access_token
         .clone()
         .ok_or_else(|| "Claude access token missing. Run `claude` to authenticate.".to_string())?;
 
+    // Jean never refreshes the Claude token. Refresh tokens are single-use: a refresh
+    // here revokes the one every running `claude` process holds, and their next
+    // refresh fails with "OAuth session expired and could not be refreshed". The
+    // Claude CLI owns rotation; Jean reads the new token on a later poll.
     let now_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
-    if token_needs_refresh(&oauth, now_ms) {
-        log::trace!("Claude usage fetch requires token refresh (source={request_source})");
-        match refresh_claude_access_token(&usage_client, &source, &mut credentials).await? {
-            Some(refreshed_token) => access_token = refreshed_token,
-            // The refresh was declined for a reason other than `invalid_grant`, so the
-            // old token stands. Harmless while it is merely near expiry. Already past
-            // it, the usage request earns a 429 or 401 that Jean reports as
-            // "rate-limiting", which sends the user looking in the wrong place
-            // (azeitler/jean#30).
-            None if token_is_expired(&oauth, now_ms) => {
-                if let Some(stale) = load_stale_cached_claude_usage(now_secs) {
-                    log::warn!(
-                        "Claude access token expired and could not be refreshed; serving stale cache (source={request_source})"
-                    );
-                    return Ok(stale);
-                }
-                return Err(
-                    "Claude access token expired and the refresh was declined. Claude itself may still be working — run `claude` once so Jean reads a current login."
-                        .to_string(),
-                );
-            }
-            None => {}
+    if token_is_expired(&oauth, now_ms) {
+        if let Some(stale) = load_stale_cached_claude_usage(now_secs) {
+            log::trace!(
+                "Claude access token expired; serving stale cache until Claude refreshes it (source={request_source})"
+            );
+            return Ok(stale);
         }
+        return Err(
+            "Claude access token expired. Usage updates after the next `claude` run refreshes it."
+                .to_string(),
+        );
     }
 
-    let mut response = claude_usage_request(&usage_client, &access_token)
+    let response = claude_usage_request(&usage_client, &access_token)
         .send()
         .await
         .map_err(|e| format!("Failed to fetch Claude usage: {e}"))?;
-
-    if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-        log::trace!(
-            "Claude usage fetch received 401, retrying after refresh (source={request_source})"
-        );
-        if let Some(refreshed_token) =
-            refresh_claude_access_token(&usage_client, &source, &mut credentials).await?
-        {
-            response = claude_usage_request(&usage_client, &refreshed_token)
-                .send()
-                .await
-                .map_err(|e| format!("Failed to fetch Claude usage: {e}"))?;
-        }
-    }
 
     // OpenUsage: 429 is common — serve stale cache instead of failing hard / re-login.
     if response.status() == reqwest::StatusCode::TOO_MANY_REQUESTS {
@@ -1741,61 +1463,22 @@ mod tests {
     }
 
     #[test]
-    fn token_needs_refresh_does_not_force_when_expires_missing() {
-        // OpenUsage alignment: missing expires_at must not force rotation.
-        let oauth = ClaudeOauthCredentials {
-            access_token: Some("token".into()),
-            refresh_token: Some("refresh".into()),
-            expires_at: None,
-            ..Default::default()
-        };
-        assert!(!token_needs_refresh(&oauth, 1_700_000_000_000));
-    }
-
-    #[test]
-    fn token_needs_refresh_respects_buffer_for_ms_and_secs() {
-        let now_ms = 1_700_000_000_000u64;
-        let near = ClaudeOauthCredentials {
-            expires_at: Some(now_ms + 60_000), // 1 minute left
-            ..Default::default()
-        };
-        assert!(token_needs_refresh(&near, now_ms));
-
-        let far = ClaudeOauthCredentials {
-            expires_at: Some(now_ms + 30 * 60 * 1000), // 30 minutes
-            ..Default::default()
-        };
-        assert!(!token_needs_refresh(&far, now_ms));
-
-        // Seconds form (legacy) still works
-        let secs = ClaudeOauthCredentials {
-            expires_at: Some(now_ms / 1000 + 60),
-            ..Default::default()
-        };
-        assert!(token_needs_refresh(&secs, now_ms));
-    }
-
-    /// A token inside the 5-minute refresh buffer still works. Only one past its
-    /// expiry must block the usage request (azeitler/jean#30).
-    #[test]
-    fn token_is_expired_is_stricter_than_token_needs_refresh() {
+    fn token_is_expired_only_past_expiry() {
         let now_ms = 1_700_000_000_000u64;
 
         let near = ClaudeOauthCredentials {
             expires_at: Some(now_ms + 60_000), // 1 minute left
             ..Default::default()
         };
-        assert!(token_needs_refresh(&near, now_ms));
         assert!(!token_is_expired(&near, now_ms));
 
         let dead = ClaudeOauthCredentials {
             expires_at: Some(now_ms - 1), // one millisecond ago
             ..Default::default()
         };
-        assert!(token_needs_refresh(&dead, now_ms));
         assert!(token_is_expired(&dead, now_ms));
 
-        // Missing expiry means "do not force rotation", so it is not expired either.
+        // Missing expiry: the token may still work, so do not treat it as expired.
         let unknown = ClaudeOauthCredentials {
             expires_at: None,
             ..Default::default()

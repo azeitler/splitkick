@@ -9,6 +9,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Claude no longer logs out with "OAuth session expired and could not be
+  refreshed".** To show usage, Jean refreshed the Claude login token itself.
+  Each refresh made the token that running `claude` sessions held invalid, so
+  their next refresh failed. Jean now only reads the token and leaves the
+  refresh to Claude. When the token has expired, the usage display shows the
+  last known values until Claude refreshes it.
+  ([#30](https://github.com/azeitler/jean/issues/30))
 - **A fork opens on the new session.** After _Fork session_ or _Fork from this
   message_, Jean sometimes selected an unrelated session — the first tab — in
   place of the fork. The fork is now selected, and stays selected.
