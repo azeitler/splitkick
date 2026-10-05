@@ -19,6 +19,7 @@
 
 import { execFileSync } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -87,6 +88,22 @@ export function cutChangelog(
 }
 
 /**
+ * Where to look for `gh`. It is not always on PATH — the Jean desktop app ships
+ * its own copy, and that is the one authenticated on a machine without a system
+ * install. `GH_CLI` overrides both.
+ */
+function ghCandidates() {
+  return [
+    process.env.GH_CLI,
+    'gh',
+    resolve(
+      homedir(),
+      'Library/Application Support/com.jean.desktop/gh-cli/gh'
+    ),
+  ].filter(Boolean)
+}
+
+/**
  * Tag refs on `origin`, over SSH or — when the key is locked — over the API.
  *
  * Only the remote knows which numbers are taken. Local tags can be behind, and
@@ -102,14 +119,20 @@ function remoteTags(cwd) {
     // here while `gh`, which holds its own token, still works.
   }
 
-  try {
-    const out = execFileSync(
-      'gh',
-      ['api', '--paginate', `repos/${REPO}/tags`, '--jq', '.[].name'],
-      { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
-    )
-    return out.split('\n').filter(Boolean)
-  } catch {
+  for (const gh of ghCandidates()) {
+    try {
+      const out = execFileSync(
+        gh,
+        ['api', '--paginate', `repos/${REPO}/tags`, '--jq', '.[].name'],
+        { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }
+      )
+      return out.split('\n').filter(Boolean)
+    } catch {
+      // Try the next candidate.
+    }
+  }
+
+  {
     console.error(
       'Cannot read the tags on origin: `git ls-remote` failed (SSH key locked?) ' +
         'and `gh api` did not work either.\n' +
