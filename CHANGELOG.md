@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.19] - 2026-10-05
+
+Built on Jean 0.1.73.
+
 ### Changed
 
 - **Recent activity is closed until you click it.** The feed on Home and on a
@@ -1317,7 +1321,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.18...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.19...HEAD
+[0.1.73-z.19]: https://github.com/azeitler/jean/compare/v0.1.73-z.18...v0.1.73-z.19
 [0.1.73-z.18]: https://github.com/azeitler/jean/compare/v0.1.73-z.17...v0.1.73-z.18
 [0.1.73-z.17]: https://github.com/azeitler/jean/compare/v0.1.73-z.16...v0.1.73-z.17
 [0.1.73-z.16]: https://github.com/azeitler/jean/compare/v0.1.73-z.15...v0.1.73-z.16
