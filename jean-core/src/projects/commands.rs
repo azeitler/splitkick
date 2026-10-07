@@ -1488,7 +1488,16 @@ pub async fn create_worktree(
     let base = if base_remote.is_some() {
         preferred_base
     } else {
-        git::get_valid_base_branch(&project.path, &preferred_base)?
+        // get_valid_base_branch falls back to main/master/current branch. Here
+        // that would silently start the worktree from an unrelated branch (#34).
+        let valid = git::get_valid_base_branch(&project.path, &preferred_base)?;
+        if valid != preferred_base {
+            return Err(format!(
+                "Base branch '{preferred_base}' does not exist locally or on origin. \
+                 Pick another base branch, or change the project's base branch in its settings."
+            ));
+        }
+        valid
     };
 
     // Resolve auto-pull preference now (async), but defer the actual pull to background thread
@@ -1719,7 +1728,6 @@ pub async fn create_worktree(
             // Fetch base branch if enabled, use origin/<base> for up-to-date start point.
             // If the base is only available as a remote-tracking branch (e.g. stacking on a
             // PR head that wasn't fetched locally), also use the origin/<base> ref.
-            let has_local_branch = git::branch_exists(&project_path, &base_clone);
             let effective_base = if let Some(remote) = base_remote_clone.as_deref() {
                 // Explicitly remote-qualified base: always start from that remote's
                 // ref, refreshing it first so "from <remote>/<base>" is up to date.
@@ -1727,35 +1735,17 @@ pub async fn create_worktree(
                     log::warn!("Failed to fetch {remote}/{base_clone}: {e}");
                 }
                 format!("{remote}/{base_clone}")
-            } else if should_auto_pull {
-                log::trace!("Fetching base branch {base_clone} before worktree creation");
-                match git::git_fetch(&project_path, &base_clone, None) {
-                    Ok(_) => {
-                        log::trace!("Successfully fetched, using origin/{base_clone}");
-                        format!("origin/{base_clone}")
-                    }
-                    Err(e) => {
-                        // Prefer the remote-tracking tip over a stale local branch even
-                        // when the network fetch fails — local main/v4.x is often days
-                        // behind origin and would leave the new worktree missing commits.
+            } else {
+                if should_auto_pull {
+                    log::trace!("Fetching base branch {base_clone} before worktree creation");
+                    if let Err(e) = git::git_fetch(&project_path, &base_clone, None) {
                         log::warn!("Failed to fetch base branch {base_clone}: {e}");
-                        if git::remote_branch_exists(&project_path, &base_clone) {
-                            format!("origin/{base_clone}")
-                        } else if has_local_branch {
-                            base_clone.clone()
-                        } else {
-                            format!("origin/{base_clone}")
-                        }
                     }
                 }
-            } else if git::remote_branch_exists(&project_path, &base_clone) {
-                // auto_pull off: still prefer origin/<base> when we already have it
-                // so a stale local checkout of e.g. v4.x is not used as the start point.
-                format!("origin/{base_clone}")
-            } else if has_local_branch {
-                base_clone.clone()
-            } else {
-                format!("origin/{base_clone}")
+                // Prefer origin/<base> over a stale local checkout (local main/v4.x is
+                // often days behind), but keep a local branch that is ahead of origin:
+                // its unpushed commits are what the user works on.
+                git::preferred_start_point(&project_path, &base_clone)
             };
 
             if should_auto_resolve_worktree_conflict(&worktree_origin_clone) {
@@ -2285,7 +2275,10 @@ pub async fn create_worktree(
 
             // Save to storage and emit worktree:created BEFORE running setup script
             // so the UI can open immediately and the user can start typing.
-            if let Ok(mut data) = load_projects_data(&app_clone) {
+            // One locked read-modify-write: a separate load and save let a
+            // concurrent writer save its stale copy over the new entry (#34).
+            let mut registered: Option<Worktree> = None;
+            let save_result = update_projects_data(&app_clone, |data| {
                 // Get max order for worktrees in this project
                 let max_order = data
                     .worktrees
@@ -2350,7 +2343,27 @@ pub async fn create_worktree(
                 };
 
                 data.add_worktree(worktree.clone());
-                if let Err(e) = save_projects_data(&app_clone, &data) {
+                registered = Some(worktree);
+                true
+            });
+
+            match (save_result, registered) {
+                (Ok(_), Some(worktree)) => {
+                    // Emit success event — UI opens immediately
+                    log::trace!(
+                        "Background: Worktree created successfully: {}",
+                        worktree.name
+                    );
+                    let created_event = WorktreeCreatedEvent {
+                        worktree,
+                        auto_open_in_jean,
+                    };
+                    if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
+                        log::error!("Failed to emit worktree:created event: {e}");
+                    }
+                }
+                (result, _) => {
+                    let e = result.err().unwrap_or_default();
                     log::error!("Background: Failed to save worktree data: {e}");
                     let error_event = WorktreeCreateErrorEvent {
                         id: worktree_id_clone,
@@ -2362,30 +2375,6 @@ pub async fn create_worktree(
                     }
                     return;
                 }
-
-                // Emit success event — UI opens immediately
-                log::trace!(
-                    "Background: Worktree created successfully: {}",
-                    worktree.name
-                );
-                let created_event = WorktreeCreatedEvent {
-                    worktree,
-                    auto_open_in_jean,
-                };
-                if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
-                    log::error!("Failed to emit worktree:created event: {e}");
-                }
-            } else {
-                log::error!("Background: Failed to load projects data for saving");
-                let error_event = WorktreeCreateErrorEvent {
-                    id: worktree_id_clone,
-                    project_id: project_id_clone,
-                    error: "Failed to load projects data".to_string(),
-                };
-                if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                    log::error!("Failed to emit worktree:error event: {emit_err}");
-                }
-                return;
             }
 
             // Run setup script AFTER emitting worktree:created (user can already type)
@@ -2405,19 +2394,21 @@ pub async fn create_worktree(
                 };
 
                 // Update worktree in storage with setup results
-                if let Ok(mut data) = load_projects_data(&app_clone) {
-                    if let Some(wt) = data
+                let saved = update_projects_data(&app_clone, |data| {
+                    let Some(wt) = data
                         .worktrees
                         .iter_mut()
                         .find(|w| w.id == worktree_id_clone)
-                    {
-                        wt.setup_output = Some(setup_output.clone());
-                        wt.setup_script = Some(script.clone());
-                        wt.setup_success = Some(setup_success);
-                    }
-                    if let Err(e) = save_projects_data(&app_clone, &data) {
-                        log::warn!("Background: Failed to save setup results: {e}");
-                    }
+                    else {
+                        return false;
+                    };
+                    wt.setup_output = Some(setup_output.clone());
+                    wt.setup_script = Some(script.clone());
+                    wt.setup_success = Some(setup_success);
+                    true
+                });
+                if let Err(e) = saved {
+                    log::warn!("Background: Failed to save setup results: {e}");
                 }
 
                 // Emit setup complete event
@@ -2465,7 +2456,7 @@ pub async fn fork_session_to_worktree(
         "Forking session {source_session_id} from worktree {source_worktree_id} into a new worktree"
     );
 
-    let mut data = load_projects_data(&app)?;
+    let data = load_projects_data(&app)?;
     let source_worktree = data
         .find_worktree(&source_worktree_id)
         .cloned()
@@ -2631,8 +2622,12 @@ pub async fn fork_session_to_worktree(
         fork::copy_session_side_data(&app, &source_session_id, &forked_session.id);
         forked_session = saved_session;
 
-        data.add_worktree(worktree.clone());
-        save_projects_data(&app, &data)?;
+        // `data` was loaded before the slow git and copy work above; saving it
+        // would drop entries other writers added meanwhile (#34).
+        update_projects_data(&app, |data| {
+            data.add_worktree(worktree.clone());
+            true
+        })?;
 
         let created_event = WorktreeCreatedEvent {
             worktree: worktree.clone(),
@@ -3134,7 +3129,10 @@ pub async fn create_worktree_from_existing_branch(
             };
 
             // Save to storage
-            if let Ok(mut data) = load_projects_data(&app_clone) {
+            // One locked read-modify-write so a concurrent writer cannot save a
+            // stale copy over the new entry (#34).
+            let mut registered: Option<Worktree> = None;
+            let save_result = update_projects_data(&app_clone, |data| {
                 // Get max order for worktrees in this project
                 let max_order = data
                     .worktrees
@@ -3201,7 +3199,27 @@ pub async fn create_worktree_from_existing_branch(
                 };
 
                 data.add_worktree(worktree.clone());
-                if let Err(e) = save_projects_data(&app_clone, &data) {
+                registered = Some(worktree);
+                true
+            });
+
+            match (save_result, registered) {
+                (Ok(_), Some(worktree)) => {
+                    // Emit success event
+                    log::trace!(
+                        "Background: Worktree created successfully from existing branch: {}",
+                        worktree.name
+                    );
+                    let created_event = WorktreeCreatedEvent {
+                        worktree,
+                        auto_open_in_jean,
+                    };
+                    if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
+                        log::error!("Failed to emit worktree:created event: {e}");
+                    }
+                }
+                (result, _) => {
+                    let e = result.err().unwrap_or_default();
                     log::error!("Background: Failed to save worktree data: {e}");
                     let error_event = WorktreeCreateErrorEvent {
                         id: worktree_id_clone,
@@ -3211,30 +3229,6 @@ pub async fn create_worktree_from_existing_branch(
                     if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                         log::error!("Failed to emit worktree:error event: {emit_err}");
                     }
-                    return;
-                }
-
-                // Emit success event
-                log::trace!(
-                    "Background: Worktree created successfully from existing branch: {}",
-                    worktree.name
-                );
-                let created_event = WorktreeCreatedEvent {
-                    worktree,
-                    auto_open_in_jean,
-                };
-                if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
-                    log::error!("Failed to emit worktree:created event: {e}");
-                }
-            } else {
-                log::error!("Background: Failed to load projects data for saving");
-                let error_event = WorktreeCreateErrorEvent {
-                    id: worktree_id_clone,
-                    project_id: project_id_clone,
-                    error: "Failed to load projects data".to_string(),
-                };
-                if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                    log::error!("Failed to emit worktree:error event: {emit_err}");
                 }
             }
         })); // end catch_unwind
@@ -3730,7 +3724,10 @@ pub async fn checkout_pr(
             }
 
             // Save to storage
-            if let Ok(mut data) = load_projects_data(&app_clone) {
+            // One locked read-modify-write so a concurrent writer cannot save a
+            // stale copy over the new entry (#34).
+            let mut registered: Option<Worktree> = None;
+            let save_result = update_projects_data(&app_clone, |data| {
                 // Get max order for worktrees in this project
                 let max_order = data
                     .worktrees
@@ -3786,7 +3783,28 @@ pub async fn checkout_pr(
                 };
 
                 data.add_worktree(worktree.clone());
-                if let Err(e) = save_projects_data(&app_clone, &data) {
+                registered = Some(worktree);
+                true
+            });
+
+            match (save_result, registered) {
+                (Ok(_), Some(worktree)) => {
+                    // Emit success event
+                    log::trace!(
+                        "Background: Worktree created successfully for PR #{}: {}",
+                        pr_number,
+                        worktree.name
+                    );
+                    let created_event = WorktreeCreatedEvent {
+                        worktree,
+                        auto_open_in_jean: true,
+                    };
+                    if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
+                        log::error!("Failed to emit worktree:created event: {e}");
+                    }
+                }
+                (result, _) => {
+                    let e = result.err().unwrap_or_default();
                     log::error!("Background: Failed to save worktree data: {e}");
                     let error_event = WorktreeCreateErrorEvent {
                         id: worktree_id_clone,
@@ -3796,31 +3814,6 @@ pub async fn checkout_pr(
                     if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
                         log::error!("Failed to emit worktree:error event: {emit_err}");
                     }
-                    return;
-                }
-
-                // Emit success event
-                log::trace!(
-                    "Background: Worktree created successfully for PR #{}: {}",
-                    pr_number,
-                    worktree.name
-                );
-                let created_event = WorktreeCreatedEvent {
-                    worktree,
-                    auto_open_in_jean: true,
-                };
-                if let Err(e) = app_clone.emit_all("worktree:created", &created_event) {
-                    log::error!("Failed to emit worktree:created event: {e}");
-                }
-            } else {
-                log::error!("Background: Failed to load projects data for saving");
-                let error_event = WorktreeCreateErrorEvent {
-                    id: worktree_id_clone,
-                    project_id: project_id_clone,
-                    error: "Failed to load projects data".to_string(),
-                };
-                if let Err(emit_err) = app_clone.emit_all("worktree:error", &error_event) {
-                    log::error!("Failed to emit worktree:error event: {emit_err}");
                 }
             }
         })); // end catch_unwind
@@ -5399,16 +5392,17 @@ pub async fn update_worktree_labels(
 
     super::types::dedupe_labels_by_name(&mut labels);
 
-    let mut data = load_projects_data(&app)?;
-
-    let worktree = data
-        .find_worktree_mut(&worktree_id)
-        .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
-
-    worktree.labels = labels;
-    worktree.label = None;
-
-    save_projects_data(&app, &data)?;
+    let found = update_projects_data(&app, |data| {
+        let Some(worktree) = data.find_worktree_mut(&worktree_id) else {
+            return false;
+        };
+        worktree.labels = labels;
+        worktree.label = None;
+        true
+    })?;
+    if !found {
+        return Err(format!("Worktree not found: {worktree_id}"));
+    }
 
     log::trace!("Successfully updated worktree labels for: {worktree_id}");
     Ok(())
@@ -5427,19 +5421,20 @@ pub async fn update_worktree_label(
 pub async fn set_worktree_last_opened(app: AppHandle, worktree_id: String) -> Result<(), String> {
     log::trace!("Setting last_opened_at for worktree: {worktree_id}");
 
-    let mut data = load_projects_data(&app)?;
-
-    let worktree = data
-        .find_worktree_mut(&worktree_id)
-        .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
-
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    worktree.last_opened_at = Some(now);
-
-    save_projects_data(&app, &data)?;
+    let found = update_projects_data(&app, |data| {
+        let Some(worktree) = data.find_worktree_mut(&worktree_id) else {
+            return false;
+        };
+        worktree.last_opened_at = Some(now);
+        true
+    })?;
+    if !found {
+        return Err(format!("Worktree not found: {worktree_id}"));
+    }
 
     Ok(())
 }
@@ -6801,12 +6796,14 @@ fn save_worktree_pr_link(
     pr_number: u32,
     pr_url: &str,
 ) -> Result<(), String> {
-    let mut data = load_projects_data(app)?;
-    if let Some(wt) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) {
+    update_projects_data(app, |data| {
+        let Some(wt) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) else {
+            return false;
+        };
         wt.pr_number = Some(pr_number);
         wt.pr_url = Some(pr_url.to_string());
-        save_projects_data(app, &data)?;
-    }
+        true
+    })?;
     Ok(())
 }
 
@@ -6824,16 +6821,19 @@ pub async fn detect_and_link_pr(
     // Base sessions represent the repository's default branch, not a PR head.
     // `gh pr list --head <branch>` also returns fork PRs with the same branch
     // name, so auto-linking here can route pushes into an unrelated fork PR.
-    if let Ok(mut data) = load_projects_data(&app) {
-        if let Some(worktree) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) {
-            if worktree.session_type == SessionType::Base {
-                if clear_invalid_base_pr_link(worktree) {
-                    save_projects_data(&app, &data)?;
-                    log::warn!("Removed invalid PR link from base session {worktree_id}");
-                }
-                return Ok(None);
-            }
-        }
+    let mut is_base = false;
+    let cleared = update_projects_data(&app, |data| {
+        let Some(worktree) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) else {
+            return false;
+        };
+        is_base = worktree.session_type == SessionType::Base;
+        is_base && clear_invalid_base_pr_link(worktree)
+    })?;
+    if cleared {
+        log::warn!("Removed invalid PR link from base session {worktree_id}");
+    }
+    if is_base {
+        return Ok(None);
     }
 
     detect_and_link_pr_for_worktree(&app, &worktree_id, &worktree_path)

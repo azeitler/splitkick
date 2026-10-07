@@ -244,6 +244,44 @@ where
 mod tests {
     use super::*;
 
+    /// Concurrent writers must not drop each other's new worktrees (#34).
+    #[test]
+    fn concurrent_updates_keep_every_new_worktree() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        save_projects_data(&app, &ProjectsData::default()).unwrap();
+
+        let threads: Vec<_> = (0..16)
+            .map(|i| {
+                let app = app.clone();
+                let path = temp.path().join(format!("wt-{i}"));
+                std::fs::create_dir_all(&path).unwrap();
+                std::thread::spawn(move || {
+                    let worktree: crate::projects::types::Worktree =
+                        serde_json::from_value(serde_json::json!({
+                            "id": format!("wt-{i}"),
+                            "project_id": "p1",
+                            "name": format!("wt-{i}"),
+                            "path": path,
+                            "branch": format!("wt-{i}"),
+                            "created_at": 0,
+                        }))
+                        .unwrap();
+                    update_projects_data(&app, |data| {
+                        data.add_worktree(worktree);
+                        true
+                    })
+                    .unwrap();
+                })
+            })
+            .collect();
+        for thread in threads {
+            thread.join().unwrap();
+        }
+
+        assert_eq!(load_projects_data(&app).unwrap().worktrees.len(), 16);
+    }
+
     #[test]
     fn test_sanitize_directory_name() {
         assert_eq!(sanitize_directory_name("my-project"), "my-project");

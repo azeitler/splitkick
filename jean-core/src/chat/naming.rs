@@ -5,7 +5,7 @@
 
 use crate::claude_cli::resolve_cli_binary;
 use crate::projects::git;
-use crate::projects::storage::{load_projects_data, save_projects_data};
+use crate::projects::storage::update_projects_data;
 
 use super::storage::with_sessions_mut;
 use crate::http_server::EmitExt;
@@ -1101,13 +1101,14 @@ fn apply_branch_name(
         })?;
 
     // Update worktree metadata
-    if let Ok(mut data) = load_projects_data(app) {
-        if let Some(worktree) = data.find_worktree_mut(&request.worktree_id) {
-            worktree.name = final_branch_name.clone();
-            worktree.branch = final_branch_name.clone();
-            let _ = save_projects_data(app, &data);
-        }
-    }
+    let _ = update_projects_data(app, |data| {
+        let Some(worktree) = data.find_worktree_mut(&request.worktree_id) else {
+            return false;
+        };
+        worktree.name = final_branch_name.clone();
+        worktree.branch = final_branch_name.clone();
+        true
+    });
 
     Ok(BranchNameResult {
         worktree_id: request.worktree_id.clone(),

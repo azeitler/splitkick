@@ -619,6 +619,32 @@ pub fn remote_branch_exists(repo_path: &str, branch_name: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// Pick the start point for a new worktree based on `branch`: `origin/<branch>`,
+/// unless the local branch already contains it.
+///
+/// A local branch that is only behind origin is stale, so origin wins. A local
+/// branch that is ahead of origin holds unpushed commits the user works on, so
+/// it wins (#34). Diverged branches use origin, as before.
+pub fn preferred_start_point(repo_path: &str, branch: &str) -> String {
+    let remote = format!("origin/{branch}");
+    if branch_exists(repo_path, branch)
+        && (!remote_branch_exists(repo_path, branch) || is_ancestor(repo_path, &remote, branch))
+    {
+        branch.to_string()
+    } else {
+        remote
+    }
+}
+
+/// Whether `ancestor` is reachable from `descendant` (`git merge-base --is-ancestor`)
+pub fn is_ancestor(repo_path: &str, ancestor: &str, descendant: &str) -> bool {
+    wsl_aware_command("git", Some(Path::new(repo_path)))
+        .args(["merge-base", "--is-ancestor", ancestor, descendant])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Check if a remote with this name is configured for the repository
 pub fn remote_exists(repo_path: &str, remote: &str) -> bool {
     wsl_aware_command("git", Some(Path::new(repo_path)))
@@ -3230,6 +3256,43 @@ mod tests {
         );
         run_git(repo, &["update-ref", "refs/remotes/fork/main", "HEAD"]);
         dir
+    }
+
+    fn commit(repo: &std::path::Path, message: &str) {
+        std::fs::write(repo.join("file.txt"), message).unwrap();
+        run_git(repo, &["commit", "-am", message]);
+    }
+
+    #[test]
+    fn test_preferred_start_point_keeps_local_branch_ahead_of_origin() {
+        let dir = repo_with_fork_remote();
+        let repo = dir.path();
+        let path = repo.to_str().unwrap();
+        run_git(repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        commit(repo, "unpushed");
+        assert_eq!(preferred_start_point(path, "main"), "main");
+    }
+
+    #[test]
+    fn test_preferred_start_point_uses_origin_when_local_is_behind_or_diverged() {
+        let dir = repo_with_fork_remote();
+        let repo = dir.path();
+        let path = repo.to_str().unwrap();
+        commit(repo, "on origin");
+        run_git(repo, &["update-ref", "refs/remotes/origin/main", "HEAD"]);
+        run_git(repo, &["reset", "--hard", "HEAD~1"]);
+        assert_eq!(preferred_start_point(path, "main"), "origin/main");
+
+        commit(repo, "local only");
+        assert_eq!(preferred_start_point(path, "main"), "origin/main");
+    }
+
+    #[test]
+    fn test_preferred_start_point_without_origin_branch_uses_local() {
+        let dir = repo_with_fork_remote();
+        let path = dir.path().to_str().unwrap();
+        assert_eq!(preferred_start_point(path, "main"), "main");
+        assert_eq!(preferred_start_point(path, "missing"), "origin/missing");
     }
 
     #[test]
