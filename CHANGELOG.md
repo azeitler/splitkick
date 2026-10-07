@@ -7,6 +7,22 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Remote hosts with many projects stay responsive.** When a client
+  connected to a host with many projects, the host started hundreds of git
+  status threads at once. Each result rewrote the project list under one lock,
+  and the server stopped answering, including its heartbeats. Requests timed
+  out and the connection dropped. The host now runs every remote command off
+  the threads that answer the connection, checks git status with 8 workers in
+  total, and skips the rewrite when the values did not change.
+- **A slow or failed check no longer looks like a fresh install.** When a CLI
+  check timed out, Jean showed the backend as "not installed" and opened
+  onboarding, showed "Setup incomplete", or could pick a different default
+  backend. A failed check now counts as unknown and keeps its last result.
+  When the project list cannot load, Jean shows "Couldn't load projects" with
+  a Retry button instead of the welcome screen or "No projects found".
+
 ## [0.1.73-z.19] - 2026-10-05
 
 Built on Jean 0.1.73.

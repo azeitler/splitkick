@@ -6,6 +6,7 @@ import { SetupIncompleteBanner } from './SetupIncompleteBanner'
 const mocks = vi.hoisted(() => ({
   cursorInstalled: true,
   cursorAuthenticated: true,
+  ghStatusFailed: false,
 }))
 
 function statusResult(installed = false) {
@@ -59,7 +60,10 @@ vi.mock('@/services/kimi-cli', () => ({
 }))
 
 vi.mock('@/services/gh-cli', () => ({
-  useGhCliStatus: () => statusResult(true),
+  useGhCliStatus: () =>
+    mocks.ghStatusFailed
+      ? { data: undefined, isLoading: false, isError: true }
+      : statusResult(true),
   useGhCliAuth: () => authResult(true),
 }))
 
@@ -67,6 +71,7 @@ describe('SetupIncompleteBanner', () => {
   beforeEach(() => {
     mocks.cursorInstalled = true
     mocks.cursorAuthenticated = true
+    mocks.ghStatusFailed = false
     useUIStore.setState({ onboardingDismissed: true, onboardingOpen: false })
   })
 
@@ -82,5 +87,14 @@ describe('SetupIncompleteBanner', () => {
     render(<SetupIncompleteBanner />)
 
     expect(screen.getByText(/setup incomplete/i)).toBeInTheDocument()
+  })
+
+  it('hides the banner when a status check failed (e.g. remote timeout)', () => {
+    mocks.cursorAuthenticated = false
+    mocks.ghStatusFailed = true
+
+    render(<SetupIncompleteBanner />)
+
+    expect(screen.queryByText(/setup incomplete/i)).not.toBeInTheDocument()
   })
 })

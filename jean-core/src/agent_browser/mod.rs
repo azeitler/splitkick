@@ -286,7 +286,7 @@ pub async fn ensure_agent_browser_profile(app: AppHandle) -> Result<AgentBrowser
 /// (`agent-browser install`). Idempotent reinstall/update.
 ///
 /// Performs synchronous npm/network work; WebSocket dispatch should run this
-/// on the blocking pool (see `command_should_run_on_blocking_pool`).
+/// on the blocking pool (it runs every command there).
 pub async fn install_agent_browser(app: AppHandle) -> Result<AgentBrowserStatus, String> {
     install_agent_browser_sync(&app)
 }

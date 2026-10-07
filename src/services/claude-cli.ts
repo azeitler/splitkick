@@ -20,6 +20,7 @@ import type {
 } from '@/types/claude-cli'
 
 import { hasBackendTransport } from '@/lib/environment'
+import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
 const USAGE_REFRESH_MS = 1000 * 60 * 5
@@ -116,12 +117,9 @@ export function useClaudeCliStatus(options?: { enabled?: boolean }) {
         return status
       } catch (error) {
         logger.error('Failed to check Claude CLI status', { error })
-        return {
-          installed: false,
-          version: null,
-          path: null,
-          supports_auth_command: false,
-        }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,
@@ -150,10 +148,9 @@ export function useClaudeCliAuth(options?: { enabled?: boolean }) {
         return status
       } catch (error) {
         logger.error('Failed to check Claude CLI auth', { error })
-        return {
-          authenticated: false,
-          error: error instanceof Error ? error.message : String(error),
-        }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,

@@ -96,7 +96,15 @@ export function MainWindowContent({
   const setAddProjectDialogOpen = useProjectsStore(
     state => state.setAddProjectDialogOpen
   )
-  const { data: projects = [] } = useProjects()
+  const {
+    data: projectsData,
+    isError: projectsFailed,
+    refetch: refetchProjects,
+  } = useProjects()
+  const projects = projectsData ?? []
+  // No project list yet: still loading, or the load failed. Neither means
+  // "this host has no projects", so never show first-run UI for it.
+  const projectsUnknown = projectsData === undefined
   const [backendCheckReady, setBackendCheckReady] = useState(false)
   useEffect(() => scheduleIdleWork(() => setBackendCheckReady(true), 1500), [])
 
@@ -104,14 +112,21 @@ export function MainWindowContent({
 
   const showWelcome = !activeWorktreePath && !selectedProjectId && !children
   const shouldCheckBackends = backendCheckReady && showWelcome
-  const { installedBackends, isLoading: backendsLoading } =
-    useInstalledBackends({
-      enabled: shouldCheckBackends,
-    })
+  const {
+    installedBackends,
+    isLoading: backendsLoading,
+    isUnknown: backendsUnknown,
+  } = useInstalledBackends({
+    enabled: shouldCheckBackends,
+  })
   const awaitingBackendCheck = showWelcome && !backendCheckReady
   const setupIncomplete =
-    shouldCheckBackends && !backendsLoading && installedBackends.length === 0
-  const showAddButton = showWelcome && projects.length === 0 && !setupIncomplete
+    shouldCheckBackends &&
+    !backendsLoading &&
+    !backendsUnknown &&
+    installedBackends.length === 0
+  const showAddButton =
+    showWelcome && !projectsUnknown && projects.length === 0 && !setupIncomplete
 
   const handleProjectClick = useCallback((projectId: string) => {
     const { selectProject, expandProject } = useProjectsStore.getState()
@@ -157,6 +172,15 @@ export function MainWindowContent({
       onProjectClick={handleProjectClick}
       onAddProject={() => setAddProjectDialogOpen(true)}
     />
+  ) : projectsUnknown && projectsFailed ? (
+    <div className="flex flex-1 flex-col items-center justify-center gap-3 font-sans">
+      <p className="text-sm text-muted-foreground">Couldn&apos;t load projects.</p>
+      <Button variant="outline" onClick={() => refetchProjects()}>
+        Retry
+      </Button>
+    </div>
+  ) : projectsUnknown ? (
+    <JeanLoadingScreen />
   ) : (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 font-sans">
       <h1 className="text-4xl font-bold text-foreground">Welcome to Jean!</h1>

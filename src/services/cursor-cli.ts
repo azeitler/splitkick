@@ -12,6 +12,7 @@ import type {
   CursorModelInfo,
 } from '@/types/cursor-cli'
 import { hasBackendTransport } from '@/lib/environment'
+import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
 
@@ -75,7 +76,9 @@ export function useCursorCliStatus(options?: { enabled?: boolean }) {
         return await invoke<CursorCliStatus>('check_cursor_cli_installed')
       } catch (error) {
         logger.error('Failed to check Cursor CLI status', { error })
-        return { installed: false, version: null, path: null }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,
@@ -101,11 +104,9 @@ export function useCursorCliAuth(options?: { enabled?: boolean }) {
         return await invoke<CursorAuthStatus>('check_cursor_cli_auth')
       } catch (error) {
         logger.error('Failed to check Cursor CLI auth', { error })
-        return {
-          authenticated: false,
-          error: error instanceof Error ? error.message : String(error),
-          timed_out: false,
-        }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,

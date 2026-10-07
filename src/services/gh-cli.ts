@@ -19,6 +19,7 @@ import type {
 } from '@/types/gh-cli'
 
 import { hasBackendTransport } from '@/lib/environment'
+import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
 
@@ -94,7 +95,9 @@ export function useGhCliStatus(options?: { enabled?: boolean }) {
         return status
       } catch (error) {
         logger.error('Failed to check GitHub CLI status', { error })
-        return { installed: false, version: null, path: null }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,
@@ -128,10 +131,9 @@ export function useGhCliAuth(options?: {
         return status
       } catch (error) {
         logger.error('Failed to check GitHub CLI auth', { error })
-        return {
-          authenticated: false,
-          error: error instanceof Error ? error.message : String(error),
-        }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,

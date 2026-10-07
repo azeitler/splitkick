@@ -16,6 +16,7 @@ import type {
 import { hasBackendTransport } from '@/lib/environment'
 import { preferencesQueryKeys } from '@/services/preferences'
 import type { AppPreferences } from '@/types/preferences'
+import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
 
@@ -71,7 +72,9 @@ export function usePiCliStatus(options?: { enabled?: boolean }) {
         return await invoke<PiCliStatus>('check_pi_cli_installed')
       } catch (error) {
         logger.error('Failed to check PI CLI status', { error })
-        return { installed: false, version: null, path: null }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,
@@ -91,10 +94,9 @@ export function usePiCliAuth(options?: { enabled?: boolean }) {
         return await invoke<PiAuthStatus>('check_pi_cli_auth')
       } catch (error) {
         logger.error('Failed to check PI CLI auth', { error })
-        return {
-          authenticated: false,
-          error: error instanceof Error ? error.message : String(error),
-        }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,

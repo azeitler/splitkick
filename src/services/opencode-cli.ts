@@ -15,6 +15,7 @@ import type {
   OpencodeReleaseInfo,
 } from '@/types/opencode-cli'
 import { hasBackendTransport } from '@/lib/environment'
+import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
 
@@ -88,9 +89,10 @@ export function useOpencodeCliStatus(options?: { enabled?: boolean }) {
         console.debug('[ONBOARDING:SVC] opencode: status =', status)
         return status
       } catch (error) {
-        console.debug('[ONBOARDING:SVC] opencode: status check FAILED:', error)
         logger.error('Failed to check OpenCode CLI status', { error })
-        return { installed: false, version: null, path: null }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,
@@ -116,12 +118,10 @@ export function useOpencodeCliAuth(options?: { enabled?: boolean }) {
         console.debug('[ONBOARDING:SVC] opencode: auth =', status)
         return status
       } catch (error) {
-        console.debug('[ONBOARDING:SVC] opencode: auth check FAILED:', error)
         logger.error('Failed to check OpenCode CLI auth', { error })
-        return {
-          authenticated: false,
-          error: error instanceof Error ? error.message : String(error),
-        }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,

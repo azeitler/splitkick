@@ -101,14 +101,24 @@ export function hasUntouchedClaudeMagicDefaults(
 /** Set magic prompts from the first installed AI CLI after detection completes. */
 export function useMagicPromptAutoDefaults() {
   const { data: preferences } = usePreferences()
-  const { installedBackends, isLoading: isStatusLoading } =
-    useInstalledBackends()
+  const {
+    installedBackends,
+    isLoading: isStatusLoading,
+    isUnknown: isStatusUnknown,
+  } = useInstalledBackends()
   const { authByBackend, isLoading: isAuthLoading } = useBackendAuthStatuses()
   const patchPreferences = usePatchPreferences()
   const didRun = useRef(false)
 
   useEffect(() => {
-    if (!preferences || isStatusLoading || isAuthLoading || didRun.current)
+    // A failed status check must not pick a different default backend.
+    if (
+      !preferences ||
+      isStatusLoading ||
+      isStatusUnknown ||
+      isAuthLoading ||
+      didRun.current
+    )
       return
 
     const readyBackends = getReadyBackends(installedBackends, authByBackend)
@@ -148,6 +158,7 @@ export function useMagicPromptAutoDefaults() {
     installedBackends,
     authByBackend,
     isStatusLoading,
+    isStatusUnknown,
     isAuthLoading,
     patchPreferences,
   ])

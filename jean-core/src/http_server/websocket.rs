@@ -9,33 +9,6 @@ use tokio::sync::{broadcast, mpsc};
 use super::dispatch::dispatch_command;
 use super::{WsBroadcaster, WsEvent};
 
-fn command_should_run_on_blocking_pool(command: &str) -> bool {
-    matches!(
-        command,
-        "get_sessions"
-            | "bootstrap_project"
-            | "list_native_cli_sessions"
-            | "create_commit_with_ai"
-            | "create_pr_with_ai_content"
-            | "run_review_with_ai"
-            | "generate_release_notes"
-            | "execute_summarization"
-            | "install_claude_cli"
-            | "install_codex_cli"
-            | "install_missing_codex_code_mode_host"
-            | "install_opencode_cli"
-            | "install_pi_cli"
-            | "install_grok_cli"
-            | "update_grok_cli"
-            | "install_gh_cli"
-            | "install_coderabbit_cli"
-            | "update_coderabbit_cli"
-            | "install_agent_browser"
-            | "run_coderabbit_review"
-            | "trigger_coderabbit_pr_review"
-    )
-}
-
 /// Commands that must preserve WebSocket receive order.
 ///
 /// Terminal input is the critical case: xterm.js emits small `onData` chunks
@@ -75,24 +48,14 @@ fn spawn_dispatch_response(
     args: Value,
     tx: mpsc::UnboundedSender<String>,
 ) {
-    if command_should_run_on_blocking_pool(&command) {
-        // These commands perform synchronous git/CLI/process work under an
-        // async dispatch signature. Running them on the core runtime can starve
-        // the WebSocket loop in web/mobile access, making unrelated actions
-        // (for example creating a new session) appear stuck until the command
-        // finishes.
-        tokio::task::spawn_blocking(move || {
-            let resp =
-                tauri::async_runtime::block_on(dispatch_invoke_response(app, id, command, args));
-            if let Ok(json) = serde_json::to_string(&resp) {
-                let _ = tx.send(json);
-            }
-        });
-        return;
-    }
-
-    tokio::spawn(async move {
-        let resp = dispatch_invoke_response(app, id, command, args).await;
+    // Every command runs on the blocking pool. Most dispatch targets are
+    // `async fn`s that still do synchronous work: git/CLI processes, file I/O,
+    // and the global std `PROJECTS_LOCK` in `projects::storage`. On the async
+    // runtime, a burst of such commands (a remote client with many projects
+    // connecting) blocks every tokio worker, and the WebSocket loop stops
+    // sending heartbeats and responses until the burst drains.
+    tokio::task::spawn_blocking(move || {
+        let resp = tauri::async_runtime::block_on(dispatch_invoke_response(app, id, command, args));
         if let Ok(json) = serde_json::to_string(&resp) {
             let _ = tx.send(json);
         }
@@ -152,25 +115,7 @@ fn dispatch_client_invoke(
 
 #[cfg(test)]
 mod tests {
-    use super::{command_must_run_in_ws_order, command_should_run_on_blocking_pool};
-
-    #[test]
-    fn commit_generation_runs_on_blocking_pool() {
-        assert!(command_should_run_on_blocking_pool("create_commit_with_ai"));
-    }
-
-    #[test]
-    fn session_history_loading_runs_on_blocking_pool() {
-        assert!(command_should_run_on_blocking_pool("get_sessions"));
-        assert!(command_should_run_on_blocking_pool(
-            "list_native_cli_sessions"
-        ));
-    }
-
-    #[test]
-    fn lightweight_session_creation_stays_on_async_runtime() {
-        assert!(!command_should_run_on_blocking_pool("create_session"));
-    }
+    use super::command_must_run_in_ws_order;
 
     #[test]
     fn terminal_input_writes_run_in_websocket_order() {

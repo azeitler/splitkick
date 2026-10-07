@@ -85,6 +85,26 @@ export function SetupIncompleteBanner() {
     )
   }
 
+  // A failed or pending check is unknown, not "missing": a slow remote host
+  // must not show this banner for tools it has.
+  const checks: [typeof ghStatus, { data?: unknown }][] = [
+    [claudeStatus, claudeAuth],
+    [codexStatus, codexAuth],
+    [opencodeStatus, opencodeAuth],
+    [cursorStatus, cursorAuth],
+    [piStatus, piAuth],
+    [commandcodeStatus, commandcodeAuth],
+    [grokStatus, grokAuth],
+    [kimiStatus, kimiAuth],
+    [ghStatus, ghAuth],
+  ]
+  const hasUnknownCheck = checks.some(
+    ([status, auth]) =>
+      status.data === undefined ||
+      (status.data.installed && auth.data === undefined)
+  )
+  if (hasUnknownCheck) return null
+
   const ghReady = !!ghStatus.data?.installed && !!ghAuth.data?.authenticated
   const hasAiBackendReady =
     (!!claudeStatus.data?.installed && !!claudeAuth.data?.authenticated) ||

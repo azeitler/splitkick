@@ -17,6 +17,7 @@ import { SidebarStarredSection } from './SidebarStarredSection'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
 import { useSidebarReveal } from './useSidebarReveal'
+import { Button } from '@/components/ui/button'
 
 /** Close the mobile projects drawer when leaving into a dialog/modal. */
 function closeMobileSidebarIfNeeded(isMobile: boolean) {
@@ -26,17 +27,24 @@ function closeMobileSidebarIfNeeded(isMobile: boolean) {
 }
 
 export function ProjectsSidebar() {
-  const { data: projects = [], isLoading } = useProjects()
+  const {
+    data: projectsData,
+    isLoading,
+    isError: projectsFailed,
+    refetch: refetchProjects,
+  } = useProjects()
+  const projects = projectsData ?? []
   const { setAddProjectDialogOpen } = useProjectsStore()
   const createFolder = useCreateFolder()
   const sidebarWidth = useSidebarWidth()
   const isMobile = useIsMobile()
   const [backendCheckReady, setBackendCheckReady] = useState(false)
   useEffect(() => scheduleIdleWork(() => setBackendCheckReady(true), 1500), [])
-  const { installedBackends } = useInstalledBackends({
-    enabled: backendCheckReady,
-  })
-  const setupIncomplete = installedBackends.length === 0
+  const { installedBackends, isUnknown: backendsUnknown } =
+    useInstalledBackends({
+      enabled: backendCheckReady,
+    })
+  const setupIncomplete = !backendsUnknown && installedBackends.length === 0
 
   // Lets a command-palette jump scroll its target row into view.
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -75,6 +83,19 @@ export function ProjectsSidebar() {
         {isLoading ? (
           <div className="flex items-center justify-center p-4">
             <span className="text-sm text-muted-foreground">Loading...</span>
+          </div>
+        ) : projectsFailed && projectsData === undefined ? (
+          <div className="flex flex-col items-center justify-center gap-2 p-4">
+            <span className="text-sm text-muted-foreground">
+              Couldn&apos;t load projects
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => refetchProjects()}
+            >
+              Retry
+            </Button>
           </div>
         ) : projects.length === 0 ? (
           <div className="flex h-full items-center justify-center px-2">

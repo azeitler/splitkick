@@ -1,7 +1,7 @@
 use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -40,7 +40,9 @@ use super::release_notes::{
 use super::sentry_issues::{
     add_sentry_reference, generate_branch_name_from_sentry_issue, SentryIssueContext,
 };
-use super::storage::{get_project_worktrees_dir, load_projects_data, save_projects_data};
+use super::storage::{
+    get_project_worktrees_dir, load_projects_data, save_projects_data, update_projects_data,
+};
 use super::types::{
     JeanConfig, MergeType, Project, ProjectAutoFixSettings, SessionType, Worktree,
     WorktreeArchivedEvent, WorktreeBranchExistsEvent, WorktreeCreateErrorEvent,
@@ -7325,67 +7327,83 @@ pub async fn update_worktree_cached_status(
 ) -> Result<(), String> {
     log::trace!("Updating cached status for worktree {worktree_id}");
 
-    let mut data = load_projects_data(&app)?;
-
-    let worktree = data
-        .worktrees
-        .iter_mut()
-        .find(|w| w.id == worktree_id)
-        .ok_or_else(|| format!("Worktree not found: {worktree_id}"))?;
-
-    // Only update fields that are provided, preserve existing values for None
-    if let Some(ref b) = branch {
-        worktree.branch = b.clone();
-        // For base sessions, also update the display name to match the branch
-        if worktree.session_type == crate::projects::types::SessionType::Base {
-            worktree.name = b.clone();
+    /// Set `field` to `value` when provided. Returns whether it changed.
+    fn set<T: PartialEq>(field: &mut Option<T>, value: Option<T>) -> bool {
+        match value {
+            Some(v) if field.as_ref() != Some(&v) => {
+                *field = Some(v);
+                true
+            }
+            _ => false,
         }
     }
-    if pr_status.is_some() {
-        worktree.cached_pr_status = pr_status;
-    }
-    if check_status.is_some() {
-        worktree.cached_check_status = check_status;
-    }
-    if behind_count.is_some() {
-        worktree.cached_behind_count = behind_count;
-    }
-    if ahead_count.is_some() {
-        worktree.cached_ahead_count = ahead_count;
-    }
-    if uncommitted_added.is_some() {
-        worktree.cached_uncommitted_added = uncommitted_added;
-    }
-    if uncommitted_removed.is_some() {
-        worktree.cached_uncommitted_removed = uncommitted_removed;
-    }
-    if branch_diff_added.is_some() {
-        worktree.cached_branch_diff_added = branch_diff_added;
-    }
-    if branch_diff_removed.is_some() {
-        worktree.cached_branch_diff_removed = branch_diff_removed;
-    }
-    if base_branch_ahead_count.is_some() {
-        worktree.cached_base_branch_ahead_count = base_branch_ahead_count;
-    }
-    if base_branch_behind_count.is_some() {
-        worktree.cached_base_branch_behind_count = base_branch_behind_count;
-    }
-    if worktree_ahead_count.is_some() {
-        worktree.cached_worktree_ahead_count = worktree_ahead_count;
-    }
-    if unpushed_count.is_some() {
-        worktree.cached_unpushed_count = unpushed_count;
-    }
-    worktree.cached_status_at = Some(
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0),
-    );
 
-    save_projects_data(&app, &data)?;
+    let mut found = false;
+    // Every connected client calls this for each status event, mostly with
+    // values the server already persisted. Skip the rewrite of projects.json
+    // when nothing changed, so a burst of events does not serialize every
+    // client behind PROJECTS_LOCK.
+    update_projects_data(&app, |data| {
+        let Some(worktree) = data.worktrees.iter_mut().find(|w| w.id == worktree_id) else {
+            return false;
+        };
+        found = true;
 
+        let mut changed = false;
+        if let Some(b) = branch {
+            if worktree.branch != b {
+                worktree.branch = b.clone();
+                changed = true;
+            }
+            // For base sessions, also update the display name to match the branch
+            if worktree.session_type == crate::projects::types::SessionType::Base
+                && worktree.name != b
+            {
+                worktree.name = b;
+                changed = true;
+            }
+        }
+        changed |= set(&mut worktree.cached_pr_status, pr_status);
+        changed |= set(&mut worktree.cached_check_status, check_status);
+        changed |= set(&mut worktree.cached_behind_count, behind_count);
+        changed |= set(&mut worktree.cached_ahead_count, ahead_count);
+        changed |= set(&mut worktree.cached_uncommitted_added, uncommitted_added);
+        changed |= set(
+            &mut worktree.cached_uncommitted_removed,
+            uncommitted_removed,
+        );
+        changed |= set(&mut worktree.cached_branch_diff_added, branch_diff_added);
+        changed |= set(
+            &mut worktree.cached_branch_diff_removed,
+            branch_diff_removed,
+        );
+        changed |= set(
+            &mut worktree.cached_base_branch_ahead_count,
+            base_branch_ahead_count,
+        );
+        changed |= set(
+            &mut worktree.cached_base_branch_behind_count,
+            base_branch_behind_count,
+        );
+        changed |= set(
+            &mut worktree.cached_worktree_ahead_count,
+            worktree_ahead_count,
+        );
+        changed |= set(&mut worktree.cached_unpushed_count, unpushed_count);
+        if changed {
+            worktree.cached_status_at = Some(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0),
+            );
+        }
+        changed
+    })?;
+
+    if !found {
+        return Err(format!("Worktree not found: {worktree_id}"));
+    }
     Ok(())
 }
 
@@ -13078,8 +13096,6 @@ pub(crate) fn resolve_worktree_status_base(worktree: &Worktree, project_default:
 /// each worktree to be selected first. Status is fetched in parallel and emitted
 /// via the existing `git:status-update` event channel.
 pub async fn fetch_worktrees_status(app: AppHandle, project_id: String) -> Result<(), String> {
-    use super::git_status::{get_branch_status, ActiveWorktreeInfo};
-
     log::trace!(
         "[fetch_worktrees_status] Fetching status for all worktrees in project: {project_id}"
     );
@@ -13113,112 +13129,143 @@ pub async fn fetch_worktrees_status(app: AppHandle, project_id: String) -> Resul
         project_id
     );
 
-    // Fetch status with a bounded worker pool. get_branch_status runs ~8-10 git
-    // subcommands (each a child process needing pipe fds); spawning one thread per
-    // worktree unbounded would, with 100+ worktrees, exhaust the process fd table
-    // (EMFILE) and silently break both git status and coinciding claude CLI spawns.
-    // Cap concurrency so fd usage stays flat regardless of worktree count.
-    let project_default_branch = project.default_branch.clone();
-    let worker_count = worktrees.len().clamp(1, 8);
-
-    // Shared job queue: workers pull worktrees until the receiver is drained.
-    let (tx, rx) = mpsc::channel::<Worktree>();
+    let project_default_branch = project.default_branch;
+    let mut queued = 0;
     for worktree in worktrees {
-        // Send cannot fail: receiver lives until all workers finish below.
-        let _ = tx.send(worktree);
-    }
-    drop(tx); // Close the channel so workers exit once the queue is empty.
-
-    let rx = std::sync::Arc::new(Mutex::new(rx));
-
-    for _ in 0..worker_count {
-        let app_clone = app.clone();
-        let project_default_branch = project_default_branch.clone();
-        let rx = std::sync::Arc::clone(&rx);
-
-        thread::spawn(move || loop {
-            // Pull the next worktree job (lock only while dequeuing).
-            let worktree = {
-                let guard = match rx.lock() {
-                    Ok(g) => g,
-                    Err(_) => break,
-                };
-                match guard.recv() {
-                    Ok(w) => w,
-                    Err(_) => break, // Channel drained — worker done.
-                }
-            };
-
-            let base_branch = resolve_worktree_status_base(&worktree, &project_default_branch);
-
-            let info = ActiveWorktreeInfo {
-                worktree_id: worktree.id.clone(),
-                worktree_path: worktree.path.clone(),
-                base_branch,
-                base_remote: worktree.base_remote.clone(),
-                pr_number: worktree.pr_number,
-                pr_url: worktree.pr_url.clone(),
-                pr_push_remote: worktree.pr_push_remote.clone(),
-                pr_push_branch: worktree.pr_push_branch.clone(),
-            };
-
-            // Fetch git status (this may take a moment as it runs git commands)
-            match get_branch_status(&info) {
-                Ok(status) => {
-                    log::trace!(
-                        "[fetch_worktrees_status] Got status for {}: behind={}, ahead={}",
-                        worktree.name,
-                        status.behind_count,
-                        status.ahead_count
-                    );
-
-                    // Emit status update event
-                    if let Err(e) = app_clone.emit_all("git:status-update", &status) {
-                        log::warn!(
-                            "Failed to emit git status for worktree {}: {e}",
-                            worktree.id
-                        );
-                    } else {
-                        log::trace!(
-                            "[fetch_worktrees_status] Emitted git:status-update for {}",
-                            worktree.name
-                        );
-                    }
-
-                    // Update cached values in storage
-                    if let Ok(mut data) = load_projects_data(&app_clone) {
-                        if let Some(w) = data.worktrees.iter_mut().find(|w| w.id == worktree.id) {
-                            w.cached_behind_count = Some(status.behind_count);
-                            w.cached_ahead_count = Some(status.ahead_count);
-                            w.cached_uncommitted_added = Some(status.uncommitted_added);
-                            w.cached_uncommitted_removed = Some(status.uncommitted_removed);
-                            w.cached_branch_diff_added = Some(status.branch_diff_added);
-                            w.cached_branch_diff_removed = Some(status.branch_diff_removed);
-                            w.cached_unpushed_count = Some(status.unpushed_count);
-                            w.cached_status_at = Some(status.checked_at);
-
-                            if let Err(e) = save_projects_data(&app_clone, &data) {
-                                log::warn!(
-                                    "Failed to save cached status for worktree {}: {e}",
-                                    worktree.id
-                                );
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::warn!("Failed to get git status for worktree {}: {e}", worktree.id);
-                }
-            }
-        });
+        if enqueue_worktree_status_job(WorktreeStatusJob {
+            app: app.clone(),
+            worktree,
+            project_default_branch: project_default_branch.clone(),
+        }) {
+            queued += 1;
+        }
     }
 
     // Don't wait for workers - fire and forget
     // Status updates will be emitted via events as they complete
-    log::trace!(
-        "[fetch_worktrees_status] Spawned {worker_count} status workers for project: {project_id}"
-    );
+    log::trace!("[fetch_worktrees_status] Queued {queued} status jobs for project: {project_id}");
     Ok(())
+}
+
+/// Git status workers shared by every `fetch_worktrees_status` call.
+///
+/// get_branch_status runs ~8-10 git subcommands (each a child process needing
+/// pipe fds) and each result rewrites projects.json. The cap is process-wide:
+/// a client with many projects calls this once per project, and a per-call
+/// pool would multiply into hundreds of git threads that exhaust fds (EMFILE)
+/// and contend on `PROJECTS_LOCK` until the whole server stalls.
+const WORKTREE_STATUS_WORKERS: usize = 8;
+
+struct WorktreeStatusJob {
+    app: AppHandle,
+    worktree: Worktree,
+    project_default_branch: String,
+}
+
+/// Worktree ids waiting in the queue, so repeat requests do not pile up jobs.
+static QUEUED_STATUS_WORKTREES: Lazy<Mutex<HashSet<String>>> =
+    Lazy::new(|| Mutex::new(HashSet::new()));
+
+static WORKTREE_STATUS_QUEUE: Lazy<mpsc::Sender<WorktreeStatusJob>> = Lazy::new(|| {
+    let (tx, rx) = mpsc::channel::<WorktreeStatusJob>();
+    let rx = Arc::new(Mutex::new(rx));
+    for _ in 0..WORKTREE_STATUS_WORKERS {
+        let rx = Arc::clone(&rx);
+        thread::spawn(move || loop {
+            // Lock only while dequeuing.
+            let job = match rx.lock() {
+                Ok(guard) => match guard.recv() {
+                    Ok(job) => job,
+                    Err(_) => break,
+                },
+                Err(_) => break,
+            };
+            if let Ok(mut queued) = QUEUED_STATUS_WORKTREES.lock() {
+                queued.remove(&job.worktree.id);
+            }
+            run_worktree_status_job(job);
+        });
+    }
+    tx
+});
+
+/// Queue a status job. Returns false when the worktree is already queued.
+fn enqueue_worktree_status_job(job: WorktreeStatusJob) -> bool {
+    if let Ok(mut queued) = QUEUED_STATUS_WORKTREES.lock() {
+        if !queued.insert(job.worktree.id.clone()) {
+            return false;
+        }
+    }
+    // Send cannot fail: the receiver lives in the workers for the process lifetime.
+    let _ = WORKTREE_STATUS_QUEUE.send(job);
+    true
+}
+
+fn run_worktree_status_job(job: WorktreeStatusJob) {
+    use super::git_status::{get_branch_status, ActiveWorktreeInfo};
+
+    let WorktreeStatusJob {
+        app,
+        worktree,
+        project_default_branch,
+    } = job;
+    let base_branch = resolve_worktree_status_base(&worktree, &project_default_branch);
+
+    let info = ActiveWorktreeInfo {
+        worktree_id: worktree.id.clone(),
+        worktree_path: worktree.path.clone(),
+        base_branch,
+        base_remote: worktree.base_remote.clone(),
+        pr_number: worktree.pr_number,
+        pr_url: worktree.pr_url.clone(),
+        pr_push_remote: worktree.pr_push_remote.clone(),
+        pr_push_branch: worktree.pr_push_branch.clone(),
+    };
+
+    // Fetch git status (this may take a moment as it runs git commands)
+    let status = match get_branch_status(&info) {
+        Ok(status) => status,
+        Err(e) => {
+            log::warn!("Failed to get git status for worktree {}: {e}", worktree.id);
+            return;
+        }
+    };
+    log::trace!(
+        "[fetch_worktrees_status] Got status for {}: behind={}, ahead={}",
+        worktree.name,
+        status.behind_count,
+        status.ahead_count
+    );
+
+    // Persist before emitting: clients answer the event with
+    // update_worktree_cached_status, which is then a no-op.
+    let saved = update_projects_data(&app, |data| {
+        let Some(w) = data.worktrees.iter_mut().find(|w| w.id == worktree.id) else {
+            return false;
+        };
+        w.cached_behind_count = Some(status.behind_count);
+        w.cached_ahead_count = Some(status.ahead_count);
+        w.cached_uncommitted_added = Some(status.uncommitted_added);
+        w.cached_uncommitted_removed = Some(status.uncommitted_removed);
+        w.cached_branch_diff_added = Some(status.branch_diff_added);
+        w.cached_branch_diff_removed = Some(status.branch_diff_removed);
+        w.cached_unpushed_count = Some(status.unpushed_count);
+        w.cached_status_at = Some(status.checked_at);
+        true
+    });
+    if let Err(e) = saved {
+        log::warn!(
+            "Failed to save cached status for worktree {}: {e}",
+            worktree.id
+        );
+    }
+
+    if let Err(e) = app.emit_all("git:status-update", &status) {
+        log::warn!(
+            "Failed to emit git status for worktree {}: {e}",
+            worktree.id
+        );
+    }
 }
 
 // =============================================================================

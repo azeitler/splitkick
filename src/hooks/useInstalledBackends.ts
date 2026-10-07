@@ -87,9 +87,25 @@ export function useInstalledBackends(options?: { enabled?: boolean }) {
     kimi.isLoading ||
     antigravity.isLoading
 
+  // A check that failed with no earlier result says nothing about the backend.
+  // Callers must not read it as "not installed" (a slow remote host would
+  // otherwise look like a fresh install and trigger setup prompts).
+  const isUnknown = [
+    claude,
+    codex,
+    opencode,
+    cursor,
+    pi,
+    commandcode,
+    grok,
+    kimi,
+    antigravity,
+  ].some(query => query.isLoading || (query.isError && !query.data))
+
   return {
     installedBackends,
     isLoading,
+    isUnknown,
   }
 }
 

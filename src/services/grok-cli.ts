@@ -15,6 +15,7 @@ import type {
   GrokReleaseInfo,
   GrokUsageSnapshot,
 } from '@/types/grok-cli'
+import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
 const USAGE_REFRESH_MS = 1000 * 60 * 5
@@ -89,7 +90,9 @@ export function useGrokCliStatus(options?: { enabled?: boolean }) {
         return await invoke<GrokCliStatus>('check_grok_cli_installed')
       } catch (error) {
         logger.error('Failed to check Grok CLI status', { error })
-        return { installed: false, version: null, path: null }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,
@@ -114,11 +117,9 @@ export function useGrokCliAuth(options?: { enabled?: boolean }) {
         return await invoke<GrokAuthStatus>('check_grok_cli_auth')
       } catch (error) {
         logger.error('Failed to check Grok CLI auth', { error })
-        return {
-          authenticated: false,
-          error: error instanceof Error ? error.message : String(error),
-          timedOut: false,
-        }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,

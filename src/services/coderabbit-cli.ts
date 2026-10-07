@@ -13,6 +13,7 @@ import type {
   CodeRabbitPathDetection,
   CodeRabbitReleaseInfo,
 } from '@/types/coderabbit-cli'
+import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
 
@@ -64,7 +65,9 @@ export function useCodeRabbitCliStatus(options?: { enabled?: boolean }) {
         return invoke<CodeRabbitCliStatus>('check_coderabbit_cli_installed')
       } catch (error) {
         logger.error('Failed to check CodeRabbit CLI status', { error })
-        return { installed: false, version: null, path: null }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,
@@ -84,7 +87,9 @@ export function useCodeRabbitCliAuth(options?: { enabled?: boolean }) {
         return invoke<CodeRabbitAuthStatus>('check_coderabbit_cli_auth')
       } catch (error) {
         logger.error('Failed to check CodeRabbit CLI auth', { error })
-        return { authenticated: false, error: String(error) }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,

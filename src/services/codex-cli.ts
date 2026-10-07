@@ -25,6 +25,7 @@ import type {
 } from '@/types/codex-cli'
 
 import { hasBackendTransport } from '@/lib/environment'
+import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
 const USAGE_REFRESH_MS = 1000 * 60 * 5
@@ -112,9 +113,10 @@ export function useCodexCliStatus(options?: { enabled?: boolean }) {
         console.debug('[ONBOARDING:SVC] codex: status =', status)
         return status
       } catch (error) {
-        console.debug('[ONBOARDING:SVC] codex: status check FAILED:', error)
         logger.error('Failed to check Codex CLI status', { error })
-        return { installed: false, version: null, path: null }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,
@@ -141,12 +143,10 @@ export function useCodexCliAuth(options?: { enabled?: boolean }) {
         console.debug('[ONBOARDING:SVC] codex: auth =', status)
         return status
       } catch (error) {
-        console.debug('[ONBOARDING:SVC] codex: auth check FAILED:', error)
         logger.error('Failed to check Codex CLI auth', { error })
-        return {
-          authenticated: false,
-          error: error instanceof Error ? error.message : String(error),
-        }
+        // Rethrow: a failed check is unknown, not a negative result. Keeps the
+        // last good result and stops a timeout from opening onboarding.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled: options?.enabled ?? true,

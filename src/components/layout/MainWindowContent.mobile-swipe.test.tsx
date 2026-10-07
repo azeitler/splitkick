@@ -11,8 +11,16 @@ vi.mock('@/hooks/use-mobile', () => ({
   useIsMobile: () => true,
 }))
 
+const projectsQuery = vi.hoisted(() => ({
+  current: { data: [] as unknown[] | undefined, isError: false },
+  refetch: vi.fn(),
+}))
+
 vi.mock('@/services/projects', () => ({
-  useProjects: () => ({ data: [] }),
+  useProjects: () => ({
+    ...projectsQuery.current,
+    refetch: projectsQuery.refetch,
+  }),
 }))
 
 vi.mock('@/hooks/useInstalledBackends', () => ({
@@ -86,6 +94,7 @@ describe('MainWindowContent phone layout routing', () => {
       activeWorktreeId: null,
     })
     useProjectsStore.setState({ selectedProjectId: 'proj-1' })
+    projectsQuery.current = { data: [], isError: false }
   })
 
   it('renders the tab shell for a selected project, not the bare canvas', async () => {
@@ -120,6 +129,19 @@ describe('MainWindowContent phone layout routing', () => {
 
     expect(await screen.findByText('Welcome to Jean!')).toBeInTheDocument()
     expect(screen.queryByTestId('mobile-tab-shell')).toBeNull()
+  })
+
+  it('shows a retry, not the welcome screen, when projects fail to load', async () => {
+    // A remote host that timed out is not an empty app.
+    useProjectsStore.setState({ selectedProjectId: null })
+    projectsQuery.current = { data: undefined, isError: true }
+
+    render(<MainWindowContent />)
+
+    const retry = await screen.findByRole('button', { name: 'Retry' })
+    expect(screen.queryByText('Welcome to Jean!')).toBeNull()
+    act(() => retry.click())
+    expect(projectsQuery.refetch).toHaveBeenCalled()
   })
 })
 

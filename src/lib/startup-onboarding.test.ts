@@ -22,6 +22,22 @@ describe('getStartupOnboardingAction', () => {
     ).toBe('wait')
   })
 
+  it('waits while a status check has no result (failed or pending)', () => {
+    // A timed-out check on a remote host leaves the status undefined.
+    expect(
+      getStartupOnboardingAction({
+        aiStatuses: [undefined, missingStatus],
+        aiAuth: [undefined, undefined],
+        ghStatus: readyStatus,
+        ghAuth: authenticated,
+        onboardingOpen: false,
+        onboardingDismissed: false,
+        onboardingManuallyTriggered: false,
+        requiresWslChoice: false,
+      })
+    ).toBe('wait')
+  })
+
   it('closes startup onboarding when required tools are already ready', () => {
     expect(
       getStartupOnboardingAction({

@@ -221,6 +221,25 @@ pub fn save_projects_data(app: &AppHandle, data: &ProjectsData) -> Result<(), St
     save_projects_data_internal(app, data)
 }
 
+/// Load, mutate and save projects data under one lock hold.
+///
+/// Use this instead of `load_projects_data` + `save_projects_data` for a
+/// read-modify-write: two separate lock holds let a concurrent writer slip in
+/// between and lose its update. `mutate` returns whether it changed anything;
+/// the file is only rewritten when it did. Returns that flag.
+pub fn update_projects_data<F>(app: &AppHandle, mutate: F) -> Result<bool, String>
+where
+    F: FnOnce(&mut ProjectsData) -> bool,
+{
+    let _lock = PROJECTS_LOCK.lock().unwrap();
+    let mut data = load_projects_data_internal(app)?;
+    let changed = mutate(&mut data);
+    if changed {
+        save_projects_data_internal(app, &data)?;
+    }
+    Ok(changed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

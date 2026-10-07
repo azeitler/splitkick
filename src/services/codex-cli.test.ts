@@ -110,4 +110,20 @@ describe('Codex CLI status', () => {
     await waitFor(() => expect(result.current.data?.installed).toBe(true))
     expect(invokeMock).toHaveBeenCalledWith('check_codex_cli_installed')
   })
+
+  it('reports a failed check as an error, not as "not installed"', async () => {
+    invokeMock.mockRejectedValue(
+      new Error("Command 'check_codex_cli_installed' timed out after 60s")
+    )
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children)
+
+    const { result } = renderHook(() => useCodexCliStatus(), { wrapper })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.data).toBeUndefined()
+  })
 })
