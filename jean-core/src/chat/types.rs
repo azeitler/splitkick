@@ -563,6 +563,29 @@ pub struct CodexDynamicToolCallRequestEvent {
     pub request: CodexDynamicToolCallRequest,
 }
 
+/// A plan approved from this session into a new session or worktree.
+/// Shown as a notice under the plan message in the source chat.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PlanHandoff {
+    /// The plan message the handoff came from
+    pub message_id: String,
+    pub target_session_id: String,
+    #[serde(default)]
+    pub target_session_name: Option<String>,
+    pub target_worktree_id: String,
+    #[serde(default)]
+    pub target_worktree_name: Option<String>,
+    /// "session" or "worktree"
+    pub kind: String,
+    /// "build" or "yolo"
+    pub mode: String,
+    /// Unix timestamp (seconds)
+    pub created_at: u64,
+    /// User chose to keep working here; hide the complete/archive offer
+    #[serde(default)]
+    pub dismissed: bool,
+}
+
 /// Context for a denied message that can be re-sent after permission approval
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeniedMessageContext {
@@ -873,6 +896,9 @@ pub struct Session {
     /// Message IDs whose plans have been approved (for NDJSON-only storage)
     #[serde(default)]
     pub approved_plan_message_ids: Vec<String>,
+    /// Plans handed off from this session to a new session or worktree
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plan_handoffs: Vec<PlanHandoff>,
     /// File path to the current plan (extracted from Write tool calls)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_file_path: Option<String>,
@@ -1020,6 +1046,7 @@ impl Session {
             waiting_for_input: false,
             waiting_for_input_type: None,
             approved_plan_message_ids: vec![],
+            plan_handoffs: vec![],
             plan_file_path: None,
             pending_plan_message_id: None,
             enabled_mcp_servers: None,
@@ -1246,6 +1273,7 @@ impl SessionMetadata {
             waiting_for_input,
             waiting_for_input_type: self.waiting_for_input_type.clone(),
             approved_plan_message_ids: self.approved_plan_message_ids.clone(),
+            plan_handoffs: self.plan_handoffs.clone(),
             plan_file_path: self.plan_file_path.clone(),
             pending_plan_message_id: self.pending_plan_message_id.clone(),
             enabled_mcp_servers: self.enabled_mcp_servers.clone(),
@@ -1310,6 +1338,7 @@ impl SessionMetadata {
         self.waiting_for_input = session.waiting_for_input;
         self.waiting_for_input_type = session.waiting_for_input_type.clone();
         self.approved_plan_message_ids = session.approved_plan_message_ids.clone();
+        self.plan_handoffs = session.plan_handoffs.clone();
         self.plan_file_path = session.plan_file_path.clone();
         self.pending_plan_message_id = session.pending_plan_message_id.clone();
         self.enabled_mcp_servers = session.enabled_mcp_servers.clone();
@@ -1741,6 +1770,9 @@ pub struct SessionMetadata {
     /// Message IDs whose plans have been approved
     #[serde(default)]
     pub approved_plan_message_ids: Vec<String>,
+    /// Plans handed off from this session to a new session or worktree
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub plan_handoffs: Vec<PlanHandoff>,
     /// File path to the current plan (extracted from Write tool calls)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plan_file_path: Option<String>,
@@ -1911,6 +1943,7 @@ impl SessionMetadata {
             waiting_for_input: false,
             waiting_for_input_type: None,
             approved_plan_message_ids: vec![],
+            plan_handoffs: vec![],
             plan_file_path: None,
             pending_plan_message_id: None,
             enabled_mcp_servers: None,

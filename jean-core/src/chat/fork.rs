@@ -94,6 +94,8 @@ pub(crate) fn clear_session_runtime_state(session: &mut Session, strategy: Pendi
     if session.status_override.as_deref() == Some("review") {
         session.status_override = None;
     }
+    // Handoffs record where the source sent its plans; a fork did not send them.
+    session.plan_handoffs.clear();
     session.waiting_for_input = false;
     session.waiting_for_input_type = None;
     session.pending_permission_denials.clear();
@@ -241,6 +243,7 @@ pub(crate) fn prepare_forked_metadata(
     metadata.grok_session_id = None;
     metadata.kimi_session_id = None;
     metadata.antigravity_session_id = None;
+    metadata.plan_handoffs.clear();
 
     metadata.session_naming_completed = false;
     metadata.archived_at = None;

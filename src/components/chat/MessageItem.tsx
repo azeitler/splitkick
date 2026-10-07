@@ -30,6 +30,7 @@ import { FileMentionBadge } from './FileMentionBadge'
 import { SkillBadge } from './SkillBadge'
 import { ToolCallsDisplay } from './ToolCallsDisplay'
 import { ExitPlanModeButton } from './ExitPlanModeButton'
+import { PlanHandoffNotice } from './PlanHandoffNotice'
 import { EditedFilesDisplay } from './EditedFilesDisplay'
 import {
   CheckpointTurnRestoreButton,
@@ -866,6 +867,16 @@ export const MessageItem = memo(function MessageItem({
                 shortcutYolo={approveShortcutYolo}
                 shortcutClearContext={approveShortcutClearContext}
                 shortcutClearContextBuild={approveShortcutClearContextBuild}
+              />
+            )}
+          {message.role === 'assistant' &&
+            message.plan_approved &&
+            worktreeId && (
+              <PlanHandoffNotice
+                messageId={message.id}
+                sessionId={sessionId}
+                worktreeId={worktreeId}
+                worktreePath={worktreePath}
               />
             )}
         </>

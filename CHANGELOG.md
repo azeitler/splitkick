@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **The chat tells you where a plan went.** When you send a plan to a new
+  session or a new worktree and "Close original session on clear context" is
+  off, the original chat shows a notice under the plan. It links to the new
+  session and offers to mark the original complete, archive it, or continue
+  there.
+
 ### Fixed
 
 - **Remote hosts with many projects stay responsive.** When a client
@@ -22,6 +30,25 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   backend. A failed check now counts as unknown and keeps its last result.
   When the project list cannot load, Jean shows "Couldn't load projects" with
   a Retry button instead of the welcome screen or "No projects found".
+- **Plans approved from the plan dialog now close the original session.** The
+  plan dialog ignored "Close original session on clear context" when it sent a
+  plan to a new session or worktree; the original stayed open.
+- **A new worktree no longer disappears seconds after it was created.**
+  Background writers, such as the status refresh that a new worktree starts,
+  could save an older copy of the project list over the new entry. The git
+  worktree stayed on disk, but Jean lost track of it. Writers that run next to
+  worktree creation now read, change and save the list in one locked step
+  (#34).
+- **A plan sent to a new worktree starts from the session's branch.** It used
+  the project's default branch. When the local branch has commits that are not
+  pushed yet, the new worktree now starts from the local branch, not from
+  `origin` (#34).
+- **A missing base branch is an error.** Jean silently used `main`, `master` or
+  the current branch when the requested base branch or the project's default
+  branch did not exist. It now says which branch is missing (#34).
+- **Sending a plan to a new worktree no longer hangs silently.** When git was
+  fast, Jean could miss the "worktree created" signal and wait two minutes
+  before it showed an error. A name conflict now shows an error at once (#34).
 
 ## [0.1.73-z.19] - 2026-10-05
 

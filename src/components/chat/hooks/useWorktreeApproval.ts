@@ -11,18 +11,14 @@ import {
   readPlanFile,
   chatQueryKeys,
 } from '@/services/chat'
-import { invoke, listen } from '@/lib/transport'
+import { invoke } from '@/lib/transport'
 import type {
   EffortLevel,
   Session,
   ThinkingLevel,
   WorktreeSessions,
 } from '@/types/chat'
-import type {
-  Worktree,
-  WorktreeCreatedEvent,
-  WorktreeCreateErrorEvent,
-} from '@/types/projects'
+import type { Worktree } from '@/types/projects'
 import type { SessionCardData } from '../session-card-utils'
 import {
   extractImagePaths,
@@ -31,6 +27,11 @@ import {
 } from '../message-content-utils'
 import { navigateToApprovedWorktree } from '../worktree-approval-navigation'
 import type { CliBackend } from '@/types/preferences'
+import {
+  createWorktreeAndWait,
+  finishPlanHandoff,
+  getSourceBranch,
+} from './plan-handoff'
 
 const THINKING_LEVEL_VALUES = new Set<ThinkingLevel>([
   'off',
@@ -242,49 +243,12 @@ export function useWorktreeApproval({
       }
 
       // Step 3: Create new worktree
-      let pendingWorktree: Worktree
-      try {
-        pendingWorktree = await invoke<Worktree>('create_worktree', {
-          projectId,
-        })
-      } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`)
-        return
-      }
-      // Step 4: Wait for worktree to be ready
       let readyWorktree: Worktree
       try {
-        readyWorktree = await new Promise<Worktree>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            void unlistenCreated.then(fn => fn())
-            void unlistenError.then(fn => fn())
-            reject(new Error('Worktree creation timed out'))
-          }, 120_000)
-
-          const unlistenCreated = listen<WorktreeCreatedEvent>(
-            'worktree:created',
-            event => {
-              if (event.payload.worktree.id === pendingWorktree.id) {
-                clearTimeout(timeout)
-                void unlistenCreated.then(fn => fn())
-                void unlistenError.then(fn => fn())
-                resolve(event.payload.worktree)
-              }
-            }
-          )
-
-          const unlistenError = listen<WorktreeCreateErrorEvent>(
-            'worktree:error',
-            event => {
-              if (event.payload.id === pendingWorktree.id) {
-                clearTimeout(timeout)
-                void unlistenCreated.then(fn => fn())
-                void unlistenError.then(fn => fn())
-                reject(new Error(event.payload.error))
-              }
-            }
-          )
-        })
+        readyWorktree = await createWorktreeAndWait(
+          projectId,
+          getSourceBranch(queryClient, projectId, worktreeId)
+        )
       } catch (err) {
         toast.error(`Worktree creation failed: ${err}`)
         return
@@ -373,9 +337,9 @@ export function useWorktreeApproval({
         ? preferences?.yolo_effort_level
         : preferences?.build_effort_level
       const modeBackendOverride = modeBackendPref as CliBackend | null
-      const backend = (modeBackendOverride ??
-        originalBackend ??
-        undefined) as CliBackend | undefined
+      const backend = (modeBackendOverride ?? originalBackend ?? undefined) as
+        | CliBackend
+        | undefined
       const model =
         modeModelPref ??
         (modeBackendOverride
@@ -513,37 +477,17 @@ export function useWorktreeApproval({
         backend,
       })
 
-      // Optionally close the original session
-      if (preferences?.close_original_on_clear_context) {
-        const command =
-          preferences.removal_behavior === 'archive'
-            ? 'archive_session'
-            : 'close_session'
-
-        queryClient.setQueryData<WorktreeSessions>(
-          chatQueryKeys.sessions(worktreeId),
-          old => {
-            if (!old) return old
-            return {
-              ...old,
-              sessions: old.sessions.filter(s => s.id !== sessionId),
-            }
-          }
-        )
-
-        invoke(command, { worktreeId, worktreePath, sessionId })
-          .then(() =>
-            queryClient.invalidateQueries({
-              queryKey: chatQueryKeys.sessions(worktreeId),
-            })
-          )
-          .catch(err =>
-            console.error(
-              '[useWorktreeApproval] Failed to close original session:',
-              err
-            )
-          )
-      }
+      finishPlanHandoff({
+        queryClient,
+        prefs: preferences,
+        worktreeId,
+        worktreePath,
+        sessionId,
+        messageId,
+        newSession,
+        newWorktree: readyWorktree,
+        mode,
+      })
     },
     [worktreeId, worktreePath, projectId, queryClient, preferences, sendMessage]
   )

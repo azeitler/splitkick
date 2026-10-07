@@ -202,6 +202,22 @@ export interface DeniedMessageContext {
   thinking_level: string
 }
 
+/** A plan approved from a session into a new session or worktree */
+export interface PlanHandoff {
+  /** The plan message the handoff came from */
+  message_id: string
+  target_session_id: string
+  target_session_name?: string | null
+  target_worktree_id: string
+  target_worktree_name?: string | null
+  kind: 'session' | 'worktree'
+  mode: 'build' | 'yolo'
+  /** Unix timestamp (seconds), set by the backend */
+  created_at: number
+  /** User chose to keep working in the source session */
+  dismissed: boolean
+}
+
 /**
  * A chat session within a worktree (supports multiple sessions per worktree)
  */
@@ -310,6 +326,8 @@ export interface Session {
   waiting_for_input_type?: 'question' | 'plan' | null
   /** Message IDs whose plans have been approved (for NDJSON-only storage) */
   approved_plan_message_ids?: string[]
+  /** Plans sent from this session to a new session or worktree */
+  plan_handoffs?: PlanHandoff[]
   /** File path to the current plan (extracted from Write tool calls) */
   plan_file_path?: string
   /** Message ID of the pending plan awaiting approval (for Canvas view) */

@@ -21,6 +21,7 @@ import type {
   ChatMessage,
   ChatHistory,
   LoadedMessages,
+  PlanHandoff,
   Session,
   WorktreeSessions,
   Question,
@@ -2789,6 +2790,46 @@ export async function markPlanApproved(
     logger.error('Failed to mark plan approved', { error, messageId })
     throw error
   }
+}
+
+/**
+ * Record that a plan was sent from this session to a new session or worktree
+ */
+export async function recordPlanHandoff(
+  worktreeId: string,
+  worktreePath: string,
+  sessionId: string,
+  handoff: PlanHandoff
+): Promise<void> {
+  if (!isTauri()) {
+    return
+  }
+  await invoke('record_plan_handoff', {
+    worktreeId,
+    worktreePath,
+    sessionId,
+    handoff,
+  })
+}
+
+/**
+ * Hide the complete/archive offer of a plan handoff notice
+ */
+export async function dismissPlanHandoff(
+  worktreeId: string,
+  worktreePath: string,
+  sessionId: string,
+  messageId: string
+): Promise<void> {
+  if (!isTauri()) {
+    return
+  }
+  await invoke('dismiss_plan_handoff', {
+    worktreeId,
+    worktreePath,
+    sessionId,
+    messageId,
+  })
 }
 
 // ============================================================================

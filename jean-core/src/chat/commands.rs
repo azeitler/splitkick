@@ -6194,6 +6194,95 @@ pub async fn mark_plan_approved(
     })
 }
 
+/// Record that a plan from this session was sent to a new session or worktree.
+///
+/// Replaces an earlier handoff for the same plan message. The timestamp is set here.
+pub async fn record_plan_handoff(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    session_id: String,
+    mut handoff: crate::chat::types::PlanHandoff,
+) -> Result<(), String> {
+    handoff.created_at = now();
+    handoff.dismissed = false;
+    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+        let session = sessions
+            .find_session_mut(&session_id)
+            .ok_or_else(|| format!("Session not found: {session_id}"))?;
+        upsert_plan_handoff(&mut session.plan_handoffs, handoff);
+        Ok(())
+    })
+}
+
+/// Hide the complete/archive offer of a plan handoff notice.
+pub async fn dismiss_plan_handoff(
+    app: AppHandle,
+    worktree_id: String,
+    worktree_path: String,
+    session_id: String,
+    message_id: String,
+) -> Result<(), String> {
+    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+        let session = sessions
+            .find_session_mut(&session_id)
+            .ok_or_else(|| format!("Session not found: {session_id}"))?;
+        for handoff in &mut session.plan_handoffs {
+            if handoff.message_id == message_id {
+                handoff.dismissed = true;
+            }
+        }
+        Ok(())
+    })
+}
+
+fn upsert_plan_handoff(
+    handoffs: &mut Vec<crate::chat::types::PlanHandoff>,
+    handoff: crate::chat::types::PlanHandoff,
+) {
+    handoffs.retain(|existing| existing.message_id != handoff.message_id);
+    handoffs.push(handoff);
+}
+
+#[cfg(test)]
+mod plan_handoff_tests {
+    use super::upsert_plan_handoff;
+    use crate::chat::types::{PlanHandoff, SessionMetadata};
+
+    fn handoff(message_id: &str, target: &str) -> PlanHandoff {
+        PlanHandoff {
+            message_id: message_id.to_string(),
+            target_session_id: target.to_string(),
+            target_session_name: None,
+            target_worktree_id: "wt".to_string(),
+            target_worktree_name: None,
+            kind: "session".to_string(),
+            mode: "build".to_string(),
+            created_at: 1,
+            dismissed: false,
+        }
+    }
+
+    #[test]
+    fn upsert_replaces_handoff_for_same_message() {
+        let mut handoffs = vec![handoff("m1", "a"), handoff("m2", "b")];
+        upsert_plan_handoff(&mut handoffs, handoff("m1", "c"));
+        assert_eq!(handoffs.len(), 2);
+        assert_eq!(handoffs[1].target_session_id, "c");
+        assert_eq!(handoffs[0].message_id, "m2");
+    }
+
+    #[test]
+    fn metadata_without_handoffs_field_deserializes() {
+        let metadata =
+            SessionMetadata::new("s1".to_string(), "wt".to_string(), "Session".to_string(), 0);
+        let mut json = serde_json::to_value(&metadata).unwrap();
+        json.as_object_mut().unwrap().remove("plan_handoffs");
+        let parsed: SessionMetadata = serde_json::from_value(json).unwrap();
+        assert!(parsed.plan_handoffs.is_empty());
+    }
+}
+
 // ============================================================================
 // Image Commands (for pasted images in chat)
 // ============================================================================

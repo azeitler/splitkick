@@ -4131,7 +4131,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                             ? commandCodeModelOptions
                             : effectiveBuildBackend === 'grok'
                               ? grokModelOptions
-                            : remoteClaudeModelOptions
+                              : remoteClaudeModelOptions
                         ).map(option => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
@@ -4378,7 +4378,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                             ? commandCodeModelOptions
                             : effectiveYoloBackend === 'grok'
                               ? grokModelOptions
-                            : remoteClaudeModelOptions
+                              : remoteClaudeModelOptions
                         ).map(option => (
                           <SelectItem key={option.value} value={option.value}>
                             {option.label}
@@ -4844,7 +4844,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
 
               <InlineField
                 label="Close original session on clear context"
-                description="Automatically close the original session when using Clear Context and yolo"
+                description="Close the original session when a plan is sent to a new session or worktree. When off, the chat shows a notice with options to mark it complete or archive it."
               >
                 <Switch
                   checked={preferences?.close_original_on_clear_context ?? true}

@@ -1300,7 +1300,7 @@ export interface AppPreferences {
   kimi_auto_steer_enabled?: boolean // Reserved for Kimi Code steering support
   antigravity_auto_steer_enabled?: boolean // Reserved until Antigravity headless mode supports steering
   restore_last_session: boolean // Restore last session when switching projects (default: true)
-  close_original_on_clear_context: boolean // Close original session when using Clear Context and yolo (default: true)
+  close_original_on_clear_context: boolean // Close original session when a plan is sent to a new session or worktree (default: true)
   build_model: string | null // Model override for plan approval (build mode), null = use session model
   yolo_model: string | null // Model override for yolo plan approval, null = use session model
   build_backend: string | null // Backend override for plan approval (build mode), null = use session backend

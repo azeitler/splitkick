@@ -1,7 +1,7 @@
 import { useCallback, type RefObject } from 'react'
 import type { QueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
-import { invoke, listen } from '@/lib/transport'
+import { invoke } from '@/lib/transport'
 import {
   chatQueryKeys,
   markPlanApproved as markPlanApprovedService,
@@ -44,12 +44,13 @@ import { preferencesQueryKeys } from '@/services/preferences'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import type { AppPreferences, CliBackend } from '@/types/preferences'
-import type {
-  Worktree,
-  WorktreeCreatedEvent,
-  WorktreeCreateErrorEvent,
-} from '@/types/projects'
+import type { Worktree } from '@/types/projects'
 import { clearPlanApprovalTransientState } from './plan-approval-state'
+import {
+  createWorktreeAndWait,
+  finishPlanHandoff,
+  getSourceBranch,
+} from './plan-handoff'
 import type { ApprovalModelOverride } from '../ApprovalModelSubmenu'
 
 const respondingCodexUserInputRequests = new Set<string>()
@@ -615,8 +616,7 @@ export function useMessageHandlers({
       const waitingForInput =
         (state.pendingPermissionDenials[sessionId]?.length ?? 0) > 0 ||
         (state.pendingCodexPermissionRequests[sessionId]?.length ?? 0) > 0 ||
-        (state.pendingOpencodePermissionRequests[sessionId]?.length ?? 0) >
-          0 ||
+        (state.pendingOpencodePermissionRequests[sessionId]?.length ?? 0) > 0 ||
         (state.pendingCodexUserInputRequests[sessionId]?.length ?? 0) > 0 ||
         (state.pendingCodexMcpElicitationRequests[sessionId]?.length ?? 0) >
           0 ||
@@ -1440,44 +1440,16 @@ export function useMessageHandlers({
         backend: resolvedBackend,
       })
 
-      // Optionally close the original session immediately.
-      // cancel_process_if_running (used by close/archive) safely skips idle sessions,
-      // and with_sessions_mut uses a per-worktree mutex so there's no file-level race.
-      if (prefs?.close_original_on_clear_context) {
-        const command =
-          prefs.removal_behavior === 'archive'
-            ? 'archive_session'
-            : 'close_session'
-
-        // Optimistically remove from UI immediately
-        queryClient.setQueryData<WorktreeSessions>(
-          chatQueryKeys.sessions(worktreeId),
-          old => {
-            if (!old) return old
-            return {
-              ...old,
-              sessions: old.sessions.filter(s => s.id !== sessionId),
-              active_session_id:
-                old.active_session_id === sessionId
-                  ? newSession.id
-                  : old.active_session_id,
-            }
-          }
-        )
-
-        invoke(command, { worktreeId, worktreePath, sessionId })
-          .then(() =>
-            queryClient.invalidateQueries({
-              queryKey: chatQueryKeys.sessions(worktreeId),
-            })
-          )
-          .catch(err =>
-            console.error(
-              '[useMessageHandlers] Failed to close original session:',
-              err
-            )
-          )
-      }
+      finishPlanHandoff({
+        queryClient,
+        prefs,
+        worktreeId,
+        worktreePath,
+        sessionId,
+        messageId,
+        newSession,
+        mode,
+      })
     },
     [
       activeSessionIdRef,
@@ -1683,44 +1655,16 @@ export function useMessageHandlers({
         backend: resolvedBackend,
       })
 
-      // Optionally close the original session immediately.
-      // cancel_process_if_running (used by close/archive) safely skips idle sessions,
-      // and with_sessions_mut uses a per-worktree mutex so there's no file-level race.
-      if (prefs?.close_original_on_clear_context) {
-        const command =
-          prefs.removal_behavior === 'archive'
-            ? 'archive_session'
-            : 'close_session'
-
-        // Optimistically remove from UI immediately
-        queryClient.setQueryData<WorktreeSessions>(
-          chatQueryKeys.sessions(worktreeId),
-          old => {
-            if (!old) return old
-            return {
-              ...old,
-              sessions: old.sessions.filter(s => s.id !== sessionId),
-              active_session_id:
-                old.active_session_id === sessionId
-                  ? newSession.id
-                  : old.active_session_id,
-            }
-          }
-        )
-
-        invoke(command, { worktreeId, worktreePath, sessionId })
-          .then(() =>
-            queryClient.invalidateQueries({
-              queryKey: chatQueryKeys.sessions(worktreeId),
-            })
-          )
-          .catch(err =>
-            console.error(
-              '[useMessageHandlers] Failed to close original session:',
-              err
-            )
-          )
-      }
+      finishPlanHandoff({
+        queryClient,
+        prefs,
+        worktreeId,
+        worktreePath,
+        sessionId,
+        messageId: null,
+        newSession,
+        mode,
+      })
     },
     [
       activeSessionIdRef,
@@ -1831,49 +1775,12 @@ export function useMessageHandlers({
       store.setWaitingForInput(sessionId, false)
 
       // Create new worktree
-      let pendingWorktree: Worktree
-      try {
-        pendingWorktree = await invoke<Worktree>('create_worktree', {
-          projectId,
-        })
-      } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`)
-        return
-      }
-      // Wait for worktree to be ready
       let readyWorktree: Worktree
       try {
-        readyWorktree = await new Promise<Worktree>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            void unlistenCreated.then(fn => fn())
-            void unlistenError.then(fn => fn())
-            reject(new Error('Worktree creation timed out'))
-          }, 120_000)
-
-          const unlistenCreated = listen<WorktreeCreatedEvent>(
-            'worktree:created',
-            event => {
-              if (event.payload.worktree.id === pendingWorktree.id) {
-                clearTimeout(timeout)
-                void unlistenCreated.then(fn => fn())
-                void unlistenError.then(fn => fn())
-                resolve(event.payload.worktree)
-              }
-            }
-          )
-
-          const unlistenError = listen<WorktreeCreateErrorEvent>(
-            'worktree:error',
-            event => {
-              if (event.payload.id === pendingWorktree.id) {
-                clearTimeout(timeout)
-                void unlistenCreated.then(fn => fn())
-                void unlistenError.then(fn => fn())
-                reject(new Error(event.payload.error))
-              }
-            }
-          )
-        })
+        readyWorktree = await createWorktreeAndWait(
+          projectId,
+          getSourceBranch(queryClient, projectId, worktreeId)
+        )
       } catch (err) {
         toast.error(`Worktree creation failed: ${err}`)
         return
@@ -2034,37 +1941,17 @@ export function useMessageHandlers({
         backend: resolvedBackend,
       })
 
-      // Optionally close the original session
-      if (prefs?.close_original_on_clear_context) {
-        const closeCommand =
-          prefs.removal_behavior === 'archive'
-            ? 'archive_session'
-            : 'close_session'
-
-        queryClient.setQueryData<WorktreeSessions>(
-          chatQueryKeys.sessions(worktreeId),
-          old => {
-            if (!old) return old
-            return {
-              ...old,
-              sessions: old.sessions.filter(s => s.id !== sessionId),
-            }
-          }
-        )
-
-        invoke(closeCommand, { worktreeId, worktreePath, sessionId })
-          .then(() =>
-            queryClient.invalidateQueries({
-              queryKey: chatQueryKeys.sessions(worktreeId),
-            })
-          )
-          .catch(err =>
-            console.error(
-              '[worktreeApproval] Failed to close original session:',
-              err
-            )
-          )
-      }
+      finishPlanHandoff({
+        queryClient,
+        prefs,
+        worktreeId,
+        worktreePath,
+        sessionId,
+        messageId,
+        newSession,
+        newWorktree: readyWorktree,
+        mode,
+      })
     },
     [
       activeSessionIdRef,
@@ -2144,49 +2031,12 @@ export function useMessageHandlers({
       store.setWaitingForInput(sessionId, false)
 
       // Create new worktree
-      let pendingWorktree: Worktree
-      try {
-        pendingWorktree = await invoke<Worktree>('create_worktree', {
-          projectId,
-        })
-      } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`)
-        return
-      }
-      // Wait for worktree to be ready
       let readyWorktree: Worktree
       try {
-        readyWorktree = await new Promise<Worktree>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            void unlistenCreated.then(fn => fn())
-            void unlistenError.then(fn => fn())
-            reject(new Error('Worktree creation timed out'))
-          }, 120_000)
-
-          const unlistenCreated = listen<WorktreeCreatedEvent>(
-            'worktree:created',
-            event => {
-              if (event.payload.worktree.id === pendingWorktree.id) {
-                clearTimeout(timeout)
-                void unlistenCreated.then(fn => fn())
-                void unlistenError.then(fn => fn())
-                resolve(event.payload.worktree)
-              }
-            }
-          )
-
-          const unlistenError = listen<WorktreeCreateErrorEvent>(
-            'worktree:error',
-            event => {
-              if (event.payload.id === pendingWorktree.id) {
-                clearTimeout(timeout)
-                void unlistenCreated.then(fn => fn())
-                void unlistenError.then(fn => fn())
-                reject(new Error(event.payload.error))
-              }
-            }
-          )
-        })
+        readyWorktree = await createWorktreeAndWait(
+          projectId,
+          getSourceBranch(queryClient, projectId, worktreeId)
+        )
       } catch (err) {
         toast.error(`Worktree creation failed: ${err}`)
         return
@@ -2348,37 +2198,17 @@ export function useMessageHandlers({
         backend: resolvedBackend,
       })
 
-      // Optionally close the original session
-      if (prefs?.close_original_on_clear_context) {
-        const closeCommand =
-          prefs.removal_behavior === 'archive'
-            ? 'archive_session'
-            : 'close_session'
-
-        queryClient.setQueryData<WorktreeSessions>(
-          chatQueryKeys.sessions(worktreeId),
-          old => {
-            if (!old) return old
-            return {
-              ...old,
-              sessions: old.sessions.filter(s => s.id !== sessionId),
-            }
-          }
-        )
-
-        invoke(closeCommand, { worktreeId, worktreePath, sessionId })
-          .then(() =>
-            queryClient.invalidateQueries({
-              queryKey: chatQueryKeys.sessions(worktreeId),
-            })
-          )
-          .catch(err =>
-            console.error(
-              '[streamingWorktreeApproval] Failed to close original session:',
-              err
-            )
-          )
-      }
+      finishPlanHandoff({
+        queryClient,
+        prefs,
+        worktreeId,
+        worktreePath,
+        sessionId,
+        messageId: null,
+        newSession,
+        newWorktree: readyWorktree,
+        mode,
+      })
     },
     [
       activeSessionIdRef,
@@ -2944,7 +2774,10 @@ export function useMessageHandlers({
   )
 
   const handleOpencodePermissionReply = useCallback(
-    (request: OpenCodePermissionRequest, reply: 'once' | 'always' | 'reject') => {
+    (
+      request: OpenCodePermissionRequest,
+      reply: 'once' | 'always' | 'reject'
+    ) => {
       const sessionId = activeSessionIdRef.current
       const worktreeId = activeWorktreeIdRef.current
       const worktreePath = activeWorktreePathRef.current
@@ -3362,14 +3195,13 @@ Please apply this fix to the file.`
       const cachedSessionsData = queryClient.getQueryData<WorktreeSessions>(
         chatQueryKeys.sessions(worktreeId)
       )
-      const allContent =
-        (
-          cachedSessionsData?.sessions
-            ?.find((s: Session) => s.id === sessionId)
-            ?.messages?.flatMap((m: { role: string; content: string }) =>
-              m.role === 'assistant' ? [m.content] : []
-            ) ?? []
-        ).join('\n')
+      const allContent = (
+        cachedSessionsData?.sessions
+          ?.find((s: Session) => s.id === sessionId)
+          ?.messages?.flatMap((m: { role: string; content: string }) =>
+            m.role === 'assistant' ? [m.content] : []
+          ) ?? []
+      ).join('\n')
       const findings = parseReviewFindings(allContent)
       const findingIndex = findings.findIndex(
         f =>
@@ -3501,14 +3333,13 @@ Please apply all these fixes to the respective files.`
       const cachedSessionsData = queryClient.getQueryData<WorktreeSessions>(
         chatQueryKeys.sessions(worktreeId)
       )
-      const allContent =
-        (
-          cachedSessionsData?.sessions
-            ?.find((s: Session) => s.id === sessionId)
-            ?.messages?.flatMap((m: { role: string; content: string }) =>
-              m.role === 'assistant' ? [m.content] : []
-            ) ?? []
-        ).join('\n')
+      const allContent = (
+        cachedSessionsData?.sessions
+          ?.find((s: Session) => s.id === sessionId)
+          ?.messages?.flatMap((m: { role: string; content: string }) =>
+            m.role === 'assistant' ? [m.content] : []
+          ) ?? []
+      ).join('\n')
       const allFindings = parseReviewFindings(allContent)
 
       for (const { finding } of findingsWithSuggestions) {

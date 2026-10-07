@@ -1526,6 +1526,38 @@ pub async fn dispatch_command(
             .await?;
             Ok(Value::Null)
         }
+        "record_plan_handoff" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let handoff: crate::chat::types::PlanHandoff = from_field(&args, "handoff")?;
+            crate::chat::record_plan_handoff(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                session_id,
+                handoff,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["sessions", "session"]);
+            Ok(Value::Null)
+        }
+        "dismiss_plan_handoff" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;
+            let message_id: String = field(&args, "messageId", "message_id")?;
+            crate::chat::dismiss_plan_handoff(
+                app.clone(),
+                worktree_id,
+                worktree_path,
+                session_id,
+                message_id,
+            )
+            .await?;
+            emit_cache_invalidation(app, &["sessions", "session"]);
+            Ok(Value::Null)
+        }
         "mark_plan_approved" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;

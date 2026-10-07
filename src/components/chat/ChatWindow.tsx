@@ -26,7 +26,7 @@ import {
   AlertDialogCancel,
 } from '@/components/ui/alert-dialog'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
-import { invoke, listen } from '@/lib/transport'
+import { invoke } from '@/lib/transport'
 import { hydrateRunningSnapshot } from '@/lib/hydrate-running-snapshot'
 import { GitBranch, GitMerge, Layers, Loader2 } from 'lucide-react'
 import {
@@ -53,11 +53,7 @@ import {
   type PackageScript,
 } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
-import type {
-  Worktree,
-  WorktreeCreatedEvent,
-  WorktreeCreateErrorEvent,
-} from '@/types/projects'
+import type { Worktree } from '@/types/projects'
 import {
   useLoadedIssueContexts,
   useLoadedPRContexts,
@@ -227,6 +223,11 @@ import { useMessageHandlers } from './hooks/useMessageHandlers'
 import { useMagicCommands } from './hooks/useMagicCommands'
 import { useDragAndDropImages } from './hooks/useDragAndDropImages'
 import { usePlanDialogApproval } from './hooks/usePlanDialogApproval'
+import {
+  createWorktreeAndWait,
+  finishPlanHandoff,
+  getSourceBranch,
+} from './hooks/plan-handoff'
 import { useChatWindowEvents } from './hooks/useChatWindowEvents'
 import { useInvestigateHandlers } from './hooks/useInvestigateHandlers'
 import { useMcpServerResolution } from './hooks/useMcpServerResolution'
@@ -1577,12 +1578,24 @@ export function ChatWindow({
         effortLevel: yoloEffortLevel,
         backend: yoloBackend,
       })
+
+      finishPlanHandoff({
+        queryClient,
+        prefs: preferences,
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        sessionId: activeSessionId,
+        messageId: pendingPlanMessage?.id,
+        newSession,
+        mode: 'yolo',
+      })
     },
     [
       activeSessionId,
       activeWorktreeId,
       activeWorktreePath,
       pendingPlanMessage,
+      preferences,
       queryClient,
       createSession,
       sendMessage,
@@ -1767,12 +1780,24 @@ export function ChatWindow({
         effortLevel: buildEffortLevel,
         backend: buildBackend,
       })
+
+      finishPlanHandoff({
+        queryClient,
+        prefs: preferences,
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        sessionId: activeSessionId,
+        messageId: pendingPlanMessage?.id,
+        newSession,
+        mode: 'build',
+      })
     },
     [
       activeSessionId,
       activeWorktreeId,
       activeWorktreePath,
       pendingPlanMessage,
+      preferences,
       queryClient,
       createSession,
       sendMessage,
@@ -1844,49 +1869,12 @@ export function ChatWindow({
       store.setWaitingForInput(activeSessionId, false)
 
       // Create new worktree
-      let pendingWorktree: Worktree
-      try {
-        pendingWorktree = await invoke<Worktree>('create_worktree', {
-          projectId,
-        })
-      } catch (err) {
-        toast.error(`Failed to create worktree: ${err}`)
-        return
-      }
-      // Wait for worktree to be ready
       let readyWorktree: Worktree
       try {
-        readyWorktree = await new Promise<Worktree>((resolve, reject) => {
-          const timeout = setTimeout(() => {
-            void unlistenCreated.then(fn => fn())
-            void unlistenError.then(fn => fn())
-            reject(new Error('Worktree creation timed out'))
-          }, 120_000)
-
-          const unlistenCreated = listen<WorktreeCreatedEvent>(
-            'worktree:created',
-            event => {
-              if (event.payload.worktree.id === pendingWorktree.id) {
-                clearTimeout(timeout)
-                void unlistenCreated.then(fn => fn())
-                void unlistenError.then(fn => fn())
-                resolve(event.payload.worktree)
-              }
-            }
-          )
-
-          const unlistenError = listen<WorktreeCreateErrorEvent>(
-            'worktree:error',
-            event => {
-              if (event.payload.id === pendingWorktree.id) {
-                clearTimeout(timeout)
-                void unlistenCreated.then(fn => fn())
-                void unlistenError.then(fn => fn())
-                reject(new Error(event.payload.error))
-              }
-            }
-          )
-        })
+        readyWorktree = await createWorktreeAndWait(
+          projectId,
+          getSourceBranch(queryClient, projectId, activeWorktreeId)
+        )
       } catch (err) {
         toast.error(`Worktree creation failed: ${err}`)
         return
@@ -2041,6 +2029,18 @@ export function ChatWindow({
         effortLevel,
         backend: modeBackend,
       })
+
+      finishPlanHandoff({
+        queryClient,
+        prefs: preferences,
+        worktreeId: activeWorktreeId,
+        worktreePath: activeWorktreePath,
+        sessionId: activeSessionId,
+        messageId: pendingPlanMessage?.id,
+        newSession,
+        newWorktree: readyWorktree,
+        mode,
+      })
     },
     [
       activeSessionId,
@@ -2048,6 +2048,7 @@ export function ChatWindow({
       activeWorktreePath,
       worktree?.project_id,
       pendingPlanMessage,
+      preferences,
       queryClient,
       sendMessage,
       selectedModelRef,
