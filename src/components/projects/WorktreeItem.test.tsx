@@ -677,3 +677,71 @@ describe('WorktreeItem draft pencil', () => {
     ).toContainElement(screen.getByTestId('draft-glyph'))
   })
 })
+
+describe('WorktreeItem status dot', () => {
+  beforeEach(() => {
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(['wt-1']),
+    })
+    useChatStore.setState({
+      waitingForInputSessionIds: {},
+      sessionStatusOverrides: {},
+      sessionWorktreeMap: {},
+    })
+  })
+
+  function worktreeDot(container: HTMLElement): Element {
+    const dot = container.querySelector('span[role="img"]')
+    if (!dot) throw new Error('worktree status dot not found')
+    return dot
+  }
+
+  // Regression: the row dot had its own copy of the waiting logic. It read the
+  // raw flags, so a session the user set to "In review" (or whose flag was
+  // stale) kept the whole workspace on a blinking "waiting" dot.
+  it('follows a manual status instead of a bare waiting flag', () => {
+    mocks.sessions = [
+      session('a', 'Was waiting', {
+        last_run_status: 'running',
+        status_override: 'review',
+      }),
+    ]
+    useChatStore.setState({
+      waitingForInputSessionIds: { a: true },
+      sessionWorktreeMap: { a: 'wt-1' },
+    })
+
+    const { container } = renderItem({})
+
+    expect(worktreeDot(container).className).not.toContain('animate-blink')
+  })
+
+  it('ignores a stale persisted question flag on a cancelled run', () => {
+    mocks.sessions = [
+      session('a', 'Stopped', {
+        last_run_status: 'cancelled',
+        waiting_for_input: true,
+        waiting_for_input_type: 'question',
+      }),
+    ]
+
+    const { container } = renderItem({})
+
+    expect(worktreeDot(container).className).not.toContain('animate-blink')
+  })
+
+  it('still blinks for a session that really waits on a question', () => {
+    mocks.sessions = [
+      session('a', 'Asking', {
+        last_run_status: 'completed',
+        waiting_for_input: true,
+        waiting_for_input_type: 'question',
+      }),
+    ]
+
+    const { container } = renderItem({})
+
+    expect(worktreeDot(container).className).toContain('animate-blink')
+  })
+})

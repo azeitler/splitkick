@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **The workspace dot in the sidebar tree no longer sticks on "Waiting".**
+  The z.20 fix corrected the session rows, but the workspace row worked out
+  its own dot from the raw waiting flags. It ignored a manual status such as
+  "In review" and flags left over from finished runs, so the dot kept
+  blinking. The dot now uses the same status as the session rows.
+
 ## [0.1.73-z.20] - 2026-10-07
 
 Built on Jean 0.1.73.
