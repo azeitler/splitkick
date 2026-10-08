@@ -21,6 +21,13 @@ Built on Jean 0.1.73.
 
 ### Fixed
 
+- **Sessions no longer stick in "Waiting", and a manual status change sticks.**
+  When you sent a new message after a plan or question, the session list kept
+  the previous turn's waiting flag, so the session showed "Waiting" for the
+  whole turn. A plain "Waiting" with nothing to answer also blocked a manual
+  status such as "In review". The new turn now clears the flag everywhere, a
+  manual status now wins over a plain "Waiting", and an answered OpenCode
+  permission request no longer leaves the flag set on disk.
 - **Remote hosts with many projects stay responsive.** When a client
   connected to a host with many projects, the host started hundreds of git
   status threads at once. Each result rewrote the project list under one lock,

@@ -401,6 +401,27 @@ export default function useStreamingEvents({
               }
             : old
       )
+      // Session cards read the worktree list (both the plain and 'with-counts'
+      // keys), which the sender never refetches here. Clear the previous turn's
+      // waiting flag there too, or the card keeps showing it all turn long.
+      queryClient.setQueriesData<WorktreeSessions>(
+        { queryKey: chatQueryKeys.sessions(wtId) },
+        old =>
+          old?.sessions.some(s => s.id === session_id && s.waiting_for_input)
+            ? {
+                ...old,
+                sessions: old.sessions.map(s =>
+                  s.id === session_id
+                    ? {
+                        ...s,
+                        waiting_for_input: false,
+                        waiting_for_input_type: null,
+                      }
+                    : s
+                ),
+              }
+            : old
+      )
       // Only invalidate for non-sender clients. The sender already has correct
       // optimistic state; refetching can overwrite it with stale disk data
       // (especially on WebSocket where dispatch is concurrent).
@@ -865,8 +886,11 @@ export default function useStreamingEvents({
           if (next.length === 0) {
             setWaitingForInput(session_id, false)
           }
+          // persistCodexPendingState defaults to waiting; an emptied queue must
+          // persist "not waiting" or the flag outlives the request on disk.
           persistCodexPendingState(session_id, worktree_id, {
             pendingOpencodePermissionRequests: next,
+            waitingForInput: next.length > 0,
           })
         }
       )

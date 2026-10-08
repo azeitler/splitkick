@@ -1543,6 +1543,49 @@ describe('useStreamingEvents cancellation sanitization', () => {
     expect(useChatStore.getState().streamingContents['session-1']).toBeUndefined()
   })
 
+  it('clears the previous turn waiting flag in session-list caches on send', async () => {
+    const queryClient = createQueryClient()
+    const wrapper = createWrapper(queryClient)
+    const listed = {
+      id: 'session-1',
+      name: 'Test',
+      order: 0,
+      created_at: 1,
+      updated_at: 1,
+      messages: [],
+      waiting_for_input: true,
+      waiting_for_input_type: 'plan',
+      last_run_status: 'completed',
+    }
+    const sessionsKey = ['chat', 'sessions', 'worktree-1']
+    queryClient.setQueryData(sessionsKey, { sessions: [listed] })
+    queryClient.setQueryData([...sessionsKey, 'with-counts'], {
+      sessions: [listed],
+    })
+    // Sender client: already marked sending before chat:sending arrives.
+    useChatStore.setState({ sendingSessionIds: { 'session-1': true } })
+
+    renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+    await waitFor(() =>
+      expect(registeredListeners.has('chat:sending')).toBe(true)
+    )
+
+    registeredListeners.get('chat:sending')?.({
+      payload: {
+        session_id: 'session-1',
+        worktree_id: 'worktree-1',
+        user_message: 'go',
+      },
+    })
+
+    for (const key of [sessionsKey, [...sessionsKey, 'with-counts']]) {
+      const data = queryClient.getQueryData<{
+        sessions: { waiting_for_input?: boolean }[]
+      }>(key)
+      expect(data?.sessions[0]?.waiting_for_input).toBe(false)
+    }
+  })
+
   it('continues ignoring cancelled run chunks after accepting a new run chunk', async () => {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0)

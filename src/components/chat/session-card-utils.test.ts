@@ -483,6 +483,40 @@ describe('computeSessionCardData', () => {
     expect(card.status).toBe('paused')
   })
 
+  it('lets a manual override win over a bare waiting flag with nothing pending', () => {
+    const session = createBaseSession({
+      last_run_status: 'running',
+      last_run_execution_mode: 'build',
+    })
+    const storeState = createBaseStoreState({
+      sessionStatusOverrides: { 'session-1': 'review' },
+      waitingForInputSessionIds: { 'session-1': true },
+    })
+
+    const card = computeSessionCardData(session, storeState)
+
+    expect(card.automaticStatus).toBe('waiting')
+    expect(card.status).toBe('review')
+  })
+
+  it('ignores a stale persisted waiting flag while a new turn is sending', () => {
+    const session = createBaseSession({
+      waiting_for_input: true,
+      waiting_for_input_type: 'plan',
+      last_run_status: 'completed',
+      last_run_execution_mode: 'plan',
+    })
+    const storeState = createBaseStoreState({
+      sendingSessionIds: { 'session-1': true },
+      executingModes: { 'session-1': 'build' },
+    })
+
+    const card = computeSessionCardData(session, storeState)
+
+    expect(card.isWaiting).toBe(false)
+    expect(card.status).toBe('vibing')
+  })
+
   it('does not let a paused override hide live waiting status', () => {
     const session = createBaseSession({
       waiting_for_input: true,

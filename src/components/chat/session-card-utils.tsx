@@ -140,13 +140,17 @@ export function isLivePriorityStatus(status: SessionStatus): boolean {
  *
  * `completed`/`cancelled` are the user declaring the session finished or
  * abandoned, so they also beat an actionable-waiting status — otherwise pinning
- * them on a parked session does nothing at all. Everything else keeps the
- * stricter rule: any actionable or live automatic status wins.
+ * them on a parked session does nothing at all. A bare `waiting` (a flag with
+ * no question, plan or approval behind it) has nothing to act on, so any
+ * override beats it — otherwise a stale flag pins the session forever.
+ * Everything else keeps the stricter rule: any actionable or live automatic
+ * status wins.
  */
 export function shouldApplyStatusOverride(
   statusOverride: ManualSessionStatus,
   automaticStatus: SessionStatus
 ): boolean {
+  if (automaticStatus === 'waiting') return true
   const isTerminalOverride =
     statusOverride === 'completed' || statusOverride === 'cancelled'
   return isTerminalOverride
@@ -595,10 +599,15 @@ export function computeSessionCardData(
   // Stale Zustand flag must not pin status to "waiting" when the backend has
   // already moved the session into review. Backend `waiting_for_input` still
   // flows through `persistedWaitingForInput` below, so genuine waiting wins.
-  const isExplicitlyWaiting = getEffectiveSessionWaiting(session, {
-    waitingForInputSessionIds,
-    reviewingSessions,
-  })
+  // While a turn is sending, the persisted flag belongs to the previous turn
+  // (the sender's session-list cache is not refetched on send), so only the
+  // live Zustand flag counts — mid-turn approvals set it.
+  const isExplicitlyWaiting = sessionSending
+    ? (waitingForInputSessionIds[session.id] ?? false)
+    : getEffectiveSessionWaiting(session, {
+        waitingForInputSessionIds,
+        reviewingSessions,
+      })
   const hasActionableStreamingPlan = hasStreamingExitPlan && !sessionSending
   const isWaitingFromMessages =
     runCanBeWaiting &&
