@@ -417,9 +417,15 @@ fn should_clear_stale_resumed_claude_session(
     has_tool_calls: bool,
     has_content_blocks: bool,
     has_usage: bool,
-    _was_cancelled: bool,
+    was_cancelled: bool,
 ) -> bool {
-    was_resuming && !has_content && !has_tool_calls && !has_content_blocks && !has_usage
+    // A user cancel before the first output is not evidence of a stale session.
+    was_resuming
+        && !was_cancelled
+        && !has_content
+        && !has_tool_calls
+        && !has_content_blocks
+        && !has_usage
 }
 
 fn default_model_for_backend(
@@ -11024,9 +11030,19 @@ mod tests {
     }
 
     #[test]
-    fn stale_resumed_claude_session_is_cleared_for_empty_cancelled_response() {
+    fn stale_resumed_claude_session_is_cleared_for_empty_completed_response() {
         assert!(should_clear_stale_resumed_claude_session(
             true, false, false, false, false, false
+        ));
+    }
+
+    #[test]
+    fn stale_resumed_claude_session_is_kept_for_empty_cancelled_response() {
+        // A cancel before the first output gives an empty response. Clearing the
+        // resume id here made the next turn start a fresh Claude conversation
+        // ("I don't have any context").
+        assert!(!should_clear_stale_resumed_claude_session(
+            true, false, false, false, false, true
         ));
     }
 

@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude keeps the conversation after you cancel a turn.** When you
+  cancelled a turn before Claude wrote anything, Jean read the empty answer as
+  a dead conversation and dropped its resume id. The next turn then started
+  from zero ("I don't have any context"). A cancel no longer drops it.
+
 ## [0.1.73-z.21] - 2026-10-09
 
 Built on Jean 0.1.73.
