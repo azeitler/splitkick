@@ -299,6 +299,49 @@ pub fn apply_custom_profile_settings(cmd: &mut std::process::Command, profile_na
     }
 }
 
+/// Whether Claude CLI already has a transcript for `claude_session_id`.
+///
+/// Claude keeps one `<config dir>/projects/<escaped cwd>/<id>.jsonl` per
+/// conversation. Looks in the profile's `CLAUDE_CONFIG_DIR`, the process
+/// `CLAUDE_CONFIG_DIR`, and `~/.claude`. A miss is not fatal: the CLI then
+/// rejects `--session-id` as "already in use" and the caller retries with
+/// `--resume`.
+pub fn claude_transcript_exists(
+    claude_session_id: &str,
+    custom_profile_name: Option<&str>,
+) -> bool {
+    let mut config_dirs: Vec<std::path::PathBuf> =
+        load_custom_profile_env_vars(custom_profile_name)
+            .into_iter()
+            .filter(|(key, _)| key == "CLAUDE_CONFIG_DIR")
+            .map(|(_, value)| value.into())
+            .collect();
+    if let Ok(dir) = std::env::var("CLAUDE_CONFIG_DIR") {
+        config_dirs.push(dir.into());
+    }
+    if let Some(home) = dirs::home_dir() {
+        config_dirs.push(home.join(".claude"));
+    }
+    let file_name = format!("{claude_session_id}.jsonl");
+    config_dirs
+        .iter()
+        .any(|dir| transcript_in_projects_dir(&dir.join("projects"), &file_name))
+}
+
+fn transcript_in_projects_dir(projects_dir: &std::path::Path, file_name: &str) -> bool {
+    let Ok(entries) = std::fs::read_dir(projects_dir) else {
+        return false;
+    };
+    entries
+        .flatten()
+        .any(|entry| entry.path().join(file_name).is_file())
+}
+
+/// Claude CLI refuses `--session-id <id>` when a transcript for `<id>` exists.
+pub fn is_session_id_in_use_error(error: &str) -> bool {
+    error.contains("is already in use")
+}
+
 fn custom_profile_env_vars_from_settings(settings: &str) -> Result<Vec<(String, String)>, String> {
     let value: serde_json::Value =
         serde_json::from_str(settings).map_err(|e| format!("Invalid CLI profile JSON: {e}"))?;
@@ -411,18 +454,28 @@ fn is_running_as_root() -> bool {
     }
 }
 
-/// Push the `--resume` (and optionally `--fork-session`) arguments.
+/// Push the `--resume` (and optionally `--fork-session`) arguments, or
+/// `--session-id` for a new conversation.
 ///
 /// `--fork-session` only works alongside `--resume`/`--continue`: it makes Claude branch
 /// the transcript into a fresh session id rather than appending to the original, so a
 /// forked Jean session can never interleave with its source. Without a resume id there
 /// is nothing to fork, and passing the flag alone would be rejected by the CLI.
+///
+/// `new_claude_session_id` starts the conversation under an id Jean chose and saved
+/// before the spawn, so a turn cancelled before Claude prints anything still leaves
+/// an id the next turn can resume.
 fn push_resume_args(
     args: &mut Vec<String>,
     existing_claude_session_id: Option<&str>,
+    new_claude_session_id: Option<&str>,
     fork_session: bool,
 ) {
     let Some(claude_sid) = existing_claude_session_id else {
+        if let Some(new_sid) = new_claude_session_id {
+            args.push("--session-id".to_string());
+            args.push(new_sid.to_string());
+        }
         return;
     };
     args.push("--resume".to_string());
@@ -441,6 +494,8 @@ fn build_claude_args(
     session_id: &str,
     worktree_id: &str,
     existing_claude_session_id: Option<&str>,
+    // Start a new conversation under this id. Ignored when resuming.
+    new_claude_session_id: Option<&str>,
     // Branch the resumed transcript into a new session id instead of appending to it.
     // Set once for a forked session's first turn. Ignored without a resume id.
     fork_session: bool,
@@ -1099,7 +1154,12 @@ fn build_claude_args(
     }
 
     // Resume existing session
-    push_resume_args(&mut args, existing_claude_session_id, fork_session);
+    push_resume_args(
+        &mut args,
+        existing_claude_session_id,
+        new_claude_session_id,
+        fork_session,
+    );
 
     // Disable background tasks - forces all Task subagents to run in foreground.
     // Background tasks are killed when --print mode exits the CLI process.
@@ -1124,7 +1184,7 @@ fn build_claude_args(
         "JEAN_EXECUTION_MODE".to_string(),
         execution_mode.unwrap_or("plan").to_string(),
     ));
-    if let Some(claude_sid) = existing_claude_session_id {
+    if let Some(claude_sid) = existing_claude_session_id.or(new_claude_session_id) {
         env_vars.push(("JEAN_CLAUDE_SESSION_ID".to_string(), claude_sid.to_string()));
     }
 
@@ -1226,6 +1286,7 @@ pub fn execute_claude_detached(
     output_file: &std::path::Path,
     working_dir: &std::path::Path,
     existing_claude_session_id: Option<&str>,
+    new_claude_session_id: Option<&str>,
     fork_session: bool,
     model: Option<&str>,
     execution_mode: Option<&str>,
@@ -1272,6 +1333,7 @@ pub fn execute_claude_detached(
         session_id,
         worktree_id,
         existing_claude_session_id,
+        new_claude_session_id,
         fork_session,
         model,
         execution_mode,
@@ -2539,25 +2601,62 @@ mod tests {
     #[test]
     fn resume_args_fork_only_alongside_a_resume_id() {
         let mut args = Vec::new();
-        push_resume_args(&mut args, Some("sid-1"), true);
+        push_resume_args(&mut args, Some("sid-1"), None, true);
         assert_eq!(args, vec!["--resume", "sid-1", "--fork-session"]);
 
         let mut args = Vec::new();
-        push_resume_args(&mut args, Some("sid-1"), false);
+        push_resume_args(&mut args, Some("sid-1"), None, false);
         assert_eq!(args, vec!["--resume", "sid-1"]);
+    }
+
+    #[test]
+    fn resume_args_start_a_new_session_under_the_given_id() {
+        let mut args = Vec::new();
+        push_resume_args(&mut args, None, Some("sid-new"), false);
+        assert_eq!(args, vec!["--session-id", "sid-new"]);
+
+        // A resume id wins: `--session-id` on an existing transcript is rejected.
+        let mut args = Vec::new();
+        push_resume_args(&mut args, Some("sid-1"), Some("sid-new"), false);
+        assert_eq!(args, vec!["--resume", "sid-1"]);
+    }
+
+    #[test]
+    fn transcript_is_found_in_any_project_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let projects = root.path().join("projects");
+        std::fs::create_dir_all(projects.join("-Users-me-repo")).unwrap();
+        std::fs::write(projects.join("-Users-me-repo").join("sid-1.jsonl"), "{}").unwrap();
+
+        assert!(transcript_in_projects_dir(&projects, "sid-1.jsonl"));
+        assert!(!transcript_in_projects_dir(&projects, "sid-2.jsonl"));
+        assert!(!transcript_in_projects_dir(
+            &root.path().join("missing"),
+            "sid-1.jsonl"
+        ));
+    }
+
+    #[test]
+    fn session_id_in_use_error_matches_cli_text() {
+        assert!(is_session_id_in_use_error(
+            "Claude CLI failed: Error: Session ID 3bcd772f-cb2d-45b5-9b4c-18c6d58bca7a is already in use."
+        ));
+        assert!(!is_session_id_in_use_error(
+            "Claude CLI failed: rate limited"
+        ));
     }
 
     #[test]
     fn resume_args_are_empty_without_a_resume_id() {
         let mut args = Vec::new();
-        push_resume_args(&mut args, None, true);
+        push_resume_args(&mut args, None, None, true);
         assert!(
             args.is_empty(),
             "--fork-session is invalid without --resume: {args:?}"
         );
 
         let mut args = Vec::new();
-        push_resume_args(&mut args, None, false);
+        push_resume_args(&mut args, None, None, false);
         assert!(args.is_empty());
     }
 

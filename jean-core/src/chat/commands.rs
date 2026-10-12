@@ -428,6 +428,22 @@ fn should_clear_stale_resumed_claude_session(
         && !has_usage
 }
 
+/// How a Claude turn names its conversation: `(resume_id, new_session_id)`.
+///
+/// Resume the saved id when Claude has a transcript for it. Otherwise start the
+/// conversation under the saved id (a turn cancelled before Claude wrote
+/// anything) or under a new one. Exactly one of the two is always `Some`.
+fn claude_session_args_for_turn(
+    saved_claude_session_id: Option<String>,
+    transcript_exists: impl Fn(&str) -> bool,
+) -> (Option<String>, Option<String>) {
+    match saved_claude_session_id {
+        Some(sid) if transcript_exists(&sid) => (Some(sid), None),
+        Some(sid) => (None, Some(sid)),
+        None => (None, Some(Uuid::new_v4().to_string())),
+    }
+}
+
 fn default_model_for_backend(
     backend: &Backend,
     preferences: &crate::AppPreferences,
@@ -3627,8 +3643,40 @@ pub async fn send_chat_message(
     std::thread::spawn(move || {
         let result: Result<(u32, UnifiedResponse), String> = match thread_backend {
             Backend::Claude => {
-                // === Claude execution path (unchanged) ===
-                let mut claude_session_id_for_call = thread_claude_session_id;
+                // === Claude execution path ===
+                let save_claude_session_id = |sid: Option<String>| {
+                    with_sessions_mut(
+                        &thread_app,
+                        &thread_worktree_path,
+                        &thread_worktree_id,
+                        |sessions| {
+                            if let Some(session) = sessions.find_session_mut(&thread_session_id) {
+                                session.claude_session_id = sid;
+                            }
+                            Ok(())
+                        },
+                    )
+                };
+                // Every turn names its Claude conversation. A native fork resumes
+                // the source with `--fork-session`; every other turn either resumes
+                // the saved id or starts the conversation under an id saved before
+                // the spawn, so a cancel can never leave the session without one.
+                let (mut claude_session_id_for_call, mut new_claude_session_id) =
+                    if thread_claude_fork_session {
+                        (thread_claude_session_id, None)
+                    } else {
+                        claude_session_args_for_turn(thread_claude_session_id, |sid| {
+                            super::claude::claude_transcript_exists(
+                                sid,
+                                thread_custom_profile.as_deref(),
+                            )
+                        })
+                    };
+                if let Some(new_sid) = new_claude_session_id.clone() {
+                    if let Err(e) = save_claude_session_id(Some(new_sid)) {
+                        log::warn!("Failed to save new Claude session id: {e}");
+                    }
+                }
                 let result = loop {
                     log::trace!("About to call execute_claude_detached...");
 
@@ -3640,6 +3688,7 @@ pub async fn send_chat_message(
                         &thread_output_file,
                         std::path::Path::new(&thread_working_dir),
                         claude_session_id_for_call.as_deref(),
+                        new_claude_session_id.as_deref(),
                         thread_claude_fork_session,
                         thread_model.as_deref(),
                         thread_execution_mode.as_deref(),
@@ -3669,19 +3718,7 @@ pub async fn send_chat_message(
                                     "Empty response while resuming session {}, clearing stale session ID",
                                     claude_session_id_for_call.as_deref().unwrap_or("")
                                 );
-                                let _ = with_sessions_mut(
-                                    &thread_app,
-                                    &thread_worktree_path,
-                                    &thread_worktree_id,
-                                    |sessions| {
-                                        if let Some(session) =
-                                            sessions.find_session_mut(&thread_session_id)
-                                        {
-                                            session.claude_session_id = None;
-                                        }
-                                        Ok(())
-                                    },
-                                );
+                                let _ = save_claude_session_id(None);
                             }
 
                             break Ok((
@@ -3700,31 +3737,35 @@ pub async fn send_chat_message(
                             ));
                         }
                         Err(e) => {
-                            let is_session_not_found = e.to_lowercase().contains("session")
-                                && (e.to_lowercase().contains("not found")
-                                    || e.to_lowercase().contains("invalid")
-                                    || e.to_lowercase().contains("expired"));
+                            // `--session-id` on an id Claude already has a transcript
+                            // for (one the lookup missed): resume it instead.
+                            if super::claude::is_session_id_in_use_error(&e) {
+                                if let Some(sid) = new_claude_session_id.take() {
+                                    log::warn!(
+                                        "Claude session {sid} already exists, resuming it instead"
+                                    );
+                                    claude_session_id_for_call = Some(sid);
+                                    continue;
+                                }
+                            }
+
+                            let lower = e.to_lowercase();
+                            let is_session_not_found = lower.contains("no conversation found")
+                                || (lower.contains("session")
+                                    && (lower.contains("not found")
+                                        || lower.contains("invalid")
+                                        || lower.contains("expired")));
 
                             if is_session_not_found && claude_session_id_for_call.is_some() {
                                 log::warn!(
-                                    "Session not found, clearing stored session ID and retrying: {}",
+                                    "Session not found, starting a new Claude session: {}",
                                     claude_session_id_for_call.as_deref().unwrap_or("")
                                 );
-                                match with_sessions_mut(
-                                    &thread_app,
-                                    &thread_worktree_path,
-                                    &thread_worktree_id,
-                                    |sessions| {
-                                        if let Some(session) =
-                                            sessions.find_session_mut(&thread_session_id)
-                                        {
-                                            session.claude_session_id = None;
-                                        }
-                                        Ok(())
-                                    },
-                                ) {
+                                let new_sid = Uuid::new_v4().to_string();
+                                match save_claude_session_id(Some(new_sid.clone())) {
                                     Ok(_) => {
                                         claude_session_id_for_call = None;
+                                        new_claude_session_id = Some(new_sid);
                                         continue;
                                     }
                                     Err(e) => {
@@ -11081,6 +11122,29 @@ mod tests {
             has_usage,
             was_cancelled,
         ));
+    }
+
+    #[test]
+    fn claude_turn_resumes_a_saved_id_with_a_transcript() {
+        let (resume, new) = claude_session_args_for_turn(Some("sid-1".into()), |_| true);
+        assert_eq!(resume.as_deref(), Some("sid-1"));
+        assert_eq!(new, None);
+    }
+
+    #[test]
+    fn claude_turn_reuses_a_saved_id_without_a_transcript() {
+        // A turn cancelled before Claude wrote anything: keep the same id.
+        let (resume, new) = claude_session_args_for_turn(Some("sid-1".into()), |_| false);
+        assert_eq!(resume, None);
+        assert_eq!(new.as_deref(), Some("sid-1"));
+    }
+
+    #[test]
+    fn claude_turn_always_names_a_session() {
+        let (resume, new) = claude_session_args_for_turn(None, |_| false);
+        assert_eq!(resume, None);
+        let new = new.expect("a new conversation gets an id up front");
+        assert!(Uuid::parse_str(&new).is_ok());
     }
 
     #[test]

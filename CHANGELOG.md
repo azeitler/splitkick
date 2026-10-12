@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Claude never loses the conversation after a cancel.** The z.22 fix was not
+  enough: a new conversation only got its id once Claude answered, so a turn
+  cancelled before any output left the session with no id, and the next turn
+  started from zero. Jean now picks the Claude session id itself and saves it
+  before Claude starts. Every Claude turn either resumes that id or starts a
+  conversation under it.
+
 ## [0.1.73-z.22] - 2026-10-09
 
 Built on Jean 0.1.73.
