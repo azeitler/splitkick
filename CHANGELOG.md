@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.24] - 2026-10-13
+
+Built on Jean 0.1.73.
+
 ### Fixed
 
 - **Projects drag only from their row.** Dragging inside an open project (its
@@ -1422,7 +1426,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.23...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.24...HEAD
+[0.1.73-z.24]: https://github.com/azeitler/jean/compare/v0.1.73-z.23...v0.1.73-z.24
 [0.1.73-z.23]: https://github.com/azeitler/jean/compare/v0.1.73-z.22...v0.1.73-z.23
 [0.1.73-z.22]: https://github.com/azeitler/jean/compare/v0.1.73-z.21...v0.1.73-z.22
 [0.1.73-z.21]: https://github.com/azeitler/jean/compare/v0.1.73-z.20...v0.1.73-z.21
