@@ -7,9 +7,12 @@ import { useProjectsStore } from '@/store/projects-store'
 
 // Drag and drop is irrelevant here; every registration returns a no-op cleanup.
 const noopCleanup = vi.hoisted(() => () => () => undefined)
+const draggable = vi.hoisted(() =>
+  vi.fn((_args: { element: Element; dragHandle?: Element }) => () => undefined)
+)
 
 vi.mock('@atlaskit/pragmatic-drag-and-drop/element/adapter', () => ({
-  draggable: noopCleanup,
+  draggable,
   dropTargetForElements: noopCleanup,
   monitorForElements: noopCleanup,
 }))
@@ -29,14 +32,33 @@ vi.mock('@/services/projects', () => ({
 }))
 
 vi.mock('./ProjectTreeItem', () => ({
-  ProjectTreeItem: ({ project }: { project: Project }) => (
-    <div data-testid={`project-${project.id}`}>{project.name}</div>
+  ProjectTreeItem: ({
+    project,
+    dragHandleRef,
+  }: {
+    project: Project
+    dragHandleRef?: React.Ref<HTMLDivElement>
+  }) => (
+    <div>
+      <div ref={dragHandleRef} data-testid={`project-${project.id}`}>
+        {project.name}
+      </div>
+      <div data-testid={`project-body-${project.id}`} />
+    </div>
   ),
 }))
 
 vi.mock('./FolderTreeItem', () => ({
-  FolderTreeItem: ({ folder }: { folder: Project }) => (
-    <div data-testid={`folder-${folder.id}`}>{folder.name}</div>
+  FolderTreeItem: ({
+    folder,
+    dragHandleRef,
+  }: {
+    folder: Project
+    dragHandleRef?: React.Ref<HTMLDivElement>
+  }) => (
+    <div ref={dragHandleRef} data-testid={`folder-${folder.id}`}>
+      {folder.name}
+    </div>
   ),
 }))
 
@@ -114,5 +136,21 @@ describe('ProjectTree bulk expand toggle', () => {
     const state = useProjectsStore.getState()
     expect(state.expandedFolderIds).toEqual(new Set(['folder-1']))
     expect(state.expandedProjectIds).toEqual(new Set(['project-1']))
+  })
+})
+
+describe('ProjectTree drag handle', () => {
+  it('starts a drag only from the project and folder rows', () => {
+    draggable.mockClear()
+    useProjectsStore.setState({
+      expandedProjectIds: new Set(['project-1']),
+      expandedFolderIds: new Set(),
+    })
+    render(<ProjectTree projects={projects} />)
+
+    const handles = draggable.mock.calls.map(([args]) => args.dragHandle)
+    expect(handles).toContain(screen.getByTestId('project-project-1'))
+    expect(handles).toContain(screen.getByTestId('folder-folder-1'))
+    expect(handles).not.toContain(undefined)
   })
 })

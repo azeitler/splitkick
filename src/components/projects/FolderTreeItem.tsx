@@ -14,6 +14,8 @@ interface FolderTreeItemProps {
   /** Direct children (projects + sub-folders), shown as a badge when collapsed */
   childCount: number
   isDropTarget?: boolean
+  /** Only this row starts a drag, not the nested items below it */
+  dragHandleRef?: React.Ref<HTMLDivElement>
 }
 
 export function FolderTreeItem({
@@ -22,6 +24,7 @@ export function FolderTreeItem({
   depth,
   childCount,
   isDropTarget,
+  dragHandleRef,
 }: FolderTreeItemProps) {
   const {
     expandedFolderIds,
@@ -118,6 +121,7 @@ export function FolderTreeItem({
       <div>
         {/* Folder Row */}
         <div
+          ref={dragHandleRef}
           className={cn(
             'group flex cursor-pointer items-center gap-1 px-3 py-1.5 transition-colors duration-150',
             'text-[13px] font-medium text-muted-foreground/70 hover:bg-accent/50 hover:text-muted-foreground',

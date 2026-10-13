@@ -149,6 +149,7 @@ function SortableItem({
   activeId,
 }: SortableItemProps) {
   const elementRef = useRef<HTMLDivElement | null>(null)
+  const dragHandleRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     const element = elementRef.current
@@ -157,6 +158,7 @@ function SortableItem({
     return combine(
       draggable({
         element,
+        dragHandle: dragHandleRef.current ?? undefined,
         getInitialData: () => ({
           type: 'project-tree-item',
           itemId: item.id,
@@ -222,7 +224,7 @@ function SortableItem({
         style={style}
         className={cn(
           'relative transition-opacity',
-          activeId === item.id ? 'cursor-grabbing' : 'cursor-grab'
+          activeId === item.id && 'cursor-grabbing'
         )}
       >
         <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />
@@ -231,6 +233,7 @@ function SortableItem({
           depth={depth}
           childCount={allProjects.filter(p => p.parent_id === item.id).length}
           isDropTarget={isOverFolder}
+          dragHandleRef={dragHandleRef}
         >
           {isExpanded && (
             <NestedItems
@@ -255,11 +258,11 @@ function SortableItem({
       style={style}
       className={cn(
         'relative transition-opacity',
-        activeId === item.id ? 'cursor-grabbing' : 'cursor-grab'
+        activeId === item.id && 'cursor-grabbing'
       )}
     >
       <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />
-      <ProjectTreeItem project={item} />
+      <ProjectTreeItem project={item} dragHandleRef={dragHandleRef} />
     </div>
   )
 }

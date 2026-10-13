@@ -51,9 +51,14 @@ import { useSessionFilter } from './useSessionFilter'
 
 interface ProjectTreeItemProps {
   project: Project
+  /** Only this row starts a drag, not the worktree list below it */
+  dragHandleRef?: React.Ref<HTMLDivElement>
 }
 
-export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
+export function ProjectTreeItem({
+  project,
+  dragHandleRef,
+}: ProjectTreeItemProps) {
   const isMobile = useIsMobile()
   const { data: preferences } = usePreferences()
   const gitSyncButton = preferences?.git_sync_button ?? false
@@ -301,6 +306,7 @@ export function ProjectTreeItem({ project }: ProjectTreeItemProps) {
       <div>
         {/* Project Row */}
         <div
+          ref={dragHandleRef}
           className={cn(
             'group relative flex cursor-pointer items-center gap-1.5 px-2 py-1.5 overflow-hidden transition-colors duration-150',
             isSelected
