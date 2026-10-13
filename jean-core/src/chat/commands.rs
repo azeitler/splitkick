@@ -704,13 +704,8 @@ pub async fn get_sessions(
     // Optionally populate message counts from metadata (efficient alternative to loading full messages)
     if include_message_counts.unwrap_or(false) {
         for session in &mut sessions.sessions {
-            if let Ok(Some(metadata)) = load_metadata(&app, &session.id) {
-                // Count messages: each run has 1 user message, plus 1 assistant message if not undo_send
-                let count: u32 = metadata
-                    .runs
-                    .iter()
-                    .map(super::types::RunEntry::rendered_message_count)
-                    .sum();
+            // Each run has 1 user message, plus 1 assistant message if not undo_send
+            if let Ok(Some((_, count))) = super::storage::load_session_summary(&app, &session.id) {
                 session.message_count = Some(count);
             }
         }

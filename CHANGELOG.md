@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Session lists load faster.** Jean keeps each session's list entry in memory
+  and parses its metadata file again only when the file changes. Before, every
+  refresh parsed the full run history of every session.
+- **Git status checks no longer rewrite the projects file.** A status sweep
+  saves a worktree only when its counts changed, not once per worktree on every
+  sweep.
+
 ## [0.1.73-z.24] - 2026-10-13
 
 Built on Jean 0.1.73.

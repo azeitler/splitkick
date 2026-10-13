@@ -13090,6 +13090,17 @@ pub(crate) fn resolve_worktree_status_base(worktree: &Worktree, project_default:
         .to_string()
 }
 
+/// Whether a worktree's cached counts already equal a fresh git status.
+fn cached_status_matches(worktree: &Worktree, status: &super::git_status::GitBranchStatus) -> bool {
+    worktree.cached_behind_count == Some(status.behind_count)
+        && worktree.cached_ahead_count == Some(status.ahead_count)
+        && worktree.cached_uncommitted_added == Some(status.uncommitted_added)
+        && worktree.cached_uncommitted_removed == Some(status.uncommitted_removed)
+        && worktree.cached_branch_diff_added == Some(status.branch_diff_added)
+        && worktree.cached_branch_diff_removed == Some(status.branch_diff_removed)
+        && worktree.cached_unpushed_count == Some(status.unpushed_count)
+}
+
 /// Fetch git status for all worktrees in a project
 ///
 /// This is used to populate status indicators in the sidebar without requiring
@@ -13243,6 +13254,12 @@ fn run_worktree_status_job(job: WorktreeStatusJob) {
         let Some(w) = data.worktrees.iter_mut().find(|w| w.id == worktree.id) else {
             return false;
         };
+        if cached_status_matches(w, &status) {
+            // Only the timestamp would change, and nothing reads it. Skipping
+            // the write keeps a status sweep from rewriting projects.json
+            // once per worktree.
+            return false;
+        }
         w.cached_behind_count = Some(status.behind_count);
         w.cached_ahead_count = Some(status.ahead_count);
         w.cached_uncommitted_added = Some(status.uncommitted_added);
@@ -14137,6 +14154,51 @@ pub async fn revert_last_local_commit(
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn cached_status_matches_ignores_only_the_timestamp() {
+        let status = super::super::git_status::GitBranchStatus {
+            worktree_id: "wt-1".to_string(),
+            current_branch: "feature".to_string(),
+            base_branch: "main".to_string(),
+            base_remote: None,
+            behind_count: 1,
+            ahead_count: 2,
+            has_updates: true,
+            checked_at: 100,
+            uncommitted_added: 3,
+            uncommitted_removed: 4,
+            branch_diff_added: 5,
+            branch_diff_removed: 6,
+            base_branch_ahead_count: 0,
+            base_branch_behind_count: 0,
+            worktree_ahead_count: 0,
+            unpushed_count: 7,
+        };
+        let mut worktree: Worktree = serde_json::from_value(serde_json::json!({
+            "id": "wt-1",
+            "project_id": "p1",
+            "name": "feature",
+            "path": "/tmp/wt-1",
+            "branch": "feature",
+            "created_at": 0
+        }))
+        .unwrap();
+        assert!(!cached_status_matches(&worktree, &status));
+
+        worktree.cached_behind_count = Some(1);
+        worktree.cached_ahead_count = Some(2);
+        worktree.cached_uncommitted_added = Some(3);
+        worktree.cached_uncommitted_removed = Some(4);
+        worktree.cached_branch_diff_added = Some(5);
+        worktree.cached_branch_diff_removed = Some(6);
+        worktree.cached_unpushed_count = Some(7);
+        worktree.cached_status_at = Some(1);
+        assert!(cached_status_matches(&worktree, &status));
+
+        worktree.cached_unpushed_count = Some(8);
+        assert!(!cached_status_matches(&worktree, &status));
+    }
     use super::*;
     use crate::chat::types::Backend;
     use std::path::Path;

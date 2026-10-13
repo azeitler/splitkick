@@ -29,6 +29,20 @@ static METADATA_LOCKS: Lazy<Mutex<HashMap<String, Arc<Mutex<()>>>>> =
 /// Serializes metadata attachment references with session attachment deletion.
 static PASTED_FILES_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
+/// Session list entries derived from `metadata.json`, reused while the file's
+/// mtime and size are unchanged. Session lists are reloaded on every session
+/// switch and run completion; parsing every metadata file (with its whole run
+/// history) each time made the app slower as sessions piled up.
+static SESSION_SUMMARY_CACHE: Lazy<Mutex<HashMap<String, CachedSessionSummary>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
+
+#[derive(Clone)]
+struct CachedSessionSummary {
+    stamp: (std::time::SystemTime, u64),
+    session: Session,
+    rendered_message_count: u32,
+}
+
 /// Global mutex to prevent concurrent read-modify-write races on session-context-metadata.json.
 static SAVED_CONTEXTS_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
 
@@ -284,9 +298,59 @@ fn save_metadata_file(app: &AppHandle, metadata: &SessionMetadata) -> Result<(),
         .map_err(|e| format!("Failed to write metadata: {e}"))?;
 
     fs::rename(&temp_path, &path).map_err(|e| format!("Failed to rename metadata file: {e}"))?;
+    // The new mtime would miss the cache anyway; dropping the entry also
+    // covers filesystems with coarse timestamps.
+    SESSION_SUMMARY_CACHE.lock().unwrap().remove(&metadata.id);
 
     log::trace!("Saved metadata for session: {}", metadata.id);
     Ok(())
+}
+
+/// `metadata.to_session()` and the rendered message count for one session,
+/// served from memory while `metadata.json` is unchanged.
+pub fn load_session_summary(
+    app: &AppHandle,
+    session_id: &str,
+) -> Result<Option<(Session, u32)>, String> {
+    let path = get_metadata_path(app, session_id)?;
+    let stamp = fs::metadata(&path)
+        .ok()
+        .and_then(|meta| Some((meta.modified().ok()?, meta.len())));
+
+    if let Some(stamp) = stamp {
+        if let Some(cached) = SESSION_SUMMARY_CACHE.lock().unwrap().get(session_id) {
+            if cached.stamp == stamp {
+                return Ok(Some((
+                    cached.session.clone(),
+                    cached.rendered_message_count,
+                )));
+            }
+        }
+    }
+
+    let Some(metadata) = load_metadata(app, session_id)? else {
+        return Ok(None);
+    };
+    let session = metadata.to_session();
+    let rendered_message_count = metadata
+        .runs
+        .iter()
+        .map(super::types::RunEntry::rendered_message_count)
+        .sum();
+
+    // Stamp taken before the read: if the file changed in between, the next
+    // call sees a newer stamp and parses again.
+    if let Some(stamp) = stamp {
+        SESSION_SUMMARY_CACHE.lock().unwrap().insert(
+            session_id.to_string(),
+            CachedSessionSummary {
+                stamp,
+                session: session.clone(),
+                rendered_message_count,
+            },
+        );
+    }
+    Ok(Some((session, rendered_message_count)))
 }
 
 /// Load session metadata (with locking for thread safety)
@@ -708,8 +772,8 @@ pub fn load_sessions(
     // Load metadata for each session to build full Session objects
     let mut sessions = Vec::new();
     for entry in &index.sessions {
-        let session = if let Ok(Some(metadata)) = load_metadata(app, &entry.id) {
-            metadata.to_session()
+        let session = if let Ok(Some((session, _))) = load_session_summary(app, &entry.id) {
+            session
         } else {
             // No metadata found - create minimal session from index entry
             // Use resolved backend from preferences instead of hardcoded Claude
@@ -1224,6 +1288,45 @@ pub fn save_saved_contexts_metadata(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn session_summary_follows_metadata_changes() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let session_id = "summary-cache-session";
+        let mut metadata = SessionMetadata::new(
+            session_id.to_string(),
+            "wt-1".to_string(),
+            "First".to_string(),
+            0,
+        );
+        save_metadata(&app, &metadata).unwrap();
+
+        let (session, count) = load_session_summary(&app, session_id).unwrap().unwrap();
+        assert_eq!(session.name, "First");
+        assert_eq!(count, 0);
+        // Unchanged file: served from the cache.
+        let (cached, _) = load_session_summary(&app, session_id).unwrap().unwrap();
+        assert_eq!(cached.name, "First");
+
+        // A save through Jean drops the cached entry.
+        metadata.name = "Second".to_string();
+        save_metadata(&app, &metadata).unwrap();
+        let (session, _) = load_session_summary(&app, session_id).unwrap().unwrap();
+        assert_eq!(session.name, "Second");
+
+        // A write outside Jean changes the size, so the stamp misses.
+        let path = get_metadata_path(&app, session_id).unwrap();
+        let edited = fs::read_to_string(&path)
+            .unwrap()
+            .replace("\"Second\"", "\"Third, edited outside\"");
+        fs::write(&path, edited).unwrap();
+        let (session, _) = load_session_summary(&app, session_id).unwrap().unwrap();
+        assert_eq!(session.name, "Third, edited outside");
+
+        fs::remove_file(&path).unwrap();
+        assert!(load_session_summary(&app, session_id).unwrap().is_none());
+    }
 
     #[test]
     fn move_session_between_indexes_reassigns_complete_session() {
