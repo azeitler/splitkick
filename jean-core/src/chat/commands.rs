@@ -657,6 +657,18 @@ pub(crate) fn emit_sessions_cache_invalidation(app: &AppHandle) {
     }
 }
 
+/// Like `emit_sessions_cache_invalidation`, but only one worktree changed.
+/// Clients refetch that worktree's sessions instead of every session list,
+/// which matters on hot paths (session switch, run completion).
+pub(crate) fn emit_worktree_sessions_cache_invalidation(app: &AppHandle, worktree_id: &str) {
+    if let Err(e) = app.emit_all(
+        "cache:invalidate",
+        &serde_json::json!({ "keys": ["sessions"], "worktreeIds": [worktree_id] }),
+    ) {
+        log::error!("Failed to emit cache:invalidate for worktree sessions: {e}");
+    }
+}
+
 fn finish_bulk_update<T, E>(
     updated: bool,
     result: Result<T, E>,
@@ -868,8 +880,9 @@ pub async fn list_all_sessions(app: AppHandle) -> Result<AllSessionsResponse, St
     for project in &projects_data.projects {
         let worktrees = projects_data.worktrees_for_project(&project.id);
 
-        // For each worktree, load sessions
-        for worktree in worktrees {
+        // Archived worktrees are hidden everywhere this list is shown, and
+        // reading their sessions made every refetch slower over time.
+        for worktree in worktrees.into_iter().filter(|w| w.archived_at.is_none()) {
             match load_sessions(&app, &worktree.path, &worktree.id) {
                 Ok(sessions_data) => {
                     entries.push(AllSessionsEntry {
@@ -1876,7 +1889,7 @@ pub async fn update_session_state(
     // This is the single cache invalidation point for session state mutations —
     // other commands (e.g. mark_plan_approved) rely on callers also invoking
     // update_session_state rather than emitting their own invalidation.
-    emit_sessions_cache_invalidation(&app);
+    emit_worktree_sessions_cache_invalidation(&app, &worktree_id);
     Ok(())
 }
 
@@ -2603,7 +2616,7 @@ pub async fn set_active_session(
         let _ = save_metadata(&app, &metadata);
     }
 
-    emit_sessions_cache_invalidation(&app);
+    emit_worktree_sessions_cache_invalidation(&app, &worktree_id);
     Ok(())
 }
 
@@ -2628,7 +2641,7 @@ pub async fn set_session_last_opened(app: AppHandle, session_id: String) -> Resu
         }
         save_metadata(&app, &metadata)?;
         // Broadcast so other clients (native ↔ web) drop stale last_opened_at.
-        emit_sessions_cache_invalidation(&app);
+        emit_worktree_sessions_cache_invalidation(&app, &metadata.worktree_id);
     }
 
     Ok(())
@@ -5246,7 +5259,7 @@ pub async fn send_chat_message(
                             );
                         }
                     }
-                    emit_sessions_cache_invalidation(&app);
+                    emit_worktree_sessions_cache_invalidation(&app, &worktree_id);
                 } else {
                     if let Err(mark_err) = run_log_writer.mark_crashed() {
                         log::warn!("Failed to mark run as crashed after thread error: {mark_err}");
@@ -5293,7 +5306,7 @@ pub async fn send_chat_message(
                 {
                     log::warn!("Failed to complete salvaged run after panic: {complete_err}");
                 }
-                emit_sessions_cache_invalidation(&app);
+                emit_worktree_sessions_cache_invalidation(&app, &worktree_id);
             } else {
                 if let Err(mark_err) = run_log_writer.mark_crashed() {
                     log::warn!("Failed to mark run as crashed after thread panic: {mark_err}");
@@ -5780,7 +5793,7 @@ pub async fn send_chat_message(
     }
 
     // Emit cache invalidation so all clients (native + web) refetch authoritative state
-    emit_sessions_cache_invalidation(&app);
+    emit_worktree_sessions_cache_invalidation(&app, &worktree_id);
 
     if was_cancelled {
         log::info!("[SendChat] EXIT session={session_id} reason=cancelled_with_content");

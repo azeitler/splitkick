@@ -7,6 +7,17 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Projects drag only from their row.** Dragging inside an open project (its
+  worktrees, sessions, or empty space) no longer moves the whole project. The
+  same applies to folders.
+- **The app stays fast with many sessions.** Switching sessions or finishing a
+  run now refreshes only the affected worktree, not every session list of
+  every project. The cross-project session list no longer reads archived
+  worktrees. Sidebar rows re-render only when one of their own sessions
+  changes, not on every tool event of any session.
+
 ## [0.1.73-z.23] - 2026-10-12
 
 Built on Jean 0.1.73.

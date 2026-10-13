@@ -12,7 +12,7 @@ import { isPanelTerminal, useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { resolveBrowserSurfaceTarget } from '@/hooks/useBrowserPane'
 import { projectsQueryKeys } from '@/services/projects'
-import { chatQueryKeys } from '@/services/chat'
+import { chatQueryKeys, refreshWorktreeSessionsCaches } from '@/services/chat'
 import type {
   AllSessionsResponse,
   QueuedMessage,
@@ -180,6 +180,45 @@ export function applyCacheInvalidationKeys(
         })
         break
     }
+  }
+}
+
+/**
+ * Apply a `sessions` invalidation that names the worktrees that changed.
+ *
+ * Refetches only those worktrees' session lists and splices them into
+ * `['all-sessions']`, instead of re-reading every session of every project.
+ * This runs on each session switch and run completion, so the full refresh
+ * made the app slower as sessions piled up. Open session details refetch too,
+ * because the event does not say which session changed.
+ */
+export function applyScopedSessionsInvalidation(
+  queryClient: QueryClient,
+  worktreeIds: Iterable<string>
+): void {
+  queryClient.invalidateQueries({ queryKey: [...chatQueryKeys.all, 'session'] })
+  const allSessions = queryClient.getQueryData<AllSessionsResponse>([
+    'all-sessions',
+  ])
+  let refetchAllSessions = false
+  for (const worktreeId of worktreeIds) {
+    queryClient.invalidateQueries({
+      queryKey: chatQueryKeys.sessions(worktreeId),
+    })
+    if (!allSessions) continue
+    const entry = allSessions.entries.find(e => e.worktree_id === worktreeId)
+    if (entry) {
+      void refreshWorktreeSessionsCaches(
+        queryClient,
+        worktreeId,
+        entry.worktree_path
+      )
+    } else {
+      refetchAllSessions = true
+    }
+  }
+  if (refetchAllSessions) {
+    queryClient.invalidateQueries({ queryKey: ['all-sessions'] })
   }
 }
 
@@ -1279,22 +1318,42 @@ export function useMainWindowEventListeners() {
         // single invalidation wave instead of N separate ones.
         (async () => {
           const pendingKeys = new Set<string>()
+          // Worktrees named by scoped `sessions` events. A plain `sessions`
+          // key in the same window wins and refreshes everything.
+          const pendingSessionWorktreeIds = new Set<string>()
           let flushTimer: ReturnType<typeof setTimeout> | null = null
 
           const flushInvalidations = () => {
             flushTimer = null
             applyCacheInvalidationKeys(queryClient, pendingKeys)
+            if (
+              !pendingKeys.has('sessions') &&
+              pendingSessionWorktreeIds.size > 0
+            ) {
+              applyScopedSessionsInvalidation(
+                queryClient,
+                pendingSessionWorktreeIds
+              )
+            }
             pendingKeys.clear()
+            pendingSessionWorktreeIds.clear()
           }
 
-          const unlisten = await listen<{ keys: string[] }>(
-            'cache:invalidate',
-            event => {
-              for (const key of event.payload.keys) pendingKeys.add(key)
-              if (flushTimer) clearTimeout(flushTimer)
-              flushTimer = setTimeout(flushInvalidations, 250)
+          const unlisten = await listen<{
+            keys: string[]
+            worktreeIds?: string[]
+          }>('cache:invalidate', event => {
+            const { keys, worktreeIds } = event.payload
+            for (const key of keys) {
+              if (key === 'sessions' && worktreeIds?.length) {
+                for (const id of worktreeIds) pendingSessionWorktreeIds.add(id)
+              } else {
+                pendingKeys.add(key)
+              }
             }
-          )
+            if (flushTimer) clearTimeout(flushTimer)
+            flushTimer = setTimeout(flushInvalidations, 250)
+          })
 
           // Return a cleanup function that clears the pending timer
           // and unregisters the event listener

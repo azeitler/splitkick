@@ -131,9 +131,12 @@ fn set_waiting(app: &AppHandle, session_id: &str, waiting: bool, codex_thread_id
         // Both prompt submit and turn-complete count as terminal activity so
         // session ordering stays fresh without Jean run history.
         metadata.terminal_activity_at = Some(now);
+        metadata.worktree_id.clone()
     });
     match result {
-        Ok(()) => crate::chat::emit_sessions_cache_invalidation(app),
+        Ok(worktree_id) => {
+            crate::chat::emit_worktree_sessions_cache_invalidation(app, &worktree_id)
+        }
         Err(error) => {
             log::debug!("terminal notifications: cannot update {session_id}: {error}");
         }

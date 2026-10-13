@@ -2380,7 +2380,7 @@ pub async fn dispatch_command(
                 table_checked_rows,
             )
             .await?;
-            emit_cache_invalidation(app, &["sessions"]);
+            // update_session_state emits its own worktree-scoped invalidation.
             Ok(Value::Null)
         }
         "archive_session" => {

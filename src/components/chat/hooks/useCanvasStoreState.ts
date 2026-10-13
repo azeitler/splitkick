@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useChatStore } from '@/store/chat-store'
 import type { ChatStoreState } from '../session-card-utils'
 
@@ -96,5 +97,65 @@ export function useCanvasStoreState(): ChatStoreState {
       pendingCodexDynamicToolCallRequests,
       sessionLabels,
     ]
+  )
+}
+
+/** Per-session maps of `ChatStoreState`, all keyed by session id. */
+const PER_SESSION_FIELDS = [
+  'sendingSessionIds',
+  'executingModes',
+  'executionModes',
+  'activeToolCalls',
+  'answeredQuestions',
+  'waitingForInputSessionIds',
+  'reviewingSessions',
+  'sessionStatusOverrides',
+  'pendingPermissionDenials',
+  'pendingCodexPermissionRequests',
+  'pendingOpencodePermissionRequests',
+  'pendingCodexCommandApprovalRequests',
+  'pendingCodexUserInputRequests',
+  'pendingCodexMcpElicitationRequests',
+  'pendingCodexDynamicToolCallRequests',
+  'sessionLabels',
+] as const satisfies readonly Exclude<
+  keyof ChatStoreState,
+  'getStreamingText'
+>[]
+
+/**
+ * `useCanvasStoreState`, but only re-renders when state of the given sessions
+ * changes. Each sidebar row renders a handful of sessions; subscribing it to
+ * the whole maps re-rendered every row on every tool event of any session.
+ *
+ * The selector returns the per-session entries (cheap lookups, compared
+ * shallowly), and the snapshot is read fresh when one of them changes.
+ */
+export function useSessionsCardStoreState(
+  sessionIds: readonly string[]
+): ChatStoreState {
+  const entries = useChatStore(
+    useShallow(state => {
+      const values: unknown[] = []
+      for (const id of sessionIds) {
+        for (const field of PER_SESSION_FIELDS) values.push(state[field][id])
+      }
+      return values
+    })
+  )
+
+  return useMemo(
+    () => {
+      const state = useChatStore.getState()
+      return {
+        ...Object.fromEntries(
+          PER_SESSION_FIELDS.map(field => [field, state[field]])
+        ),
+        getStreamingText,
+      } as ChatStoreState
+    },
+    // `entries` is the change signal; the snapshot itself is read above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entries]
   )
 }

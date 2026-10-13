@@ -18,7 +18,8 @@ import { chatQueryKeys } from '@/services/chat'
 import { isTauri, useReorderWorktrees } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
 import { navigateToSession } from '@/lib/navigate-to-session'
-import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
+import { useSessionsCardStoreState } from '@/components/chat/hooks/useCanvasStoreState'
+import { useChatStore } from '@/store/chat-store'
 import { computeSessionCardData } from '@/components/chat/session-card-utils'
 import { PinnedSessionsSection } from '@/components/chat/PinnedSessionsSection'
 import {
@@ -295,9 +296,8 @@ export function WorktreeList({
     return [...sortedPending, ...sortedReady]
   }, [pendingWorktrees, readyWorktrees, sessionsByWorktreeId, worktreeSortMode])
 
-  // Sessions pinned to the project root, shown directly under the project row.
-  // sessionsByWorktreeId is already loaded for the sidebar, so no extra fetch.
-  const storeState = useCanvasStoreState()
+  // Labels only change on user edits, so the whole map is a cheap selector.
+  const sessionLabels = useChatStore(state => state.sessionLabels)
 
   // Label filter for this project's sessions. It is component-local and reset
   // when the filter row closes, for the same reason the text query is: a
@@ -309,12 +309,9 @@ export function WorktreeList({
   const labelOptions = useMemo(
     () =>
       collectLabelOptions(
-        collectSessionLabelSources(
-          sessionsByWorktreeId,
-          storeState.sessionLabels
-        )
+        collectSessionLabelSources(sessionsByWorktreeId, sessionLabels)
       ),
-    [sessionsByWorktreeId, storeState.sessionLabels]
+    [sessionsByWorktreeId, sessionLabels]
   )
 
   // A label nobody carries any more must not hide every row.
@@ -340,9 +337,9 @@ export function WorktreeList({
     () => ({
       query: sessionFilterQuery,
       labelFilter,
-      sessionLabels: storeState.sessionLabels,
+      sessionLabels,
     }),
-    [sessionFilterQuery, labelFilter, storeState.sessionLabels]
+    [sessionFilterQuery, labelFilter, sessionLabels]
   )
 
   // Rendered subset only. `sortedWorktrees` stays whole on purpose: the drop
@@ -362,17 +359,32 @@ export function WorktreeList({
     state => state.projectCanvasSettings[projectId]?.pinnedSessions
   )
 
-  const pinnedRows = useMemo(() => {
-    const rows = resolvePinnedSessionRows(
-      pinnedSessionRefs,
-      worktreeId => sessionsByWorktreeId.get(worktreeId)?.sessions,
-      readyWorktrees
-    )
-    return rows.map(row => ({
-      row,
-      card: computeSessionCardData(row.session, storeState),
-    }))
-  }, [pinnedSessionRefs, sessionsByWorktreeId, readyWorktrees, storeState])
+  // Sessions pinned to the project root, shown directly under the project row.
+  // sessionsByWorktreeId is already loaded for the sidebar, so no extra fetch.
+  const resolvedPinnedRows = useMemo(
+    () =>
+      resolvePinnedSessionRows(
+        pinnedSessionRefs,
+        worktreeId => sessionsByWorktreeId.get(worktreeId)?.sessions,
+        readyWorktrees
+      ),
+    [pinnedSessionRefs, sessionsByWorktreeId, readyWorktrees]
+  )
+  const pinnedSessionIds = useMemo(
+    () => resolvedPinnedRows.map(row => row.session.id),
+    [resolvedPinnedRows]
+  )
+  // Subscribe to the pinned sessions only: this list is the parent of every
+  // worktree row, so a re-render here re-renders the whole project.
+  const storeState = useSessionsCardStoreState(pinnedSessionIds)
+  const pinnedRows = useMemo(
+    () =>
+      resolvedPinnedRows.map(row => ({
+        row,
+        card: computeSessionCardData(row.session, storeState),
+      })),
+    [resolvedPinnedRows, storeState]
+  )
 
   const handleOpenPinnedSession = useCallback(
     (row: PinnedSessionRow) => {

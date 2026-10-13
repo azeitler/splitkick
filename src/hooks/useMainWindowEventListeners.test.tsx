@@ -8,6 +8,7 @@ import {
   addTerminalTabForShortcut,
   allowsKeybindingRepeat,
   applyCacheInvalidationKeys,
+  applyScopedSessionsInvalidation,
   applySessionRenamedToCaches,
   blurFocusedTerminalForShortcut,
   closeActiveTerminalTabForShortcut,
@@ -716,6 +717,68 @@ describe('applyCacheInvalidationKeys', () => {
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: chatQueryKeys.all,
     })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['all-sessions'],
+    })
+  })
+})
+
+describe('applyScopedSessionsInvalidation', () => {
+  const entry = (worktreeId: string, sessions: Session[] = []) => ({
+    project_id: 'p1',
+    project_name: 'Project',
+    worktree_id: worktreeId,
+    worktree_name: worktreeId,
+    worktree_path: `/tmp/${worktreeId}`,
+    sessions,
+  })
+
+  it('refreshes only the named worktree and splices it into all-sessions', async () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData<AllSessionsResponse>(['all-sessions'], {
+      entries: [entry('wt-1'), entry('wt-2')],
+    })
+    const fresh = { id: 's1', name: 'Fresh' } as Session
+    mockInvoke.mockResolvedValueOnce({
+      worktree_id: 'wt-1',
+      sessions: [fresh],
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    applyScopedSessionsInvalidation(queryClient, ['wt-1'])
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: chatQueryKeys.sessions('wt-1'),
+    })
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: chatQueryKeys.all,
+    })
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: ['all-sessions'],
+    })
+    expect(mockInvoke).toHaveBeenCalledWith('get_sessions', {
+      worktreeId: 'wt-1',
+      worktreePath: '/tmp/wt-1',
+    })
+    await vi.waitFor(() => {
+      const all = queryClient.getQueryData<AllSessionsResponse>([
+        'all-sessions',
+      ])
+      expect(all?.entries[0]?.sessions).toEqual([fresh])
+    })
+    const all = queryClient.getQueryData<AllSessionsResponse>(['all-sessions'])
+    expect(all?.entries[1]?.sessions).toEqual([])
+  })
+
+  it('refetches all-sessions when the worktree is not in it yet', () => {
+    const queryClient = new QueryClient()
+    queryClient.setQueryData<AllSessionsResponse>(['all-sessions'], {
+      entries: [entry('wt-1')],
+    })
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    applyScopedSessionsInvalidation(queryClient, ['wt-new'])
+
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: ['all-sessions'],
     })

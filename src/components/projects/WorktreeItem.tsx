@@ -63,7 +63,7 @@ import {
   isActionableWaitingStatus,
   statusConfig,
 } from '@/components/chat/session-card-utils'
-import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
+import { useSessionsCardStoreState } from '@/components/chat/hooks/useCanvasStoreState'
 import { useDraftSessionIds } from '@/components/chat/hooks/useDraftSessionIds'
 import {
   defaultSessionSortDirection,
@@ -174,7 +174,13 @@ export function WorktreeItem({
     sessionId?: string
   } | null>(null)
 
-  const storeState = useCanvasStoreState()
+  const sessionIds = useMemo(
+    () => (sessionsData?.sessions ?? []).map(s => s.id),
+    [sessionsData?.sessions]
+  )
+  const storeState = useSessionsCardStoreState(sessionIds)
+  // Filtering matches labels of any session, so it reads the whole map.
+  const sessionLabels = useChatStore(state => state.sessionLabels)
 
   // Waiting is read off each session's card status, the same status the
   // session rows show. That status already drops stale flags and lets a
@@ -264,9 +270,9 @@ export function WorktreeItem({
     () => ({
       query: effectiveQuery,
       labelFilter: sessionLabelFilter,
-      sessionLabels: storeState.sessionLabels,
+      sessionLabels,
     }),
-    [effectiveQuery, sessionLabelFilter, storeState.sessionLabels]
+    [effectiveQuery, sessionLabelFilter, sessionLabels]
   )
   const isFilterActive = !isSessionFilterEmpty(filterCriteria)
   const showSessions = isExpanded || isFilterActive

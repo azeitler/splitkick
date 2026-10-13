@@ -17,7 +17,11 @@ describe('set_session_last_opened multi-client sync', () => {
       /pub async fn set_session_last_opened[\s\S]*?^pub async fn set_sessions_last_opened_bulk/m
     )
     expect(singleFn?.[0]).toBeTruthy()
-    expect(singleFn?.[0]).toContain('emit_sessions_cache_invalidation(&app)')
+    // Scoped to the session's worktree so a session switch does not reload
+    // every session list.
+    expect(singleFn?.[0]).toContain(
+      'emit_worktree_sessions_cache_invalidation(&app, &metadata.worktree_id)'
+    )
   })
 
   it('emits sessions cache invalidation after bulk mark-opened', () => {
