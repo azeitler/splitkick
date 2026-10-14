@@ -15,7 +15,9 @@ import {
   findKeybindingAction,
   getTerminalShortcutWorktreeId,
   handleRunEnvironmentStarted,
+  isMenuEventFromPassedKey,
   isPlainSessionTerminalFocused,
+  recordShortcutKeydown,
   shouldAllowKeybindingThroughOpenOverlay,
   shouldLetChatInputHandleAction,
   shouldLetPlanDialogHandleAction,
@@ -30,6 +32,35 @@ import type {
   Session,
   WorktreeSessions,
 } from '@/types/chat'
+
+describe('isMenuEventFromPassedKey', () => {
+  const keybindings = { ...DEFAULT_KEYBINDINGS, new_worktree: 'mod+n' }
+
+  it('drops a menu event for the shortcut the web view just passed on', () => {
+    recordShortcutKeydown('mod+n', 1000)
+    expect(isMenuEventFromPassedKey('new_worktree', keybindings, 1200)).toBe(
+      true
+    )
+  })
+
+  it('runs a menu click: no matching keydown just before', () => {
+    recordShortcutKeydown('mod+n', 1000)
+    expect(isMenuEventFromPassedKey('new_worktree', keybindings, 2500)).toBe(
+      false
+    )
+    recordShortcutKeydown('mod+b', 1000)
+    expect(isMenuEventFromPassedKey('new_worktree', keybindings, 1100)).toBe(
+      false
+    )
+  })
+
+  it('keeps the actions that work from anywhere, terminals included', () => {
+    recordShortcutKeydown(DEFAULT_KEYBINDINGS.toggle_terminal ?? '', 1000)
+    expect(isMenuEventFromPassedKey('toggle_terminal', keybindings, 1100)).toBe(
+      false
+    )
+  })
+})
 
 describe('shouldLetChatInputHandleAction', () => {
   it('lets Cmd/Ctrl+Enter reach the chat input when no plan dialog is open', () => {

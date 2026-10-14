@@ -7,6 +7,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
+import { SIDEBAR_ROW_SELECTED, SIDEBAR_ROW_SHAPE } from './sidebar-row-styles'
 
 /**
  * The Home row, at the top of the sidebar above the Projects / Recent tabs.
@@ -41,10 +42,11 @@ export function SidebarHomeRow() {
       title={isNarrow ? 'Home' : undefined}
       data-testid="sidebar-home-row"
       className={cn(
-        'group relative flex w-full cursor-pointer items-center gap-1 overflow-hidden px-3 py-1.5 text-left transition-colors duration-150',
+        'group relative flex cursor-pointer items-center gap-1 overflow-hidden px-2 py-1.5 text-left transition-colors duration-150',
+        SIDEBAR_ROW_SHAPE,
         isNarrow && 'justify-center',
         isActive
-          ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
+          ? SIDEBAR_ROW_SELECTED
           : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
       )}
     >

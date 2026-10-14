@@ -84,7 +84,7 @@ export function SidebarStarredSection() {
           <SessionShortcutRows
             shortcuts={shortcuts}
             variant="sidebar"
-            sidebarRowClassName="py-1 pl-3 pr-2"
+            sidebarRowClassName="py-1 pl-2 pr-1"
             // Every row here is a star; marking each would be noise.
             showStarGlyph={false}
             onOpen={handleOpen}

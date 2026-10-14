@@ -65,6 +65,7 @@ pub fn apply_window_vibrancy(window: &tauri::WebviewWindow, enabled: bool) -> Re
                     radius: Some(12.0),
                     state: Some(tauri::window::EffectState::Active),
                     color: None,
+                    ..Default::default()
                 })
                 .map_err(|error| error.to_string())?;
         } else {
@@ -95,9 +96,19 @@ pub async fn send_native_notification(
     app: AppHandle,
     title: String,
     body: Option<String>,
+    session: Option<crate::dock::SessionTarget>,
+    request_attention: Option<bool>,
 ) -> Result<(), String> {
+    // One dock bounce (macOS) or taskbar flash: the session waits for the user.
+    if request_attention == Some(true) {
+        if let Some(window) = app.get_webview_window(crate::connection_window::MAIN_WINDOW) {
+            let _ = window.request_user_attention(Some(tauri::UserAttentionType::Informational));
+        }
+    }
+
     #[cfg(target_os = "windows")]
     {
+        let _ = session;
         crate::platform::notifications::show_notification(&app, title, body)
     }
 
@@ -109,8 +120,44 @@ pub async fn send_native_notification(
         if let Some(body) = body {
             notification = notification.body(body);
         }
+        if let Some(session) = session {
+            // Comes back with the click; see `install_notification_click`.
+            notification = notification.extra(NOTIFICATION_SESSION_KEY, session);
+        }
         notification.show().map_err(|error| error.to_string())
     }
+}
+
+#[cfg(not(target_os = "windows"))]
+const NOTIFICATION_SESSION_KEY: &str = "jeanSession";
+
+/// A click on a session notification opens that session in the main window.
+/// Windows toasts are not shown through the plugin; see
+/// `platform/notifications.rs`.
+#[cfg(not(target_os = "windows"))]
+pub(crate) fn install_notification_click(app: &AppHandle) {
+    use tauri_plugin_notification::NotificationExt;
+
+    let handle = app.clone();
+    let _ = app.notification().on_action(move |performed| {
+        if performed.action_id() != "tap" {
+            return;
+        }
+        let session = performed
+            .notification()
+            .and_then(|notification| notification.extra().get(NOTIFICATION_SESSION_KEY))
+            .and_then(|value| {
+                serde_json::from_value::<crate::dock::SessionTarget>(value.clone()).ok()
+            });
+        match session {
+            Some(session) => crate::dock::open_session(&handle, &session),
+            None => {
+                if let Err(error) = crate::connection_window::recreate_main_window(&handle) {
+                    log::warn!("Failed to show the main window: {error}");
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]

@@ -10,7 +10,10 @@
 //! transport layer needs. The label is the same id behind `remote-`, and the
 //! frontend falls back to it if the query string is ever lost.
 
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, LogicalSize, Manager, PhysicalPosition, PhysicalSize, WebviewUrl,
+    WebviewWindowBuilder,
+};
 
 /// The window that always drives the local backend.
 pub const MAIN_WINDOW: &str = "main";
@@ -39,7 +42,75 @@ pub fn label_for_connection(connection_id: &str) -> Option<String> {
 fn focus(window: &tauri::WebviewWindow) -> Result<(), String> {
     let _ = window.unminimize();
     let _ = window.show();
+    ensure_usable_geometry(window);
     window.set_focus().map_err(|error| error.to_string())
+}
+
+const DEFAULT_WIDTH: f64 = 1200.0;
+const DEFAULT_HEIGHT: f64 = 800.0;
+const MIN_WIDTH: f64 = 1000.0;
+const MIN_HEIGHT: f64 = 700.0;
+
+/// A frame the user can see and use: at least the minimum size, with its
+/// centre on one of the connected monitors.
+fn is_usable_frame(
+    position: PhysicalPosition<i32>,
+    size: PhysicalSize<u32>,
+    scale: f64,
+    monitors: &[(PhysicalPosition<i32>, PhysicalSize<u32>)],
+) -> bool {
+    let logical = size.to_logical::<f64>(scale);
+    if logical.width < MIN_WIDTH / 2.0 || logical.height < MIN_HEIGHT / 2.0 {
+        return false;
+    }
+    let center_x = i64::from(position.x) + i64::from(size.width) / 2;
+    let center_y = i64::from(position.y) + i64::from(size.height) / 2;
+    monitors.iter().any(|(origin, area)| {
+        let left = i64::from(origin.x);
+        let top = i64::from(origin.y);
+        (left..left + i64::from(area.width)).contains(&center_x)
+            && (top..top + i64::from(area.height)).contains(&center_y)
+    })
+}
+
+/// Reset a window that came back 0x0 or off every monitor.
+///
+/// `tauri-plugin-window-state` restores the saved size and position per label.
+/// A state saved on another display layout — or a broken one — can leave a
+/// window that exists, and shows in the Window menu, but cannot be seen.
+pub fn ensure_usable_geometry(window: &tauri::WebviewWindow) {
+    if window.is_minimized().unwrap_or(false)
+        || window.is_maximized().unwrap_or(false)
+        || window.is_fullscreen().unwrap_or(false)
+    {
+        return;
+    }
+    let (Ok(position), Ok(size), Ok(scale), Ok(monitors)) = (
+        window.outer_position(),
+        window.outer_size(),
+        window.scale_factor(),
+        window.available_monitors(),
+    ) else {
+        return;
+    };
+    let monitors: Vec<_> = monitors
+        .iter()
+        .map(|monitor| (*monitor.position(), *monitor.size()))
+        .collect();
+    // No monitor info means nothing to compare against; leave the window alone.
+    if monitors.is_empty() || is_usable_frame(position, size, scale, &monitors) {
+        return;
+    }
+    log::warn!(
+        "Window '{}' has an unusable frame ({}x{} at {},{}); resetting it",
+        window.label(),
+        size.width,
+        size.height,
+        position.x,
+        position.y
+    );
+    let _ = window.set_size(LogicalSize::new(DEFAULT_WIDTH, DEFAULT_HEIGHT));
+    let _ = window.center();
 }
 
 /// Window options that `tauri.conf.json` gives the main window.
@@ -55,8 +126,8 @@ fn build<'a>(
     #[allow(unused_mut)]
     let mut builder = WebviewWindowBuilder::new(app, label, url)
         .title(title)
-        .inner_size(1200.0, 800.0)
-        .min_inner_size(1000.0, 700.0)
+        .inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
+        .min_inner_size(MIN_WIDTH, MIN_HEIGHT)
         .resizable(true)
         .center()
         .shadow(true)
@@ -68,7 +139,10 @@ fn build<'a>(
     {
         builder = builder
             .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .hidden_title(true);
+            .hidden_title(true)
+            // Centred in the 52pt toolbar; mirrors `trafficLightPosition` in
+            // `tauri.conf.json`.
+            .traffic_light_position(tauri::LogicalPosition::new(20.0, 20.0));
     }
 
     builder
@@ -166,7 +240,43 @@ pub fn recreate_main_window(app: &AppHandle) -> Result<(), String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{label_for_connection, REMOTE_LABEL_PREFIX};
+    use super::{is_usable_frame, label_for_connection, REMOTE_LABEL_PREFIX};
+    use tauri::{PhysicalPosition, PhysicalSize};
+
+    fn screen() -> Vec<(PhysicalPosition<i32>, PhysicalSize<u32>)> {
+        vec![(PhysicalPosition::new(0, 0), PhysicalSize::new(3024, 1964))]
+    }
+
+    #[test]
+    fn accepts_a_normal_window() {
+        assert!(is_usable_frame(
+            PhysicalPosition::new(200, 100),
+            PhysicalSize::new(2400, 1600),
+            2.0,
+            &screen()
+        ));
+    }
+
+    #[test]
+    fn rejects_a_zero_size_window() {
+        assert!(!is_usable_frame(
+            PhysicalPosition::new(200, 100),
+            PhysicalSize::new(0, 0),
+            2.0,
+            &screen()
+        ));
+    }
+
+    /// Saved on a second display that is no longer connected.
+    #[test]
+    fn rejects_a_window_off_every_monitor() {
+        assert!(!is_usable_frame(
+            PhysicalPosition::new(4000, 100),
+            PhysicalSize::new(2400, 1600),
+            2.0,
+            &screen()
+        ));
+    }
 
     #[test]
     fn builds_a_label_from_a_connection_id() {

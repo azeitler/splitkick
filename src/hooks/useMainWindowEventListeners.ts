@@ -23,7 +23,14 @@ import { disposeTerminal, startHeadless } from '@/lib/terminal-instances'
 import { toast } from 'sonner'
 import { useCommandContext } from './use-command-context'
 import { usePreferences } from '@/services/preferences'
+import { executeCommand } from '@/lib/commands/registry'
+import {
+  navigateToSession,
+  type SessionNavigationTarget,
+} from '@/lib/navigate-to-session'
+import { isConnectionWindow } from '@/lib/remote-connections'
 import { logger } from '@/lib/logger'
+import { logNativeError } from '@/lib/native-log'
 import {
   eventToShortcutString,
   isModKeyEvent,
@@ -411,6 +418,49 @@ export function switchActiveTerminalTabByIndexForShortcut(
  * This hook provides a centralized place for all global event listeners, keeping
  * the MainWindow component clean while maintaining good separation of concerns.
  */
+/**
+ * The last shortcut pressed in this web view. A macOS menu accelerator fires
+ * after the web view passed on a key, and the web view passes on keys on
+ * purpose (a dialog is open, a terminal has focus). A menu event for the
+ * shortcut just pressed is therefore ignored: the keydown handler already
+ * decided. A click on the menu item has no keydown and always runs.
+ */
+let lastShortcutKeydown: { shortcut: string; at: number } | null = null
+const MENU_KEYDOWN_WINDOW_MS = 1000
+
+/** Menu actions that also run when the web view passed on their key, as they
+ * did before the menu followed the keybindings: they must work everywhere,
+ * terminals included. */
+const MENU_ACTIONS_FROM_ANYWHERE = new Set<KeybindingAction>([
+  'open_preferences',
+  'toggle_file_browser',
+  'toggle_terminal',
+  'toggle_browser',
+  'open_magic_modal',
+  'open_quick_menu',
+])
+
+export function isMenuEventFromPassedKey(
+  action: KeybindingAction,
+  keybindings: KeybindingsMap,
+  now = performance.now()
+): boolean {
+  if (MENU_ACTIONS_FROM_ANYWHERE.has(action)) return false
+  const shortcut = keybindings[action]
+  return (
+    !!shortcut &&
+    lastShortcutKeydown?.shortcut === shortcut &&
+    now - lastShortcutKeydown.at < MENU_KEYDOWN_WINDOW_MS
+  )
+}
+
+export function recordShortcutKeydown(
+  shortcut: string,
+  now = performance.now()
+): void {
+  lastShortcutKeydown = { shortcut, at: now }
+}
+
 // Execute a keybinding action
 function executeKeybindingAction(
   action: KeybindingAction,
@@ -845,6 +895,15 @@ export function useMainWindowEventListeners() {
       ...DEFAULT_KEYBINDINGS,
       ...(preferences?.keybindings ?? {}),
     }
+    // The macOS menu shows these shortcuts. It belongs to the app, so only the
+    // main window (local preferences) sets it.
+    if (isNativeApp() && !isConnectionWindow()) {
+      void invoke('set_menu_accelerators', {
+        keybindings: keybindingsRef.current,
+      }).catch(error =>
+        logger.warn('Failed to set menu shortcuts', { error: String(error) })
+      )
+    }
   }, [preferences?.keybindings])
 
   // After alt-tab / OS window reactivation, WebViews often leave the document
@@ -858,6 +917,7 @@ export function useMainWindowEventListeners() {
       // Convert the keyboard event to our shortcut string format
       const shortcut = eventToShortcutString(e)
       if (!shortcut) return
+      recordShortcutKeydown(shortcut)
 
       // Skip single-key shortcuts (no modifier) when focus is in input/textarea
       const hasModifier = e.metaKey || e.ctrlKey || e.altKey || e.shiftKey
@@ -1154,28 +1214,27 @@ export function useMainWindowEventListeners() {
               )
             }
           } catch (error) {
-            logger.error('Update check failed:', { error: String(error) })
-            commandContext.showToast('Failed to check for updates', 'error')
+            logNativeError(`Update check failed: ${String(error)}`)
+            commandContext.showToast(
+              `Failed to check for updates: ${String(error)}`,
+              'error'
+            )
           }
         }),
 
-        listenMenu('menu-preferences', () => {
-          logger.debug('Preferences menu event received')
-          commandContext.openPreferences()
+        listenMenu<KeybindingAction>('menu-keybinding', action => {
+          if (isMenuEventFromPassedKey(action, keybindingsRef.current)) return
+          logger.debug('Keybinding menu event received', { action })
+          executeKeybindingAction(action, commandContext, queryClient)
         }),
 
-        listenMenu('menu-toggle-left-sidebar', () => {
-          logger.debug('Toggle left sidebar menu event received')
-          const { leftSidebarVisible, setLeftSidebarVisible } =
-            useUIStore.getState()
-          setLeftSidebarVisible(!leftSidebarVisible)
-        }),
-
-        listenMenu('menu-toggle-file-browser', () => {
-          logger.debug('Toggle file browser menu event received')
-          const { fileBrowserVisible, setFileBrowserVisible } =
-            useUIStore.getState()
-          setFileBrowserVisible(!fileBrowserVisible)
+        listenMenu<string>('menu-command', commandId => {
+          logger.debug('Command menu event received', { commandId })
+          void executeCommand(commandId, commandContext).then(result => {
+            if (!result.success) {
+              logger.warn('Menu command failed', { commandId, ...result })
+            }
+          })
         }),
 
         listenMenu('menu-toggle-right-sidebar', () => {
@@ -1188,36 +1247,10 @@ export function useMainWindowEventListeners() {
           }
         }),
 
-        listenMenu('menu-magic-menu', () => {
-          logger.debug('Magic menu event received from native menu')
-          executeKeybindingAction(
-            'open_magic_modal',
-            commandContext,
-            queryClient
-          )
-        }),
-
-        listenMenu('menu-toggle-terminal', () => {
-          logger.debug('Toggle terminal menu event received from native menu')
-          executeKeybindingAction(
-            'toggle_terminal',
-            commandContext,
-            queryClient
-          )
-        }),
-
-        listenMenu('menu-toggle-browser', () => {
-          logger.debug('Toggle browser menu event received from native menu')
-          executeKeybindingAction('toggle_browser', commandContext, queryClient)
-        }),
-
-        listenMenu('menu-quick-menu', () => {
-          logger.debug('Quick menu event received from native menu')
-          executeKeybindingAction(
-            'open_quick_menu',
-            commandContext,
-            queryClient
-          )
+        // Dock menu and notification clicks (see src-tauri/src/dock.rs)
+        listenMenu<SessionNavigationTarget>('open-session-request', target => {
+          logger.debug('Open session request received', target)
+          navigateToSession(target)
         }),
 
         // Branch naming events (automatic branch renaming based on first message)

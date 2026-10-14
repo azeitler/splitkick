@@ -12,7 +12,7 @@ import {
   CliUpdatesIndicator,
   ServerUpdateIndicator,
   UpdateIndicator,
-} from '@/components/titlebar/TitleBar'
+} from '@/components/titlebar/update-indicators'
 import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
 import { useHasPendingUpdate } from './mobile-nav-utils'
 import { MobileTabPage, MobileTabSection } from './MobileTabPage'

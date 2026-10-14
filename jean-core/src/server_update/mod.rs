@@ -34,8 +34,24 @@ const DESKTOP_MANIFEST_URL: &str =
 const DESKTOP_MANIFEST_URL_JEANZ: &str =
     "https://github.com/azeitler/jean/releases/latest/download/latest.json";
 
-/// The desktop release feed for this build flavor.
-fn desktop_manifest_url(product_name: Option<&str>) -> &'static str {
+/// The feed the desktop shell's native updater reads (`plugins.updater` in
+/// its Tauri config). Set once at startup; see [`set_desktop_release_feed`].
+static DESKTOP_RELEASE_FEED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+
+/// Record the release feed of the running desktop build, so the Web Access
+/// check reads the same feed as the native updater. Safe to call more than
+/// once; the first value wins. The development build sets the fork's feed in
+/// `src-tauri/tauri.conf.dev.json` even though it is named "Jean".
+pub fn set_desktop_release_feed(url: impl Into<String>) {
+    let _ = DESKTOP_RELEASE_FEED.set(url.into());
+}
+
+/// The desktop release feed: the one the native updater reads when the shell
+/// reported it, otherwise the feed of this build flavor.
+fn desktop_manifest_url<'a>(product_name: Option<&str>, configured: Option<&'a str>) -> &'a str {
+    if let Some(url) = configured {
+        return url;
+    }
     match product_name {
         Some(crate::PRODUCT_NAME_JEANZ) => DESKTOP_MANIFEST_URL_JEANZ,
         _ => DESKTOP_MANIFEST_URL,
@@ -242,7 +258,11 @@ async fn check_desktop_host_update(
     // The released version, as the native updater sees it — a JeanZ build's
     // `-z.N` suffix is not in the Cargo version.
     let current_version = crate::release_version().to_string();
-    let manifest = fetch_desktop_manifest(desktop_manifest_url(product_name)).await?;
+    let manifest = fetch_desktop_manifest(desktop_manifest_url(
+        product_name,
+        DESKTOP_RELEASE_FEED.get().map(String::as_str),
+    ))
+    .await?;
     let latest = normalize_version(&manifest.version);
     let available = is_newer_version(&latest, &current_version);
 
@@ -941,11 +961,39 @@ mod tests {
         // Web Access clients: a build it cannot install, signed with a
         // different key.
         assert_eq!(
-            desktop_manifest_url(Some(crate::PRODUCT_NAME_JEANZ)),
+            desktop_manifest_url(Some(crate::PRODUCT_NAME_JEANZ), None),
             DESKTOP_MANIFEST_URL_JEANZ
         );
-        assert_eq!(desktop_manifest_url(Some("Jean")), DESKTOP_MANIFEST_URL);
-        assert_eq!(desktop_manifest_url(None), DESKTOP_MANIFEST_URL);
+        assert_eq!(
+            desktop_manifest_url(Some("Jean"), None),
+            DESKTOP_MANIFEST_URL
+        );
+        assert_eq!(desktop_manifest_url(None, None), DESKTOP_MANIFEST_URL);
+    }
+
+    #[test]
+    fn the_native_updater_feed_wins_over_the_product_name() {
+        // The development build is named "Jean" but updates from the fork.
+        assert_eq!(
+            desktop_manifest_url(Some("Jean"), Some(DESKTOP_MANIFEST_URL_JEANZ)),
+            DESKTOP_MANIFEST_URL_JEANZ
+        );
+    }
+
+    #[test]
+    fn the_dev_build_updates_like_the_fork() {
+        // The dev config must point the native updater at the fork's feed,
+        // with the fork's key: upstream builds are signed with another key.
+        let dev: serde_json::Value =
+            serde_json::from_str(include_str!("../../../src-tauri/tauri.conf.dev.json")).unwrap();
+        let fork: serde_json::Value =
+            serde_json::from_str(include_str!("../../../src-tauri/tauri.fork.conf.json")).unwrap();
+        let updater = |config: &serde_json::Value| config["plugins"]["updater"].clone();
+        assert_eq!(
+            updater(&dev)["endpoints"][0].as_str(),
+            Some(DESKTOP_MANIFEST_URL_JEANZ)
+        );
+        assert_eq!(updater(&dev)["pubkey"], updater(&fork)["pubkey"]);
     }
 
     #[test]

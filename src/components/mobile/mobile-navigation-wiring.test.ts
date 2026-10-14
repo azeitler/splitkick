@@ -108,18 +108,21 @@ describe('the drawer is retired on a phone', () => {
     expect(mainWindow).not.toContain('swipeOpenSidebar')
   })
 
-  it('renders the phone title bar before any desktop control', () => {
-    // The phone branch returns early, so no desktop button can leak into it.
+  it('keeps desktop controls out of the phone title bar', () => {
+    // The desktop chrome is WindowToolbar plus the sidebar header and footer;
+    // TitleBar is the phone bar only.
     const titleBar = read('src/components/titlebar/TitleBar.tsx')
-    const phone = titleBar.indexOf('if (isMobile) {')
-    expect(phone).toBeGreaterThan(-1)
-    expect(phone).toBeLessThan(titleBar.indexOf('onClick={toggleLeftSidebar}'))
+    expect(titleBar).toContain('data-testid="titlebar-mobile"')
+    expect(titleBar).not.toContain('toggleLeftSidebar')
+    expect(titleBar).not.toContain('UsagePopover')
   })
 
   it('keeps the desktop in-flow sidebar', () => {
     // The redesign is below the breakpoint only.
-    expect(read('src/components/layout/MainWindow.tsx')).toContain(
-      '{!isMobile && leftSidebarVisible && isInitialized && ('
+    const mainWindow = read('src/components/layout/MainWindow.tsx')
+    const desktop = mainWindow.slice(
+      mainWindow.indexOf('<ToolbarSlotsProvider>')
     )
+    expect(desktop).toContain('{leftSidebarVisible && isInitialized && (')
   })
 })

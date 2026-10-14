@@ -11,6 +11,11 @@ import type { Session } from '@/types/chat'
 import { PinnedSessionsSection } from './PinnedSessionsSection'
 import type { SessionCardData } from './session-card-utils'
 import type { PinnedSessionRow } from './pinned-sessions'
+import {
+  SIDEBAR_SESSION_LIST,
+  SIDEBAR_SESSION_ROW_PADDING,
+  SIDEBAR_WORKTREE_SECTION_PADDING,
+} from '@/components/projects/sidebar-row-styles'
 
 const renameMutate = vi.fn()
 const archiveMutate = vi.fn()
@@ -347,7 +352,8 @@ describe('PinnedSessionsSection', () => {
       const row = screen.getByRole('button', { expanded: true })
       expect(row.className).toContain('py-1.5')
       expect(row.className).toContain('pr-2')
-      expect(row.className).toContain('pl-7')
+      // Glyph at the workspace level (sidebar-row-styles.ts).
+      expect(row.className).toContain(SIDEBAR_WORKTREE_SECTION_PADDING)
     })
 
     it('hides its sessions while collapsed and counts them instead', () => {
@@ -414,17 +420,16 @@ describe('PinnedSessionsSection', () => {
       const list = renderSidebarRows()
 
       expect(list.className).toContain('border-l')
-      expect(list.className).toContain('ml-9')
+      expect(list.className).toContain(SIDEBAR_SESSION_LIST)
       const row = screen.getByText('Investigation').closest('button')
       expect(list).toContainElement(row)
-      expect(row?.className).toContain('pl-5')
+      expect(row?.className).toContain(SIDEBAR_SESSION_ROW_PADDING)
     })
 
-    it('uses the narrow offset on a narrow sidebar', () => {
+    it('keeps the same indent step on a narrow sidebar', () => {
       const list = renderSidebarRows(180)
 
-      expect(list.className).toContain('ml-6')
-      expect(list.className).not.toContain('ml-9')
+      expect(list.className).toContain(SIDEBAR_SESSION_LIST)
     })
 
     it('matches the container WorktreeItem nests its sessions in', () => {
@@ -434,12 +439,10 @@ describe('PinnedSessionsSection', () => {
       )
       const list = renderSidebarRows()
 
-      // If the workspace session list changes, the pinned list must follow.
-      expect(worktreeItem).toContain("'border-l border-border/40 py-0.5'")
-      expect(worktreeItem).toContain("isNarrowSidebar ? 'ml-6' : 'ml-9'")
-      for (const token of ['border-l', 'border-border/40', 'py-0.5', 'ml-9']) {
-        expect(list.className).toContain(token)
-      }
+      // Both take the session list from one constant, so they cannot drift.
+      expect(worktreeItem).toContain('SIDEBAR_SESSION_LIST')
+      expect(list.className).toContain(SIDEBAR_SESSION_LIST)
+      expect(list.className).toContain('py-0.5')
     })
 
     // Every row here is a pin, so marking each would be noise.

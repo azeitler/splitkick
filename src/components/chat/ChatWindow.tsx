@@ -3604,7 +3604,10 @@ export function ChatWindow({
                         <div
                           ref={setChatComposerNode}
                           data-chat-composer=""
-                          className="relative md:mx-auto md:mb-3 md:max-w-3xl xl:max-w-4xl"
+                          // Same side space as the messages (md:px-6), also when
+                          // the column is narrower than max-w-3xl (file browser
+                          // open, small window): mx-auto alone left it flush.
+                          className="relative md:mx-auto md:mb-3 md:w-[calc(100%-3rem)] md:max-w-3xl xl:max-w-4xl"
                         >
                           {/* Queued prompts - rendered as an extension above the chat input */}
                           {activeSessionId &&

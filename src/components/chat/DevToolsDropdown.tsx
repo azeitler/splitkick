@@ -170,11 +170,12 @@ export function DevToolsDropdown({
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
-            className="h-7 rounded-r-none border-0 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+            className="h-7 gap-1.5 rounded-r-none border-0 px-2.5 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => triggerFlow(defaultFlow)}
+            aria-label="AI dev"
           >
-            <FlaskConical className="mr-1.5 h-3.5 w-3.5" />
-            AI dev
+            <FlaskConical className="h-3.5 w-3.5" />
+            <span data-toolbar-label>AI dev</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent>Inject provider dev test flows</TooltipContent>

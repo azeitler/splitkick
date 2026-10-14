@@ -328,7 +328,7 @@ export default function useStreamingEvents({
       if (kind === 'waiting') {
         notifySessionNeedsAttention(sessionId, title, name)
       } else {
-        notifyIfBackground(title, name)
+        notifyIfBackground(title, name, sessionId)
       }
     }
 

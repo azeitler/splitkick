@@ -80,7 +80,9 @@ describe('chat breakpoint parity', () => {
     // At 640-767px the composer showed the desktop floating card *and* the
     // mobile safe-area padding, i.e. a detached card with a gap under it.
     const source = read('src/components/chat/ChatWindow.tsx')
-    expect(source).toContain('relative md:mx-auto md:mb-3 md:max-w-3xl')
+    expect(source).toContain(
+      'relative md:mx-auto md:mb-3 md:w-[calc(100%-3rem)] md:max-w-3xl'
+    )
     expect(source).toContain('md:rounded-lg md:border')
     expect(source).toContain("'md:rounded-t-none'")
     expect(source).not.toMatch(
@@ -91,7 +93,10 @@ describe('chat breakpoint parity', () => {
   it('keeps touch-reachable tab actions out of hover-only territory', () => {
     // A landscape phone is ~844px, so sm: made these hover-only.
     const source = read('src/components/chat/SessionChatModal.tsx')
-    expect(source).toContain('md:opacity-0 md:group-hover/tab:opacity-60')
+    // Desktop: the status dot becomes the close button on hover. Touch
+    // screens (below md) keep a visible close button instead.
+    expect(source).toContain('md:group-hover/tab:flex')
+    expect(source).toContain('ml-0.5 opacity-60 hover:!opacity-100 md:hidden')
     expect(source).toContain('hidden md:flex')
   })
 

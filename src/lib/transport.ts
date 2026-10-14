@@ -165,6 +165,9 @@ function containNativeUnlisten(
 
 const DESKTOP_ONLY_COMMANDS = new Set([
   'set_window_vibrancy',
+  'set_menu_accelerators',
+  'set_dock_badge',
+  'set_dock_sessions',
   'open_connection_window',
   'focus_main_window',
   'close_connection_window',
@@ -210,6 +213,9 @@ const DESKTOP_ONLY_COMMANDS = new Set([
 // content is connected to a remote Jean backend.
 const LOCAL_SHELL_COMMANDS = new Set([
   'set_window_vibrancy',
+  'set_menu_accelerators',
+  'set_dock_badge',
+  'set_dock_sessions',
   // Windows belong to this desktop shell, so a connection window opening
   // another connection must reach the local process, not its remote.
   'open_connection_window',
@@ -353,14 +359,17 @@ function currentWindowLabel(): string {
  * window's label. A listener registered without a target matches every emit
  * regardless of the filter, so the target has to be given here as well.
  */
-export async function listenMenu(
+export async function listenMenu<T = null>(
   event: string,
-  handler: () => void
+  handler: (payload: T) => void
 ): Promise<() => void> {
   const label = currentWindowLabel()
-  if (!isNativeApp() || !label) return listenLocal(event, handler)
+  if (!isNativeApp() || !label)
+    return listenLocal<T>(event, e => handler(e.payload))
   const { listen: tauriListen } = await import('@tauri-apps/api/event')
-  const unlisten = await tauriListen(event, () => handler(), { target: label })
+  const unlisten = await tauriListen<T>(event, e => handler(e.payload), {
+    target: label,
+  })
   return containNativeUnlisten(unlisten)
 }
 

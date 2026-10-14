@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import userEvent from '@testing-library/user-event'
 import { render, screen, within } from '@/test/test-utils'
 import { HomeView } from './HomeView'
+import { ToolbarSlotsProvider } from '@/components/toolbar/toolbar-slots'
+import { WindowToolbar } from '@/components/toolbar/WindowToolbar'
 import { useProjectsStore } from '@/store/projects-store'
 import type { AllSessionsResponse, LabelData, Session } from '@/types/chat'
 import type { ActivityEvent } from '@/types/activity'
@@ -150,6 +152,24 @@ describe('HomeView', () => {
     ).toBeInTheDocument()
 
     expect(screen.getByText('newest')).toBeInTheDocument()
+  })
+
+  it('puts its heading in the window toolbar on desktop', () => {
+    render(
+      <ToolbarSlotsProvider>
+        <WindowToolbar fallbackTitle="Jean" />
+        <HomeView
+          projects={projects}
+          onProjectClick={vi.fn()}
+          onAddProject={vi.fn()}
+        />
+      </ToolbarSlotsProvider>
+    )
+    const toolbar = screen.getByTestId('window-toolbar')
+    expect(toolbar).toHaveTextContent('Home')
+    expect(toolbar).toHaveTextContent('The sessions you touched last')
+    expect(within(toolbar).getByTestId('toolbar-search-palette')).toBeVisible()
+    expect(screen.queryByRole('heading', { name: 'Home' })).toBeNull()
   })
 
   it('keeps the activity feed closed until its heading is clicked', async () => {

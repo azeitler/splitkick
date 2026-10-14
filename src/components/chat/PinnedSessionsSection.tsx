@@ -1,5 +1,4 @@
 import { Pin } from 'lucide-react'
-import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import { cn } from '@/lib/utils'
 import {
   SessionShortcutRows,
@@ -8,6 +7,10 @@ import {
 import { SidebarSectionRow } from './SidebarSectionRow'
 import type { SessionCardData } from './session-card-utils'
 import type { PinnedSessionRow } from './pinned-sessions'
+import {
+  SIDEBAR_SESSION_LIST,
+  SIDEBAR_WORKTREE_SECTION_PADDING,
+} from '@/components/projects/sidebar-row-styles'
 
 export interface PinnedSessionEntryRow {
   row: PinnedSessionRow
@@ -45,13 +48,10 @@ export function PinnedSessionsSection({
   onToggleExpanded,
   onOpen,
 }: PinnedSessionsSectionProps) {
-  const sidebarWidth = useSidebarWidth()
 
   if (rows.length === 0) return null
 
   const isSidebar = variant === 'sidebar'
-  // Matches WorktreeItem, so the two rows indent alike as the sidebar narrows.
-  const isNarrowSidebar = sidebarWidth < 200
   const isOpen = !isSidebar || expanded
 
   const shortcuts: SessionShortcut[] = rows.map(({ row, card }) => ({
@@ -85,7 +85,7 @@ export function PinnedSessionsSection({
           count={rows.length}
           expanded={expanded}
           onToggle={onToggleExpanded}
-          className={isNarrowSidebar ? 'pl-4' : 'pl-7'}
+          className={SIDEBAR_WORKTREE_SECTION_PADDING}
         />
       ) : (
         <div className="flex items-center gap-1.5 px-1 pb-1 text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -100,10 +100,7 @@ export function PinnedSessionsSection({
           // The same guide line and offset as a workspace's session list in
           // WorktreeItem, so a pinned session reads as the nested row it is.
           <div
-            className={cn(
-              'border-l border-border/40 py-0.5',
-              isNarrowSidebar ? 'ml-6' : 'ml-9'
-            )}
+            className={cn('py-0.5', SIDEBAR_SESSION_LIST)}
             data-testid="pinned-sessions-list"
           >
             <SessionShortcutRows

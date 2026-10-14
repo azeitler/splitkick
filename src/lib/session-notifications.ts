@@ -9,20 +9,69 @@
  */
 
 import { invoke } from '@/lib/transport'
+import { queryClient } from '@/lib/query-client'
 import { isNativeApp } from './environment'
+import { isConnectionWindow } from './remote-connections'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
+import type { AllSessionsResponse } from '@/types/chat'
+
+/** What a click on the banner opens; matches `SessionTarget` in `dock.rs`. */
+export interface NativeSessionTarget {
+  projectId: string
+  worktreeId: string
+  sessionId: string
+}
+
+/** Project and worktree of a session, from the cross-project session list. */
+export function nativeSessionTarget(
+  sessionId: string
+): NativeSessionTarget | null {
+  const allSessions = queryClient.getQueryData<AllSessionsResponse>([
+    'all-sessions',
+  ])
+  const entry = allSessions?.entries.find(e =>
+    e.sessions.some(s => s.id === sessionId)
+  )
+  if (!entry) return null
+  return {
+    projectId: entry.project_id,
+    worktreeId: entry.worktree_id,
+    sessionId,
+  }
+}
+
+function sendNativeNotification(
+  sessionId: string | undefined,
+  title: string,
+  body: string | undefined,
+  requestAttention: boolean
+): void {
+  // A click opens the session in the main window, which talks to the local
+  // backend; a connection window's session ids belong to its remote.
+  const session =
+    sessionId && !isConnectionWindow() ? nativeSessionTarget(sessionId) : null
+  void invoke('send_native_notification', {
+    title,
+    body,
+    session,
+    requestAttention,
+  }).catch(() => undefined)
+}
 
 /**
  * Fire a native OS banner only when the app is unfocused.
  * No-op in web access (non-native) or when the window is focused.
+ * With a session id, a click on the banner opens that session.
  */
-export function notifyIfBackground(title: string, body?: string): void {
+export function notifyIfBackground(
+  title: string,
+  body?: string,
+  sessionId?: string
+): void {
   if (!isNativeApp()) return
   if (document.hasFocus()) return // sound already covers the focused case
-  void invoke('send_native_notification', { title, body }).catch(
-    () => undefined
-  )
+  sendNativeNotification(sessionId, title, body, false)
 }
 
 /** Whether the given session is currently open in the full chat view or modal. */
@@ -53,6 +102,7 @@ export function isSessionCurrentlyViewed(sessionId: string): boolean {
  * - the window is focused but the user is not viewing this session
  *
  * Always pairs with playWaitingSound in callers for the focused-on-session case.
+ * When Jean is in the background, the dock icon also bounces once.
  */
 export function notifySessionNeedsAttention(
   sessionId: string,
@@ -67,7 +117,5 @@ export function notifySessionNeedsAttention(
     return
   }
 
-  void invoke('send_native_notification', { title, body }).catch(
-    () => undefined
-  )
+  sendNativeNotification(sessionId, title, body, !document.hasFocus())
 }

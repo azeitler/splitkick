@@ -163,6 +163,7 @@ describe('eventToShortcutString', () => {
       const modifiers = {
         shiftKey: parts.includes('shift'),
         altKey: parts.includes('alt'),
+        ctrlKey: parts.includes('ctrl'),
       }
 
       expect(
@@ -176,6 +177,29 @@ describe('eventToShortcutString', () => {
         `Command should match ${shortcut}`
       ).toBe(shortcut)
     }
+  })
+
+  it('reads Control+Command as mod+ctrl on macOS native (zen mode)', () => {
+    setPlatform({ isClientMacOS: true, isNativeApp: true })
+
+    const ctrlCmdZ = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      ctrlKey: true,
+      metaKey: true,
+    })
+    expect(eventToShortcutString(ctrlCmdZ)).toBe('mod+ctrl+z')
+    expect(formatShortcutDisplay('mod+ctrl+z').endsWith(' + ⌃ + Z')).toBe(true)
+  })
+
+  it('has no separate ctrl modifier off macOS native', () => {
+    const ctrlZ = new KeyboardEvent('keydown', {
+      key: 'z',
+      code: 'KeyZ',
+      ctrlKey: true,
+      metaKey: true,
+    })
+    expect(eventToShortcutString(ctrlZ)).toBe('mod+z')
   })
 
   it('does not treat Control as mod on macOS native so Ctrl+T reaches the terminal (issue #615)', () => {

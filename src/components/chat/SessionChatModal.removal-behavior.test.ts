@@ -111,14 +111,23 @@ describe('SessionChatModal removal behavior', () => {
     expect(source).toContain('<ModalCloseButton onClick={handleClose} />')
   })
 
-  it('uses terminal-like square tab styling for session header tabs', () => {
+  it('uses Safari-style rounded tabs without dividers', () => {
     const source = readSource('src/components/chat/SessionChatModal.tsx')
 
-    expect(source).toContain('flex min-w-max items-center gap-0 py-0 px-0')
+    expect(source).toContain('flex min-w-max items-center gap-1')
     expect(source).toContain(
-      'group/tab flex shrink-0 items-center gap-1.5 border-r border-border px-3 py-1.5 text-xs transition-colors whitespace-nowrap'
+      'group/tab flex h-6 w-44 shrink-0 items-center gap-1.5 rounded-md px-2 text-xs'
     )
-    expect(source).not.toContain('group/tab flex rounded items-center')
+    // The selected tab uses the sidebar's selection fill; no boxed dividers.
+    expect(source).toContain("cn(SIDEBAR_ROW_SELECTED, 'font-medium')")
+    expect(source).not.toContain('border-r border-border px-3')
+  })
+
+  it('shows the tab shortcuts only while the mod key is held', () => {
+    const source = readSource('src/components/chat/SessionChatModal.tsx')
+
+    expect(source).toContain('useModKeyHeld()')
+    expect(source).toContain('idx < 9 && showTabShortcuts')
   })
 
   it('keeps the new session button after the tabs until they overflow on desktop', () => {
@@ -163,20 +172,20 @@ describe('SessionChatModal removal behavior', () => {
     )
   })
 
-  it('keeps a yellow background on waiting session tabs', () => {
+  it('marks waiting session tabs in yellow', () => {
     const source = readSource('src/components/chat/SessionChatModal.tsx')
 
     expect(source).toContain('isActionableWaitingStatus(status)')
-    expect(source).toContain("'bg-yellow-500/10")
+    expect(source).toContain("'text-yellow-700")
   })
 
-  it('uses a subtle grey background only for inactive unread session tabs', () => {
+  it('sets only inactive unread session tabs in semibold', () => {
     const source = readSource('src/components/chat/SessionChatModal.tsx')
 
     expect(source).toContain('isUnreadSession(session)')
     expect(source).toContain('!isActive')
     expect(source).toContain('!isActionableWaitingStatus(status)')
-    expect(source).toContain("'bg-muted/60")
+    expect(source).toContain("'font-semibold text-foreground'")
     expect(source).not.toContain("'bg-green-500/10")
   })
 

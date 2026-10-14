@@ -26,7 +26,7 @@ export function useTerminalThemeSync(): void {
   }, [preferences, theme])
 }
 
-const FALLBACK_BG = '#101010'
+const FALLBACK_BG = '#1e1e1e'
 
 function readCssBackground(): string {
   if (typeof window === 'undefined' || typeof document === 'undefined') {

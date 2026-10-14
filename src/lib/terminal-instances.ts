@@ -486,7 +486,7 @@ function ensureWakeHandler(): void {
   window.addEventListener('focus', wake)
 }
 
-const FALLBACK_TERMINAL_BACKGROUND = '#101010'
+const FALLBACK_TERMINAL_BACKGROUND = '#1e1e1e'
 const FALLBACK_TERMINAL_FOREGROUND = '#fafafa'
 
 let cachedPrefs: Pick<

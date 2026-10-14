@@ -109,7 +109,8 @@ export function SidebarRecentSessions() {
             shortcuts={group.shortcuts}
             variant="sidebar"
             layout="stacked"
-            sidebarRowClassName="py-1.5 pl-3 pr-2"
+            sidebarRowClassName="py-1.5 pl-2 pr-1"
+            sidebarNested={false}
             activeSessionId={activeSessionId}
             onOpen={handleOpen}
           />

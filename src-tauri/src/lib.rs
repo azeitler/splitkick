@@ -1,12 +1,11 @@
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-#[cfg(target_os = "macos")]
-use tauri::menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem, SubmenuBuilder};
-
+mod app_menu;
 mod browser;
 mod connection_window;
 mod desktop_commands;
+mod dock;
 mod http_server;
 mod platform;
 mod remote_install;
@@ -62,129 +61,6 @@ fn fix_macos_path() {
             }
         }
     }
-}
-
-#[cfg(target_os = "macos")]
-fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-    // Read the name from the config so build flavors (see tauri.fork.conf.json)
-    // get their own menu title instead of a hardcoded "Jean".
-    let app_name = app
-        .config()
-        .product_name
-        .clone()
-        .unwrap_or_else(|| "Jean".to_string());
-    let hide_label = format!("Hide {app_name}");
-    let quit_label = format!("Quit {app_name}");
-
-    let app_menu = SubmenuBuilder::new(app, &app_name)
-        .item(&MenuItemBuilder::with_id("about", format!("About {app_name}")).build(app)?)
-        .separator()
-        .item(&MenuItemBuilder::with_id("check-updates", "Check for Updates...").build(app)?)
-        .separator()
-        .item(
-            &MenuItemBuilder::with_id("preferences", "Preferences...")
-                .accelerator("CmdOrCtrl+,")
-                .build(app)?,
-        )
-        .separator()
-        .item(&PredefinedMenuItem::hide(app, Some(hide_label.as_str()))?)
-        .item(&PredefinedMenuItem::hide_others(app, None)?)
-        .item(&PredefinedMenuItem::show_all(app, None)?)
-        .separator()
-        .item(&PredefinedMenuItem::quit(app, Some(quit_label.as_str()))?)
-        .build()?;
-    let edit_menu = SubmenuBuilder::new(app, "Edit")
-        .item(&PredefinedMenuItem::undo(app, None)?)
-        .item(&PredefinedMenuItem::redo(app, None)?)
-        .separator()
-        .item(&PredefinedMenuItem::cut(app, None)?)
-        .item(&PredefinedMenuItem::copy(app, None)?)
-        .item(&PredefinedMenuItem::paste(app, None)?)
-        .item(&PredefinedMenuItem::select_all(app, None)?)
-        .build()?;
-    let view_menu = SubmenuBuilder::new(app, "View")
-        .item(&MenuItemBuilder::with_id("toggle-left-sidebar", "Toggle Left Sidebar").build(app)?)
-        .item(
-            &MenuItemBuilder::with_id("toggle-file-browser", "Toggle File Browser")
-                .accelerator("CmdOrCtrl+Shift+B")
-                .build(app)?,
-        )
-        .item(&MenuItemBuilder::with_id("toggle-right-sidebar", "Toggle Right Sidebar").build(app)?)
-        .separator()
-        .item(
-            &MenuItemBuilder::with_id("toggle-terminal", "Toggle Terminal")
-                .accelerator("CmdOrCtrl+Backquote")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("toggle-browser", "Toggle Browser")
-                .accelerator("CmdOrCtrl+Shift+Backquote")
-                .build(app)?,
-        )
-        .build()?;
-    let window_menu = SubmenuBuilder::new(app, "Window")
-        .item(
-            &MenuItemBuilder::with_id("magic-menu", "Magic Menu")
-                .accelerator("CmdOrCtrl+M")
-                .build(app)?,
-        )
-        .item(
-            &MenuItemBuilder::with_id("quick-menu", "Quick Menu")
-                .accelerator("CmdOrCtrl+Period")
-                .build(app)?,
-        )
-        .separator()
-        .item(&PredefinedMenuItem::minimize(app, None)?)
-        .item(&PredefinedMenuItem::maximize(app, None)?)
-        .build()?;
-    let menu = MenuBuilder::new(app)
-        .item(&app_menu)
-        .item(&edit_menu)
-        .item(&view_menu)
-        .item(&window_menu)
-        .build()?;
-    app.set_menu(menu)?;
-    Ok(())
-}
-
-/// Frontend event for a menu item id.
-#[cfg(target_os = "macos")]
-fn menu_event_name(id: &str) -> Option<&'static str> {
-    match id {
-        "about" => Some("menu-about"),
-        "check-updates" => Some("menu-check-updates"),
-        "preferences" => Some("menu-preferences"),
-        "toggle-left-sidebar" => Some("menu-toggle-left-sidebar"),
-        "toggle-file-browser" => Some("menu-toggle-file-browser"),
-        "toggle-right-sidebar" => Some("menu-toggle-right-sidebar"),
-        "toggle-terminal" => Some("menu-toggle-terminal"),
-        "toggle-browser" => Some("menu-toggle-browser"),
-        "magic-menu" => Some("menu-magic-menu"),
-        "quick-menu" => Some("menu-quick-menu"),
-        _ => None,
-    }
-}
-
-#[cfg(target_os = "macos")]
-fn install_menu_events(app: &tauri::App) {
-    app.on_menu_event(|app, event| {
-        let Some(frontend_event) = menu_event_name(event.id().as_ref()) else {
-            return;
-        };
-        // The menu belongs to the application, so send the event to the one
-        // window the user is looking at. `listenMenu` in `src/lib/transport.ts`
-        // registers for this label — a listener with no target would receive
-        // every emit regardless of the filter.
-        let label = app
-            .get_focused_window()
-            .map(|window| window.label().to_string())
-            .unwrap_or_else(|| connection_window::MAIN_WINDOW.to_string());
-        let _ = app.emit_to(
-            tauri::EventTarget::webview_window(label),
-            frontend_event,
-            (),
-        );
-    });
 }
 
 /// Name of the `.app` bundle this executable runs from, e.g. `JeanZ`.
@@ -243,6 +119,20 @@ fn initialize_core(app: &mut tauri::App) -> Result<jean_core::RuntimeContext, St
     // exists in the Tauri config CI builds with — never in Cargo.toml. The
     // Web Access host-update check compares it against the release feed.
     jean_core::set_release_version(app.package_info().version.to_string());
+    // The feed the native updater reads (`plugins.updater` in the Tauri
+    // config, which the dev and fork overlays replace). The Web Access update
+    // check reads the same one, so both agree on which releases exist.
+    if let Some(feed) = app
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|updater| updater.get("endpoints"))
+        .and_then(|endpoints| endpoints.get(0))
+        .and_then(|endpoint| endpoint.as_str())
+    {
+        jean_core::set_desktop_release_feed(feed);
+    }
     let core =
         jean_core::RuntimeContext::new_with_product_name(app_data_dir, resource_dir, product_name)?;
     let event_app = app.handle().clone();
@@ -369,6 +259,7 @@ pub(crate) fn window_vibrancy_preference() -> bool {
 /// already set. Runs for the config-created `main` window during setup and for
 /// every connection window right after it is built.
 pub(crate) fn configure_app_window(window: &tauri::WebviewWindow) {
+    connection_window::ensure_usable_geometry(window);
     #[cfg(target_os = "linux")]
     {
         let _ = window.set_decorations(false);
@@ -435,9 +326,13 @@ fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
 
     #[cfg(target_os = "macos")]
     {
-        create_app_menu(app)?;
-        install_menu_events(app);
+        app_menu::create_app_menu(app)?;
+        app_menu::install_menu_events(app);
+        dock::install(app.handle());
     }
+
+    #[cfg(not(target_os = "windows"))]
+    desktop_commands::install_notification_click(app.handle());
 
     // Recover from WebView2 process death on Windows (issue #575 — blank /
     // "invisible" window after the browser process exits). No-op elsewhere.
@@ -506,11 +401,32 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_window_state::Builder::new().build())
+        // Not VISIBLE: windows hidden to keep running sessions alive would
+        // otherwise come back hidden — present, but impossible to reach.
+        .plugin(
+            tauri_plugin_window_state::Builder::new()
+                .with_state_flags(
+                    tauri_plugin_window_state::StateFlags::all()
+                        - tauri_plugin_window_state::StateFlags::VISIBLE,
+                )
+                .build(),
+        )
+        .on_window_event(|window, event| {
+            // Catches a window raised from the macOS Window menu, which AppKit
+            // handles without going through `focus_main_window` and friends.
+            if let tauri::WindowEvent::Focused(true) = event {
+                if let Some(window) = window.app_handle().get_webview_window(window.label()) {
+                    connection_window::ensure_usable_geometry(&window);
+                }
+            }
+        })
         .setup(setup_runtime)
         .invoke_handler(tauri::generate_handler![
             dispatch_core_command,
             desktop_commands::set_window_vibrancy,
+            app_menu::set_menu_accelerators,
+            dock::set_dock_badge,
+            dock::set_dock_sessions,
             desktop_commands::send_native_notification,
             desktop_commands::read_clipboard_image,
             desktop_commands::write_clipboard_text,
@@ -626,34 +542,5 @@ mod tests {
             bundle_name_from_exe(Path::new("/repo/src-tauri/target/debug/jean")),
             None
         );
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn every_menu_item_has_a_frontend_event() {
-        for id in [
-            "about",
-            "check-updates",
-            "preferences",
-            "toggle-left-sidebar",
-            "toggle-file-browser",
-            "toggle-right-sidebar",
-            "toggle-terminal",
-            "toggle-browser",
-            "magic-menu",
-            "quick-menu",
-        ] {
-            assert_eq!(
-                super::menu_event_name(id),
-                Some(format!("menu-{id}").as_str()),
-                "no event for {id}"
-            );
-        }
-    }
-
-    #[cfg(target_os = "macos")]
-    #[test]
-    fn an_unknown_menu_item_emits_nothing() {
-        assert_eq!(super::menu_event_name("copy"), None);
     }
 }

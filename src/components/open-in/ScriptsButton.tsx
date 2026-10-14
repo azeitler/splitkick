@@ -63,7 +63,9 @@ export function ScriptsButton({
           aria-label="Scripts"
         >
           <Play className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">Scripts</span>
+          <span className="hidden sm:inline" data-toolbar-label>
+            Scripts
+          </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-48">

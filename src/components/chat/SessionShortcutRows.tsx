@@ -20,6 +20,12 @@ import {
   closeOpenSessionContextMenus,
 } from './SessionContextMenuItems'
 import { statusConfig, type SessionCardData } from './session-card-utils'
+import {
+  SIDEBAR_SESSION_ROW_PADDING,
+  SIDEBAR_NESTED_ROW_SHAPE,
+  SIDEBAR_ROW_SELECTED,
+  SIDEBAR_ROW_SHAPE,
+} from '@/components/projects/sidebar-row-styles'
 
 /** A session shown outside its workspace: a pin, or a star. */
 export interface SessionShortcut {
@@ -41,6 +47,9 @@ interface SessionShortcutRowsProps {
   variant: 'canvas' | 'sidebar'
   /** Sidebar indent, so the rows line up under their parent row. */
   sidebarRowClassName?: string
+  /** The rows sit under a tree guide line (Pinned, Starred), so their
+   * selection pill keeps a smaller inset than a top-level row (Recent). */
+  sidebarNested?: boolean
   /** Mark starred sessions with a star. Off where every row is a star anyway. */
   showStarGlyph?: boolean
   /** Mark pinned sessions with a pin. Off where every row is a pin anyway. */
@@ -68,7 +77,8 @@ interface SessionShortcutRowsProps {
 export function SessionShortcutRows({
   shortcuts,
   variant,
-  sidebarRowClassName = 'py-1 pl-5 pr-2',
+  sidebarRowClassName = cn('py-1', SIDEBAR_SESSION_ROW_PADDING),
+  sidebarNested = true,
   showStarGlyph = true,
   showPinGlyph = true,
   layout = 'inline',
@@ -118,6 +128,9 @@ export function SessionShortcutRows({
   }, [projectCanvasSettings])
 
   const isSidebar = variant === 'sidebar'
+  const sidebarShape = sidebarNested
+    ? SIDEBAR_NESTED_ROW_SHAPE
+    : SIDEBAR_ROW_SHAPE
   const isStacked = layout === 'stacked'
 
   return (
@@ -132,12 +145,15 @@ export function SessionShortcutRows({
         }
         const isActive = activeSessionId === shortcut.sessionId
         const rowClassName = cn(
-          'w-full text-left text-sm hover:bg-accent/50 hover:text-foreground',
+          'text-left text-sm hover:bg-accent/50 hover:text-foreground',
+          isSidebar ? sidebarShape : 'w-full',
           isStacked
             ? 'grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 gap-y-0.5'
             : 'flex items-center gap-1.5 truncate',
           isActive
-            ? 'bg-primary/10 text-foreground'
+            ? isSidebar
+              ? SIDEBAR_ROW_SELECTED
+              : 'bg-primary/10 text-foreground'
             : isStacked
               ? 'text-foreground/90'
               : 'text-muted-foreground',

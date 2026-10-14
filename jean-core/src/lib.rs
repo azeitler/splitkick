@@ -68,6 +68,7 @@ mod terminal;
 mod version;
 
 pub use prerequisites::*;
+pub use server_update::set_desktop_release_feed;
 pub use version::{app_version, release_version, set_app_version, set_release_version};
 
 // Desktop-only open helpers (native Tauri commands delegate here so editor

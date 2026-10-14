@@ -7,6 +7,55 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Mac-style window toolbar.** The sidebar now runs to the top of the
+  window, and a toolbar above the content shows what you are looking at: the
+  project or session name, its badges and its actions, plus a search field.
+  Settings, connections, usage, updates and the unread bell moved to the
+  bottom of the sidebar; GitHub, Sponsor and the version are in its ⋯ menu.
+- **macOS grays in the dark theme.** The content area is now #1e1e1e and the
+  sidebar a lighter #2b2b2d, as in macOS apps, instead of one near-black for
+  everything. Yellow stays the accent. The light theme gets the same split: a
+  light gray sidebar (#f5f5f7) next to white content.
+- **Mac-style sidebar rows.** The selected project, worktree and session get a
+  rounded highlight, and every level indents by the same width. With only one
+  worktree in a project, the project and the session are highlighted, not the
+  worktree.
+- **Mac-style session tabs.** Session tabs are rounded, with the title on the
+  left. Hover a tab and its status dot turns into the close button. Hold ⌘ to
+  see the ⌘1–⌘9 shortcuts.
+- **A full macOS menu bar.** New File, Go, Session and Help menus put most
+  shortcuts in the menu bar, and Help has the macOS menu search. The menu shows
+  your own keybindings: change a shortcut in Settings and the menu changes too.
+- **Dock badge and dock menu.** The dock icon shows the number of unread
+  sessions, the same number as the bell in the title bar. Right-click the dock
+  icon to open one of the last sessions or to start a new worktree.
+- **Notifications open their session.** Click a "Needs your input", "Session
+  finished" or "Session failed" notification to go to that session. When a
+  session needs your input while Jean is in the background, the dock icon
+  bounces once.
+
+### Changed
+
+- **Zen mode moves to Ctrl+Cmd+Z on macOS.** Cmd+Shift+Z is Redo again. If you
+  set your own zen shortcut, it stays.
+- **Cmd+M opens only the Magic Menu.** Window → Minimize no longer shows the
+  same shortcut.
+
+### Fixed
+
+- **Changed default shortcuts now reach every client.** Keybindings saved on
+  this device kept old defaults after an update; they are now updated like the
+  server copy.
+- **No more lost remote windows.** The Window menu lists every open window. A
+  window that comes back hidden, 0x0 or off every screen now opens visible at
+  its normal size, centred.
+- **The chat input keeps a margin.** In a narrow window the chat input no
+  longer touches the left and right edges.
+- **The Recent tab in the sidebar is easier to see.** The Projects / Recent
+  switch now has a visible track.
+
 ## [0.1.73-z.25] - 2026-10-14
 
 Built on Jean 0.1.73.

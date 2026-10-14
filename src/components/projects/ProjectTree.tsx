@@ -38,6 +38,7 @@ import {
 import { reorderWithClosestEdge } from '@/lib/drag-and-drop/reorder'
 import { announceDrag } from '@/lib/drag-and-drop/live-region'
 import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
+import { SIDEBAR_INDENT_STEP_PX } from './sidebar-row-styles'
 
 const MAX_NESTING_DEPTH = 3
 
@@ -204,7 +205,7 @@ function SortableItem({
 
   const style: React.CSSProperties = {
     opacity: activeId === item.id ? 0.35 : 1,
-    paddingLeft: depth > 0 ? `${depth * 12}px` : undefined,
+    paddingLeft: depth > 0 ? `${depth * SIDEBAR_INDENT_STEP_PX}px` : undefined,
   }
 
   const closestEdge =

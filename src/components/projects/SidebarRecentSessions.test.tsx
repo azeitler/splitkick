@@ -117,10 +117,11 @@ describe('SidebarRecentSessions', () => {
     useChatStore.setState({ activeSessionIds: { 'id-feat/deploy': 's-new' } })
     render(<SidebarRecentSessions />)
 
+    // The macOS source-list pill (sidebar-row-styles.ts), inset and rounded.
     const row = screen.getByText('Deploy pipeline').closest('button')
-    expect(row).toHaveClass('bg-primary/10')
+    expect(row).toHaveClass('bg-foreground/10', 'rounded-md', 'mx-2')
     expect(screen.getByText('Old work').closest('button')).not.toHaveClass(
-      'bg-primary/10'
+      'bg-foreground/10'
     )
   })
 

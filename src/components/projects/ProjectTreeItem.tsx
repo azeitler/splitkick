@@ -48,6 +48,11 @@ import { WorktreeList } from './WorktreeList'
 import { ProjectContextMenu } from './ProjectContextMenu'
 import { SessionFilterInput } from './SessionFilterInput'
 import { useSessionFilter } from './useSessionFilter'
+import {
+  SIDEBAR_PROJECT_ROW_PADDING,
+  SIDEBAR_ROW_SELECTED,
+  SIDEBAR_ROW_SHAPE,
+} from './sidebar-row-styles'
 
 interface ProjectTreeItemProps {
   project: Project
@@ -127,6 +132,13 @@ export function ProjectTreeItem({
 
   // Project is only selected if it's the selected project AND no worktree is active
   const isSelected = selectedProjectId === project.id && !activeWorktreeId
+  // A project with one workspace shows that workspace's selection itself:
+  // the workspace row adds nothing, so the pill sits on the project and the
+  // session (see WorktreeItem).
+  const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
+  const showSelection =
+    isSelected ||
+    (worktrees.length === 1 && selectedWorktreeId === worktrees[0]?.id)
   const showStatusBadges = !isMobile && (isExpanded || isSelected)
 
   // Inline rename (double-click), matching folder/worktree patterns
@@ -308,9 +320,11 @@ export function ProjectTreeItem({
         <div
           ref={dragHandleRef}
           className={cn(
-            'group relative flex cursor-pointer items-center gap-1.5 px-2 py-1.5 overflow-hidden transition-colors duration-150',
-            isSelected
-              ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
+            'group relative flex cursor-pointer items-center gap-1.5 py-1.5 overflow-hidden transition-colors duration-150',
+            SIDEBAR_ROW_SHAPE,
+            SIDEBAR_PROJECT_ROW_PADDING,
+            showSelection
+              ? SIDEBAR_ROW_SELECTED
               : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
           )}
           onClick={handleClick}

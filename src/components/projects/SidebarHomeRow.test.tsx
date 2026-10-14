@@ -83,7 +83,7 @@ describe('SidebarHomeRow', () => {
     renderRow()
     const row = screen.getByTestId('sidebar-home-row')
     // 12px inset + 14px glyph + 4px gap puts the label on the project-name column.
-    expect(row).toHaveClass('px-3', 'gap-1')
+    expect(row).toHaveClass('px-2', 'gap-1')
     expect(row.querySelector('svg')).toHaveClass('size-3.5')
   })
 })

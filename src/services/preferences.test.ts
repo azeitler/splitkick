@@ -586,6 +586,37 @@ describe('preferences service', () => {
       )
     })
 
+    it('migrates old defaults kept in client storage', async () => {
+      // Keybindings are a client preference: this copy wins over the server's.
+      window.localStorage.setItem(
+        'jean-client-preferences-v1',
+        JSON.stringify({
+          schema_version: 1,
+          keybindings: {
+            toggle_left_sidebar: 'mod+1', // Old default
+            removed_action: 'mod+q',
+          },
+        })
+      )
+      const { invoke } = await import('@/lib/transport')
+      const { defaultPreferences } = await import('@/types/preferences')
+      vi.mocked(invoke).mockResolvedValueOnce({
+        ...defaultPreferences,
+        keybindings: {},
+      })
+
+      const { result } = renderHook(() => usePreferences(), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+      const keybindings = result.current.data?.keybindings ?? {}
+      expect(keybindings.toggle_left_sidebar).toBe('mod+b')
+      expect(keybindings.new_session).toBe(DEFAULT_KEYBINDINGS.new_session)
+      expect(keybindings).not.toHaveProperty('removed_action')
+    })
+
     it('migrates deprecated Codex fast models to their standard variants', async () => {
       const { invoke } = await import('@/lib/transport')
       const prefsWithDeprecatedFastModel: AppPreferences = {

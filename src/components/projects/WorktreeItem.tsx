@@ -54,7 +54,7 @@ import {
   decideWorktreeMiddleClose,
   decideSessionMiddleClose,
 } from './worktree-close-decision'
-import { useRenameWorktree } from '@/services/projects'
+import { useRenameWorktree, useWorktrees } from '@/services/projects'
 import { useSessions } from '@/services/chat'
 import type { Session } from '@/types/chat'
 import {
@@ -88,6 +88,14 @@ import {
 } from '@/components/ui/tooltip'
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import { formatMessageTimestamp, formatRelativeTime } from '@/lib/relative-time'
+import {
+  SIDEBAR_NESTED_ROW_SHAPE,
+  SIDEBAR_ROW_SELECTED,
+  SIDEBAR_SESSION_GROUP_PADDING,
+  SIDEBAR_SESSION_LIST,
+  SIDEBAR_SESSION_ROW_PADDING,
+  SIDEBAR_WORKTREE_ROW_PADDING,
+} from './sidebar-row-styles'
 
 interface WorktreeItemProps {
   worktree: Worktree
@@ -129,6 +137,10 @@ export function WorktreeItem({
     state => state.worktreeLoadingOperations[worktree.id] ?? null
   )
   const isSelected = selectedWorktreeId === worktree.id
+  // The only workspace of a project leaves its selection pill to the project
+  // row (ProjectTreeItem): one workspace adds no information.
+  const { data: projectWorktrees = [] } = useWorktrees(projectId)
+  const showSelection = isSelected && projectWorktrees.length !== 1
   const isBase = isBaseSession(worktree)
 
   // Get git status for this worktree from event-driven cache
@@ -733,10 +745,11 @@ export function WorktreeItem({
           role="button"
           tabIndex={0}
           className={cn(
-            'group relative flex cursor-pointer items-center gap-1.5 py-1.5 pr-2 overflow-hidden transition-colors duration-150',
-            isNarrowSidebar ? 'pl-4' : 'pl-7',
-            isSelected
-              ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
+            'group relative flex cursor-pointer items-center gap-1.5 py-1.5 overflow-hidden transition-colors duration-150',
+            SIDEBAR_NESTED_ROW_SHAPE,
+            SIDEBAR_WORKTREE_ROW_PADDING,
+            showSelection
+              ? SIDEBAR_ROW_SELECTED
               : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
             isFaded && 'opacity-50 hover:opacity-100'
           )}
@@ -948,7 +961,7 @@ export function WorktreeItem({
           onChange={filter.setQuery}
           onClose={closeFilter}
           placeholder="Filter sessions"
-          className={cn('mb-1 mr-2', isNarrowSidebar ? 'ml-6' : 'ml-9')}
+          className="mb-1 ml-[14px] mr-2"
           inputTestId={`worktree-session-filter-${worktree.id}`}
         />
       )}
@@ -956,8 +969,8 @@ export function WorktreeItem({
       {showSessions && isFilterActive && sessionGroups.length === 0 && (
         <div
           className={cn(
-            'py-1 pl-3 text-xs text-muted-foreground/70',
-            isNarrowSidebar ? 'ml-6' : 'ml-9'
+            'ml-[14px] py-1 text-xs text-muted-foreground/70',
+            SIDEBAR_SESSION_GROUP_PADDING
           )}
         >
           No matching sessions
@@ -966,17 +979,17 @@ export function WorktreeItem({
 
       {/* Expandable session list grouped by status */}
       {showSessions && sessionGroups.length > 0 && (
-        <div
-          className={cn(
-            'border-l border-border/40 py-0.5',
-            isNarrowSidebar ? 'ml-6' : 'ml-9'
-          )}
-        >
+        <div className={cn('py-0.5', SIDEBAR_SESSION_LIST)}>
           {sessionGroups.map(group => {
             const groupConfig = statusConfig[group.indicatorStatus]
             return (
               <div key={group.key}>
-                <div className="flex items-center gap-1.5 pl-3 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                <div
+                  className={cn(
+                    'flex items-center gap-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground',
+                    SIDEBAR_SESSION_GROUP_PADDING
+                  )}
+                >
                   <StatusIndicator
                     status={groupConfig.indicatorStatus}
                     variant={groupConfig.indicatorVariant}
@@ -996,9 +1009,11 @@ export function WorktreeItem({
                     card.session
                   )
                   const rowClassName = cn(
-                    'flex w-full items-center gap-1.5 pl-5 pr-2 py-1 cursor-pointer text-sm truncate text-left',
+                    'flex items-center gap-1.5 py-1 cursor-pointer text-sm truncate text-left',
+                    SIDEBAR_NESTED_ROW_SHAPE,
+                    SIDEBAR_SESSION_ROW_PADDING,
                     activeSessionId === card.session.id && isSelected
-                      ? 'text-foreground bg-primary/10 font-medium'
+                      ? cn(SIDEBAR_ROW_SELECTED, 'font-medium')
                       : activeSessionId === card.session.id
                         ? 'text-foreground/80 hover:text-foreground hover:bg-accent/50'
                         : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',

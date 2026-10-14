@@ -6,6 +6,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useRenameFolder } from '@/services/projects'
 import { CollapsedCountBadge } from './CollapsedCountBadge'
 import { FolderContextMenu } from './FolderContextMenu'
+import { SIDEBAR_INDENT_STEP_PX } from './sidebar-row-styles'
 
 interface FolderTreeItemProps {
   folder: Project
@@ -127,7 +128,9 @@ export function FolderTreeItem({
             'text-[13px] font-medium text-muted-foreground/70 hover:bg-accent/50 hover:text-muted-foreground',
             isDropTarget && 'bg-primary/10 text-primary'
           )}
-          style={{ paddingLeft: `${12 + depth * 12}px` }}
+          style={{
+            paddingLeft: `${SIDEBAR_INDENT_STEP_PX * (depth + 1)}px`,
+          }}
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
         >

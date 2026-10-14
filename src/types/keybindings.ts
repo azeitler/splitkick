@@ -51,7 +51,8 @@ export type KeybindingAction =
   | 'toggle_zen_mode'
   | 'clear_session_context'
 
-// Shortcut string format: "mod+key" where mod is cmd/ctrl
+// Shortcut string format: "mod+key" where mod is cmd/ctrl. "ctrl" is a
+// separate modifier only in the macOS native app (Ctrl+Cmd chords).
 // Examples: "mod+l", "mod+shift+p", "mod+1"
 export type ShortcutString = string
 
@@ -65,6 +66,13 @@ export interface KeybindingDefinition {
   description: string
   default_shortcut: ShortcutString
   category: 'navigation' | 'git' | 'chat'
+}
+
+// Cmd+Shift+Z is Redo on macOS. The native app uses Ctrl+Cmd+Z instead; web
+// access cannot, since there Ctrl is the "mod" key. A function, read through
+// getters below, so the platform is checked at use and not at import.
+function zenModeShortcut(): ShortcutString {
+  return isClientMacOS && isNativeApp() ? 'mod+ctrl+z' : 'mod+shift+z'
 }
 
 // Default keybindings configuration
@@ -114,7 +122,9 @@ export const DEFAULT_KEYBINDINGS: KeybindingsMap = {
   open_quick_menu: 'mod+period',
   open_usage_dropdown: 'mod+u',
   search_chat: 'mod+f',
-  toggle_zen_mode: 'mod+shift+z',
+  get toggle_zen_mode() {
+    return zenModeShortcut()
+  },
   clear_session_context: 'mod+shift+k',
 }
 
@@ -330,7 +340,9 @@ export const KEYBINDING_DEFINITIONS: KeybindingDefinition[] = [
     label: 'Toggle zen mode',
     description:
       'Full-screen the active session: hide session tabs and top chrome',
-    default_shortcut: 'mod+shift+z',
+    get default_shortcut() {
+      return zenModeShortcut()
+    },
     category: 'navigation',
   },
   {
@@ -473,6 +485,8 @@ export function formatShortcutDisplay(
       switch (part) {
         case 'mod':
           return useMacCtrl ? '⌃' : isClientMacOS ? '⌘' : 'Ctrl'
+        case 'ctrl':
+          return isClientMacOS ? '⌃' : 'Ctrl'
         case 'shift':
           return isClientMacOS ? '⇧' : 'Shift'
         case 'alt':
@@ -541,6 +555,8 @@ export function eventToShortcutString(e: KeyboardEvent): ShortcutString | null {
 
   const parts: string[] = []
   if (isModKeyEvent(e)) parts.push('mod')
+  // Ctrl+Cmd chords on macOS native (Ctrl alone returned null above).
+  if (isClientMacOS && isNativeApp() && e.ctrlKey) parts.push('ctrl')
   if (e.shiftKey) parts.push('shift')
   if (e.altKey) parts.push('alt')
 

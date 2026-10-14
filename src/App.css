@@ -70,7 +70,7 @@
   --radius: 0.625rem;
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
+  --card: #fbfbfb; /* one step off the white content */
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
@@ -85,37 +85,37 @@
   --destructive: oklch(0.577 0.245 27.325);
   --warning: #fcd452;
   --success: #22c55e;
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
+  --border: #dedee0; /* a touch darker, visible on the gray sidebar too */
+  --input: #dedee0;
   --ring: oklch(0.708 0 0);
   --chart-1: oklch(0.646 0.222 41.116);
   --chart-2: oklch(0.6 0.118 184.704);
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(1 0 0);
+  --sidebar: #f5f5f7; /* macOS light sidebar: gray, content stays white */
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent: #e8e8ea;
   --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-border: #dcdcde;
   --sidebar-ring: oklch(0.708 0 0);
   --toast-background: var(--popover);
   --safe-area-top: env(safe-area-inset-top, 0px);
   --safe-area-right: env(safe-area-inset-right, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
-  /* Title bar strip plus the status bar / notch it has to clear. The bar is an
-     absolute overlay, so MainWindow offsets its content row by the same value —
-     keep the two in step through this variable, never a literal height.
-     Taller below the mobile breakpoint so the 44px touch targets fit. */
+  /* Phone: title bar strip plus the status bar / notch it has to clear. The bar
+     is an absolute overlay, so MainWindow offsets its content row by the same
+     value — keep the two in step through this variable, never a literal height.
+     Desktop: the 52pt unified toolbar and the sidebar header beside it. */
   --titlebar-height: calc(2.75rem + var(--safe-area-top));
 }
 
 @media (min-width: 768px) {
   :root {
-    --titlebar-height: calc(2rem + var(--safe-area-top));
+    --titlebar-height: calc(3.25rem + var(--safe-area-top));
   }
 }
 
@@ -123,41 +123,42 @@
   /* Prefer dark native form controls so spin buttons/chevrons are light */
   color-scheme: dark;
 
-  /* Coolify-inspired coolgray color scheme */
-  --background: #101010; /* base */
+  /* macOS dark grays (unified toolbar redesign, 2026-10-14): content
+     #1e1e1e, sidebar #2b2b2d. Yellow stays the accent. */
+  --background: #1e1e1e; /* macOS dark window background */
   --foreground: #fafafa; /* light text */
-  --card: #181818; /* coolgray-100 */
+  --card: #252525; /* one step above the background */
   --card-foreground: #fafafa;
-  --popover: #181818; /* coolgray-100 */
+  --popover: #2a2a2a; /* menus float above cards */
   --popover-foreground: #fafafa;
   --primary: #fcd452; /* yellow accent */
-  --primary-foreground: #101010; /* dark text on yellow */
-  --secondary: #202020; /* coolgray-200 */
+  --primary-foreground: #1e1e1e; /* dark text on yellow */
+  --secondary: #2a2a2a;
   --secondary-foreground: #fafafa;
-  --muted: #242424; /* coolgray-300 */
+  --muted: #2c2c2c;
   --muted-foreground: #a1a1a1; /* gray text */
-  --accent: #282828; /* coolgray-400 */
+  --accent: #323232;
   --accent-foreground: #fafafa;
   --destructive: #dc2626; /* error red */
   --warning: #fcd452; /* yellow */
   --success: #22c55e; /* green */
-  --border: #323232; /* coolgray-500 */
-  --input: #323232; /* coolgray-500 */
+  --border: #3a3a3a;
+  --input: #3a3a3a;
   --ring: #fcd452; /* yellow focus ring */
   --chart-1: #fcd452;
   --chart-2: #22c55e;
   --chart-3: #6b16ed;
   --chart-4: #dc2626;
   --chart-5: #3b82f6;
-  --sidebar: #101010; /* matches background */
+  --sidebar: #2b2b2d; /* lighter than the content, as a macOS sidebar */
   --sidebar-foreground: #fafafa;
   --sidebar-primary: #fcd452; /* yellow */
   --sidebar-primary-foreground: #101010;
-  --sidebar-accent: #282828; /* coolgray-400 */
+  --sidebar-accent: #3a3a3c;
   --sidebar-accent-foreground: #fafafa;
-  --sidebar-border: #323232; /* coolgray-500 */
+  --sidebar-border: #3d3d3f;
   --sidebar-ring: #fcd452;
-  --toast-background: #2a2a2a; /* distinct from app bg (#101010) and chat input (#181818) */
+  --toast-background: #333333; /* distinct from app bg (#1e1e1e) and cards (#252525) */
   --toast-border: #3a3a3a;
 }
 

@@ -46,6 +46,7 @@ notify('Update Available', 'Click to install', { native: true })
 - **macOS**: Appear in Notification Center
 - **Platform-aware**: Handled by OS notification system
 - **Windows activation**: Clicking a notification restores and focuses Jean
+- **macOS/Linux click-to-open**: Session notifications open their session (below)
 - **Permissions**: Automatically request permission when needed
 - **Fallback**: Falls back to toast if native notification fails
 
@@ -128,6 +129,24 @@ try {
 - **Plugin**: `tauri-plugin-notification`
 - **Platform support**: Desktop only (mobile shows error)
 - **Logging**: Comprehensive logging of notification attempts
+
+### Session notifications (click to open, dock bounce)
+
+`src/lib/session-notifications.ts` sends session lifecycle banners
+(`notifyIfBackground`, `notifySessionNeedsAttention`) with the session's
+`{ projectId, worktreeId, sessionId }`, looked up in the `['all-sessions']`
+cache. Rust stores it in the notification's `extra` (`jeanSession`).
+
+`install_notification_click` (`src-tauri/src/desktop_commands.rs`) registers
+`Notification::on_action` (tauri-plugin-notification ≥ 2.6, desktop click =
+action `tap`). A click shows the main window and emits `open-session-request`,
+the same event as the dock menu. Without a session it only shows the window.
+
+- Connection windows send no session: their ids belong to the remote backend,
+  and the click opens the local main window.
+- "Needs your input" sent while Jean is in the background also passes
+  `requestAttention: true`: the dock icon bounces once (Informational).
+- Windows toasts do not go through the plugin and only restore the window.
 
 ### Permissions
 

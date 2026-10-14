@@ -28,6 +28,7 @@ const MIGRATED_KEYBINDINGS: Partial<
   toggle_browser: 'mod+alt+b', // Changed to 'mod+shift+backquote'
   // Changed to free CMD+SHIFT+T, then corrected to the serializer's modifier order.
   restore_last_archived: ['mod+shift+t', 'mod+alt+shift+t'],
+  toggle_zen_mode: 'mod+shift+z', // Changed to 'mod+ctrl+z' on macOS native (Redo clash)
 }
 
 // Migrate keybindings: if a stored value matches an old default, use the new default
@@ -48,6 +49,21 @@ function migrateKeybindings(
     }
   }
   return migrated
+}
+
+// Migrate old defaults, add new actions, drop stale keys (renamed/removed
+// actions). Runs on the final map: keybindings are a client preference, and
+// the copy in client storage would otherwise keep every old default.
+function normalizeKeybindings(
+  stored: KeybindingsMap | undefined
+): KeybindingsMap {
+  const merged = { ...DEFAULT_KEYBINDINGS, ...migrateKeybindings(stored) }
+  const validKeys = new Set(Object.keys(DEFAULT_KEYBINDINGS))
+  const keybindings: KeybindingsMap = {}
+  for (const [key, value] of Object.entries(merged)) {
+    if (validKeys.has(key)) keybindings[key] = value
+  }
+  return keybindings
 }
 
 import { hasBackend, hasBackendTransport } from '@/lib/environment'
@@ -103,15 +119,6 @@ export function usePreferences() {
         logger.debug('Loading preferences from backend')
         const preferences = await invoke<AppPreferences>('load_preferences')
         logger.info('Preferences loaded successfully', { preferences })
-        // Migrate old defaults and merge with new defaults
-        const migratedBindings = migrateKeybindings(preferences.keybindings)
-        const merged = { ...DEFAULT_KEYBINDINGS, ...migratedBindings }
-        // Drop stale keys (renamed/removed actions) that persist in saved prefs
-        const validKeys = new Set(Object.keys(DEFAULT_KEYBINDINGS))
-        const keybindings: KeybindingsMap = {}
-        for (const [key, value] of Object.entries(merged)) {
-          if (validKeys.has(key)) keybindings[key] = value
-        }
         const normalized = {
           ...preferences,
           selected_model: normalizeClaudeModel(preferences.selected_model, {
@@ -122,9 +129,15 @@ export function usePreferences() {
           selected_codex_model: normalizeCodexModel(
             preferences.selected_codex_model
           ),
-          keybindings,
         }
-        return { ...normalized, ...readClientPreferences(normalized) }
+        const withClient = {
+          ...normalized,
+          ...readClientPreferences(normalized),
+        }
+        return {
+          ...withClient,
+          keybindings: normalizeKeybindings(withClient.keybindings),
+        }
       } catch (error) {
         // Return defaults if preferences file doesn't exist yet
         logger.warn('Failed to load preferences, using defaults', { error })

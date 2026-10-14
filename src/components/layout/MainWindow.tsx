@@ -11,6 +11,10 @@ import {
 import { cn } from '@/lib/utils'
 import { PRODUCT_NAME } from '@/lib/build-info'
 import { TitleBar } from '@/components/titlebar/TitleBar'
+import { WindowToolbar } from '@/components/toolbar/WindowToolbar'
+import { ToolbarSlotsProvider } from '@/components/toolbar/toolbar-slots'
+import { SidebarHeader } from '@/components/sidebar/SidebarHeader'
+import { SidebarFooter } from '@/components/sidebar/SidebarFooter'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsTouchDevice } from '@/hooks/use-touch-device'
 import { useSwipeDown } from '@/hooks/useSwipeDown'
@@ -185,6 +189,7 @@ import { useTerminalThemeSync } from '@/hooks/useTerminalThemeSync'
 import { useUIStore } from '@/store/ui-store'
 import { useIsHomeActive } from '@/components/home/useIsHomeActive'
 import { useProjectsStore } from '@/store/projects-store'
+import { useDockSync } from '@/hooks/useDockSync'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
 import { useGlobalInputSanitizer } from '@/hooks/useGlobalInputSanitizer'
 import { useCloseSessionOrWorktreeKeybinding } from '@/services/chat'
@@ -361,6 +366,9 @@ export function MainWindow() {
   useMainWindowEventListeners()
   useGlobalInputSanitizer()
 
+  // macOS dock badge (unread count) and dock menu (sessions)
+  useDockSync()
+
   // Subscribe to Rust → React browser events (loading/loaded/title/nav/closed)
   useBrowserEvents()
 
@@ -528,6 +536,65 @@ export function MainWindow() {
     ? !isMaximized && 'rounded-sm'
     : isNativeApp() && 'rounded-xl'
 
+  // File browser, main column and browser pane: the same on phone and desktop.
+  const contentRow = (
+    <>
+      {/* Desktop: file browser sidebar */}
+      {!isMobile && fileBrowserVisible && isInitialized && (
+        <div
+          ref={fileBrowserRef}
+          className="h-full overflow-hidden"
+          style={{ width: fileBrowserSize }}
+        >
+          <Suspense fallback={null}>
+            <FileBrowserSidebar />
+          </Suspense>
+        </div>
+      )}
+
+      {/* Desktop: resize handle for file browser */}
+      {!isMobile && fileBrowserVisible && isInitialized && (
+        <div
+          role="separator"
+          tabIndex={-1}
+          aria-orientation="vertical"
+          aria-label="Resize file browser"
+          className="relative h-full w-px bg-border"
+          onMouseDown={handleFileBrowserResizeStart}
+        >
+          <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
+        </div>
+      )}
+
+      {/* Mobile has no project drawer: MobileTabShell's tabs are the
+        navigation (see docs/developer/mobile-layout.md). */}
+
+      {/* Mobile: file browser overlay drawer */}
+      {isMobile && isInitialized && (
+        <Suspense fallback={null}>
+          <MobileFileBrowser
+            open={fileBrowserVisible}
+            onOpenChange={setFileBrowserVisible}
+            width={fileBrowserSize}
+          />
+        </Suspense>
+      )}
+
+      {/* Main Content + bottom browser panel stacked vertically */}
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <div className="relative min-w-0 flex-1 overflow-hidden">
+          <MainWindowContent />
+          <FloatingDock />
+        </div>
+        {/* Browser bottom panel - native-only, pinned to bottom */}
+        <BrowserPanel />
+      </div>
+
+      {/* Browser side pane - native-only, mounts on right edge */}
+      <BrowserSidePane />
+    </>
+  )
+
   return (
     <div
       ref={isTouch ? swipeDown.containerRef : undefined}
@@ -555,113 +622,78 @@ export function MainWindow() {
         </div>
       )}
 
-      {/* Title Bar - semi-transparent overlay */}
-      {showTitleBar && (
-        <TitleBar
-          title={windowTitle}
-          className="absolute top-0 left-0 right-0"
-        />
-      )}
-
-      {/* Dev Mode Banner */}
-      <DevModeBanner />
-
-      {/* Main Content Area */}
-      {/* Offset by the title bar, which is an absolute overlay. Must stay in
-          step with TitleBar's own height — see --titlebar-height in App.css.
-          Without a bar, still clear the status bar and the notch. */}
-      <div
-        className={cn(
-          'flex flex-1 overflow-hidden',
-          showTitleBar
-            ? 'pt-[var(--titlebar-height)]'
-            : 'pt-[var(--safe-area-top)]'
-        )}
-      >
-        {/* Desktop: in-flow left sidebar (shifts layout). Only after UI state init. */}
-        {!isMobile && leftSidebarVisible && isInitialized && (
-          <SidebarWidthProvider value={leftSidebarSize}>
-            <div
-              ref={sidebarRef}
-              className="h-full overflow-hidden"
-              style={{ width: leftSidebarSize }}
-            >
-              <Suspense fallback={null}>
-                <LeftSideBar />
-              </Suspense>
-            </div>
-          </SidebarWidthProvider>
-        )}
-
-        {/* Desktop: custom resize handle for left sidebar */}
-        {!isMobile && leftSidebarVisible && isInitialized && (
-          <div
-            role="separator"
-            tabIndex={-1}
-            aria-orientation="vertical"
-            aria-label="Resize left sidebar"
-            className="relative h-full w-px bg-border"
-            onMouseDown={handleResizeStart}
-          >
-            {/* Invisible wider hit area for easier clicking */}
-            <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
-          </div>
-        )}
-
-        {/* Desktop: file browser sidebar */}
-        {!isMobile && fileBrowserVisible && isInitialized && (
-          <div
-            ref={fileBrowserRef}
-            className="h-full overflow-hidden"
-            style={{ width: fileBrowserSize }}
-          >
-            <Suspense fallback={null}>
-              <FileBrowserSidebar />
-            </Suspense>
-          </div>
-        )}
-
-        {/* Desktop: resize handle for file browser */}
-        {!isMobile && fileBrowserVisible && isInitialized && (
-          <div
-            role="separator"
-            tabIndex={-1}
-            aria-orientation="vertical"
-            aria-label="Resize file browser"
-            className="relative h-full w-px bg-border"
-            onMouseDown={handleFileBrowserResizeStart}
-          >
-            <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
-          </div>
-        )}
-
-        {/* Mobile has no project drawer: MobileTabShell's tabs are the
-            navigation (see docs/developer/mobile-layout.md). */}
-
-        {/* Mobile: file browser overlay drawer */}
-        {isMobile && isInitialized && (
-          <Suspense fallback={null}>
-            <MobileFileBrowser
-              open={fileBrowserVisible}
-              onOpenChange={setFileBrowserVisible}
-              width={fileBrowserSize}
+      {isMobile ? (
+        <>
+          {/* Phone: the title bar is an absolute overlay, zen only. */}
+          {showTitleBar && (
+            <TitleBar
+              title={windowTitle}
+              className="absolute top-0 left-0 right-0"
             />
-          </Suspense>
-        )}
-
-        {/* Main Content + bottom browser panel stacked vertically */}
-        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="relative min-w-0 flex-1 overflow-hidden">
-            <MainWindowContent />
-            <FloatingDock />
+          )}
+          <DevModeBanner />
+          {/* Offset by the title bar — see --titlebar-height in App.css.
+              Without a bar, still clear the status bar and the notch. */}
+          <div
+            className={cn(
+              'flex flex-1 overflow-hidden',
+              showTitleBar
+                ? 'pt-[var(--titlebar-height)]'
+                : 'pt-[var(--safe-area-top)]'
+            )}
+          >
+            {contentRow}
           </div>
-          {/* Browser bottom panel - native-only, pinned to bottom */}
-          <BrowserPanel />
-        </div>
+        </>
+      ) : (
+        // Desktop: unified toolbar. The sidebar runs to the top edge (header,
+        // list, footer); the toolbar sits above the main column and belongs
+        // to the view on screen (see components/toolbar/toolbar-slots.tsx).
+        <ToolbarSlotsProvider>
+          <div className="flex flex-1 overflow-hidden">
+            {leftSidebarVisible && isInitialized && (
+              <SidebarWidthProvider value={leftSidebarSize}>
+                <div
+                  ref={sidebarRef}
+                  data-testid="sidebar-column"
+                  className="flex h-full flex-col overflow-hidden bg-sidebar"
+                  style={{ width: leftSidebarSize }}
+                >
+                  <SidebarHeader />
+                  <div className="min-h-0 flex-1">
+                    <Suspense fallback={null}>
+                      <LeftSideBar />
+                    </Suspense>
+                  </div>
+                  <SidebarFooter />
+                </div>
+              </SidebarWidthProvider>
+            )}
 
-        {/* Browser side pane - native-only, mounts on right edge */}
-        <BrowserSidePane />
-      </div>
+            {leftSidebarVisible && isInitialized && (
+              <div
+                role="separator"
+                tabIndex={-1}
+                aria-orientation="vertical"
+                aria-label="Resize left sidebar"
+                className="relative h-full w-px bg-border"
+                onMouseDown={handleResizeStart}
+              >
+                {/* Invisible wider hit area for easier clicking */}
+                <div className="absolute inset-y-0 -left-1.5 -right-1.5 cursor-col-resize" />
+              </div>
+            )}
+
+            <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+              <WindowToolbar fallbackTitle={windowTitle} />
+              <DevModeBanner />
+              <div className="flex min-h-0 flex-1 overflow-hidden">
+                {contentRow}
+              </div>
+            </div>
+          </div>
+        </ToolbarSlotsProvider>
+      )}
 
       {/* Global UI Components (hidden until triggered) */}
       <CommandPalette />

@@ -22,7 +22,10 @@ export function SidebarTabs() {
       role="tablist"
       aria-label="Sidebar"
       data-testid="sidebar-tabs"
-      className="mx-2 mb-1 mt-1 grid grid-cols-2 gap-0.5 rounded-md bg-muted/60 p-0.5"
+      // A macOS segmented control: a faint track, the selected segment raised
+      // (white in light mode, lighter gray in dark). Tokens relative to the
+      // foreground, so the track stays visible on any sidebar color.
+      className="mx-2 mb-1 mt-1 grid grid-cols-2 gap-0.5 rounded-md bg-foreground/10 p-0.5"
     >
       {TABS.map(({ id, label }) => {
         const selected = id === selectedTab
@@ -39,7 +42,7 @@ export function SidebarTabs() {
             className={cn(
               'h-6 truncate rounded text-xs transition-colors',
               selected
-                ? 'bg-background text-foreground shadow-sm'
+                ? 'bg-background text-foreground shadow-sm dark:bg-foreground/20'
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >

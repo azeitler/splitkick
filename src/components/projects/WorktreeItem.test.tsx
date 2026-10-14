@@ -9,6 +9,8 @@ import { useChatStore } from '@/store/chat-store'
 import { SidebarWidthProvider } from '@/components/layout/SidebarWidthContext'
 
 const mocks = vi.hoisted(() => ({
+  // Workspaces of the project; two by default, so a selection shows.
+  projectWorktreeCount: 2,
   sessions: [] as Session[],
 }))
 
@@ -35,6 +37,11 @@ vi.mock('@/services/chat', () => ({
 }))
 vi.mock('@/services/projects', () => ({
   useRenameWorktree: () => ({ mutate: vi.fn() }),
+  useWorktrees: () => ({
+    data: Array.from({ length: mocks.projectWorktreeCount }, (_, i) => ({
+      id: `wt-${i + 1}`,
+    })),
+  }),
 }))
 vi.mock('@/services/git-status', () => ({
   useGitStatus: () => ({ data: null }),
@@ -212,7 +219,7 @@ describe('WorktreeItem stale fade', () => {
   const DAY = 24 * 60 * 60 * 1000
 
   function rowFor(name: string): HTMLElement {
-    const row = screen.getByText(name).closest('[class*="pl-5"]')
+    const row = screen.getByText(name).closest('[class*="pl-[7px]"]')
     if (!row) throw new Error(`no session row for ${name}`)
     return row as HTMLElement
   }
@@ -315,7 +322,7 @@ describe('WorktreeItem linked issue badge', () => {
 
 // Regression: the session row carried no right padding at all, so the "time
 // ago" text sat flush against the sidebar edge and the scrollbar thumb was
-// drawn over it. The row now keeps the same `pr-2` as the workspace row.
+// drawn over it. The row now keeps the same `pr-1` as the workspace row.
 describe('WorktreeItem session row right padding', () => {
   beforeEach(() => {
     mocks.sessions = [session('a', 'Auth Refactor')]
@@ -328,9 +335,9 @@ describe('WorktreeItem session row right padding', () => {
   it('leaves room after the timestamp for the scrollbar', () => {
     renderItem({})
 
-    const row = screen.getByText('Auth Refactor').closest('[class*="pl-5"]')
+    const row = screen.getByText('Auth Refactor').closest('[class*="pl-[7px]"]')
     expect(row).not.toBeNull()
-    expect((row as HTMLElement).className).toContain('pr-2')
+    expect((row as HTMLElement).className).toContain('pr-1')
   })
 })
 
@@ -463,7 +470,7 @@ describe('WorktreeItem starred glyph', () => {
     const glyphs = screen.getAllByTestId('starred-glyph')
     expect(glyphs).toHaveLength(1)
     expect(
-      screen.getByText('Auth Refactor').closest('[class*="pl-5"]')
+      screen.getByText('Auth Refactor').closest('[class*="pl-[7px]"]')
     ).toContainElement(glyphs[0] ?? null)
   })
 })
@@ -494,7 +501,7 @@ describe('WorktreeItem pinned glyph', () => {
   })
 
   const rowOf = (name: string) =>
-    screen.getByText(name).closest('[class*="pl-5"]') as HTMLElement
+    screen.getByText(name).closest('[class*="pl-[7px]"]') as HTMLElement
 
   it('marks only the pinned rows', () => {
     renderItem({})
@@ -560,7 +567,7 @@ describe('WorktreeItem label position', () => {
     renderItem({})
 
     const label = screen.getByText('Bug')
-    const row = label.closest('[class*="pl-5"]') as HTMLElement
+    const row = label.closest('[class*="pl-[7px]"]') as HTMLElement
     const stamp = Array.from(row.querySelectorAll('span')).find(span =>
       span.getAttribute('title')?.startsWith('Last active:')
     )
@@ -743,5 +750,29 @@ describe('WorktreeItem status dot', () => {
     const { container } = renderItem({})
 
     expect(worktreeDot(container).className).toContain('animate-blink')
+  })
+})
+
+describe('WorktreeItem selection', () => {
+  function workspaceRow(): HTMLElement {
+    const row = screen.getByText(worktree.name).closest('[role="button"]')
+    if (!row) throw new Error('no workspace row')
+    return row as HTMLElement
+  }
+
+  beforeEach(() => {
+    mocks.projectWorktreeCount = 2
+    useProjectsStore.setState({ selectedWorktreeId: 'wt-1' })
+  })
+
+  it('shows the selection pill on the selected workspace', () => {
+    renderItem({})
+    expect(workspaceRow()).toHaveClass('bg-foreground/10')
+  })
+
+  it('leaves the pill to the project when it is the only workspace', () => {
+    mocks.projectWorktreeCount = 1
+    renderItem({})
+    expect(workspaceRow()).not.toHaveClass('bg-foreground/10')
   })
 })

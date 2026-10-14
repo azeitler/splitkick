@@ -63,6 +63,7 @@ import {
   type WorktreeDropSnapshot,
   type WorktreeReorderDragState,
 } from '@/lib/drag-and-drop/worktree-reorder-ux'
+import { SIDEBAR_WORKTREE_LIST } from './sidebar-row-styles'
 
 interface SortableWorktreeProps {
   worktree: Worktree
@@ -654,7 +655,7 @@ export function WorktreeList({
 
   return (
     <div
-      className="ml-4 border-l border-border/40 py-0.5"
+      className={cn('py-0.5', SIDEBAR_WORKTREE_LIST)}
       onPointerDown={event => event.stopPropagation()}
       onKeyDown={event => event.stopPropagation()}
       onDragOver={handleNativeDragOver}

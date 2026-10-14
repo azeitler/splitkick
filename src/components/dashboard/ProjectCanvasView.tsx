@@ -254,6 +254,11 @@ import {
 } from '@/lib/drag-and-drop/worktree-reorder-ux'
 import { openCanvasConflictResolution } from './conflict-resolution-navigation'
 import { getCanvasDiffRequest } from './canvas-diff-request'
+import {
+  ToolbarContent,
+  useHasWindowToolbar,
+} from '@/components/toolbar/toolbar-slots'
+import { ToolbarFilterSearch } from '@/components/toolbar/ToolbarSearchField'
 
 interface ProjectCanvasViewProps {
   projectId: string
@@ -1018,6 +1023,7 @@ export function ProjectCanvasView({
   const [searchQuery, setSearchQuery] = useState('')
   const [activeFilterTab, setActiveFilterTab] = useState<CanvasFilterTab>('all')
   const isMobile = useIsMobile()
+  const hasToolbar = useHasWindowToolbar()
   // Phone only: the Recent segment swaps the worktree list for the project's
   // recent sessions and activity.
   const showMobileRecent = useUIStore(
@@ -3223,6 +3229,299 @@ export function ProjectCanvasView({
   // Track global card index for refs
   let cardIndex = 0
 
+  // The header pieces. Desktop shows them in the window toolbar
+  // (ToolbarContent below); a phone, which has no toolbar, in its own header.
+  const projectBadges = (
+    <>
+      <NewIssuesBadge projectPath={project.path} projectId={projectId} />
+      <OpenPRsBadge projectPath={project.path} projectId={projectId} />
+      <SecurityAlertsBadge projectPath={project.path} projectId={projectId} />
+      <FailedRunsBadge projectPath={project.path} />
+    </>
+  )
+  const projectActionsMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground"
+          aria-label="Project actions"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-64">
+        <DropdownMenuItem
+          onSelect={() => {
+            useProjectsStore.getState().selectProject(projectId)
+            useUIStore.getState().setNewWorktreeModalOpen(true)
+          }}
+        >
+          <Plus className="h-4 w-4" />
+          New Worktree
+        </DropdownMenuItem>
+
+        <DropdownMenuItem onSelect={() => createBaseSession.mutate(projectId)}>
+          <Home className="h-4 w-4" />
+          {worktrees.find(isBaseSession)
+            ? 'Open Base Session'
+            : 'New Base Session'}
+        </DropdownMenuItem>
+
+        <DropdownMenuItem
+          onSelect={() =>
+            useProjectsStore.getState().openProjectSettings(projectId)
+          }
+        >
+          <Settings className="h-4 w-4" />
+          Project Settings
+        </DropdownMenuItem>
+
+        {mobileGitHubEnabled && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => {
+                useProjectsStore.getState().selectProject(projectId)
+                const {
+                  setNewWorktreeModalDefaultTab,
+                  setNewWorktreeModalOpen,
+                } = useUIStore.getState()
+                setNewWorktreeModalDefaultTab('issues')
+                setNewWorktreeModalOpen(true)
+              }}
+            >
+              <CircleDot className="h-4 w-4 text-green-600" />
+              {mobileIssueCount > 0 ? `${mobileIssueCount} Issues` : 'Issues'}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                useProjectsStore.getState().selectProject(projectId)
+                const {
+                  setNewWorktreeModalDefaultTab,
+                  setNewWorktreeModalOpen,
+                } = useUIStore.getState()
+                setNewWorktreeModalDefaultTab('prs')
+                setNewWorktreeModalOpen(true)
+              }}
+            >
+              <GitPullRequestArrow className="h-4 w-4 text-blue-600" />
+              {mobilePRCount > 0 ? `${mobilePRCount} PRs` : 'PRs'}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() =>
+                useUIStore
+                  .getState()
+                  .setWorkflowRunsModalOpen(true, project.path)
+              }
+            >
+              {mobileFailedWorkflowCount > 0 ? (
+                <AlertCircle className="h-4 w-4 text-red-600" />
+              ) : (
+                <Activity className="h-4 w-4" />
+              )}
+              {mobileFailedWorkflowCount > 0
+                ? `${mobileFailedWorkflowCount} Failed Workflows`
+                : mobileWorkflowRunCount > 0
+                  ? `${mobileWorkflowRunCount} Workflows`
+                  : 'Workflows'}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={() => {
+                useProjectsStore.getState().selectProject(projectId)
+                const {
+                  setNewWorktreeModalDefaultTab,
+                  setNewWorktreeModalOpen,
+                } = useUIStore.getState()
+                setNewWorktreeModalDefaultTab('security')
+                setNewWorktreeModalOpen(true)
+              }}
+            >
+              <ShieldAlert className="h-4 w-4 text-orange-600" />
+              {mobileSecurityCount > 0
+                ? `${mobileSecurityCount} Security`
+                : 'Security'}
+            </DropdownMenuItem>
+          </>
+        )}
+
+        {(canOpenEditor || canOpenLocally) && (
+          <>
+            <DropdownMenuSeparator />
+
+            {canOpenEditor && (
+              <DropdownMenuItem
+                onSelect={() =>
+                  openInEditor.mutate({
+                    worktreePath: project.path,
+                    editor: preferences?.editor,
+                  })
+                }
+              >
+                <Code className="h-4 w-4" />
+                Open in {getEditorLabel(preferences?.editor)}
+              </DropdownMenuItem>
+            )}
+
+            {canOpenLocally && (
+              <DropdownMenuItem
+                onSelect={() => openInFinder.mutate(project.path)}
+              >
+                <FolderOpen className="h-4 w-4" />
+                Open in Finder
+              </DropdownMenuItem>
+            )}
+
+            {canOpenLocally && (
+              <DropdownMenuItem
+                onSelect={() =>
+                  openInTerminal.mutate({
+                    worktreePath: project.path,
+                    terminal: preferences?.terminal,
+                  })
+                }
+              >
+                <Terminal className="h-4 w-4" />
+                Open in {getTerminalLabel(preferences?.terminal)}
+              </DropdownMenuItem>
+            )}
+
+            {canOpenLocally && (
+              <>
+                <DropdownMenuSeparator />
+
+                <DropdownMenuItem
+                  onSelect={() => openWorktreesFolder.mutate(projectId)}
+                >
+                  <Folder className="h-4 w-4" />
+                  Open Worktrees Folder
+                </DropdownMenuItem>
+              </>
+            )}
+          </>
+        )}
+
+        {!canOpenEditor && !canOpenLocally && <DropdownMenuSeparator />}
+
+        <DropdownMenuItem onSelect={() => openOnGitHub.mutate(projectId)}>
+          <ExternalLink className="h-4 w-4" />
+          Open on GitHub
+        </DropdownMenuItem>
+
+        <DropdownMenuSeparator />
+
+        <DropdownMenuItem
+          variant="destructive"
+          onSelect={() => removeProject.mutate(projectId)}
+          disabled={worktrees.length > 0}
+          className="whitespace-nowrap"
+        >
+          <Trash2 className="h-4 w-4 shrink-0" />
+          Remove Project
+          {worktrees.length > 0 && (
+            <span className="ml-auto text-xs opacity-60 shrink-0">
+              ({worktrees.length} worktrees)
+            </span>
+          )}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+  const worktreeSortMenu = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 text-muted-foreground"
+          aria-label="Sort worktrees"
+        >
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        <DropdownMenuLabel>Sort worktrees</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuRadioGroup
+          value={worktreeSortMode}
+          onValueChange={value =>
+            useProjectsStore
+              .getState()
+              .setProjectCanvasWorktreeSortMode(
+                projectId,
+                value as WorktreeSortMode
+              )
+          }
+        >
+          <DropdownMenuRadioItem value="created">
+            Creation date
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="last_activity">
+            Last activity
+          </DropdownMenuRadioItem>
+          <DropdownMenuRadioItem value="manual">Manual</DropdownMenuRadioItem>
+        </DropdownMenuRadioGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+  const projectSummaryLine = (
+    <p className="text-xs text-muted-foreground whitespace-nowrap">
+      {projectSummary.totalReady > 0 ? (
+        <>
+          {projectSummary.totalReady} worktrees
+          {projectSummary.reviewCount > 0 &&
+            ` · ${projectSummary.reviewCount} review`}
+          {projectSummary.waitingCount > 0 &&
+            ` · ${projectSummary.waitingCount} waiting`}
+          {projectSummary.activeCount > 0 &&
+            ` · ${projectSummary.activeCount} active`}
+        </>
+      ) : (
+        <span className="invisible">0 worktrees</span>
+      )}
+    </p>
+  )
+  const projectHeaderActions = (
+    <>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 shrink-0 text-muted-foreground"
+            onClick={() =>
+              useProjectsStore.getState().toggleProjectRailHidden()
+            }
+            aria-label={
+              projectRailHidden
+                ? 'Show project overview'
+                : 'Hide project overview'
+            }
+            aria-pressed={!projectRailHidden}
+          >
+            {projectRailHidden ? (
+              <PanelRightOpen className="h-4 w-4" />
+            ) : (
+              <PanelRightClose className="h-4 w-4" />
+            )}
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {projectRailHidden
+            ? 'Show recent sessions, activity and issues'
+            : 'Hide recent sessions, activity and issues'}
+        </TooltipContent>
+      </Tooltip>
+      <OpenInButton worktreePath={project.path} />
+      <ScriptsButton
+        projectId={project.id}
+        worktreePath={project.path}
+        onRun={handlePackageScript}
+      />
+    </>
+  )
+
   return (
     <div className="relative flex h-full flex-col">
       <div
@@ -3234,416 +3533,146 @@ export function ProjectCanvasView({
       >
         {/* Header and filters - sticky together over content */}
         <div className="sticky top-0 z-10 bg-background/60 backdrop-blur-md">
-          <div className="relative grid grid-cols-[auto_1fr_auto] items-center gap-4 px-4 py-2 sm:py-3 border-b border-border/30 sm:min-h-[61px]">
-            <div className="flex flex-col shrink-0">
-              <div className="flex items-center gap-2">
-                {onDismiss && (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="-ml-2 size-11 shrink-0 text-muted-foreground"
-                    aria-label="Close project"
-                    data-testid="mobile-close-project"
-                    onClick={onDismiss}
-                  >
-                    <ChevronDown className="size-5" />
-                  </Button>
-                )}
-                <h2 className="truncate text-lg font-semibold">
-                  {project.name}
-                </h2>
-                <div className="hidden md:flex items-center gap-2">
-                  <NewIssuesBadge
-                    projectPath={project.path}
-                    projectId={projectId}
+          {hasToolbar ? (
+            <ToolbarContent
+              title={project.name}
+              subtitle={projectSummaryLine}
+              chips={projectBadges}
+              actions={
+                <>
+                  {projectHeaderActions}
+                  {projectActionsMenu}
+                  {worktreeSortMenu}
+                </>
+              }
+              search={
+                (worktreeSections.length > 0 || searchQuery) && (
+                  <ToolbarFilterSearch
+                    ref={searchInputRef}
+                    placeholder="Filter worktrees"
+                    value={searchQuery}
+                    onChange={setSearchQuery}
                   />
-                  <OpenPRsBadge
-                    projectPath={project.path}
-                    projectId={projectId}
-                  />
-                  <SecurityAlertsBadge
-                    projectPath={project.path}
-                    projectId={projectId}
-                  />
-                  <FailedRunsBadge projectPath={project.path} />
-                </div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                )
+              }
+            />
+          ) : (
+            <div className="relative grid grid-cols-[auto_1fr_auto] items-center gap-4 px-4 py-2 sm:py-3 border-b border-border/30 sm:min-h-[61px]">
+              <div className="flex flex-col shrink-0">
+                <div className="flex items-center gap-2">
+                  {onDismiss && (
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-7 w-7 text-muted-foreground"
-                      aria-label="Project actions"
+                      className="-ml-2 size-11 shrink-0 text-muted-foreground"
+                      aria-label="Close project"
+                      data-testid="mobile-close-project"
+                      onClick={onDismiss}
                     >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-64">
-                    <DropdownMenuItem
-                      onSelect={() => {
-                        useProjectsStore.getState().selectProject(projectId)
-                        useUIStore.getState().setNewWorktreeModalOpen(true)
-                      }}
-                    >
-                      <Plus className="h-4 w-4" />
-                      New Worktree
-                    </DropdownMenuItem>
-
-                    <DropdownMenuItem
-                      onSelect={() => createBaseSession.mutate(projectId)}
-                    >
-                      <Home className="h-4 w-4" />
-                      {worktrees.find(isBaseSession)
-                        ? 'Open Base Session'
-                        : 'New Base Session'}
-                    </DropdownMenuItem>
-
-                    <DropdownMenuItem
-                      onSelect={() =>
-                        useProjectsStore
-                          .getState()
-                          .openProjectSettings(projectId)
-                      }
-                    >
-                      <Settings className="h-4 w-4" />
-                      Project Settings
-                    </DropdownMenuItem>
-
-                    {mobileGitHubEnabled && (
-                      <>
-                        <DropdownMenuSeparator />
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            useProjectsStore.getState().selectProject(projectId)
-                            const {
-                              setNewWorktreeModalDefaultTab,
-                              setNewWorktreeModalOpen,
-                            } = useUIStore.getState()
-                            setNewWorktreeModalDefaultTab('issues')
-                            setNewWorktreeModalOpen(true)
-                          }}
-                        >
-                          <CircleDot className="h-4 w-4 text-green-600" />
-                          {mobileIssueCount > 0
-                            ? `${mobileIssueCount} Issues`
-                            : 'Issues'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            useProjectsStore.getState().selectProject(projectId)
-                            const {
-                              setNewWorktreeModalDefaultTab,
-                              setNewWorktreeModalOpen,
-                            } = useUIStore.getState()
-                            setNewWorktreeModalDefaultTab('prs')
-                            setNewWorktreeModalOpen(true)
-                          }}
-                        >
-                          <GitPullRequestArrow className="h-4 w-4 text-blue-600" />
-                          {mobilePRCount > 0 ? `${mobilePRCount} PRs` : 'PRs'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() =>
-                            useUIStore
-                              .getState()
-                              .setWorkflowRunsModalOpen(true, project.path)
-                          }
-                        >
-                          {mobileFailedWorkflowCount > 0 ? (
-                            <AlertCircle className="h-4 w-4 text-red-600" />
-                          ) : (
-                            <Activity className="h-4 w-4" />
-                          )}
-                          {mobileFailedWorkflowCount > 0
-                            ? `${mobileFailedWorkflowCount} Failed Workflows`
-                            : mobileWorkflowRunCount > 0
-                              ? `${mobileWorkflowRunCount} Workflows`
-                              : 'Workflows'}
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => {
-                            useProjectsStore.getState().selectProject(projectId)
-                            const {
-                              setNewWorktreeModalDefaultTab,
-                              setNewWorktreeModalOpen,
-                            } = useUIStore.getState()
-                            setNewWorktreeModalDefaultTab('security')
-                            setNewWorktreeModalOpen(true)
-                          }}
-                        >
-                          <ShieldAlert className="h-4 w-4 text-orange-600" />
-                          {mobileSecurityCount > 0
-                            ? `${mobileSecurityCount} Security`
-                            : 'Security'}
-                        </DropdownMenuItem>
-                      </>
-                    )}
-
-                    {(canOpenEditor || canOpenLocally) && (
-                      <>
-                        <DropdownMenuSeparator />
-
-                        {canOpenEditor && (
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              openInEditor.mutate({
-                                worktreePath: project.path,
-                                editor: preferences?.editor,
-                              })
-                            }
-                          >
-                            <Code className="h-4 w-4" />
-                            Open in {getEditorLabel(preferences?.editor)}
-                          </DropdownMenuItem>
-                        )}
-
-                        {canOpenLocally && (
-                          <DropdownMenuItem
-                            onSelect={() => openInFinder.mutate(project.path)}
-                          >
-                            <FolderOpen className="h-4 w-4" />
-                            Open in Finder
-                          </DropdownMenuItem>
-                        )}
-
-                        {canOpenLocally && (
-                          <DropdownMenuItem
-                            onSelect={() =>
-                              openInTerminal.mutate({
-                                worktreePath: project.path,
-                                terminal: preferences?.terminal,
-                              })
-                            }
-                          >
-                            <Terminal className="h-4 w-4" />
-                            Open in {getTerminalLabel(preferences?.terminal)}
-                          </DropdownMenuItem>
-                        )}
-
-                        {canOpenLocally && (
-                          <>
-                            <DropdownMenuSeparator />
-
-                            <DropdownMenuItem
-                              onSelect={() =>
-                                openWorktreesFolder.mutate(projectId)
-                              }
-                            >
-                              <Folder className="h-4 w-4" />
-                              Open Worktrees Folder
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </>
-                    )}
-
-                    {!canOpenEditor && !canOpenLocally && (
-                      <DropdownMenuSeparator />
-                    )}
-
-                    <DropdownMenuItem
-                      onSelect={() => openOnGitHub.mutate(projectId)}
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      Open on GitHub
-                    </DropdownMenuItem>
-
-                    <DropdownMenuSeparator />
-
-                    <DropdownMenuItem
-                      variant="destructive"
-                      onSelect={() => removeProject.mutate(projectId)}
-                      disabled={worktrees.length > 0}
-                      className="whitespace-nowrap"
-                    >
-                      <Trash2 className="h-4 w-4 shrink-0" />
-                      Remove Project
-                      {worktrees.length > 0 && (
-                        <span className="ml-auto text-xs opacity-60 shrink-0">
-                          ({worktrees.length} worktrees)
-                        </span>
-                      )}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground"
-                      aria-label="Sort worktrees"
-                    >
-                      <ArrowUpDown className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="w-48">
-                    <DropdownMenuLabel>Sort worktrees</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuRadioGroup
-                      value={worktreeSortMode}
-                      onValueChange={value =>
-                        useProjectsStore
-                          .getState()
-                          .setProjectCanvasWorktreeSortMode(
-                            projectId,
-                            value as WorktreeSortMode
-                          )
-                      }
-                    >
-                      <DropdownMenuRadioItem value="created">
-                        Creation date
-                      </DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="last_activity">
-                        Last activity
-                      </DropdownMenuRadioItem>
-                      <DropdownMenuRadioItem value="manual">
-                        Manual
-                      </DropdownMenuRadioItem>
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                {/* Mobile: magnifier icon inline with badges */}
-                {isMobile &&
-                  !showMobileRecent &&
-                  (worktreeSections.length > 0 || searchQuery) &&
-                  !isMobileSearchOpen && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="relative h-7 w-7 text-muted-foreground"
-                      onClick={() => setIsMobileSearchOpen(true)}
-                      aria-label="Open search"
-                    >
-                      <Search className="h-4 w-4" />
-                      {searchQuery && (
-                        <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-primary" />
-                      )}
+                      <ChevronDown className="size-5" />
                     </Button>
                   )}
-              </div>
-              <p className="text-xs text-muted-foreground whitespace-nowrap">
-                {projectSummary.totalReady > 0 ? (
-                  <>
-                    {projectSummary.totalReady} worktrees
-                    {projectSummary.reviewCount > 0 &&
-                      ` · ${projectSummary.reviewCount} review`}
-                    {projectSummary.waitingCount > 0 &&
-                      ` · ${projectSummary.waitingCount} waiting`}
-                    {projectSummary.activeCount > 0 &&
-                      ` · ${projectSummary.activeCount} active`}
-                  </>
-                ) : (
-                  <span className="invisible">0 worktrees</span>
-                )}
-              </p>
-            </div>
-            {(worktreeSections.length > 0 || searchQuery) && (
-              <>
-                {/* Desktop: inline search bar */}
-                {!isMobile && (
-                  <div className="flex justify-center">
-                    <div className="relative w-full max-w-md">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        ref={searchInputRef}
-                        placeholder="Search worktrees and sessions..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        aria-label="Search worktrees and sessions"
-                        name="worktree-search"
-                        className="pl-9 bg-transparent border-border/30"
-                      />
-                    </div>
+                  <h2 className="truncate text-lg font-semibold">
+                    {project.name}
+                  </h2>
+                  <div className="hidden md:flex items-center gap-2">
+                    {projectBadges}
                   </div>
-                )}
-
-                {/* Mobile: full-width search overlay */}
-                {isMobile && isMobileSearchOpen && (
-                  <div className="absolute inset-0 z-20 flex items-center gap-2 bg-background/95 backdrop-blur-md px-4">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        ref={searchInputRef}
-                        placeholder="Search worktrees and sessions..."
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        onKeyDown={e => {
-                          if (e.key === 'Escape') {
-                            setIsMobileSearchOpen(false)
-                          }
-                        }}
-                        aria-label="Search worktrees and sessions"
-                        name="worktree-search"
-                        className="pl-9 bg-transparent border-border/30"
-                      />
-                    </div>
-                    {searchQuery && (
+                  {projectActionsMenu}
+                  {worktreeSortMenu}
+                  {/* Mobile: magnifier icon inline with badges */}
+                  {isMobile &&
+                    !showMobileRecent &&
+                    (worktreeSections.length > 0 || searchQuery) &&
+                    !isMobileSearchOpen && (
                       <Button
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 shrink-0 text-muted-foreground"
-                        onClick={() => setSearchQuery('')}
-                        aria-label="Clear search"
+                        className="relative h-7 w-7 text-muted-foreground"
+                        onClick={() => setIsMobileSearchOpen(true)}
+                        aria-label="Open search"
                       >
-                        <X className="h-4 w-4" />
+                        <Search className="h-4 w-4" />
+                        {searchQuery && (
+                          <span className="absolute top-0.5 right-0.5 h-2 w-2 rounded-full bg-primary" />
+                        )}
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="shrink-0 text-muted-foreground text-sm"
-                      onClick={() => setIsMobileSearchOpen(false)}
-                      aria-label="Close search"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-            {/* OpenInButton always visible on desktop (grid column 3) */}
-            {!isMobile && (
-              <div className="flex items-center gap-2 shrink-0 justify-end col-start-3">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 shrink-0 text-muted-foreground"
-                      onClick={() =>
-                        useProjectsStore.getState().toggleProjectRailHidden()
-                      }
-                      aria-label={
-                        projectRailHidden
-                          ? 'Show project overview'
-                          : 'Hide project overview'
-                      }
-                      aria-pressed={!projectRailHidden}
-                    >
-                      {projectRailHidden ? (
-                        <PanelRightOpen className="h-4 w-4" />
-                      ) : (
-                        <PanelRightClose className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    {projectRailHidden
-                      ? 'Show recent sessions, activity and issues'
-                      : 'Hide recent sessions, activity and issues'}
-                  </TooltipContent>
-                </Tooltip>
-                <OpenInButton worktreePath={project.path} />
-                <ScriptsButton
-                  projectId={project.id}
-                  worktreePath={project.path}
-                  onRun={handlePackageScript}
-                />
+                </div>
+                {projectSummaryLine}
               </div>
-            )}
-          </div>
+              {(worktreeSections.length > 0 || searchQuery) && (
+                <>
+                  {/* Desktop: inline search bar */}
+                  {!isMobile && (
+                    <div className="flex justify-center">
+                      <div className="relative w-full max-w-md">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          ref={searchInputRef}
+                          placeholder="Search worktrees and sessions..."
+                          value={searchQuery}
+                          onChange={e => setSearchQuery(e.target.value)}
+                          aria-label="Search worktrees and sessions"
+                          name="worktree-search"
+                          className="pl-9 bg-transparent border-border/30"
+                        />
+                      </div>
+                    </div>
+                  )}
 
+                  {/* Mobile: full-width search overlay */}
+                  {isMobile && isMobileSearchOpen && (
+                    <div className="absolute inset-0 z-20 flex items-center gap-2 bg-background/95 backdrop-blur-md px-4">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          ref={searchInputRef}
+                          placeholder="Search worktrees and sessions..."
+                          value={searchQuery}
+                          onChange={e => setSearchQuery(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Escape') {
+                              setIsMobileSearchOpen(false)
+                            }
+                          }}
+                          aria-label="Search worktrees and sessions"
+                          name="worktree-search"
+                          className="pl-9 bg-transparent border-border/30"
+                        />
+                      </div>
+                      {searchQuery && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 shrink-0 text-muted-foreground"
+                          onClick={() => setSearchQuery('')}
+                          aria-label="Clear search"
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="shrink-0 text-muted-foreground text-sm"
+                        onClick={() => setIsMobileSearchOpen(false)}
+                        aria-label="Close search"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+              {/* OpenInButton always visible on desktop (grid column 3) */}
+              {!isMobile && (
+                <div className="flex items-center gap-2 shrink-0 justify-end col-start-3">
+                  {projectHeaderActions}
+                </div>
+              )}
+            </div>
+          )}
           {isMobile && (
             <div className="border-b border-border/30 bg-background/80 px-4 py-2">
               <MobileProjectSegments />

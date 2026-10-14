@@ -314,6 +314,13 @@ overlay changes both:
 }
 ```
 
+The development build (`bun run tauri:dev`, `tauri.conf.dev.json`) carries
+the same two values, so a dev run never checks upstream's feed. A test in
+`jean-core/src/server_update/mod.rs` keeps the dev and fork overlays in step.
+The shell passes this endpoint to jean-core at startup
+(`set_desktop_release_feed`), so the Web Access host-update check reads the
+same feed as the native updater, whatever the product name.
+
 What a build publishes:
 
 | Asset                          | Role                                                        |

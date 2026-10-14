@@ -40,6 +40,7 @@ import {
 import type { Worktree } from '@/types/projects'
 import { initializeCommandSystem } from './lib/commands'
 import { logger } from './lib/logger'
+import { logNativeError } from './lib/native-log'
 import { toast } from 'sonner'
 import { cleanupOldFiles } from './lib/recovery'
 import './App.css'
@@ -1433,7 +1434,7 @@ function App() {
           useUIStore.getState().setUpdateModalVersion(update.version)
         }
       } catch (checkError) {
-        logger.error(`Update check failed: ${String(checkError)}`)
+        logNativeError(`Update check failed: ${String(checkError)}`)
         // Silent fail for update checks - don't bother user with network issues
       }
     }

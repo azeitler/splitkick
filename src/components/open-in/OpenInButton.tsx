@@ -1,11 +1,12 @@
 import { useCallback } from 'react'
 import {
+  ChevronDown,
   Code,
-  Terminal,
   FolderOpen,
   Github,
-  ChevronDown,
   Settings,
+  SquareArrowOutUpRight,
+  Terminal,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -116,10 +117,13 @@ export function OpenInButton({
         <TooltipTrigger asChild>
           <Button
             variant="ghost"
-            className="h-7 rounded-r-none border-0 px-2.5 text-xs text-muted-foreground hover:text-foreground"
+            className="h-7 gap-1.5 rounded-r-none border-0 px-2.5 text-xs text-muted-foreground hover:text-foreground"
             onClick={() => openAction(effectiveDefault)}
+            aria-label={`Open in ${defaultLabel}`}
           >
-            Open in {defaultLabel}
+            <SquareArrowOutUpRight className="h-3.5 w-3.5" />
+            {/* The window toolbar hides this when narrow (WindowToolbar). */}
+            <span data-toolbar-label>Open in {defaultLabel}</span>
           </Button>
         </TooltipTrigger>
         <TooltipContent>Open in {defaultLabel}</TooltipContent>

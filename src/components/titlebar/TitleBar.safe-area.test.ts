@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest'
 const read = (p: string) => readFileSync(join(process.cwd(), p), 'utf8')
 const titleBar = read('src/components/titlebar/TitleBar.tsx')
 const mainWindow = read('src/components/layout/MainWindow.tsx')
+const toolbar = read('src/components/toolbar/WindowToolbar.tsx')
+const sidebarHeader = read('src/components/sidebar/SidebarHeader.tsx')
 const css = read('src/App.css')
 
 describe('title bar height and safe area', () => {
@@ -14,10 +16,9 @@ describe('title bar height and safe area', () => {
     expect(css).toContain(
       '--titlebar-height: calc(2.75rem + var(--safe-area-top))'
     )
-    // Desktop keeps the 2rem strip. Insets resolve to 0px there, so the
-    // rendered height is unchanged.
+    // Desktop: the 52pt unified toolbar. Insets resolve to 0px there.
     expect(css).toMatch(
-      /@media \(min-width: 768px\) \{\s*:root \{\s*--titlebar-height: calc\(2rem \+ var\(--safe-area-top\)\);/
+      /@media \(min-width: 768px\) \{\s*:root \{\s*--titlebar-height: calc\(3\.25rem \+ var\(--safe-area-top\)\);/
     )
   })
 
@@ -36,11 +37,17 @@ describe('title bar height and safe area', () => {
   })
 })
 
-describe('the desktop title bar', () => {
-  it('keeps its compact 24px buttons', () => {
-    // The phone title bar has no buttons; see TitleBar.phone.test.tsx.
-    expect(titleBar).toContain(
-      "'size-6 rounded-none text-foreground/70 hover:text-foreground'"
+describe('the desktop window chrome', () => {
+  it('sizes the toolbar and the sidebar header from the same variable', () => {
+    // The two sit side by side; the traffic lights are centred in both
+    // (trafficLightPosition in tauri.conf.json).
+    expect(toolbar).toContain('h-[var(--titlebar-height)]')
+    expect(sidebarHeader).toContain('h-[var(--titlebar-height)]')
+  })
+
+  it('uses AppKit-sized toolbar buttons with a hover bezel', () => {
+    expect(toolbar).toContain(
+      "'h-7 w-[30px] rounded-md text-foreground/70 hover:bg-foreground/10 hover:text-foreground [&_svg]:size-4'"
     )
   })
 })

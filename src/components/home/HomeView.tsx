@@ -5,6 +5,13 @@ import { cn } from '@/lib/utils'
 import { RecentSessionsSection } from './RecentSessionsSection'
 import { StarredSessionsSection } from './StarredSessionsSection'
 import { RecentActivitySection } from './RecentActivitySection'
+import {
+  ToolbarContent,
+  useHasWindowToolbar,
+} from '@/components/toolbar/toolbar-slots'
+import { ToolbarPaletteSearch } from '@/components/toolbar/ToolbarSearchField'
+
+const HOME_SUBTITLE = 'The sessions you touched last, and your projects.'
 
 interface HomeViewProps {
   projects: Project[]
@@ -33,18 +40,27 @@ export const HomeView = memo(function HomeView({
   onProjectClick,
   onAddProject,
 }: HomeViewProps) {
+  // Desktop puts the heading in the window toolbar; without one (phone) the
+  // view keeps its own.
+  const hasToolbar = useHasWindowToolbar()
   return (
     <div
       className="@container flex min-h-0 flex-1 flex-col font-sans"
       data-testid="home-view"
     >
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-6 py-8 @4xl:overflow-hidden">
-        <header className="flex flex-col gap-1">
-          <h1 className="text-2xl font-bold text-foreground">Home</h1>
-          <p className="text-sm text-muted-foreground">
-            The sessions you touched last, and your projects.
-          </p>
-        </header>
+        {hasToolbar ? (
+          <ToolbarContent
+            title="Home"
+            subtitle={HOME_SUBTITLE}
+            search={<ToolbarPaletteSearch />}
+          />
+        ) : (
+          <header className="flex flex-col gap-1">
+            <h1 className="text-2xl font-bold text-foreground">Home</h1>
+            <p className="text-sm text-muted-foreground">{HOME_SUBTITLE}</p>
+          </header>
+        )}
 
         <div className="grid gap-x-6 gap-y-8 @2xl:grid-cols-2 @4xl:min-h-0 @4xl:flex-1 @4xl:grid-cols-[minmax(0,1.6fr)_minmax(14rem,1fr)] @4xl:grid-rows-[minmax(0,1fr)]">
           <HomeColumn testId="home-column-sessions">

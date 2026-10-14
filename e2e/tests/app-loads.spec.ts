@@ -11,9 +11,11 @@ test.describe('App loads', () => {
   test('opens the active project canvas with its worktrees', async ({
     mockPage,
   }) => {
-    await expect(
-      mockPage.getByRole('heading', { name: 'Test Project', level: 2 })
-    ).toBeVisible({ timeout: 5000 })
+    // The canvas header lives in the window toolbar on desktop.
+    await expect(mockPage.getByTestId('window-toolbar')).toContainText(
+      'Test Project',
+      { timeout: 5000 }
+    )
     await expect(
       mockPage.getByRole('button', { name: 'Open fuzzy-tiger' })
     ).toBeVisible()
