@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import type { ReactNode } from 'react'
 import { FileQuestionMark } from 'lucide-react'
 import { isHomeRelativePath } from '@/lib/path-utils'
@@ -24,8 +25,8 @@ export function MissingFileReferenceExplanation({
       <span className="font-medium">No file at {reference}</span>
       <span className="text-xs opacity-80">
         {isHomeRelativePath(reference)
-          ? 'Jean looked for it in the home folder, so this is not a link.'
-          : 'Jean checked the files this session touched and searched the worktree, so this is not a link.'}{' '}
+          ? `${PRODUCT_NAME} looked for it in the home folder, so this is not a link.`
+          : `${PRODUCT_NAME} checked the files this session touched and searched the worktree, so this is not a link.`}{' '}
         It becomes one if a later turn creates the file.
       </span>
     </div>

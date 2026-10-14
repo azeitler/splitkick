@@ -2559,7 +2559,7 @@ pub fn run_grok_acp_host_from_args() -> Result<(), String> {
                     let _ = send_acp_error(
                         &mut writer_guard.stdin,
                         id,
-                        &format!("Jean ACP client error: {error}"),
+                        &format!("Splitkick ACP client error: {error}"),
                     );
                 }
             }
@@ -2683,7 +2683,7 @@ fn host_read_acp_response(
                     let _ = send_acp_error(
                         &mut writer_guard.stdin,
                         id,
-                        &format!("Jean ACP client error: {error}"),
+                        &format!("Splitkick ACP client error: {error}"),
                     );
                 }
             }
@@ -3483,7 +3483,7 @@ fn grok_execution_mode_instruction(execution_mode: Option<&str>) -> Option<&'sta
             "You are in PLAN MODE (research only — do not implement). Investigate with \
              read/search/list/fetch tools and shell commands as needed (e.g. git status, \
              gh, rg, find, cat, ls). Do NOT edit or write files, apply patches, or make \
-             irreversible changes. Do not call enter_plan_mode / exit_plan_mode — Jean \
+             irreversible changes. Do not call enter_plan_mode / exit_plan_mode — Splitkick \
              owns plan approval. When research is enough, finish the turn by writing a \
              complete structured implementation plan as markdown with a clear title \
              (e.g. \"# … Implementation Plan\"), section headings (##), and concrete task \
@@ -3594,7 +3594,7 @@ fn read_acp_response(
                     let _ = send_acp_error(
                         &mut writer.stdin,
                         id,
-                        &format!("Jean ACP client error: {error}"),
+                        &format!("Splitkick ACP client error: {error}"),
                     );
                 }
             }
@@ -3934,7 +3934,7 @@ fn send_grok_acp_prompt(
                     let _ = send_acp_error(
                         &mut writer.stdin,
                         id,
-                        &format!("Jean ACP client error: {error}"),
+                        &format!("Splitkick ACP client error: {error}"),
                     );
                 }
             }

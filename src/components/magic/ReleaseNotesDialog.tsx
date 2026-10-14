@@ -1,5 +1,13 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertCircle, FileText, Loader2, RefreshCw, Tag, XIcon } from 'lucide-react'
+import {
+  AlertCircle,
+  FileText,
+  Loader2,
+  RefreshCw,
+  Tag,
+  XIcon,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { isGhAuthError } from '@/services/github'
@@ -166,7 +174,8 @@ export function ReleaseNotesDialog() {
           model,
           customProfileName: provider ?? undefined,
           effortLevel:
-            preferences?.magic_prompt_efforts?.release_notes_effort ?? undefined,
+            preferences?.magic_prompt_efforts?.release_notes_effort ??
+            undefined,
           mcpConfig,
           includeRecap: false,
         })
@@ -226,7 +235,9 @@ export function ReleaseNotesDialog() {
                   aria-label="Refresh releases"
                   className="inline-flex h-7 w-7 items-center justify-center rounded-md opacity-70 hover:bg-accent hover:opacity-100"
                 >
-                  <RefreshCw className={cn('size-4', isLoading && 'animate-spin')} />
+                  <RefreshCw
+                    className={cn('size-4', isLoading && 'animate-spin')}
+                  />
                 </button>
               </TooltipTrigger>
               <TooltipContent>Refresh releases</TooltipContent>
@@ -243,13 +254,18 @@ export function ReleaseNotesDialog() {
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
               <span className="ml-2 text-sm text-muted-foreground">
-                {isLaunching ? 'Opening release notes session...' : 'Loading releases...'}
+                {isLaunching
+                  ? 'Opening release notes session...'
+                  : 'Loading releases...'}
               </span>
             </div>
           )}
           {error &&
             (isGhAuthError(error) ? (
-              <GhAuthError onLogin={triggerLogin} isGhInstalled={isGhInstalled} />
+              <GhAuthError
+                onLogin={triggerLogin}
+                isGhInstalled={isGhInstalled}
+              />
             ) : (
               <div className="flex items-center justify-center gap-2 px-4 py-8 text-sm text-muted-foreground">
                 <AlertCircle className="h-5 w-5 text-destructive" />
@@ -265,7 +281,8 @@ export function ReleaseNotesDialog() {
           {!isLoading && !isLaunching && !error && releases.length > 0 && (
             <div className="py-1">
               <div className="px-4 py-1 text-xs text-muted-foreground">
-                Select a release. Jean will open a session and generate copyable Markdown notes for changes since that version.
+                Select a release. {PRODUCT_NAME} will open a session and
+                generate copyable Markdown notes for changes since that version.
               </div>
               {releases.map((release, index) => (
                 <ReleaseItem

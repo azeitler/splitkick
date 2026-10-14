@@ -925,7 +925,7 @@ export function SessionChatModal({
   const handleRun = useCallback(() => {
     const first = runScripts[0]
     if (!first) {
-      notify('No run script configured in jean.json', undefined, {
+      notify('No run script configured in splitkick.json', undefined, {
         type: 'error',
       })
       return

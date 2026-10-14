@@ -1562,7 +1562,8 @@ pub fn load_session_messages_window(
                 && assistant_msg.tool_calls.is_empty()
             {
                 assistant_msg.content =
-                    "*Response lost - Jean was closed before receiving a response.*".to_string();
+                    "*Response lost - Splitkick was closed before receiving a response.*"
+                        .to_string();
             }
 
             // For completed runs with no content, add placeholder so the

@@ -2,6 +2,7 @@
  * Grok Build CLI management service.
  */
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
@@ -136,7 +137,9 @@ export function useGrokUsage(options?: { enabled?: boolean }) {
     queryKey: grokCliQueryKeys.usage(),
     queryFn: async (): Promise<GrokUsageSnapshot> => {
       if (!isTauri()) {
-        throw new Error('Grok usage is only available when connected to Jean')
+        throw new Error(
+          `Grok usage is only available when connected to ${PRODUCT_NAME}`
+        )
       }
       return invoke<GrokUsageSnapshot>('get_grok_usage')
     },
@@ -259,7 +262,6 @@ export function useGrokCliSetup() {
       onError: error => options?.onError?.(error),
     })
   }
-
 
   return {
     status: status.data,

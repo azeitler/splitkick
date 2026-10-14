@@ -88,7 +88,7 @@ pub async fn handle_permission_prompt(
                 // Without an id the UI answer cannot be matched back. Deny with
                 // a message the model can act on instead of parking forever.
                 DialogOutcome::Denied {
-                    message: "Jean could not match this question to a tool call.".to_string(),
+                    message: "Splitkick could not match this question to a tool call.".to_string(),
                 }
             } else {
                 claude_dialog::park(app, source, &tool_use_id, "question").await
@@ -97,7 +97,7 @@ pub async fn handle_permission_prompt(
         "ExitPlanMode" | "EnterPlanMode" => {
             if tool_use_id.is_empty() {
                 DialogOutcome::Denied {
-                    message: "Jean could not match this plan to a tool call.".to_string(),
+                    message: "Splitkick could not match this plan to a tool call.".to_string(),
                 }
             } else {
                 claude_dialog::park(app, source, &tool_use_id, "plan").await

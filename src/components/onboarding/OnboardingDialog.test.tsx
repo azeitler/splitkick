@@ -260,7 +260,7 @@ describe('OnboardingDialog backends', () => {
     user: ReturnType<typeof userEvent.setup>
   ) {
     expect(
-      await screen.findByText('How will you use Jean?')
+      await screen.findByText('How will you use Splitkick?')
     ).toBeInTheDocument()
     // Local is the default selection
     await user.click(screen.getByRole('button', { name: 'Continue' }))
@@ -271,7 +271,7 @@ describe('OnboardingDialog backends', () => {
     render(<OnboardingDialog />)
 
     expect(
-      await screen.findByText('How will you use Jean?')
+      await screen.findByText('How will you use Splitkick?')
     ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Local/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Remote/i })).toBeInTheDocument()
@@ -286,7 +286,7 @@ describe('OnboardingDialog backends', () => {
       await screen.findByText(/Select additional AI backends to install/i)
     ).toBeInTheDocument()
     expect(
-      screen.queryByText('How will you use Jean?')
+      screen.queryByText('How will you use Splitkick?')
     ).not.toBeInTheDocument()
   })
 

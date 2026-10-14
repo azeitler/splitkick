@@ -127,7 +127,7 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
             return path;
         }
         log::warn!(
-            "claude_cli_source is 'path' but could not find claude in PATH, falling back to Jean-managed binary"
+            "claude_cli_source is 'path' but could not find claude in PATH, falling back to Splitkick-managed binary"
         );
         return jean_managed_path(app);
     }
@@ -138,7 +138,7 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
 
     if let Some(path) = find_system_binary(app) {
         log::info!(
-            "Jean-managed Claude CLI not installed; using system PATH binary at {}",
+            "Splitkick-managed Claude CLI not installed; using system PATH binary at {}",
             path.display()
         );
         return path;

@@ -10,7 +10,8 @@ export default defineConfig({
       webBuildId: 'test-build',
       appVersion: '0.0.0-test',
     }),
-    __JEAN_PRODUCT_NAME__: JSON.stringify('Jean'),
+    __JEAN_PRODUCT_NAME__: JSON.stringify('Splitkick'),
+    __JEAN_UPSTREAM_VERSION__: JSON.stringify('0.1.73'),
   },
   test: {
     globals: true,

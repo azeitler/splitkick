@@ -38,7 +38,7 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
         if let Some(path) = find_pi_in_path() {
             return path;
         }
-        log::warn!("pi_cli_source is 'path' but pi was not found in PATH, falling back to Jean-managed binary");
+        log::warn!("pi_cli_source is 'path' but pi was not found in PATH, falling back to Splitkick-managed binary");
     }
 
     if wsl.enabled {

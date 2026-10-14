@@ -137,7 +137,7 @@ fn load_versions_cache(app: &AppHandle) -> Option<Vec<CodeRabbitReleaseInfo>> {
 
 async fn fetch_latest_release_info() -> Result<CodeRabbitReleaseInfo, String> {
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
     let response = client
@@ -191,7 +191,7 @@ pub async fn check_coderabbit_cli_version_exists(
     }
 
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
     let response = client

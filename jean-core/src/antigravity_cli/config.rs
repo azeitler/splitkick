@@ -12,7 +12,7 @@ pub const MANAGED_CLI_BINARY_NAME: &str = "agy";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SourcePreference {
-    Jean,
+    Jean, // brand-ok
     Path,
     Missing,
 }
@@ -50,7 +50,7 @@ fn source_preference(app: &AppHandle) -> SourcePreference {
             if value.as_str() == Some("path") {
                 SourcePreference::Path
             } else {
-                SourcePreference::Jean
+                SourcePreference::Jean // brand-ok
             }
         })
         .unwrap_or(SourcePreference::Missing)
@@ -79,7 +79,8 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
     match source_preference(app) {
         SourcePreference::Path => system.unwrap_or_else(|| PathBuf::from("agy")),
         SourcePreference::Missing if system.is_some() => system.unwrap_or_default(),
-        SourcePreference::Jean | SourcePreference::Missing => {
+        SourcePreference::Jean // brand-ok
+        | SourcePreference::Missing => {
             managed.unwrap_or_else(|| PathBuf::from("agy"))
         }
     }

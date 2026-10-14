@@ -6,7 +6,7 @@ const HANDOFF_OPEN_TAG: &str = "<jean_provider_switch_handoff>";
 const HANDOFF_CLOSE_TAG: &str = "</jean_provider_switch_handoff>";
 const FORK_OPEN_TAG: &str = "<jean_fork_handoff>";
 const FORK_CLOSE_TAG: &str = "</jean_fork_handoff>";
-const TRUNCATED_HISTORY_MARKER: &str = "[truncated older Jean history]";
+const TRUNCATED_HISTORY_MARKER: &str = "[truncated older Splitkick history]";
 const HANDOFF_HISTORY_RUN_LIMIT: usize = 40;
 const HANDOFF_HISTORY_MAX_CHARS: usize = 60_000;
 
@@ -382,9 +382,9 @@ pub(crate) fn prepend_hidden_handoff(user_message: &str, handoff_prompt: &str) -
 /// providers, and an editable copy would need preferences UI for no real gain.
 pub(crate) fn build_fork_handoff_prompt(history: &str) -> String {
     format!(
-        r#"You are continuing a Jean chat session that the user forked from an earlier session.
+        r#"You are continuing a Splitkick chat session that the user forked from an earlier session.
 
-The history below is that earlier conversation, copied into this new session. Your backend has no server-side record of it, so treat this Jean-local history as the conversation you already had with the user — do not claim you lack prior context.
+The history below is that earlier conversation, copied into this new session. Your backend has no server-side record of it, so treat this Splitkick-local history as the conversation you already had with the user — do not claim you lack prior context.
 
 The user may have forked from the middle of the original session. The history below is therefore the complete context for this fork; anything that happened after it does not apply here.
 
@@ -523,7 +523,7 @@ mod tests {
         let history = format_handoff_history(&messages, 100);
 
         assert!(history.chars().count() <= 100);
-        assert!(history.contains("[truncated older Jean history]"));
+        assert!(history.contains("[truncated older Splitkick history]"));
         assert!(!history.contains("old user context"));
         assert!(history.contains("User: new user context"));
         assert!(history.contains("Assistant: new assistant context"));
@@ -621,7 +621,7 @@ mod tests {
             .collect::<Vec<_>>();
         let bounded = format_handoff_history(&many, 60);
         assert!(bounded.chars().count() <= 60);
-        assert!(bounded.contains("[truncated older Jean history]"));
+        assert!(bounded.contains("[truncated older Splitkick history]"));
     }
 
     #[test]

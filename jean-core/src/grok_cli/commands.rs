@@ -666,7 +666,7 @@ pub async fn get_grok_install_command(app: AppHandle) -> Result<GrokInstallComma
             cli_dir.to_string_lossy().to_string(),
             grok_package(None),
         ],
-        description: "Install the latest Grok CLI into Jean's managed app-data directory"
+        description: "Install the latest Grok CLI into Splitkick's managed app-data directory"
             .to_string(),
     })
 }

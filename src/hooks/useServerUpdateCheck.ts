@@ -197,7 +197,7 @@ export function useServerUpdateCheck() {
 
     const title =
       channel === 'desktop'
-        ? `Jean ${version} is available on the host`
+        ? `Version ${version} is available on the host`
         : `jean-server ${version} is available`
 
     if (!status.canUpdate) {

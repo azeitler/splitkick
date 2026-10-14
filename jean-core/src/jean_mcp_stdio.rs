@@ -93,27 +93,28 @@ fn proxy_to_parent(
     use std::time::Duration;
 
     let mut stream = UnixStream::connect(socket)
-        .map_err(|e| format!("Failed to connect Jean MCP socket {socket}: {e}"))?;
+        .map_err(|e| format!("Failed to connect Splitkick MCP socket {socket}: {e}"))?;
     stream
         .set_read_timeout(read_timeout_secs.map(Duration::from_secs))
-        .map_err(|e| format!("Failed to set Jean MCP socket read timeout: {e}"))?;
+        .map_err(|e| format!("Failed to set Splitkick MCP socket read timeout: {e}"))?;
     stream
         .set_write_timeout(Some(Duration::from_secs(30)))
-        .map_err(|e| format!("Failed to set Jean MCP socket write timeout: {e}"))?;
+        .map_err(|e| format!("Failed to set Splitkick MCP socket write timeout: {e}"))?;
     let encoded = serde_json::to_string(&request)
-        .map_err(|e| format!("Failed to encode Jean MCP socket request: {e}"))?;
-    writeln!(stream, "{encoded}").map_err(|e| format!("Failed to write Jean MCP socket: {e}"))?;
+        .map_err(|e| format!("Failed to encode Splitkick MCP socket request: {e}"))?;
+    writeln!(stream, "{encoded}")
+        .map_err(|e| format!("Failed to write Splitkick MCP socket: {e}"))?;
     stream
         .flush()
-        .map_err(|e| format!("Failed to flush Jean MCP socket: {e}"))?;
+        .map_err(|e| format!("Failed to flush Splitkick MCP socket: {e}"))?;
 
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     reader
         .read_line(&mut line)
-        .map_err(|e| format!("Failed to read Jean MCP socket response: {e}"))?;
+        .map_err(|e| format!("Failed to read Splitkick MCP socket response: {e}"))?;
     let response: Value = serde_json::from_str(&line)
-        .map_err(|e| format!("Failed to parse Jean MCP socket response: {e}"))?;
+        .map_err(|e| format!("Failed to parse Splitkick MCP socket response: {e}"))?;
     if let Some(error) = parent_error_message(&response) {
         return Err(error);
     }
@@ -132,42 +133,42 @@ fn proxy_to_parent(
     use tokio::time::{timeout, Duration};
 
     let encoded = serde_json::to_string(&request)
-        .map_err(|e| format!("Failed to encode Jean MCP pipe request: {e}"))?;
+        .map_err(|e| format!("Failed to encode Splitkick MCP pipe request: {e}"))?;
     let runtime = Builder::new_current_thread()
         .enable_io()
         .enable_time()
         .build()
-        .map_err(|e| format!("Failed to create Jean MCP pipe runtime: {e}"))?;
+        .map_err(|e| format!("Failed to create Splitkick MCP pipe runtime: {e}"))?;
 
     let response = runtime.block_on(async {
         let mut pipe = ClientOptions::new()
             .open(socket)
-            .map_err(|e| format!("Failed to connect Jean MCP named pipe {socket}: {e}"))?;
+            .map_err(|e| format!("Failed to connect Splitkick MCP named pipe {socket}: {e}"))?;
         timeout(Duration::from_secs(30), async {
             pipe.write_all(encoded.as_bytes()).await?;
             pipe.write_all(b"\n").await?;
             pipe.flush().await
         })
         .await
-        .map_err(|_| "Timed out writing Jean MCP pipe request".to_string())?
-        .map_err(|e| format!("Failed to write Jean MCP pipe request: {e}"))?;
+        .map_err(|_| "Timed out writing Splitkick MCP pipe request".to_string())?
+        .map_err(|e| format!("Failed to write Splitkick MCP pipe request: {e}"))?;
 
         let mut reader = BufReader::new(pipe);
         let mut line = String::new();
         match read_timeout_secs {
             Some(secs) => timeout(Duration::from_secs(secs), reader.read_line(&mut line))
                 .await
-                .map_err(|_| "Timed out reading Jean MCP pipe response".to_string())?
-                .map_err(|e| format!("Failed to read Jean MCP pipe response: {e}"))?,
+                .map_err(|_| "Timed out reading Splitkick MCP pipe response".to_string())?
+                .map_err(|e| format!("Failed to read Splitkick MCP pipe response: {e}"))?,
             // Dialogs park on a human; see the unix arm.
             None => reader
                 .read_line(&mut line)
                 .await
-                .map_err(|e| format!("Failed to read Jean MCP pipe response: {e}"))?,
+                .map_err(|e| format!("Failed to read Splitkick MCP pipe response: {e}"))?,
         };
 
         serde_json::from_str::<Value>(&line)
-            .map_err(|e| format!("Failed to parse Jean MCP pipe response: {e}"))
+            .map_err(|e| format!("Failed to parse Splitkick MCP pipe response: {e}"))
     })?;
 
     if let Some(error) = parent_error_message(&response) {
@@ -182,7 +183,7 @@ fn proxy_to_parent(
     _request: Value,
     _read_timeout_secs: Option<u64>,
 ) -> Result<Value, String> {
-    Err("Jean MCP local IPC is not supported on this platform".to_string())
+    Err("Splitkick MCP local IPC is not supported on this platform".to_string())
 }
 
 fn parent_error_message(response: &Value) -> Option<String> {

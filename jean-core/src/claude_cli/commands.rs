@@ -584,7 +584,7 @@ pub async fn uninstall_claude_cli(app: AppHandle) -> Result<(), String> {
         crate::platform::wsl_remove_path(&wsl.distro, &cli_dir)
             .map_err(|e| format!("Failed to remove Claude CLI directory inside WSL: {e}"))?;
         log::info!(
-            "Removed Jean-managed Claude CLI inside WSL distro {} at {}",
+            "Removed Splitkick-managed Claude CLI inside WSL distro {} at {}",
             wsl.distro,
             cli_dir
         );
@@ -595,7 +595,7 @@ pub async fn uninstall_claude_cli(app: AppHandle) -> Result<(), String> {
     if cli_dir.exists() {
         std::fs::remove_dir_all(&cli_dir)
             .map_err(|e| format!("Failed to remove Claude CLI directory: {e}"))?;
-        log::info!("Removed Jean-managed Claude CLI at {:?}", cli_dir);
+        log::info!("Removed Splitkick-managed Claude CLI at {:?}", cli_dir);
     }
     Ok(())
 }

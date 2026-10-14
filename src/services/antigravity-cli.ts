@@ -1,5 +1,6 @@
 /** Antigravity CLI management service. */
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
@@ -22,7 +23,8 @@ export const antigravityCliQueryKeys = {
   auth: () => [...antigravityCliQueryKeys.all, 'auth'] as const,
   models: () => [...antigravityCliQueryKeys.all, 'models'] as const,
   versions: () => [...antigravityCliQueryKeys.all, 'versions'] as const,
-  installCommand: () => [...antigravityCliQueryKeys.all, 'install-command'] as const,
+  installCommand: () =>
+    [...antigravityCliQueryKeys.all, 'install-command'] as const,
 }
 
 const fallbackAntigravityVersions: AntigravityReleaseInfo[] = [
@@ -70,7 +72,9 @@ export function useAntigravityCliStatus(options?: { enabled?: boolean }) {
     queryFn: async (): Promise<AntigravityCliStatus> => {
       if (!isTauri()) return { installed: false, version: null, path: null }
       try {
-        return await invoke<AntigravityCliStatus>('check_antigravity_cli_installed')
+        return await invoke<AntigravityCliStatus>(
+          'check_antigravity_cli_installed'
+        )
       } catch (error) {
         logger.error('Failed to check Antigravity CLI status', { error })
         // Rethrow: a failed check is unknown, not a negative result. Keeps the
@@ -119,7 +123,9 @@ export function useAvailableAntigravityModels(options?: { enabled?: boolean }) {
         return [{ id: 'default', label: 'Configured default', isDefault: true }]
       }
       try {
-        const models = await invoke<AntigravityModelInfo[]>('list_antigravity_models')
+        const models = await invoke<AntigravityModelInfo[]>(
+          'list_antigravity_models'
+        )
         return models.length
           ? models
           : [{ id: 'default', label: 'Configured default', isDefault: true }]
@@ -134,7 +140,9 @@ export function useAvailableAntigravityModels(options?: { enabled?: boolean }) {
   })
 }
 
-export function useAvailableAntigravityVersions(options?: { enabled?: boolean }) {
+export function useAvailableAntigravityVersions(options?: {
+  enabled?: boolean
+}) {
   return useQuery({
     queryKey: antigravityCliQueryKeys.versions(),
     queryFn: async (): Promise<AntigravityReleaseInfo[]> => {
@@ -192,7 +200,7 @@ export function useUninstallAntigravityCli() {
     mutationFn: () => invoke<null>('uninstall_antigravity_cli'),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: antigravityCliQueryKeys.all })
-      toast.success('Jean-managed Antigravity CLI removed')
+      toast.success(`${PRODUCT_NAME}-managed Antigravity CLI removed`)
     },
     onError: error => {
       toast.error('Failed to remove Antigravity CLI', {
@@ -223,7 +231,9 @@ export function useAntigravityCliSetup() {
   return {
     status: status.data,
     isStatusLoading: status.isLoading,
-    versions: versions.data?.length ? versions.data : fallbackAntigravityVersions,
+    versions: versions.data?.length
+      ? versions.data
+      : fallbackAntigravityVersions,
     isVersionsLoading: versions.isFetching,
     isVersionsError: versions.isError,
     refetchVersions: versions.refetch,

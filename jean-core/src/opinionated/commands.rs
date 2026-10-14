@@ -443,7 +443,7 @@ fn rtk_install_unsupported_reason(
             "RTK's Linux ARM64 binary requires glibc 2.39 or newer; this system has glibc {major}.{minor}"
         )),
         None => Some(
-            "RTK installation is disabled on Linux ARM64 because Jean could not verify glibc 2.39 or newer"
+            "RTK installation is disabled on Linux ARM64 because Splitkick could not verify glibc 2.39 or newer"
                 .to_string(),
         ),
     }
@@ -487,7 +487,7 @@ fn rtk_asset_for_platform(os: &str, arch: &str) -> Result<RtkAsset, String> {
 
 async fn download_rtk_release(asset: &RtkAsset) -> Result<(Vec<u8>, String), String> {
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
@@ -737,7 +737,7 @@ async fn install_caveman(app: &AppHandle) -> Result<String, String> {
 
             if missing.is_empty() {
                 Ok(format!(
-                    "Caveman installed for Jean backends: {}",
+                    "Caveman installed for Splitkick backends: {}",
                     installed.join(", ")
                 ))
             } else {
@@ -2022,7 +2022,7 @@ async fn install_superpowers(app: &AppHandle) -> Result<String, String> {
     }
 
     let mut message = format!(
-        "Superpowers installed for Jean backends: {}",
+        "Superpowers installed for Splitkick backends: {}",
         installed.join(", ")
     );
     if !warnings.is_empty() {

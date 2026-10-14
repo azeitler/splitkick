@@ -1,5 +1,5 @@
 /**
- * Guards the flavor-aware web branding: the product name in index.html and the
+ * Guards the Splitkick web branding: the product name in index.html and the
  * web icons (browser tab, phone home screen), which are emitted under a
  * content-hashed name.
  *
@@ -25,7 +25,7 @@ import {
 } from './web-branding.mjs'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const FORK_ICON_DIR = 'src-tauri/icons-fork/web'
+const ICON_DIR = 'src-tauri/icons-fork/web'
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
 
 // resolveWebIcons resolves against the working directory, the way Vite runs it.
@@ -41,22 +41,10 @@ function pngSize(bytes) {
   return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) }
 }
 
-function withFlavor(flavor, run) {
-  const previous = process.env.JEAN_FLAVOR
-  if (flavor === undefined) delete process.env.JEAN_FLAVOR
-  else process.env.JEAN_FLAVOR = flavor
-  try {
-    return run()
-  } finally {
-    if (previous === undefined) delete process.env.JEAN_FLAVOR
-    else process.env.JEAN_FLAVOR = previous
-  }
-}
-
 const tempDirs = []
 
 function tempOutDir() {
-  const dir = mkdtempSync(join(tmpdir(), 'jean-web-icons-'))
+  const dir = mkdtempSync(join(tmpdir(), 'splitkick-web-icons-'))
   tempDirs.push(dir)
   return dir
 }
@@ -65,21 +53,17 @@ after(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true })
 })
 
-describe('JeanZ web icon artwork', () => {
+describe('Splitkick web icon artwork', () => {
   for (const file of WEB_ICONS) {
     it(`${file} matches the upstream icon dimensions`, () => {
       assert.deepEqual(
-        pngSize(readIcon(FORK_ICON_DIR, file)),
+        pngSize(readIcon(ICON_DIR, file)),
         pngSize(readIcon('public', file))
       )
     })
 
-    it(`${file} is actually re-coloured, not a copy`, () => {
-      // A plain copy would ship the purple artwork under the JeanZ name.
-      assert.notDeepEqual(
-        readIcon(FORK_ICON_DIR, file),
-        readIcon('public', file)
-      )
+    it(`${file} is not the upstream artwork`, () => {
+      assert.notDeepEqual(readIcon(ICON_DIR, file), readIcon('public', file))
     })
   }
 })
@@ -93,7 +77,7 @@ describe('web icon emission', () => {
 
   it('rewrites every href to a hashed name it also writes', () => {
     const outDir = tempOutDir()
-    const icons = withFlavor(undefined, resolveWebIcons)
+    const icons = resolveWebIcons()
     const rewritten = rewriteIndexHtml(html, icons)
     writeWebIcons(outDir, icons)
 
@@ -112,99 +96,44 @@ describe('web icon emission', () => {
     }
   })
 
-  it('ships the upstream artwork without the flavor flag', () => {
+  it('ships the Splitkick artwork under the plain names too', () => {
     const outDir = tempOutDir()
-    writeWebIcons(outDir, withFlavor(undefined, resolveWebIcons))
+    writeWebIcons(outDir, resolveWebIcons())
 
     for (const file of WEB_ICONS) {
+      // A direct /favicon.png request never returns the upstream glyph.
       assert.deepEqual(
         readFileSync(join(outDir, file)),
-        readIcon('public', file)
+        readIcon(ICON_DIR, file)
       )
     }
-  })
-
-  it('ships the JeanZ artwork under JEAN_FLAVOR=jeanz', () => {
-    const outDir = tempOutDir()
-    const icons = withFlavor('jeanz', resolveWebIcons)
-    writeWebIcons(outDir, icons)
-
-    for (const icon of icons) {
-      assert.ok(icon.source.includes('icons-fork/web'), icon.source)
-    }
-    for (const file of WEB_ICONS) {
-      // Both the hashed name and the plain name carry the flavor artwork, so a
-      // direct /favicon.png request never returns the upstream glyph.
-      assert.deepEqual(
-        readFileSync(join(outDir, file)),
-        readIcon(FORK_ICON_DIR, file)
-      )
-    }
-  })
-
-  it('gives the two flavors different hashed names', () => {
-    // This is what lets a JeanZ update reach a browser that cached the
-    // upstream icon for a year.
-    const upstream = withFlavor(undefined, resolveWebIcons)
-    const fork = withFlavor('jeanz', resolveWebIcons)
-
-    upstream.forEach((icon, index) => {
-      assert.equal(fork[index].from, icon.from)
-      assert.notEqual(fork[index].to, icon.to)
-    })
   })
 })
 
 describe('product name', () => {
   const html = readFileSync(join(root, 'index.html'), 'utf8')
-  const icons = () => withFlavor(undefined, resolveWebIcons)
 
-  // PRODUCT_NAME resolves when the module loads, so each flavor needs its own
-  // module instance. A unique query string defeats the ESM cache. The env has
-  // to stay set until the import resolves, so this cannot use withFlavor.
-  const loadProductName = async (flavor, tag) => {
-    const previous = process.env.JEAN_FLAVOR
-    if (flavor === undefined) delete process.env.JEAN_FLAVOR
-    else process.env.JEAN_FLAVOR = flavor
-    try {
-      const module = await import(`./web-branding.mjs?flavor=${tag}`)
-      return module.PRODUCT_NAME
-    } finally {
-      if (previous === undefined) delete process.env.JEAN_FLAVOR
-      else process.env.JEAN_FLAVOR = previous
-    }
-  }
-
-  it('is Jean by default', () => {
-    assert.equal(PRODUCT_NAME, 'Jean')
+  it('is Splitkick', () => {
+    assert.equal(PRODUCT_NAME, 'Splitkick')
   })
 
-  it('follows the flavor flag', async () => {
-    assert.equal(await loadProductName(undefined, 'upstream'), 'Jean')
-    assert.equal(await loadProductName('jeanz', 'fork'), 'JeanZ')
-  })
+  it('renames the real index.html', () => {
+    const renamed = rewriteIndexHtml(html, resolveWebIcons())
 
-  it('renames the real index.html for the fork', () => {
-    const renamed = rewriteIndexHtml(html, icons(), 'JeanZ')
-
-    assert.match(renamed, /<title>JeanZ<\/title>/)
-    assert.match(renamed, /name="apple-mobile-web-app-title" content="JeanZ"/)
+    assert.match(renamed, /<title>Splitkick<\/title>/)
+    assert.match(
+      renamed,
+      /name="apple-mobile-web-app-title" content="Splitkick"/
+    )
     assert.ok(!renamed.includes('<title>Jean</title>'), 'title left behind')
     assert.ok(!renamed.includes('content="Jean"'), 'meta title left behind')
-  })
-
-  it('leaves the real index.html alone for the upstream flavor', () => {
-    const rewritten = rewriteIndexHtml(html, icons(), 'Jean')
-
-    assert.ok(rewritten.includes('<title>Jean</title>'))
-    assert.ok(rewritten.includes('content="Jean"'))
   })
 
   it('fails loudly when index.html stops naming the product', () => {
     const reworded = html.replace('<title>Jean</title>', '<title>Hello</title>')
 
     assert.throws(
-      () => rewriteIndexHtml(reworded, icons(), 'JeanZ'),
+      () => rewriteIndexHtml(reworded, resolveWebIcons()),
       /no longer contains <title>Jean<\/title>/
     )
   })
@@ -213,7 +142,7 @@ describe('product name', () => {
     const unlinked = html.replace('href="/favicon.png"', 'href="/other.png"')
 
     assert.throws(
-      () => rewriteIndexHtml(unlinked, icons(), 'JeanZ'),
+      () => rewriteIndexHtml(unlinked, resolveWebIcons()),
       /no longer links \/favicon\.png/
     )
   })

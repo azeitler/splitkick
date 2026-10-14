@@ -110,7 +110,7 @@ pub(crate) fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::e
         .config()
         .product_name
         .clone()
-        .unwrap_or_else(|| "Jean".to_string());
+        .unwrap_or_else(|| jean_core::brand::PRODUCT_NAME.to_string());
     let hide_label = format!("Hide {app_name}");
     let quit_label = format!("Quit {app_name}");
 

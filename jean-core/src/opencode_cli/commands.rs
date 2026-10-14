@@ -793,7 +793,7 @@ pub async fn uninstall_opencode_cli(app: AppHandle) -> Result<(), String> {
         let unix_path = super::config::get_wsl_cli_binary_path(&wsl.distro)?;
         crate::platform::wsl_remove_file(&wsl.distro, &unix_path)
             .map_err(|e| format!("Failed to remove OpenCode CLI from WSL: {e}"))?;
-        log::info!("Removed Jean-managed OpenCode CLI at WSL:{unix_path}");
+        log::info!("Removed Splitkick-managed OpenCode CLI at WSL:{unix_path}");
         return Ok(());
     }
 
@@ -801,7 +801,7 @@ pub async fn uninstall_opencode_cli(app: AppHandle) -> Result<(), String> {
     if cli_dir.exists() {
         std::fs::remove_dir_all(&cli_dir)
             .map_err(|e| format!("Failed to remove OpenCode CLI directory: {e}"))?;
-        log::info!("Removed Jean-managed OpenCode CLI at {:?}", cli_dir);
+        log::info!("Removed Splitkick-managed OpenCode CLI at {:?}", cli_dir);
     }
     Ok(())
 }

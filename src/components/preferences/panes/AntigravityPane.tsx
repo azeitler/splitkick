@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
@@ -20,7 +21,9 @@ import { useUIStore } from '@/store/ui-store'
 export function AntigravityPane() {
   const status = useAntigravityCliStatus()
   const auth = useAntigravityCliAuth({ enabled: !!status.data?.installed })
-  const models = useAvailableAntigravityModels({ enabled: !!status.data?.installed })
+  const models = useAvailableAntigravityModels({
+    enabled: !!status.data?.installed,
+  })
   const install = useInstallAntigravityCli()
   const uninstall = useUninstallAntigravityCli()
   const versions = useAvailableAntigravityVersions()
@@ -48,7 +51,9 @@ export function AntigravityPane() {
       { antigravity_cli_source: value },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: antigravityCliQueryKeys.all })
+          queryClient.invalidateQueries({
+            queryKey: antigravityCliQueryKeys.all,
+          })
         },
       }
     )
@@ -68,9 +73,12 @@ export function AntigravityPane() {
           >
             <RadioGroupItem id="antigravity-source-jean" value="jean" />
             <span>
-              <span className="block text-sm font-medium">Jean managed</span>
+              <span className="block text-sm font-medium">
+                {PRODUCT_NAME} managed
+              </span>
               <span className="block text-xs text-muted-foreground">
-                Jean installs and updates an isolated Antigravity CLI version.
+                {PRODUCT_NAME} installs and updates an isolated Antigravity CLI
+                version.
               </span>
             </span>
           </Label>
@@ -140,10 +148,10 @@ export function AntigravityPane() {
             </div>
             <p className="text-xs text-muted-foreground">
               {status.isLoading
-                ? 'Checking Jean-managed installation…'
+                ? `Checking ${PRODUCT_NAME}-managed installation…`
                 : status.data?.installed
                   ? `Installed ${status.data.version ?? 'version unknown'} · ${status.data.path ?? 'managed path'}`
-                  : 'Jean-managed Antigravity CLI is not installed.'}
+                  : `${PRODUCT_NAME}-managed Antigravity CLI is not installed.`}
             </p>
           </div>
         ) : (
@@ -198,7 +206,8 @@ export function AntigravityPane() {
           value={preferences?.selected_antigravity_model ?? 'antigravity/auto'}
           onChange={event =>
             patch.mutate({
-              selected_antigravity_model: event.target.value as `antigravity/${string}`,
+              selected_antigravity_model: event.target
+                .value as `antigravity/${string}`,
             })
           }
         >
@@ -206,8 +215,14 @@ export function AntigravityPane() {
             models.data ?? [
               { id: 'auto', label: 'Auto' },
               { id: 'gemini-3.6-flash-high', label: 'Gemini 3.6 Flash (High)' },
-              { id: 'gemini-3.6-flash-medium', label: 'Gemini 3.6 Flash (Medium)' },
-              { id: 'gemini-3.5-flash-medium', label: 'Gemini 3.5 Flash (Medium)' },
+              {
+                id: 'gemini-3.6-flash-medium',
+                label: 'Gemini 3.6 Flash (Medium)',
+              },
+              {
+                id: 'gemini-3.5-flash-medium',
+                label: 'Gemini 3.5 Flash (Medium)',
+              },
               { id: 'gemini-3.1-pro-high', label: 'Gemini 3.1 Pro (High)' },
             ]
           ).map(model => (

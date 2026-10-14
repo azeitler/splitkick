@@ -531,7 +531,7 @@ pub fn install_remote_jean_server(
     let ssh_port = input.ssh_port.unwrap_or(DEFAULT_SSH_PORT);
     let jean_port = input.jean_port.unwrap_or(DEFAULT_JEAN_PORT);
     validate_port(ssh_port, "SSH port")?;
-    validate_port(jean_port, "Jean port")?;
+    validate_port(jean_port, "Jean server port")?;
 
     let name = input
         .name

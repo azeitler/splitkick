@@ -666,7 +666,7 @@ export function useMessageHandlers({
       sessionId,
       outcome: 'denied',
       message:
-        'Jean is handling this plan approval as a new turn. Stop here; do not continue in this turn.',
+        'Splitkick is handling this plan approval as a new turn. Stop here; do not continue in this turn.',
     }).catch(err => {
       // Non-fatal: nothing was parked, or the run already ended.
       console.debug(
@@ -3124,7 +3124,7 @@ export function useMessageHandlers({
         contentItems: [
           {
             type: 'inputText',
-            text: 'Jean does not support Codex dynamic tool calls yet.',
+            text: 'Splitkick does not support Codex dynamic tool calls yet.',
           },
         ],
       })

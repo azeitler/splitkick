@@ -18,7 +18,7 @@ use crate::platform::silent_command;
 
 pub(crate) fn current_executable_for_detached_host() -> Result<PathBuf, String> {
     let executable = std::env::current_exe()
-        .map_err(|error| format!("Failed to get Jean executable: {error}"))?;
+        .map_err(|error| format!("Failed to get Splitkick executable: {error}"))?;
     resolve_detached_host_executable(executable)
 }
 

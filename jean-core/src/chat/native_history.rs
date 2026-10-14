@@ -225,17 +225,17 @@ pub async fn track_native_cli_session(
                                 &native_session_id,
                             ) {
                                 Ok(()) => log::info!(
-                                    "Bound Jean terminal session {session_id} to {backend} session {native_session_id}"
+                                    "Bound Splitkick terminal session {session_id} to {backend} session {native_session_id}"
                                 ),
                                 Err(error) => log::warn!(
-                                    "Failed to bind Jean terminal session {session_id}: {error}"
+                                    "Failed to bind Splitkick terminal session {session_id}: {error}"
                                 ),
                             }
                             break;
                         }
                         NewNativeSession::Ambiguous => {
                             log::warn!(
-                                "Refusing to guess native {backend} session for Jean session {session_id}: multiple new sessions appeared"
+                                "Refusing to guess native {backend} session for Splitkick session {session_id}: multiple new sessions appeared"
                             );
                             break;
                         }

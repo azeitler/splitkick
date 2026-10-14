@@ -83,19 +83,23 @@ pub async fn start_socket_server(
     if let Some(parent) = path.parent() {
         tokio::fs::create_dir_all(parent)
             .await
-            .map_err(|e| format!("Failed to create Jean MCP socket dir: {e}"))?;
+            .map_err(|e| format!("Failed to create Splitkick MCP socket dir: {e}"))?;
     }
     if path.exists() {
         let _ = tokio::fs::remove_file(&path).await;
     }
 
-    let listener = UnixListener::bind(&path)
-        .map_err(|e| format!("Failed to bind Jean MCP socket {}: {e}", path.display()))?;
+    let listener = UnixListener::bind(&path).map_err(|e| {
+        format!(
+            "Failed to bind Splitkick MCP socket {}: {e}",
+            path.display()
+        )
+    })?;
     {
         use std::os::unix::fs::PermissionsExt;
         let perms = std::fs::Permissions::from_mode(0o600);
         std::fs::set_permissions(&path, perms)
-            .map_err(|e| format!("Failed to lock down Jean MCP socket perms: {e}"))?;
+            .map_err(|e| format!("Failed to lock down Splitkick MCP socket perms: {e}"))?;
     }
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
     let path_for_task = path.clone();
@@ -103,13 +107,13 @@ pub async fn start_socket_server(
 
     tokio::spawn(async move {
         log::info!(
-            "Jean MCP proxy socket listening at {}",
+            "Splitkick MCP proxy socket listening at {}",
             path_for_task.display()
         );
         loop {
             tokio::select! {
                 _ = &mut shutdown_rx => {
-                    log::info!("Jean MCP proxy socket shutting down");
+                    log::info!("Splitkick MCP proxy socket shutting down");
                     break;
                 }
                 accepted = listener.accept() => {
@@ -139,7 +143,7 @@ pub async fn start_socket_server(
                                 }
                             });
                         }
-                        Err(e) => log::warn!("Jean MCP socket accept failed: {e}"),
+                        Err(e) => log::warn!("Splitkick MCP socket accept failed: {e}"),
                     }
                 }
             }
@@ -194,17 +198,17 @@ pub async fn start_socket_server(
     let mut server = ServerOptions::new()
         .first_pipe_instance(true)
         .create(&pipe_name)
-        .map_err(|e| format!("Failed to create Jean MCP named pipe {pipe_name}: {e}"))?;
+        .map_err(|e| format!("Failed to create Splitkick MCP named pipe {pipe_name}: {e}"))?;
     let (shutdown_tx, mut shutdown_rx) = tokio::sync::oneshot::channel();
     let path_for_task = path.clone();
     let token_for_task = token.clone();
 
     tokio::spawn(async move {
-        log::info!("Jean MCP proxy named pipe listening at {pipe_name}");
+        log::info!("Splitkick MCP proxy named pipe listening at {pipe_name}");
         loop {
             tokio::select! {
                 _ = &mut shutdown_rx => {
-                    log::info!("Jean MCP proxy named pipe shutting down");
+                    log::info!("Splitkick MCP proxy named pipe shutting down");
                     break;
                 }
                 connected = server.connect() => {
@@ -213,7 +217,7 @@ pub async fn start_socket_server(
                             let next_server = match ServerOptions::new().create(&pipe_name) {
                                 Ok(next) => next,
                                 Err(e) => {
-                                    log::warn!("Jean MCP named pipe recreate failed: {e}");
+                                    log::warn!("Splitkick MCP named pipe recreate failed: {e}");
                                     break;
                                 }
                             };
@@ -222,7 +226,7 @@ pub async fn start_socket_server(
                             let expected_token = token_for_task.clone();
                             tokio::spawn(handle_pipe_connection(app, expected_token, connected_server));
                         }
-                        Err(e) => log::warn!("Jean MCP named pipe accept failed: {e}"),
+                        Err(e) => log::warn!("Splitkick MCP named pipe accept failed: {e}"),
                     }
                 }
             }
@@ -242,7 +246,7 @@ pub async fn start_socket_server(
     _path: PathBuf,
     _token: String,
 ) -> Result<JeanMcpSocketHandle, String> {
-    Err("Jean MCP local IPC is not supported on this platform".to_string())
+    Err("Splitkick MCP local IPC is not supported on this platform".to_string())
 }
 
 async fn handle_socket_request(app: &AppHandle, expected_token: &str, line: &str) -> Value {
@@ -505,7 +509,7 @@ mod tests {
                 refused["error"]["message"]
                     .as_str()
                     .unwrap_or_default()
-                    .contains("Jean MCP is disabled"),
+                    .contains("Splitkick MCP is disabled"),
                 "{refused}"
             );
 

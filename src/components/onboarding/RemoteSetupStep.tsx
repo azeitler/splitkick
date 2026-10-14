@@ -4,6 +4,7 @@
  * (if needed) continues against the remote.
  */
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useEffect, useState, type FormEvent } from 'react'
 import { HardDriveDownload, Link2, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -128,7 +129,9 @@ export function RemoteSetupStep({
   const handleInstallSubmit = async (event: FormEvent) => {
     event.preventDefault()
     if (!native) {
-      setError('Remote install is only available in the native Jean app.')
+      setError(
+        `Remote install is only available in the native ${PRODUCT_NAME} app.`
+      )
       return
     }
 
@@ -149,7 +152,9 @@ export function RemoteSetupStep({
       jeanPort < 1 ||
       jeanPort > 65535
     ) {
-      setError('SSH and Jean ports must be integers between 1 and 65535.')
+      setError(
+        'SSH and Jean server ports must be integers between 1 and 65535.'
+      )
       return
     }
 
@@ -278,7 +283,7 @@ export function RemoteSetupStep({
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="onboarding-remote-install-jean-port">
-              Jean port
+              Jean server port
             </Label>
             <Input
               id="onboarding-remote-install-jean-port"
@@ -297,9 +302,10 @@ export function RemoteSetupStep({
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Requires SSH key auth to the host (no password prompt). Jean installs
-          via the official installer, checks health, then connects. After
-          connecting, AI CLI setup continues on the remote if needed.
+          Requires SSH key auth to the host (no password prompt). {PRODUCT_NAME}{' '}
+          installs the Jean server via the official installer, checks health,
+          then connects. After connecting, AI CLI setup continues on the remote
+          if needed.
         </p>
         {progress && (
           <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">

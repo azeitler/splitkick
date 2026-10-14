@@ -1,11 +1,21 @@
 # Changelog
 
-All notable changes to Jean are recorded in this file.
+All notable changes to Splitkick (formerly JeanZ, built on Jean) are recorded in this file.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+
+- **JeanZ is now Splitkick.** New name, icon, bundle identifier
+  (`app.splitkick.desktop`) and data folder
+  (`~/Library/Application Support/app.splitkick.desktop`), so Splitkick installs
+  and runs next to Jean. New worktrees go to `~/splitkick/<project>/`, the MCP
+  server is named `splitkick`, Web Access defaults to port 3460, and the
+  project config file is `splitkick.json` (an existing `jean.json` is still
+  read). Updates come from the Splitkick repository, signed with a new key.
 
 ## [0.1.73-z.26] - 2026-10-15
 

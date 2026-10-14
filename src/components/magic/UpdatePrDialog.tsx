@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useEffect, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import {
@@ -256,8 +257,9 @@ export function UpdatePrDialog() {
               }}
             />
             <p className="text-xs text-muted-foreground">
-              Jean starts a yolo session that generates user-facing release
-              notes for this PR and updates its description automatically.
+              {PRODUCT_NAME} starts a yolo session that generates user-facing
+              release notes for this PR and updates its description
+              automatically.
             </p>
           </div>
 

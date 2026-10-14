@@ -79,9 +79,7 @@ describe('ToolCallInline', () => {
     )
     expect(command.closest('.tool-call-row')).toHaveClass('select-none')
     expect(
-      screen.queryByText(
-        '$ php artisan test --compact tests/Unit/DockerStopCo'
-      )
+      screen.queryByText('$ php artisan test --compact tests/Unit/DockerStopCo')
     ).not.toBeInTheDocument()
 
     fireEvent.click(command)
@@ -107,9 +105,7 @@ describe('ToolCallInline', () => {
     fireEvent.click(screen.getByRole('button', { name: /open example\.ts/i }))
 
     expect(onFileClick).toHaveBeenCalledWith('/tmp/example.ts')
-    expect(
-      screen.queryByText('Path: /tmp/example.ts')
-    ).not.toBeInTheDocument()
+    expect(screen.queryByText('Path: /tmp/example.ts')).not.toBeInTheDocument()
   })
 
   it('renders Cursor EnterPlanMode instructions', () => {
@@ -209,7 +205,9 @@ describe('ToolCallInline', () => {
 
     clickExpandTrigger()
 
-    expect(screen.getByText(/The request can fail silently/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/The request can fail silently/)
+    ).toBeInTheDocument()
     expect(screen.getByText(/The failure path has no test/)).toBeInTheDocument()
   })
 
@@ -408,7 +406,10 @@ describe('ToolCallInline', () => {
     ],
     [
       'write_to_file',
-      { TargetFile: '/Users/example/project/src/new.ts', CodeContent: 'export {}' },
+      {
+        TargetFile: '/Users/example/project/src/new.ts',
+        CodeContent: 'export {}',
+      },
       'Write',
       'new.ts',
     ],
@@ -440,19 +441,30 @@ describe('ToolCallInline', () => {
       'List',
       '/Users/example/project/src',
     ],
-    ['search_web', { Query: 'Antigravity CLI docs' }, 'Web Search', 'Antigravity CLI docs'],
-    ['read_url_content', { Url: 'https://antigravity.google' }, 'Web Fetch', 'https://antigravity.google'],
-  ])('renders Antigravity %s with the common renderer', (name, input, label, detail) => {
-    render(
-      <ToolCallInline
-        toolCall={{ id: `antigravity-${name}`, name, input }}
-      />
-    )
+    [
+      'search_web',
+      { Query: 'Antigravity CLI docs' },
+      'Web Search',
+      'Antigravity CLI docs',
+    ],
+    [
+      'read_url_content',
+      { Url: 'https://antigravity.google' },
+      'Web Fetch',
+      'https://antigravity.google',
+    ],
+  ])(
+    'renders Antigravity %s with the common renderer',
+    (name, input, label, detail) => {
+      render(
+        <ToolCallInline toolCall={{ id: `antigravity-${name}`, name, input }} />
+      )
 
-    expect(screen.getByText(label)).toBeInTheDocument()
-    expect(screen.getByText(detail)).toBeInTheDocument()
-    expect(screen.queryByText(/unhandled tool/i)).not.toBeInTheDocument()
-  })
+      expect(screen.getByText(label)).toBeInTheDocument()
+      expect(screen.getByText(detail)).toBeInTheDocument()
+      expect(screen.queryByText(/unhandled tool/i)).not.toBeInTheDocument()
+    }
+  )
 
   it.each([
     'browser_click',
@@ -698,19 +710,19 @@ describe('normalizeToolCallForDisplay', () => {
         id: 'jean-ctx',
         tool_name: 'jean_get_current_context',
         tool_input: {},
-        label: 'Jean: Get Current Context',
+        label: 'Splitkick: Get Current Context',
       },
       {
         id: 'jean-projects',
         tool_name: 'jean_list_projects',
         tool_input: {},
-        label: 'Jean: List Projects',
+        label: 'Splitkick: List Projects',
       },
       {
         id: 'jean-worktrees',
         tool_name: 'jean_list_worktrees',
         tool_input: { projectId: 'b11f5add-ad7a-487c-b236-356ca6b4f18e' },
-        label: 'Jean: List Worktrees',
+        label: 'Splitkick: List Worktrees',
         detail: 'project b11f5add',
       },
       {
@@ -721,7 +733,7 @@ describe('normalizeToolCallForDisplay', () => {
           name: 'pg-moderation-verify',
           worktreeId: '77a6074b-8035-4bdc-a477-06653f5af4d8',
         },
-        label: 'Jean: Create Session',
+        label: 'Splitkick: Create Session',
         detail: 'codex · pg-moderation-verify',
       },
     ]
@@ -756,6 +768,11 @@ describe('normalizeToolCallForDisplay', () => {
       'mcp__jean__create_session',
       'mcp__jean-dev__get_current_context',
       'jean_list_sessions',
+      'mcp:splitkick:list_worktrees',
+      'mcp__splitkick__create_session',
+      'mcp__splitkick-dev__get_current_context',
+      'mcp__splitkick-dialog__permission_prompt',
+      'splitkick_list_sessions',
     ]
 
     for (const name of names) {
@@ -769,7 +786,7 @@ describe('normalizeToolCallForDisplay', () => {
         />
       )
 
-      expect(screen.getByText(/^Jean:/)).toBeInTheDocument()
+      expect(screen.getByText(/^Splitkick:/)).toBeInTheDocument()
       expect(screen.queryByText(/unhandled tool/i)).not.toBeInTheDocument()
       unmount()
     }
@@ -809,6 +826,24 @@ describe('Jean MCP tool helpers', () => {
     expect(
       extractJeanMcpBareToolName('mcp__jean-dev__get_current_context')
     ).toBe('get_current_context')
+    expect(extractJeanMcpBareToolName('splitkick_get_current_context')).toBe(
+      'get_current_context'
+    )
+    expect(extractJeanMcpBareToolName('splitkick-dev_list_projects')).toBe(
+      'list_projects'
+    )
+    expect(extractJeanMcpBareToolName('mcp:splitkick:list_worktrees')).toBe(
+      'list_worktrees'
+    )
+    expect(extractJeanMcpBareToolName('mcp__splitkick__create_session')).toBe(
+      'create_session'
+    )
+    expect(
+      extractJeanMcpBareToolName('mcp__splitkick-dev__get_current_context')
+    ).toBe('get_current_context')
+    expect(
+      extractJeanMcpBareToolName('mcp__splitkick-dialog__permission_prompt')
+    ).toBe('permission_prompt')
     expect(extractJeanMcpBareToolName('get_current_context')).toBeNull()
     expect(extractJeanMcpBareToolName('Bash')).toBeNull()
     expect(extractJeanMcpBareToolName('mcp__github__search')).toBeNull()
@@ -816,12 +851,16 @@ describe('Jean MCP tool helpers', () => {
 
   it('formats friendly Jean labels', () => {
     expect(formatJeanMcpToolLabel('jean_get_current_context')).toBe(
-      'Jean: Get Current Context'
+      'Splitkick: Get Current Context'
     )
     expect(formatJeanMcpToolLabel('mcp:jean:create_session')).toBe(
-      'Jean: Create Session'
+      'Splitkick: Create Session'
+    )
+    expect(formatJeanMcpToolLabel('mcp__splitkick__create_session')).toBe(
+      'Splitkick: Create Session'
     )
     expect(isJeanMcpToolName('jean_list_projects')).toBe(true)
+    expect(isJeanMcpToolName('splitkick_list_projects')).toBe(true)
     expect(isJeanMcpToolName('Read')).toBe(false)
   })
 
@@ -909,7 +948,7 @@ describe('StackedGroup', () => {
       />
     )
 
-    expect(screen.getByText('1 Jean: List Projects')).toBeInTheDocument()
+    expect(screen.getByText('1 Splitkick: List Projects')).toBeInTheDocument()
     expect(screen.queryByText('1 use_tool')).not.toBeInTheDocument()
   })
 })

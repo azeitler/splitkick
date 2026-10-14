@@ -42,6 +42,7 @@ export const projectCommands: AppCommand[] = [
       'configure',
       'mcp',
       'branch',
+      'splitkick.json',
       'jean.json',
     ],
 

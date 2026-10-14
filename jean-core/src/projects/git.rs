@@ -2132,29 +2132,46 @@ pub fn generate_pr_context(repo_path: &str, target_branch: &str) -> Result<PrCon
     })
 }
 
-/// Read jean.json configuration from a worktree path
+/// File name of the project config in `dir`: `splitkick.json`, or upstream's
+/// `jean.json` when only that one exists (a repository shared with Jean
+/// users). A new config is created as `splitkick.json`.
+pub fn project_config_file_name(dir: &str) -> &'static str {
+    let dir = Path::new(dir);
+    if !dir.join(crate::brand::PROJECT_CONFIG_FILE).exists()
+        && dir.join(crate::brand::LEGACY_PROJECT_CONFIG_FILE).exists()
+    {
+        crate::brand::LEGACY_PROJECT_CONFIG_FILE
+    } else {
+        crate::brand::PROJECT_CONFIG_FILE
+    }
+}
+
+/// Read the project config (`splitkick.json`, or `jean.json`) from a worktree path
 ///
 /// Returns None if the file doesn't exist or can't be parsed
 pub fn read_jean_config(worktree_path: &str) -> Option<JeanConfig> {
-    let config_path = Path::new(worktree_path).join("jean.json");
+    let config_path = Path::new(worktree_path).join(project_config_file_name(worktree_path));
     if !config_path.exists() {
-        log::trace!("No jean.json found at {}", config_path.display());
+        log::trace!("No project config found at {}", config_path.display());
         return None;
     }
 
     match std::fs::read_to_string(&config_path) {
         Ok(content) => match serde_json::from_str(&content) {
             Ok(config) => {
-                log::trace!("Successfully parsed jean.json from {worktree_path}");
+                log::trace!(
+                    "Successfully parsed project config {}",
+                    config_path.display()
+                );
                 Some(config)
             }
             Err(e) => {
-                log::warn!("Failed to parse jean.json: {e}");
+                log::warn!("Failed to parse {}: {e}", config_path.display());
                 None
             }
         },
         Err(e) => {
-            log::warn!("Failed to read jean.json: {e}");
+            log::warn!("Failed to read {}: {e}", config_path.display());
             None
         }
     }
@@ -2224,7 +2241,7 @@ fn jean_json_is_dirty(repo_path: &str) -> bool {
             "--porcelain",
             "--untracked-files=normal",
             "--",
-            "jean.json",
+            project_config_file_name(repo_path),
         ])
         .output();
     match output {
@@ -2238,7 +2255,13 @@ fn jean_json_is_dirty(repo_path: &str) -> bool {
 
 fn jean_json_committed_at(repo_path: &str) -> Option<u64> {
     let output = wsl_aware_command("git", Some(Path::new(repo_path)))
-        .args(["log", "-1", "--format=%ct", "--", "jean.json"])
+        .args([
+            "log",
+            "-1",
+            "--format=%ct",
+            "--",
+            project_config_file_name(repo_path),
+        ])
         .output()
         .ok()?;
     if !output.status.success() {
@@ -3452,6 +3475,22 @@ mod tests {
 #[cfg(test)]
 mod jean_config_resolve_tests {
     use super::*;
+
+    #[test]
+    fn splitkick_json_wins_and_jean_json_is_the_fallback() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().to_str().unwrap();
+        assert_eq!(project_config_file_name(path), "splitkick.json");
+        std::fs::write(
+            dir.path().join("jean.json"),
+            "{\"scripts\":{\"run\":\"old\"}}",
+        )
+        .unwrap();
+        assert_eq!(project_config_file_name(path), "jean.json");
+        assert!(read_jean_config(path).is_some());
+        std::fs::write(dir.path().join("splitkick.json"), "{\"scripts\":{}}").unwrap();
+        assert_eq!(project_config_file_name(path), "splitkick.json");
+    }
 
     fn write_jean_run(dir: &std::path::Path, run: &str) {
         std::fs::write(

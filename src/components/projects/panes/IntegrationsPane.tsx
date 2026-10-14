@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import React, { useCallback, useEffect, useState } from 'react'
 import { Loader2, RefreshCw, RotateCcw } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -135,8 +136,7 @@ export function IntegrationsPane({ projectId }: { projectId: string }) {
   const selectedSentryProjectId =
     sentryProjects.find(
       sentryProject =>
-        sentryProject.organization.slug ===
-          project?.sentry_organization_slug &&
+        sentryProject.organization.slug === project?.sentry_organization_slug &&
         sentryProject.slug === project?.sentry_project_slug
     )?.id ?? ''
 
@@ -378,7 +378,7 @@ export function IntegrationsPane({ projectId }: { projectId: string }) {
 
         <InlineField
           label="Sentry Project"
-          description="Choose which accessible Sentry project belongs to this Jean project. The token itself is account-scoped, not project-scoped."
+          description={`Choose which accessible Sentry project belongs to this ${PRODUCT_NAME} project. The token itself is account-scoped, not project-scoped.`}
         >
           {hasSentryAccess ? (
             <>

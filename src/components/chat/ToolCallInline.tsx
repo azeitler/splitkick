@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { usePreferences } from '@/services/preferences'
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useChatStore } from '@/store/chat-store'
 import { useVisibilityAwareTicker } from '@/hooks/useVisibilityAwareTicker'
 import {
@@ -89,9 +90,18 @@ function firstStringField(
 }
 
 /**
+ * MCP server names of this app: `splitkick`, `splitkick-dev`, `splitkick-dialog`,
+ * and the `jean*` names still found in imported history.
+ */
+function isAppMcpServer(server: string): boolean {
+  return server.startsWith('splitkick') || server.startsWith('jean')
+}
+
+/**
  * Strip MCP / client prefixes from a Jean tool name and return the bare registry name.
  * Handles: jean_get_current_context, jean-dev_list_projects, mcp:jean:list_worktrees,
- * mcp__jean__create_session, mcp__jean-dev__get_current_context.
+ * mcp__jean__create_session, mcp__jean-dev__get_current_context, and the same
+ * forms with `splitkick` in place of `jean`.
  */
 export function extractJeanMcpBareToolName(name: string): string | null {
   const trimmed = name.trim()
@@ -104,12 +114,7 @@ export function extractJeanMcpBareToolName(name: string): string | null {
     if (serverSep > 0) {
       const server = rest.slice(0, serverSep)
       const tool = rest.slice(serverSep + 2)
-      if (
-        (server === 'jean' ||
-          server === 'jean-dev' ||
-          server.startsWith('jean')) &&
-        tool
-      ) {
+      if (isAppMcpServer(server) && tool) {
         return tool
       }
     }
@@ -122,12 +127,7 @@ export function extractJeanMcpBareToolName(name: string): string | null {
     if (parts.length >= 3) {
       const server = parts[1] ?? ''
       const tool = parts.slice(2).join(':')
-      if (
-        (server === 'jean' ||
-          server === 'jean-dev' ||
-          server.startsWith('jean')) &&
-        tool
-      ) {
+      if (isAppMcpServer(server) && tool) {
         return tool
       }
     }
@@ -135,7 +135,7 @@ export function extractJeanMcpBareToolName(name: string): string | null {
   }
 
   // Client-side prefix: jean_get_current_context / jean-dev_list_projects
-  for (const prefix of ['jean-dev_', 'jean_']) {
+  for (const prefix of ['splitkick-dev_', 'splitkick_', 'jean-dev_', 'jean_']) {
     if (trimmed.startsWith(prefix)) {
       const bare = trimmed.slice(prefix.length)
       if (bare) return bare
@@ -195,7 +195,7 @@ function humanizeSnakeCase(name: string): string {
 /** Friendly label for a Jean MCP tool call. */
 export function formatJeanMcpToolLabel(name: string): string {
   const bare = extractJeanMcpBareToolName(name) ?? name
-  return `Jean: ${humanizeSnakeCase(bare)}`
+  return `${PRODUCT_NAME}: ${humanizeSnakeCase(bare)}`
 }
 
 /** Detail line for Jean MCP tools from common argument fields. */
@@ -1423,7 +1423,9 @@ function getToolDisplay(toolCall: ToolCall): ToolDisplay {
         label: 'Report Findings',
         detail: `${count} finding${count === 1 ? '' : 's'}`,
         expandedContent:
-          count > 0 ? JSON.stringify(findings, null, 2) : 'No findings reported',
+          count > 0
+            ? JSON.stringify(findings, null, 2)
+            : 'No findings reported',
       }
     }
 

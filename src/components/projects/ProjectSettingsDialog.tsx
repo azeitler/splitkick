@@ -52,7 +52,7 @@ const navigationItems = [
   { id: 'integrations' as const, name: 'Integrations', icon: Cable },
   { id: 'auto-fix' as const, name: 'Mr. Robot', icon: Bot },
   { id: 'mcp-servers' as const, name: 'MCP Servers', icon: Plug },
-  { id: 'jean-json' as const, name: 'Jean.json', icon: FileJson },
+  { id: 'jean-json' as const, name: 'splitkick.json', icon: FileJson },
 ]
 
 const getPaneTitle = (pane: ProjectSettingsPane): string => {
@@ -66,7 +66,7 @@ const getPaneTitle = (pane: ProjectSettingsPane): string => {
     case 'mcp-servers':
       return 'MCP Servers'
     case 'jean-json':
-      return 'Jean.json'
+      return 'splitkick.json'
   }
 }
 

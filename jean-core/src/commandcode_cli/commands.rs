@@ -600,7 +600,7 @@ fn load_commandcode_versions_cache(app: &AppHandle) -> Option<Vec<CommandCodeRel
 
 async fn fetch_commandcode_versions_from_npm() -> Result<Vec<CommandCodeReleaseInfo>, String> {
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .build()
         .map_err(|e| format!("Failed to create npm registry client: {e}"))?;
     let response = client
@@ -650,7 +650,7 @@ pub async fn check_commandcode_cli_version_exists(
     }
 
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .build()
         .map_err(|e| format!("Failed to create npm registry client: {e}"))?;
     let response = client
@@ -694,7 +694,7 @@ pub async fn get_commandcode_install_command(
             cli_dir.to_string_lossy().to_string(),
             commandcode_package(None),
         ],
-        description: "Install the latest Command Code into Jean's managed app-data directory"
+        description: "Install the latest Command Code into Splitkick's managed app-data directory"
             .to_string(),
     })
 }

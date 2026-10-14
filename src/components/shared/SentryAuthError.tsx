@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { KeyRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/store/ui-store'
@@ -22,8 +23,8 @@ export function SentryAuthError({
           Sentry access is not configured
         </p>
         <p className="text-xs text-muted-foreground">
-          Add and test an auth token, then map this Jean project to one of the
-          accessible Sentry projects.
+          Add and test an auth token, then map this {PRODUCT_NAME} project to
+          one of the accessible Sentry projects.
         </p>
       </div>
       <Button

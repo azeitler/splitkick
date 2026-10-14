@@ -152,7 +152,7 @@ fn product_name(app: &AppHandle) -> String {
     app.config()
         .product_name
         .clone()
-        .unwrap_or_else(|| "Jean".to_string())
+        .unwrap_or_else(|| jean_core::brand::PRODUCT_NAME.to_string())
 }
 
 /// Open the window for a remote connection, or focus it when it already exists.

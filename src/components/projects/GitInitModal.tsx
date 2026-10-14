@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useState, useCallback, useEffect } from 'react'
 import { invoke } from '@/lib/transport'
 import { Loader2, GitBranch, FolderOpen, AlertCircle } from 'lucide-react'
@@ -197,7 +198,7 @@ export function GitInitModal() {
 
           {/* Description of what will happen */}
           <div className="space-y-2 text-sm text-muted-foreground">
-            <p>Jean will initialize git in this folder:</p>
+            <p>{PRODUCT_NAME} will initialize git in this folder:</p>
             <ul className="ml-2 list-inside list-disc space-y-1">
               <li>
                 Run <code className="rounded bg-muted px-1">git init</code>

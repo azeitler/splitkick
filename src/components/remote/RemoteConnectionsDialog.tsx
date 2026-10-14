@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import {
   Check,
@@ -394,7 +395,9 @@ export function RemoteConnectionsDialog({
   const handleInstallSubmit = async (event: FormEvent) => {
     event.preventDefault()
     if (!native) {
-      setError('Remote install is only available in the native Jean app.')
+      setError(
+        `Remote install is only available in the native ${PRODUCT_NAME} app.`
+      )
       return
     }
 
@@ -415,7 +418,9 @@ export function RemoteConnectionsDialog({
       jeanPort < 1 ||
       jeanPort > 65535
     ) {
-      setError('SSH and Jean ports must be integers between 1 and 65535.')
+      setError(
+        'SSH and Jean server ports must be integers between 1 and 65535.'
+      )
       return
     }
 
@@ -485,7 +490,7 @@ export function RemoteConnectionsDialog({
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
             <Button
-              aria-label="Jean connections"
+              aria-label="Server connections"
               variant="ghost"
               size="icon"
               className="relative h-6 w-6 rounded-none text-foreground/70 hover:text-foreground"
@@ -497,14 +502,14 @@ export function RemoteConnectionsDialog({
             </Button>
           </DialogTrigger>
         </TooltipTrigger>
-        <TooltipContent>Jean connections</TooltipContent>
+        <TooltipContent>Server connections</TooltipContent>
       </Tooltip>
       {/* Above RemoteConnectionRecovery (z-100) so Edit connection works while offline. */}
       <DialogContent className="sm:max-w-md z-[110]" overlayClassName="z-[110]">
         <DialogHeader>
-          <DialogTitle>Jean connections</DialogTitle>
+          <DialogTitle>Server connections</DialogTitle>
           <DialogDescription>
-            Connect this client to Local or a remote Jean Web Access server.
+            Connect this client to Local or a remote Web Access server.
           </DialogDescription>
         </DialogHeader>
 
@@ -591,7 +596,9 @@ export function RemoteConnectionsDialog({
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="remote-install-jean-port">Jean port</Label>
+                  <Label htmlFor="remote-install-jean-port">
+                    Jean server port
+                  </Label>
                   <Input
                     id="remote-install-jean-port"
                     type="number"
@@ -609,9 +616,10 @@ export function RemoteConnectionsDialog({
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                Requires SSH key auth to the host (no password prompt). Jean
-                installs via the official installer, checks health/ready/auth,
-                then adds the connection when everything is green.
+                Requires SSH key auth to the host (no password prompt).{' '}
+                {PRODUCT_NAME} installs the Jean server via the official
+                installer, checks health/ready/auth, then adds the connection
+                when everything is green.
               </p>
               {progress && (
                 <div className="flex items-start gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm">

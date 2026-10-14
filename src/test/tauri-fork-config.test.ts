@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 /**
- * Guards the JeanZ flavor overlay (src-tauri/tauri.fork.conf.json), which is
+ * Guards the Splitkick overlay (src-tauri/tauri.fork.conf.json), which is
  * applied through `tauri build -c`. Tauri merges configs by replacing arrays,
  * so the overlay has to repeat the whole window block - the same reason
  * tauri.windows.conf.json repeats it. This test fails if a field is dropped.
@@ -45,6 +45,7 @@ const base = readConfig('src-tauri/tauri.conf.json')
 const fork = readConfig('src-tauri/tauri.fork.conf.json')
 const resolved = mergeJsonConfig(base, fork) as {
   productName: string
+  mainBinaryName: string
   identifier: string
   app: { windows: Record<string, unknown>[] }
   bundle: {
@@ -55,22 +56,27 @@ const resolved = mergeJsonConfig(base, fork) as {
   plugins: { updater: { endpoints: string[]; pubkey: string } }
 }
 
-describe('JeanZ fork configuration', () => {
+describe('Splitkick configuration', () => {
   it('renames the app and gives it its own bundle identifier', () => {
-    expect(resolved.productName).toBe('JeanZ')
-    // A distinct identifier is deliberate. macOS keys a TCC grant by bundle
-    // identifier plus code signature, so two bundles claiming
-    // "com.jean.desktop" with different Developer IDs invalidate each other's
-    // grant and re-prompt forever. Data stays shared through
-    // jean_core::resolve_data_dir(), not through the identifier.
-    expect(resolved.identifier).toBe('com.jean.desktop.jeanz')
+    expect(resolved.productName).toBe('Splitkick')
+    expect(resolved.mainBinaryName).toBe('Splitkick')
+    // Own identifier and own data directory (jean_core::brand), so Splitkick
+    // installs and runs next to Jean.
+    expect(resolved.identifier).toBe('app.splitkick.desktop')
+    // The base config stays byte-identical to upstream.
     expect(base.identifier).toBe('com.jean.desktop')
     expect(base.productName).toBe('Jean')
   })
 
+  it('keeps the development build apart from the release build', () => {
+    const dev = readConfig('src-tauri/tauri.conf.dev.json')
+    expect(dev.identifier).toBe('app.splitkick.desktop.dev')
+    expect(dev.productName).toBe('Splitkick')
+  })
+
   it('preserves the complete main-window configuration', () => {
     expect(resolved.app.windows[0]).toMatchObject({
-      title: 'JeanZ',
+      title: 'Splitkick',
       width: 800,
       height: 600,
       minWidth: 1000,
@@ -106,17 +112,20 @@ describe('JeanZ fork configuration', () => {
     expect(resolved.bundle.macOS.providerShortName).toBeNull()
   })
 
-  it('points the updater at the fork so JeanZ cannot replace itself with upstream Jean', () => {
+  it('points the updater at Splitkick so it cannot replace itself with upstream Jean', () => {
     // Left unchanged, upstream's latest.json would verify against upstream's
-    // pubkey and silently install Jean over JeanZ. Both halves have to move
-    // together: the endpoint and the key.
-    // JeanZ ends with 0.1.73-z.26: a fixed asset that never offers a newer
-    // build, so a JeanZ install cannot update itself into Splitkick.
+    // pubkey and silently install Jean over Splitkick. Both halves have to
+    // move together: the endpoint and the key.
     expect(resolved.plugins.updater.endpoints).toEqual([
-      'https://github.com/azeitler/jean/releases/download/jeanz-final/latest.json',
+      'https://github.com/azeitler/splitkick/releases/latest/download/latest.json',
     ])
     expect(resolved.plugins.updater.pubkey).not.toBe(
       (base.plugins as { updater: { pubkey: string } }).updater.pubkey
+    )
+    // Nor the JeanZ key: a JeanZ install must never accept a Splitkick build
+    // (the in-place update would keep the JeanZ bundle path and data).
+    expect(atob(resolved.plugins.updater.pubkey)).not.toContain(
+      '47C8A67092AE7F7F'
     )
   })
 

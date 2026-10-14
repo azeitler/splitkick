@@ -1,13 +1,14 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "identifier": "com.jean.desktop.dev",
+  "productName": "Splitkick",
+  "identifier": "app.splitkick.desktop.dev",
   "build": {
     "beforeDevCommand": "bun run scripts/tauri-dev-before.mjs"
   },
   "app": {
     "windows": [
       {
-        "title": "Jean (Dev)",
+        "title": "Splitkick (Dev)",
         "width": 800,
         "height": 600,
         "minWidth": 1000,
@@ -33,9 +34,9 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/azeitler/jean/releases/download/jeanz-final/latest.json"
+        "https://github.com/azeitler/splitkick/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ3QzhBNjcwOTJBRTdGN0YKUldSL2Y2NlNjS2JJUnk0K0lZVmZvZGdydGYrNTRScEx3SUg0a2I5RlB2U1l2NGU4b3JhbXFxVW8K"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzMTM2MkMzMTJDQUFENzAKUldSd3Jjb1N3MklUMHh0amw2Q3F0QmhzUmFQVzV2OXhoQXV0S3pmb2RpTjJmdW9uYlUzN1oxYVIK"
     }
   }
 }

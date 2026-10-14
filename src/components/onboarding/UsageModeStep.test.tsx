@@ -7,7 +7,7 @@ describe('UsageModeStep', () => {
     const onSelect = vi.fn()
     render(<UsageModeStep onSelect={onSelect} />)
 
-    expect(screen.getByText('How will you use Jean?')).toBeInTheDocument()
+    expect(screen.getByText('How will you use Splitkick?')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Local/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Remote/i })).toBeInTheDocument()
 

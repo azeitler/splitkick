@@ -138,7 +138,7 @@ describe('remote version helpers', () => {
   it('shows a deduped toast warning on mismatch', () => {
     expect(warnRemoteVersionMismatch('9.9.9', '0.1.69')).toBe(true)
     expect(toastWarning).toHaveBeenCalledWith(
-      'Jean version mismatch',
+      'Server version mismatch',
       expect.objectContaining({
         description: expect.stringContaining('v9.9.9'),
       })

@@ -202,7 +202,7 @@ describe('transport bootstrap', () => {
 
     await waitFor(() =>
       expect(result.current).toBe(
-        "Jean could not reach the server's authentication endpoint. Check that the server is running and the URL and port are correct. If the address opens in a browser but not here, the server either needs an update and a restart so it allows desktop connections (CORS), or it sits behind an SSO login proxy such as Cloudflare Access, which the desktop app cannot sign in to."
+        "Splitkick could not reach the server's authentication endpoint. Check that the server is running and the URL and port are correct. If the address opens in a browser but not here, the server either needs an update and a restart so it allows desktop connections (CORS), or it sits behind an SSO login proxy such as Cloudflare Access, which the desktop app cannot sign in to."
       )
     )
     expect(result.current).not.toContain('secret')

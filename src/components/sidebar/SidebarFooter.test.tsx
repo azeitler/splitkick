@@ -72,18 +72,21 @@ describe('SidebarFooter', () => {
     window.removeEventListener('install-pending-update', install)
   })
 
-  it('keeps GitHub, Sponsor and the release notes in the more menu', async () => {
+  it('keeps GitHub, the website and the release notes in the more menu', async () => {
     const user = userEvent.setup()
     render(<SidebarFooter />)
 
     await user.click(screen.getByTestId('sidebar-more'))
-    await user.click(await screen.findByText('Sponsor Jean'))
+    await user.click(await screen.findByText('Website'))
+    expect(openExternal).toHaveBeenCalledWith('https://splitkick.app')
+
+    await user.click(screen.getByTestId('sidebar-more'))
+    await user.click(await screen.findByText('GitHub'))
     expect(openExternal).toHaveBeenCalledWith(
-      'https://jean.build/sponsorships/'
+      'https://github.com/azeitler/splitkick'
     )
 
     await user.click(screen.getByTestId('sidebar-more'))
-    expect(await screen.findByText('GitHub')).toBeInTheDocument()
     expect(screen.getByText('Release notes')).toBeInTheDocument()
     expect(await screen.findByText('v0.1.73')).toBeInTheDocument()
   })

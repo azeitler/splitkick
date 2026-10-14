@@ -148,7 +148,7 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
     }
 
     if source_preference == CommandCodeSourcePreference::ExplicitPath {
-        log::warn!("commandcode_cli_source is 'path' but Command Code was not found in PATH; falling back to Jean-managed binary");
+        log::warn!("commandcode_cli_source is 'path' but Command Code was not found in PATH; falling back to Splitkick-managed binary");
     }
 
     find_managed_commandcode_binary(app).unwrap_or_else(|| {

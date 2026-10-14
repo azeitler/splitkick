@@ -105,10 +105,10 @@ describe('JeanMcpIntroDialog', () => {
     renderDialog()
 
     expect(
-      screen.getByRole('dialog', { name: /new: jean mcp server/i })
+      screen.getByRole('dialog', { name: /new: splitkick mcp server/i })
     ).toBeInTheDocument()
     expect(
-      screen.getByRole('switch', { name: /enable jean mcp/i })
+      screen.getByRole('switch', { name: /enable splitkick mcp/i })
     ).toBeChecked()
   })
 
@@ -134,7 +134,9 @@ describe('JeanMcpIntroDialog', () => {
     const user = userEvent.setup()
     renderDialog()
 
-    await user.click(screen.getByRole('switch', { name: /enable jean mcp/i }))
+    await user.click(
+      screen.getByRole('switch', { name: /enable splitkick mcp/i })
+    )
 
     expect(mocks.patchPreferencesMutate).toHaveBeenCalledWith({
       jean_mcp_enabled: false,

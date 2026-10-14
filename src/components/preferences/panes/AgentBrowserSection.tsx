@@ -1,12 +1,7 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import React, { useCallback, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import {
-  CheckCircle,
-  Copy,
-  Globe,
-  Loader2,
-  XCircle,
-} from 'lucide-react'
+import { CheckCircle, Copy, Globe, Loader2, XCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
@@ -91,9 +86,7 @@ export const AgentBrowserSection: React.FC = () => {
     setBinaryInstallMessage(
       'Installing agent-browser (npm) and Chromium — this may take a few minutes…'
     )
-    const toastId = toast.loading(
-      'Installing agent-browser and Chromium…'
-    )
+    const toastId = toast.loading('Installing agent-browser and Chromium…')
     try {
       const next = await invoke<AgentBrowserStatus>('install_agent_browser')
       queryClient.setQueryData(['agentBrowserStatus'], next)
@@ -166,9 +159,9 @@ export const AgentBrowserSection: React.FC = () => {
       anchorId="pref-mcp-section-agent-browser"
     >
       <p className="text-sm text-muted-foreground">
-        Give coding agents a real Chromium browser with a Jean-managed login
-        profile (Vercel agent-browser). Log in manually once; sessions reuse
-        cookies. Works on jean-server and desktop.
+        Give coding agents a real Chromium browser with a {PRODUCT_NAME}-managed
+        login profile (Vercel agent-browser). Log in manually once; sessions
+        reuse cookies. Works on jean-server and desktop.
       </p>
 
       <div className="space-y-3 rounded-md border px-4 py-3">
@@ -185,7 +178,7 @@ export const AgentBrowserSection: React.FC = () => {
                   <CheckCircle className="size-3.5" />
                   agent-browser
                   {status.version ? ` ${status.version}` : ''} installed
-                  {status.managedInstall ? ' (Jean-managed)' : ''}
+                  {status.managedInstall ? ` (${PRODUCT_NAME}-managed)` : ''}
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5 text-amber-600 dark:text-amber-400">
@@ -209,7 +202,9 @@ export const AgentBrowserSection: React.FC = () => {
                 </div>
                 {status.binaryPath && (
                   <div className="break-all">
-                    <span className="font-medium text-foreground">Binary: </span>
+                    <span className="font-medium text-foreground">
+                      Binary:{' '}
+                    </span>
                     {status.binaryPath}
                   </div>
                 )}
@@ -324,14 +319,16 @@ export const AgentBrowserSection: React.FC = () => {
           <ol className="list-decimal space-y-0.5 pl-4">
             <li>
               Click <strong>Install agent-browser</strong> (npm package +
-              Chromium into Jean app data). Requires <code>npm</code> on PATH.
+              Chromium into {PRODUCT_NAME} app data). Requires <code>npm</code>{' '}
+              on PATH.
             </li>
             <li>Click Install MCP into backends (or paste a snippet).</li>
             <li>
               First login: run headed (or under VNC) and sign in manually.
             </li>
             <li>
-              In chat, ask the agent to use the browser; it reuses the Jean
+              In chat, ask the agent to use the browser; it reuses the{' '}
+              {PRODUCT_NAME}
               profile.
             </li>
           </ol>

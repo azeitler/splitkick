@@ -455,7 +455,7 @@ describe('MobileTabShell', () => {
       await openSettings()
       expect(screen.getByText('Version')).toBeInTheDocument()
       expect(screen.getByText('GitHub')).toBeInTheDocument()
-      expect(screen.getByText('Sponsor')).toBeInTheDocument()
+      expect(screen.getByText('Website')).toBeInTheDocument()
     })
   })
 })

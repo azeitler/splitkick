@@ -18,9 +18,9 @@ const DEFAULT_MAX_TURNS: &str = "30";
 const JEAN_PLAN_OPEN: &str = "<jean-plan>";
 const JEAN_PLAN_CLOSE: &str = "</jean-plan>";
 const COMMANDCODE_PLAN_CONTRACT: &str = r#"<commandcode_plan_contract>
-Jean runs Command Code headlessly, so native interactive plan-exit callbacks are unavailable.
+Splitkick runs Command Code headlessly, so native interactive plan-exit callbacks are unavailable.
 - For normal answers, questions, greetings, and analysis that is not ready for implementation approval: respond normally.
-- When you have a concrete implementation plan that should pause for Jean's Approve/YOLO controls: wrap only that plan in <jean-plan>...</jean-plan>.
+- When you have a concrete implementation plan that should pause for Splitkick's Approve/YOLO controls: wrap only that plan in <jean-plan>...</jean-plan>.
 - Do not call exit_plan_mode in this headless integration.
 </commandcode_plan_contract>"#;
 

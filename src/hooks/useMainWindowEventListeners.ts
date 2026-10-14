@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { listen, listenMenu, invoke } from '@/lib/transport'
 import { isNativeApp, hasBackend } from '@/lib/environment'
 import { notify } from '@/lib/notifications'
-import { PRODUCT_NAME } from '@/lib/build-info'
+import { PRODUCT_NAME, UPSTREAM_BASE_VERSION } from '@/lib/build-info'
 import { useQueryClient, type QueryClient } from '@tanstack/react-query'
 import { useUIStore } from '@/store/ui-store'
 import { useProjectsStore } from '@/store/projects-store'
@@ -586,7 +586,7 @@ function executeKeybindingAction(
         const firstScript = runScripts?.[0]
         if (!firstScript) {
           const projectId = useProjectsStore.getState().selectedProjectId
-          toast.error('No run script configured in jean.json', {
+          toast.error('No run script configured in splitkick.json', {
             action: projectId
               ? {
                   label: 'Configure',
@@ -1173,7 +1173,7 @@ export function useMainWindowEventListeners() {
           // Show simple about dialog with dynamic version
           const appVersion = await getVersion()
           await message(
-            `${PRODUCT_NAME}\n\nVersion: ${appVersion}\n\nBuilt with Tauri v2 + React + TypeScript`,
+            `${PRODUCT_NAME}\n\nVersion: ${appVersion}\nBuilt on Jean ${UPSTREAM_BASE_VERSION}\n\nBuilt with Tauri v2 + React + TypeScript`,
             { title: `About ${PRODUCT_NAME}`, kind: 'info' }
           )
         }),

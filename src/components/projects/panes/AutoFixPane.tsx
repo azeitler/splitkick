@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -376,10 +377,7 @@ function AutoFixProviderSelect({
       }
       disabled={disabled}
     >
-      <SelectTrigger
-        aria-label={`Choose ${label} provider`}
-        className="w-full"
-      >
+      <SelectTrigger aria-label={`Choose ${label} provider`} className="w-full">
         <SelectValue placeholder="Anthropic" />
       </SelectTrigger>
       <SelectContent>
@@ -440,8 +438,7 @@ function AutoFixBackendModelPicker({
   const handleBackendModelChange = useCallback(
     (nextBackend: CliBackend, nextModel: string) => {
       // Switching backends drops Claude-only custom providers.
-      const nextProvider =
-        nextBackend === 'claude' ? selectedProvider : null
+      const nextProvider = nextBackend === 'claude' ? selectedProvider : null
       onChange(
         nextBackend,
         nextModel === BACKEND_DEFAULT_MODEL_VALUE ? null : nextModel,
@@ -603,8 +600,9 @@ export function AutoFixPane({ projectId }: { projectId: string }) {
               Mr. Robot issue sweeps
             </Label>
             <p className="mt-1 text-xs text-muted-foreground">
-              Poll open GitHub issues, create one Jean worktree per issue, and
-              draft a focused plan. Optionally let Mr. Robot yolo the plan too.
+              Poll open GitHub issues, create one {PRODUCT_NAME} worktree per
+              issue, and draft a focused plan. Optionally let Mr. Robot yolo the
+              plan too.
             </p>
           </div>
           <Switch
@@ -809,9 +807,7 @@ export function AutoFixPane({ projectId }: { projectId: string }) {
                     planning_backend,
                     planning_model,
                     planning_provider:
-                      planning_backend === 'claude'
-                        ? planning_provider
-                        : null,
+                      planning_backend === 'claude' ? planning_provider : null,
                   }))
                 }
               />

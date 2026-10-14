@@ -198,17 +198,17 @@ describe('GeneralPane settings structure', () => {
     )
 
     expect(source).toContain(
-      "import { CLIENT_BUILD_INFO } from '@/lib/build-info'"
+      "import { CLIENT_BUILD_INFO, PRODUCT_NAME } from '@/lib/build-info'"
     )
     expect(versionSectionIndex).toBeGreaterThan(-1)
     expect(source.slice(versionSectionIndex, generalSettingsEnd)).toContain(
       'CLIENT_BUILD_INFO.appVersion'
     )
     expect(source.slice(versionSectionIndex, generalSettingsEnd)).toContain(
-      "label={activeRemoteConnection ? 'Jean Client' : 'Jean'}"
+      '? `${PRODUCT_NAME} Client`'
     )
     expect(source.slice(versionSectionIndex, generalSettingsEnd)).toContain(
-      'label="Jean Server"'
+      'label="Server"'
     )
     expect(source.slice(versionSectionIndex, generalSettingsEnd)).toContain(
       'remoteServerVersion'
@@ -223,7 +223,7 @@ describe('GeneralPane settings structure', () => {
       'openExternal('
     )
     expect(source.slice(versionSectionIndex, generalSettingsEnd)).toContain(
-      '`https://github.com/coollabsio/jean/commit/${CLIENT_BUILD_INFO.gitSha}`'
+      '`${REPO_URL}/commit/${CLIENT_BUILD_INFO.gitSha}`'
     )
     expect(source.slice(versionSectionIndex, generalSettingsEnd)).toContain(
       'CLIENT_BUILD_INFO.builtAt'

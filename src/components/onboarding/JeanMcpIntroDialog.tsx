@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Loader2 } from 'lucide-react'
@@ -119,16 +120,16 @@ function JeanMcpIntroDialogContent() {
 
       if (failures.length > 0) {
         toast.warning(
-          `Jean MCP added to ${successes.length}/${results.length} CLI config${
+          `${PRODUCT_NAME} MCP added to ${successes.length}/${results.length} CLI config${
             results.length === 1 ? '' : 's'
           }`
         )
       } else {
-        toast.success('Jean MCP added to your CLI configs')
+        toast.success(`${PRODUCT_NAME} MCP added to your CLI configs`)
       }
     } catch (error) {
-      console.error('Failed to add Jean MCP config', error)
-      toast.error('Failed to add Jean MCP automatically')
+      console.error(`Failed to add ${PRODUCT_NAME} MCP config`, error)
+      toast.error(`Failed to add ${PRODUCT_NAME} MCP automatically`)
     } finally {
       setInstalling(false)
     }
@@ -149,11 +150,12 @@ function JeanMcpIntroDialogContent() {
     >
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>New: Jean MCP Server</DialogTitle>
+          <DialogTitle>New: {PRODUCT_NAME} MCP Server</DialogTitle>
           <DialogDescription>
-            Jean can expose its own tools to your local AI CLIs through MCP, so
-            they can call back into Jean to create worktrees, inspect project
-            context, and start background investigations.
+            {PRODUCT_NAME} can expose its own tools to your local AI CLIs
+            through MCP, so they can call back into {PRODUCT_NAME} to create
+            worktrees, inspect project context, and start background
+            investigations.
           </DialogDescription>
         </DialogHeader>
 
@@ -169,7 +171,7 @@ function JeanMcpIntroDialogContent() {
                 htmlFor="jean-mcp-intro-enabled"
                 className="cursor-pointer"
               >
-                Enable Jean MCP server
+                Enable {PRODUCT_NAME} MCP server
               </Label>
               <p className="text-xs text-muted-foreground">
                 You can disable this now or later in Settings → MCP Servers.
@@ -178,8 +180,8 @@ function JeanMcpIntroDialogContent() {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            Jean will not change your CLI configs unless you choose automatic
-            setup. Manual setup snippets are available in Settings.
+            {PRODUCT_NAME} will not change your CLI configs unless you choose
+            automatic setup. Manual setup snippets are available in Settings.
           </p>
         </div>
 

@@ -25,40 +25,21 @@ use crate::http_server::EmitExt;
 
 const MANIFEST_URL: &str =
     "https://github.com/coollabsio/jean/releases/latest/download/server-latest.json";
-const DESKTOP_MANIFEST_URL: &str =
-    "https://github.com/coollabsio/jean/releases/latest/download/latest.json";
-/// The JeanZ build flavor publishes its own releases, and its native updater
-/// reads this feed (`src-tauri/tauri.fork.conf.json`). JeanZ ends with
-/// 0.1.73-z.26: the feed is a fixed release asset that never offers a newer
-/// build, so no JeanZ install can update itself into Splitkick (a different
-/// app, signed with a different key). The Web Access check
-/// must read the same one: against upstream's feed it offered upstream builds
-/// JeanZ cannot install — they are signed with a different key.
-const DESKTOP_MANIFEST_URL_JEANZ: &str =
-    "https://github.com/azeitler/jean/releases/download/jeanz-final/latest.json";
-
 /// The feed the desktop shell's native updater reads (`plugins.updater` in
 /// its Tauri config). Set once at startup; see [`set_desktop_release_feed`].
 static DESKTOP_RELEASE_FEED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 
 /// Record the release feed of the running desktop build, so the Web Access
 /// check reads the same feed as the native updater. Safe to call more than
-/// once; the first value wins. The development build sets the fork's feed in
-/// `src-tauri/tauri.conf.dev.json` even though it is named "Jean".
+/// once; the first value wins.
 pub fn set_desktop_release_feed(url: impl Into<String>) {
     let _ = DESKTOP_RELEASE_FEED.set(url.into());
 }
 
 /// The desktop release feed: the one the native updater reads when the shell
-/// reported it, otherwise the feed of this build flavor.
-fn desktop_manifest_url<'a>(product_name: Option<&str>, configured: Option<&'a str>) -> &'a str {
-    if let Some(url) = configured {
-        return url;
-    }
-    match product_name {
-        Some(crate::PRODUCT_NAME_JEANZ) => DESKTOP_MANIFEST_URL_JEANZ,
-        _ => DESKTOP_MANIFEST_URL,
-    }
+/// reported it, otherwise Splitkick's.
+fn desktop_manifest_url(configured: Option<&str>) -> &str {
+    configured.unwrap_or(crate::brand::DESKTOP_MANIFEST_URL)
 }
 const USER_AGENT: &str = "jean-server-updater";
 const RESTART_GRACE: Duration = Duration::from_secs(1);
@@ -200,11 +181,11 @@ struct DesktopUpdateManifest {
 /// Headless hosts use `server-latest.json`. Desktop hosts (Web Access on the
 /// native app, including macOS/Windows) use desktop `latest.json` so web
 /// clients can show the same update badge/modal as the native shell.
-pub async fn check_server_update(app: &AppHandle) -> Result<ServerUpdateStatus, String> {
+pub async fn check_server_update(_app: &AppHandle) -> Result<ServerUpdateStatus, String> {
     if is_headless_host() {
         check_headless_server_update().await
     } else {
-        check_desktop_host_update(app.product_name()).await
+        check_desktop_host_update().await
     }
 }
 
@@ -255,14 +236,11 @@ async fn check_headless_server_update() -> Result<ServerUpdateStatus, String> {
     })
 }
 
-async fn check_desktop_host_update(
-    product_name: Option<&str>,
-) -> Result<ServerUpdateStatus, String> {
-    // The released version, as the native updater sees it — a JeanZ build's
-    // `-z.N` suffix is not in the Cargo version.
+async fn check_desktop_host_update() -> Result<ServerUpdateStatus, String> {
+    // The released version, as the native updater sees it — the Splitkick
+    // version is not in the Cargo version.
     let current_version = crate::release_version().to_string();
     let manifest = fetch_desktop_manifest(desktop_manifest_url(
-        product_name,
         DESKTOP_RELEASE_FEED.get().map(String::as_str),
     ))
     .await?;
@@ -283,7 +261,7 @@ async fn check_desktop_host_update(
         // Install is performed by the native shell via host:install-desktop-update.
         can_update: available,
         reason: if available {
-            Some("Install runs on the host Jean desktop app (native updater)".to_string())
+            Some("Install runs on the host Splitkick desktop app (native updater)".to_string())
         } else {
             None
         },
@@ -372,7 +350,7 @@ async fn apply_desktop_host_update(app: AppHandle) -> Result<ServerUpdateApplyRe
     let running = crate::chat::registry::get_running_sessions();
     if !running.is_empty() {
         return Err(format!(
-            "Cannot update the host Jean while {} session{} running on it. Stop them first.",
+            "Cannot update the host Splitkick while {} session{} running on it. Stop them first.",
             running.len(),
             if running.len() == 1 { " is" } else { "s are" }
         ));
@@ -398,7 +376,7 @@ async fn apply_desktop_host_update(app: AppHandle) -> Result<ServerUpdateApplyRe
         });
     }
 
-    let status = check_desktop_host_update(app.product_name()).await?;
+    let status = check_desktop_host_update().await?;
     let latest = status
         .latest_version
         .clone()
@@ -959,34 +937,21 @@ mod tests {
     }
 
     #[test]
-    fn jeanz_reads_its_own_release_feed() {
-        // Against upstream's feed, a JeanZ host offered upstream 1.0.0 to
-        // Web Access clients: a build it cannot install, signed with a
-        // different key.
+    fn the_native_updater_feed_wins_over_the_default() {
         assert_eq!(
-            desktop_manifest_url(Some(crate::PRODUCT_NAME_JEANZ), None),
-            DESKTOP_MANIFEST_URL_JEANZ
+            desktop_manifest_url(None),
+            crate::brand::DESKTOP_MANIFEST_URL
         );
         assert_eq!(
-            desktop_manifest_url(Some("Jean"), None),
-            DESKTOP_MANIFEST_URL
-        );
-        assert_eq!(desktop_manifest_url(None, None), DESKTOP_MANIFEST_URL);
-    }
-
-    #[test]
-    fn the_native_updater_feed_wins_over_the_product_name() {
-        // The development build is named "Jean" but updates from the fork.
-        assert_eq!(
-            desktop_manifest_url(Some("Jean"), Some(DESKTOP_MANIFEST_URL_JEANZ)),
-            DESKTOP_MANIFEST_URL_JEANZ
+            desktop_manifest_url(Some("https://x/feed.json")),
+            "https://x/feed.json"
         );
     }
 
     #[test]
-    fn the_dev_build_updates_like_the_fork() {
-        // The dev config must point the native updater at the fork's feed,
-        // with the fork's key: upstream builds are signed with another key.
+    fn the_dev_build_updates_like_the_release_build() {
+        // The dev config must point the native updater at Splitkick's feed,
+        // with Splitkick's key: upstream and JeanZ builds use other keys.
         let dev: serde_json::Value =
             serde_json::from_str(include_str!("../../../src-tauri/tauri.conf.dev.json")).unwrap();
         let fork: serde_json::Value =
@@ -994,19 +959,20 @@ mod tests {
         let updater = |config: &serde_json::Value| config["plugins"]["updater"].clone();
         assert_eq!(
             updater(&dev)["endpoints"][0].as_str(),
-            Some(DESKTOP_MANIFEST_URL_JEANZ)
+            Some(crate::brand::DESKTOP_MANIFEST_URL)
         );
         assert_eq!(updater(&dev)["pubkey"], updater(&fork)["pubkey"]);
     }
 
     #[test]
-    fn the_jeanz_feed_matches_the_native_updater() {
+    fn the_desktop_feed_matches_the_native_updater() {
         // Both must read one feed, or Web Access and the app disagree about
         // whether an update exists.
         let overlay = include_str!("../../../src-tauri/tauri.fork.conf.json");
         assert!(
-            overlay.contains(DESKTOP_MANIFEST_URL_JEANZ),
-            "tauri.fork.conf.json no longer points its updater at {DESKTOP_MANIFEST_URL_JEANZ}"
+            overlay.contains(crate::brand::DESKTOP_MANIFEST_URL),
+            "tauri.fork.conf.json no longer points its updater at {}",
+            crate::brand::DESKTOP_MANIFEST_URL
         );
     }
 

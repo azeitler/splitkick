@@ -47,7 +47,7 @@ describe('CompactStreamingTicker', () => {
 
     expect(
       screen.getByRole('button', {
-        name: /Jean: Create Worktree.*fix-streaming-ticker · main · gpt-5\.6/,
+        name: /Splitkick: Create Worktree.*fix-streaming-ticker · main · gpt-5\.6/,
       })
     ).toBeVisible()
   })

@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
-# Builds the JeanZ macOS bundle exactly like .github/workflows/macos-build.yml does.
+# Builds the Splitkick macOS bundle like .github/workflows/preflight.yml does.
 #
 # Without Apple credentials the overlay's ad-hoc identity ("-") is used, so the
 # build works on any machine. Export APPLE_SIGNING_IDENTITY (and the
 # notarization variables) to produce a signed build locally.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
-# Reaches Vite through beforeBuildCommand, which picks the amber favicon and
-# apple-touch-icon out of src-tauri/icons-fork/web/ and names the product JeanZ
-# in index.html and the frontend.
-export JEAN_FLAVOR=jeanz
 
 exec bun run tauri build --ci \
   --target aarch64-apple-darwin \

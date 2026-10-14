@@ -1,12 +1,12 @@
 name: Feature request
-description: Suggest an idea or improvement for Jean
-title: "[Feature]: "
+description: Suggest an idea or improvement for Splitkick
+title: '[Feature]: '
 body:
   - type: textarea
     id: request
     attributes:
       label: Describe the feature
-      description: What would you like Jean to do?
+      description: What would you like Splitkick to do?
       placeholder: Tell us about the feature or improvement you would like to see.
     validations:
       required: true

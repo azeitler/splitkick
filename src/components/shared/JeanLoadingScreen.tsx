@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 export function JeanLoadingScreen() {
   return (
     <div className="fixed inset-0 z-[70] flex items-center justify-center bg-background">
@@ -8,7 +9,7 @@ export function JeanLoadingScreen() {
           fontFamily: 'system-ui, -apple-system, "Segoe UI", sans-serif',
         }}
       >
-        Loading Jean...
+        Loading {PRODUCT_NAME}...
       </p>
     </div>
   )

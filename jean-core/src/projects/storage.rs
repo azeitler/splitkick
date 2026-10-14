@@ -25,16 +25,16 @@ pub fn get_projects_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(app_data_dir.join("projects.json"))
 }
 
-/// Get the base directory for all worktrees (~/jean)
+/// Get the base directory for all worktrees (~/splitkick, `brand::WORKTREES_DIR_NAME`)
 ///
-/// When WSL mode is enabled, the base dir is inside WSL (e.g., `/home/<user>/jean/`)
-/// stored as a Windows UNC path: `\\wsl.localhost\<distro>\home\<user>\jean\`
+/// When WSL mode is enabled, the base dir is inside WSL (e.g., `/home/<user>/splitkick/`)
+/// stored as a Windows UNC path: `\\wsl.localhost\<distro>\home\<user>\splitkick\`
 pub fn get_worktrees_base_dir() -> Result<PathBuf, String> {
     let wsl = crate::platform::get_wsl_config();
     if wsl.enabled {
         // Get the WSL home directory and construct the base dir
         let wsl_home = crate::platform::get_wsl_home_dir(&wsl.distro)?;
-        let wsl_jean_dir = format!("{wsl_home}/jean");
+        let wsl_jean_dir = format!("{wsl_home}/{}", crate::brand::WORKTREES_DIR_NAME);
         // Convert to Windows UNC path for std::fs operations
         let win_path = crate::platform::wsl_to_win_path(&wsl_jean_dir, &wsl.distro);
         let jean_dir = PathBuf::from(&win_path);
@@ -55,17 +55,17 @@ pub fn get_worktrees_base_dir() -> Result<PathBuf, String> {
 
     let home_dir = dirs::home_dir().ok_or_else(|| "Failed to get home directory".to_string())?;
 
-    let jean_dir = home_dir.join("jean");
+    let jean_dir = home_dir.join(crate::brand::WORKTREES_DIR_NAME);
 
     // Ensure the directory exists
     std::fs::create_dir_all(&jean_dir)
-        .map_err(|e| format!("Failed to create jean directory: {e}"))?;
+        .map_err(|e| format!("Failed to create worktrees directory: {e}"))?;
 
     Ok(jean_dir)
 }
 
 /// Get the directory for a specific project's worktrees.
-/// When `custom_base_dir` is Some, uses that instead of ~/jean as the base.
+/// When `custom_base_dir` is Some, uses that instead of ~/splitkick as the base.
 /// In both cases, `<project-name>` subdirectory is appended.
 pub fn get_project_worktrees_dir(
     project_name: &str,

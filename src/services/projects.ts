@@ -153,10 +153,13 @@ export function useWorktrees(projectId: string | null) {
         return await fetchAndSeedProjectBootstrap(projectId, queryClient)
       } catch (error) {
         // Older servers / partial deploy: fall back to worktrees-only.
-        logger.warn('bootstrap_project failed, falling back to list_worktrees', {
-          error,
-          projectId,
-        })
+        logger.warn(
+          'bootstrap_project failed, falling back to list_worktrees',
+          {
+            error,
+            projectId,
+          }
+        )
         try {
           logger.debug('Loading worktrees for project', { projectId })
           const worktrees = await invoke<Worktree[]>('list_worktrees', {
@@ -2406,7 +2409,7 @@ export function useSaveJeanConfig() {
       queryClient.invalidateQueries({ queryKey: ['ports'] })
     },
     onError: error => {
-      toast.error('Failed to save jean.json', {
+      toast.error('Failed to save splitkick.json', {
         description: String(error),
       })
     },

@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import React, { useCallback, useEffect, useState } from 'react'
 import {
   Copy,
@@ -352,8 +353,8 @@ export const WebAccessPane: React.FC = () => {
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
-        Enable HTTP server to access Jean from a web browser on your local
-        network. All commands are routed over WebSocket with token
+        Enable HTTP server to access {PRODUCT_NAME} from a web browser on your
+        local network. All commands are routed over WebSocket with token
         authentication.
       </p>
 
@@ -402,7 +403,7 @@ export const WebAccessPane: React.FC = () => {
 
           <InlineField
             label="Auto-start"
-            description="Start the HTTP server automatically when Jean launches"
+            description={`Start the HTTP server automatically when ${PRODUCT_NAME} launches`}
           >
             <Switch
               checked={preferences?.http_server_auto_start ?? false}
@@ -469,8 +470,8 @@ export const WebAccessPane: React.FC = () => {
               <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
               <div className="text-sm text-amber-600 dark:text-amber-400">
                 <strong>Security Warning:</strong> Anyone on your network can
-                access Jean without authentication. Only disable this on trusted
-                networks.
+                access {PRODUCT_NAME} without authentication. Only disable this
+                on trusted networks.
               </div>
             </div>
           )}
@@ -517,7 +518,7 @@ export const WebAccessPane: React.FC = () => {
           {serverStatus?.running && serverStatus?.port && (
             <InlineField
               label="Access URLs"
-              description="Open in a browser to access Jean"
+              description={`Open in a browser to access ${PRODUCT_NAME}`}
             >
               <div className="flex flex-col gap-2">
                 {!isLoopbackBindHost(activeBindHost) && (
@@ -531,8 +532,8 @@ export const WebAccessPane: React.FC = () => {
                       MagicDNS name, clipboard copy and some other APIs can
                       fail. Prefer{' '}
                       <code className="text-foreground">tailscale serve</code>{' '}
-                      (or any reverse proxy with TLS) in front of Jean, and keep
-                      token auth enabled.
+                      (or any reverse proxy with TLS) in front of {PRODUCT_NAME}
+                      , and keep token auth enabled.
                     </div>
                   </div>
                 )}

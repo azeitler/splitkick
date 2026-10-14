@@ -403,7 +403,7 @@ pub async fn get_kimi_install_command(app: AppHandle) -> Result<KimiInstallComma
             dir.to_string_lossy().to_string(),
             package(None),
         ],
-        description: "Install Kimi Code into Jean's managed app-data directory".to_string(),
+        description: "Install Kimi Code into Splitkick's managed app-data directory".to_string(),
     })
 }
 

@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { isNativeApp } from './environment'
 
 function isInsecureWebContext(): boolean {
@@ -46,7 +47,7 @@ export async function copyToClipboard(text: string): Promise<void> {
 
   if (insecure) {
     throw new Error(
-      'Copy failed: browsers block the clipboard API on plain HTTP except localhost. Open Jean via HTTPS (Tailscale Serve or a reverse proxy), or use http://localhost on this machine.'
+      `Copy failed: browsers block the clipboard API on plain HTTP except localhost. Open ${PRODUCT_NAME} via HTTPS (Tailscale Serve or a reverse proxy), or use http://localhost on this machine.`
     )
   }
   throw new Error(
@@ -82,7 +83,7 @@ export async function readFromClipboard(): Promise<string> {
 
   if (insecure) {
     throw new Error(
-      'Paste failed: browsers block clipboard read on plain HTTP except localhost. Open Jean via HTTPS (Tailscale Serve or a reverse proxy), or use http://localhost on this machine.'
+      `Paste failed: browsers block clipboard read on plain HTTP except localhost. Open ${PRODUCT_NAME} via HTTPS (Tailscale Serve or a reverse proxy), or use http://localhost on this machine.`
     )
   }
   throw new Error(

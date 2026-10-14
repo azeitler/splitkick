@@ -26,6 +26,7 @@
 
 extern crate self as tauri;
 
+pub mod brand;
 mod runtime;
 pub use runtime::*;
 
@@ -258,7 +259,7 @@ pub struct AppPreferences {
     #[serde(default)]
     pub http_server_auto_start: bool, // Auto-start HTTP server on app launch
     #[serde(default = "default_http_server_port")]
-    pub http_server_port: u16, // HTTP server port (default: 3456)
+    pub http_server_port: u16, // HTTP server port (default: brand::DEFAULT_HTTP_PORT)
     #[serde(default)]
     pub http_server_token: Option<String>, // Persisted auth token (generated once)
     #[serde(default)]
@@ -735,17 +736,23 @@ fn maybe_auto_select_system_cli_sources(app: &AppHandle, preferences: &mut AppPr
     let mut changed = false;
 
     if preferences.claude_cli_source == "jean" && claude_cli::should_auto_use_system(app) {
-        log::info!("Auto-selecting Claude CLI source=path (Jean-managed missing, system found)");
+        log::info!(
+            "Auto-selecting Claude CLI source=path (Splitkick-managed missing, system found)"
+        );
         preferences.claude_cli_source = "path".to_string();
         changed = true;
     }
     if preferences.codex_cli_source == "jean" && codex_cli::should_auto_use_system(app) {
-        log::info!("Auto-selecting Codex CLI source=path (Jean-managed missing, system found)");
+        log::info!(
+            "Auto-selecting Codex CLI source=path (Splitkick-managed missing, system found)"
+        );
         preferences.codex_cli_source = "path".to_string();
         changed = true;
     }
     if preferences.opencode_cli_source == "jean" && opencode_cli::should_auto_use_system(app) {
-        log::info!("Auto-selecting OpenCode CLI source=path (Jean-managed missing, system found)");
+        log::info!(
+            "Auto-selecting OpenCode CLI source=path (Splitkick-managed missing, system found)"
+        );
         preferences.opencode_cli_source = "path".to_string();
         changed = true;
     }
@@ -862,7 +869,7 @@ fn default_desktop_notifications_enabled() -> bool {
 }
 
 fn default_http_server_port() -> u16 {
-    3456
+    brand::DEFAULT_HTTP_PORT
 }
 
 fn default_http_server_token_required() -> bool {
@@ -891,28 +898,10 @@ mod tests {
     use super::{
         default_global_system_prompt, default_model, migrate_smoke_test_preferences,
         parse_cli_args_from, resolve_headless_bind_host, resolve_headless_token_required,
-        resolve_http_server_bind_host, server_preferences_value, ui_state_file_name,
-        validate_headless_security, AppPreferences, UI_STATE_FILE, UI_STATE_FILE_JEANZ,
+        resolve_http_server_bind_host, server_preferences_value, validate_headless_security,
+        AppPreferences,
     };
     use serde_json::json;
-
-    #[test]
-    fn jeanz_keeps_its_own_ui_state_file() {
-        assert_eq!(ui_state_file_name(Some("JeanZ")), UI_STATE_FILE_JEANZ);
-    }
-
-    #[test]
-    fn every_other_build_uses_the_shared_ui_state_file() {
-        assert_eq!(ui_state_file_name(Some("Jean")), UI_STATE_FILE);
-        assert_eq!(ui_state_file_name(None), UI_STATE_FILE);
-        // A name we do not know must not get a file of its own.
-        assert_eq!(ui_state_file_name(Some("jeanz")), UI_STATE_FILE);
-    }
-
-    #[test]
-    fn the_two_ui_state_files_never_collide() {
-        assert_ne!(UI_STATE_FILE, UI_STATE_FILE_JEANZ);
-    }
 
     #[test]
     fn server_preferences_exclude_client_fields_and_redact_secrets() {
@@ -949,10 +938,10 @@ mod tests {
         assert!(prompt.contains("Use a plain-text Unresolved Questions section only"));
         assert!(prompt.contains("zero-context handoff"));
         assert!(!prompt.contains("Make the plan extremely concise"));
-        assert!(prompt.contains("Jean Worktree Policy"));
+        assert!(prompt.contains("Splitkick Worktree Policy"));
         assert!(prompt.contains("Do NOT create git worktrees manually"));
-        assert!(prompt.contains("Jean MCP/tools"));
-        assert!(prompt.contains("Jean Run Environment"));
+        assert!(prompt.contains("Splitkick MCP/tools"));
+        assert!(prompt.contains("Splitkick Run Environment"));
         assert!(prompt.contains("get_run_environments"));
         assert!(prompt.contains("test against its `url`, port, and startup command"));
         assert!(prompt.contains("VERY IMPORTANT: Keep Code Simple"));
@@ -1525,12 +1514,12 @@ pub(crate) fn default_smoke_test_prompt() -> String {
 
 1. Inspect worktree {worktree_id}: resolve its path, current branch, git status, changed files and diff. Treat the actual worktree changes as the source of truth for identifying the feature or fix, its intended behavior, and what must be tested. Read relevant repository documentation, tasks, issues, commits, and code when needed. Confirm that the branch and worktree match the code under test.
 2. Use the changed code and surrounding implementation to determine the expected behavior, affected interfaces, risks, and realistic success and failure scenarios. Do not require a source chat session to understand or test the worktree.
-3. Call the Jean MCP get_run_environments tool for the current worktree before starting a server.
+3. Call the Splitkick MCP get_run_environments tool for the current worktree before starting a server.
    - Reuse an existing environment when available.
    - Do not guess a port or start a duplicate server.
-   - If no environment is running, call the Jean MCP start_run_environment tool for the current worktree. This starts the command configured in jean.json. Do not invent or launch a separate command.
+   - If no environment is running, call the Splitkick MCP start_run_environment tool for the current worktree. This starts the command configured in splitkick.json (or jean.json). Do not invent or launch a separate command.
 4. When needed, start the development server and confirm it is serving the current worktree and branch rather than another checkout or stale build. Wait for the environment to become ready and stable before running any real end-to-end tests: poll its detected URL, health endpoint, ports, or logs as appropriate until startup has completed and repeated checks succeed. If it does not stabilize within a reasonable timeout, capture the startup failure and do not run misleading end-to-end checks against it.
-5. Discover and prepare the prerequisites for realistic testing. Infer what is needed from the worktree changes, repository documentation, configuration, environment templates, test fixtures, available Jean context, and the running application's API, MCP, and UI. This can include authentication, accounts, permissions, database records, files, external-service substitutes, and related resources. Locate and use safe credentials or documented local/test authentication already available to the environment without printing secrets. Create temporary prerequisite data when permitted. Do not declare a prerequisite unavailable until you have actively looked for a supported way to obtain or create it.
+5. Discover and prepare the prerequisites for realistic testing. Infer what is needed from the worktree changes, repository documentation, configuration, environment templates, test fixtures, available Splitkick context, and the running application's API, MCP, and UI. This can include authentication, accounts, permissions, database records, files, external-service substitutes, and related resources. Locate and use safe credentials or documented local/test authentication already available to the environment without printing secrets. Create temporary prerequisite data when permitted. Do not declare a prerequisite unavailable until you have actively looked for a supported way to obtain or create it.
 6. Run relevant automated tests and record their results.
 7. Test every applicable interface, including API or HTTP endpoints, MCP tools, desktop or web UI, and mobile UI when available.
 8. Exercise the main success path, important edge cases, validation errors, asynchronous completion, and failure recovery. Poll long-running operations through their real success or failure state instead of stopping after submission.
@@ -2155,7 +2144,7 @@ fn default_global_system_prompt() -> String {
 - Keep plans concise but complete enough for zero-context handoff (YOLO/Build in a new worktree must not require re-scanning the repo). Prefer short wording over thin checklists.
 - When the current execution mode is plan, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex `<proposed_plan>` / collaboration Plan mode, Cursor/OpenCode equivalent), not plain text only.
 - For unresolved questions while planning, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question. If no such interactive question tool is present in your current tool set (headless/`--print` runs may omit Claude AskUserQuestion), do NOT skip the question and do NOT dead-end on a tool search — instead ask inline as a short numbered list of options (1, 2, 3...) and tell the user to reply with a number.
-- For Codex specifically, when the current execution mode is plan: do not write plan files or code; when the plan is ready wrap it in `<proposed_plan>...</proposed_plan>` so Jean can show the approval UI. Do not use the `update_plan` checklist tool in plan mode.
+- For Codex specifically, when the current execution mode is plan: do not write plan files or code; when the plan is ready wrap it in `<proposed_plan>...</proposed_plan>` so Splitkick can show the approval UI. Do not use the `update_plan` checklist tool in plan mode.
 - Every Codex response that contains or revises a plan while the current execution mode is plan must use a complete `<proposed_plan>` block (or a native plan item); do not provide plain-text-only plans, and do not attempt file writes.
 - Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.
 
@@ -2182,7 +2171,7 @@ fn default_global_system_prompt() -> String {
 - Diff behavior between main and your changes when relevant
 - Ask yourself: "Would a staff engineer approve this?"
 - Run tests, check logs, demonstrate correctness
-- Before UI, HTTP, browser, or end-to-end verification, call Jean MCP `get_run_environments` and test against the returned url/port/command when a Run environment is available.
+- Before UI, HTTP, browser, or end-to-end verification, call Splitkick MCP `get_run_environments` and test against the returned url/port/command when a Run environment is available.
 
 ### 6. Demand Elegance (Balanced)
 - For non-trivial changes: pause and ask "is there a more elegant way?"
@@ -2216,14 +2205,14 @@ fn default_global_system_prompt() -> String {
 - Include the results in both the main response and the `## Recap`, with clickable links when available, and label each item as fully fixed, related, or similar. If no matches are found or the search is unavailable, say so explicitly.
 - Do not claim an issue is fixed unless the changes fully satisfy it. Do not close or update issues or discussions unless the user explicitly asks.
 
-## Jean Worktree Policy
+## Splitkick Worktree Policy
 - Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.
-- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.
-- If already in a Jean worktree or base/main workspace, continue in the current workspace.
+- If a new worktree is explicitly required, use Splitkick's worktree features through Splitkick MCP/tools, not raw git worktree commands.
+- If already in a Splitkick worktree or base/main workspace, continue in the current workspace.
 
-## Jean Run Environment
-- When you need to test a running app (UI, HTTP, browser, smoke, e2e), call Jean MCP `get_run_environments` first (pass this worktreeId when known).
-- If an environment is running, test against its `url`, port, and startup command. Do not guess localhost ports or start a second dev server when Jean already has one.
+## Splitkick Run Environment
+- When you need to test a running app (UI, HTTP, browser, smoke, e2e), call Splitkick MCP `get_run_environments` first (pass this worktreeId when known).
+- If an environment is running, test against its `url`, port, and startup command. Do not guess localhost ports or start a second dev server when Splitkick already has one.
 - If nothing is running and verification needs a live server, say so and use the returned/startup command rather than inventing a different command or port.
 - In how-to-test notes, include the exact URL/port you used.
 
@@ -2234,14 +2223,14 @@ fn default_global_system_prompt() -> String {
 }
 
 pub(crate) fn default_provider_switch_handoff_prompt() -> String {
-    r#"You are continuing a Jean chat session after the user switched AI backends.
+    r#"You are continuing a Splitkick chat session after the user switched AI backends.
 
-Jean-local history is the source of truth because provider-owned server history may be incomplete after backend switches. Treat the history below as the conversation you already had with the user — do not claim you lack prior context.
+Splitkick-local history is the source of truth because provider-owned server history may be incomplete after backend switches. Treat the history below as the conversation you already had with the user — do not claim you lack prior context.
 
 Previous backend: {previous_backend}
 Current backend: {current_backend}
 
-Read the Jean-local history carefully, reconstruct the task state, and answer the user's latest message with full continuity. Do not mention this hidden handoff unless it is directly relevant.
+Read the Splitkick-local history carefully, reconstruct the task state, and answer the user's latest message with full continuity. Do not mention this hidden handoff unless it is directly relevant.
 
 <jean_local_history>
 {history}
@@ -3700,29 +3689,8 @@ async fn delete_cli_profile(name: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Product name of the JeanZ build flavor, as set by
-/// `src-tauri/tauri.fork.conf.json`.
-pub const PRODUCT_NAME_JEANZ: &str = "JeanZ";
-
-/// UI state file name for stable Jean.
+/// UI state file name.
 const UI_STATE_FILE: &str = "ui-state.json";
-
-/// UI state file name for the JeanZ build flavor.
-const UI_STATE_FILE_JEANZ: &str = "ui-state_jeanz.json";
-
-/// Pick the UI state file for this build flavor.
-///
-/// JeanZ shares one app-data directory with stable Jean on purpose, even
-/// though the two carry different bundle identifiers. What they must not
-/// share is a `UIState` schema: a build that
-/// does not know a field drops that field when it saves, which silently
-/// deletes the other build's state. One file per flavor keeps them apart.
-fn ui_state_file_name(product_name: Option<&str>) -> &'static str {
-    match product_name {
-        Some(PRODUCT_NAME_JEANZ) => UI_STATE_FILE_JEANZ,
-        _ => UI_STATE_FILE,
-    }
-}
 
 fn get_ui_state_path(app: &AppHandle) -> Result<PathBuf, String> {
     let app_data_dir = app
@@ -3734,28 +3702,18 @@ fn get_ui_state_path(app: &AppHandle) -> Result<PathBuf, String> {
     std::fs::create_dir_all(&app_data_dir)
         .map_err(|e| format!("Failed to create app data directory: {e}"))?;
 
-    Ok(app_data_dir.join(ui_state_file_name(app.product_name())))
+    Ok(app_data_dir.join(UI_STATE_FILE))
 }
 
 async fn load_ui_state(app: AppHandle) -> Result<UIState, String> {
     log::trace!("Loading UI state from disk");
     let state_path = get_ui_state_path(&app)?;
 
-    // A flavor that has never saved inherits the shared file once, so the
-    // window layout and drafts carry over on its first start. Every later save
-    // goes to the flavor file.
-    let read_path = if state_path.exists() {
-        state_path
-    } else {
-        let shared = state_path.with_file_name(UI_STATE_FILE);
-        if shared.exists() {
-            log::info!("No flavor UI state yet, reading {shared:?} once");
-            shared
-        } else {
-            log::trace!("UI state file not found, using defaults");
-            return Ok(UIState::default());
-        }
-    };
+    if !state_path.exists() {
+        log::trace!("UI state file not found, using defaults");
+        return Ok(UIState::default());
+    }
+    let read_path = state_path;
 
     let contents = std::fs::read_to_string(&read_path).map_err(|e| {
         log::error!("Failed to read UI state file: {e}");
@@ -4208,12 +4166,15 @@ async fn sync_jean_mcp_socket_from_preferences(
         }
         if let Some(handle) = guard.take() {
             let _ = handle.shutdown_tx.send(());
-            log::info!("Jean MCP proxy socket restarting due to preference changes");
+            log::info!("Splitkick MCP proxy socket restarting due to preference changes");
         }
     }
 
     let handle = jean_mcp_socket::start_socket_server(app.clone(), path, token).await?;
-    log::info!("Jean MCP proxy socket started: {}", handle.path.display());
+    log::info!(
+        "Splitkick MCP proxy socket started: {}",
+        handle.path.display()
+    );
 
     let mut guard = state.lock().await;
     *guard = Some(handle);
@@ -4234,7 +4195,7 @@ fn emit_jean_mcp_socket_status(app: &AppHandle, running: bool) {
         "jean-mcp-socket-status",
         JeanMcpSocketStatusEvent { running },
     ) {
-        log::warn!("Failed to emit Jean MCP socket status: {e}");
+        log::warn!("Failed to emit Splitkick MCP socket status: {e}");
     }
 }
 
@@ -4243,12 +4204,12 @@ fn schedule_jean_mcp_socket_sync(app: AppHandle) {
         let prefs = match load_preferences(app.clone()).await {
             Ok(prefs) => prefs,
             Err(e) => {
-                log::error!("Failed to load preferences for Jean MCP socket sync: {e}");
+                log::error!("Failed to load preferences for Splitkick MCP socket sync: {e}");
                 return;
             }
         };
         if let Err(e) = sync_jean_mcp_socket_from_preferences(app, &prefs).await {
-            log::error!("Failed to sync Jean MCP proxy socket: {e}");
+            log::error!("Failed to sync Splitkick MCP proxy socket: {e}");
         }
     });
 }
@@ -4387,7 +4348,7 @@ struct HttpServerOverrides {
 
 fn print_cli_help() {
     let version = crate::app_version();
-    println!("Jean {version}");
+    println!("Splitkick {version}");
     println!();
     println!("Usage: jean [OPTIONS]");
     println!();
@@ -4417,7 +4378,7 @@ fn parse_cli_args() -> CliArgs {
         std::process::exit(0);
     }
     if args.iter().any(|a| a == "--version" || a == "-V") {
-        println!("Jean {}", crate::app_version());
+        println!("Splitkick {}", crate::app_version());
         std::process::exit(0);
     }
 
@@ -4720,7 +4681,7 @@ pub async fn run_server() -> Result<(), String> {
 
     let mut preferences = load_preferences(context.clone()).await.unwrap_or_default();
     if let Err(error) = sync_jean_mcp_socket_from_preferences(context.clone(), &preferences).await {
-        log::warn!("Failed to start Jean MCP proxy socket: {error}");
+        log::warn!("Failed to start Splitkick MCP proxy socket: {error}");
     }
     let overrides = HttpServerOverrides {
         host: cli.host,

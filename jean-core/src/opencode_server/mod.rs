@@ -255,7 +255,7 @@ pub fn cleanup_orphaned_server(app: &AppHandle) {
     // If the Jean instance that spawned the server is still alive, leave it alone.
     if crate::platform::is_process_alive(record.jean_pid) {
         log::debug!(
-            "[OPENCODE CLEANUP] PID file exists but Jean PID {} is still alive — another instance owns the server",
+            "[OPENCODE CLEANUP] PID file exists but Splitkick PID {} is still alive — another instance owns the server",
             record.jean_pid
         );
         return;
@@ -266,7 +266,7 @@ pub fn cleanup_orphaned_server(app: &AppHandle) {
     let url = server_url(DEFAULT_HOSTNAME, record.port);
     if crate::platform::is_process_alive(record.server_pid) && is_healthy(&url) {
         log::info!(
-            "[OPENCODE CLEANUP] Killing orphaned OpenCode server (PID {}) from crashed Jean (PID {})",
+            "[OPENCODE CLEANUP] Killing orphaned OpenCode server (PID {}) from crashed Splitkick (PID {})",
             record.server_pid,
             record.jean_pid
         );

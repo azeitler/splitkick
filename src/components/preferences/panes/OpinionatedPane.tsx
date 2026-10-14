@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import React, { useCallback, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import { openExternal } from '@/lib/platform'
@@ -80,7 +81,7 @@ const PLUGINS: PluginDefinition[] = [
     ],
     usage: [
       {
-        note: "On Linux and macOS, installs through Caveman's documented curl installer. Jean then mirrors skills into each backend's CLI path (including ~/.grok/skills for Grok) plus Jean-global mirrors.",
+        note: `On Linux and macOS, installs through Caveman's documented curl installer. ${PRODUCT_NAME} then mirrors skills into each backend's CLI path (including ~/.grok/skills for Grok) plus ${PRODUCT_NAME}-global mirrors.`,
       },
       {
         note: 'Claude and OpenCode can auto-activate. Codex and Cursor expose skills for per-session activation with /caveman; Cursor also gets an always-on rule when the installer can write one.',
@@ -117,7 +118,7 @@ const PLUGINS: PluginDefinition[] = [
     ],
     usage: [
       {
-        note: 'Installs through Claude when available, then mirrors Superpowers skills into each backend CLI path (including ~/.grok/skills for Grok) plus Jean-global mirrors. Without Claude, Jean fetches the Superpowers repo directly.',
+        note: `Installs through Claude when available, then mirrors Superpowers skills into each backend CLI path (including ~/.grok/skills for Grok) plus ${PRODUCT_NAME}-global mirrors. Without Claude, ${PRODUCT_NAME} fetches the Superpowers repo directly.`,
       },
       {
         label: 'Brainstorm a feature',
@@ -423,7 +424,7 @@ export const OpinionatedPane: React.FC = () => {
     <div className="space-y-6">
       <SettingsSection
         title="Recommended Plugins"
-        description="Curated tools that enhance your development workflow across Jean AI backends."
+        description={`Curated tools that enhance your development workflow across ${PRODUCT_NAME} AI backends.`}
         anchorId="pref-opinionated-section-recommended-plugins"
       >
         <div className="space-y-3">

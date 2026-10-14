@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useState, useCallback, useMemo, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
@@ -278,7 +279,7 @@ export function PermissionApproval({
       </div>
 
       <div className="mb-4 text-muted-foreground">
-        Jean wants to use the following tools. Select which to allow:
+        {PRODUCT_NAME} wants to use the following tools. Select which to allow:
       </div>
 
       <div className="mb-4 space-y-2.5">

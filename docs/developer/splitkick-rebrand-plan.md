@@ -277,3 +277,17 @@ Website, docs portal, domains, headless server rebrand, Linux/Windows builds.
 - GitHub, renaming a repository (redirects; Actions not redirected; name reuse breaks redirects): https://docs.github.com/en/repositories/creating-and-managing-repositories/renaming-a-repository
 - GitHub, detaching a fork (public, < 1 GB, no child forks; permanent; issues not kept): https://docs.github.com/en/pull-requests/how-tos/work-with-forks/detaching-a-fork
 - Retention facts: `notes-vault/splitkick/research/retention-2026-10.md`
+
+## Implementation notes (deviations from the plan)
+
+- **Skills dir stays `~/.jean/skills`.** It is a hidden mirror of the
+  opinionated skills that both apps install identically; sharing it is
+  harmless, and a rename would need a fallback read in four places.
+- **`package.json` `name`/`author` stay upstream's.** Internal, never shown.
+- **Developer ID:** the current CI certificate is "Developer ID Application:
+  Andreas Zeitler (44S2FAD7EU)" (personal, not coolLabs, not a Planetfall
+  organisation certificate). It is set through CI secrets; no code change.
+- **No `public/manifest.webmanifest` exists** in this tree; nothing to rewrite.
+- **Updater key:** generated 2026-10-14 in `.local-signing/splitkick-updater.key`
+  (+ `.password`, `.pub`) of the main checkout. Copy it to 1Password and set
+  the CI secrets before the first release.

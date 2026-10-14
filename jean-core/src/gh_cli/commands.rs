@@ -171,7 +171,7 @@ pub async fn get_available_gh_versions(app: AppHandle) -> Result<Vec<GhReleaseIn
 /// Fetch versions directly from the GitHub API (no fallback).
 async fn fetch_gh_versions_from_api(app: &AppHandle) -> Result<Vec<GhReleaseInfo>, String> {
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
@@ -228,7 +228,7 @@ pub async fn check_gh_cli_version_exists(app: AppHandle, version: String) -> Res
     }
 
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
     let token = resolve_github_api_token(&app);
@@ -465,7 +465,7 @@ pub async fn install_gh_cli(app: AppHandle, version: Option<String>) -> Result<(
 
     // Download the archive
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 
@@ -584,7 +584,7 @@ pub async fn uninstall_gh_cli(app: AppHandle) -> Result<(), String> {
     if cli_dir.exists() {
         std::fs::remove_dir_all(&cli_dir)
             .map_err(|e| format!("Failed to remove GitHub CLI directory: {e}"))?;
-        log::info!("Removed Jean-managed GitHub CLI at {:?}", cli_dir);
+        log::info!("Removed Splitkick-managed GitHub CLI at {:?}", cli_dir);
     }
     Ok(())
 }
@@ -596,7 +596,7 @@ async fn fetch_latest_gh_version(app: &AppHandle) -> Result<String, String> {
     log::trace!("Fetching latest GitHub CLI version");
 
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
 

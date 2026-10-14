@@ -411,14 +411,14 @@ fn emit_progress(app: &AppHandle, stage: &str, message: &str, percent: u8) {
 
 fn build_github_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))
 }
 
 fn build_usage_client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .timeout(Duration::from_secs(15))
         .build()
         .map_err(|e| format!("Failed to create usage HTTP client: {e}"))
@@ -1832,7 +1832,7 @@ pub async fn install_codex_cli(app: AppHandle, version: Option<String>) -> Resul
     emit_progress(&app, "downloading", "Downloading Codex CLI...", 20);
 
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {e}"))?;
@@ -2068,14 +2068,14 @@ pub async fn uninstall_codex_cli(app: AppHandle) -> Result<(), String> {
         let unix_path = super::config::get_wsl_cli_binary_path(&wsl.distro)?;
         crate::platform::wsl_remove_path(&wsl.distro, &unix_path)
             .map_err(|e| format!("Failed to remove Codex CLI from WSL: {e}"))?;
-        log::info!("Removed Jean-managed Codex CLI at WSL:{unix_path}");
+        log::info!("Removed Splitkick-managed Codex CLI at WSL:{unix_path}");
     }
 
     let cli_dir = get_cli_dir(&app)?;
     if cli_dir.exists() {
         std::fs::remove_dir_all(&cli_dir)
             .map_err(|e| format!("Failed to remove Codex CLI directory: {e}"))?;
-        log::info!("Removed Jean-managed Codex CLI at {:?}", cli_dir);
+        log::info!("Removed Splitkick-managed Codex CLI at {:?}", cli_dir);
     }
     Ok(())
 }
@@ -2176,7 +2176,7 @@ async fn install_linux_bwrap_helper(
     log::info!("Downloading Codex bubblewrap helper from {download_url}");
 
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client for bwrap: {e}"))?;
@@ -2379,7 +2379,7 @@ async fn install_code_mode_host_helper(
     log::info!("Downloading Codex code-mode host from {download_url}");
 
     let client = reqwest::Client::builder()
-        .user_agent("Jean-App/1.0")
+        .user_agent("Splitkick-App/1.0")
         .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|e| format!("Failed to create HTTP client for code-mode host: {e}"))?;

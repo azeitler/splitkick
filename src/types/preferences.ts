@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import type { ThinkingLevel, EffortLevel, ExecutionMode } from './chat'
 import { DEFAULT_KEYBINDINGS, type KeybindingsMap } from './keybindings'
 import { getServerPlatform, isServerWindows } from '../lib/platform'
@@ -619,7 +620,7 @@ export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `Always use ASD-STE100 Simplified Te
 - Keep plans concise but complete enough for zero-context handoff (YOLO/Build in a new worktree must not require re-scanning the repo). Prefer short wording over thin checklists.
 - When the current execution mode is plan, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex \`<proposed_plan>\` / collaboration Plan mode, Cursor/OpenCode equivalent), not plain text only.
 - For unresolved questions while planning, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question. If no such interactive question tool is present in your current tool set (headless/\`--print\` runs may omit Claude AskUserQuestion), do NOT skip the question and do NOT dead-end on a tool search — instead ask inline as a short numbered list of options (1, 2, 3...) and tell the user to reply with a number.
-- For Codex specifically, when the current execution mode is plan: do not write plan files or code; when the plan is ready wrap it in \`<proposed_plan>...</proposed_plan>\` so Jean can show the approval UI. Do not use the \`update_plan\` checklist tool in plan mode.
+- For Codex specifically, when the current execution mode is plan: do not write plan files or code; when the plan is ready wrap it in \`<proposed_plan>...</proposed_plan>\` so Splitkick can show the approval UI. Do not use the \`update_plan\` checklist tool in plan mode.
 - Every Codex response that contains or revises a plan while the current execution mode is plan must use a complete \`<proposed_plan>\` block (or a native plan item); do not provide plain-text-only plans, and do not attempt file writes.
 - Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.
 
@@ -646,7 +647,7 @@ export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `Always use ASD-STE100 Simplified Te
 - Diff behavior between main and your changes when relevant
 - Ask yourself: "Would a staff engineer approve this?"
 - Run tests, check logs, demonstrate correctness
-- Before UI, HTTP, browser, or end-to-end verification, call Jean MCP \`get_run_environments\` and test against the returned url/port/command when a Run environment is available.
+- Before UI, HTTP, browser, or end-to-end verification, call Splitkick MCP \`get_run_environments\` and test against the returned url/port/command when a Run environment is available.
 
 ### 6. Demand Elegance (Balanced)
 - For non-trivial changes: pause and ask "is there a more elegant way?"
@@ -680,14 +681,14 @@ export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `Always use ASD-STE100 Simplified Te
 - Include the results in both the main response and the \`## Recap\`, with clickable links when available, and label each item as fully fixed, related, or similar. If no matches are found or the search is unavailable, say so explicitly.
 - Do not claim an issue is fixed unless the changes fully satisfy it. Do not close or update issues or discussions unless the user explicitly asks.
 
-## Jean Worktree Policy
+## Splitkick Worktree Policy
 - Do NOT create git worktrees manually (\`git worktree add\`, Superpowers \`using-git-worktrees\`, or similar) unless the user explicitly asks for a new worktree.
-- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.
-- If already in a Jean worktree or base/main workspace, continue in the current workspace.
+- If a new worktree is explicitly required, use Splitkick's worktree features through Splitkick MCP/tools, not raw git worktree commands.
+- If already in a Splitkick worktree or base/main workspace, continue in the current workspace.
 
-## Jean Run Environment
-- When you need to test a running app (UI, HTTP, browser, smoke, e2e), call Jean MCP \`get_run_environments\` first (pass this worktreeId when known).
-- If an environment is running, test against its \`url\`, port, and startup command. Do not guess localhost ports or start a second dev server when Jean already has one.
+## Splitkick Run Environment
+- When you need to test a running app (UI, HTTP, browser, smoke, e2e), call Splitkick MCP \`get_run_environments\` first (pass this worktreeId when known).
+- If an environment is running, test against its \`url\`, port, and startup command. Do not guess localhost ports or start a second dev server when Splitkick already has one.
 - If nothing is running and verification needs a live server, say so and use the returned/startup command rather than inventing a different command or port.
 - In how-to-test notes, include the exact URL/port you used.
 
@@ -695,14 +696,14 @@ export const DEFAULT_GLOBAL_SYSTEM_PROMPT = `Always use ASD-STE100 Simplified Te
 
 - After each finished task, please write a few bullet points on how to test the changes.`
 
-export const DEFAULT_PROVIDER_SWITCH_HANDOFF_PROMPT = `You are continuing a Jean chat session after the user switched AI backends.
+export const DEFAULT_PROVIDER_SWITCH_HANDOFF_PROMPT = `You are continuing a Splitkick chat session after the user switched AI backends.
 
-Jean-local history is the source of truth because provider-owned server history may be incomplete after backend switches. Treat the history below as the conversation you already had with the user — do not claim you lack prior context.
+Splitkick-local history is the source of truth because provider-owned server history may be incomplete after backend switches. Treat the history below as the conversation you already had with the user — do not claim you lack prior context.
 
 Previous backend: {previous_backend}
 Current backend: {current_backend}
 
-Read the Jean-local history carefully, reconstruct the task state, and answer the user's latest message with full continuity. Do not mention this hidden handoff unless it is directly relevant.
+Read the Splitkick-local history carefully, reconstruct the task state, and answer the user's latest message with full continuity. Do not mention this hidden handoff unless it is directly relevant.
 
 <jean_local_history>
 {history}
@@ -749,12 +750,12 @@ export const DEFAULT_SMOKE_TEST_PROMPT = `Smoke test the feature or fix in workt
 
 1. Inspect worktree {worktree_id}: resolve its path, current branch, git status, changed files and diff. Treat the actual worktree changes as the source of truth for identifying the feature or fix, its intended behavior, and what must be tested. Read relevant repository documentation, tasks, issues, commits, and code when needed. Confirm that the branch and worktree match the code under test.
 2. Use the changed code and surrounding implementation to determine the expected behavior, affected interfaces, risks, and realistic success and failure scenarios. Do not require a source chat session to understand or test the worktree.
-3. Call the Jean MCP get_run_environments tool for the current worktree before starting a server.
+3. Call the Splitkick MCP get_run_environments tool for the current worktree before starting a server.
    - Reuse an existing environment when available.
    - Do not guess a port or start a duplicate server.
-   - If no environment is running, call the Jean MCP start_run_environment tool for the current worktree. This starts the command configured in jean.json. Do not invent or launch a separate command.
+   - If no environment is running, call the Splitkick MCP start_run_environment tool for the current worktree. This starts the command configured in splitkick.json (or jean.json). Do not invent or launch a separate command.
 4. When needed, start the development server and confirm it is serving the current worktree and branch rather than another checkout or stale build. Wait for the environment to become ready and stable before running any real end-to-end tests: poll its detected URL, health endpoint, ports, or logs as appropriate until startup has completed and repeated checks succeed. If it does not stabilize within a reasonable timeout, capture the startup failure and do not run misleading end-to-end checks against it.
-5. Discover and prepare the prerequisites for realistic testing. Infer what is needed from the worktree changes, repository documentation, configuration, environment templates, test fixtures, available Jean context, and the running application's API, MCP, and UI. This can include authentication, accounts, permissions, database records, files, external-service substitutes, and related resources. Locate and use safe credentials or documented local/test authentication already available to the environment without printing secrets. Create temporary prerequisite data when permitted. Do not declare a prerequisite unavailable until you have actively looked for a supported way to obtain or create it.
+5. Discover and prepare the prerequisites for realistic testing. Infer what is needed from the worktree changes, repository documentation, configuration, environment templates, test fixtures, available Splitkick context, and the running application's API, MCP, and UI. This can include authentication, accounts, permissions, database records, files, external-service substitutes, and related resources. Locate and use safe credentials or documented local/test authentication already available to the environment without printing secrets. Create temporary prerequisite data when permitted. Do not declare a prerequisite unavailable until you have actively looked for a supported way to obtain or create it.
 6. Run relevant automated tests and record their results.
 7. Test every applicable interface, including API or HTTP endpoints, MCP tools, desktop or web UI, and mobile UI when available.
 8. Exercise the main success path, important edge cases, validation errors, asynchronous completion, and failure recovery. Poll long-running operations through their real success or failure state instead of stopping after submission.
@@ -1483,7 +1484,7 @@ export const PREDEFINED_CLI_PROFILES: CustomCliProfile[] = [
 export type FileEditMode = 'inline' | 'external'
 
 export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
-  { value: 'inline', label: 'Jean (inline editor)' },
+  { value: 'inline', label: `${PRODUCT_NAME} (inline editor)` },
   { value: 'external', label: 'External editor' },
 ]
 
@@ -2071,7 +2072,7 @@ export const newSessionKindOptions: {
   value: NewSessionKind
   label: string
 }[] = [
-  { value: 'chat', label: 'Jean Chat' },
+  { value: 'chat', label: `${PRODUCT_NAME} Chat` },
   { value: 'terminal', label: 'Terminal' },
   { value: 'codex', label: 'Codex' },
   { value: 'claude', label: 'Claude' },
@@ -2086,7 +2087,7 @@ export function getNewSessionKindLabel(
   kind: NewSessionKind | undefined
 ): string {
   const option = newSessionKindOptions.find(opt => opt.value === kind)
-  return option?.label ?? 'Jean Chat'
+  return option?.label ?? `${PRODUCT_NAME} Chat`
 }
 
 export function getOpenInDefaultLabel(

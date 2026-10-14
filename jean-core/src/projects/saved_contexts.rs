@@ -30,7 +30,7 @@ pub fn build_session_reference_content(
 
 The user has requested to take a look at session `{source_session_id}` (name: "{session_name}", project: {project_name}, worktree: {worktree_name}).
 
-Use the Jean MCP tool `read_session_messages` with `sessionId` set to `{source_session_id}` to fetch the most recent messages from the user and agent (start with a small `limit`, e.g. 2–10; results are most recent first). If you need more context to understand what the user is looking for, you may fetch additional messages from the history. Do **not** consume the entire session at once.
+Use the Splitkick MCP tool `read_session_messages` with `sessionId` set to `{source_session_id}` to fetch the most recent messages from the user and agent (start with a small `limit`, e.g. 2–10; results are most recent first). If you need more context to understand what the user is looking for, you may fetch additional messages from the history. Do **not** consume the entire session at once.
 
 You may also use `get_session_status` with the same `sessionId` if you need run state for that session.
 "#

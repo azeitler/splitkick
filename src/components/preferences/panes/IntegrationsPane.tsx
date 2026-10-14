@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import React, { useState } from 'react'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
@@ -75,8 +76,7 @@ export const IntegrationsPane: React.FC = () => {
         toast.success(
           `Sentry token verified — ${projects.length} project${projects.length === 1 ? '' : 's'} available`,
           {
-            description:
-              'Choose the matching Sentry project in each Jean project’s settings.',
+            description: `Choose the matching Sentry project in each ${PRODUCT_NAME} project’s settings.`,
           }
         )
       if (sentryAuthTokenChanged) {
@@ -182,8 +182,8 @@ export const IntegrationsPane: React.FC = () => {
               Used by all projects unless overridden in project settings. The
               token needs <code>org:read</code> to discover projects and{' '}
               <code>event:read</code> to load issues. Personal tokens follow
-              your Sentry account memberships; they are not tied to one
-              project. Create one in{' '}
+              your Sentry account memberships; they are not tied to one project.
+              Create one in{' '}
               <a
                 href="https://sentry.io/settings/account/api/auth-tokens/"
                 target="_blank"

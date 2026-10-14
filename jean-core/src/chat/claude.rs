@@ -29,7 +29,7 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 - Keep plans concise but complete enough for zero-context handoff (YOLO/Build in a new worktree must not require re-scanning the repo). Prefer short wording over thin checklists.\n\
 - When the current execution mode is plan, use the backend's native plan tool/UI call when available (Claude ExitPlanMode, Codex `<proposed_plan>` / collaboration Plan mode, Cursor/OpenCode equivalent), not plain text only.\n\
 - For unresolved questions while planning, prefer the backend-native interactive question UI instead of plain text when available: Claude AskUserQuestion, Codex request_user_input, OpenCode question. If no such interactive question tool is present in your current tool set (headless/`--print` runs may omit Claude AskUserQuestion), do NOT skip the question and do NOT dead-end on a tool search — instead ask inline as a short numbered list of options (1, 2, 3...) and tell the user to reply with a number.\n\
-- For Codex specifically, when the current execution mode is plan: do not write plan files or code; when the plan is ready wrap it in `<proposed_plan>...</proposed_plan>` so Jean can show the approval UI. Do not use the `update_plan` checklist tool in plan mode.\n\
+- For Codex specifically, when the current execution mode is plan: do not write plan files or code; when the plan is ready wrap it in `<proposed_plan>...</proposed_plan>` so Splitkick can show the approval UI. Do not use the `update_plan` checklist tool in plan mode.\n\
 - Every Codex response that contains or revises a plan while the current execution mode is plan must use a complete `<proposed_plan>` block (or a native plan item); do not provide plain-text-only plans, and do not attempt file writes.\n\
 - Use a plain-text Unresolved Questions section only for non-actionable notes or when the backend cannot ask interactively.\n\
 \n\
@@ -56,7 +56,7 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 - Diff behavior between main and your changes when relevant\n\
 - Ask yourself: \"Would a staff engineer approve this?\"\n\
 - Run tests, check logs, demonstrate correctness\n\
-- Before UI, HTTP, browser, or end-to-end verification, call Jean MCP `get_run_environments` and test against the returned url/port/command when a Run environment is available.\n\
+- Before UI, HTTP, browser, or end-to-end verification, call Splitkick MCP `get_run_environments` and test against the returned url/port/command when a Run environment is available.\n\
 \n\
 ### 6. Demand Elegance (Balanced)\n\
 - For non-trivial changes: pause and ask \"is there a more elegant way?\"\n\
@@ -90,14 +90,14 @@ Always use ASD-STE100 Simplified Technical English when you talk to me.\n\
 - Include the results in both the main response and the `## Recap`, with clickable links when available, and label each item as fully fixed, related, or similar. If no matches are found or the search is unavailable, say so explicitly.\n\
 - Do not claim an issue is fixed unless the changes fully satisfy it. Do not close or update issues or discussions unless the user explicitly asks.\n\
 \n\
-## Jean Worktree Policy\n\
+## Splitkick Worktree Policy\n\
 - Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.\n\
-- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.\n\
-- If already in a Jean worktree or base/main workspace, continue in the current workspace.\n\
+- If a new worktree is explicitly required, use Splitkick's worktree features through Splitkick MCP/tools, not raw git worktree commands.\n\
+- If already in a Splitkick worktree or base/main workspace, continue in the current workspace.\n\
 \n\
-## Jean Run Environment\n\
-- When you need to test a running app (UI, HTTP, browser, smoke, e2e), call Jean MCP `get_run_environments` first (pass this worktreeId when known).\n\
-- If an environment is running, test against its `url`, port, and startup command. Do not guess localhost ports or start a second dev server when Jean already has one.\n\
+## Splitkick Run Environment\n\
+- When you need to test a running app (UI, HTTP, browser, smoke, e2e), call Splitkick MCP `get_run_environments` first (pass this worktreeId when known).\n\
+- If an environment is running, test against its `url`, port, and startup command. Do not guess localhost ports or start a second dev server when Splitkick already has one.\n\
 - If nothing is running and verification needs a live server, say so and use the returned/startup command rather than inventing a different command or port.\n\
 - In how-to-test notes, include the exact URL/port you used.\n\
 \n\
@@ -2775,10 +2775,10 @@ mod tests {
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("<proposed_plan>"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Every Codex response that contains or revises a plan while the current execution mode is plan"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("OpenCode question"));
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean Worktree Policy"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Splitkick Worktree Policy"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Do NOT create git worktrees manually"));
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean MCP/tools"));
-        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Jean Run Environment"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Splitkick MCP/tools"));
+        assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("Splitkick Run Environment"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT.contains("get_run_environments"));
         assert!(DEFAULT_GLOBAL_SYSTEM_PROMPT
             .contains("test against its `url`, port, and startup command"));
@@ -2940,17 +2940,17 @@ mod tests {
     fn dialog_server_is_never_allowlisted() {
         let config = r#"{
             "mcpServers": {
-                "jean": { "type": "stdio", "command": "jean" },
-                "jean-dialog": { "type": "stdio", "command": "jean" }
+                "splitkick": { "type": "stdio", "command": "jean" },
+                "splitkick-dialog": { "type": "stdio", "command": "jean" }
             }
         }"#;
         let mut args = Vec::new();
 
         append_mcp_config_args(&mut args, Some(config));
 
-        assert!(args.contains(&"mcp__jean__*".to_string()));
-        assert!(!args.contains(&"mcp__jean-dialog".to_string()));
-        assert!(!args.contains(&"mcp__jean-dialog__*".to_string()));
+        assert!(args.contains(&"mcp__splitkick__*".to_string()));
+        assert!(!args.contains(&"mcp__splitkick-dialog".to_string()));
+        assert!(!args.contains(&"mcp__splitkick-dialog__*".to_string()));
     }
 
     /// `--strict-mcp-config` makes the CLI ignore ~/.claude.json. The dialog
@@ -2958,7 +2958,8 @@ mod tests {
     /// silently delete MCP servers the user configured outside Jean.
     #[test]
     fn dialog_server_alone_does_not_go_strict() {
-        let config = r#"{"mcpServers": {"jean-dialog": {"type": "stdio", "command": "jean"}}}"#;
+        let config =
+            r#"{"mcpServers": {"splitkick-dialog": {"type": "stdio", "command": "jean"}}}"#;
         let mut args = Vec::new();
 
         append_mcp_config_args(&mut args, Some(config));
@@ -2971,8 +2972,8 @@ mod tests {
     fn any_real_server_still_goes_strict() {
         let config = r#"{
             "mcpServers": {
-                "jean": { "type": "stdio", "command": "jean" },
-                "jean-dialog": { "type": "stdio", "command": "jean" }
+                "splitkick": { "type": "stdio", "command": "jean" },
+                "splitkick-dialog": { "type": "stdio", "command": "jean" }
             }
         }"#;
         let mut args = Vec::new();
@@ -2984,7 +2985,8 @@ mod tests {
 
     #[test]
     fn permission_prompt_flag_is_passed_when_the_dialog_server_is_present() {
-        let config = r#"{"mcpServers": {"jean-dialog": {"type": "stdio", "command": "jean"}}}"#;
+        let config =
+            r#"{"mcpServers": {"splitkick-dialog": {"type": "stdio", "command": "jean"}}}"#;
         let mut args = Vec::new();
 
         append_permission_prompt_tool_arg(&mut args, Some(config));
@@ -2993,7 +2995,7 @@ mod tests {
             args,
             vec![
                 "--permission-prompt-tool".to_string(),
-                "mcp__jean-dialog__permission_prompt".to_string(),
+                "mcp__splitkick-dialog__permission_prompt".to_string(),
             ]
         );
     }

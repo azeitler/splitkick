@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useState, useRef, useEffect, useMemo } from 'react'
 import {
   ArrowDownToLine,
@@ -1718,7 +1719,7 @@ ${resolveInstructions}`
 
             try {
               if (!worktree.pr_number) {
-                throw new Error('Open or link a PR in Jean first')
+                throw new Error(`Open or link a PR in ${PRODUCT_NAME} first`)
               }
 
               const result = await invoke<TriggerCodeRabbitPrReviewResponse>(
@@ -2601,8 +2602,8 @@ ${resolveInstructions}`
                 <p className="text-sm text-destructive">{linkPrError}</p>
               )}
               <p className="text-xs text-muted-foreground">
-                Jean will validate this PR with GitHub and store the link on the
-                current worktree.
+                {PRODUCT_NAME} will validate this PR with GitHub and store the
+                link on the current worktree.
               </p>
             </div>
 

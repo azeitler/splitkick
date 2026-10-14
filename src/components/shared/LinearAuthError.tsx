@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { KeyRound } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useUIStore } from '@/store/ui-store'
@@ -18,7 +19,7 @@ export function LinearAuthError() {
         </p>
         <p className="text-xs text-muted-foreground">
           Add and test a personal API key in Settings &rarr; Integrations, then
-          optionally filter issues by team for this Jean project.
+          optionally filter issues by team for this {PRODUCT_NAME} project.
         </p>
       </div>
       <Button

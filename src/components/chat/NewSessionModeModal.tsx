@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import {
   useCallback,
   useEffect,
@@ -95,7 +96,9 @@ export function NewSessionModeModal() {
   })
   const grokStatus = useGrokCliStatus({ enabled: target !== null })
   const kimiStatus = useKimiCliStatus({ enabled: target !== null })
-  const antigravityStatus = useAntigravityCliStatus({ enabled: target !== null })
+  const antigravityStatus = useAntigravityCliStatus({
+    enabled: target !== null,
+  })
   const { data: preferences } = usePreferences()
   const [nativePickerKind, setNativePickerKind] =
     useState<NativeCliSessionKind | null>(null)
@@ -188,8 +191,8 @@ export function NewSessionModeModal() {
     piStatus.isLoading ||
     commandcodeStatus.isLoading ||
     grokStatus.isLoading ||
-    kimiStatus.isLoading
-    || antigravityStatus.isLoading
+    kimiStatus.isLoading ||
+    antigravityStatus.isLoading
 
   const nativePickerCommand = useMemo(() => {
     if (nativePickerKind === null || nativePickerKind === 'terminal') {
@@ -387,8 +390,8 @@ export function NewSessionModeModal() {
                       <MessageSquarePlus className="size-4" />
                     )
                   }
-                  title="Jean Chat"
-                  subtitle="Normal ChatWindow session with Jean features"
+                  title={`${PRODUCT_NAME} Chat`}
+                  subtitle={`Normal ChatWindow session with ${PRODUCT_NAME} features`}
                   badge="Default"
                   shortcut="↵"
                   showShortcut={!isMobile}

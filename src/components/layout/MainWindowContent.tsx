@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { Suspense, lazy, useCallback, useEffect, useState } from 'react'
 import { cn } from '@/lib/utils'
 import { useChatStore } from '@/store/chat-store'
@@ -174,7 +175,9 @@ export function MainWindowContent({
     />
   ) : projectsUnknown && projectsFailed ? (
     <div className="flex flex-1 flex-col items-center justify-center gap-3 font-sans">
-      <p className="text-sm text-muted-foreground">Couldn&apos;t load projects.</p>
+      <p className="text-sm text-muted-foreground">
+        Couldn&apos;t load projects.
+      </p>
       <Button variant="outline" onClick={() => refetchProjects()}>
         Retry
       </Button>
@@ -183,11 +186,13 @@ export function MainWindowContent({
     <JeanLoadingScreen />
   ) : (
     <div className="flex flex-1 flex-col items-center justify-center gap-6 font-sans">
-      <h1 className="text-4xl font-bold text-foreground">Welcome to Jean!</h1>
+      <h1 className="text-4xl font-bold text-foreground">
+        Welcome to {PRODUCT_NAME}!
+      </h1>
       {awaitingBackendCheck || backendsLoading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          <span>Calling Jean…</span>
+          <span>Calling {PRODUCT_NAME}…</span>
         </div>
       ) : setupIncomplete ? (
         <div className="flex flex-col items-center gap-3">

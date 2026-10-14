@@ -36,7 +36,6 @@ import { initializeCommandSystem } from './lib/commands'
 import { logger } from './lib/logger'
 import { logNativeError } from './lib/native-log'
 import { toast } from 'sonner'
-import { useJeanzMovedNotice } from '@/hooks/useJeanzMovedNotice'
 import { cleanupOldFiles } from './lib/recovery'
 import './App.css'
 import MainWindow from './components/layout/MainWindow'
@@ -885,7 +884,6 @@ function App() {
 
   // Apply font settings from preferences
   useFontSettings()
-  useJeanzMovedNotice()
 
   // Apply zoom level from preferences + keyboard shortcuts
   useZoom()

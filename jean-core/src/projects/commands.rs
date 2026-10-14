@@ -2381,7 +2381,7 @@ pub async fn create_worktree(
 
             // Run setup script AFTER emitting worktree:created (user can already type)
             if let Some(script) = pending_setup_script {
-                log::trace!("Background: Found jean.json with setup script, executing...");
+                log::trace!("Background: Found project config with setup script, executing...");
                 let (setup_output, setup_success) = match git::run_setup_script(
                     &worktree_path_clone,
                     &project_path,
@@ -3112,7 +3112,7 @@ pub async fn create_worktree_from_existing_branch(
                 git::resolve_jean_config(&worktree_path_clone, Some(&project_path))
             {
                 if let Some(script) = config.scripts.setup {
-                    log::trace!("Background: Found jean.json with setup script, executing...");
+                    log::trace!("Background: Found project config with setup script, executing...");
                     match git::run_setup_script(
                         &worktree_path_clone,
                         &project_path,
@@ -3642,7 +3642,7 @@ pub async fn checkout_pr(
                 git::resolve_jean_config(&worktree_path_clone, Some(&project_path))
             {
                 if let Some(script) = config.scripts.setup {
-                    log::trace!("Background: Found jean.json with setup script, executing...");
+                    log::trace!("Background: Found project config with setup script, executing...");
                     match git::run_setup_script(
                         &worktree_path_clone,
                         &project_path,
@@ -5098,8 +5098,10 @@ pub async fn open_worktree_in_editor(
     let editor_app = editor.unwrap_or_else(|| "zed".to_string());
     log::trace!("Opening worktree in {editor_app}: {worktree_path}");
 
-    // If opening jean.json and it doesn't exist, create template
-    if worktree_path.ends_with("jean.json") {
+    // If opening the project config and it doesn't exist, create template
+    if worktree_path.ends_with(crate::brand::PROJECT_CONFIG_FILE)
+        || worktree_path.ends_with(crate::brand::LEGACY_PROJECT_CONFIG_FILE)
+    {
         let path = std::path::Path::new(&worktree_path);
         if !path.exists() {
             let template = r#"{
@@ -5110,7 +5112,7 @@ pub async fn open_worktree_in_editor(
 }
 "#;
             if let Err(e) = std::fs::write(path, template) {
-                log::warn!("Failed to create jean.json template: {e}");
+                log::warn!("Failed to create project config template: {e}");
             }
         }
     }
@@ -6998,7 +7000,7 @@ pub async fn trigger_coderabbit_pr_review(
 
     let gh = resolve_gh_binary(&app);
     let target_pr_number =
-        pr_number.ok_or_else(|| "Open or link a PR in Jean first".to_string())?;
+        pr_number.ok_or_else(|| "Open or link a PR in Splitkick first".to_string())?;
     let output = gh_command(&gh, &worktree_path)
         .args([
             "pr",
@@ -14148,14 +14150,16 @@ pub async fn get_jean_config(project_path: String) -> Option<JeanConfig> {
     git::read_jean_config(&project_path)
 }
 
-/// Save jean.json config to disk
+/// Save the project config to disk, into the file that already exists
+/// (`splitkick.json` or `jean.json`), else a new `splitkick.json`
 pub async fn save_jean_config(project_path: String, config: JeanConfig) -> Result<(), String> {
-    let config_path = Path::new(&project_path).join("jean.json");
+    let file_name = git::project_config_file_name(&project_path);
+    let config_path = Path::new(&project_path).join(file_name);
     let json = serde_json::to_string_pretty(&config)
         .map_err(|e| format!("Failed to serialize config: {e}"))?;
     std::fs::write(&config_path, format!("{json}\n"))
-        .map_err(|e| format!("Failed to write jean.json: {e}"))?;
-    log::trace!("Saved jean.json to {}", config_path.display());
+        .map_err(|e| format!("Failed to write {file_name}: {e}"))?;
+    log::trace!("Saved {file_name} to {}", config_path.display());
     Ok(())
 }
 

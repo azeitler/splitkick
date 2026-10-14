@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useEffect, useEffectEvent } from 'react'
 import { Bot, Loader2, Rabbit } from 'lucide-react'
 import {
@@ -95,7 +96,7 @@ export function ReviewMethodModal({
         <div className="grid min-w-0 gap-2">
           <ReviewChoice
             icon={<Bot className="size-4" />}
-            title="Jean review"
+            title={`${PRODUCT_NAME} review`}
             subtitle="Reviews your current branch against its base, including uncommitted changes"
             badge="Default"
             shortcut={keyboardShortcutsEnabled ? '1' : undefined}
@@ -118,7 +119,7 @@ export function ReviewMethodModal({
             prSubtitle={
               codeRabbitPrAvailable
                 ? 'Add @coderabbitai review comment'
-                : 'Open or link a PR in Jean first'
+                : `Open or link a PR in ${PRODUCT_NAME} first`
             }
             showShortcuts={keyboardShortcutsEnabled}
             onCliReview={() => choose(onCodeRabbitCliReview)}

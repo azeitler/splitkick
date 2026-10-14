@@ -3,7 +3,7 @@ import {
   ArrowDownCircle,
   Ellipsis,
   Github,
-  Heart,
+  Globe,
   Settings,
   Tag,
 } from 'lucide-react'
@@ -29,7 +29,7 @@ import { useCommandContext } from '@/lib/commands'
 import { isNativeApp } from '@/lib/environment'
 import { openExternal } from '@/lib/platform'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
-import { releaseUrlForVersion } from '@/lib/release-url'
+import { REPO_URL, releaseUrlForVersion } from '@/lib/release-url'
 import { UnreadBell } from '@/components/unread/UnreadBell'
 import { UsagePopover } from '@/components/titlebar/UsagePopover'
 import { RemoteConnectionsDialog } from '@/components/remote/RemoteConnectionsDialog'
@@ -110,16 +110,16 @@ function MoreMenu() {
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end">
         <DropdownMenuItem
-          onSelect={() => openExternal('https://github.com/coollabsio/jean')}
+          onSelect={() => openExternal(REPO_URL)}
         >
           <Github />
           GitHub
         </DropdownMenuItem>
         <DropdownMenuItem
-          onSelect={() => openExternal('https://jean.build/sponsorships/')}
+          onSelect={() => openExternal('https://splitkick.app')}
         >
-          <Heart className="text-pink-500" />
-          Sponsor Jean
+          <Globe />
+          Website
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem

@@ -165,7 +165,7 @@ fn browser_grab_inject_script(tab_id: &str, theme: Option<&str>) -> String {
     name: 'jean-chat',
     actions: [{{
       id: 'send-to-jean-chat',
-      label: 'Send to Jean Chat',
+      label: 'Send to Splitkick Chat',
       shortcut: 'J',
       showInToolbarMenu: true,
       onAction: async (context) => {{
@@ -624,7 +624,7 @@ mod tests {
 
         assert!(script.contains("react-grab@0.1.47"));
         assert!(script.contains("browser_report_grab_context"));
-        assert!(script.contains("Send to Jean Chat"));
+        assert!(script.contains("Send to Splitkick Chat"));
         assert!(script.contains("__REACT_GRAB_MODULE__"));
         assert!(script.contains("const reactGrab = window.__REACT_GRAB_MODULE__"));
         assert!(script.contains("unregisterPlugin?.('comment')"));

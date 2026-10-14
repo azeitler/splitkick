@@ -111,7 +111,7 @@ pub fn resolve_coderabbit_binary(app: &AppHandle) -> PathBuf {
     }
 
     if source_preference == CodeRabbitSourcePreference::ExplicitPath {
-        log::warn!("coderabbit_cli_source is 'path' but coderabbit was not found in PATH; falling back to Jean-managed binary");
+        log::warn!("coderabbit_cli_source is 'path' but coderabbit was not found in PATH; falling back to Splitkick-managed binary");
     }
 
     jean_managed_path

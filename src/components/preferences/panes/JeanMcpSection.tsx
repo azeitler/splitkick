@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { CheckCircle, Copy, Loader2, PlugZap, XCircle } from 'lucide-react'
@@ -117,7 +118,9 @@ function installButtonContent(state: InstallState, message: string) {
 
 function handleCopySnippet(label: string, content: string | null) {
   if (!content) {
-    toast.error(`No ${label} snippet available — enable Jean MCP first`)
+    toast.error(
+      `No ${label} snippet available — enable ${PRODUCT_NAME} MCP first`
+    )
     return
   }
   copyToClipboard(content)
@@ -238,7 +241,7 @@ export const JeanMcpSection: React.FC = () => {
   const handleInstall = useCallback(
     async (assumeEnabled = false) => {
       if ((!enabled && !assumeEnabled) || !serverRunning) {
-        setTemporaryInstallState('error', 'Enable Jean MCP first')
+        setTemporaryInstallState('error', `Enable ${PRODUCT_NAME} MCP first`)
         return
       }
       if (installableBackends.length === 0) {
@@ -269,8 +272,8 @@ export const JeanMcpSection: React.FC = () => {
             : 'Added'
         )
       } catch (e) {
-        setTemporaryInstallState('error', 'Failed to add Jean MCP')
-        console.error('Failed to add Jean MCP config', e)
+        setTemporaryInstallState('error', `Failed to add ${PRODUCT_NAME} MCP`)
+        console.error(`Failed to add ${PRODUCT_NAME} MCP config`, e)
       }
     },
     [
@@ -304,11 +307,14 @@ export const JeanMcpSection: React.FC = () => {
 
   return (
     <>
-      <SettingsSection title="Jean MCP Server" anchorId="pref-mcp-section-jean">
+      <SettingsSection
+        title={`${PRODUCT_NAME} MCP Server`}
+        anchorId="pref-mcp-section-jean"
+      >
         <p className="text-sm text-muted-foreground">
-          Expose Jean&apos;s own commands over MCP so spawned local CLIs can
-          call back into Jean (create worktrees, list GitHub issues, send chat
-          messages, etc).
+          Expose {PRODUCT_NAME}&apos;s own commands over MCP so spawned local
+          CLIs can call back into {PRODUCT_NAME} (create worktrees, list GitHub
+          issues, send chat messages, etc).
         </p>
 
         <div className="flex flex-col gap-2 rounded-md border px-4 py-3 sm:flex-row sm:items-center sm:gap-3">
@@ -319,7 +325,7 @@ export const JeanMcpSection: React.FC = () => {
               onCheckedChange={handleEnabledChange}
             />
             <Label htmlFor="jean-mcp-enabled" className="cursor-pointer">
-              Enable Jean MCP
+              Enable {PRODUCT_NAME} MCP
             </Label>
           </div>
           {checkingServer && (
@@ -387,7 +393,8 @@ export const JeanMcpSection: React.FC = () => {
                   One-click config install
                 </Label>
                 <p className="text-xs text-muted-foreground">
-                  Safely merges Jean MCP into installed CLI user configs
+                  Safely merges {PRODUCT_NAME} MCP into installed CLI user
+                  configs
                   {installableLabels.length > 0
                     ? `: ${installableLabels.join(', ')}.`
                     : '. Install a supported CLI first.'}
@@ -411,7 +418,9 @@ export const JeanMcpSection: React.FC = () => {
                 title={installMessage}
               >
                 {transientButton ?? (
-                  <span>Add current Jean MCP ({modeLabel})</span>
+                  <span>
+                    Add current {PRODUCT_NAME} MCP ({modeLabel})
+                  </span>
                 )}
               </Button>
             </div>
@@ -452,12 +461,13 @@ export const JeanMcpSection: React.FC = () => {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Add Jean MCP to your CLI configs?
+              Add {PRODUCT_NAME} MCP to your CLI configs?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Jean MCP is enabled. Jean can add it automatically to your
-              installed CLI config files (Claude, Codex, Cursor, Grok, Kimi,
-              OpenCode), or you can copy the manual snippets below.
+              {PRODUCT_NAME} MCP is enabled. {PRODUCT_NAME} can add it
+              automatically to your installed CLI config files (Claude, Codex,
+              Cursor, Grok, Kimi, OpenCode), or you can copy the manual snippets
+              below.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

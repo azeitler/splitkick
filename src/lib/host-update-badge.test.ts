@@ -17,7 +17,7 @@ describe('hostUpdateBadge', () => {
     const badge = hostUpdateBadge(base)
     expect(badge.label).toBe('Host update')
     expect(badge.label).not.toBe('Update available')
-    expect(badge.tooltip).toContain('the host Jean app')
+    expect(badge.tooltip).toContain('the host app')
     expect(badge.tooltip).toContain('v0.1.73-z.15')
     expect(badge.tooltip).toContain('0.1.73-z.13')
     expect(badge.busy).toBe(false)
@@ -65,7 +65,7 @@ describe('hostUpdateBadge', () => {
   })
 
   it('labels the update target per channel', () => {
-    expect(hostUpdateLabel('desktop')).toBe('the host Jean app')
+    expect(hostUpdateLabel('desktop')).toBe('the host app')
     expect(hostUpdateLabel('server')).toBe('jean-server')
   })
 })

@@ -1,14 +1,10 @@
 blank_issues_enabled: false
 
 contact_links:
-  - name: 🤔 Questions and Community Support
-    url: https://coollabs.io/discord
-    about: If you have any questions, reach out to us on Discord for community support.
+  - name: 📖 Documentation
+    url: https://docs.splitkick.app
+    about: Guides for installing and using Splitkick.
 
-  - name: 🐛 Bug Report
-    url: https://github.com/coollabsio/jean/issues/new?template=bug_report.yml
-    about: Report a problem with Jean.
-
-  - name: 💡 Feature Request
-    url: https://github.com/coollabsio/jean/issues/new?template=feature_request.yml
-    about: Suggest an idea or improvement for Jean.
+  - name: 🔒 Security vulnerability
+    url: https://github.com/azeitler/splitkick/security/advisories/new
+    about: Report security issues privately, not as a public issue.

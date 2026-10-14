@@ -1,5 +1,5 @@
 /**
- * Flavor-aware web branding: the product name in index.html and the web icons
+ * Splitkick web branding: the product name in index.html and the web icons
  * (browser tab, phone home screen), the latter emitted under a content-hashed
  * name. Used by the Vite plugin in vite.config.ts.
  *
@@ -11,8 +11,7 @@
  * `public, max-age=31536000, immutable` (try_static_filesystem_response in
  * jean-core/src/http_server/server.rs). New bytes at a fixed /favicon.png would
  * therefore never reach a browser that already cached it. Hashing the name and
- * rewriting the href in index.html makes any artwork change - the JeanZ flavor
- * included - reach every existing instance on its next load. Do not put these
+ * rewriting the href in index.html makes any artwork change reach every existing instance on its next load. Do not put these
  * back on a fixed filename.
  */
 import { createHash } from 'node:crypto'
@@ -21,25 +20,19 @@ import path from 'node:path'
 
 export const WEB_ICONS = ['favicon.png', 'apple-touch-icon.png']
 
-const FORK_FLAVOR = 'jeanz'
-const FORK_ICON_DIR = 'src-tauri/icons-fork/web'
-const UPSTREAM_ICON_DIR = 'public'
+const ICON_DIR = 'src-tauri/icons-fork/web'
 
 const UPSTREAM_PRODUCT_NAME = 'Jean'
-const FORK_PRODUCT_NAME = 'JeanZ'
 
 /**
- * The product name this build ships. Matches `productName` in the Tauri config
- * of the same flavor, which is what names the window and the macOS menu.
+ * The product name this build ships. Matches `productName` in
+ * src-tauri/tauri.fork.conf.json, which names the window and the macOS menu.
  */
-export const PRODUCT_NAME =
-  process.env.JEAN_FLAVOR === FORK_FLAVOR
-    ? FORK_PRODUCT_NAME
-    : UPSTREAM_PRODUCT_NAME
+export const PRODUCT_NAME = 'Splitkick'
 
 // Every place index.html names the product. Each one must still be present, so
 // that a reworded index.html fails the build instead of silently shipping the
-// upstream name under the fork icon.
+// upstream name. index.html stays as upstream has it; the build rewrites it.
 const PRODUCT_NAME_ANCHORS = [
   `<title>${UPSTREAM_PRODUCT_NAME}</title>`,
   `content="${UPSTREAM_PRODUCT_NAME}"`,
@@ -53,18 +46,13 @@ const PRODUCT_NAME_ANCHORS = [
  */
 
 /**
- * Picks the web icons for the flavor being built and hashes their contents.
- * JEAN_FLAVOR=jeanz takes the amber artwork, anything else the upstream
- * artwork from public/.
+ * Picks the Splitkick web icons and hashes their contents.
  *
  * @returns {WebIcon[]}
  */
 export function resolveWebIcons() {
-  const sourceDir =
-    process.env.JEAN_FLAVOR === FORK_FLAVOR ? FORK_ICON_DIR : UPSTREAM_ICON_DIR
-
   return WEB_ICONS.map(file => {
-    const source = path.resolve(sourceDir, file)
+    const source = path.resolve(ICON_DIR, file)
     const hash = createHash('sha256')
       .update(readFileSync(source))
       .digest('hex')
@@ -80,7 +68,7 @@ export function resolveWebIcons() {
 
 /**
  * Points the `<link>` tags in index.html at the hashed names, and names the
- * product for this flavor.
+ * product.
  *
  * @param {string} html
  * @param {WebIcon[]} icons
@@ -108,7 +96,7 @@ export function rewriteIndexHtml(html, icons, productName = PRODUCT_NAME) {
 
 /**
  * Writes each icon under both its hashed name and its plain name. The hashed
- * name is what index.html requests; the plain name is overwritten so a JeanZ
+ * name is what index.html requests; the plain name is overwritten so the
  * bundle carries no upstream artwork for a request that goes straight to
  * /favicon.png.
  *

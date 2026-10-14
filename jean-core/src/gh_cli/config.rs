@@ -83,7 +83,7 @@ pub fn resolve_gh_binary(app: &AppHandle) -> PathBuf {
         } else if let Some(path) = crate::platform::find_cli_in_host_path("gh", None) {
             return path;
         }
-        log::warn!("gh_cli_source is 'path' but could not find gh in PATH, falling back to Jean-managed binary");
+        log::warn!("gh_cli_source is 'path' but could not find gh in PATH, falling back to Splitkick-managed binary");
     }
 
     // In WSL mode the Jean-managed install (when it exists) lives inside

@@ -2,26 +2,16 @@
 
 ## Supported Versions
 
-Currently supported, maintained, and updated versions:
-
-| Version | Supported          | Support Status                        |
-| ------- | ------------------ | ------------------------------------- |
-| 0.x     | :white_check_mark: | Active Development & Security Updates |
-
-## Security Updates
-
-We take security seriously. Security updates are released as soon as possible after a vulnerability is discovered and verified.
+Only the latest Splitkick release receives security fixes. The in-app updater installs it.
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability, please follow these steps:
-
-1. **DO NOT** disclose the vulnerability publicly.
-2. Send a detailed report to: `security@coollabs.io`.
-3. Include in your report:
+1. **Do not** disclose the vulnerability publicly, and do not open a public issue.
+2. Report it privately through GitHub: [Report a vulnerability](https://github.com/azeitler/splitkick/security/advisories/new).
+3. Include:
    - A description of the vulnerability
    - Steps to reproduce the issue
    - Potential impact
    - Any suggested fixes or mitigations
 
-Please do not report security vulnerabilities through public GitHub issues, discussions, or other public channels.
+If the issue is also in upstream Jean, it will be reported to coolLabs as well.

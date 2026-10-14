@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 
@@ -35,10 +36,12 @@ export function BackendCliSourceCards({
       >
         <RadioGroupItem id={`${sourceId}-source-jean`} value="jean" />
         <span>
-          <span className="block text-sm font-medium">Jean managed</span>
+          <span className="block text-sm font-medium">
+            {PRODUCT_NAME} managed
+          </span>
           <span className="block text-xs leading-relaxed text-muted-foreground">
             {managedDescription ??
-              `Jean installs and updates an isolated ${backendName} version.`}
+              `${PRODUCT_NAME} installs and updates an isolated ${backendName} version.`}
           </span>
         </span>
       </Label>

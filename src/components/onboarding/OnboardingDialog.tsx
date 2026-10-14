@@ -8,6 +8,7 @@
 /* eslint-disable no-console */
 const dbg = (...args: unknown[]) => console.debug('[ONBOARDING]', ...args)
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { loginArgsForBackend } from '@/lib/cli-auth'
 import {
@@ -2502,14 +2503,14 @@ function OnboardingDialogContent() {
     const dialogStep = step as OnboardingStep
     if (dialogStep === 'usage-mode') {
       return {
-        title: 'Welcome to Jean',
+        title: `Welcome to ${PRODUCT_NAME}`,
         description: 'Choose local development or remote control.',
       }
     }
 
     if (dialogStep === 'remote-setup') {
       return {
-        title: 'Connect to a remote Jean',
+        title: 'Connect to a remote Jean server',
         description:
           'Install jean-server over SSH, or connect with an existing Web Access URL.',
       }
@@ -2517,7 +2518,7 @@ function OnboardingDialogContent() {
 
     if (dialogStep === 'wsl-setup') {
       return {
-        title: 'Welcome to Jean',
+        title: `Welcome to ${PRODUCT_NAME}`,
         description: 'Choose your development environment.',
       }
     }
@@ -2526,7 +2527,7 @@ function OnboardingDialogContent() {
       return {
         title: onboardingManuallyTriggered
           ? 'Install AI Backends'
-          : 'Welcome to Jean',
+          : `Welcome to ${PRODUCT_NAME}`,
         description: onboardingManuallyTriggered
           ? 'Select additional AI backends to install.'
           : 'Select at least one AI backend to install. GitHub CLI setup is required next.',
@@ -2548,7 +2549,7 @@ function OnboardingDialogContent() {
         description: isGhReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : hasPathCli
-            ? 'Choose to use your system GitHub CLI or install with Jean.'
+            ? `Choose to use your system GitHub CLI or install with ${PRODUCT_NAME}.`
             : 'GitHub CLI is required for GitHub integration.',
       }
     }
@@ -2575,7 +2576,7 @@ function OnboardingDialogContent() {
         description: isReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : pathDetection.data?.found
-            ? 'Choose to use your system Claude or install with Jean.'
+            ? `Choose to use your system Claude or install with ${PRODUCT_NAME}.`
             : 'Select a version to install.',
       }
     }
@@ -2591,7 +2592,7 @@ function OnboardingDialogContent() {
         description: isReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : hasPathCli
-            ? 'Choose to use your system Codex or install with Jean.'
+            ? `Choose to use your system Codex or install with ${PRODUCT_NAME}.`
             : 'Select a version to install.',
       }
     }
@@ -2610,7 +2611,7 @@ function OnboardingDialogContent() {
         description: isReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : hasPathCli
-            ? 'Choose to use your system OpenCode or install with Jean.'
+            ? `Choose to use your system OpenCode or install with ${PRODUCT_NAME}.`
             : 'Select a version to install.',
       }
     }
@@ -2634,7 +2635,7 @@ function OnboardingDialogContent() {
         description: isPiReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : piPathDetection.data?.found
-            ? 'Choose to use your system PI or install with Jean.'
+            ? `Choose to use your system PI or install with ${PRODUCT_NAME}.`
             : 'Select a version to install.',
       }
     }
@@ -2650,7 +2651,7 @@ function OnboardingDialogContent() {
         description: isCommandcodeReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : commandcodePathDetection.data?.found
-            ? 'Choose to use your system Command Code or install with Jean.'
+            ? `Choose to use your system Command Code or install with ${PRODUCT_NAME}.`
             : 'Select a version to install.',
       }
     }
@@ -2663,7 +2664,7 @@ function OnboardingDialogContent() {
         description: isGrokReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : grokPathDetection.data?.found
-            ? 'Choose to use your system Grok or install with Jean.'
+            ? `Choose to use your system Grok or install with ${PRODUCT_NAME}.`
             : 'Select a version to install.',
       }
     }
@@ -2676,7 +2677,7 @@ function OnboardingDialogContent() {
         description: isKimiReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : kimiPathDetection.data?.found
-            ? 'Choose to use your system Kimi Code or install with Jean.'
+            ? `Choose to use your system Kimi Code or install with ${PRODUCT_NAME}.`
             : 'Select a version to install.',
       }
     }
@@ -2692,7 +2693,7 @@ function OnboardingDialogContent() {
         description: isAntigravityReinstall
           ? 'Select a version to install. This will replace the current installation.'
           : antigravityPathDetection.data?.found
-            ? 'Choose to use your system Antigravity or install with Jean.'
+            ? `Choose to use your system Antigravity or install with ${PRODUCT_NAME}.`
             : 'Select a version to install.',
       }
     }
@@ -2868,7 +2869,7 @@ function OnboardingDialogContent() {
                     setInstallingPrerequisites(false)
                   } else {
                     toast.error(
-                      'Prerequisites are still missing. Restart Jean after installing Node.js so it can refresh PATH.'
+                      `Prerequisites are still missing. Restart ${PRODUCT_NAME} after installing Node.js so it can refresh PATH.`
                     )
                   }
                 }}
@@ -3398,9 +3399,10 @@ function PrerequisiteSetupState({
       <div>
         <h3 className="font-medium">Install host prerequisites</h3>
         <p className="mt-1 text-sm text-muted-foreground">
-          Git is required by Jean. Node.js and npm are shared prerequisites for
-          Jean-managed npm tools such as Grok, PI, Command Code, Kimi Code, and
-          agent-browser.
+          Git is required by {PRODUCT_NAME}. Node.js and npm are shared
+          prerequisites for
+          {PRODUCT_NAME}-managed npm tools such as Grok, PI, Command Code, Kimi
+          Code, and agent-browser.
         </p>
       </div>
       <div className="rounded-md border p-3 text-sm">
@@ -3409,9 +3411,9 @@ function PrerequisiteSetupState({
         <div>npm: {status.npmVersion ?? 'missing'}</div>
       </div>
       <p className="text-xs text-muted-foreground">
-        Jean uses the official Node.js installation flow because Debian and
-        Ubuntu packages can be outdated. Automatic installation requires your
-        confirmation and may ask for sudo access.
+        {PRODUCT_NAME} uses the official Node.js installation flow because
+        Debian and Ubuntu packages can be outdated. Automatic installation
+        requires your confirmation and may ask for sudo access.
       </p>
       <div className="flex flex-wrap gap-2">
         {status.automaticInstallSupported && (
@@ -3490,7 +3492,8 @@ export function CursorSetupState({
               : 'Install Cursor Agent'}
           </div>
           <div className="text-sm text-muted-foreground">
-            Jean will run Cursor&apos;s official installer in the terminal.
+            {PRODUCT_NAME} will run Cursor&apos;s official installer in the
+            terminal.
           </div>
         </button>
       </div>
@@ -3567,8 +3570,8 @@ function BackendSelectionState({
 
       <p className="text-xs text-muted-foreground">
         You must have at least one AI backend installed. Selecting an installed
-        backend lets you switch between Jean-managed and system PATH or change
-        versions.
+        backend lets you switch between {PRODUCT_NAME}-managed and system PATH
+        or change versions.
       </p>
 
       <Button
@@ -3645,7 +3648,7 @@ function SuccessState({
       </div>
 
       <Button onClick={onContinue} className="w-full" size="lg">
-        Continue to Jean
+        Continue to {PRODUCT_NAME}
       </Button>
     </div>
   )

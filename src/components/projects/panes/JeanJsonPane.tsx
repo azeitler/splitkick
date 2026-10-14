@@ -149,8 +149,8 @@ export function JeanJsonPane({
     <div className="space-y-6">
       <SettingsSection title="Automation Scripts">
         <p className="text-xs text-muted-foreground">
-          Scripts from jean.json — setup runs after worktree creation, teardown
-          before deletion, run launches via the run command
+          Scripts from splitkick.json — setup runs after worktree creation,
+          teardown before deletion, run launches via the run command
         </p>
         <div className="space-y-4">
           <div className="space-y-1.5">

@@ -14,9 +14,9 @@ describe('isCliAuthError', () => {
   })
 
   it('detects headless /login unavailable message', () => {
-    expect(
-      isCliAuthError("/login isn't available in this environment.")
-    ).toBe(true)
+    expect(isCliAuthError("/login isn't available in this environment.")).toBe(
+      true
+    )
   })
 
   it('detects codex re-auth prompts', () => {
@@ -39,7 +39,7 @@ describe('rewriteCliAuthErrorMessage', () => {
     )
     expect(msg.toLowerCase()).toContain('not authenticated')
     expect(msg.toLowerCase()).toContain('settings')
-    expect(msg).toMatch(/not available in Jean chat/i)
+    expect(msg).toMatch(/not available in Splitkick chat/i)
   })
 })
 

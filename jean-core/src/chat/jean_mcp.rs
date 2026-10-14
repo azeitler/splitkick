@@ -55,7 +55,7 @@ pub async fn build_jean_mcp_entry(app: &AppHandle, session_id: &str) -> Option<V
 /// Distinct from the user-facing `jean` server so `jean_mcp_enabled` keeps
 /// meaning exactly what it means today, and so the model's tool list does not
 /// grow by ~40 tools for users who turned the Jean server off.
-pub const JEAN_DIALOG_SERVER: &str = "jean-dialog";
+pub const JEAN_DIALOG_SERVER: &str = crate::brand::MCP_DIALOG_SERVER_NAME;
 
 /// Per-server MCP tool-call timeout for the dialog server, in milliseconds.
 ///
@@ -137,8 +137,8 @@ fn merge_entry_into_mcp_config(entry: Value, existing: Option<&str>) -> Option<S
             Err(e) => {
                 let preview: String = s.chars().take(200).collect();
                 log::warn!(
-                    "Jean MCP: failed to parse existing --mcp-config JSON ({e}); \
-                     replacing with a fresh config that only contains the Jean entry. \
+                    "Splitkick MCP: failed to parse existing --mcp-config JSON ({e}); \
+                     replacing with a fresh config that only contains the Splitkick entry. \
                      Preview: {preview:?}"
                 );
                 json!({ "mcpServers": {} })

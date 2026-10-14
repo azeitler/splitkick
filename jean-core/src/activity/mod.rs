@@ -22,10 +22,8 @@ use tauri::AppHandle;
 
 use crate::http_server::EmitExt;
 
-/// Log file name for the default flavor.
+/// Log file name.
 const ACTIVITY_FILE: &str = "activity.jsonl";
-/// Log file name for the JeanZ flavor, so the two do not share history.
-const ACTIVITY_FILE_JEANZ: &str = "activity_jeanz.jsonl";
 
 /// Records kept after a trim.
 const MAX_EVENTS: usize = 500;
@@ -167,13 +165,6 @@ pub fn first_line(text: &str) -> String {
     format!("{head}\u{2026}")
 }
 
-fn activity_file_name(product_name: Option<&str>) -> &'static str {
-    match product_name {
-        Some(crate::PRODUCT_NAME_JEANZ) => ACTIVITY_FILE_JEANZ,
-        _ => ACTIVITY_FILE,
-    }
-}
-
 fn activity_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app
         .path()
@@ -181,7 +172,7 @@ fn activity_path(app: &AppHandle) -> Result<PathBuf, String> {
         .map_err(|e| format!("Failed to get app data directory: {e}"))?;
     std::fs::create_dir_all(&dir)
         .map_err(|e| format!("Failed to create app data directory: {e}"))?;
-    Ok(dir.join(activity_file_name(app.product_name())))
+    Ok(dir.join(ACTIVITY_FILE))
 }
 
 fn now_timestamp() -> u64 {
@@ -741,14 +732,6 @@ mod tests {
         let mine = mine.as_array().unwrap();
         assert_eq!(mine.len(), 1);
         assert_eq!(mine[0]["id"], "mine");
-    }
-
-    #[test]
-    fn each_flavor_uses_its_own_file() {
-        assert_eq!(activity_file_name(Some("JeanZ")), ACTIVITY_FILE_JEANZ);
-        assert_eq!(activity_file_name(Some("Jean")), ACTIVITY_FILE);
-        assert_eq!(activity_file_name(None), ACTIVITY_FILE);
-        assert_ne!(ACTIVITY_FILE, ACTIVITY_FILE_JEANZ);
     }
 
     #[test]

@@ -29,15 +29,18 @@ test('parseMountedVolume extracts the /Volumes path from hdiutil output', () => 
 test('buildInstallPlan defaults to fast build and latest dmg install', () => {
   const plan = buildInstallPlan({ background: false, universal: false })
 
-  assert.deepEqual(plan.buildCommand, ['bun', ['run', 'tauri:build:fast']])
-  assert.equal(plan.installAppPath, '/Applications/Jean.app')
-  assert.equal(plan.reopenAppName, 'Jean')
+  assert.equal(plan.buildCommand[0], 'bunx')
+  assert.ok(plan.buildCommand[1].includes('src-tauri/tauri.fork.conf.json'))
+  assert.ok(plan.buildCommand[1].includes('release-fast'))
+  assert.equal(plan.installAppPath, '/Applications/Splitkick.app')
+  assert.equal(plan.reopenAppName, 'Splitkick')
 })
 
 test('buildInstallPlan uses universal macOS build when requested', () => {
   const plan = buildInstallPlan({ background: false, universal: true })
 
-  assert.deepEqual(plan.buildCommand, ['bun', ['run', 'tauri:build:macos']])
+  assert.ok(plan.buildCommand[1].includes('universal-apple-darwin'))
+  assert.ok(plan.buildCommand[1].includes('src-tauri/tauri.fork.conf.json'))
 })
 
 test('isAppRunningOutput handles osascript booleans', () => {

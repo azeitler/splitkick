@@ -137,14 +137,12 @@ export function prepareRemoteEditorOpenArgs(
 
   if (editor !== 'zed') {
     throw new Error(
-      `Opening ${editor} on a remote Jean host is not supported yet. Set your editor preference to Zed (uses \`zed ssh://…\`), or open the remote path in that editor via SSH yourself.`
+      `Opening ${editor} on a remote host is not supported yet. Set your editor preference to Zed (uses \`zed ssh://…\`), or open the remote path in that editor via SSH yourself.`
     )
   }
 
   const rawPath =
-    command === 'open_worktree_in_editor'
-      ? args?.worktreePath
-      : args?.path
+    command === 'open_worktree_in_editor' ? args?.worktreePath : args?.path
   const path = typeof rawPath === 'string' ? rawPath : ''
   if (!path.trim()) {
     throw new Error('No path to open.')

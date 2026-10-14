@@ -10,13 +10,33 @@ const root = resolve(__dirname, '..')
 const logPath = resolve(root, 'tmp/install-local-macos.log')
 const childFlag = '--install-child'
 
+const APP_NAME = 'Splitkick'
+const OVERLAY = ['-c', 'src-tauri/tauri.fork.conf.json']
+const FAST_ARGS = [
+  '--bundles',
+  'dmg',
+  ...OVERLAY,
+  '-c',
+  '{"bundle":{"createUpdaterArtifacts":false}}',
+  '--',
+  '--profile',
+  'release-fast',
+]
+const UNIVERSAL_ARGS = [
+  '--target',
+  'universal-apple-darwin',
+  '--bundles',
+  'app,dmg',
+  ...OVERLAY,
+]
+
 export function buildInstallPlan({ universal = false } = {}) {
   return {
     buildCommand: universal
-      ? ['bun', ['run', 'tauri:build:macos']]
-      : ['bun', ['run', 'tauri:build:fast']],
-    installAppPath: '/Applications/Jean.app',
-    reopenAppName: 'Jean',
+      ? ['bunx', ['tauri', 'build', ...UNIVERSAL_ARGS]]
+      : ['bunx', ['tauri', 'build', ...FAST_ARGS]],
+    installAppPath: `/Applications/${APP_NAME}.app`,
+    reopenAppName: APP_NAME,
   }
 }
 
@@ -93,14 +113,14 @@ function startBackground(args) {
     }
   )
   child.unref()
-  console.log(`Installing Jean in the background. Log: ${logPath}`)
+  console.log(`Installing ${APP_NAME} in the background. Log: ${logPath}`)
 }
 
 function usage() {
   console.log(`Usage: bun run install:local [-- --foreground] [-- --universal]
 
-Builds a local Jean DMG, quits Jean after the build succeeds, installs it to
-/Applications, detaches the DMG, and reopens Jean.
+Builds a local Splitkick DMG, quits Splitkick after the build succeeds,
+installs it to /Applications, detaches the DMG, and reopens Splitkick.
 
 Options:
   --foreground  Run in this terminal instead of detaching
@@ -161,13 +181,13 @@ async function main() {
   }
 
   try {
-    run('ditto', [`${volume}/Jean.app`, plan.installAppPath])
+    run('ditto', [`${volume}/${APP_NAME}.app`, plan.installAppPath])
   } finally {
     run('hdiutil', ['detach', volume])
   }
 
   run('open', ['-a', plan.reopenAppName])
-  console.log('Jean has been installed and reopened.')
+  console.log(`${APP_NAME} has been installed and reopened.`)
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

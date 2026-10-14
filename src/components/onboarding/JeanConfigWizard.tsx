@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useState } from 'react'
 import { FileCode2, Plus, X } from 'lucide-react'
 import {
@@ -35,9 +36,9 @@ function JeanConfigWizardContent() {
 
   const [setupScript, setSetupScript] = useState('')
   const [teardownScript, setTeardownScript] = useState('')
-  const [runScripts, setRunScripts] = useState<
-    { id: string; value: string }[]
-  >(() => [{ id: crypto.randomUUID(), value: '' }])
+  const [runScripts, setRunScripts] = useState<{ id: string; value: string }[]>(
+    () => [{ id: crypto.randomUUID(), value: '' }]
+  )
   const [ports, setPorts] = useState<
     { id: string; port: string; label: string; host: string }[]
   >([])
@@ -125,9 +126,9 @@ function JeanConfigWizardContent() {
             <FileCode2 className="mt-0.5 size-5 shrink-0 text-muted-foreground" />
             <div className="space-y-1 text-sm text-muted-foreground">
               <p>
-                Jean uses a{' '}
-                <code className="text-foreground/80">jean.json</code> file in
-                your project root to automate repetitive tasks:
+                {PRODUCT_NAME} uses a{' '}
+                <code className="text-foreground/80">splitkick.json</code> file
+                in your project root to automate repetitive tasks:
               </p>
               <ul className="list-disc pl-4 space-y-0.5">
                 <li>
@@ -290,9 +291,7 @@ function JeanConfigWizardContent() {
                   variant="ghost"
                   size="icon"
                   className="size-11 shrink-0 sm:size-8"
-                  onClick={() =>
-                    setPorts(ports.filter(p => p.id !== entry.id))
-                  }
+                  onClick={() => setPorts(ports.filter(p => p.id !== entry.id))}
                 >
                   <X className="h-3.5 w-3.5" />
                 </Button>

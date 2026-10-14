@@ -15,7 +15,7 @@ describe('BackendCliSourceCards', () => {
       />
     )
 
-    expect(screen.getByText('Jean managed')).toBeInTheDocument()
+    expect(screen.getByText('Splitkick managed')).toBeInTheDocument()
     expect(screen.getByText('System PATH')).toBeInTheDocument()
     expect(
       screen.getByText(/\/usr\/local\/bin\/codex · 1.2.3/)

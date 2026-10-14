@@ -131,7 +131,7 @@ pub fn resolve_cli_binary(app: &AppHandle) -> Result<PathBuf, String> {
             return Ok(path);
         }
         log::warn!(
-            "codex_cli_source is 'path' but could not find codex in PATH, falling back to Jean-managed binary"
+            "codex_cli_source is 'path' but could not find codex in PATH, falling back to Splitkick-managed binary"
         );
         return jean_managed_path(app);
     }
@@ -144,7 +144,7 @@ pub fn resolve_cli_binary(app: &AppHandle) -> Result<PathBuf, String> {
 
     if let Some(path) = find_system_binary(app) {
         log::info!(
-            "Jean-managed Codex CLI not installed; using system PATH binary at {}",
+            "Splitkick-managed Codex CLI not installed; using system PATH binary at {}",
             path.display()
         );
         return Ok(path);

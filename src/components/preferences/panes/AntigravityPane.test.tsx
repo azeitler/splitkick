@@ -35,7 +35,9 @@ vi.mock('@/services/antigravity-cli', () => ({
     data: { installed: true, version: '0.54.4', path: '/managed/antigravity' },
   }),
   useAntigravityCliAuth: () => ({ data: { authenticated: true } }),
-  useAvailableAntigravityModels: () => ({ data: [{ id: 'auto', label: 'Auto' }] }),
+  useAvailableAntigravityModels: () => ({
+    data: [{ id: 'auto', label: 'Auto' }],
+  }),
   useAvailableAntigravityVersions: () => ({
     data: [
       { version: '0.54.4', prerelease: false },
@@ -44,7 +46,11 @@ vi.mock('@/services/antigravity-cli', () => ({
     isFetching: false,
   }),
   useAntigravityPathDetection: () => ({
-    data: { found: true, path: '/usr/local/bin/antigravity', version: '0.53.0' },
+    data: {
+      found: true,
+      path: '/usr/local/bin/antigravity',
+      version: '0.53.0',
+    },
     isLoading: false,
     refetch: vi.fn(),
   }),
@@ -61,9 +67,11 @@ describe('AntigravityPane', () => {
   it('shows Jean-managed and system PATH sources', () => {
     render(<AntigravityPane />)
 
-    expect(screen.getByText('Jean managed')).toBeInTheDocument()
+    expect(screen.getByText('Splitkick managed')).toBeInTheDocument()
     expect(screen.getByText('System PATH')).toBeInTheDocument()
-    expect(screen.getByText(/\/usr\/local\/bin\/antigravity/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/\/usr\/local\/bin\/antigravity/)
+    ).toBeInTheDocument()
   })
 
   it('installs the selected stable managed version', () => {

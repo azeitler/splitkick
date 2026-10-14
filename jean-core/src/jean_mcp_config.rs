@@ -44,7 +44,7 @@ impl JeanMcpInstallMode {
             None | Some("current") => Ok(Self::current()),
             Some("dev") => Ok(Self::Dev),
             Some("prod") => Ok(Self::Prod),
-            Some(other) => Err(format!("Unsupported Jean MCP install mode: {other}")),
+            Some(other) => Err(format!("Unsupported Splitkick MCP install mode: {other}")),
         }
     }
 
@@ -57,8 +57,8 @@ impl JeanMcpInstallMode {
 
     pub fn server_name(self) -> &'static str {
         match self {
-            Self::Dev => "jean-dev",
-            Self::Prod => "jean",
+            Self::Dev => crate::brand::MCP_SERVER_NAME_DEV,
+            Self::Prod => crate::brand::MCP_SERVER_NAME,
         }
     }
 
@@ -243,10 +243,11 @@ pub async fn build_current_entry(
 ) -> Result<JeanMcpEntry, String> {
     let (running, socket_path, token) = crate::jean_mcp_socket::get_socket_status(app).await;
     if !running {
-        return Err("Jean MCP socket is not running".to_string());
+        return Err("Splitkick MCP socket is not running".to_string());
     }
-    let socket = socket_path.ok_or_else(|| "Jean MCP socket path is unavailable".to_string())?;
-    let token = token.ok_or_else(|| "Jean MCP token is unavailable".to_string())?;
+    let socket =
+        socket_path.ok_or_else(|| "Splitkick MCP socket path is unavailable".to_string())?;
+    let token = token.ok_or_else(|| "Splitkick MCP token is unavailable".to_string())?;
     let command = get_stable_launcher_command();
 
     Ok(JeanMcpEntry {
@@ -1116,8 +1117,8 @@ mod tests {
         .unwrap();
         assert!(twice.contains("// keep this"));
         assert!(twice.contains("// existing comment"));
-        assert!(twice.contains("\"jean-dev\""));
-        assert!(twice.contains("\"jean\""));
+        assert!(twice.contains("\"splitkick-dev\""));
+        assert!(twice.contains("\"splitkick\""));
         validate_jsonc(&twice, Path::new("test")).unwrap();
     }
 
@@ -1145,12 +1146,13 @@ mod tests {
     #[test]
     fn jsonc_patch_is_idempotent_for_same_key() {
         let dev = test_entry(JeanMcpInstallMode::Dev);
-        let once = patch_jsonc_object_property("{}", "mcp", "jean-dev", &dev.cursor_server_json())
-            .unwrap();
-        let twice =
-            patch_jsonc_object_property(&once, "mcp", "jean-dev", &dev.cursor_server_json())
+        let once =
+            patch_jsonc_object_property("{}", "mcp", "splitkick-dev", &dev.cursor_server_json())
                 .unwrap();
-        assert_eq!(twice.matches("\"jean-dev\"").count(), 1);
+        let twice =
+            patch_jsonc_object_property(&once, "mcp", "splitkick-dev", &dev.cursor_server_json())
+                .unwrap();
+        assert_eq!(twice.matches("\"splitkick-dev\"").count(), 1);
     }
 
     #[test]
@@ -1180,7 +1182,7 @@ mod tests {
         assert!(updated.contains("\"projects\""));
         assert!(updated.contains("\"allowedTools\""));
         assert!(updated.contains("\"filesystem\""));
-        assert!(updated.contains("\"jean\""));
+        assert!(updated.contains("\"splitkick\""));
         assert!(updated.contains("\"JEAN_MCP_MODE\": \"prod\""));
         validate_jsonc(&updated, Path::new("test")).unwrap();
     }
@@ -1192,7 +1194,7 @@ mod tests {
         let parsed: serde_json::Value = serde_json::from_str(&snippet).unwrap();
         assert!(parsed
             .get("mcpServers")
-            .and_then(|servers| servers.get("jean"))
+            .and_then(|servers| servers.get("splitkick"))
             .is_some());
         assert!(parsed.get("mcp").is_none());
     }
@@ -1217,8 +1219,8 @@ command = "npx"
 
         assert!(rendered.contains("# global comment"));
         assert!(rendered.contains("# existing server"));
-        assert!(rendered.contains("[mcp_servers.jean-dev]"));
-        assert!(rendered.contains("[mcp_servers.jean]"));
+        assert!(rendered.contains("[mcp_servers.splitkick-dev]"));
+        assert!(rendered.contains("[mcp_servers.splitkick]"));
         rendered.parse::<toml_edit::DocumentMut>().unwrap();
     }
 
@@ -1226,7 +1228,7 @@ command = "npx"
     fn grok_snippet_matches_codex_toml_shape() {
         let prod = test_entry(JeanMcpInstallMode::Prod);
         let snippet = prod.grok_snippet();
-        assert!(snippet.contains("[mcp_servers.jean]"));
+        assert!(snippet.contains("[mcp_servers.splitkick]"));
         assert!(snippet.contains("command = "));
         assert!(snippet.contains("JEAN_MCP_SOCKET"));
         assert!(snippet.contains("enabled = true"));
@@ -1248,7 +1250,7 @@ command = "npx"
         std::fs::write(
             &path,
             r#"# keep me
-disabled_mcp_servers = ["jean", "other"]
+disabled_mcp_servers = ["splitkick", "other"]
 
 [cli]
 installer = "npm"
@@ -1263,11 +1265,11 @@ installer = "npm"
 
         let content = std::fs::read_to_string(&path).unwrap();
         assert!(content.contains("# keep me"));
-        assert!(content.contains("[mcp_servers.jean]"));
+        assert!(content.contains("[mcp_servers.splitkick]"));
         assert!(content.contains("JEAN_MCP_MODE"));
         assert!(content.contains("enabled = true"));
         // Jean install clears our name from disabled_mcp_servers, keeps others.
-        assert!(!content.contains("\"jean\""));
+        assert!(!content.contains("\"splitkick\""));
         assert!(content.contains("\"other\"") || content.contains("other"));
         content.parse::<toml_edit::DocumentMut>().unwrap();
 

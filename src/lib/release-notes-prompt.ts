@@ -146,7 +146,7 @@ ${RELEASE_OUTPUT_CONTRACT}
 
 Group entries under only the applicable headings: Features, Fixes, Improvements, and Breaking Changes. Keep the notes concise, user-facing, and in past tense. Include PR and closing issue references when verified, but never invent references. Skip merge commits and trivial formatting-only changes.
 
-Reply with the finished release notes inside a single fenced \`markdown\` code block so Jean shows a copy button. Do not put any text before the code block.
+Reply with the finished release notes inside a single fenced \`markdown\` code block so Splitkick shows a copy button. Do not put any text before the code block.
 
 Immediately after the code block, add exactly one Markdown link labeled \`Create release on GitHub\`. Point it to the repository's \`/releases/new?title=<title>&body=<body>\` URL. URL-encode the title and complete Markdown body so GitHub opens its new-release form with both fields prefilled. Do not add any other text outside the code block.
 

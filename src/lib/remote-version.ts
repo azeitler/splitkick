@@ -7,6 +7,7 @@
  * are not locked out.
  */
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { toast } from 'sonner'
 import { FALLBACK_APP_VERSION } from './app-version'
 import { compareVersions } from './version-utils'
@@ -54,7 +55,7 @@ const SSO_PROXY_MARKER = 'SSO login proxy'
  */
 export const SSO_PROXY_ERROR =
   `This URL is behind an ${SSO_PROXY_MARKER} (for example Cloudflare Access). ` +
-  'The Jean desktop app cannot sign in to it, because it cannot send login ' +
+  `The ${PRODUCT_NAME} desktop app cannot sign in to it, because it cannot send login ` +
   'cookies or headers on the WebSocket connection. Reach the server through a ' +
   'private network instead (Cloudflare One/WARP or Tailscale), or open this ' +
   'URL in a web browser, where the login does work.'
@@ -159,8 +160,8 @@ export function checkRemoteVersionCompatibility(
   const localLabel = formatJeanVersionLabel(localVersion)
   const remoteLabel = formatJeanVersionLabel(remoteVersion)
   const message = localIsOlder
-    ? `This Jean app is ${localLabel}, but the remote server is ${remoteLabel}. Consider updating this app for the best experience.`
-    : `This Jean app is ${localLabel}, but the remote server is ${remoteLabel}. Consider updating the remote Jean server (or using a matching app version).`
+    ? `This ${PRODUCT_NAME} app is ${localLabel}, but the remote server is ${remoteLabel}. Consider updating this app for the best experience.`
+    : `This ${PRODUCT_NAME} app is ${localLabel}, but the remote server is ${remoteLabel}. Consider updating the remote Jean server (or using a matching app version).`
 
   return {
     compatible: false,
@@ -271,12 +272,12 @@ export function warnRemoteVersionMismatch(
   if (notifiedMismatchKey === key) return true
   notifiedMismatchKey = key
 
-  logger.warn('Remote Jean version mismatch', {
+  logger.warn('Remote server version mismatch', {
     localVersion: check.localVersion,
     remoteVersion: check.remoteVersion,
   })
 
-  toast.warning('Jean version mismatch', {
+  toast.warning('Server version mismatch', {
     id: 'remote-version-mismatch',
     description: check.message,
     duration: 12_000,

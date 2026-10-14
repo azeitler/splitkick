@@ -99,7 +99,7 @@ pub async fn park(
         Ok(Ok(outcome)) => outcome,
         // Sender dropped without answering (session cancelled, app shutting down).
         Ok(Err(_)) => DialogOutcome::Denied {
-            message: "Jean closed this request before it was answered.".to_string(),
+            message: "Splitkick closed this request before it was answered.".to_string(),
         },
         Err(_) => {
             PENDING.lock().unwrap().remove(tool_use_id);

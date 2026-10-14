@@ -1,12 +1,12 @@
 import { memo, useEffect, useState } from 'react'
-import { ChevronRight, Github, Heart } from 'lucide-react'
+import { ChevronRight, Github, Globe } from 'lucide-react'
 import { BackendLabel } from '@/components/ui/backend-label'
 import { useUIStore } from '@/store/ui-store'
 import { useSwipeBack } from '@/hooks/useSwipeBack'
 import { isNativeApp } from '@/lib/environment'
 import { openExternal } from '@/lib/platform'
 import { FALLBACK_APP_VERSION } from '@/lib/app-version'
-import { releaseUrlForVersion } from '@/lib/release-url'
+import { REPO_URL, releaseUrlForVersion } from '@/lib/release-url'
 import { getMobileNavigationGroups } from '@/components/preferences/preferences-navigation'
 import {
   CliUpdatesIndicator,
@@ -140,17 +140,13 @@ export const MobileSettingsPage = memo(function MobileSettingsPage({
                 v{version}
               </span>
             </SettingsRow>
-            <SettingsRow
-              onClick={() => openExternal('https://github.com/coollabsio/jean')}
-            >
+            <SettingsRow onClick={() => openExternal(REPO_URL)}>
               <Github className="size-4 shrink-0 text-muted-foreground" />
               <span>GitHub</span>
             </SettingsRow>
-            <SettingsRow
-              onClick={() => openExternal('https://jean.build/sponsorships/')}
-            >
-              <Heart className="size-4 shrink-0 text-pink-500" />
-              <span>Sponsor</span>
+            <SettingsRow onClick={() => openExternal('https://splitkick.app')}>
+              <Globe className="size-4 shrink-0 text-muted-foreground" />
+              <span>Website</span>
             </SettingsRow>
           </ul>
           {/* Remote connections exist only in the native shell. */}

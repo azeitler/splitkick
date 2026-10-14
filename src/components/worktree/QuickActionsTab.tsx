@@ -138,8 +138,7 @@ export function QuickActionsTab({
     })
   }, [defaultBranch, branches])
 
-  const effectiveBaseBranch =
-    selectedBaseBranch || defaultBranch || undefined
+  const effectiveBaseBranch = selectedBaseBranch || defaultBranch || undefined
 
   // Remotes that actually have the *selected* base branch fetched. Parent may
   // pass default-branch remotes as a fallback while this query loads.
@@ -303,9 +302,7 @@ export function QuickActionsTab({
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring'
                           )}
                           aria-label={
-                            isStarred
-                              ? `Unstar ${branch}`
-                              : `Star ${branch}`
+                            isStarred ? `Unstar ${branch}` : `Star ${branch}`
                           }
                           aria-pressed={isStarred}
                           onClick={event => {
@@ -526,10 +523,12 @@ export function QuickActionsTab({
                 className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-muted-foreground/40 hover:text-foreground hover:bg-accent cursor-pointer transition-colors"
               >
                 <Settings className="h-4 w-4" />
-                <span>Configure jean.json</span>
+                <span>Configure splitkick.json</span>
               </button>
             </TooltipTrigger>
-            <TooltipContent side="bottom">Configure jean.json</TooltipContent>
+            <TooltipContent side="bottom">
+              Configure splitkick.json
+            </TooltipContent>
           </Tooltip>
         )}
       </div>

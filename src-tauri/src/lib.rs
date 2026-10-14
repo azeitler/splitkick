@@ -63,60 +63,20 @@ fn fix_macos_path() {
     }
 }
 
-/// Name of the `.app` bundle this executable runs from, e.g. `JeanZ`.
-///
-/// The bundle is what the user actually launches, so it is the second opinion
-/// when the embedded config and the shipped bundle disagree about the flavor.
-/// Only macOS builds live in a bundle; elsewhere there is no `.app` ancestor
-/// and the answer is `None`.
-fn bundle_name_from_exe(exe: &std::path::Path) -> Option<String> {
-    exe.ancestors()
-        .find(|path| path.extension().is_some_and(|ext| ext == "app"))
-        .and_then(|path| path.file_stem())
-        .and_then(|stem| stem.to_str())
-        .map(str::to_string)
-}
-
-fn bundle_name() -> Option<String> {
-    bundle_name_from_exe(&std::env::current_exe().ok()?)
-}
-
-/// Product name of this build, used to keep flavor state files apart.
-///
-/// A flavor is applied through a `-c` config overlay at build time (see
-/// `.github/workflows/preflight.yml`) and through the bundle it produces.
-/// Either signal alone is enough to name the flavor, so both must miss before
-/// a JeanZ build is treated as stable Jean.
-fn resolve_product_name(app: &tauri::App) -> Option<String> {
-    let config_name = app.config().product_name.clone();
-    if config_name.as_deref() == Some(jean_core::PRODUCT_NAME_JEANZ) {
-        return config_name;
-    }
-    if bundle_name().as_deref() == Some(jean_core::PRODUCT_NAME_JEANZ) {
-        return Some(jean_core::PRODUCT_NAME_JEANZ.to_string());
-    }
-    config_name
-}
 
 fn initialize_core(app: &mut tauri::App) -> Result<jean_core::RuntimeContext, String> {
-    // Deliberately not `path().app_data_dir()`, which Tauri derives from the
-    // bundle identifier. Build flavors (see tauri.fork.conf.json) carry their
-    // own identifier so macOS can hold a separate TCC grant for each app, but
-    // they must keep reading one set of projects, sessions and CLI logins.
-    // The development build is the one identifier held apart, so a debug run
-    // never writes to the installed app's data.
+    // Not `path().app_data_dir()`: `jean_core::resolve_data_dir_for` also
+    // honors the data-dir env override and keeps the development build apart.
     let app_data_dir = jean_core::resolve_data_dir_for(&app.config().identifier)
-        .ok_or_else(|| "Unable to resolve Jean data directory".to_string())?;
+        .ok_or_else(|| "Unable to resolve the data directory".to_string())?;
     let resource_dir = app
         .path()
         .resource_dir()
         .map_err(|error| error.to_string())?;
-    // Pass the product name through so a flavor can keep its own state files
-    // inside the shared directory.
-    let product_name = resolve_product_name(app);
+    let product_name = app.config().product_name.clone();
     log::info!("Starting as product {product_name:?}");
-    // The bundle version, including a JeanZ build's `-z.N` suffix, which only
-    // exists in the Tauri config CI builds with — never in Cargo.toml. The
+    // The bundle version, which only exists in the Tauri config CI builds
+    // with — never in Cargo.toml. The
     // Web Access host-update check compares it against the release feed.
     jean_core::set_release_version(app.package_info().version.to_string());
     // The feed the native updater reads (`plugins.updater` in the Tauri
@@ -167,10 +127,13 @@ fn allow_project_assets(app: &AppHandle, core: &jean_core::RuntimeContext) {
             }
         }
     }
+    // `~/jean` holds worktrees imported from a Jean install; they stay where they are.
     if let Some(home) = dirs::home_dir() {
-        let _ = app
-            .asset_protocol_scope()
-            .allow_directory(home.join("jean"), true);
+        for dir in [jean_core::brand::WORKTREES_DIR_NAME, "jean"] {
+            let _ = app
+                .asset_protocol_scope()
+                .allow_directory(home.join(dir), true);
+        }
     }
     // `$APPDATA` in tauri.conf.json resolves through the bundle identifier, so
     // a flavor's scope would miss the shared data directory that holds project
@@ -350,9 +313,9 @@ pub fn run() {
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
-            .expect("failed to create Jean server runtime");
+            .expect("failed to create server runtime");
         if let Err(error) = runtime.block_on(jean_core::run_server()) {
-            eprintln!("Jean server failed: {error}");
+            eprintln!("Server failed: {error}");
             std::process::exit(1);
         }
         return;
@@ -373,13 +336,7 @@ pub fn run() {
         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
     ];
 
-    // Read the identifier before the builder runs. Tauri creates the main
-    // window — and with it the WebView — before the setup hook, so a flavor
-    // has to inherit stable Jean's WebView store and plugin state now or not
-    // at all.
     let context = tauri::generate_context!();
-    #[cfg(target_os = "macos")]
-    platform::seed_flavor_state(&context.config().identifier);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())
@@ -512,35 +469,4 @@ pub fn run() {
             }
             _ => {}
         });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::bundle_name_from_exe;
-    use std::path::Path;
-
-    #[test]
-    fn reads_the_flavor_name_from_the_bundle_path() {
-        assert_eq!(
-            bundle_name_from_exe(Path::new("/Applications/JeanZ.app/Contents/MacOS/jean")),
-            Some("JeanZ".to_string())
-        );
-    }
-
-    #[test]
-    fn reads_the_stable_name_from_the_bundle_path() {
-        assert_eq!(
-            bundle_name_from_exe(Path::new("/Applications/Jean.app/Contents/MacOS/jean")),
-            Some("Jean".to_string())
-        );
-    }
-
-    #[test]
-    fn an_unbundled_binary_has_no_name() {
-        // `tauri dev` runs the binary straight out of target/, with no bundle.
-        assert_eq!(
-            bundle_name_from_exe(Path::new("/repo/src-tauri/target/debug/jean")),
-            None
-        );
-    }
 }

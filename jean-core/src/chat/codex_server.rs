@@ -197,7 +197,7 @@ pub fn cleanup_orphaned_server(app: &AppHandle) {
     if record.jean_pid != std::process::id() {
         if is_process_alive(record.jean_pid) {
             log::info!(
-                "Preserving codex app-server (pid={}) owned by live Jean pid={}",
+                "Preserving codex app-server (pid={}) owned by live Splitkick pid={}",
                 record.server_pid,
                 record.jean_pid
             );
@@ -386,7 +386,7 @@ fn server_socket_path(app: &AppHandle) -> Result<PathBuf, String> {
     let tmp = std::env::temp_dir();
     let tmp = tmp.canonicalize().unwrap_or(tmp);
     let uid = unsafe { libc::getuid() };
-    let fallback = tmp.join(format!("jean-codex-{uid}.sock"));
+    let fallback = tmp.join(format!("splitkick-codex-{uid}.sock"));
     if fallback.as_os_str().len() <= MAX_LEN {
         return Ok(fallback);
     }
@@ -780,7 +780,7 @@ fn do_initialize(
     let init_params = serde_json::json!({
         "clientInfo": {
             "name": "jean",
-            "title": "Jean",
+            "title": "Splitkick",
             "version": "1.0.0"
         },
         "capabilities": {

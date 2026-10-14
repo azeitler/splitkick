@@ -60,16 +60,16 @@ const CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT: &str = "\
 - When multiple independent operations are needed, batch them into parallel tool calls. Launch independent Task subagents simultaneously rather than sequentially.
 - When specifying subagent_type for Task tool calls, always use the fully qualified name exactly as listed in the system prompt (e.g., \"code-simplifier:code-simplifier\", not just \"code-simplifier\"). If the agent type contains a colon, include the full namespace:name string.
 
-## Jean Worktree Policy
+## Splitkick Worktree Policy
 
 - Do NOT create git worktrees manually (`git worktree add`, Superpowers `using-git-worktrees`, or similar) unless the user explicitly asks for a new worktree.
-- If a new worktree is explicitly required, use Jean's worktree features through Jean MCP/tools, not raw git worktree commands.
-- If already in a Jean worktree or base/main workspace, continue in the current workspace.
+- If a new worktree is explicitly required, use Splitkick's worktree features through Splitkick MCP/tools, not raw git worktree commands.
+- If already in a Splitkick worktree or base/main workspace, continue in the current workspace.
 
-## Jean Run Environment
+## Splitkick Run Environment
 
-- When you need to test a running app (UI, HTTP, browser, smoke, e2e), call Jean MCP `get_run_environments` first (pass this worktreeId when known).
-- If an environment is running, test against its `url`, port, and startup command. Do not guess localhost ports or start a second dev server when Jean already has one.
+- When you need to test a running app (UI, HTTP, browser, smoke, e2e), call Splitkick MCP `get_run_environments` first (pass this worktreeId when known).
+- If an environment is running, test against its `url`, port, and startup command. Do not guess localhost ports or start a second dev server when Splitkick already has one.
 - If nothing is running and verification needs a live server, say so and use the returned/startup command rather than inventing a different command or port.
 - In how-to-test notes, include the exact URL/port you used.";
 const CODEX_DEFAULT_PLAN_MODE_PROMPT: &str = "\
@@ -77,15 +77,15 @@ const CODEX_DEFAULT_PLAN_MODE_PROMPT: &str = "\
 
 - You are in PLAN MODE. Do not implement yet.
 - Explore with non-mutating tools only. Do not edit or write files (including `plan.md`, `.ai/todo.md`, or code) until the user approves the plan.
-- When the plan is decision-complete, present it with Codex native plan finalization: wrap the plan in a `<proposed_plan>...</proposed_plan>` block (Jean maps this to the approval UI / CodexPlan).
-- Do not use the `update_plan` checklist tool while in plan mode — it errors in collaboration Plan mode and is not Jean's plan approval flow.
+- When the plan is decision-complete, present it with Codex native plan finalization: wrap the plan in a `<proposed_plan>...</proposed_plan>` block (Splitkick maps this to the approval UI / CodexPlan).
+- Do not use the `update_plan` checklist tool while in plan mode — it errors in collaboration Plan mode and is not Splitkick's plan approval flow.
 - Every plan-mode response that contains or revises a plan must use a complete `<proposed_plan>` block; do not provide a plain-text-only plan.
 - If questions block the plan, prefer Codex `request_user_input`; after the user answers, emit a revised complete `<proposed_plan>` block with the **full revised plan**, not only short step titles.
 - Do not call implementation tools or make file changes until the user approves the plan.
 
 ### Plan quality (required for YOLO/Build handoff)
 
-Jean may hand this plan to a zero-context agent in a new worktree. Status lines like \"Plan created and ready for approval.\" are not a plan.
+Splitkick may hand this plan to a zero-context agent in a new worktree. Status lines like \"Plan created and ready for approval.\" are not a plan.
 
 - Checklist-style step titles (if any) are a short checklist only (a few words each is fine).
 - The authoritative plan body inside `<proposed_plan>` must be detailed enough to implement without re-scanning the repo or re-asking answered questions.
@@ -254,7 +254,8 @@ fn is_codex_default_global_system_prompt(prompt: &str) -> bool {
         || trimmed == CODEX_DEFAULT_NOT_PLAN_MODE_PROMPT.trim()
         || (trimmed.contains("### 1. Plan Mode Default")
             && trimmed.contains("Every Codex plan-mode response")
-            && trimmed.contains("Jean Worktree Policy"))
+            && (trimmed.contains("Splitkick Worktree Policy")
+                || trimmed.contains("Jean Worktree Policy"))) // brand-ok: prompts saved before the rename
 }
 
 fn resolve_codex_global_system_prompt(
@@ -3253,7 +3254,7 @@ pub async fn send_chat_message(
                 && !super::claude::claude_transcript_exists(sid, custom_profile_name.as_deref())
         }) {
         log::info!(
-            "[SendChat] Claude transcript missing, replaying Jean history session={session_id}"
+            "[SendChat] Claude transcript missing, replaying Splitkick history session={session_id}"
         );
         HandoffKind::LostContext
     } else {
@@ -11358,10 +11359,10 @@ mod tests {
         assert!(!build_prompt.contains("<proposed_plan>"));
         assert!(!build_prompt.contains("CodexPlan"));
         assert!(build_prompt.contains("## Not Plan Mode"));
-        assert!(build_prompt.contains("Jean Worktree Policy"));
+        assert!(build_prompt.contains("Splitkick Worktree Policy"));
         assert!(build_prompt.contains("Do NOT create git worktrees manually"));
-        assert!(build_prompt.contains("Jean MCP/tools"));
-        assert!(build_prompt.contains("Jean Run Environment"));
+        assert!(build_prompt.contains("Splitkick MCP/tools"));
+        assert!(build_prompt.contains("Splitkick Run Environment"));
         assert!(build_prompt.contains("get_run_environments"));
         assert!(build_prompt.contains("test against its `url`, port, and startup command"));
         assert!(build_prompt.contains("VERY IMPORTANT: Keep Code Simple"));
@@ -11374,7 +11375,7 @@ mod tests {
         assert!(!yolo_prompt.contains("<proposed_plan>"));
         assert!(!yolo_prompt.contains("CodexPlan"));
         assert!(yolo_prompt.contains("## Not Plan Mode"));
-        assert!(yolo_prompt.contains("Jean Run Environment"));
+        assert!(yolo_prompt.contains("Splitkick Run Environment"));
         assert!(yolo_prompt.contains("get_run_environments"));
         assert!(yolo_prompt.contains("VERY IMPORTANT: Keep Code Simple"));
         assert!(yolo_prompt.contains("Clickable References"));

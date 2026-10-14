@@ -21,7 +21,7 @@ export interface HostUpdateBadge {
 export function hostUpdateLabel(
   channel: PendingServerUpdate['channel']
 ): string {
-  return channel === 'desktop' ? 'the host Jean app' : 'jean-server'
+  return channel === 'desktop' ? 'the host app' : 'jean-server'
 }
 
 export function hostUpdateBadge(pending: PendingServerUpdate): HostUpdateBadge {

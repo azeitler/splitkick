@@ -3433,7 +3433,7 @@ fn handle_approval_request(
         }
         "applyPatchApproval" | "execCommandApproval" => {
             let error = format!(
-                "Deprecated Codex server request {method} is unsupported by Jean's current \
+                "Deprecated Codex server request {method} is unsupported by Splitkick's current \
                  app-server flow."
             );
             log::warn!("{error}");
@@ -3443,7 +3443,8 @@ fn handle_approval_request(
             }
         }
         _ => {
-            let error = format!("Unsupported Codex server request: {method}. Please update Jean.");
+            let error =
+                format!("Unsupported Codex server request: {method}. Please update Splitkick.");
             log::error!("{error}");
             let _ = app.emit_all(
                 "chat:error",

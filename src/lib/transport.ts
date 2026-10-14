@@ -6,6 +6,7 @@
  * running as a native app, or WebSocket when running in a browser.
  */
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useSyncExternalStore } from 'react'
 import {
   isNativeApp,
@@ -710,8 +711,8 @@ class WsTransport {
         }
         this.setAuthError(
           token
-            ? "Invalid access token. Check the URL in Jean's Web Access settings."
-            : "No access token provided. Use the URL from Jean's Web Access settings."
+            ? `Invalid access token. Check the URL in ${PRODUCT_NAME}'s Web Access settings.`
+            : `No access token provided. Use the URL from ${PRODUCT_NAME}'s Web Access settings.`
         )
         return
       }
@@ -729,7 +730,7 @@ class WsTransport {
     } catch {
       if (remote) {
         this.setAuthError(
-          "Jean could not reach the server's authentication endpoint. Check that the server is running and the URL and port are correct. If the address opens in a browser but not here, the server either needs an update and a restart so it allows desktop connections (CORS), or it sits behind an SSO login proxy such as Cloudflare Access, which the desktop app cannot sign in to."
+          `${PRODUCT_NAME} could not reach the server's authentication endpoint. Check that the server is running and the URL and port are correct. If the address opens in a browser but not here, the server either needs an update and a restart so it allows desktop connections (CORS), or it sits behind an SSO login proxy such as Cloudflare Access, which the desktop app cannot sign in to.`
         )
         return
       }

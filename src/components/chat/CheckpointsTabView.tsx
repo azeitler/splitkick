@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   AlertCircle,
@@ -233,9 +234,7 @@ export function CheckpointsTabView({
 
   const selectedFile =
     flattenedFiles.length > 0
-      ? flattenedFiles[
-          Math.min(selectedFileIndex, flattenedFiles.length - 1)
-        ]
+      ? flattenedFiles[Math.min(selectedFileIndex, flattenedFiles.length - 1)]
       : null
 
   const openRestoreDialog = useCallback((checkpoint: AiCheckpoint) => {
@@ -255,11 +254,7 @@ export function CheckpointsTabView({
     setFileRestoring(true)
     setRestoringFile(fileRestoreTarget)
     try {
-      await restoreAiCheckpointFile(
-        worktreeId,
-        selected.id,
-        fileRestoreTarget
-      )
+      await restoreAiCheckpointFile(worktreeId, selected.id, fileRestoreTarget)
       toast.success(`Restored ${getFilename(fileRestoreTarget)}`)
       triggerImmediateGitPoll()
       await loadDiff(selected)
@@ -315,8 +310,8 @@ export function CheckpointsTabView({
         <History className="h-8 w-8 opacity-40" />
         <p className="font-medium text-foreground">No AI checkpoints yet</p>
         <p className="max-w-sm text-xs">
-          Jean automatically snapshots this worktree before each agent turn so
-          you can review AI changes and restore any previous state.
+          {PRODUCT_NAME} automatically snapshots this worktree before each agent
+          turn so you can review AI changes and restore any previous state.
         </p>
       </div>
     )
@@ -375,8 +370,7 @@ export function CheckpointsTabView({
                               </span>
                             </>
                           )}
-                          {(cp.totalAdditions > 0 ||
-                            cp.totalDeletions > 0) && (
+                          {(cp.totalAdditions > 0 || cp.totalDeletions > 0) && (
                             <>
                               <span className="text-green-500">
                                 +{cp.totalAdditions}
@@ -510,8 +504,7 @@ export function CheckpointsTabView({
                               type="button"
                               className="shrink-0 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
                               disabled={
-                                fileRestoring ||
-                                restoringFile === file.fileName
+                                fileRestoring || restoringFile === file.fileName
                               }
                               onClick={() =>
                                 setFileRestoreTarget(file.fileName)

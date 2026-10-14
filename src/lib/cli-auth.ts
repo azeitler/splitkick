@@ -6,6 +6,7 @@
  * CliLoginModal — these helpers detect auth failures and open that flow instead.
  */
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { toast } from 'sonner'
 import { invoke } from '@/lib/transport'
 import { useUIStore } from '@/store/ui-store'
@@ -56,7 +57,7 @@ export function rewriteCliAuthErrorMessage(
   const label = getBackendPlainLabel(backend as CliBackend) || String(backend)
   return (
     `${label} is not authenticated. ` +
-    `Use Settings → ${label} → Login (interactive /login is not available in Jean chat).`
+    `Use Settings → ${label} → Login (interactive /login is not available in ${PRODUCT_NAME} chat).`
   )
 }
 
@@ -80,7 +81,7 @@ export function rewriteCodexBubblewrapErrorMessage(error: string): string {
   }
   return (
     'Codex sandbox requires bubblewrap. Install it with: sudo apt install bubblewrap ' +
-    '(or your distro equivalent: dnf/pacman). Jean Settings → Codex also shows this warning ' +
+    `(or your distro equivalent: dnf/pacman). ${PRODUCT_NAME} Settings → Codex also shows this warning ` +
     'when bwrap is missing. See https://developers.openai.com/codex/concepts/sandboxing#prerequisites'
   )
 }

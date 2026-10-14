@@ -8,8 +8,11 @@ export interface JeanWebBuildInfo {
 export const CLIENT_BUILD_INFO: JeanWebBuildInfo = __JEAN_WEB_BUILD_INFO__
 
 /**
- * The product name this build ships: 'Jean', or 'JeanZ' for the fork flavor.
+ * The product name this build ships: 'Splitkick'.
  * Use it instead of hardcoding the name in user-visible text.
  */
 export const PRODUCT_NAME: string = __JEAN_PRODUCT_NAME__
+
+/** The upstream Jean version this build is based on, e.g. '0.1.73'. */
+export const UPSTREAM_BASE_VERSION: string = __JEAN_UPSTREAM_VERSION__
 export const CLIENT_WEB_BUILD_ID = CLIENT_BUILD_INFO.webBuildId

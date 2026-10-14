@@ -1114,7 +1114,7 @@ describe('NewSessionModeModal', () => {
     render(<NewSessionModeModal />)
 
     const jeanDescription = screen.getByText(
-      'Normal ChatWindow session with Jean features'
+      'Normal ChatWindow session with Splitkick features'
     )
     const terminalDescription = screen.getByText(
       'Open a plain terminal on this worktree'

@@ -16,3 +16,6 @@ declare const __JEAN_WEB_BUILD_INFO__: JeanWebBuildInfo
 
 /** 'Jean', or 'JeanZ' for the fork flavor. Baked in by vite.config.ts. */
 declare const __JEAN_PRODUCT_NAME__: string
+
+/** Upstream Jean version this build is based on. Baked in by vite.config.ts. */
+declare const __JEAN_UPSTREAM_VERSION__: string

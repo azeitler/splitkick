@@ -1,4 +1,6 @@
-# Contributing to Jean
+# Contributing to Splitkick
+
+Splitkick is built on [Jean](https://github.com/coollabsio/jean). A fix that is not Splitkick-specific is often better sent upstream to Jean as well.
 
 ## Prerequisites
 
@@ -41,8 +43,8 @@ sudo pacman -S webkit2gtk-4.1 librsvg patchelf libayatana-appindicator gst-plugi
 
 ```bash
 # Clone the repository
-git clone https://github.com/coollabsio/jean.git
-cd jean
+git clone https://github.com/azeitler/splitkick.git
+cd splitkick
 
 # Install dependencies
 bun install
@@ -54,7 +56,7 @@ bun run tauri:dev # Also keeps the web-access dist rebuilt in the background
 ## Project Structure
 
 ```
-jean/
+splitkick/
 ├── src/                    # React frontend
 │   ├── components/         # UI components
 │   ├── hooks/              # Custom React hooks

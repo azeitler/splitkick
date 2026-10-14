@@ -56,7 +56,7 @@ pub fn require_npm(tool: &str) -> Result<(), String> {
         return Ok(());
     }
     Err(format!(
-        "{tool} requires Node.js and npm. Install a supported Node.js LTS using the official instructions at https://nodejs.org/en/download (distribution packages can be outdated), then retry. Jean onboarding can also install it automatically on supported Linux servers."
+        "{tool} requires Node.js and npm. Install a supported Node.js LTS using the official instructions at https://nodejs.org/en/download (distribution packages can be outdated), then retry. Splitkick onboarding can also install it automatically on supported Linux servers."
     ))
 }
 

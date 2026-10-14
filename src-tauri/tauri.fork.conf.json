@@ -1,11 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "JeanZ",
-  "identifier": "com.jean.desktop.jeanz",
+  "productName": "Splitkick",
+  "mainBinaryName": "Splitkick",
+  "identifier": "app.splitkick.desktop",
   "app": {
     "windows": [
       {
-        "title": "JeanZ",
+        "title": "Splitkick",
         "width": 800,
         "height": 600,
         "minWidth": 1000,
@@ -39,20 +40,21 @@
       "icons-fork/icon.icns",
       "icons-fork/icon.ico"
     ],
-    "publisher": "Andreas Zeitler",
-    "shortDescription": "JeanZ - personal Jean build",
-    "longDescription": "JeanZ is a personal build of Jean, an AI assistant application built with Tauri, React, and TypeScript.",
+    "publisher": "Planetfall Software",
+    "shortDescription": "Splitkick - local-first workbench for AI agents",
+    "longDescription": "Splitkick is a local-first, cross-device workbench for AI coding agents: multi-project, multi-worktree, multi-session and multi-agent. Built on Jean by coolLabs.",
     "macOS": {
       "signingIdentity": "-",
       "providerShortName": null
-    }
+    },
+    "copyright": "© 2026 Planetfall Software. Built on Jean, © 2025 Andras Bacsai (Apache 2.0)."
   },
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/azeitler/jean/releases/download/jeanz-final/latest.json"
+        "https://github.com/azeitler/splitkick/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDQ3QzhBNjcwOTJBRTdGN0YKUldSL2Y2NlNjS2JJUnk0K0lZVmZvZGdydGYrNTRScEx3SUg0a2I5RlB2U1l2NGU4b3JhbXFxVW8K"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQzMTM2MkMzMTJDQUFENzAKUldSd3Jjb1N3MklUMHh0amw2Q3F0QmhzUmFQVzV2OXhoQXV0S3pmb2RpTjJmdW9uYlUzN1oxYVIK"
     }
   }
 }

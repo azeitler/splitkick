@@ -2890,7 +2890,7 @@ pub fn execute_opencode_http(
     } else {
         let create_url = format!("{base_url}/session");
         let create_payload = serde_json::json!({
-            "title": format!("Jean {session_id}"),
+            "title": format!("Splitkick {session_id}"),
         });
         let create_resp = client
             .post(&create_url)
@@ -3506,7 +3506,7 @@ fn one_shot_opencode_blocking(
 
     // Create a temporary session
     let create_url = format!("{base_url}/session");
-    let create_payload = serde_json::json!({ "title": "Jean one-shot" });
+    let create_payload = serde_json::json!({ "title": "Splitkick one-shot" });
     let create_resp = client
         .post(&create_url)
         .query(&query)

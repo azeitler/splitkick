@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, type RefObject } from 'react'
 import { generateId } from '@/lib/uuid'
 import { toast } from 'sonner'
@@ -285,10 +286,7 @@ export function useMessageSending({
 
   // Form submit handler
   const handleSubmit = useCallback(
-    async (
-      e: React.FormEvent,
-      options?: { forceSteer?: boolean }
-    ) => {
+    async (e: React.FormEvent, options?: { forceSteer?: boolean }) => {
       e.preventDefault()
 
       const {
@@ -355,7 +353,7 @@ export function useMessageSending({
         void openBackendLoginModal(backend).then(opened => {
           if (opened) {
             toast.message(
-              `Opening ${backend} login… Interactive /login is not available in Jean chat.`
+              `Opening ${backend} login… Interactive /login is not available in ${PRODUCT_NAME} chat.`
             )
           }
         })
@@ -370,9 +368,7 @@ export function useMessageSending({
       const sendBackend = selectedBackendRef.current
       const provider = selectedProviderRef.current
       const usingCustomProvider =
-        !!provider &&
-        provider !== '__anthropic__' &&
-        provider !== '__default__'
+        !!provider && provider !== '__anthropic__' && provider !== '__default__'
       if (!backendsLoading && !installedBackends.includes(sendBackend)) {
         handleCliAuthError(`${sendBackend} is not installed`, sendBackend)
         return

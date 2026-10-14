@@ -836,7 +836,7 @@ fn generate_names_opencode_inner(
 
     let create_url = format!("{base_url}/session");
     let create_payload = serde_json::json!({
-        "title": format!("Jean naming {}", request.session_id),
+        "title": format!("Splitkick naming {}", request.session_id),
     });
     let create_resp = client
         .post(&create_url)

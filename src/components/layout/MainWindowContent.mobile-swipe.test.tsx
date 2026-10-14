@@ -127,7 +127,7 @@ describe('MainWindowContent phone layout routing', () => {
 
     render(<MainWindowContent />)
 
-    expect(await screen.findByText('Welcome to Jean!')).toBeInTheDocument()
+    expect(await screen.findByText('Welcome to Splitkick!')).toBeInTheDocument()
     expect(screen.queryByTestId('mobile-tab-shell')).toBeNull()
   })
 
@@ -139,7 +139,7 @@ describe('MainWindowContent phone layout routing', () => {
     render(<MainWindowContent />)
 
     const retry = await screen.findByRole('button', { name: 'Retry' })
-    expect(screen.queryByText('Welcome to Jean!')).toBeNull()
+    expect(screen.queryByText('Welcome to Splitkick!')).toBeNull()
     act(() => retry.click())
     expect(projectsQuery.refetch).toHaveBeenCalled()
   })

@@ -144,7 +144,7 @@ pub fn resolve_cli_binary(app: &AppHandle) -> PathBuf {
     }
 
     if source_preference == GrokSourcePreference::ExplicitPath {
-        log::warn!("grok_cli_source is 'path' but Grok was not found in PATH; falling back to Jean-managed binary");
+        log::warn!("grok_cli_source is 'path' but Grok was not found in PATH; falling back to Splitkick-managed binary");
     }
 
     find_managed_grok_binary(app).unwrap_or_else(|| {

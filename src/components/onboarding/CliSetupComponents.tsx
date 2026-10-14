@@ -8,6 +8,7 @@
 /* eslint-disable no-console */
 const dbg = (...args: unknown[]) => console.debug('[ONBOARDING:CLI]', ...args)
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { invoke } from '@/lib/transport'
 import { Download, Loader2, RefreshCw } from 'lucide-react'
@@ -196,8 +197,8 @@ export function SetupState({
       </div>
       {disabled ? (
         <p className="text-xs text-muted-foreground">
-          Manual versions can be used after Jean loads enough CLI metadata to
-          know which download source to check.
+          Manual versions can be used after {PRODUCT_NAME} loads enough CLI
+          metadata to know which download source to check.
         </p>
       ) : (
         renderManualVersionMessage()
@@ -289,9 +290,10 @@ export function SetupState({
           </div>
         )}
         <p className="text-xs text-muted-foreground">
-          {cliName} will be installed separately in Jean&apos;s application data
-          folder — it won&apos;t affect your global installation. Authentication
-          and configuration from your global {cliName} setup will be used.
+          {cliName} will be installed separately in {PRODUCT_NAME}&apos;s
+          application data folder — it won&apos;t affect your global
+          installation. Authentication and configuration from your global{' '}
+          {cliName} setup will be used.
         </p>
       </div>
 
@@ -619,7 +621,7 @@ export function CliPathSelector({
       <div className="text-center text-sm text-muted-foreground">
         {pathFound
           ? `Choose how to run ${cliName}.`
-          : `No system ${cliName} detected — Jean will manage the installation.`}
+          : `No system ${cliName} detected — ${PRODUCT_NAME} will manage the installation.`}
       </div>
 
       <div className="space-y-3">
@@ -665,8 +667,8 @@ export function CliPathSelector({
           <div className="flex items-center justify-between">
             <div className="font-medium">
               {jeanInstalled
-                ? `Use Jean-managed ${cliName}`
-                : 'Install with Jean'}
+                ? `Use ${PRODUCT_NAME}-managed ${cliName}`
+                : `Install with ${PRODUCT_NAME}`}
             </div>
             {currentSource === 'jean' && (
               <span className="text-xs px-2 py-0.5 rounded bg-primary/20 text-primary">
@@ -676,8 +678,8 @@ export function CliPathSelector({
           </div>
           <div className="text-sm text-muted-foreground">
             {jeanInstalled
-              ? 'Continue with the version Jean manages (or pick another version next).'
-              : 'Jean will install and manage the CLI.'}
+              ? `Continue with the version ${PRODUCT_NAME} manages (or pick another version next).`
+              : `${PRODUCT_NAME} will install and manage the CLI.`}
           </div>
         </button>
       </div>

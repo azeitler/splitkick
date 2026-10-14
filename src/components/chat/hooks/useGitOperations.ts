@@ -1,3 +1,4 @@
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { useCallback, useState, type RefObject } from 'react'
 import { invoke, listen } from '@/lib/transport'
 import { openExternal } from '@/lib/platform'
@@ -806,7 +807,7 @@ export function useGitOperations({
 
         try {
           if (!worktree?.pr_number) {
-            throw new Error('Open or link a PR in Jean first')
+            throw new Error(`Open or link a PR in ${PRODUCT_NAME} first`)
           }
 
           const result = await invoke<TriggerCodeRabbitPrReviewResponse>(

@@ -101,13 +101,13 @@ describe('RemoteConnectionsDialog', () => {
     const user = userEvent.setup()
     render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
 
-    const trigger = screen.getByRole('button', { name: 'Jean connections' })
+    const trigger = screen.getByRole('button', { name: 'Server connections' })
     expect(trigger).not.toHaveAttribute('title')
 
     await user.hover(trigger)
 
     // Radix renders the tooltip twice: visible content and a11y announcement.
-    const labels = await screen.findAllByText('Jean connections', undefined, {
+    const labels = await screen.findAllByText('Server connections', undefined, {
       timeout: 3000,
     })
     expect(labels.length).toBeGreaterThan(0)
@@ -117,7 +117,7 @@ describe('RemoteConnectionsDialog', () => {
     const reloadApp = vi.fn()
     render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Build server' },
@@ -156,7 +156,7 @@ describe('RemoteConnectionsDialog', () => {
     const reloadApp = vi.fn()
     render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
     expect(screen.getByText('v0.1.69')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
@@ -176,7 +176,7 @@ describe('RemoteConnectionsDialog', () => {
   it('saves optional SSH fields when adding a remote URL', async () => {
     render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
     fireEvent.change(screen.getByLabelText('Name'), {
       target: { value: 'Build server' },
@@ -222,7 +222,7 @@ describe('RemoteConnectionsDialog', () => {
 
     render(<RemoteConnectionsDialog reloadApp={reloadApp} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add remote' }))
 
     expect(
@@ -287,7 +287,7 @@ describe('RemoteConnectionsDialog', () => {
     invoke.mockResolvedValue([])
     render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Jean connections' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
     // Opening the dialog asks which connections already have a window.
     await waitFor(() => {
       expect(invoke).toHaveBeenCalledWith('list_connection_windows')

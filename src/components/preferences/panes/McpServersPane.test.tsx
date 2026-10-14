@@ -133,7 +133,7 @@ describe('McpServersPane Jean MCP install', () => {
     renderPane()
 
     const button = await screen.findByRole('button', {
-      name: /add current jean mcp/i,
+      name: /add current splitkick mcp/i,
     })
     await waitFor(() => expect(button).not.toBeDisabled())
 
@@ -162,14 +162,16 @@ describe('McpServersPane Jean MCP install', () => {
     renderPane()
 
     const button = await screen.findByRole('button', {
-      name: /add current jean mcp/i,
+      name: /add current splitkick mcp/i,
     })
     await waitFor(() => expect(button).not.toBeDisabled())
 
     await user.click(button)
 
     expect(
-      await screen.findByRole('button', { name: /failed to add jean mcp/i })
+      await screen.findByRole('button', {
+        name: /failed to add splitkick mcp/i,
+      })
     ).toBeInTheDocument()
     expect(toast.loading).not.toHaveBeenCalled()
     expect(toast.error).not.toHaveBeenCalled()
@@ -182,7 +184,7 @@ describe('McpServersPane Jean MCP install', () => {
     renderPane()
 
     await user.click(
-      await screen.findByRole('switch', { name: /enable jean mcp/i })
+      await screen.findByRole('switch', { name: /enable splitkick mcp/i })
     )
 
     expect(mocks.patchPreferencesMutate).toHaveBeenCalledWith({
@@ -190,7 +192,7 @@ describe('McpServersPane Jean MCP install', () => {
     })
     expect(
       await screen.findByRole('alertdialog', {
-        name: /add jean mcp to your cli configs/i,
+        name: /add splitkick mcp to your cli configs/i,
       })
     ).toBeInTheDocument()
 

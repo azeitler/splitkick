@@ -1,0 +1,17 @@
+Splitkick
+Copyright 2026 Planetfall Software (Andreas Zeitler)
+
+This product is a modified version of Jean
+(https://github.com/coollabsio/jean),
+Copyright 2025 Andras Bacsai / coolLabs,
+licensed under the Apache License, Version 2.0.
+
+Splitkick changes and adds to the Jean source code. The changes are recorded
+in the git history of this repository and summarised in CHANGELOG.md. Files
+changed from upstream Jean are marked as such by that history.
+
+"Jean" and the Jean logo belong to their owners. Splitkick does not use them
+as its product name or icon.
+
+Splitkick reads the model catalog published by coolLabs at
+https://raw.githubusercontent.com/coollabsio/coollabs-cdn/main/json/jean/models.json

@@ -217,12 +217,12 @@ describe('model option helpers', () => {
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
       'Every Codex response that contains or revises a plan while the current execution mode is plan'
     )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Jean Worktree Policy')
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Splitkick Worktree Policy')
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
       'Do NOT create git worktrees manually'
     )
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Jean MCP/tools')
-    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Jean Run Environment')
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Splitkick MCP/tools')
+    expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('Splitkick Run Environment')
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain('get_run_environments')
     expect(DEFAULT_GLOBAL_SYSTEM_PROMPT).toContain(
       'test against its `url`, port, and startup command'

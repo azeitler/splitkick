@@ -21,7 +21,7 @@ pub fn show_notification(
     let executable = tauri::utils::platform::current_exe().map_err(|error| error.to_string())?;
     let directory = executable
         .parent()
-        .ok_or_else(|| "Failed to resolve the Jean executable directory".to_string())?;
+        .ok_or_else(|| "Failed to resolve the Splitkick executable directory".to_string())?;
     let app_id = toast_app_id_for_exe_dir(directory, &app.config().identifier);
     let app = app.clone();
     Toast::new(&app_id)
@@ -72,7 +72,8 @@ mod tests {
 
     #[test]
     fn packaged_builds_use_app_identifier() {
-        let app_id = toast_app_id_for_exe_dir(Path::new(r"C:\Program Files\Jean"), "io.jean.app");
+        let app_id =
+            toast_app_id_for_exe_dir(Path::new(r"C:\Program Files\Splitkick"), "io.jean.app");
         assert_eq!(app_id, "io.jean.app");
     }
 }

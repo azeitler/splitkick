@@ -5,6 +5,7 @@
  * Remote continues into jean-server install or existing Web Access URL.
  */
 
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { Monitor, Server } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useState } from 'react'
@@ -21,7 +22,9 @@ export function UsageModeStep({ onSelect }: UsageModeStepProps) {
   return (
     <div className="space-y-6">
       <div className="space-y-2 text-center">
-        <h3 className="text-lg font-semibold">How will you use Jean?</h3>
+        <h3 className="text-lg font-semibold">
+          How will you use {PRODUCT_NAME}?
+        </h3>
         <p className="text-muted-foreground text-sm">
           Use this computer for development, or connect to a Jean server
           elsewhere. You can add more connections later from the title bar.

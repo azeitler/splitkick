@@ -35,6 +35,18 @@ function packageVersion(): string {
   }
 }
 
+/** Upstream Jean version this build is based on (tauri.conf.json). */
+function upstreamVersion(): string {
+  try {
+    const conf = JSON.parse(
+      readFileSync('src-tauri/tauri.conf.json', 'utf8')
+    ) as { version?: string }
+    return conf.version ?? '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
+
 const appVersion = packageVersion()
 const buildGitSha = gitSha()
 const builtAt = new Date().toISOString()
@@ -90,8 +102,9 @@ export default defineConfig(async () => ({
   define: {
     __JEAN_WEB_BUILD_INFO__: JSON.stringify(webBuildInfo),
     // The frontend cannot read the Tauri productName, and it also runs in a
-    // browser through Web Access, so the flavor name is baked in at build time.
+    // browser through Web Access, so the name is baked in at build time.
     __JEAN_PRODUCT_NAME__: JSON.stringify(PRODUCT_NAME),
+    __JEAN_UPSTREAM_VERSION__: JSON.stringify(upstreamVersion()),
   },
   resolve: {
     alias: {

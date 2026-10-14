@@ -471,14 +471,14 @@ export function GeneralPane({
               <>
                 Where new worktrees are created. Defaults to{' '}
                 <code className="text-[11px] bg-muted px-1 py-0.5 rounded">
-                  ~/jean
+                  ~/splitkick
                 </code>
               </>
             }
           >
             <div className="flex items-center gap-2">
               <Input
-                placeholder="~/jean (default)"
+                placeholder="~/splitkick (default)"
                 value={displayedWorktreesDir}
                 onChange={e => setLocalWorktreesDir(e.target.value)}
                 className="flex-1 text-base md:text-sm"

@@ -132,13 +132,13 @@ pub fn next_depth() -> u32 {
 /// server, so keep it short: each line has to prevent a fan-out of calls or a
 /// wrong-id error to earn its place.
 const JEAN_MCP_INSTRUCTIONS: &str = concat!(
-    "Jean manages git worktrees and AI chat sessions across your projects.\n\n",
+    "Splitkick manages git worktrees and AI chat sessions across your projects.\n\n",
     "- get_current_context tells you which session, worktree and project you are in.\n",
     "- list_all_sessions gives a cross-project overview (status, idle days, labels, linked PR) ",
     "and search_sessions finds a session by topic or name. Both answer in one call. ",
     "Do not loop list_sessions over every worktree.\n",
     "- read_session_messages reads one session. Pass role \"user\" or excludeTools true to keep the output small.\n",
-    "- sessionId, worktreeId and projectId are Jean ids, not git branch or directory names. ",
+    "- sessionId, worktreeId and projectId are Splitkick ids, not git branch or directory names. ",
     "Take them from the list and search tools.\n",
     "- Archiving and deleting cannot be undone from here. Show the user what you propose and wait for a yes."
 );
@@ -150,12 +150,12 @@ pub fn initialize_result(role: McpRole) -> Value {
         McpRole::Dialog => json!({
             "protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": { "tools": {} },
-            "serverInfo": { "name": "jean-dialog", "version": env!("CARGO_PKG_VERSION") },
+            "serverInfo": { "name": crate::brand::MCP_DIALOG_SERVER_NAME, "version": env!("CARGO_PKG_VERSION") },
         }),
         McpRole::Full => json!({
             "protocolVersion": MCP_PROTOCOL_VERSION,
             "capabilities": { "tools": {}, "prompts": {} },
-            "serverInfo": { "name": "jean", "version": env!("CARGO_PKG_VERSION") },
+            "serverInfo": { "name": crate::brand::MCP_SERVER_NAME, "version": env!("CARGO_PKG_VERSION") },
             "instructions": JEAN_MCP_INSTRUCTIONS,
         }),
     }
@@ -177,7 +177,7 @@ pub fn dialog_tool_registry() -> Value {
     json!([
         {
             "name": PERMISSION_PROMPT_TOOL,
-            "description": "Internal Jean tool. Resolves Claude Code permission requests and interactive dialogs against the Jean UI.",
+            "description": "Internal Splitkick tool. Resolves Claude Code permission requests and interactive dialogs against the Splitkick UI.",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -205,7 +205,7 @@ pub fn prompts_list_result() -> Value {
         "prompts": [
             {
                 "name": "review_sessions_for_archiving",
-                "description": "Review Jean sessions across projects and recommend which ones can be archived.",
+                "description": "Review Splitkick sessions across projects and recommend which ones can be archived.",
                 "arguments": [
                     {"name": "projectId", "description": "Only review this project.", "required": false},
                     {"name": "idleForDays", "description": "Ignore sessions that were active in the last N days. Default 14.", "required": false}
@@ -213,7 +213,7 @@ pub fn prompts_list_result() -> Value {
             },
             {
                 "name": "find_session",
-                "description": "Find the Jean session(s) about a topic.",
+                "description": "Find the Splitkick session(s) about a topic.",
                 "arguments": [
                     {"name": "topic", "description": "What the session was about.", "required": true},
                     {"name": "projectId", "description": "Only search this project.", "required": false}
@@ -256,9 +256,9 @@ pub fn prompts_get_result(params: &Value) -> Result<Value, ToolError> {
                 .map(|id| format!(", projectId: \"{id}\""))
                 .unwrap_or_default();
             (
-                "Review Jean sessions and recommend which ones can be archived.",
+                "Review Splitkick sessions and recommend which ones can be archived.",
                 format!(
-                    "Help me decide which Jean sessions I can archive{scope}.\n\n\
+                    "Help me decide which Splitkick sessions I can archive{scope}.\n\n\
 1. Call list_all_sessions with {{ idleForDays: {idle_for_days}, sort: \"stale\", includeRecap: true{project_filter} }}.\n\
 2. Sort the result into three groups:\n\
 \u{20}  - Safe to archive: the work is finished or merged, manualStatus is \"completed\", there is no open PR, and nothing is uncommitted or unpushed.\n\
@@ -283,9 +283,9 @@ pub fn prompts_get_result(params: &Value) -> Result<Value, ToolError> {
                 .map(|id| format!(", projectId: \"{id}\""))
                 .unwrap_or_default();
             (
-                "Find the Jean session(s) about a topic.",
+                "Find the Splitkick session(s) about a topic.",
                 format!(
-                    "Find the Jean session(s) about \"{topic}\"{scope}.\n\n\
+                    "Find the Splitkick session(s) about \"{topic}\"{scope}.\n\n\
 1. Call search_sessions with {{ query: \"{topic}\"{project_filter}, includeArchived: true }}.\n\
 2. If nothing comes back, try again with a shorter or more distinctive query, such as a file name, an error string or an issue number, before you decide the session does not exist.\n\
 3. For the best matches, call read_session_messages with role \"user\" and limit 10 to see what was actually asked.\n\
@@ -440,10 +440,10 @@ pub fn tool_registry() -> Value {
 
 fn tool_registry_core() -> Value {
     json!([
-        {"name":"list_projects","description":"List all Jean projects (id, name, path, default_branch).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
-        {"name":"add_project","description":"Add an existing local git repository as a Jean project. Path must already be a git repo (use init_project for a new folder, or clone_project for a remote URL). Returns the created project (id, name, path, default_branch).","inputSchema":{"type":"object","properties":{"path":{"type":"string","description":"Absolute path to an existing local git repository."},"parentId":{"type":"string","description":"Optional Jean folder/project parent id for nesting in the project list."}},"required":["path"],"additionalProperties":false}},
-        {"name":"clone_project","description":"Clone a remote git repository to a local path and add it as a Jean project. Returns the created project.","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"Git remote URL to clone (https or ssh)."},"path":{"type":"string","description":"Absolute local path where the repo should be cloned."},"parentId":{"type":"string","description":"Optional Jean folder/project parent id for nesting in the project list."}},"required":["url","path"],"additionalProperties":false}},
-        {"name":"init_project","description":"Create a new git repository at path (creating the directory if needed) and add it as a Jean project. Use add_project instead when the path is already a git repo. Returns the created project.","inputSchema":{"type":"object","properties":{"path":{"type":"string","description":"Absolute path for the new project directory."},"parentId":{"type":"string","description":"Optional Jean folder/project parent id for nesting in the project list."}},"required":["path"],"additionalProperties":false}},
+        {"name":"list_projects","description":"List all Splitkick projects (id, name, path, default_branch).","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
+        {"name":"add_project","description":"Add an existing local git repository as a Splitkick project. Path must already be a git repo (use init_project for a new folder, or clone_project for a remote URL). Returns the created project (id, name, path, default_branch).","inputSchema":{"type":"object","properties":{"path":{"type":"string","description":"Absolute path to an existing local git repository."},"parentId":{"type":"string","description":"Optional Splitkick folder/project parent id for nesting in the project list."}},"required":["path"],"additionalProperties":false}},
+        {"name":"clone_project","description":"Clone a remote git repository to a local path and add it as a Splitkick project. Returns the created project.","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"Git remote URL to clone (https or ssh)."},"path":{"type":"string","description":"Absolute local path where the repo should be cloned."},"parentId":{"type":"string","description":"Optional Splitkick folder/project parent id for nesting in the project list."}},"required":["url","path"],"additionalProperties":false}},
+        {"name":"init_project","description":"Create a new git repository at path (creating the directory if needed) and add it as a Splitkick project. Use add_project instead when the path is already a git repo. Returns the created project.","inputSchema":{"type":"object","properties":{"path":{"type":"string","description":"Absolute path for the new project directory."},"parentId":{"type":"string","description":"Optional Splitkick folder/project parent id for nesting in the project list."}},"required":["path"],"additionalProperties":false}},
         {"name":"list_worktrees","description":"List all worktrees for a project.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"get_worktree","description":"Get a single worktree by id (path, branch, status, etc.).","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_project_context","description":"Get project-level context needed by orchestration agents: project settings, linked projects, default branch/backend, and worktree counts. Does not read arbitrary repo files.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"}},"required":["projectId"],"additionalProperties":false}},
@@ -452,52 +452,52 @@ fn tool_registry_core() -> Value {
         {"name":"list_security_issues","description":"List Dependabot security alerts for a project using the same backend command as the UI. Pass projectId; the server resolves the repo path.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"state":{"type":"string","enum":["open","dismissed","fixed","auto_dismissed","all"],"default":"open"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"list_security_advisories","description":"List repository security advisories for a project using the same backend command as the UI. Pass projectId; the server resolves the repo path.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"state":{"type":"string","enum":["draft","published","triage","closed","all"],"default":"all"}},"required":["projectId"],"additionalProperties":false}},
         {"name":"list_linear_issues","description":"List Linear issues for a project using the same backend command as the UI. Pass projectId; Linear API config is resolved from project/global settings.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"}},"required":["projectId"],"additionalProperties":false}},
-        {"name":"create_worktree","description":"Create a new worktree for a project. Provide issueNumber or prNumber for a GitHub issue/PR, linearIssueIdentifier (e.g. \"PLA-215\") for a Linear issue, or ghsaId (e.g. \"GHSA-xxxx-xxxx-xxxx\") for a repository security advisory; these are mutually exclusive. Jean fetches the chosen context and attaches it to the worktree, reusing the same branch naming and context-loading as the Jean UI. Pass action=\"start_autoinvestigating\" to create a session and start investigating (and magic-fix when the Magic Prompts execution mode is yolo) the issue/PR/Linear issue/security advisory with the Magic Prompts settings default backend/model. This never switches/opens Jean's UI unless the user opens the worktree separately.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"baseBranch":{"type":"string"},"customName":{"type":"string"},"issueNumber":{"type":"integer","minimum":1},"prNumber":{"type":"integer","minimum":1},"linearIssueIdentifier":{"type":"string","description":"Linear issue identifier like \"PLA-215\". Mutually exclusive with issueNumber/prNumber/ghsaId."},"ghsaId":{"type":"string","description":"Repository security advisory GHSA id like \"GHSA-xxxx-xxxx-xxxx\". Mutually exclusive with issueNumber/prNumber/linearIssueIdentifier."},"action":{"type":"string","enum":["start_autoinvestigating"]}},"required":["projectId"],"additionalProperties":false}},
-        {"name":"create_worktree_from_existing_branch","description":"Create a Jean worktree from an existing local or remote-tracking branch (branch name is used as the worktree name). Does not open Jean's UI. Prefer create_worktree for new branches; use this when the branch already exists.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"branchName":{"type":"string","description":"Existing branch name to check out into a new worktree path."}},"required":["projectId","branchName"],"additionalProperties":false}},
-        {"name":"import_worktree","description":"Import an existing git worktree/directory on disk into a Jean project. Path must already exist and be a git worktree or repo. Does not create a new git worktree.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"path":{"type":"string","description":"Absolute path to an existing git worktree directory."}},"required":["projectId","path"],"additionalProperties":false}},
-        {"name":"rename_worktree","description":"Rename a worktree's display name in Jean (does not rename the git branch or folder).","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"newName":{"type":"string","description":"New display name. Must be unique within the project."}},"required":["worktreeId","newName"],"additionalProperties":false}},
+        {"name":"create_worktree","description":"Create a new worktree for a project. Provide issueNumber or prNumber for a GitHub issue/PR, linearIssueIdentifier (e.g. \"PLA-215\") for a Linear issue, or ghsaId (e.g. \"GHSA-xxxx-xxxx-xxxx\") for a repository security advisory; these are mutually exclusive. Splitkick fetches the chosen context and attaches it to the worktree, reusing the same branch naming and context-loading as the Splitkick UI. Pass action=\"start_autoinvestigating\" to create a session and start investigating (and magic-fix when the Magic Prompts execution mode is yolo) the issue/PR/Linear issue/security advisory with the Magic Prompts settings default backend/model. This never switches/opens Splitkick's UI unless the user opens the worktree separately.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"baseBranch":{"type":"string"},"customName":{"type":"string"},"issueNumber":{"type":"integer","minimum":1},"prNumber":{"type":"integer","minimum":1},"linearIssueIdentifier":{"type":"string","description":"Linear issue identifier like \"PLA-215\". Mutually exclusive with issueNumber/prNumber/ghsaId."},"ghsaId":{"type":"string","description":"Repository security advisory GHSA id like \"GHSA-xxxx-xxxx-xxxx\". Mutually exclusive with issueNumber/prNumber/linearIssueIdentifier."},"action":{"type":"string","enum":["start_autoinvestigating"]}},"required":["projectId"],"additionalProperties":false}},
+        {"name":"create_worktree_from_existing_branch","description":"Create a Splitkick worktree from an existing local or remote-tracking branch (branch name is used as the worktree name). Does not open Splitkick's UI. Prefer create_worktree for new branches; use this when the branch already exists.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"branchName":{"type":"string","description":"Existing branch name to check out into a new worktree path."}},"required":["projectId","branchName"],"additionalProperties":false}},
+        {"name":"import_worktree","description":"Import an existing git worktree/directory on disk into a Splitkick project. Path must already exist and be a git worktree or repo. Does not create a new git worktree.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string"},"path":{"type":"string","description":"Absolute path to an existing git worktree directory."}},"required":["projectId","path"],"additionalProperties":false}},
+        {"name":"rename_worktree","description":"Rename a worktree's display name in Splitkick (does not rename the git branch or folder).","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"newName":{"type":"string","description":"New display name. Must be unique within the project."}},"required":["worktreeId","newName"],"additionalProperties":false}},
         {"name":"archive_worktree","description":"Archive a worktree (hide from the active project canvas). Cancels running sessions for the worktree. Base sessions cannot be archived. Prefer this over delete when work may still be needed.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"unarchive_worktree","description":"Restore an archived worktree to the active project canvas. Fails if the worktree directory no longer exists on disk.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"list_archived_worktrees","description":"List archived worktrees. Optionally filter by projectId. Active worktrees are not included (use list_worktrees for those).","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Optional project id to filter archived worktrees."}},"additionalProperties":false}},
-        {"name":"delete_worktree","description":"Start permanently deleting an active (non-archived) worktree in the background: removes Jean tracking, git worktree, and branch. Returns started=true when cleanup is accepted, not completion. Destructive and irreversible when cleanup succeeds. Cannot delete base sessions. Prefer archive_worktree when unsure.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"delete_worktree","description":"Start permanently deleting an active (non-archived) worktree in the background: removes Splitkick tracking, git worktree, and branch. Returns started=true when cleanup is accepted, not completion. Destructive and irreversible when cleanup succeeds. Cannot delete base sessions. Prefer archive_worktree when unsure.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"permanently_delete_worktree","description":"Start permanently deleting an already-archived worktree in the background (storage + git worktree/branch cleanup). Returns started=true when cleanup is accepted, not completion. Fails immediately if the worktree is not archived — archive it first, or use delete_worktree for active worktrees.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"update_worktree_labels","description":"Update native Jean worktree labels. Use action=add/remove/set/clear. Returns the updated worktree.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"action":{"type":"string","enum":["add","remove","set","clear"]},"label":{"type":"object","properties":{"name":{"type":"string"},"color":{"type":"string","description":"Hex color like #eab308. Optional for add; ignored by remove."},"pinned":{"type":"boolean","description":"Show this label as a project-view filter tab for the current project."}},"required":["name"],"additionalProperties":false},"labels":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"color":{"type":"string"},"pinned":{"type":"boolean","description":"Show this label as a project-view filter tab for the current project."}},"required":["name","color"],"additionalProperties":false}}},"required":["worktreeId","action"],"additionalProperties":false}}
+        {"name":"update_worktree_labels","description":"Update native Splitkick worktree labels. Use action=add/remove/set/clear. Returns the updated worktree.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"action":{"type":"string","enum":["add","remove","set","clear"]},"label":{"type":"object","properties":{"name":{"type":"string"},"color":{"type":"string","description":"Hex color like #eab308. Optional for add; ignored by remove."},"pinned":{"type":"boolean","description":"Show this label as a project-view filter tab for the current project."}},"required":["name"],"additionalProperties":false},"labels":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"color":{"type":"string"},"pinned":{"type":"boolean","description":"Show this label as a project-view filter tab for the current project."}},"required":["name","color"],"additionalProperties":false}}},"required":["worktreeId","action"],"additionalProperties":false}}
     ])
 }
 
 fn tool_registry_session() -> Value {
     json!([
         {"name":"list_sessions","description":"List chat sessions in a worktree without loading full message history. Use before creating a session to avoid duplicates.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"includeArchived":{"type":"boolean","default":false}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"list_all_sessions","description":"One call that lists every Jean session in every project, with effective status, idle days, manual status, labels, pins/stars and the linked issue/PR. Prefer this over list_projects -> list_worktrees -> list_sessions when the question is about more than one worktree, such as \"which sessions can I archive?\" or \"what is still open?\". includeRecap and includeOpenWork read run logs and run git, so they are slower; turn them on only when you need them. Never archive or delete anything without asking the user first.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Only sessions in this project."},"includeArchived":{"type":"boolean","default":false,"description":"Also include archived sessions and sessions inside an archived worktree."},"idleForDays":{"type":"integer","minimum":0,"description":"Only sessions with no activity for at least this many days."},"status":{"type":["array","string"],"items":{"type":"string","enum":["idle","running","resumable","cancelled","error"]},"description":"Keep only these effective statuses. This is the live run state; the user's own status (completed, paused, review) is reported as manualStatus."},"sort":{"type":"string","enum":["recent","stale"],"default":"recent","description":"stale puts the oldest sessions first, which is what an archiving review wants."},"limit":{"type":"integer","minimum":1,"maximum":100,"default":100},"offset":{"type":"integer","minimum":0,"default":0,"description":"Pass back the nextOffset of the previous page."},"includeRecap":{"type":"boolean","default":false,"description":"Add the last \"## Recap\" block of each returned session. Usually enough to decide whether the work is finished."},"includeOpenWork":{"type":"boolean","default":false,"description":"Add uncommitted file and unpushed commit counts per worktree. Caps the page at 50."},"verbose":{"type":"boolean","default":false,"description":"Also return backend, model, provider, execution mode and timestamps."}},"additionalProperties":false}},
-        {"name":"search_sessions","description":"Find a Jean session by topic. Searches message text and session names across every project in one call, newest first. Use this instead of reading sessions one by one to answer \"do we have a session about X?\". The query must be at least 3 characters.","inputSchema":{"type":"object","properties":{"query":{"type":"string","minLength":3,"description":"Text to look for in message content and session names."},"projectId":{"type":"string","description":"Only search this project."},"includeArchived":{"type":"boolean","default":false},"limit":{"type":"integer","minimum":1,"maximum":50,"default":20}},"required":["query"],"additionalProperties":false}},
+        {"name":"list_all_sessions","description":"One call that lists every Splitkick session in every project, with effective status, idle days, manual status, labels, pins/stars and the linked issue/PR. Prefer this over list_projects -> list_worktrees -> list_sessions when the question is about more than one worktree, such as \"which sessions can I archive?\" or \"what is still open?\". includeRecap and includeOpenWork read run logs and run git, so they are slower; turn them on only when you need them. Never archive or delete anything without asking the user first.","inputSchema":{"type":"object","properties":{"projectId":{"type":"string","description":"Only sessions in this project."},"includeArchived":{"type":"boolean","default":false,"description":"Also include archived sessions and sessions inside an archived worktree."},"idleForDays":{"type":"integer","minimum":0,"description":"Only sessions with no activity for at least this many days."},"status":{"type":["array","string"],"items":{"type":"string","enum":["idle","running","resumable","cancelled","error"]},"description":"Keep only these effective statuses. This is the live run state; the user's own status (completed, paused, review) is reported as manualStatus."},"sort":{"type":"string","enum":["recent","stale"],"default":"recent","description":"stale puts the oldest sessions first, which is what an archiving review wants."},"limit":{"type":"integer","minimum":1,"maximum":100,"default":100},"offset":{"type":"integer","minimum":0,"default":0,"description":"Pass back the nextOffset of the previous page."},"includeRecap":{"type":"boolean","default":false,"description":"Add the last \"## Recap\" block of each returned session. Usually enough to decide whether the work is finished."},"includeOpenWork":{"type":"boolean","default":false,"description":"Add uncommitted file and unpushed commit counts per worktree. Caps the page at 50."},"verbose":{"type":"boolean","default":false,"description":"Also return backend, model, provider, execution mode and timestamps."}},"additionalProperties":false}},
+        {"name":"search_sessions","description":"Find a Splitkick session by topic. Searches message text and session names across every project in one call, newest first. Use this instead of reading sessions one by one to answer \"do we have a session about X?\". The query must be at least 3 characters.","inputSchema":{"type":"object","properties":{"query":{"type":"string","minLength":3,"description":"Text to look for in message content and session names."},"projectId":{"type":"string","description":"Only search this project."},"includeArchived":{"type":"boolean","default":false},"limit":{"type":"integer","minimum":1,"maximum":50,"default":20}},"required":["query"],"additionalProperties":false}},
         {"name":"create_session","description":"Create a new chat session in an existing non-archived worktree. Returns the session id needed for send_chat_message. Fails if the worktree is archived — call unarchive_worktree first.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"name":{"type":"string"},"backend":{"type":"string","enum":["claude","codex","cursor","opencode"]}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"send_chat_message","description":"Send a message to an existing non-archived session. Fire-and-forget: returns immediately as the session begins processing. Fails immediately if the session or its worktree is archived — call unarchive_session / unarchive_worktree first. Use this to kick off investigations. When model/executionMode are omitted, Jean uses the session's selected model and execution mode (set via set_session_model or the Jean UI). Pass model for a one-shot override of this turn only.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"message":{"type":"string"},"model":{"type":"string","description":"Optional one-shot model override. When omitted, uses the session selected model (set_session_model / UI)."},"executionMode":{"type":"string","enum":["plan","build","yolo"],"description":"Optional one-shot execution mode. When omitted, uses the session selected execution mode."}},"required":["sessionId","message"],"additionalProperties":false}},
+        {"name":"send_chat_message","description":"Send a message to an existing non-archived session. Fire-and-forget: returns immediately as the session begins processing. Fails immediately if the session or its worktree is archived — call unarchive_session / unarchive_worktree first. Use this to kick off investigations. When model/executionMode are omitted, Splitkick uses the session's selected model and execution mode (set via set_session_model or the Splitkick UI). Pass model for a one-shot override of this turn only.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"message":{"type":"string"},"model":{"type":"string","description":"Optional one-shot model override. When omitted, uses the session selected model (set_session_model / UI)."},"executionMode":{"type":"string","enum":["plan","build","yolo"],"description":"Optional one-shot execution mode. When omitted, uses the session selected execution mode."}},"required":["sessionId","message"],"additionalProperties":false}},
         {"name":"archive_session","description":"Archive a chat session (hide it from the active session list). Prefer this over delete when history may still be useful. Cannot run send_chat_message on an archived session until unarchive_session is called.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"unarchive_session","description":"Restore an archived chat session so it can run again. Also unarchives the parent worktree when it is archived. Call this before send_chat_message if a previous attempt failed because the session was archived.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
-        {"name":"move_session","description":"Move a Jean session to another active worktree while preserving its session id, complete message/run history, attachments, settings, and backend resume context. An idle session moves immediately. A running session is scheduled to move automatically after its current turn finishes; do not cancel the run or retry the move.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"targetWorktreeId":{"type":"string"}},"required":["sessionId","targetWorktreeId"],"additionalProperties":false}},
-        {"name":"get_session_status","description":"Get whether a Jean session is idle/running/resumable/cancelled/error plus latest run metadata. Use after send_chat_message to poll fire-and-forget work.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
-        {"name":"cancel_session_run","description":"Cancel the currently running request for a session. Returns whether Jean found an active process/turn/flag to cancel.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
+        {"name":"move_session","description":"Move a Splitkick session to another active worktree while preserving its session id, complete message/run history, attachments, settings, and backend resume context. An idle session moves immediately. A running session is scheduled to move automatically after its current turn finishes; do not cancel the run or retry the move.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"targetWorktreeId":{"type":"string"}},"required":["sessionId","targetWorktreeId"],"additionalProperties":false}},
+        {"name":"get_session_status","description":"Get whether a Splitkick session is idle/running/resumable/cancelled/error plus latest run metadata. Use after send_chat_message to poll fire-and-forget work.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
+        {"name":"cancel_session_run","description":"Cancel the currently running request for a session. Returns whether Splitkick found an active process/turn/flag to cancel.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"read_session_messages","description":"Read the most recent messages of one session, in chronological order. Keep the output small: role \"user\" returns only the user prompts (the cheapest way to see what a session was for), excludeTools drops tool calls, and maxCharsPerMessage cuts long messages. Use list_all_sessions or search_sessions first to pick the session.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":50,"description":"Maximum number of messages returned, counted from the end of the session."},"role":{"type":"string","enum":["user","assistant","all"],"default":"all","description":"user reads the prompts from session metadata and never touches a run log."},"excludeTools":{"type":"boolean","default":false,"description":"Drop tool calls. Tool payloads are most of the bytes in a normal session."},"maxCharsPerMessage":{"type":"integer","minimum":100,"maximum":20000,"description":"Cut each message to this many characters."}},"required":["sessionId"],"additionalProperties":false}},
-        {"name":"set_session_model","description":"Persist the selected model (and optionally backend) on a Jean session without sending a message. Prefer this when switching models for later turns; pass model on send_chat_message for a one-shot override only. When backend is omitted, Jean infers it from the model id when possible (e.g. grok/*, gpt-*, cursor/*). Returns sessionId, model, backend.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"model":{"type":"string","description":"Model id as used in Jean (e.g. claude-sonnet-4-6[1m], gpt-5.6-sol, grok/grok-4.6)."},"backend":{"type":"string","enum":["claude","codex","cursor","opencode","pi","commandcode","grok","kimi","antigravity"],"description":"Optional backend override. Inferred from model when omitted."}},"required":["sessionId","model"],"additionalProperties":false}},
-        {"name":"set_session_status","description":"Set or clear the manual status on a Jean session. Use \"completed\" after you finish the work in the current session so it leaves Jean's unread/attention list. Omit sessionId to target the calling session. Live automatic states (running, waiting for input, plan approval, crashed) still take priority while the session is active; the manual status shows once the session goes idle. Sending a new message clears \"paused\" and \"review\" automatically. Pass status null to clear. Returns sessionId and status.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"status":{"type":["string","null"],"enum":["idle","review","paused","completed","cancelled",null],"description":"Manual status to pin, or null to clear it."}},"required":["status"],"additionalProperties":false}},
-        {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Jean Settings → Usage). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
+        {"name":"set_session_model","description":"Persist the selected model (and optionally backend) on a Splitkick session without sending a message. Prefer this when switching models for later turns; pass model on send_chat_message for a one-shot override only. When backend is omitted, Splitkick infers it from the model id when possible (e.g. grok/*, gpt-*, cursor/*). Returns sessionId, model, backend.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"model":{"type":"string","description":"Model id as used in Splitkick (e.g. claude-sonnet-4-6[1m], gpt-5.6-sol, grok/grok-4.6)."},"backend":{"type":"string","enum":["claude","codex","cursor","opencode","pi","commandcode","grok","kimi","antigravity"],"description":"Optional backend override. Inferred from model when omitted."}},"required":["sessionId","model"],"additionalProperties":false}},
+        {"name":"set_session_status","description":"Set or clear the manual status on a Splitkick session. Use \"completed\" after you finish the work in the current session so it leaves Splitkick's unread/attention list. Omit sessionId to target the calling session. Live automatic states (running, waiting for input, plan approval, crashed) still take priority while the session is active; the manual status shows once the session goes idle. Sending a new message clears \"paused\" and \"review\" automatically. Pass status null to clear. Returns sessionId and status.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"status":{"type":["string","null"],"enum":["idle","review","paused","completed","cancelled",null],"description":"Manual status to pin, or null to clear it."}},"required":["status"],"additionalProperties":false}},
+        {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Splitkick Settings → Usage). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
         {"name":"get_worktree_changes","description":"Get a bounded summary of a worktree's git changes: porcelain status, ahead/behind counts, diff stats, and changed files. Does not return full diffs.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"maxFiles":{"type":"integer","minimum":1,"maximum":500,"default":100}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_worktree_diff","description":"Get a bounded unified git diff for a worktree. diffType is uncommitted (HEAD vs working tree) or branch (origin/base...HEAD). Optional path limits to one pathspec; maxBytes is capped.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"diffType":{"type":"string","enum":["uncommitted","branch"],"default":"uncommitted"},"path":{"type":"string"},"maxBytes":{"type":"integer","minimum":1,"maximum":200000,"default":60000}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_current_context","description":"Return the calling session's context: sessionId, worktreeId, projectId, projectPath, projectName. Use this so the agent knows what 'this project' refers to without guessing.","inputSchema":{"type":"object","properties":{},"additionalProperties":false}},
-        {"name":"get_run_environments","description":"List Jean Run-command / panel-command dev environments. Returns whether each is running, worktree/base-session identity, startup command, listening/configured ports, and http URL when a port is known. Optional worktreeId or projectId filters. Does not include full-screen CLI session terminals.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Optional worktree id to filter to one worktree or base session."},"projectId":{"type":"string","description":"Optional project id to filter to that project's worktrees."}},"additionalProperties":false}}
-        ,{"name":"start_run_environment","description":"Start or reuse a Jean-managed Run environment for a worktree using a run command configured in jean.json. When command is omitted, uses the first configured run command. Returns the environment identity, command, running state, ports, and URL when detected.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Worktree whose configured Run environment should start."},"command":{"type":"string","description":"Optional exact jean.json run command to start. Must be one of the configured run commands."}},"required":["worktreeId"],"additionalProperties":false}}
-        ,{"name":"open_in_browser","description":"Show a web page or local file (HTML report, image, PDF) to the user in Jean's embedded browser, in the worktree's browser pane. Use it after you write an HTML file or start a dev server the user should look at. url accepts an http(s) URL, a file:// URL, an absolute path, or a path relative to the worktree. worktreeId defaults to the calling session's worktree. When that worktree is not on screen, the tab waits in its browser pane. Needs the Jean desktop app; web access clients have no embedded browser.","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"http(s) URL, file:// URL, absolute path, or path relative to the worktree."},"worktreeId":{"type":"string","description":"Optional worktree whose browser pane shows the page. Defaults to the calling session's worktree."}},"required":["url"],"additionalProperties":false}}
+        {"name":"get_run_environments","description":"List Splitkick Run-command / panel-command dev environments. Returns whether each is running, worktree/base-session identity, startup command, listening/configured ports, and http URL when a port is known. Optional worktreeId or projectId filters. Does not include full-screen CLI session terminals.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Optional worktree id to filter to one worktree or base session."},"projectId":{"type":"string","description":"Optional project id to filter to that project's worktrees."}},"additionalProperties":false}}
+        ,{"name":"start_run_environment","description":"Start or reuse a Splitkick-managed Run environment for a worktree using a run command configured in splitkick.json (or jean.json). When command is omitted, uses the first configured run command. Returns the environment identity, command, running state, ports, and URL when detected.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string","description":"Worktree whose configured Run environment should start."},"command":{"type":"string","description":"Optional exact jean.json run command to start. Must be one of the configured run commands."}},"required":["worktreeId"],"additionalProperties":false}}
+        ,{"name":"open_in_browser","description":"Show a web page or local file (HTML report, image, PDF) to the user in Splitkick's embedded browser, in the worktree's browser pane. Use it after you write an HTML file or start a dev server the user should look at. url accepts an http(s) URL, a file:// URL, an absolute path, or a path relative to the worktree. worktreeId defaults to the calling session's worktree. When that worktree is not on screen, the tab waits in its browser pane. Needs the Splitkick desktop app; web access clients have no embedded browser.","inputSchema":{"type":"object","properties":{"url":{"type":"string","description":"http(s) URL, file:// URL, absolute path, or path relative to the worktree."},"worktreeId":{"type":"string","description":"Optional worktree whose browser pane shows the page. Defaults to the calling session's worktree."}},"required":["url"],"additionalProperties":false}}
     ])
 }
 
 fn tool_registry_ship_loop() -> Value {
     json!([
-        {"name":"create_commit","description":"Stage changes and create a git commit with an AI-generated message (same path as Jean UI Commit). Optional push after commit. Use specificFiles to stage only some paths; omit to stage all. Returns commitHash, message, pushed flags.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"push":{"type":"boolean","default":false,"description":"Push after a successful commit (or push existing unpushed commits when there is nothing new to commit)."},"remote":{"type":"string","description":"Optional git remote name for push."},"prNumber":{"type":"integer","minimum":1,"description":"Optional linked PR number for PR-aware push (fork remotes / force-with-lease)."},"specificFiles":{"type":"array","items":{"type":"string"},"description":"Optional list of paths to stage instead of staging everything."},"customPrompt":{"type":"string","description":"Optional override for the commit-message magic prompt."},"model":{"type":"string"},"reasoningEffort":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"push_worktree","description":"Push the current branch for a worktree (same path as Jean UI push). Optionally pass prNumber for PR-aware push.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"remote":{"type":"string","description":"Optional git remote name."},"prNumber":{"type":"integer","minimum":1,"description":"Optional PR number for PR-aware push."}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"create_commit","description":"Stage changes and create a git commit with an AI-generated message (same path as Splitkick UI Commit). Optional push after commit. Use specificFiles to stage only some paths; omit to stage all. Returns commitHash, message, pushed flags.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"push":{"type":"boolean","default":false,"description":"Push after a successful commit (or push existing unpushed commits when there is nothing new to commit)."},"remote":{"type":"string","description":"Optional git remote name for push."},"prNumber":{"type":"integer","minimum":1,"description":"Optional linked PR number for PR-aware push (fork remotes / force-with-lease)."},"specificFiles":{"type":"array","items":{"type":"string"},"description":"Optional list of paths to stage instead of staging everything."},"customPrompt":{"type":"string","description":"Optional override for the commit-message magic prompt."},"model":{"type":"string"},"reasoningEffort":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"push_worktree","description":"Push the current branch for a worktree (same path as Splitkick UI push). Optionally pass prNumber for PR-aware push.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"remote":{"type":"string","description":"Optional git remote name."},"prNumber":{"type":"integer","minimum":1,"description":"Optional PR number for PR-aware push."}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"detect_open_pr","description":"Detect whether the worktree's current branch already has an open GitHub PR. Returns the PR (number, url, title) or null when none exists. Call before create_pull_request to avoid duplicates.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"create_pull_request","description":"Create a GitHub PR for the worktree with AI-generated title/body (same path as Jean UI Open PR). Stages and commits uncommitted changes when needed, pushes the branch, and opens the PR against the project default branch. Returns prNumber, prUrl, title, existing. Prefer detect_open_pr first when unsure.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"sessionId":{"type":"string","description":"Optional Jean session id for context when generating PR content."},"customPrompt":{"type":"string","description":"Optional override for the PR-content magic prompt."},"model":{"type":"string"},"reasoningEffort":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"merge_pull_request","description":"Merge the open GitHub PR for the worktree's current branch using gh (same path as Jean UI merge). Uses the repo-allowed merge method (prefers squash). Fails if there is no open mergeable PR.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
-        {"name":"run_review","description":"Run Jean's AI code review on the worktree branch (same path as Jean UI Review). Returns summary, findings, and approvalStatus. Does not commit or open a PR.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"customPrompt":{"type":"string","description":"Optional override for the review magic prompt."},"model":{"type":"string"},"backend":{"type":"string","description":"Optional magic-prompt backend override (e.g. claude, codex)."},"reasoningEffort":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}}
+        {"name":"create_pull_request","description":"Create a GitHub PR for the worktree with AI-generated title/body (same path as Splitkick UI Open PR). Stages and commits uncommitted changes when needed, pushes the branch, and opens the PR against the project default branch. Returns prNumber, prUrl, title, existing. Prefer detect_open_pr first when unsure.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"sessionId":{"type":"string","description":"Optional Splitkick session id for context when generating PR content."},"customPrompt":{"type":"string","description":"Optional override for the PR-content magic prompt."},"model":{"type":"string"},"reasoningEffort":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"merge_pull_request","description":"Merge the open GitHub PR for the worktree's current branch using gh (same path as Splitkick UI merge). Uses the repo-allowed merge method (prefers squash). Fails if there is no open mergeable PR.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}},
+        {"name":"run_review","description":"Run Splitkick's AI code review on the worktree branch (same path as Splitkick UI Review). Returns summary, findings, and approvalStatus. Does not commit or open a PR.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"customPrompt":{"type":"string","description":"Optional override for the review magic prompt."},"model":{"type":"string"},"backend":{"type":"string","description":"Optional magic-prompt backend override (e.g. claude, codex)."},"reasoningEffort":{"type":"string"}},"required":["worktreeId"],"additionalProperties":false}}
     ])
 }
 
@@ -524,7 +524,7 @@ pub async fn call_tool(
     }
     if name == PERMISSION_PROMPT_TOOL {
         return Err(ToolError::invalid_params(
-            "permission_prompt is only available on the Jean dialog server",
+            "permission_prompt is only available on the Splitkick dialog server",
         ));
     }
 
@@ -533,20 +533,20 @@ pub async fn call_tool(
         .map_err(ToolError::internal)?;
     if !prefs.jean_mcp_enabled {
         return Err(ToolError::internal(
-            "Jean MCP is disabled. Enable it in Preferences > MCP Servers.",
+            "Splitkick MCP is disabled. Enable it in Preferences > MCP Servers.",
         ));
     }
 
     if RATE_LIMITED_TOOLS.contains(&name) {
         if depth > prefs.jean_mcp_max_depth {
             return Err(ToolError::internal(format!(
-                "Jean MCP recursion depth {depth} exceeds limit {}",
+                "Splitkick MCP recursion depth {depth} exceeds limit {}",
                 prefs.jean_mcp_max_depth
             )));
         }
         if !rate_check(source, name, prefs.jean_mcp_rate_limit_per_minute) {
             return Err(ToolError::internal(format!(
-                "Jean MCP rate limit exceeded ({} calls/min for source {source}, tool {name})",
+                "Splitkick MCP rate limit exceeded ({} calls/min for source {source}, tool {name})",
                 prefs.jean_mcp_rate_limit_per_minute
             )));
         }
@@ -1151,7 +1151,9 @@ async fn run_tool(
                 if let Err(e) =
                     dispatch_command(&app_clone, "send_chat_message", payload_clone).await
                 {
-                    log::warn!("Jean MCP send_chat_message (source={source_clone}) failed: {e}");
+                    log::warn!(
+                        "Splitkick MCP send_chat_message (source={source_clone}) failed: {e}"
+                    );
                 }
             });
             Ok(json!({ "sessionId": session_id, "status": "started" }))
@@ -1734,7 +1736,7 @@ async fn run_tool(
                 }
                 Some(command) => {
                     return Err(ToolError::invalid_params(format!(
-                        "Run command is not configured in jean.json: {command}"
+                        "Run command is not configured in splitkick.json (or jean.json): {command}"
                     )));
                 }
                 None => scripts
@@ -1743,7 +1745,7 @@ async fn run_tool(
                     .map(ToOwned::to_owned)
                     .ok_or_else(|| {
                         ToolError::invalid_params(
-                            "No run command configured in jean.json for this worktree",
+                            "No run command configured in splitkick.json (or jean.json) for this worktree",
                         )
                     })?,
             };
@@ -1810,7 +1812,7 @@ async fn run_tool(
                 Some(worktree_id) => worktree_id,
                 None if source == "anon" => {
                     return Err(ToolError::invalid_params(
-                        "worktreeId is required outside a Jean chat session",
+                        "worktreeId is required outside a Splitkick chat session",
                     ));
                 }
                 None => resolve_session_worktree(app, source)?.0,
@@ -2426,9 +2428,9 @@ fn validate_label_color(color: &str, field: &str) -> Result<(), ToolError> {
 
 fn no_current_context_error(source: &str) -> ToolError {
     ToolError::internal(format!(
-        "No Jean session context present for source '{source}'. \
-get_current_context only works for MCP calls made from Jean-spawned chat sessions, where \
-JEAN_MCP_SESSION is a real Jean session id. For manual/global MCP clients, use explicit-id tools \
+        "No Splitkick session context present for source '{source}'. \
+get_current_context only works for MCP calls made from Splitkick-spawned chat sessions, where \
+JEAN_MCP_SESSION is a real Splitkick session id. For manual/global MCP clients, use explicit-id tools \
 instead: list_projects -> list_worktrees(projectId) -> list_sessions(worktreeId), then \
 get_session_status(sessionId), get_worktree_changes(worktreeId), or get_worktree_diff(worktreeId)."
     ))
@@ -2462,7 +2464,7 @@ fn resolve_non_conflicting_worktree_name(
             Some(&data),
         );
         log::info!(
-            "Jean MCP resolved worktree name conflict: requested={requested_name}, resolved={resolved}, path_exists={path_exists}, name_exists={name_exists}, branch_exists={branch_exists}"
+            "Splitkick MCP resolved worktree name conflict: requested={requested_name}, resolved={resolved}, path_exists={path_exists}, name_exists={name_exists}, branch_exists={branch_exists}"
         );
         Ok(resolved)
     } else {
@@ -2914,7 +2916,7 @@ async fn wait_for_worktree_ready(app: &AppHandle, worktree_id: &str) -> Result<V
             Ok(worktree) => return Ok(worktree),
             Err(err) if started.elapsed() < Duration::from_secs(15) => {
                 if started.elapsed().as_millis() % 1000 < 500 {
-                    log::debug!("Jean MCP waiting for worktree {worktree_id}: {err}");
+                    log::debug!("Splitkick MCP waiting for worktree {worktree_id}: {err}");
                 }
                 tokio::time::sleep(Duration::from_millis(500)).await;
             }
@@ -4097,7 +4099,7 @@ mod tests {
         let error = no_current_context_error("manual-dev");
 
         assert!(error.message.contains("manual-dev"));
-        assert!(error.message.contains("Jean-spawned chat sessions"));
+        assert!(error.message.contains("Splitkick-spawned chat sessions"));
         assert!(error.message.contains("list_projects -> list_worktrees"));
         assert!(error.message.contains("get_session_status(sessionId)"));
     }
@@ -4404,7 +4406,7 @@ mod tests {
     #[test]
     fn the_dialog_server_sends_no_instructions_or_prompts() {
         let result = initialize_result(McpRole::Dialog);
-        assert_eq!(result["serverInfo"]["name"], "jean-dialog");
+        assert_eq!(result["serverInfo"]["name"], "splitkick-dialog");
         assert!(result.get("instructions").is_none());
         assert!(result["capabilities"].get("prompts").is_none());
     }
