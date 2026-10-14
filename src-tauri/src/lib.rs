@@ -63,6 +63,16 @@ fn fix_macos_path() {
     }
 }
 
+fn apply_pending_import(identifier: &str) {
+    let Some(data_dir) = jean_core::resolve_data_dir_for(identifier) else {
+        return;
+    };
+    let Some(_webkit_source) = jean_core::jean_import::apply_staged_import(&data_dir) else {
+        return;
+    };
+    #[cfg(target_os = "macos")]
+    platform::webkit_import::import_webkit_store(&_webkit_source, identifier, &data_dir);
+}
 
 fn initialize_core(app: &mut tauri::App) -> Result<jean_core::RuntimeContext, String> {
     // Not `path().app_data_dir()`: `jean_core::resolve_data_dir_for` also
@@ -336,7 +346,11 @@ pub fn run() {
         tauri_plugin_log::Target::new(tauri_plugin_log::TargetKind::LogDir { file_name: None }),
     ];
 
+    // An import from Jean is staged by the running app and applied here, on
+    // the next start: before anything reads the data folder, and before the
+    // main window (with its WebView) exists. See jean_core::jean_import.
     let context = tauri::generate_context!();
+    apply_pending_import(&context.config().identifier);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_updater::Builder::new().build())

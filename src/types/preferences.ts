@@ -1253,6 +1253,7 @@ export interface AppPreferences {
   has_seen_feature_tour: boolean // Whether user has seen the feature tour onboarding
   has_seen_jean_config_wizard: boolean // Whether user has seen the jean.json setup wizard
   has_seen_jean_mcp_intro: boolean // Whether user has seen the Jean MCP server announcement
+  jean_import_offer_dismissed: boolean // User chose "Start fresh" in the import-from-Jean dialog
   /** One-time tip: soft text on 1× displays when zoom ≠ 100% (default false = not dismissed) */
   has_seen_external_display_zoom_tip?: boolean
   chrome_enabled: boolean // Enable browser automation via Chrome extension
@@ -2386,6 +2387,7 @@ export const defaultPreferences: AppPreferences = {
   has_seen_feature_tour: false, // Default: not seen
   has_seen_jean_config_wizard: false, // Default: not seen
   has_seen_jean_mcp_intro: false, // Default: not seen
+  jean_import_offer_dismissed: false, // Default: offer the import
   has_seen_external_display_zoom_tip: false, // Default: show tip once on 1× + non-100% zoom
   chrome_enabled: true, // Default: enabled
   zoom_level: ZOOM_LEVEL_DEFAULT,

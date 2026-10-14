@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Import from Jean.** On first start Splitkick finds an existing Jean (or
+  JeanZ) data folder and offers to import a copy: projects, sessions, chat
+  history, saved contexts, settings and remote hosts. Jean's folder is only
+  read. Worktrees stay where they are. Jean's old defaults that clash are
+  replaced in the copy (Web Access port 3456 → 3460, 7-day archive deletion →
+  never, delete on close → archive).
+
 ### Changed
 
 - **JeanZ is now Splitkick.** New name, icon, bundle identifier

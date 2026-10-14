@@ -29,6 +29,12 @@ const ROOTS = [
 
 const SKIP_FILE = /(\.test\.tsx?$|\/test\/|\/tests?\.rs$|_tests?\.rs$)/
 
+// Files about Jean itself: the import of a Jean data folder.
+const ALLOW_FILES = new Set([
+  'jean-core/src/jean_import.rs',
+  'src/components/onboarding/ImportFromJeanDialog.tsx',
+])
+
 const NAME = /\bJean(Z)?\b/
 
 // Text that names upstream Jean on purpose.
@@ -64,7 +70,7 @@ const hits = []
 for (const [dir, pattern] of ROOTS) {
   for (const path of files(join(root, dir), pattern)) {
     const rel = relative(root, path)
-    if (SKIP_FILE.test(rel)) continue
+    if (SKIP_FILE.test(rel) || ALLOW_FILES.has(rel)) continue
     const lines = readFileSync(path, 'utf8').split('\n')
     // A top-level `#[cfg(test)] mod … {` runs until its closing `}` at column 0.
     let inRustTests = false

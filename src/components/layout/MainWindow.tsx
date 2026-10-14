@@ -216,6 +216,7 @@ import { useActiveRemoteConnection } from '@/lib/remote-connections'
 import { formatWindowTitle } from '@/lib/window-title'
 import { useWindowTitle } from '@/hooks/use-window-title'
 import { isLinux, isWindows } from '@/lib/platform'
+import { ImportFromJeanDialog } from '@/components/onboarding/ImportFromJeanDialog'
 
 // Left sidebar resize constraints (pixels)
 const MIN_SIDEBAR_WIDTH = 150
@@ -740,6 +741,7 @@ export function MainWindow() {
           <JeanMcpIntroDialog />
         </Suspense>
       )}
+      <ImportFromJeanDialog />
       {shouldRenderCliUpdateModal && (
         <Suspense fallback={null}>
           <CliUpdateModal />

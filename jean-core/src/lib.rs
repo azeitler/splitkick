@@ -52,6 +52,7 @@ mod cursor_cli;
 mod gh_cli;
 mod grok_cli;
 pub mod http_server;
+pub mod jean_import;
 pub mod jean_mcp_config;
 pub mod jean_mcp_core;
 pub mod jean_mcp_socket;
@@ -291,6 +292,8 @@ pub struct AppPreferences {
     pub has_seen_jean_config_wizard: bool, // Whether user has seen the jean.json setup wizard
     #[serde(default)]
     pub has_seen_jean_mcp_intro: bool, // Whether user has seen the Jean MCP server announcement
+    #[serde(default)]
+    pub jean_import_offer_dismissed: bool, // User chose "Start fresh" in the import-from-Jean dialog
     #[serde(default)]
     pub has_seen_external_display_zoom_tip: bool, // Soft-text tip on 1× displays when zoom ≠ 100%
     #[serde(default = "default_chrome_enabled")]
@@ -2800,6 +2803,7 @@ impl Default for AppPreferences {
             has_seen_feature_tour: false,
             has_seen_jean_config_wizard: false,
             has_seen_jean_mcp_intro: false,
+            jean_import_offer_dismissed: false,
             has_seen_external_display_zoom_tip: false,
             chrome_enabled: default_chrome_enabled(),
             zoom_level: default_zoom_level(),

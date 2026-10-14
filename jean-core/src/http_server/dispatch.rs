@@ -1761,6 +1761,20 @@ pub async fn dispatch_command(
             let result = crate::chat::check_resumable_sessions(app.clone()).await?;
             to_value(result)
         }
+        "detect_import_sources" => {
+            let result = crate::jean_import::detect_import_sources(app.clone()).await?;
+            to_value(result)
+        }
+
+        "import_from_jean" => {
+            let source_path: String = field(&args, "sourcePath", "source_path")?;
+            let use_jeanz_state: bool = field(&args, "useJeanzState", "use_jeanz_state")?;
+            let result =
+                crate::jean_import::import_from_jean(app.clone(), source_path, use_jeanz_state)
+                    .await?;
+            to_value(result)
+        }
+
         "cleanup_old_archives" => {
             let retention_days: u32 = field(&args, "retentionDays", "retention_days")?;
             let result = crate::projects::cleanup_old_archives(app.clone(), retention_days).await?;

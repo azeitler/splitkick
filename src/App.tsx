@@ -113,6 +113,7 @@ import { RemoteConnectionRecovery } from './components/remote/RemoteConnectionRe
 import { getStartupOnboardingAction } from './lib/startup-onboarding'
 import { dismissTransientUi } from './lib/dismiss-transient-ui'
 import { JeanLoadingScreen } from './components/shared/JeanLoadingScreen'
+import { useJeanImportPending } from './services/jean-import'
 
 interface AutoFixStoppedEvent {
   projectId: string
@@ -157,6 +158,8 @@ function App() {
   const { data: preferences } = usePreferences()
   const onboardingOpen = useUIStore(state => state.onboardingOpen)
   const featureTourOpen = useUIStore(state => state.featureTourOpen)
+  // The import-from-Jean offer comes first; onboarding waits for it.
+  const jeanImportPending = useJeanImportPending()
   const jeanMcpIntroOpen = useUIStore(state => state.jeanMcpIntroOpen)
   const hasStartedTransportRef = useRef(false)
 
@@ -1086,6 +1089,7 @@ function App() {
   useEffect(() => {
     if (!isNativeApp()) return
     if (!cliCheckReady) return
+    if (jeanImportPending) return
 
     const onboarding = useUIStore.getState()
     const prefs = queryClient.getQueryData<AppPreferences>(['preferences'])
@@ -1207,6 +1211,7 @@ function App() {
     isKimiAuthLoading,
     isGhAuthLoading,
     cliCheckReady,
+    jeanImportPending,
     platformVersion,
     queryClient,
   ])
@@ -1216,6 +1221,7 @@ function App() {
   useEffect(() => {
     if (!isNativeApp()) return
     if (!cliCheckReady || !preferences) return
+    if (jeanImportPending) return
     if (preferences.has_seen_jean_mcp_intro) return
     if (onboardingOpen || featureTourOpen || jeanMcpIntroOpen) return
 
@@ -1317,6 +1323,7 @@ function App() {
     isKimiAuthLoading,
     isGhAuthLoading,
     cliCheckReady,
+    jeanImportPending,
   ])
 
   // Show feature tour after CLI onboarding completes (first launch or manual trigger)

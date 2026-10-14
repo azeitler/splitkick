@@ -108,8 +108,14 @@ function appDataRelativePath(filePath: string): string | null {
     return filePath.substring(_appDataDir.length)
   }
 
-  // Fallback: detect app data dir marker in path (works before _appDataDir is set)
-  for (const marker of ['com.jean.desktop/', 'com.jean.desktop\\']) {
+  // Fallback: detect app data dir marker in path (works before _appDataDir is set).
+  // Splitkick's own folder, and Jean's for paths from a Jean server host.
+  for (const marker of [
+    'app.splitkick.desktop/',
+    'app.splitkick.desktop\\',
+    'com.jean.desktop/',
+    'com.jean.desktop\\',
+  ]) {
     const idx = filePath.indexOf(marker)
     if (idx !== -1) return filePath.substring(idx + marker.length)
   }
