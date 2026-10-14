@@ -291,3 +291,46 @@ Website, docs portal, domains, headless server rebrand, Linux/Windows builds.
 - **Updater key:** generated 2026-10-14 in `.local-signing/splitkick-updater.key`
   (+ `.password`, `.pub`) of the main checkout. Copy it to 1Password and set
   the CI secrets before the first release.
+
+## Status (2026-10-15)
+
+`main` has M1, the M5 bridge, the auto-archive fix (`d44484f5`) and the
+JeanZ z.26 cut (`5cc49136`). The Splitkick commits are rebased on top, in the
+Jean worktree `splitkick-rebrand` (not pushed):
+
+| Commit     | Milestone           |
+| ---------- | ------------------- |
+| `2e995a12` | M2 brand core       |
+| `7aebd95a` | M2 icon fix         |
+| `6b59c612` | M3 import from Jean |
+| `6213bf69` | M4 release pipeline |
+
+Verified locally: `bun run check:all` on both branches; an ad-hoc Splitkick
+build installed at `/Applications/Splitkick.app` next to Jean and JeanZ (own
+data folder, no open file in `com.jean.desktop`, defaults 3460 / never /
+archive, `jean` MCP entry untouched); import of a real Jean folder snapshot
+(5195 files, source checksums unchanged, pasted-file paths rewritten, app
+shows the imported projects and history); updater pubkey matches the new key.
+
+Not verified (needs Andreas or CI): signed and notarized build, in-app update
+from a test feed, web access from the phone, the WebKit store copy (remote
+hosts) after an import through the dialog.
+
+## Handoff: steps for Andreas (in order)
+
+1. **Merge `jeanz-bridge` into `main`** (after the other session's work there
+   is committed), then `bun run release:cut` and push → JeanZ `0.1.73-z.26`.
+2. **Create the final JeanZ feed**: a release tagged `jeanz-final` in
+   `azeitler/jean` whose only asset is z.26's `latest.json` (download it from
+   the z.26 release). z.26 reads that URL and so never updates again.
+3. Wait until the known JeanZ installs run z.26.
+4. **Secrets** on the repository: `SPLITKICK_UPDATER_PRIVATE_KEY` and
+   `SPLITKICK_UPDATER_PRIVATE_KEY_PASSWORD` from
+   `.local-signing/splitkick-updater.key{,.password}` (copy both to 1Password
+   first); check that `APPLE_*` hold the certificate you want Splitkick signed
+   with (today "Developer ID Application: Andreas Zeitler (44S2FAD7EU)").
+5. **Rename the repository** `azeitler/jean` → `azeitler/splitkick`
+   (stay in the fork network). Check with `curl -I` that the old URLs redirect.
+6. **Merge `splitkick-rebrand` into `main`** (rebase onto the z.26 cut first),
+   `bun run release:cut 1.0.0-rc.1`, push → pre-release; test it (M6).
+7. `bun run release:cut 1.0.0`, push → public launch (M7).
