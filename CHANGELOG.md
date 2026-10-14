@@ -7,15 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [0.1.73-z.24] - 2026-10-14
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Zoom in the image viewer.** Pinch, double-tap, or scroll to zoom into an
   image, and drag to pan when zoomed. On a phone the viewer fills the screen,
   centers the image, and keeps the close button clear of the notch.
-
-## [0.1.73-z.24] - 2026-10-13
-
-Built on Jean 0.1.73.
 
 ### Fixed
 
