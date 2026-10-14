@@ -2346,7 +2346,7 @@ export const defaultPreferences: AppPreferences = {
   git_poll_interval: 60,
   remote_poll_interval: 60,
   keybindings: DEFAULT_KEYBINDINGS,
-  archive_retention_days: 7,
+  archive_retention_days: 0,
   syntax_theme_dark: 'vitesse-black',
   syntax_theme_light: 'github-light',
   parallel_execution_prompt_enabled: true, // Default: enabled
@@ -2374,7 +2374,7 @@ export const defaultPreferences: AppPreferences = {
   http_server_auto_start: false,
   http_server_localhost_only: true, // Default to localhost-only for security
   http_server_token_required: true, // Default: require token for security
-  removal_behavior: 'delete', // Default: delete (permanent)
+  removal_behavior: 'archive', // Default: archive (soft delete, restorable)
   auto_save_context: false, // Default: disabled
   auto_pull_base_branch: true, // Default: enabled
   git_sync_button: false, // Default: separate pull/push badges

@@ -31,8 +31,8 @@ export interface FinishPlanHandoffParams {
 /**
  * Last step of approving a plan into a new session or worktree.
  *
- * With `close_original_on_clear_context` on, the source session is closed or
- * archived (per `removal_behavior`). Otherwise the handoff is recorded so the
+ * With `close_original_on_clear_context` on, the source session is archived,
+ * never deleted, so the planning history stays restorable. Otherwise the handoff is recorded so the
  * source chat shows a notice under the plan.
  */
 export function finishPlanHandoff({
@@ -47,9 +47,8 @@ export function finishPlanHandoff({
   mode,
 }: FinishPlanHandoffParams): void {
   if (prefs?.close_original_on_clear_context) {
-    closeOriginalSession(
+    archiveOriginalSession(
       queryClient,
-      prefs,
       worktreeId,
       worktreePath,
       sessionId,
@@ -95,23 +94,20 @@ export function finishPlanHandoff({
 }
 
 /**
- * Close or archive the source session right away.
+ * Archive the source session right away (never delete, whatever
+ * `removal_behavior` says).
  * cancel_process_if_running (used by close/archive) safely skips idle
  * sessions, and with_sessions_mut uses a per-worktree mutex, so this does not
  * race with send_chat_message on the new session.
  */
-function closeOriginalSession(
+function archiveOriginalSession(
   queryClient: QueryClient,
-  prefs: AppPreferences | undefined,
   worktreeId: string,
   worktreePath: string,
   sessionId: string,
   /** New active session when it lives in the same worktree */
   sameWorktreeSessionId: string | null
 ): void {
-  const command =
-    prefs?.removal_behavior === 'archive' ? 'archive_session' : 'close_session'
-
   // Optimistically remove from UI so the user sees it gone at once
   queryClient.setQueryData<WorktreeSessions>(
     chatQueryKeys.sessions(worktreeId),
@@ -128,14 +124,14 @@ function closeOriginalSession(
     }
   )
 
-  invoke(command, { worktreeId, worktreePath, sessionId })
+  invoke('archive_session', { worktreeId, worktreePath, sessionId })
     .then(() =>
       queryClient.invalidateQueries({
         queryKey: chatQueryKeys.sessions(worktreeId),
       })
     )
     .catch(err =>
-      console.error('[planHandoff] Failed to close original session:', err)
+      console.error('[planHandoff] Failed to archive original session:', err)
     )
 }
 

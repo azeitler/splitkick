@@ -97,6 +97,38 @@ pub fn sanitize_directory_name(name: &str) -> String {
         .collect()
 }
 
+/// Archive every active worktree whose folder no longer exists on disk.
+/// Worktrees created in the last 5 minutes are skipped (still being set up).
+/// Returns the number of worktrees archived.
+fn archive_missing_worktrees(
+    worktrees: &mut [crate::projects::types::Worktree],
+    now_ts: u64,
+) -> usize {
+    let five_minutes_ago = now_ts.saturating_sub(300);
+    let mut archived = 0;
+    for w in worktrees.iter_mut() {
+        if w.archived_at.is_some() || std::path::Path::new(&w.path).exists() {
+            continue;
+        }
+        if w.created_at > five_minutes_ago {
+            log::trace!(
+                "Keeping recently created worktree '{}' - path doesn't exist yet (created {}s ago)",
+                w.name,
+                now_ts - w.created_at
+            );
+            continue;
+        }
+        log::warn!(
+            "Archiving worktree '{}' - path does not exist: {}",
+            w.name,
+            w.path
+        );
+        w.archived_at = Some(now_ts);
+        archived += 1;
+    }
+    archived
+}
+
 /// Load projects data from disk (internal, no locking)
 fn load_projects_data_internal(app: &AppHandle) -> Result<ProjectsData, String> {
     log::trace!("Loading projects data from disk");
@@ -121,50 +153,19 @@ fn load_projects_data_internal(app: &AppHandle) -> Result<ProjectsData, String> 
         worktree.normalize_labels();
     }
 
-    let original_count = data.worktrees.len();
-
-    // Filter out worktrees where path doesn't exist on disk
+    // A worktree whose folder is missing is archived, never dropped: dropping
+    // the record made its session history an "orphan" that the next startup
+    // cleanup deleted. Archiving keeps the history readable and restorable.
     // Skip recently created worktrees (< 5 min) - they may still be initializing in a background thread
     let now_ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let five_minutes_ago = now_ts.saturating_sub(300);
+    let archived_count = archive_missing_worktrees(&mut data.worktrees, now_ts);
 
-    let valid_worktrees: Vec<_> = data
-        .worktrees
-        .into_iter()
-        .filter(|w| {
-            let exists = std::path::Path::new(&w.path).exists();
-            if !exists {
-                if w.created_at > five_minutes_ago {
-                    log::trace!(
-                        "Keeping recently created worktree '{}' - path doesn't exist yet (created {}s ago)",
-                        w.name,
-                        now_ts - w.created_at
-                    );
-                    return true;
-                }
-                log::warn!(
-                    "Removing orphaned worktree '{}' - path does not exist: {}",
-                    w.name,
-                    w.path
-                );
-            }
-            exists
-        })
-        .collect();
-
-    let removed_count = original_count - valid_worktrees.len();
-
-    let data = ProjectsData {
-        projects: data.projects,
-        worktrees: valid_worktrees,
-    };
-
-    // Save cleaned data if any orphans were removed
-    if removed_count > 0 {
-        log::trace!("Cleaned up {removed_count} orphaned worktree(s)");
+    // Save if any worktree was archived
+    if archived_count > 0 {
+        log::trace!("Archived {archived_count} worktree(s) with a missing folder");
         save_projects_data_internal(app, &data)?;
     }
 
@@ -280,6 +281,39 @@ mod tests {
         }
 
         assert_eq!(load_projects_data(&app).unwrap().worktrees.len(), 16);
+    }
+
+    /// A worktree whose folder vanished is archived, not dropped, so its
+    /// session history is never treated as an orphan and deleted.
+    #[test]
+    fn missing_worktree_folder_is_archived_not_dropped() {
+        let temp = tempfile::tempdir().unwrap();
+        let app = AppHandle::new(temp.path().into(), temp.path().into()).unwrap();
+        let present = temp.path().join("present");
+        std::fs::create_dir_all(&present).unwrap();
+        let worktree = |id: &str, path: &std::path::Path, created_at: u64| {
+            serde_json::from_value::<crate::projects::types::Worktree>(serde_json::json!({
+                "id": id, "project_id": "p1", "name": id, "path": path,
+                "branch": id, "created_at": created_at,
+            }))
+            .unwrap()
+        };
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs();
+        let mut data = ProjectsData::default();
+        data.add_worktree(worktree("present", &present, 0));
+        data.add_worktree(worktree("gone", &temp.path().join("gone"), 0));
+        data.add_worktree(worktree("fresh", &temp.path().join("fresh"), now));
+        save_projects_data(&app, &data).unwrap();
+
+        let loaded = load_projects_data(&app).unwrap();
+        assert_eq!(loaded.worktrees.len(), 3);
+        let by_id = |id: &str| loaded.worktrees.iter().find(|w| w.id == id).unwrap();
+        assert!(by_id("present").archived_at.is_none());
+        assert!(by_id("gone").archived_at.is_some());
+        assert!(by_id("fresh").archived_at.is_none());
     }
 
     #[test]

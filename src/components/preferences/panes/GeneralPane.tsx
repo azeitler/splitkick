@@ -4843,8 +4843,8 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
               </InlineField>
 
               <InlineField
-                label="Close original session on clear context"
-                description="Close the original session when a plan is sent to a new session or worktree. When off, the chat shows a notice with options to mark it complete or archive it."
+                label="Archive original session on clear context"
+                description="Archive the original session when a plan is sent to a new session or worktree. It is never deleted. When off, the chat shows a notice with options to mark it complete or archive it."
               >
                 <Switch
                   checked={preferences?.close_original_on_clear_context ?? true}
@@ -4863,7 +4863,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                 description="What happens when closing sessions or worktrees"
               >
                 <Select
-                  value={preferences?.removal_behavior ?? 'delete'}
+                  value={preferences?.removal_behavior ?? 'archive'}
                   onValueChange={(value: RemovalBehavior) => {
                     if (preferences) {
                       patchPreferences.mutate({
@@ -4906,7 +4906,7 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                 description="Delete archived items older than this"
               >
                 <Select
-                  value={String(preferences?.archive_retention_days ?? 30)}
+                  value={String(preferences?.archive_retention_days ?? 0)}
                   onValueChange={handleArchiveRetentionChange}
                 >
                   <SelectTrigger className="w-full sm:w-80">

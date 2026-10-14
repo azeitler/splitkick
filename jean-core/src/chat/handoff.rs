@@ -396,6 +396,18 @@ Read the history carefully, reconstruct the task state, and answer the user's la
     )
 }
 
+pub(crate) fn build_lost_context_handoff_prompt(history: &str) -> String {
+    format!(
+        r#"You are continuing an existing chat session. Your backend no longer has its record of the earlier conversation (the CLI deleted its transcript), so the history below is the conversation you already had with the user — do not claim you lack prior context.
+
+Read the history carefully, reconstruct the task state, and answer the user's latest message with full continuity. Do not mention this hidden handoff unless it is directly relevant.
+
+<jean_local_history>
+{history}
+</jean_local_history>"#
+    )
+}
+
 pub(crate) fn prepend_hidden_fork_handoff(user_message: &str, fork_prompt: &str) -> String {
     format!(
         "{FORK_OPEN_TAG}\n{}\n{FORK_CLOSE_TAG}\n\n{}",
@@ -410,6 +422,13 @@ mod tests {
     use crate::chat::types::{
         Backend, ChatMessage, ContentBlock, MessageRole, RunEntry, RunStatus, SessionMetadata,
     };
+
+    #[test]
+    fn lost_context_prompt_carries_the_history() {
+        let prompt = build_lost_context_handoff_prompt("### User\nfix the parser");
+        assert!(prompt.contains("no longer has its record"), "{prompt}");
+        assert!(prompt.contains("### User\nfix the parser"), "{prompt}");
+    }
 
     #[test]
     fn fork_handoff_prompt_carries_the_copied_history() {

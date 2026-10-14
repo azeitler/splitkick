@@ -643,7 +643,7 @@ fn default_keybindings() -> std::collections::HashMap<String, String> {
 }
 
 fn default_archive_retention_days() -> u32 {
-    7 // Keep archived items for 7 days by default
+    0 // Keep archived items for ever by default (archive is a soft delete)
 }
 
 fn default_syntax_theme_dark() -> String {
@@ -1408,7 +1408,7 @@ mod tests {
 }
 
 fn default_removal_behavior() -> String {
-    "delete".to_string()
+    "archive".to_string()
 }
 
 fn default_auto_save_context() -> bool {

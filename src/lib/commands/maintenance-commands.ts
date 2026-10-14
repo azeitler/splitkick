@@ -33,7 +33,7 @@ export const maintenanceCommands: AppCommand[] = [
         const prefs = context.queryClient.getQueryData<AppPreferences>([
           'preferences',
         ])
-        const retentionDays = prefs?.archive_retention_days ?? 30
+        const retentionDays = prefs?.archive_retention_days ?? 0
 
         const [result, combinedDeleted] = await Promise.all([
           invoke<CleanupResult>('cleanup_old_archives', { retentionDays }),
