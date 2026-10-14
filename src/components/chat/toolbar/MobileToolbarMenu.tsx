@@ -76,7 +76,12 @@ export function MobileToolbarMenu({
   const [menuOpen, setMenuOpen] = useState(false)
 
   return (
-    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+    <DropdownMenu
+      open={menuOpen}
+      onOpenChange={setMenuOpen}
+      // Non-modal: items open sheets/dialogs; avoids the Radix body-lock race.
+      modal={false}
+    >
       <DropdownMenuTrigger asChild>
         <button
           type="button"

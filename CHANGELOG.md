@@ -58,6 +58,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **A failed update check tells you why.** "Check for Updates…" now shows the
   error in its toast, and every failed check, manual or automatic, is written
   to the app log.
+- **Overlays on the phone stack in the right order.** A dialog opened from a
+  sheet now shows above it: the layer you opened last is always on top.
+- **The floating terminal and browser drawers no longer block the page.** The
+  chat beside them stays tappable and scrollable.
+- **The phone UI no longer freezes after a menu opens a sheet.** Picking
+  Effort, Thinking, MCP or Scripts from the settings menu, or an action from the
+  toolbar or dock menu, could leave every tap ignored.
+- **Jean on the iPhone Home Screen feels like an app.** The status bar blends
+  in, a tap shows no grey flash, there is no double-tap zoom delay, and a long
+  press on a button no longer selects text or shows the iOS callout. Chat text
+  stays selectable. Remove the Home Screen icon and add it again to pick up the
+  new app settings.
 
 ## [0.1.73-z.25] - 2026-10-14
 

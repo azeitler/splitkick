@@ -536,7 +536,13 @@ export function MobileSettingsMenu({
 
   return (
     <>
-      <DropdownMenu open={menuOpen} onOpenChange={handleOpenChange}>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={handleOpenChange}
+        // Non-modal: no body pointer lock, so opening a sheet or dialog
+        // from an item cannot race the menu close and freeze the UI.
+        modal={false}
+      >
         <DropdownMenuTrigger asChild>
           <button
             type="button"

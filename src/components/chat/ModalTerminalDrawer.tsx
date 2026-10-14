@@ -222,10 +222,13 @@ export const ModalTerminalDrawer = memo(function ModalTerminalDrawer({
   }
 
   return (
-    <Sheet open={isOpen} onOpenChange={open => !open && handleClose()}>
+    <Sheet
+      open={isOpen}
+      onOpenChange={open => !open && handleClose()}
+      modal={false}
+    >
       <SheetContent
         side="right"
-        modal={false}
         showCloseButton={false}
         className="p-0"
         style={{ width: `${width}px`, maxWidth: '95vw' }}

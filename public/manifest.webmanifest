@@ -1,0 +1,13 @@
+{
+  "name": "Jean",
+  "short_name": "Jean",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#1e1e1e",
+  "theme_color": "#1e1e1e",
+  "icons": [
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" },
+    { "src": "/logo.png", "sizes": "640x640", "type": "image/png" }
+  ]
+}

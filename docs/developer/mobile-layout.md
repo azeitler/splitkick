@@ -151,6 +151,25 @@ keeps the 16px phone gutter, and an unprefixed override kills it. A
 Use `dvh`, never `vh`. On iOS Safari `vh` exceeds the visible viewport, so a
 centred dialog is clipped top and bottom.
 
+### Overlay stacking
+
+Dialog, Sheet, AlertDialog, Popover, DropdownMenu, Select and Tooltip all sit on
+**one tier, `z-[80]`**. Radix portals append in open order, so the layer opened
+last is on top — a dialog opened from a sheet lands above it with no override.
+Do not add per-call `z-[90]`-style fixes; only app-level blockers
+(`RemoteConnectionRecovery`, `RemoteConnectionsDialog`) sit higher.
+
+- **Non-modal sheet:** pass `modal={false}` to the `<Sheet>` root, not to
+  `SheetContent`. The root flag drives both Radix (no focus trap, no body
+  pointer lock, page stays tappable) and the backdrop. The floating terminal and
+  browser drawers use it.
+- **Menu that opens a sheet or dialog:** make the `DropdownMenu`
+  `modal={false}`. A modal menu locks `body` pointer-events; a sheet that opens
+  while the menu animates out restores that lock on close and freezes the UI
+  (`MobileSettingsMenu`, `MobileToolbarMenu`, `DockBurgerButton`).
+
+Guarded by `src/components/ui/overlay-layering.test.tsx`.
+
 ### Hover affordances
 
 A row action revealed only by `group-hover` is invisible and unreachable on a
@@ -221,7 +240,18 @@ ref so the effect does not re-run on every flip.
 ### Mobile web is not the native app
 
 `body.native-app` carries the desktop-only `user-select: none` and
-`cursor: default`. Overscroll control is _not_ in there: `html, body {
+`cursor: default`. Touch screens get their own block in `App.css`
+(`@media (pointer: coarse)`): no tap highlight, `touch-action: manipulation` on
+every element (no double-tap zoom delay), and no text selection or iOS callout
+on app chrome. Inputs and `.select-text` opt back in, so chat text stays
+selectable.
+
+Home Screen launch on iOS 26 opens standalone even without a manifest;
+`index.html` still sets `apple-mobile-web-app-capable`,
+`apple-mobile-web-app-status-bar-style: black-translucent` (content draws under
+the status bar and `--safe-area-top` pads it) and links
+`public/manifest.webmanifest`. Changes to these need the Home Screen icon
+removed and added again. Overscroll control is _not_ in there: `html, body {
 overscroll-behavior: none }` applies everywhere, because Chrome Android
 pull-to-refresh competes with Jean's swipe-down-opens-the-command-palette
 gesture, and the shell never scrolls the body anyway.

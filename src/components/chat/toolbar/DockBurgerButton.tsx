@@ -171,7 +171,12 @@ export function DockBurgerButton({
   )
 
   return (
-    <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
+    <DropdownMenu
+      open={menuOpen}
+      onOpenChange={setMenuOpen}
+      // Non-modal: items open sheets/dialogs; avoids the Radix body-lock race.
+      modal={false}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>

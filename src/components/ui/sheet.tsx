@@ -6,8 +6,18 @@ import { XIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
-function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
-  return <SheetPrimitive.Root data-slot="sheet" {...props} />
+// Radix does not expose `modal` to Content, so share it for the backdrop.
+const SheetModalContext = React.createContext(true)
+
+function Sheet({
+  modal = true,
+  ...props
+}: React.ComponentProps<typeof SheetPrimitive.Root>) {
+  return (
+    <SheetModalContext.Provider value={modal}>
+      <SheetPrimitive.Root data-slot="sheet" modal={modal} {...props} />
+    </SheetModalContext.Provider>
+  )
 }
 
 function SheetTrigger({
@@ -49,16 +59,15 @@ function SheetContent({
   overlayClassName,
   children,
   side = 'right',
-  modal = true,
   showCloseButton = true,
   ...props
 }: React.ComponentProps<typeof SheetPrimitive.Content> & {
   side?: 'top' | 'right' | 'bottom' | 'left'
-  modal?: boolean
   showCloseButton?: boolean
   /** Restyle the backdrop — needed to stack two sheets on the same side. */
   overlayClassName?: string
 }) {
+  const modal = React.useContext(SheetModalContext)
   return (
     <SheetPortal>
       {modal && <SheetOverlay className={overlayClassName} />}

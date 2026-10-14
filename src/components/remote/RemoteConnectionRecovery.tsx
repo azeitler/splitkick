@@ -44,7 +44,7 @@ export function RemoteConnectionRecovery({
   }, [permanent])
 
   return (
-    // z-[100] sits above dialogs (70) and menus/popovers (80).
+    // z-[100] sits above dialogs, sheets and menus (all z-80).
     <div className="fixed inset-x-0 bottom-0 top-8 z-[100] flex items-center justify-center bg-background">
       <div className="mx-4 w-full max-w-md rounded-lg border bg-card p-6 shadow-lg">
         <div className="flex items-center gap-2">
