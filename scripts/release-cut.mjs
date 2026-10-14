@@ -1,20 +1,17 @@
 #!/usr/bin/env node
 /**
- * Cuts the `## [Unreleased]` section of CHANGELOG.md into the version the next
- * build will actually publish.
+ * Cuts the `## [Unreleased]` section of CHANGELOG.md into a release and sets
+ * the Splitkick version in src-tauri/tauri.fork.conf.json.
  *
- * Naming that version by hand is how z.8 and z.9 both lost their notes: the
- * section was written as z.8 while a build of an earlier commit was already in
- * flight, so that build took the number and the next push became z.9 with no
- * section of its own. Both releases fell back to raw commit subjects.
+ * The version is chosen by hand (semver, e.g. 1.0.1, 1.1.0, 1.1.0-rc.1) and
+ * checked against the tags on `origin`: it must be new and newer than every
+ * released version. Pushing the commit publishes it (see
+ * scripts/splitkick-version.mjs); a version with an `-rc.N` suffix is
+ * published as a GitHub pre-release, which the updater never offers.
  *
- * So the version is never typed here. It is resolved the same way CI resolves
- * it, from the tags on `origin`, at the moment of the cut — and a build that is
- * already running is reported, because it will take the number first.
- *
- *   bun run release:cut            # cut, after checking for a running build
- *   bun run release:cut --dry-run  # print what it would do
- *   bun run release:cut --force    # cut anyway while a build is running
+ *   bun run release:cut 1.0.1            # cut
+ *   bun run release:cut 1.0.1 --dry-run  # print what it would do
+ *   bun run release:cut 1.0.1 --force    # cut while a CI build is running
  */
 
 import { execFileSync } from 'node:child_process'
@@ -23,9 +20,17 @@ import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import { listRemoteTags, nextVersion, previousTag } from './jeanz-version.mjs'
+import {
+  compareVersions,
+  listRemoteTags,
+  parseVersion,
+  previousTag,
+  readUpstreamVersion,
+  releasedVersions,
+  tagFor,
+} from './splitkick-version.mjs'
 
-const REPO = 'azeitler/jean'
+const REPO = 'azeitler/splitkick'
 const UNRELEASED = '## [Unreleased]'
 
 /** The `## [Unreleased]` body, or null when the heading is missing. */
@@ -45,10 +50,7 @@ function unreleasedBody(lines) {
  * Throws when there is nothing to cut or the version already has a section —
  * both mean the caller is about to publish something other than it thinks.
  */
-export function cutChangelog(
-  markdown,
-  { version, date, previousVersion, upstream }
-) {
+export function cutChangelog(markdown, { version, date, upstream }) {
   if (markdown.includes(`## [${version}]`)) {
     throw new Error(`CHANGELOG.md already has a section for ${version}`)
   }
@@ -63,13 +65,9 @@ export function cutChangelog(
     )
   }
 
-  const preamble = previousVersion
-    ? `Built on Jean ${upstream}.`
-    : `Built on Jean ${upstream}. JeanZ versions carry a \`-z.<n>\` suffix; the counter is this fork's own and never restarts.`
-
   const cut = markdown.replace(
     `${UNRELEASED}\n`,
-    `${UNRELEASED}\n\n## [${version}] - ${date}\n\n${preamble}\n`
+    `${UNRELEASED}\n\n## [${version}] - ${date}\n\nBuilt on Jean ${upstream}.\n`
   )
 
   // Link references sit at the end of the file and serve the whole changelog.
@@ -80,11 +78,18 @@ export function cutChangelog(
   const match = unreleasedRef.exec(cut)
   if (!match) return cut
 
+  const tag = tagFor(version)
   const base = match[1].slice(0, match[1].lastIndexOf('/') + 1)
   return cut.replace(
     unreleasedRef,
-    `[unreleased]: ${base}v${version}...HEAD\n[${version}]: ${match[1]}...v${version}`
+    `[unreleased]: ${base}${tag}...HEAD\n[${version}]: ${match[1]}...${tag}`
   )
+}
+
+/** Set `version` in the Splitkick overlay, keeping the rest of the file. */
+export function setOverlayVersion(json, version) {
+  const config = JSON.parse(json)
+  return `${JSON.stringify({ ...config, version }, null, 2)}\n`
 }
 
 /**
@@ -96,6 +101,10 @@ function ghCandidates() {
   return [
     process.env.GH_CLI,
     'gh',
+    resolve(
+      homedir(),
+      'Library/Application Support/app.splitkick.desktop/gh-cli/gh'
+    ),
     resolve(
       homedir(),
       'Library/Application Support/com.jean.desktop/gh-cli/gh'
@@ -144,7 +153,7 @@ function remoteTags(cwd) {
   }
 }
 
-/** A CI build already running will take the next number before this cut does. */
+/** A CI build already running may publish before this cut lands. */
 function runningBuild(cwd) {
   try {
     const out = execFileSync(
@@ -176,34 +185,47 @@ function main() {
   const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
   const dryRun = process.argv.includes('--dry-run')
   const force = process.argv.includes('--force')
+  const version = process.argv.slice(2).find(arg => !arg.startsWith('--'))
 
-  const { version: upstream } = JSON.parse(
-    readFileSync(resolve(root, 'src-tauri/tauri.conf.json'), 'utf8')
-  )
+  if (!version || !parseVersion(version)) {
+    console.error(
+      'Usage: bun run release:cut <version>   (e.g. 1.0.1 or 1.1.0-rc.1)'
+    )
+    process.exit(1)
+  }
+
   const refs = remoteTags(root)
-  const version = nextVersion(upstream, refs)
-  const previous = previousTag(refs)
+  const released = releasedVersions(refs)
+  if (released.includes(version)) {
+    console.error(`${tagFor(version)} already exists on origin.`)
+    process.exit(1)
+  }
+  const newest = [...released].sort(compareVersions).pop()
+  if (newest && compareVersions(version, newest) <= 0) {
+    console.error(
+      `${version} is not newer than the latest release ${newest}; the updater would never offer it.`
+    )
+    process.exit(1)
+  }
 
   const running = runningBuild(root)
   if (running && !force) {
     console.error(
       `A CI Build is ${running.status} for ${running.headSha.slice(0, 7)}.\n` +
-        `It will publish ${version} before your push does, so this cut would ` +
-        `name the wrong release.\n${running.url}\n\n` +
-        'Wait for it to finish and run this again, or pass --force.'
+        `${running.url}\n\nWait for it to finish and run this again, or pass --force.`
     )
     process.exit(1)
   }
 
-  const path = resolve(root, 'CHANGELOG.md')
+  const changelogPath = resolve(root, 'CHANGELOG.md')
+  const overlayPath = resolve(root, 'src-tauri/tauri.fork.conf.json')
   let cut
   try {
-    cut = cutChangelog(readFileSync(path, 'utf8'), {
+    cut = cutChangelog(readFileSync(changelogPath, 'utf8'), {
       version,
       // Local date: a cut made after midnight belongs to that day, not to UTC's.
       date: new Date().toLocaleDateString('sv-SE'),
-      previousVersion: previous,
-      upstream,
+      upstream: readUpstreamVersion(root),
     })
   } catch (error) {
     // A refusal is an ordinary outcome here, not a crash to read a stack for.
@@ -211,12 +233,17 @@ function main() {
     process.exit(1)
   }
 
+  const previous = previousTag(refs, version)
   if (dryRun) {
     console.log(`Would cut ${version} (previous: ${previous ?? 'none'})`)
     return
   }
 
-  writeFileSync(path, cut)
+  writeFileSync(changelogPath, cut)
+  writeFileSync(
+    overlayPath,
+    setOverlayVersion(readFileSync(overlayPath, 'utf8'), version)
+  )
   console.log(
     `Cut ${version}. Review CHANGELOG.md, then commit and push to publish it.`
   )

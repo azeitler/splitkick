@@ -1,7 +1,7 @@
 name: Server Release
 
 on:
-  # Off in this fork: no server images are published, and every JeanZ build
+  # Off in this fork: no server images are published, and every Splitkick release
   # publishes a release, which would trigger this workflow. Run it by hand if
   # it is ever needed.
   workflow_dispatch:

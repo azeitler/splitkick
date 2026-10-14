@@ -9,7 +9,7 @@ on:
         type: string
         default: ''
       publishFlavor:
-        description: 'Build, sign and publish the JeanZ flavor instead of discarding the compiled binary'
+        description: 'Build and sign the Splitkick bundle (and publish it when the version is new) instead of discarding the compiled binary'
         required: false
         type: boolean
         default: false
@@ -17,10 +17,10 @@ on:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  # The asset name is constant so that the "latest release" download URL never
-  # changes, even though every release has its own tag.
-  DMG_NAME: JeanZ_macos_arm64.dmg
-  UPDATER_NAME: JeanZ_macos_arm64.app.tar.gz
+  # The constant names keep the "latest release" download URLs stable, even
+  # though every release has its own tag. The versioned DMG is uploaded too.
+  DMG_NAME: Splitkick-aarch64.dmg
+  UPDATER_NAME: Splitkick-aarch64.app.tar.gz
 
 jobs:
   build:
@@ -55,18 +55,16 @@ jobs:
         if: inputs.version != ''
         run: node scripts/assert-release-version.js "${{ inputs.version }}"
 
-      # A JeanZ release is the upstream product version plus this fork's own
-      # patch suffix: 0.1.73-z1, 0.1.73-z2, 0.2.0-z3. The counter is read from
-      # the existing tags and never restarts, so a higher -z is always newer.
-      # It is resolved before the build because the version is compiled into
-      # the bundle.
-      - name: Resolve the JeanZ version
+      # The Splitkick version is set in src-tauri/tauri.fork.conf.json by
+      # `bun run release:cut`. A push publishes it only when it has a
+      # CHANGELOG.md section and no splitkick-v<version> tag yet.
+      - name: Resolve the Splitkick version
         id: version
         if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
         # An explicit bash sets pipefail, which the default shell does not, so a
         # failing resolver fails the step instead of being swallowed by tee.
         shell: bash
-        run: node scripts/jeanz-version.mjs | tee -a "$GITHUB_OUTPUT"
+        run: node scripts/splitkick-version.mjs | tee -a "$GITHUB_OUTPUT"
 
       - name: Install Linux dependencies
         if: startsWith(matrix.platform, 'ubuntu')
@@ -121,13 +119,16 @@ jobs:
         run: bun run test:run
 
       - name: Release version tests
-        run: bun run test:jeanz-version
+        run: bun run test:splitkick-version
 
       - name: Release notes tests
         run: bun run test:changelog-notes && bun run test:release-cut
 
       - name: Web branding tests
         run: bun run test:web-branding
+
+      - name: Branding check
+        run: bun run check:branding
 
       - name: Rust tests
         run: bun run rust:test
@@ -139,21 +140,17 @@ jobs:
       # Fork flavor. This is the same compile as the step above, so the two are
       # mutually exclusive: the binary is bundled, signed and published instead
       # of being thrown away. See docs/developer/fork-macos-builds.md.
-      - name: Build JeanZ bundle
+      - name: Build Splitkick bundle
         if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
         env:
-          # Picked up by Vite through beforeBuildCommand: swaps in the amber
-          # favicon and apple-touch-icon from src-tauri/icons-fork/web/, and
-          # names the product JeanZ in index.html and the frontend.
-          JEAN_FLAVOR: jeanz
           CERT: ${{ secrets.APPLE_CERTIFICATE }}
           CERT_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
           IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
           NOTARY_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          UPDATER_KEY: ${{ secrets.JEANZ_UPDATER_PRIVATE_KEY }}
-          UPDATER_KEY_PASSWORD: ${{ secrets.JEANZ_UPDATER_PRIVATE_KEY_PASSWORD }}
+          UPDATER_KEY: ${{ secrets.SPLITKICK_UPDATER_PRIVATE_KEY }}
+          UPDATER_KEY_PASSWORD: ${{ secrets.SPLITKICK_UPDATER_PRIVATE_KEY_PASSWORD }}
         run: |
           # A missing secret arrives as an empty string, and Tauri reads
           # APPLE_SIGNING_IDENTITY with var_os. An empty value would therefore
@@ -201,18 +198,19 @@ jobs:
           fi
 
           # Configs are merged in the order they are given and the flag also
-          # accepts an inline JSON string, so the resolved version and the
-          # updater switch are layered on top of the flavor overlay without
-          # editing a file. https://v2.tauri.app/reference/cli/#build
+          # accepts an inline JSON string, so the updater switch is layered on
+          # top of the overlay (which carries the version) without editing a
+          # file. https://v2.tauri.app/reference/cli/#build
           bun run tauri build --ci ${{ matrix.preflightArgs }} \
             --bundles app,dmg \
             -c src-tauri/tauri.fork.conf.json \
-            -c "{\"version\": \"${{ steps.version.outputs.version }}\"}" \
             -c "$UPDATER_CONFIG"
 
       - name: Collect the DMG
         id: dmg
         if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
           BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
           DMG=$(find "$BUNDLE_DIR/dmg" -name '*.dmg' -print -quit)
@@ -221,7 +219,8 @@ jobs:
             exit 1
           fi
           mv "$DMG" "$DMG_NAME"
-          APP="$BUNDLE_DIR/macos/JeanZ.app"
+          cp "$DMG_NAME" "Splitkick-$VERSION-aarch64.dmg"
+          APP="$BUNDLE_DIR/macos/Splitkick.app"
           codesign -dv --verbose=4 "$APP" 2>&1 | sed -n 's/^Authority=/authority: /p' || true
           # `spctl -a` accepts a Developer ID build that was never notarized as
           # long as the copy is not quarantined, so it cannot be used here. A
@@ -249,7 +248,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
-          TARBALL="$BUNDLE_DIR/macos/JeanZ.app.tar.gz"
+          TARBALL="$BUNDLE_DIR/macos/Splitkick.app.tar.gz"
 
           if [ ! -f "$TARBALL" ]; then
             echo "No updater artifacts in this build - skipping latest.json"
@@ -266,7 +265,7 @@ jobs:
               JSON.stringify(
                 {
                   version: process.env.VERSION,
-                  notes: `JeanZ ${process.env.VERSION}`,
+                  notes: `Splitkick ${process.env.VERSION}`,
                   pub_date: new Date().toISOString(),
                   platforms: {
                     "darwin-aarch64": {
@@ -286,16 +285,17 @@ jobs:
         if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
         uses: actions/upload-artifact@v4
         with:
-          name: jeanz-macos-arm64-${{ steps.version.outputs.version }}
+          name: splitkick-macos-arm64-${{ steps.version.outputs.version }}
           path: ${{ env.DMG_NAME }}
           if-no-files-found: error
           retention-days: 14
 
-      # A full release, not a prerelease, and its own tag per build. --latest
-      # keeps the /releases/latest/download/ URL pointing at the newest build,
-      # so the download link is stable although the tag changes.
+      # Its own tag per release. A plain version is published --latest, which
+      # keeps the /releases/latest/download/ URLs (DMG and updater feed)
+      # pointing at it. An -rc.N version is a GitHub pre-release: never
+      # "latest", so the updater does not offer it.
       - name: Publish the release
-        if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
+        if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' && steps.version.outputs.publish == 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.version.outputs.tag }}
@@ -303,11 +303,12 @@ jobs:
           UPSTREAM: ${{ steps.version.outputs.upstream }}
           PREVIOUS: ${{ steps.version.outputs.previous }}
           STATUS: ${{ steps.dmg.outputs.status }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: |
           # latest.json has to sit in the newest release, because that is the
           # URL the installed app polls. It is absent when the build had no
           # updater key, and then the release simply carries the DMG.
-          ASSETS=("$DMG_NAME")
+          ASSETS=("$DMG_NAME" "Splitkick-$VERSION-aarch64.dmg")
           UPDATE="no (this build has no updater artifacts)"
           if [ -f latest.json ]; then
             ASSETS+=("$UPDATER_NAME" latest.json)
@@ -349,22 +350,28 @@ jobs:
 
           ---
 
-          Jean $UPSTREAM · commit \`${GITHUB_SHA:0:7}\` · $STATUS · in-app update: $UPDATE
+          Built on Jean $UPSTREAM · commit \`${GITHUB_SHA:0:7}\` · $STATUS · in-app update: $UPDATE
 
-          Apple Silicon only. Open the DMG and drag JeanZ to Applications; later builds arrive through the in-app update check. JeanZ shares Jean's app-data directory, so do not run both apps at the same time.
+          Apple Silicon only. Open the DMG and drag Splitkick to Applications; later versions arrive through the in-app update check. Splitkick installs next to Jean and has its own data folder.
           NOTES
+
+          if [ "$PRERELEASE" = "true" ]; then
+            CHANNEL=(--prerelease --latest=false)
+          else
+            CHANNEL=(--latest)
+          fi
 
           gh release create "$TAG" \
             --target "$GITHUB_SHA" \
-            --latest \
-            --title "JeanZ $VERSION" \
+            "${CHANNEL[@]}" \
+            --title "Splitkick $VERSION" \
             --notes-file release-notes.md \
             "${ASSETS[@]}"
 
           {
-            echo "### JeanZ $VERSION"
+            echo "### Splitkick $VERSION"
             echo ""
-            echo "- upstream: Jean $UPSTREAM"
+            echo "- built on: Jean $UPSTREAM"
             echo "- signature: $STATUS"
             echo "- in-app update: $UPDATE"
             echo "- download: https://github.com/${{ github.repository }}/releases/latest/download/$DMG_NAME"

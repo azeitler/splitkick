@@ -1,174 +1,107 @@
-# JeanZ macOS builds
+# Splitkick macOS builds
 
-JeanZ is this fork's build flavor of Jean. It has its own name, its own icon and
-its own release, but it is the same application. Every push to `main` builds it,
-signs it and publishes it.
+Splitkick is built on Jean (`coollabsio/jean`). It has its own name, icon,
+bundle identifier, data folder, update feed and version line. Every push to
+`main` builds, tests and signs it; a push publishes a release only when the
+version is new (see [Cutting a release](#cutting-a-release)).
 
-## Why a flavor instead of a branch of the config
+The plan behind the rename is in
+[splitkick-rebrand-plan.md](splitkick-rebrand-plan.md).
 
-`src-tauri/tauri.conf.json` is identical to upstream. Editing it would create a
-merge conflict on every `git merge upstream/main`. Tauri supports build flavors
-through `tauri build -c <file>`, which merges an overlay into the base config, so
-the flavor lives in a separate file that upstream never touches.
+## Where the brand lives
 
-| File                                 | Role                                                                                                                                                                    |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src-tauri/tauri.fork.conf.json`     | The overlay: name, window title, icons, updater and signing overrides                                                                                                   |
-| `src-tauri/icons-fork/`              | The JeanZ icon set                                                                                                                                                      |
-| `src-tauri/icons-fork/web/`          | The JeanZ favicon and apple-touch-icon                                                                                                                                  |
-| `scripts/generate-fork-icon.mjs`     | Regenerates both icon sets                                                                                                                                              |
-| `scripts/web-branding.mjs`           | Product name and hashed web icons for the flavor being built                                                                                                            |
-| `scripts/build-fork-macos.sh`        | Local build, identical to CI                                                                                                                                            |
-| `scripts/jeanz-version.mjs`          | Resolves the next release version                                                                                                                                       |
-| `src/lib/release-url.ts`             | Points the title bar version badge at the right repository                                                                                                              |
-| `jean-core/src/server_update/mod.rs` | Web Access host-update check: reads the JeanZ feed, not upstream's (`desktop_manifest_url`), and compares the bundle version with its `-z.N` suffix (`release_version`) |
-| `src/lib/build-info.ts`              | Exposes `PRODUCT_NAME` to the frontend                                                                                                                                  |
-| `.github/workflows/preflight.yml`    | Build, sign, notarize and publish                                                                                                                                       |
-| `src/test/tauri-fork-config.test.ts` | Guards the overlay against dropped fields                                                                                                                               |
-| `scripts/web-branding.test.mjs`      | Guards the artwork, the hashed filenames and the product name                                                                                                           |
+`src-tauri/tauri.conf.json` stays identical to upstream, so `git merge
+upstream/main` does not conflict there. Tauri merges an overlay into the base
+config with `tauri build -c <file>`, and the Splitkick values live in a few
+files that upstream never touches:
+
+| File                                 | Role                                                                                   |
+| ------------------------------------ | -------------------------------------------------------------------------------------- |
+| `src-tauri/tauri.fork.conf.json`     | Overlay: name, binary name, identifier, version, window title, icons, updater, signing |
+| `src-tauri/tauri.conf.dev.json`      | Development identifier and title (`bun run tauri:dev`)                                 |
+| `jean-core/src/brand.rs`             | Data folder, worktree root, MCP names, config file name, port, desktop feed            |
+| `scripts/web-branding.mjs`           | Product name in `index.html`, hashed web icons                                         |
+| `src/lib/build-info.ts`              | `PRODUCT_NAME` and `UPSTREAM_BASE_VERSION` for the frontend                            |
+| `src/lib/release-url.ts`             | Version badge link (`splitkick-v<version>` tags)                                       |
+| `src-tauri/icons-fork/`              | Icon set, generated by `scripts/generate-splitkick-icons.mjs`                          |
+| `scripts/check-branding.mjs`         | Fails `check:all` on user-visible "Jean" text                                          |
+| `scripts/splitkick-version.mjs`      | Version, tag and "publish?" for CI                                                     |
+| `scripts/release-cut.mjs`            | Cuts the changelog and sets the overlay version                                        |
+| `.github/workflows/preflight.yml`    | Build, sign, notarize, publish                                                         |
+| `src/test/tauri-fork-config.test.ts` | Guards the overlay                                                                     |
 
 Two rules apply to the overlay:
 
 - **Arrays are replaced, not merged.** The overlay repeats the complete window
   block for that reason. `tauri.windows.conf.json` does the same.
-- **Do not rename the overlay to `tauri.macos.conf.json`.** Tauri applies that
-  filename automatically to every macOS build, including the official one.
+- **Do not rename the overlay to `tauri.macos.conf.json`.** Tauri would apply
+  that file to every macOS build automatically.
 
-## The frontend branding is not in the overlay
+## Frontend branding
 
-The overlay names the window and the Dock icon. It cannot reach the favicon, the
-apple-touch-icon, the browser tab title or any product name in the React code,
-because those are frontend assets that Vite produces before Tauri runs. Most of
-them only show up in Web Access - a browser tab, or the page added to a phone
-home screen - since the macOS webview has no tab strip.
-
-`JEAN_FLAVOR=jeanz` covers them instead. Both `scripts/build-fork-macos.sh` and
-the **Build JeanZ bundle** step export it, and Tauri passes it to Vite through
-`beforeBuildCommand`. `scripts/web-branding.mjs` then:
-
-- reads the icons from `src-tauri/icons-fork/web/` rather than `public/`
-- rewrites `<title>` and `apple-mobile-web-app-title` in `index.html`
-- resolves `PRODUCT_NAME`, which `vite.config.ts` bakes in as
-  `__JEAN_PRODUCT_NAME__` and `src/lib/build-info.ts` re-exports
+The overlay names the window, the Dock icon and the macOS menu. It cannot
+reach the favicon, the apple-touch-icon, the tab title or text in the React
+code, because Vite builds those before Tauri runs. `scripts/web-branding.mjs`
+(a Vite plugin, `apply: 'build'`) reads the icons from
+`src-tauri/icons-fork/web/`, rewrites `<title>` and
+`apple-mobile-web-app-title` in `index.html`, and exports `PRODUCT_NAME`,
+which `vite.config.ts` bakes in as `__JEAN_PRODUCT_NAME__`.
 
 Use `PRODUCT_NAME` from `src/lib/build-info.ts` in user-visible text instead of
-writing "Jean". It is a build-time constant, so it works in the native app and
-in a browser alike - the browser loads the same bundle the app serves. The
-rewrite of `index.html` throws when an expected anchor is gone, so rewording that
-file fails the build instead of quietly shipping the upstream name.
+writing "Splitkick" or "Jean". After an upstream merge, run
+`bun run check:branding`: it lists every new upstream string that says "Jean".
 
-One thing is deliberately left alone: the version row in Preferences → General
-reads `CLIENT_BUILD_INFO.appVersion`, which comes from `package.json` and never
-carries the `-z.N` suffix. Naming it "JeanZ" would put the fork name next to the
-upstream version number. Fix the version source first.
-
-**The emitted filename carries a content hash, and it has to stay that way.**
-The HTTP server sends every static asset except `index.html` and
-`jean-build.json` with `public, max-age=31536000, immutable`
-(`try_static_filesystem_response` in `jean-core/src/http_server/server.rs`). A
-browser that once loaded `/favicon.png` will not ask for it again for a year, so
-new bytes at that URL would never arrive. `index.html` is sent `no-store`, so
-rewriting its `href` to `/favicon-<hash>.png` reaches every existing instance on
-its next load. Putting the icons back on a fixed filename would break the
-upstream flavor in the same way.
-
-`bun run dev` is unaffected: the plugin is `apply: 'build'`, so the dev server
-keeps serving plain `/favicon.png` out of `public/`.
+**Web icon names carry a content hash, and they have to.** The HTTP server sends
+every static asset except `index.html` and `jean-build.json` with
+`public, max-age=31536000, immutable`. New bytes at a fixed `/favicon.png`
+would never reach a browser that cached it; `index.html` is `no-store`, so a
+hashed `href` reaches every client on its next load.
 
 ## Which workflows run
 
-The fork reuses the existing workflows instead of adding new ones. They are
-scoped down to macOS on Apple Silicon, which is the only platform this fork
-ships.
+| Workflow             | State                                                            |
+| -------------------- | ---------------------------------------------------------------- |
+| CI Build / Preflight | Active, macOS arm64 only. Builds, signs, publishes a new version |
+| Release Jean         | Upstream's. Runs only in `coollabsio/jean` (repository guard)    |
+| Server Release       | Manual only                                                      |
 
-`CI Build` calls `Preflight` with `publishFlavor: true`. Preflight runs the
-usual gate - typecheck, lint, clippy, frontend tests, Rust tests - and its last
-step normally compiles the application with `--no-bundle` and throws the binary
-away. With `publishFlavor` set, that step instead builds the JeanZ bundle,
-signs it, notarizes it and publishes a release. It is the same compile on the
-same runner, so the application is built once.
-
-| Workflow             | State                                                                                                          |
-| -------------------- | -------------------------------------------------------------------------------------------------------------- |
-| CI Build / Preflight | Active, macOS arm64 only                                                                                       |
-| Release Jean         | Active, macOS arm64 only. Skips `-z` tags, and the Homebrew tap job is off because the tap lives in coollabsio |
-| Server Release       | Manual only; the `release: published` trigger is removed                                                       |
-
-`Release Jean` and `Server Release` both triggered on `release: published`,
-which every JeanZ build fires. Without the guards, one push would have started
-a second, four-platform build.
-
-Every removed platform is commented out in the matrix, not deleted. Restore an
-entry to bring a platform back; all steps are still platform-aware.
+Preflight runs the usual gate (typecheck, lint, branding check, clippy,
+frontend, script and Rust tests). With `publishFlavor`, its last step builds
+the Splitkick bundle instead of a throwaway `--no-bundle` compile.
 
 ## Cutting a release
 
-Write changelog entries under `## [Unreleased]` as you go, then cut them into a
-version right before you push:
+Write changelog entries under `## [Unreleased]` as you go. To release:
 
 ```bash
-bun run release:cut          # or --dry-run to see what it would do
+bun run release:cut 1.0.1             # or 1.1.0-rc.1; --dry-run to preview
+git commit -am "docs(changelog): cut 1.0.1"   # then push to main
 ```
 
-`scripts/release-cut.mjs` never takes the version from you. It resolves the
-number the same way CI will, from the tags on `origin`, at the moment of the
-cut, then renames `[Unreleased]` and fixes the link references. It refuses when
-the section is empty, when that version already has a section, and when a CI
-build is already running — that build publishes the number first, so a cut made
-beside it names the wrong release.
+`scripts/release-cut.mjs` checks the version against the tags on `origin`
+(new, and newer than every released version), moves the Unreleased entries
+under `## [1.0.1] - <date>` with "Built on Jean <base version>", fixes the link
+references and writes `version` into `src-tauri/tauri.fork.conf.json`.
 
-That is exactly how z.8 and z.9 lost their notes: the section was written as
-z.8 by hand while a build of an earlier commit was in flight, so the build took
-z.8 and the next push became z.9 with no section of its own. Both releases fell
-back to raw commit subjects.
+On the push, `scripts/splitkick-version.mjs` reports `publish=true` only when
+the overlay version has a CHANGELOG section and no `splitkick-v<version>` tag.
+Every other push builds and signs but publishes nothing.
 
 ## Version numbers
 
-A JeanZ build carries the upstream product version plus this fork's own patch
-suffix:
+Splitkick uses plain semver from `1.0.0`, independent of the Jean version it is
+built on. That base version stays in `tauri.conf.json` (upstream's file) and
+shows in About and in each release as "Built on Jean 0.1.73". A later upstream
+merge changes it without touching the Splitkick version.
 
-```
-0.1.73-z.1    0.1.73-z.2    0.2.0-z.3    0.2.0-z.4
-```
-
-The suffix is a semver prerelease field, so the version stays valid semver.
-Tauri writes it into the bundle, which means the title bar, `getVersion()` and
-the Finder all show the JeanZ version and not the upstream one.
-
-Note that this is a semver prerelease _field_, not a GitHub prerelease. The
-release itself is a full release.
-
-**The dot in `-z.4` is required.** The updater only offers a build when its
-version is semver-greater than the installed one, and semver compares a
-prerelease identifier that contains a letter as ASCII text. An undotted `z10`
-would therefore sort _below_ `z9`, and the in-app update would go quiet after
-the ninth build. Split into the two identifiers `z` and `4`, the number is
-compared as a number and the order holds forever.
-`scripts/jeanz-version.test.mjs` checks 40 consecutive builds against that
-rule.
-
-On macOS the version becomes `CFBundleShortVersionString` and
-`CFBundleVersion`. Apple documents both as dot-separated digits, but that rule
-is enforced by App Store Connect, not by codesign or the notary service, and
-JeanZ is distributed directly. Should notarization ever reject the suffix, set
-`bundle > macOS > bundleVersion` to the plain upstream version in the overlay.
-
-The counter is global and never restarts. A higher `-z` is therefore always the
-newer build, even when upstream jumps several versions between two JeanZ
-builds. `scripts/jeanz-version.mjs` resolves it: it reads the upstream version
-from `src-tauri/tauri.conf.json`, reads the existing tags with
-`git ls-remote --tags origin`, and adds one to the highest `-z` it finds. CI
-runs it before the build, because the version is compiled into the bundle, and
-passes the result to `tauri build` as a second `-c` layer on top of the flavor
-overlay.
-
-Two builds that resolve the same number would collide on the tag, and the
-second one fails at the publish step. `CI Build` cancels a running job when the
-next push arrives, so this needs two pushes within one build to happen. Re-run
-the failed job to give it the next free number.
-
-Local builds do not get a suffix. They use the plain upstream version, because
-nothing is published.
+- Tags are `splitkick-v<version>`. Upstream's `v<version>` tags (`v1.0.0` …
+  `v1.0.11`) would collide with Splitkick's otherwise. Keep upstream tags out
+  of local fetches: `git config remote.upstream.tagOpt --no-tags`.
+- `-rc.N` versions are published as GitHub **pre-releases**. A pre-release is
+  never "latest", so `releases/latest/download/latest.json` (the updater feed)
+  never offers it. Test an rc with a local feed (see below).
+- The overlay holds `1.0.0-dev` until the first cut; it is never published.
+- Every Splitkick version is newer than every JeanZ version (`0.1.73-z.N`).
 
 ## Build it locally
 
@@ -176,43 +109,22 @@ nothing is published.
 bash scripts/build-fork-macos.sh
 ```
 
-The result is
-`src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/JeanZ_<version>_aarch64.dmg`.
-The overlay sets the ad-hoc signing identity `-`, so the build needs no Apple
-account. macOS then shows a Gatekeeper warning. Remove the quarantine flag to
-open it:
+The bundle lands in
+`src-tauri/target/aarch64-apple-darwin/release/bundle/{macos/Splitkick.app,dmg/}`.
+A local build is ad-hoc signed; remove the quarantine flag to open it:
 
 ```bash
-xattr -dr com.apple.quarantine /Applications/JeanZ.app
+xattr -dr com.apple.quarantine /Applications/Splitkick.app
 ```
 
-The official app still builds unchanged, because it does not use the `-c` flag:
-
-```bash
-bun run tauri:build:fast
-```
-
-## Download the CI build
-
-Every push to `main` publishes a full release - not a prerelease - tagged
-`v<version>` and marked as the latest one. The asset name is constant, so this
-URL always serves the newest build:
-
-<https://github.com/azeitler/jean/releases/latest/download/JeanZ_macos_arm64.dmg>
-
-The tagged URL of one specific build is
-`https://github.com/azeitler/jean/releases/download/v0.1.73-z.1/JeanZ_macos_arm64.dmg`.
-
-The build is Apple Silicon only. The release notes state the upstream version,
-the commit and whether the build is notarized.
+`bun run tauri:dev` runs as `app.splitkick.desktop.dev` with its own data folder.
 
 ## Signing secrets
 
-CI signs and notarizes when these repository secrets exist. The build step
-degrades instead of failing: with no certificate it uses the overlay's ad-hoc
-identity, and with a certificate but no notarization credentials it produces a
-signed build. The "Report signature status" step states which of the three
-results you got.
+CI signs and notarizes when these repository secrets exist. The build degrades
+instead of failing: without a certificate it uses the overlay's ad-hoc
+identity; with a certificate but no notarization credentials it is signed but
+not notarized. The "Collect the DMG" step reports which.
 
 | Secret                       | Content                                                                        |
 | ---------------------------- | ------------------------------------------------------------------------------ |
@@ -223,185 +135,106 @@ results you got.
 | `APPLE_PASSWORD`             | App-specific password from account.apple.com                                   |
 | `APPLE_TEAM_ID`              | 10-character team ID                                                           |
 
-`APPLE_SIGNING_IDENTITY` is not optional. The base config pins coolLabs'
-identity, and the bundler rejects an `APPLE_CERTIFICATE` that does not match the
-configured identity.
+`APPLE_SIGNING_IDENTITY` is required: the base config pins coolLabs' identity,
+and the bundler rejects a certificate that does not match the identity.
+Never use coolLabs' identity for Splitkick.
 
-Two more secrets sign the in-app update. They are read as a pair; with either
-one missing the build still publishes its DMG, but without update artifacts.
+The in-app update is signed with a separate minisign key, read as a pair:
 
-| Secret                               | Content                                                  |
-| ------------------------------------ | -------------------------------------------------------- |
-| `JEANZ_UPDATER_PRIVATE_KEY`          | Content of the updater private key file, one base64 line |
-| `JEANZ_UPDATER_PRIVATE_KEY_PASSWORD` | Password of that key                                     |
+| Secret                                   | Content                                          |
+| ---------------------------------------- | ------------------------------------------------ |
+| `SPLITKICK_UPDATER_PRIVATE_KEY`          | Content of the private key file, one base64 line |
+| `SPLITKICK_UPDATER_PRIVATE_KEY_PASSWORD` | Its password (Tauri rejects an empty one)        |
 
-The key must have a password. Tauri rejects an empty one and then falls back to
-prompting on a terminal that a runner does not have, which fails the build
-rather than degrading.
+## Data folder and bundle identifier
 
-## JeanZ and Jean share one data directory, but not one bundle identifier
+Splitkick ships `app.splitkick.desktop` and keeps its data in
+`~/Library/Application Support/app.splitkick.desktop` (`brand::DATA_DIR_NAME`),
+so it installs and runs next to Jean (`com.jean.desktop`). It does not share
+any JSON file, socket or port with Jean:
 
-JeanZ ships `com.jean.desktop.jeanz`; stable Jean keeps `com.jean.desktop`.
-Both read and write `~/Library/Application Support/com.jean.desktop`, so
-projects, sessions, preferences and the Jean-managed CLI installs carry over
-and nothing has to be authenticated again.
+| Item                | Jean               | Splitkick                                |
+| ------------------- | ------------------ | ---------------------------------------- |
+| Data folder         | `com.jean.desktop` | `app.splitkick.desktop`                  |
+| New worktrees       | `~/jean/<project>` | `~/splitkick/<project>`                  |
+| MCP server name     | `jean`             | `splitkick`                              |
+| Web Access port     | 3456               | 3460                                     |
+| Codex socket (tmp)  | `jean-codex-<uid>` | `splitkick-codex-<uid>`                  |
+| Project config file | `jean.json`        | `splitkick.json` (reads `jean.json` too) |
 
-The two are decoupled on purpose. Tauri derives `path().app_data_dir()` from
-the bundle identifier, so the desktop host does not use it. `initialize_core()`
-in `src-tauri/src/lib.rs` calls `jean_core::resolve_data_dir()` instead, which
-returns `JEAN_DATA_DIR` when it is set and otherwise the platform data
-directory plus `jean_core::DATA_DIR_NAME` — the stable identifier, as a
-constant. Set `JEAN_DATA_DIR` to run an isolated profile.
+`initialize_core()` in `src-tauri/src/lib.rs` resolves the folder through
+`jean_core::resolve_data_dir_for()`, which honours `SPLITKICK_DATA_DIR` (then
+`JEAN_DATA_DIR`) for an isolated profile and keeps the development build apart.
 
-**Why the identifier had to move.** macOS keys a TCC grant by the client's
-bundle identifier _and_ the code requirement recorded when the grant was made.
-That requirement pins the Developer ID team. JeanZ is signed by a different
-team than upstream Jean, so two bundles both claiming `com.jean.desktop` fail
-each other's stored requirement: every launch re-asked "JeanZ.app would like to
-access data from other apps", and allowing it overwrote the row that stable
-Jean depended on. A distinct identifier gives each app its own row.
+The WebKit store (`~/Library/WebKit/<identifier>`: remote hosts, zoom, client
+preferences) follows the bundle identifier. It starts empty, unless the user
+imports from Jean.
 
-A locally built JeanZ is still ad-hoc signed (`signingIdentity: "-"`), which
-produces a new code hash on every build, so a grant cannot stick for it. Only a
-Developer ID build keeps a stable identity across launches.
+### Import from Jean
 
-Two stores follow the identifier rather than the data directory, so a flavor
-would start with both empty. `seed_flavor_state()` in
-`src-tauri/src/platform/flavor_seed.rs` copies them from stable Jean on the
-flavor's first start:
+On first start, `ImportFromJeanDialog` offers to import a copy of Jean's folder
+(`jean-core/src/jean_import.rs`). The import never writes to the source. It
+stages a copy in `<data>/.import-staged/`, rewrites absolute paths into Jean's
+folder, replaces Jean's clashing defaults and writes a marker; the next start
+moves the staged entries into place (`apply_pending_import` in
+`src-tauri/src/lib.rs`, before the WebView exists) and copies the WebKit store.
+Entries the fresh install had created are kept in `<data>/.pre-import/`.
 
-- `~/Library/WebKit/<identifier>` — the WebView store. It holds the theme, the
-  zoom level, the client preferences, the cached model catalog and the
-  remote-connection list, plus cookies and IndexedDB. The per-origin
-  directories inside it are named from the page origin (`tauri://localhost`,
-  which does not change) and a salt that travels with the tree, so a
-  whole-tree copy lands where the flavor's WebView looks.
-- `<data dir>/<identifier>/.window-state.json` and `.persisted-scope` — the
-  state files the Tauri plugins own. They sit beside Jean's data, not in it.
+Test against a copy instead of the real folder:
+`SPLITKICK_IMPORT_SOURCE=<copy> SPLITKICK_DATA_DIR=<empty dir> <app binary>`.
 
-`~/Library/Logs/<identifier>` is deliberately not copied.
+A local ad-hoc build gets a new code hash on every build, so macOS privacy
+grants do not stick for it. Only a Developer ID build keeps them.
 
-The seeding runs from `run()` before `tauri::Builder`, because Tauri creates
-the main window — and with it the WebView — before the setup hook. It happens
-once: an existing target is never overwritten. Each copy lands on a staging
-sibling and is renamed into place, so an interrupted run leaves nothing that a
-later start could mistake for finished work. Every step is best effort and a
-failure only leaves the flavor with the empty state it would have had anyway.
+## The updater
 
-Project avatars and pasted images are loaded through the asset protocol, whose
-`$APPDATA/**` scope also follows the identifier. `allow_project_assets()` in
-`src-tauri/src/lib.rs` therefore grants the shared data directory by its real
-path at startup.
+The app checks for updates after launch and from "Check for Updates…". The
+overlay points the check at Splitkick's feed and key. **Endpoint and key move
+together**: upstream's key would accept upstream builds, and the JeanZ key
+would accept JeanZ builds.
 
-**Do not run both apps at the same time.** That state is plain JSON
-(`projects.json`, `preferences.json`, `ui-state.json`) protected by an
-in-process lock only. Two processes that write it together lose changes.
+| Asset                             | Role                                                |
+| --------------------------------- | --------------------------------------------------- |
+| `Splitkick-aarch64.dmg`           | Stable download URL (`releases/latest/download/…`)  |
+| `Splitkick-<version>-aarch64.dmg` | The same DMG under its versioned name               |
+| `Splitkick-aarch64.app.tar.gz`    | What the updater downloads and unpacks over the app |
+| `latest.json`                     | Version, date, download URL and signature           |
 
-## The updater targets this fork
+`createUpdaterArtifacts` stays off in the overlay; CI turns it on with a `-c`
+layer when the key is present, so local builds work without the key.
 
-The app checks for updates five seconds after launch and from "Check for
-Updates…". Upstream points that check at coolLabs' `latest.json` and verifies
-it with coolLabs' public key. An unchanged check would verify successfully and
-quietly replace JeanZ with the official Jean. **Endpoint and key therefore have to move together**, and the
-overlay changes both:
+To test an update before a release, build two versions with a local feed:
 
-```json
-"plugins": {
-  "updater": {
-    "endpoints": ["https://github.com/azeitler/jean/releases/latest/download/latest.json"],
-    "pubkey": "<the fork's minisign public key>"
-  }
-}
+```bash
+bash scripts/build-fork-macos.sh -c '{"version":"1.0.0-rc.1","plugins":{"updater":{"endpoints":["http://localhost:8765/latest.json"]}}}'
 ```
 
 The development build (`bun run tauri:dev`, `tauri.conf.dev.json`) carries
-the same two values, so a dev run never checks upstream's feed. A test in
-`jean-core/src/server_update/mod.rs` keeps the dev and fork overlays in step.
-The shell passes this endpoint to jean-core at startup
+the same feed and key, so a dev run never checks upstream's or JeanZ's feed. A
+test in `jean-core/src/server_update/mod.rs` keeps the dev and release
+overlays in step. The shell passes the endpoint to jean-core at startup
 (`set_desktop_release_feed`), so the Web Access host-update check reads the
-same feed as the native updater, whatever the product name.
-
-What a build publishes:
-
-| Asset                          | Role                                                        |
-| ------------------------------ | ----------------------------------------------------------- |
-| `JeanZ_macos_arm64.dmg`        | First install, dragged to Applications by hand              |
-| `JeanZ_macos_arm64.app.tar.gz` | What the updater downloads and unpacks over the running app |
-| `latest.json`                  | Version, publication date, download URL and signature       |
-
-The installed app polls `releases/latest/download/latest.json`. That URL
-resolves to the newest release because the publish step passes `--latest`, so
-`latest.json` has to be attached to every release. `tauri-action` would write
-that file, but this fork calls `tauri build` directly, so the "Write
-latest.json" step assembles it from the `.sig` that the bundler produced.
-
-The signature is a minisign signature over the BLAKE2b hash of the tarball. The
-updater checks it against the `pubkey` in the overlay before it replaces
-anything, so a release asset that was swapped out cannot install.
-
-`createUpdaterArtifacts` stays **off** in the overlay and CI turns it on with a
-third `-c` layer when the key is present. Tauri fails a build that has a
-`pubkey` configured and asks for updater artifacts without a private key, and
-leaving it on would break `scripts/build-fork-macos.sh` on any machine without
-the key.
+same feed as the native updater.
 
 ### Where the key lives
 
-The private half is not in this repository. It sits next to the Apple signing
-material in `.local-signing/`, which `.git/info/exclude` and the folder's own
-`.gitignore` both hide from git, and it is mirrored into 1Password.
-
 ```
-.local-signing/updater.key            private key, one base64 line
-.local-signing/updater.key.password   its password
-.local-signing/updater.key.pub        public half, also in the overlay
+.local-signing/splitkick-updater.key            private key (main checkout, not in git)
+.local-signing/splitkick-updater.key.password   its password
+.local-signing/splitkick-updater.key.pub        public half, also in the overlay
 ```
 
-`bash .local-signing/validate.sh` checks the pair: it compares
-`updater.key.pub` against `plugins.updater.pubkey` in the overlay and signs a
-throwaway file to prove the password still opens the key.
-`bash .local-signing/push-secrets.sh` writes both halves to the repository
-secrets.
-
-### Rotating or recreating the key
-
-```bash
-bun run tauri signer generate -w .local-signing/updater.key -p '<a password>'
-```
-
-Put the public half into `plugins.updater.pubkey` in the overlay, run
-`push-secrets.sh`, then `validate.sh`. The bundler also warns when key and
-pubkey disagree, so a mismatch shows up in the build log rather than in a
-failed update.
-
-Installed copies keep the old key until they update once, so publish at least
-one release that is still signed with the old key before you retire it. There
-is no recovery if the key is lost: every installed JeanZ then needs a manual
-DMG download.
-
-### The version badge
-
-The `v<version>` chip at the right of the title bar opens the release it was
-built from. Upstream hard-codes that link at coolLabs, which has no tag for a
-JeanZ version and would 404 on every build, so the link is now derived from the
-version itself in `src/lib/release-url.ts`: a `-z.<n>` suffix points at this
-fork, anything else stays upstream.
-
-That is the one place where the fork edits shared source instead of the
-overlay, because a config file cannot express it. The rule is deliberately
-narrow so upstream keeps working unchanged - upstream never produces a `-z.<n>`
-version, so it always takes the unchanged branch.
+Keep a copy in 1Password. Losing the key strands every installed copy: each
+user then has to download a DMG by hand. Before rotating, publish at least one
+release signed with the old key.
 
 ## Replace the icon
 
-The icon is derived from `src-tauri/icons/icon.png` by rotating the hue.
-
 ```bash
-node scripts/generate-fork-icon.mjs           # keep the current artwork
-node scripts/generate-fork-icon.mjs --force   # derive it again
+node scripts/generate-splitkick-icons.mjs
 ```
 
-To use your own artwork, put a 1024x1024 PNG at
-`src-tauri/icons-fork/app-icon.png` and run the script without `--force`.
-Commit the generated files: CI does not run the script and does not have
-ImageMagick.
+The sources are `src-tauri/icons-fork/source/icon.svg` (mark A1c) and
+`favicon.svg` (mark A4, for 16 and 32 px). They use stroked paths, so they go
+through `rsvg-convert` only; ImageMagick's own SVG renderer drops strokes.
+Commit the generated files: CI does not run the script.

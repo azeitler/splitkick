@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { cutChangelog } from './release-cut.mjs'
+import { cutChangelog, setOverlayVersion } from './release-cut.mjs'
 import { sectionFor, summarize } from './changelog-notes.mjs'
 
 const CHANGELOG = `# Changelog
 
-All notable changes to Jean are recorded in this file.
+All notable changes to Splitkick are recorded in this file.
 
 ## [Unreleased]
 
@@ -18,7 +18,7 @@ All notable changes to Jean are recorded in this file.
 
 - **An old thing.**
 
-## [0.1.73-z.9] - 2026-09-14
+## [1.0.0] - 2026-10-20
 
 Built on Jean 0.1.73.
 
@@ -26,22 +26,21 @@ Built on Jean 0.1.73.
 
 - **Something earlier.**
 
-[unreleased]: https://github.com/azeitler/jean/compare/v0.1.73-z.9...HEAD
-[0.1.73-z.9]: https://github.com/azeitler/jean/compare/v0.1.73-z.8...v0.1.73-z.9
+[unreleased]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.0...HEAD
+[1.0.0]: https://github.com/azeitler/splitkick/compare/splitkick-v1.0.0-rc.2...splitkick-v1.0.0
 `
 
 const OPTIONS = {
-  version: '0.1.73-z.10',
-  date: '2026-09-15',
-  previousVersion: 'v0.1.73-z.9',
+  version: '1.0.1',
+  date: '2026-10-21',
   upstream: '0.1.73',
 }
 
 test('moves the Unreleased entries under the resolved version', () => {
   const cut = cutChangelog(CHANGELOG, OPTIONS)
 
-  assert.match(cut, /## \[0\.1\.73-z\.10\] - 2026-09-15/)
-  const section = sectionFor(cut, '0.1.73-z.10')
+  assert.match(cut, /## \[1\.0\.1\] - 2026-10-21\n\nBuilt on Jean 0\.1\.73\./)
+  const section = sectionFor(cut, '1.0.1')
   assert.match(section, /\*\*A new thing\.\*\*/)
   assert.match(section, /\*\*An old thing\.\*\*/)
   // The older release keeps its own entry.
@@ -59,7 +58,7 @@ test('the cut section is what the release notes will quote', () => {
   const cut = cutChangelog(CHANGELOG, OPTIONS)
 
   assert.equal(
-    summarize(sectionFor(cut, '0.1.73-z.10')),
+    summarize(sectionFor(cut, '1.0.1')),
     '### Added\n\n- **A new thing.**\n\n### Fixed\n\n- **An old thing.**'
   )
 })
@@ -69,22 +68,22 @@ test('points the link references at the new version', () => {
 
   assert.match(
     cut,
-    /^\[unreleased\]: https:\/\/github\.com\/azeitler\/jean\/compare\/v0\.1\.73-z\.10\.\.\.HEAD$/m
+    /^\[unreleased\]: https:\/\/github\.com\/azeitler\/splitkick\/compare\/splitkick-v1\.0\.1\.\.\.HEAD$/m
   )
   assert.match(
     cut,
-    /^\[0\.1\.73-z\.10\]: https:\/\/github\.com\/azeitler\/jean\/compare\/v0\.1\.73-z\.9\.\.\.v0\.1\.73-z\.10$/m
+    /^\[1\.0\.1\]: https:\/\/github\.com\/azeitler\/splitkick\/compare\/splitkick-v1\.0\.0\.\.\.splitkick-v1\.0\.1$/m
   )
   // The previous release's reference is untouched.
   assert.match(
     cut,
-    /^\[0\.1\.73-z\.9\]: \S+v0\.1\.73-z\.8\.\.\.v0\.1\.73-z\.9$/m
+    /^\[1\.0\.0\]: \S+splitkick-v1\.0\.0-rc\.2\.\.\.splitkick-v1\.0\.0$/m
   )
 })
 
 test('refuses to cut a version that already has a section', () => {
   assert.throws(
-    () => cutChangelog(CHANGELOG, { ...OPTIONS, version: '0.1.73-z.9' }),
+    () => cutChangelog(CHANGELOG, { ...OPTIONS, version: '1.0.0' }),
     /already has a section/
   )
 })
@@ -109,4 +108,11 @@ test('cutting twice in a row is refused, not silently repeated', () => {
   const once = cutChangelog(CHANGELOG, OPTIONS)
 
   assert.throws(() => cutChangelog(once, OPTIONS), /already has a section/)
+})
+
+test('sets the version in the overlay and keeps the rest', () => {
+  const json = '{\n  "productName": "Splitkick",\n  "version": "1.0.0"\n}\n'
+  const out = JSON.parse(setOverlayVersion(json, '1.0.1'))
+  assert.equal(out.version, '1.0.1')
+  assert.equal(out.productName, 'Splitkick')
 })
