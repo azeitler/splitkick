@@ -32,8 +32,9 @@ describe('the draft pencil on a session tab', () => {
       'const draftSessionIds = useDraftSessionIds()'
     )
     expect(shortcutRows).toContain(
-      '{draftSessionIds.has(shortcut.sessionId) && <DraftGlyph />}'
+      'const draftGlyph = draftSessionIds.has(shortcut.sessionId) && ('
     )
+    expect(shortcutRows).toContain('{draftGlyph}')
   })
 
   // ChatInput writes the draft on every keystroke. useCanvasStoreState hands

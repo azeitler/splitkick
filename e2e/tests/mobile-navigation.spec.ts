@@ -135,6 +135,41 @@ test.describe('Phone navigation', () => {
     await expect(mockPage.getByTestId('mobile-tab-home')).toBeVisible()
   })
 
+  test('switches a project between its worktrees and recent sessions', async ({
+    mockPage,
+  }) => {
+    await (await projectCard(mockPage)).click()
+    const layer = mockPage.getByTestId('mobile-project-layer')
+
+    // Worktrees first, without the recent sessions stacked above them.
+    await expect(
+      layer.getByRole('tab', { name: 'Worktrees', selected: true })
+    ).toBeVisible()
+    await expect(layer.getByText('fuzzy-tiger').first()).toBeVisible()
+    await expect(layer.getByTestId('home-recent-sessions')).toHaveCount(0)
+
+    if (process.env.SIDEBAR_SCREENSHOT_DIR) {
+      await mockPage.screenshot({
+        path: `${process.env.SIDEBAR_SCREENSHOT_DIR}/phone-project-worktrees.png`,
+      })
+    }
+
+    await layer.getByRole('tab', { name: 'Recent' }).click()
+
+    const recent = layer.getByTestId('home-recent-sessions')
+    await expect(recent).toContainText('Opened recently')
+    await expect(recent).toContainText('fuzzy-tiger')
+    await expect(
+      layer.getByRole('tablist', { name: 'Worktree filters' })
+    ).toHaveCount(0)
+
+    if (process.env.SIDEBAR_SCREENSHOT_DIR) {
+      await mockPage.screenshot({
+        path: `${process.env.SIDEBAR_SCREENSHOT_DIR}/phone-project-recent.png`,
+      })
+    }
+  })
+
   test('pushes a session from History and goes back to History', async ({
     mockPage,
   }) => {

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { ContextMenu, ContextMenuTrigger } from '@/components/ui/context-menu'
 import { StatusIndicator } from '@/components/ui/status-indicator'
 import { getLabelTextColor } from '@/lib/label-colors'
+import { formatMessageTimestamp, formatRelativeTime } from '@/lib/relative-time'
 import { cn } from '@/lib/utils'
 import { usePreferences } from '@/services/preferences'
 import { useChatStore } from '@/store/chat-store'
@@ -30,6 +31,8 @@ export interface SessionShortcut {
   card: SessionCardData
   /** Secondary text after the name: the workspace, or "project / workspace". */
   context: string
+  /** Last activity; the `stacked` layout shows it as time ago. */
+  activityAt?: number
 }
 
 interface SessionShortcutRowsProps {
@@ -42,6 +45,14 @@ interface SessionShortcutRowsProps {
   showStarGlyph?: boolean
   /** Mark pinned sessions with a pin. Off where every row is a pin anyway. */
   showPinGlyph?: boolean
+  /**
+   * `inline` puts the context after the name on one line. `stacked` gives it
+   * a second line, with the time ago beside the name, for lists that span
+   * every project (Recent), where "project / workspace" is long.
+   */
+  layout?: 'inline' | 'stacked'
+  /** The open session, highlighted like its row in the tree. */
+  activeSessionId?: string | null
   onOpen: (shortcut: SessionShortcut) => void
 }
 
@@ -60,6 +71,8 @@ export function SessionShortcutRows({
   sidebarRowClassName = 'py-1 pl-5 pr-2',
   showStarGlyph = true,
   showPinGlyph = true,
+  layout = 'inline',
+  activeSessionId = null,
   onOpen,
 }: SessionShortcutRowsProps) {
   const { data: preferences } = usePreferences()
@@ -105,6 +118,7 @@ export function SessionShortcutRows({
   }, [projectCanvasSettings])
 
   const isSidebar = variant === 'sidebar'
+  const isStacked = layout === 'stacked'
 
   return (
     <>
@@ -116,31 +130,113 @@ export function SessionShortcutRows({
           worktreeId: shortcut.worktreeId,
           worktreePath: shortcut.worktreePath,
         }
+        const isActive = activeSessionId === shortcut.sessionId
         const rowClassName = cn(
-          'flex w-full items-center gap-1.5 truncate text-left text-sm text-muted-foreground hover:bg-accent/50 hover:text-foreground',
+          'w-full text-left text-sm hover:bg-accent/50 hover:text-foreground',
+          isStacked
+            ? 'grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 gap-y-0.5'
+            : 'flex items-center gap-1.5 truncate',
+          isActive
+            ? 'bg-primary/10 text-foreground'
+            : isStacked
+              ? 'text-foreground/90'
+              : 'text-muted-foreground',
           isSidebar ? sidebarRowClassName : 'rounded px-2 py-1.5'
         )
-        const rowContent = (
+        const statusDot = (
+          <StatusIndicator
+            status={config.indicatorStatus}
+            variant={config.indicatorVariant}
+            shape={config.indicatorShape}
+            label={config.label}
+            className="h-1.5 w-1.5 shrink-0"
+          />
+        )
+        const draftGlyph = draftSessionIds.has(shortcut.sessionId) && (
+          <DraftGlyph />
+        )
+        const renameInput = (
+          <input
+            ref={renameInputRef}
+            type="text"
+            value={renameValue}
+            onChange={e => setRenameValue(e.target.value)}
+            onBlur={e => handleRenameBlur(e, session.name)}
+            onKeyDown={e => handleRenameKeyDown(e, session.name)}
+            onClick={e => e.stopPropagation()}
+            className="w-full min-w-0 bg-transparent text-xs outline-none"
+          />
+        )
+        const markGlyphs = (
           <>
-            <StatusIndicator
-              status={config.indicatorStatus}
-              variant={config.indicatorVariant}
-              shape={config.indicatorShape}
-              label={config.label}
-              className="h-1.5 w-1.5 shrink-0"
-            />
-            {draftSessionIds.has(shortcut.sessionId) && <DraftGlyph />}
+            {showStarGlyph && starredIds.has(shortcut.sessionId) && (
+              <StarGlyph />
+            )}
+            {showPinGlyph &&
+              pinnedKeys.has(`${shortcut.projectId}/${shortcut.sessionId}`) && (
+                <PinGlyph />
+              )}
+          </>
+        )
+        const contextText = (
+          <span
+            className={cn(
+              'truncate text-[10px] text-muted-foreground/70',
+              isStacked ? 'min-w-0 flex-1' : 'shrink-0'
+            )}
+          >
+            {shortcut.context}
+          </span>
+        )
+        const labelBadge = card.label && (
+          <span
+            className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
+            style={{
+              backgroundColor: card.label.color,
+              color: getLabelTextColor(card.label.color),
+            }}
+          >
+            {card.label.name}
+          </span>
+        )
+        // Stacked: a three-column grid. The glyphs stay inside the name cell,
+        // so an optional one never shifts the time or line 2 out of place.
+        const rowContent = isStacked ? (
+          <>
+            {statusDot}
+            <span className="flex min-w-0 items-center gap-1 text-xs">
+              {draftGlyph}
+              {isRenaming ? (
+                renameInput
+              ) : (
+                <>
+                  <span className="truncate">{session.name || 'Untitled'}</span>
+                  {markGlyphs}
+                </>
+              )}
+            </span>
+            {shortcut.activityAt === undefined ? (
+              <span />
+            ) : (
+              <span
+                className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70"
+                title={`Last active: ${formatMessageTimestamp(shortcut.activityAt)}`}
+              >
+                {formatRelativeTime(shortcut.activityAt)}
+              </span>
+            )}
+            {/* Line 2, under the name: where the session lives. */}
+            <span className="col-start-2 col-end-4 flex min-w-0 items-center gap-1.5">
+              {contextText}
+              {labelBadge}
+            </span>
+          </>
+        ) : (
+          <>
+            {statusDot}
+            {draftGlyph}
             {isRenaming ? (
-              <input
-                ref={renameInputRef}
-                type="text"
-                value={renameValue}
-                onChange={e => setRenameValue(e.target.value)}
-                onBlur={e => handleRenameBlur(e, session.name)}
-                onKeyDown={e => handleRenameKeyDown(e, session.name)}
-                onClick={e => e.stopPropagation()}
-                className="w-full min-w-0 bg-transparent text-xs outline-none"
-              />
+              renameInput
             ) : (
               <>
                 <span
@@ -151,27 +247,9 @@ export function SessionShortcutRows({
                 >
                   {session.name}
                 </span>
-                {showStarGlyph && starredIds.has(shortcut.sessionId) && (
-                  <StarGlyph />
-                )}
-                {showPinGlyph &&
-                  pinnedKeys.has(
-                    `${shortcut.projectId}/${shortcut.sessionId}`
-                  ) && <PinGlyph />}
-                <span className="shrink-0 truncate text-[10px] text-muted-foreground/70">
-                  {shortcut.context}
-                </span>
-                {card.label && (
-                  <span
-                    className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide"
-                    style={{
-                      backgroundColor: card.label.color,
-                      color: getLabelTextColor(card.label.color),
-                    }}
-                  >
-                    {card.label.name}
-                  </span>
-                )}
+                {markGlyphs}
+                {contextText}
+                {labelBadge}
               </>
             )}
           </>

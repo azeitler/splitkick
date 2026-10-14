@@ -74,6 +74,12 @@ The project layer is entered one of two ways, decided once when it opens:
   content is `invisible`, and the tab shows behind the session. Closing the
   session goes back to the tab.
 
+Inside a project, `MobileProjectSegments` switches the canvas between
+**Worktrees** (the worktree list, then the open issues) and **Recent** (the
+project's recent sessions and activity), like the desktop sidebar's Projects /
+Recent tabs. The choice lives in `ui-store.mobileProjectSegment` (not
+persisted). On the phone the overview never stacks above the worktrees.
+
 Push mode listens for the session closing with a layout effect, keyed to the
 project id. Opening a session in another project remounts the canvas, and the
 old canvas clears `sessionChatModalOpen` on unmount before the new one opens it;

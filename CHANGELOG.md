@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Projects / Recent tabs in the sidebar.** Below Home, switch the sidebar
+  between the project tree and your latest sessions from all projects. Each
+  Recent row shows the project and worktree, grouped by Today, Yesterday and
+  Earlier. On the phone, a project has the same switch: Worktrees or Recent.
+
 ## [0.1.73-z.24] - 2026-10-14
 
 Built on Jean 0.1.73.

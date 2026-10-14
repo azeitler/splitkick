@@ -137,6 +137,7 @@ import {
   ProjectIssuesColumn,
   ProjectOverviewColumn,
 } from './ProjectHomeColumns'
+import { MobileProjectSegments } from '@/components/mobile/MobileProjectSegments'
 import { HomeSection } from '@/components/home/HomeSection'
 import {
   getStackedBaseBranch,
@@ -1017,6 +1018,11 @@ export function ProjectCanvasView({
   const [searchQuery, setSearchQuery] = useState('')
   const [activeFilterTab, setActiveFilterTab] = useState<CanvasFilterTab>('all')
   const isMobile = useIsMobile()
+  // Phone only: the Recent segment swaps the worktree list for the project's
+  // recent sessions and activity.
+  const showMobileRecent = useUIStore(
+    state => isMobile && state.mobileProjectSegment === 'recent'
+  )
   const canOpenLocally = canOpenNativeApps()
   const canOpenEditor = canOpenInEditor()
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false)
@@ -3200,11 +3206,16 @@ export function ProjectCanvasView({
   // A search is a narrowing gesture: the overview columns would sit beside the
   // results unchanged and read as noise.
   const showHomeColumns = !projectRailHidden && !searchQuery.trim()
+  // On the phone the overview has its own segment, so it never sits above the
+  // worktrees; the issues stay with the worktrees.
+  const showOverviewColumn = isMobile ? showMobileRecent : showHomeColumns
+  const showIssuesColumn = showHomeColumns && !showMobileRecent
   // Nothing on the canvas but the "Start Building" panel, which fills it and
   // supplies its own spacing. With the overview columns up the canvas is never
   // bare, and it keeps its padding.
   const isBareCanvas =
     !showHomeColumns &&
+    !showMobileRecent &&
     worktreeSections.length === 0 &&
     !searchQuery &&
     pinnedRows.length === 0
@@ -3494,6 +3505,7 @@ export function ProjectCanvasView({
                 </DropdownMenu>
                 {/* Mobile: magnifier icon inline with badges */}
                 {isMobile &&
+                  !showMobileRecent &&
                   (worktreeSections.length > 0 || searchQuery) &&
                   !isMobileSearchOpen && (
                     <Button
@@ -3632,56 +3644,121 @@ export function ProjectCanvasView({
             )}
           </div>
 
-          <div className="border-b border-border/30 bg-background/80 px-4 py-2">
-            <div
-              role="tablist"
-              aria-label="Worktree filters"
-              className="flex gap-1 overflow-x-auto"
-            >
-              {canvasFilterTabs.map(tab => {
-                const Icon = tab.icon
-                const isActive = activeFilterTab === tab.value
-                const isPinnedLabelTab = isLabelFilterTabItem(tab)
-                const count = isPinnedLabelTab
-                  ? tab.count
-                  : filterTabCounts[tab.value]
-                const settingsPane =
-                  'settingsPane' in tab ? tab.settingsPane : undefined
-                const settingsPlacement =
-                  'settingsPlacement' in tab ? tab.settingsPlacement : undefined
-                const badge = 'badge' in tab ? tab.badge : undefined
-                if (settingsPane && settingsPlacement === 'inside') {
+          {isMobile && (
+            <div className="border-b border-border/30 bg-background/80 px-4 py-2">
+              <MobileProjectSegments />
+            </div>
+          )}
+
+          {!showMobileRecent && (
+            <div className="border-b border-border/30 bg-background/80 px-4 py-2">
+              <div
+                role="tablist"
+                aria-label="Worktree filters"
+                className="flex gap-1 overflow-x-auto"
+              >
+                {canvasFilterTabs.map(tab => {
+                  const Icon = tab.icon
+                  const isActive = activeFilterTab === tab.value
+                  const isPinnedLabelTab = isLabelFilterTabItem(tab)
+                  const count = isPinnedLabelTab
+                    ? tab.count
+                    : filterTabCounts[tab.value]
+                  const settingsPane =
+                    'settingsPane' in tab ? tab.settingsPane : undefined
+                  const settingsPlacement =
+                    'settingsPlacement' in tab
+                      ? tab.settingsPlacement
+                      : undefined
+                  const badge = 'badge' in tab ? tab.badge : undefined
+                  if (settingsPane && settingsPlacement === 'inside') {
+                    return (
+                      <div
+                        key={tab.value}
+                        className={cn(
+                          'inline-flex shrink-0 items-center overflow-hidden rounded-md border text-xs font-medium transition-colors',
+                          isActive
+                            ? 'border-primary/30 bg-primary/10 text-primary'
+                            : 'border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                        )}
+                      >
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={isActive}
+                          className="inline-flex shrink-0 items-center gap-1.5 pl-3 py-1.5"
+                          onClick={() => handleFilterTabChange(tab.value)}
+                        >
+                          <Icon className="h-3.5 w-3.5" />
+                          <span>{tab.label}</span>
+                          {badge && (
+                            <span
+                              className={cn(
+                                'rounded border px-1 py-0 text-[9px] uppercase leading-4 tracking-wide',
+                                isActive
+                                  ? 'border-primary/30 text-primary'
+                                  : 'border-muted-foreground/20 text-muted-foreground'
+                              )}
+                            >
+                              {badge}
+                            </span>
+                          )}
+                          <span
+                            className={cn(
+                              'rounded-md px-1.5 py-0.5 text-[10px] leading-none',
+                              isActive
+                                ? 'bg-primary/15 text-primary'
+                                : 'bg-muted text-muted-foreground'
+                            )}
+                          >
+                            {count}
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Configure ${tab.label}`}
+                          title={`Configure ${tab.label}`}
+                          className={cn(
+                            'mx-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors',
+                            isActive
+                              ? 'text-primary hover:bg-primary/15'
+                              : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                          )}
+                          onClick={() =>
+                            useProjectsStore
+                              .getState()
+                              .openProjectSettings(projectId, settingsPane)
+                          }
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )
+                  }
                   return (
                     <div
                       key={tab.value}
-                      className={cn(
-                        'inline-flex shrink-0 items-center overflow-hidden rounded-md border text-xs font-medium transition-colors',
-                        isActive
-                          ? 'border-primary/30 bg-primary/10 text-primary'
-                          : 'border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                      )}
+                      className="inline-flex shrink-0 gap-0.5"
                     >
                       <button
                         type="button"
                         role="tab"
                         aria-selected={isActive}
-                        className="inline-flex shrink-0 items-center gap-1.5 pl-3 py-1.5"
+                        className={cn(
+                          'inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
+                          isActive
+                            ? 'border-primary/30 bg-primary/10 text-primary'
+                            : 'border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                        )}
                         onClick={() => handleFilterTabChange(tab.value)}
                       >
-                        <Icon className="h-3.5 w-3.5" />
+                        <Icon
+                          className="h-3.5 w-3.5"
+                          style={
+                            isPinnedLabelTab ? { color: tab.color } : undefined
+                          }
+                        />
                         <span>{tab.label}</span>
-                        {badge && (
-                          <span
-                            className={cn(
-                              'rounded border px-1 py-0 text-[9px] uppercase leading-4 tracking-wide',
-                              isActive
-                                ? 'border-primary/30 text-primary'
-                                : 'border-muted-foreground/20 text-muted-foreground'
-                            )}
-                          >
-                            {badge}
-                          </span>
-                        )}
                         <span
                           className={cn(
                             'rounded-md px-1.5 py-0.5 text-[10px] leading-none',
@@ -3693,79 +3770,27 @@ export function ProjectCanvasView({
                           {count}
                         </span>
                       </button>
-                      <button
-                        type="button"
-                        aria-label={`Configure ${tab.label}`}
-                        title={`Configure ${tab.label}`}
-                        className={cn(
-                          'mx-1 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors',
-                          isActive
-                            ? 'text-primary hover:bg-primary/15'
-                            : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                        )}
-                        onClick={() =>
-                          useProjectsStore
-                            .getState()
-                            .openProjectSettings(projectId, settingsPane)
-                        }
-                      >
-                        <Settings className="h-3.5 w-3.5" />
-                      </button>
+                      {settingsPane && (
+                        <button
+                          type="button"
+                          aria-label={`Configure ${tab.label}`}
+                          title={`Configure ${tab.label}`}
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+                          onClick={() =>
+                            useProjectsStore
+                              .getState()
+                              .openProjectSettings(projectId, settingsPane)
+                          }
+                        >
+                          <Settings className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   )
-                }
-                return (
-                  <div key={tab.value} className="inline-flex shrink-0 gap-0.5">
-                    <button
-                      type="button"
-                      role="tab"
-                      aria-selected={isActive}
-                      className={cn(
-                        'inline-flex shrink-0 items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors',
-                        isActive
-                          ? 'border-primary/30 bg-primary/10 text-primary'
-                          : 'border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground'
-                      )}
-                      onClick={() => handleFilterTabChange(tab.value)}
-                    >
-                      <Icon
-                        className="h-3.5 w-3.5"
-                        style={
-                          isPinnedLabelTab ? { color: tab.color } : undefined
-                        }
-                      />
-                      <span>{tab.label}</span>
-                      <span
-                        className={cn(
-                          'rounded-md px-1.5 py-0.5 text-[10px] leading-none',
-                          isActive
-                            ? 'bg-primary/15 text-primary'
-                            : 'bg-muted text-muted-foreground'
-                        )}
-                      >
-                        {count}
-                      </span>
-                    </button>
-                    {settingsPane && (
-                      <button
-                        type="button"
-                        aria-label={`Configure ${tab.label}`}
-                        title={`Configure ${tab.label}`}
-                        className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-transparent text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-                        onClick={() =>
-                          useProjectsStore
-                            .getState()
-                            .openProjectSettings(projectId, settingsPane)
-                        }
-                      >
-                        <Settings className="h-3.5 w-3.5" />
-                      </button>
-                    )}
-                  </div>
-                )
-              })}
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* The project home, in the reading order Home uses: what you did,
@@ -3785,59 +3810,95 @@ export function ProjectCanvasView({
               isBareCanvas ? '' : 'px-4 pt-5'
             )}
           >
-            {showHomeColumns && <ProjectOverviewColumn projectId={projectId} />}
+            {showOverviewColumn && (
+              <ProjectOverviewColumn projectId={projectId} />
+            )}
 
-            <div className="flex min-w-0 flex-col">
-              <WorktreeColumnFrame labelled={showHomeColumns}>
-                {/* Pinned sessions sit above the worktree sections and outside the
+            {!showMobileRecent && (
+              <div className="flex min-w-0 flex-col">
+                <WorktreeColumnFrame labelled={showHomeColumns}>
+                  {/* Pinned sessions sit above the worktree sections and outside the
               empty-state branch, and stay visible on every filter tab. They are
               hidden during a search, where un-matching rows would be noise. */}
-                {!searchQuery.trim() && (
-                  <PinnedSessionsSection
-                    rows={pinnedRows}
-                    variant="canvas"
-                    projectId={projectId}
-                    onOpen={handleOpenPinnedSession}
-                  />
-                )}
-                {worktreeSections.length === 0 ? (
-                  searchQuery ? (
-                    <div className="flex h-full items-center justify-center text-muted-foreground">
-                      No {activeFilterLabel.toLowerCase()} worktrees or sessions
-                      match your search
-                    </div>
-                  ) : activeFilterTab === 'all' && !hasAnyVisibleWorktrees ? (
-                    <EmptyDashboardTabs
+                  {!searchQuery.trim() && (
+                    <PinnedSessionsSection
+                      rows={pinnedRows}
+                      variant="canvas"
                       projectId={projectId}
-                      projectPath={project?.path ?? null}
+                      onOpen={handleOpenPinnedSession}
                     />
+                  )}
+                  {worktreeSections.length === 0 ? (
+                    searchQuery ? (
+                      <div className="flex h-full items-center justify-center text-muted-foreground">
+                        No {activeFilterLabel.toLowerCase()} worktrees or
+                        sessions match your search
+                      </div>
+                    ) : activeFilterTab === 'all' && !hasAnyVisibleWorktrees ? (
+                      <EmptyDashboardTabs
+                        projectId={projectId}
+                        projectPath={project?.path ?? null}
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-muted-foreground">
+                        No {activeFilterLabel.toLowerCase()} worktrees
+                      </div>
+                    )
                   ) : (
-                    <div className="flex h-full items-center justify-center text-muted-foreground">
-                      No {activeFilterLabel.toLowerCase()} worktrees
-                    </div>
-                  )
-                ) : (
-                  <div
-                    className="group/canvas-list flex flex-col gap-1"
-                    onDragOver={handleNativeCanvasDragOver}
-                    onDrop={handleNativeCanvasDrop}
-                    onDragEnd={handleNativeCanvasDragEnd}
-                  >
-                    {(() => {
-                      let shortcutNum = 0
-                      return worktreeSections.map(section => {
-                        const currentIndex = cardIndex++
-                        const isReorderDisabled =
-                          !canvasReorderEnabled ||
-                          reorderWorktrees.isPending ||
-                          !canManuallyReorderWorktree(section.worktree)
+                    <div
+                      className="group/canvas-list flex flex-col gap-1"
+                      onDragOver={handleNativeCanvasDragOver}
+                      onDrop={handleNativeCanvasDrop}
+                      onDragEnd={handleNativeCanvasDragEnd}
+                    >
+                      {(() => {
+                        let shortcutNum = 0
+                        return worktreeSections.map(section => {
+                          const currentIndex = cardIndex++
+                          const isReorderDisabled =
+                            !canvasReorderEnabled ||
+                            reorderWorktrees.isPending ||
+                            !canManuallyReorderWorktree(section.worktree)
 
-                        if (section.isPending) {
+                          if (section.isPending) {
+                            return (
+                              <SortableCanvasWorktreeSection
+                                key={section.worktree.id}
+                                section={section}
+                                disabled={true}
+                                isDragging={
+                                  canvasDragState.draggingId ===
+                                  section.worktree.id
+                                }
+                                closestEdge={
+                                  canvasDragState.targetId ===
+                                  section.worktree.id
+                                    ? canvasDragState.closestEdge
+                                    : null
+                                }
+                                projectId={projectId}
+                              >
+                                <WorktreeSetupCard
+                                  ref={el => {
+                                    cardRefs.current[currentIndex] = el
+                                  }}
+                                  worktree={section.worktree}
+                                  layout="list"
+                                  isSelected={selectedIndex === currentIndex}
+                                  onSelect={() =>
+                                    handleSelectedIndexChange(currentIndex)
+                                  }
+                                />
+                              </SortableCanvasWorktreeSection>
+                            )
+                          }
+                          const thisShortcut =
+                            ++shortcutNum <= 9 ? shortcutNum : undefined
                           return (
                             <SortableCanvasWorktreeSection
                               key={section.worktree.id}
                               section={section}
-                              disabled={true}
+                              disabled={isReorderDisabled}
                               isDragging={
                                 canvasDragState.draggingId ===
                                 section.worktree.id
@@ -3849,98 +3910,70 @@ export function ProjectCanvasView({
                               }
                               projectId={projectId}
                             >
-                              <WorktreeSetupCard
+                              <div
                                 ref={el => {
                                   cardRefs.current[currentIndex] = el
                                 }}
-                                worktree={section.worktree}
-                                layout="list"
-                                isSelected={selectedIndex === currentIndex}
-                                onSelect={() =>
-                                  handleSelectedIndexChange(currentIndex)
-                                }
-                              />
+                              >
+                                <WorktreeSectionHeader
+                                  worktree={section.worktree}
+                                  projectId={projectId}
+                                  defaultBranch={project.default_branch}
+                                  openPRs={openPRs}
+                                  cards={section.cards}
+                                  showDetails={true}
+                                  isSelected={selectedIndex === currentIndex}
+                                  shortcutNumber={thisShortcut}
+                                  onRowClick={() => {
+                                    handleSelectedIndexChange(currentIndex)
+                                    handleWorktreeClick(
+                                      section.worktree.id,
+                                      section.worktree.path
+                                    )
+                                  }}
+                                  onDiffClick={setCanvasDiffRequest}
+                                  onSetLabels={
+                                    showWorktreeLabelContextMenu
+                                      ? () =>
+                                          openWorktreeLabelModal(
+                                            section.worktree
+                                          )
+                                      : undefined
+                                  }
+                                  assignedLabels={
+                                    showWorktreeLabelContextMenu
+                                      ? resolveWorktreeLabels(section.worktree)
+                                      : undefined
+                                  }
+                                  availableLabels={labelCatalog}
+                                  onLabelsChange={
+                                    showWorktreeLabelContextMenu
+                                      ? next =>
+                                          void applyWorktreeLabels(
+                                            section.worktree.id,
+                                            next
+                                          )
+                                      : undefined
+                                  }
+                                  onResolveConflicts={
+                                    handleCanvasResolveConflicts
+                                  }
+                                  disableTextSelection={
+                                    disableWorktreeTextSelection
+                                  }
+                                />
+                              </div>
                             </SortableCanvasWorktreeSection>
                           )
-                        }
-                        const thisShortcut =
-                          ++shortcutNum <= 9 ? shortcutNum : undefined
-                        return (
-                          <SortableCanvasWorktreeSection
-                            key={section.worktree.id}
-                            section={section}
-                            disabled={isReorderDisabled}
-                            isDragging={
-                              canvasDragState.draggingId === section.worktree.id
-                            }
-                            closestEdge={
-                              canvasDragState.targetId === section.worktree.id
-                                ? canvasDragState.closestEdge
-                                : null
-                            }
-                            projectId={projectId}
-                          >
-                            <div
-                              ref={el => {
-                                cardRefs.current[currentIndex] = el
-                              }}
-                            >
-                              <WorktreeSectionHeader
-                                worktree={section.worktree}
-                                projectId={projectId}
-                                defaultBranch={project.default_branch}
-                                openPRs={openPRs}
-                                cards={section.cards}
-                                showDetails={true}
-                                isSelected={selectedIndex === currentIndex}
-                                shortcutNumber={thisShortcut}
-                                onRowClick={() => {
-                                  handleSelectedIndexChange(currentIndex)
-                                  handleWorktreeClick(
-                                    section.worktree.id,
-                                    section.worktree.path
-                                  )
-                                }}
-                                onDiffClick={setCanvasDiffRequest}
-                                onSetLabels={
-                                  showWorktreeLabelContextMenu
-                                    ? () =>
-                                        openWorktreeLabelModal(section.worktree)
-                                    : undefined
-                                }
-                                assignedLabels={
-                                  showWorktreeLabelContextMenu
-                                    ? resolveWorktreeLabels(section.worktree)
-                                    : undefined
-                                }
-                                availableLabels={labelCatalog}
-                                onLabelsChange={
-                                  showWorktreeLabelContextMenu
-                                    ? next =>
-                                        void applyWorktreeLabels(
-                                          section.worktree.id,
-                                          next
-                                        )
-                                    : undefined
-                                }
-                                onResolveConflicts={
-                                  handleCanvasResolveConflicts
-                                }
-                                disableTextSelection={
-                                  disableWorktreeTextSelection
-                                }
-                              />
-                            </div>
-                          </SortableCanvasWorktreeSection>
-                        )
-                      })
-                    })()}
-                  </div>
-                )}
-              </WorktreeColumnFrame>
-            </div>
+                        })
+                      })()}
+                    </div>
+                  )}
+                </WorktreeColumnFrame>
+              </div>
+            )}
 
-            {showHomeColumns && (
+            {showIssuesColumn && (
               <ProjectIssuesColumn
                 projectId={projectId}
                 projectPath={project.path}

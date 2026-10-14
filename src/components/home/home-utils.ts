@@ -1,6 +1,7 @@
 import type { AllSessionsEntry, LabelData, Session } from '@/types/chat'
 import type { StarredSessionRef } from '@/store/projects-store'
 import { getSessionActivityTimestamp } from '@/components/projects/worktree-sort-utils'
+import { toMilliseconds } from '@/lib/relative-time'
 
 /**
  * Lists with fewer items than this get no filter field. Shared by the Projects
@@ -127,4 +128,41 @@ export function matchesSessionQuery(
     row.worktreeName,
     label?.name,
   ].some(field => field?.toLowerCase().includes(needle))
+}
+
+/** A run of session rows under one day heading. */
+export interface SessionDayGroup {
+  label: 'Today' | 'Yesterday' | 'Earlier'
+  rows: HomeSessionEntry[]
+}
+
+/**
+ * Split rows, newest first, under Today, Yesterday and Earlier headings.
+ *
+ * Days are local calendar days, so a session from 23:50 is "Yesterday" ten
+ * minutes after midnight. Empty groups are left out. `now` is injectable so
+ * the tests stay deterministic.
+ */
+export function groupSessionsByDay(
+  rows: readonly HomeSessionEntry[],
+  now = Date.now()
+): SessionDayGroup[] {
+  const startOfToday = new Date(now)
+  startOfToday.setHours(0, 0, 0, 0)
+  const todayStart = startOfToday.getTime()
+  const startOfYesterday = new Date(startOfToday)
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1)
+  const yesterdayStart = startOfYesterday.getTime()
+
+  const groups: SessionDayGroup[] = [
+    { label: 'Today', rows: [] },
+    { label: 'Yesterday', rows: [] },
+    { label: 'Earlier', rows: [] },
+  ]
+  for (const row of rows) {
+    const at = toMilliseconds(row.activityAt)
+    const index = at >= todayStart ? 0 : at >= yesterdayStart ? 1 : 2
+    groups[index]?.rows.push(row)
+  }
+  return groups.filter(group => group.rows.length > 0)
 }

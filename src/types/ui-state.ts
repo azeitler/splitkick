@@ -30,9 +30,21 @@ export const MOBILE_TABS: readonly MobileTab[] = [
 /** The two lists of the phone's Home tab, switched below Continue. */
 export type MobileHomeSegment = 'sessions' | 'projects'
 
+/** The two lists of a project on the phone: its worktrees, or its recent
+ *  sessions and activity. */
+export type MobileProjectSegment = 'worktrees' | 'recent'
+
 /** Narrow a persisted value, which may predate a tab or be hand-edited. */
 export function isMobileTab(value: unknown): value is MobileTab {
   return MOBILE_TABS.includes(value as MobileTab)
+}
+
+/** A tab of the desktop sidebar, below the Home row. */
+export type SidebarTab = 'projects' | 'recent'
+
+/** Narrow a persisted value, which may predate a tab or be hand-edited. */
+export function isSidebarTab(value: unknown): value is SidebarTab {
+  return value === 'projects' || value === 'recent'
 }
 
 export interface StarredSessionEntry {
@@ -114,6 +126,8 @@ export interface UIState {
   project_rail_hidden?: boolean
   /** The phone layout's selected bottom tab; absent means Home */
   mobile_active_tab?: MobileTab | null
+  /** The desktop sidebar's selected tab; absent means Projects */
+  sidebar_tab?: SidebarTab | null
   /** Left sidebar width in pixels, defaults to 250 */
   left_sidebar_size?: number
   /** Left sidebar visibility, defaults to false */
@@ -220,6 +234,7 @@ export const defaultUIState: UIState = {
   starred_sessions_collapsed: false,
   project_rail_hidden: false,
   mobile_active_tab: null,
+  sidebar_tab: null,
   left_sidebar_size: 250,
   left_sidebar_visible: false,
   file_browser_size: 280,

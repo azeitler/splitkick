@@ -79,14 +79,6 @@ describe('SidebarHomeRow', () => {
     expect(useUIStore.getState().leftSidebarVisible).toBe(false)
   })
 
-  it('sticks to the top of the sidebar over an opaque background', () => {
-    renderRow()
-    const wrapper = screen.getByTestId('sidebar-home-row').parentElement
-    // Sticky keeps Home in reach while the tree scrolls; the opaque sidebar
-    // colour stops rows showing through its translucent selected tint.
-    expect(wrapper).toHaveClass('sticky', 'top-0', 'bg-sidebar')
-  })
-
   it('uses the header inset and the folder glyph size', () => {
     renderRow()
     const row = screen.getByTestId('sidebar-home-row')

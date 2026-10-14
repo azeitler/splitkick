@@ -1,6 +1,11 @@
 import { create } from 'zustand'
 import { devtools } from 'zustand/middleware'
-import type { MobileHomeSegment, MobileTab } from '@/types/ui-state'
+import type {
+  MobileHomeSegment,
+  MobileProjectSegment,
+  MobileTab,
+  SidebarTab,
+} from '@/types/ui-state'
 import type { CliType } from '@/lib/cli-update'
 import { mergeSeenFailedWorkflowRunIds } from '@/components/shared/workflow-run-utils'
 
@@ -192,9 +197,15 @@ interface UIState {
   sessionChatModalOpen: boolean
   /** The phone layout's selected bottom tab. Persisted. */
   mobileActiveTab: MobileTab
+  /** The desktop sidebar's tab below Home: the project tree or recent
+   *  sessions. Persisted. */
+  sidebarTab: SidebarTab
   /** Which list the phone's Home tab shows below Continue. Not persisted:
    *  kept while switching tabs, which unmount, and reset on reload. */
   mobileHomeSegment: MobileHomeSegment
+  /** Which list a project shows on the phone. Not persisted, like
+   *  `mobileHomeSegment`: kept across projects, reset on reload. */
+  mobileProjectSegment: MobileProjectSegment
   /** Whether the chat toolbar is mounted — used to hide the global FloatingDock
    *  because its burger-menu counterpart now lives in the chat toolbar. */
   chatToolbarMounted: boolean
@@ -329,7 +340,9 @@ interface UIState {
   }
   setSessionChatModalOpen: (open: boolean, worktreeId?: string | null) => void
   setMobileActiveTab: (tab: MobileTab) => void
+  setSidebarTab: (tab: SidebarTab) => void
   setMobileHomeSegment: (segment: MobileHomeSegment) => void
+  setMobileProjectSegment: (segment: MobileProjectSegment) => void
   setSessionPrimarySurface: (
     sessionId: string,
     surface: WorktreePrimarySurface
@@ -436,7 +449,9 @@ export const useUIStore = create<UIState>()(
       pendingProjectHomeId: null,
       sessionChatModalOpen: false,
       mobileActiveTab: 'home',
+      sidebarTab: 'projects',
       mobileHomeSegment: 'sessions',
+      mobileProjectSegment: 'worktrees',
       sessionChatModalWorktreeId: null,
       sessionPrimarySurface: {},
       sessionTerminalIds: {},
@@ -1150,6 +1165,13 @@ export const useUIStore = create<UIState>()(
           'setMobileActiveTab'
         ),
 
+      setSidebarTab: (tab: SidebarTab) =>
+        set(
+          state => (state.sidebarTab === tab ? state : { sidebarTab: tab }),
+          undefined,
+          'setSidebarTab'
+        ),
+
       setMobileHomeSegment: (segment: MobileHomeSegment) =>
         set(
           state =>
@@ -1158,6 +1180,16 @@ export const useUIStore = create<UIState>()(
               : { mobileHomeSegment: segment },
           undefined,
           'setMobileHomeSegment'
+        ),
+
+      setMobileProjectSegment: (segment: MobileProjectSegment) =>
+        set(
+          state =>
+            state.mobileProjectSegment === segment
+              ? state
+              : { mobileProjectSegment: segment },
+          undefined,
+          'setMobileProjectSegment'
         ),
 
       setSessionPrimarySurface: (

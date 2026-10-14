@@ -23,7 +23,7 @@ import type {
   PendingTextFile,
   ReadTextResponse,
 } from '@/types/chat'
-import { isMobileTab, type UIState } from '@/types/ui-state'
+import { isMobileTab, isSidebarTab, type UIState } from '@/types/ui-state'
 
 // Simple debounce implementation.
 // `flush` applies the pending call now, so a save that is still waiting out its
@@ -207,6 +207,9 @@ export function useUIStatePersistence() {
     }
     if (isMobileTab(uiState.mobile_active_tab)) {
       useUIStore.getState().setMobileActiveTab(uiState.mobile_active_tab)
+    }
+    if (isSidebarTab(uiState.sidebar_tab)) {
+      useUIStore.getState().setSidebarTab(uiState.sidebar_tab)
     }
 
     // Restore the expanded pinned-sessions rows, keyed by project id.
@@ -969,6 +972,7 @@ export function useUIStatePersistence() {
     let prevFileBrowserVisible = useUIStore.getState().fileBrowserVisible
     let prevZenMode = useUIStore.getState().zenMode
     let prevMobileActiveTab = useUIStore.getState().mobileActiveTab
+    let prevSidebarTab = useUIStore.getState().sidebarTab
     let prevSessionTerminalIds = useUIStore.getState().sessionTerminalIds
     let prevSessionPrimarySurface = useUIStore.getState().sessionPrimarySurface
     let prevSeenFailedWorkflowRunIds =
@@ -1079,6 +1083,7 @@ export function useUIStatePersistence() {
       const zenModeChanged = state.zenMode !== prevZenMode
       const mobileActiveTabChanged =
         state.mobileActiveTab !== prevMobileActiveTab
+      const sidebarTabChanged = state.sidebarTab !== prevSidebarTab
       const sessionTerminalIdsChanged =
         state.sessionTerminalIds !== prevSessionTerminalIds
       const sessionPrimarySurfaceChanged =
@@ -1093,6 +1098,7 @@ export function useUIStatePersistence() {
         fileBrowserVisibilityChanged ||
         zenModeChanged ||
         mobileActiveTabChanged ||
+        sidebarTabChanged ||
         sessionTerminalIdsChanged ||
         sessionPrimarySurfaceChanged ||
         seenFailedWorkflowRunIdsChanged
@@ -1103,6 +1109,7 @@ export function useUIStatePersistence() {
         prevFileBrowserVisible = state.fileBrowserVisible
         prevZenMode = state.zenMode
         prevMobileActiveTab = state.mobileActiveTab
+        prevSidebarTab = state.sidebarTab
         prevSessionTerminalIds = state.sessionTerminalIds
         prevSessionPrimarySurface = state.sessionPrimarySurface
         prevSeenFailedWorkflowRunIds = state.seenFailedWorkflowRunIds

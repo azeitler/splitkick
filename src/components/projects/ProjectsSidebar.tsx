@@ -14,10 +14,13 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { ProjectTree } from './ProjectTree'
 import { SidebarHomeRow } from './SidebarHomeRow'
 import { SidebarStarredSection } from './SidebarStarredSection'
+import { SidebarRecentSessions } from './SidebarRecentSessions'
+import { SidebarTabs } from './SidebarTabs'
 import { useInstalledBackends } from '@/hooks/useInstalledBackends'
 import { scheduleIdleWork } from '@/lib/idle'
 import { useSidebarReveal } from './useSidebarReveal'
 import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
 
 /** Close the mobile projects drawer when leaving into a dialog/modal. */
 function closeMobileSidebarIfNeeded(isMobile: boolean) {
@@ -36,6 +39,7 @@ export function ProjectsSidebar() {
   const projects = projectsData ?? []
   const { setAddProjectDialogOpen } = useProjectsStore()
   const createFolder = useCreateFolder()
+  const sidebarTab = useUIStore(state => state.sidebarTab)
   const sidebarWidth = useSidebarWidth()
   const isMobile = useIsMobile()
   const [backendCheckReady, setBackendCheckReady] = useState(false)
@@ -65,46 +69,66 @@ export function ProjectsSidebar() {
 
   return (
     <div className="flex h-full flex-col" data-testid="projects-sidebar">
+      {/* Home and the tabs stay put above whichever list scrolls. */}
+      <SidebarHomeRow />
+      <SidebarTabs />
+
       {/* Content */}
       {/* `scrollbar-gutter: stable` keeps a lane for the scrollbar, so the
           thumb never draws over the session timestamps at the right edge and
           the tree does not shift sideways when the list starts to overflow.
-          `scroll-pt-9` clears the sticky Home row, so a row revealed from
-          above lands below it instead of under it. */}
-      <div
-        ref={scrollRef}
-        className="min-h-0 flex-1 scroll-pt-9 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
-      >
-        {/* Home sticks to the top while the tree scrolls, so it is one click
-            away from anywhere in a long sidebar. */}
-        <SidebarHomeRow />
-        <SidebarStarredSection />
+          The tree stays mounted, only made invisible, while Recent shows:
+          `display: none` would drop its scroll position on a tab switch. */}
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={scrollRef}
+          role="tabpanel"
+          id="sidebar-panel-projects"
+          aria-labelledby="sidebar-tab-projects"
+          aria-hidden={sidebarTab !== 'projects'}
+          className={cn(
+            'absolute inset-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]',
+            sidebarTab !== 'projects' && 'invisible'
+          )}
+        >
+          <SidebarStarredSection />
+          {isLoading ? (
+            <div className="flex items-center justify-center p-4">
+              <span className="text-sm text-muted-foreground">Loading...</span>
+            </div>
+          ) : projectsFailed && projectsData === undefined ? (
+            <div className="flex flex-col items-center justify-center gap-2 p-4">
+              <span className="text-sm text-muted-foreground">
+                Couldn&apos;t load projects
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchProjects()}
+              >
+                Retry
+              </Button>
+            </div>
+          ) : projects.length === 0 ? (
+            <div className="flex h-full items-center justify-center px-2">
+              <span className="truncate text-sm text-muted-foreground/50">
+                No projects found
+              </span>
+            </div>
+          ) : (
+            <ProjectTree projects={projects} />
+          )}
+        </div>
 
-        {isLoading ? (
-          <div className="flex items-center justify-center p-4">
-            <span className="text-sm text-muted-foreground">Loading...</span>
+        {sidebarTab === 'recent' && (
+          <div
+            role="tabpanel"
+            id="sidebar-panel-recent"
+            aria-labelledby="sidebar-tab-recent"
+            className="absolute inset-0 overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]"
+          >
+            <SidebarRecentSessions />
           </div>
-        ) : projectsFailed && projectsData === undefined ? (
-          <div className="flex flex-col items-center justify-center gap-2 p-4">
-            <span className="text-sm text-muted-foreground">
-              Couldn&apos;t load projects
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => refetchProjects()}
-            >
-              Retry
-            </Button>
-          </div>
-        ) : projects.length === 0 ? (
-          <div className="flex h-full items-center justify-center px-2">
-            <span className="truncate text-sm text-muted-foreground/50">
-              No projects found
-            </span>
-          </div>
-        ) : (
-          <ProjectTree projects={projects} />
         )}
       </div>
 

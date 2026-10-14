@@ -97,6 +97,7 @@ export function getCurrentUIState(): UIState {
     sessionPrimarySurface,
     seenFailedWorkflowRunIds,
     mobileActiveTab,
+    sidebarTab,
   } = useUIStore.getState()
   const {
     terminals,
@@ -155,6 +156,7 @@ export function getCurrentUIState(): UIState {
     starred_sessions_collapsed: starredSectionCollapsed,
     project_rail_hidden: projectRailHidden,
     mobile_active_tab: mobileActiveTab,
+    sidebar_tab: sidebarTab,
     left_sidebar_size: leftSidebarSize,
     left_sidebar_visible: leftSidebarVisible,
     file_browser_size: fileBrowserSize,

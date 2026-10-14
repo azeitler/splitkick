@@ -9,7 +9,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useIsMobile } from '@/hooks/use-mobile'
 
 /**
- * The Home row, stuck to the top of the sidebar.
+ * The Home row, at the top of the sidebar above the Projects / Recent tabs.
  *
  * Home is the state where no project and no worktree is selected, so the row
  * only has to clear both. That keeps the view in step with the existing
@@ -34,27 +34,23 @@ export function SidebarHomeRow() {
   }, [isMobile])
 
   return (
-    // The opaque wrapper covers the tree as it scrolls underneath; the row's
-    // own selected tint is translucent and would let it show through.
-    <div className="sticky top-0 z-10 bg-sidebar">
-      <button
-        type="button"
-        onClick={handleClick}
-        aria-current={isActive ? 'page' : undefined}
-        title={isNarrow ? 'Home' : undefined}
-        data-testid="sidebar-home-row"
-        className={cn(
-          'group relative flex w-full cursor-pointer items-center gap-1 overflow-hidden px-3 py-1.5 text-left transition-colors duration-150',
-          isNarrow && 'justify-center',
-          isActive
-            ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
-            : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
-        )}
-      >
-        <House className="size-3.5 shrink-0" aria-hidden="true" />
-        {!isNarrow && <span className="truncate text-sm">Home</span>}
-        {isNarrow && <span className="sr-only">Home</span>}
-      </button>
-    </div>
+    <button
+      type="button"
+      onClick={handleClick}
+      aria-current={isActive ? 'page' : undefined}
+      title={isNarrow ? 'Home' : undefined}
+      data-testid="sidebar-home-row"
+      className={cn(
+        'group relative flex w-full cursor-pointer items-center gap-1 overflow-hidden px-3 py-1.5 text-left transition-colors duration-150',
+        isNarrow && 'justify-center',
+        isActive
+          ? 'bg-primary/10 text-foreground before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:bg-primary'
+          : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+      )}
+    >
+      <House className="size-3.5 shrink-0" aria-hidden="true" />
+      {!isNarrow && <span className="truncate text-sm">Home</span>}
+      {isNarrow && <span className="sr-only">Home</span>}
+    </button>
   )
 }

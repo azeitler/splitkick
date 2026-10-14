@@ -3090,6 +3090,12 @@ pub struct UIState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mobile_active_tab: Option<String>,
 
+    /// The desktop sidebar's selected tab below Home (`projects`, `recent`).
+    /// Absent means Projects. Kept as a string so the frontend owns the set of
+    /// tabs.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sidebar_tab: Option<String>,
+
     /// Favorited projects shown first in the GitHub Dashboard
     #[serde(default)]
     pub github_dashboard_favorite_project_ids: Vec<String>,
@@ -3254,6 +3260,7 @@ impl Default for UIState {
             starred_sessions_collapsed: false,
             project_rail_hidden: false,
             mobile_active_tab: None,
+            sidebar_tab: None,
             github_dashboard_favorite_project_ids: Vec::new(),
             last_opened_per_project: std::collections::HashMap::new(),
             seen_failed_workflow_run_ids: Vec::new(),
@@ -4835,6 +4842,26 @@ mod starred_sessions_tests {
         assert!(old.mobile_active_tab.is_none());
         let rewritten = serde_json::to_string(&old).unwrap();
         assert!(!rewritten.contains("mobile_active_tab"));
+    }
+
+    #[test]
+    fn the_sidebar_tab_round_trips_and_defaults_to_projects() {
+        let recent = UIState {
+            sidebar_tab: Some("recent".to_string()),
+            ..UIState::default()
+        };
+        let json = serde_json::to_string(&recent).unwrap();
+        assert!(json.contains(r#""sidebar_tab":"recent""#));
+
+        let parsed: UIState = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.sidebar_tab.as_deref(), Some("recent"));
+
+        // A state file written before the tabs existed loads with no tab, which
+        // the frontend reads as Projects, and writes no key back.
+        let old: UIState = serde_json::from_str("{}").unwrap();
+        assert!(old.sidebar_tab.is_none());
+        let rewritten = serde_json::to_string(&old).unwrap();
+        assert!(!rewritten.contains("sidebar_tab"));
     }
 
     #[test]

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   flattenAllSessions,
+  groupSessionsByDay,
   matchesSessionQuery,
   resolveSessionLabel,
   resolveStarredSessions,
@@ -202,5 +203,46 @@ describe('matchesSessionQuery', () => {
 
   it('rejects a row where nothing matches', () => {
     expect(matchesSessionQuery(row, 'release')).toBe(false)
+  })
+})
+
+describe('groupSessionsByDay', () => {
+  // Noon local time, so "yesterday" and "earlier" never straddle a DST edge.
+  const now = new Date(2026, 9, 14, 12, 0, 0).getTime()
+  const at = (day: number, hour: number) =>
+    new Date(2026, 9, day, hour, 0, 0).getTime()
+
+  function rows(timestamps: number[]) {
+    return flattenAllSessions([
+      entry(
+        timestamps.map((t, i) =>
+          session({ id: `s-${i}`, created_at: t, updated_at: t })
+        )
+      ),
+    ])
+  }
+
+  it('splits rows by local calendar day, keeping their order', () => {
+    const groups = groupSessionsByDay(
+      rows([at(14, 9), at(14, 0), at(13, 23), at(13, 0), at(12, 23)]),
+      now
+    )
+    expect(groups.map(g => [g.label, g.rows.map(r => r.session.id)])).toEqual([
+      ['Today', ['s-0', 's-1']],
+      ['Yesterday', ['s-2', 's-3']],
+      ['Earlier', ['s-4']],
+    ])
+  })
+
+  it('reads unix-second timestamps', () => {
+    const groups = groupSessionsByDay(rows([at(14, 9) / 1000]), now)
+    expect(groups.map(g => g.label)).toEqual(['Today'])
+  })
+
+  it('leaves out empty groups', () => {
+    expect(groupSessionsByDay(rows([at(1, 9)]), now).map(g => g.label)).toEqual(
+      ['Earlier']
+    )
+    expect(groupSessionsByDay([], now)).toEqual([])
   })
 })
