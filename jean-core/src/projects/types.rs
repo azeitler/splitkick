@@ -303,6 +303,11 @@ pub struct Worktree {
     /// Unix timestamp when worktree was archived (None = not archived)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<u64>,
+    /// Archived by the app because its folder was missing at startup, not by
+    /// the user. Un-archived again when the folder is back, and never deleted
+    /// by the retention cleanup (the folder may sit on an unmounted drive).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub auto_archived: bool,
     /// Unix timestamp when worktree was last opened/viewed by the user
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_opened_at: Option<u64>,

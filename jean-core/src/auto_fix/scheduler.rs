@@ -1047,6 +1047,7 @@ mod tests {
             order: 0,
             origin,
             archived_at,
+            auto_archived: false,
             labels: Vec::new(),
             label: None,
             last_opened_at: None,

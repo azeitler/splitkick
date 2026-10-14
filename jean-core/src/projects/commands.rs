@@ -1689,6 +1689,7 @@ pub async fn create_worktree(
         order: 0, // Placeholder, actual order is set in background thread
         origin: worktree_origin.clone(),
         archived_at: None,
+        auto_archived: false,
         labels: Vec::new(),
         label: None,
         last_opened_at: None,
@@ -2337,6 +2338,7 @@ pub async fn create_worktree(
                     order: max_order + 1,
                     origin: worktree_origin_clone.clone(),
                     archived_at: None,
+                    auto_archived: false,
                     labels: Vec::new(),
                     label: None,
                     last_opened_at: None,
@@ -2569,6 +2571,7 @@ pub async fn fork_session_to_worktree(
         order: max_order + 1,
         origin: Some(WorktreeOrigin::Manual),
         archived_at: None,
+        auto_archived: false,
         labels: source_worktree.labels.clone(),
         label: source_worktree.label.clone(),
         last_opened_at: Some(created_at),
@@ -2778,6 +2781,7 @@ pub async fn create_worktree_from_existing_branch(
         order: 0, // Placeholder, actual order is set in background thread
         origin: None,
         archived_at: None,
+        auto_archived: false,
         labels: Vec::new(),
         label: None,
         last_opened_at: None,
@@ -3193,6 +3197,7 @@ pub async fn create_worktree_from_existing_branch(
                     order: max_order + 1,
                     origin: None,
                     archived_at: None,
+                    auto_archived: false,
                     labels: Vec::new(),
                     label: None,
                     last_opened_at: None,
@@ -3441,6 +3446,7 @@ pub async fn checkout_pr(
         order: 0, // Will be updated in background thread
         origin: None,
         archived_at: None,
+        auto_archived: false,
         labels: Vec::new(),
         label: None,
         last_opened_at: None,
@@ -3777,6 +3783,7 @@ pub async fn checkout_pr(
                     order: max_order + 1,
                     origin: None,
                     archived_at: None,
+                    auto_archived: false,
                     labels: Vec::new(),
                     label: None,
                     last_opened_at: None,
@@ -4119,6 +4126,7 @@ pub async fn create_base_session(app: AppHandle, project_id: String) -> Result<W
         order: 0, // Base sessions are always first
         origin: None,
         archived_at: None,
+        auto_archived: false,
         labels: Vec::new(),
         label: None,
         last_opened_at: None,
@@ -4337,8 +4345,14 @@ pub async fn archive_worktree(app: AppHandle, worktree_id: String) -> Result<(),
         );
     }
 
-    // Check if already archived
+    // Check if already archived. An archive the app made (missing folder)
+    // becomes the user's own: from now on retention may delete it.
     if worktree.archived_at.is_some() {
+        if worktree.auto_archived {
+            worktree.auto_archived = false;
+            save_projects_data(&app, &data)?;
+            return Ok(());
+        }
         return Err("Worktree is already archived".to_string());
     }
 
@@ -4346,6 +4360,7 @@ pub async fn archive_worktree(app: AppHandle, worktree_id: String) -> Result<(),
 
     // Set archived timestamp
     worktree.archived_at = Some(now());
+    worktree.auto_archived = false;
 
     // Save the updated data
     save_projects_data(&app, &data)?;
@@ -4393,6 +4408,7 @@ pub async fn unarchive_worktree(app: AppHandle, worktree_id: String) -> Result<W
 
     // Clear archived timestamp
     worktree.archived_at = None;
+    worktree.auto_archived = false;
 
     let restored_worktree = worktree.clone();
 
@@ -4528,6 +4544,7 @@ pub async fn import_worktree(
         order: max_order + 1,
         origin: None,
         archived_at: None,
+        auto_archived: false,
         labels: Vec::new(),
         label: None,
         last_opened_at: None,
@@ -8477,6 +8494,38 @@ fn resolve_merge_flag_from_repo_settings(settings: &serde_json::Value) -> &'stat
 #[cfg(test)]
 mod merge_pr_tests {
     use super::*;
+
+    #[test]
+    fn retention_never_deletes_an_auto_archived_worktree() {
+        let worktree = |extra: serde_json::Value| -> Worktree {
+            let mut value = serde_json::json!({
+                "id": "w", "project_id": "p", "name": "w", "path": "/x",
+                "branch": "w", "created_at": 0,
+            });
+            value
+                .as_object_mut()
+                .unwrap()
+                .extend(extra.as_object().unwrap().clone());
+            serde_json::from_value(value).unwrap()
+        };
+        let cutoff = 1_000;
+        assert!(archive_retention_expired(
+            &worktree(serde_json::json!({ "archived_at": 10 })),
+            cutoff
+        ));
+        assert!(!archive_retention_expired(
+            &worktree(serde_json::json!({ "archived_at": 10, "auto_archived": true })),
+            cutoff
+        ));
+        assert!(!archive_retention_expired(
+            &worktree(serde_json::json!({ "archived_at": 2_000 })),
+            cutoff
+        ));
+        assert!(!archive_retention_expired(
+            &worktree(serde_json::json!({})),
+            cutoff
+        ));
+    }
 
     #[test]
     fn selects_squash_when_allowed() {
@@ -12438,6 +12487,13 @@ pub struct CleanupResult {
     pub deleted_orphan_indexes: u32,
 }
 
+/// Whether retention cleanup may delete this archived worktree. Never one the
+/// app archived on its own (`auto_archived`): its folder may only be on an
+/// unmounted drive, with unpushed commits in it.
+fn archive_retention_expired(worktree: &Worktree, cutoff: u64) -> bool {
+    !worktree.auto_archived && worktree.archived_at.is_some_and(|at| at < cutoff)
+}
+
 /// Cleanup archived worktrees and sessions older than the specified retention period
 ///
 /// This command runs on app startup to automatically clean up old archives.
@@ -12476,13 +12532,7 @@ pub async fn cleanup_old_archives(
     let worktrees_to_delete: Vec<_> = data
         .worktrees
         .iter()
-        .filter(|w| {
-            if let Some(archived_at) = w.archived_at {
-                archived_at < cutoff
-            } else {
-                false
-            }
-        })
+        .filter(|w| archive_retention_expired(w, cutoff))
         .cloned()
         .collect();
 

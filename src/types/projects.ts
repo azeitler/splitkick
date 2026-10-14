@@ -210,6 +210,8 @@ export interface Worktree {
   origin?: WorktreeOrigin
   /** Unix timestamp when worktree was archived (undefined = not archived) */
   archived_at?: number
+  /** Archived by the app because its folder was missing; restored when it is back */
+  auto_archived?: boolean
   /** Unix timestamp when worktree was last opened/viewed by the user */
   last_opened_at?: number
 }

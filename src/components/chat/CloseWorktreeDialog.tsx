@@ -47,7 +47,7 @@ function CloseWorktreeDialogContent({
   mode = 'worktree',
 }: CloseWorktreeDialogProps) {
   const { data: preferences } = usePreferences()
-  const isDelete = (preferences?.removal_behavior ?? 'delete') === 'delete'
+  const isDelete = (preferences?.removal_behavior ?? 'archive') === 'delete'
   const isSession = mode === 'session'
   const title = isSession
     ? isDelete

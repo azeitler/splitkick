@@ -101,7 +101,7 @@ interface CleanupResult {
 export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
   const queryClient = useQueryClient()
   const { data: preferences } = usePreferences()
-  const isDelete = (preferences?.removal_behavior ?? 'delete') === 'delete'
+  const isDelete = (preferences?.removal_behavior ?? 'archive') === 'delete'
   const [searchQuery, setSearchQuery] = useState('')
   const [deleteConfirm, setDeleteConfirm] = useState<DeleteConfirmType | null>(
     null

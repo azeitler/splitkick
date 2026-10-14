@@ -97,17 +97,33 @@ pub fn sanitize_directory_name(name: &str) -> String {
         .collect()
 }
 
-/// Archive every active worktree whose folder no longer exists on disk.
+/// Archive every active worktree whose folder no longer exists on disk, and
+/// restore one this function archived once its folder is back (a remounted
+/// drive). The archive is marked `auto_archived`, so the retention cleanup
+/// never deletes it. Base sessions are skipped: they cannot be archived.
 /// Worktrees created in the last 5 minutes are skipped (still being set up).
-/// Returns the number of worktrees archived.
+/// Returns the number of worktrees changed.
 fn archive_missing_worktrees(
     worktrees: &mut [crate::projects::types::Worktree],
     now_ts: u64,
 ) -> usize {
     let five_minutes_ago = now_ts.saturating_sub(300);
-    let mut archived = 0;
+    let mut changed = 0;
     for w in worktrees.iter_mut() {
-        if w.archived_at.is_some() || std::path::Path::new(&w.path).exists() {
+        if w.session_type == crate::projects::types::SessionType::Base {
+            continue;
+        }
+        let exists = std::path::Path::new(&w.path).exists();
+        if w.auto_archived {
+            if exists {
+                log::info!("Restoring worktree '{}' - its folder is back", w.name);
+                w.archived_at = None;
+                w.auto_archived = false;
+                changed += 1;
+            }
+            continue;
+        }
+        if w.archived_at.is_some() || exists {
             continue;
         }
         if w.created_at > five_minutes_ago {
@@ -124,9 +140,10 @@ fn archive_missing_worktrees(
             w.path
         );
         w.archived_at = Some(now_ts);
-        archived += 1;
+        w.auto_archived = true;
+        changed += 1;
     }
-    archived
+    changed
 }
 
 /// Load projects data from disk (internal, no locking)
@@ -161,11 +178,11 @@ fn load_projects_data_internal(app: &AppHandle) -> Result<ProjectsData, String> 
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs();
-    let archived_count = archive_missing_worktrees(&mut data.worktrees, now_ts);
+    let changed_count = archive_missing_worktrees(&mut data.worktrees, now_ts);
 
-    // Save if any worktree was archived
-    if archived_count > 0 {
-        log::trace!("Archived {archived_count} worktree(s) with a missing folder");
+    // Save if any worktree was archived or restored
+    if changed_count > 0 {
+        log::trace!("Archived or restored {changed_count} worktree(s) by folder presence");
         save_projects_data_internal(app, &data)?;
     }
 
@@ -244,6 +261,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::projects::types::Worktree;
 
     /// Concurrent writers must not drop each other's new worktrees (#34).
     #[test]
@@ -313,7 +331,69 @@ mod tests {
         let by_id = |id: &str| loaded.worktrees.iter().find(|w| w.id == id).unwrap();
         assert!(by_id("present").archived_at.is_none());
         assert!(by_id("gone").archived_at.is_some());
+        assert!(by_id("gone").auto_archived);
         assert!(by_id("fresh").archived_at.is_none());
+    }
+
+    fn worktree_json(id: &str, path: &std::path::Path, extra: serde_json::Value) -> Worktree {
+        let mut value = serde_json::json!({
+            "id": id, "project_id": "p1", "name": id, "path": path,
+            "branch": id, "created_at": 0,
+        });
+        value
+            .as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        serde_json::from_value(value).unwrap()
+    }
+
+    /// Drive unmounted at one start, back at the next: the app restores what
+    /// it archived itself, and only that.
+    #[test]
+    fn an_auto_archived_worktree_is_restored_when_its_folder_returns() {
+        let temp = tempfile::tempdir().unwrap();
+        let folder = temp.path().join("on-drive");
+        let mut worktrees = vec![
+            worktree_json("auto", &folder, serde_json::json!({})),
+            worktree_json("user", &folder, serde_json::json!({ "archived_at": 5 })),
+        ];
+
+        assert_eq!(archive_missing_worktrees(&mut worktrees, 1_000_000), 1);
+        assert!(worktrees[0].auto_archived);
+        assert_eq!(worktrees[0].archived_at, Some(1_000_000));
+        assert!(
+            !worktrees[1].auto_archived,
+            "a user archive stays the user's"
+        );
+
+        std::fs::create_dir_all(&folder).unwrap();
+        assert_eq!(archive_missing_worktrees(&mut worktrees, 1_000_100), 1);
+        assert_eq!(worktrees[0].archived_at, None);
+        assert!(!worktrees[0].auto_archived);
+        // A user archive is never undone by the folder coming back.
+        assert_eq!(worktrees[1].archived_at, Some(5));
+    }
+
+    #[test]
+    fn a_base_session_is_never_auto_archived() {
+        let temp = tempfile::tempdir().unwrap();
+        let mut worktrees = vec![worktree_json(
+            "base",
+            &temp.path().join("unmounted-project"),
+            serde_json::json!({ "session_type": "base" }),
+        )];
+
+        assert_eq!(archive_missing_worktrees(&mut worktrees, 1_000_000), 0);
+        assert_eq!(worktrees[0].archived_at, None);
+        assert!(!worktrees[0].auto_archived);
+    }
+
+    #[test]
+    fn the_flag_is_omitted_from_json_when_false() {
+        let temp = tempfile::tempdir().unwrap();
+        let worktree = worktree_json("w", temp.path(), serde_json::json!({}));
+        let json = serde_json::to_string(&worktree).unwrap();
+        assert!(!json.contains("auto_archived"), "{json}");
     }
 
     #[test]

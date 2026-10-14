@@ -42,10 +42,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   a one-time notice and stops looking for updates; Splitkick is a separate app
   with its own data folder that imports JeanZ's projects and sessions on first
   start.
-- **Chat history is kept for ever by default.** Archived items are no longer
-  deleted after 7 days (the default is now "Never"), and closing a session or
-  worktree archives it instead of deleting it. You can still pick a retention
-  period or "Delete" in Settings → General.
+- **New installs keep chat history for ever.** On a new install, archived
+  items are no longer deleted after 7 days (the default is now "Never"), and
+  closing a session or worktree archives it instead of deleting it. An
+  existing install keeps its own settings; to keep archives for ever, choose
+  "Never" under "Auto-delete archives" in Settings → General.
 - **A plan sent to a new session or worktree archives the original session**,
   never deletes it, whatever the removal setting says.
 
@@ -83,11 +84,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   new app settings.
 
 - **A worktree whose folder went missing no longer loses its history.** It is
-  archived instead of dropped, and its branch is kept. Before, the next start
-  deleted all of its sessions.
+  archived instead of dropped, and it comes back by itself when the folder
+  returns (for example a drive that was not mounted at start). Automatic
+  archive cleanup never deletes such a worktree or its branch. Before, the
+  next start deleted all of its sessions.
 - **The startup cleanup moves orphaned session data to a trash folder**
-  (`trash/<date>/` in the data folder) instead of deleting it, and skips the
-  cleanup when a session index cannot be read.
+  (`trash/<date>/` in the data folder) instead of deleting it, skips sessions
+  written in the last 10 minutes, and skips the cleanup when a session index
+  cannot be read.
 - **Archiving a session never deletes it by mistake.** A session whose history
   failed to load, and every terminal session, is archived, not deleted.
 - **Claude keeps the context of old sessions.** Claude Code deletes its

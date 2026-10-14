@@ -571,8 +571,17 @@ pub fn cleanup_orphaned_session_data(app: &AppHandle) -> Result<u32, String> {
         }
         let lock = get_metadata_lock(&session_id);
         let _guard = lock.lock().unwrap();
+        // The snapshot above can be stale: a session created during startup
+        // writes its data before its index entry. Re-check under the lock and
+        // leave anything written recently alone.
+        let session_dir = data_dir.join(&session_id);
+        if written_within(&session_dir.join("metadata.json"), ORPHAN_GRACE)
+            || referenced_session_ids(&index_dir).map_or(true, |ids| ids.contains(&session_id))
+        {
+            continue;
+        }
         log::debug!("Moving orphaned session data to trash: {session_id}");
-        match move_into_dir(&data_dir.join(&session_id), &trash_dir) {
+        match move_into_dir(&session_dir, &trash_dir) {
             Ok(()) => moved += 1,
             Err(e) => log::warn!("Failed to move orphaned session data {session_id}: {e}"),
         }
@@ -583,6 +592,19 @@ pub fn cleanup_orphaned_session_data(app: &AppHandle) -> Result<u32, String> {
     }
 
     Ok(moved)
+}
+
+/// Session data written this recently is never treated as an orphan.
+const ORPHAN_GRACE: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// Whether `path` was modified less than `window` ago. A missing or
+/// unreadable time counts as not recent.
+fn written_within(path: &Path, window: std::time::Duration) -> bool {
+    fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .is_some_and(|age| age < window)
 }
 
 /// Every session id listed in the index files of `index_dir`.
@@ -729,24 +751,14 @@ pub fn cleanup_combined_context_files(app: &AppHandle, session_id: &str) {
 pub fn cleanup_orphaned_combined_contexts(app: &AppHandle) -> Result<u32, String> {
     // Collect all referenced session IDs from index files
     let index_dir = get_index_dir(app)?;
-    let mut referenced_ids = std::collections::HashSet::new();
-
-    if let Ok(entries) = fs::read_dir(&index_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "json") {
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if let Ok(index) =
-                        serde_json::from_str::<crate::chat::types::WorktreeIndex>(&content)
-                    {
-                        for session in &index.sessions {
-                            referenced_ids.insert(session.id.clone());
-                        }
-                    }
-                }
-            }
+    // Fail closed: a corrupt index would make its sessions look like orphans.
+    let referenced_ids = match referenced_session_ids(&index_dir) {
+        Ok(ids) => ids,
+        Err(e) => {
+            log::warn!("Skipping orphaned combined-context cleanup: {e}");
+            return Ok(0);
         }
-    }
+    };
 
     // Scan combined-contexts directory
     let app_data_dir = app
@@ -1627,6 +1639,16 @@ mod tests {
         }
         assert!(trash.join("s1/metadata.json").exists());
         assert!(trash.join("s1.1/metadata.json").exists());
+    }
+
+    #[test]
+    fn fresh_session_data_counts_as_recently_written() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let file = temp.path().join("metadata.json");
+        assert!(!written_within(&file, ORPHAN_GRACE), "missing file");
+        std::fs::write(&file, "{}").expect("write");
+        assert!(written_within(&file, ORPHAN_GRACE));
+        assert!(!written_within(&file, std::time::Duration::ZERO));
     }
 
     #[test]

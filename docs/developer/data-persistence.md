@@ -270,15 +270,21 @@ explicit user action. The automatic paths are soft:
 - `archive_retention_days` defaults to `0` (never) and `removal_behavior` to
   `archive`. A plan handoff always archives the original session.
 - A worktree whose folder is missing is **archived** in `load_projects_data`,
-  never dropped. Dropping the record made its history an orphan.
+  never dropped (dropping the record made its history an orphan). It is
+  marked `auto_archived`: restored on load when the folder is back, never
+  deleted by `cleanup_old_archives`. Base sessions are skipped. A user
+  archive or unarchive clears the flag.
 - The orphan janitors (`cleanup_orphaned_session_indexes`,
   `cleanup_orphaned_session_data` in `chat/storage.rs`) **move** files to
-  `<data>/trash/<YYYY-MM-DD>/` and skip the data cleanup when any index fails
-  to parse. Nothing empties the trash.
+  `<data>/trash/<YYYY-MM-DD>/`, skip the cleanup when any index fails to
+  parse, and leave session data written in the last 10 minutes alone.
+  `cleanup_orphaned_combined_contexts` fails closed the same way. Nothing
+  empties the trash.
 - `archive_session` deletes only a session that loaded fine with zero
   messages, and never a terminal session.
 - A Claude resume id whose transcript is gone (`cleanupPeriodDays`) resolves
-  to `HandoffKind::LostContext`, which replays the Jean history.
+  to `HandoffKind::LostContext`, which replays the Jean history — only when a
+  completed run used that id, so a first turn that failed fast is not "lost".
 
 Do not add a new `remove_dir_all` on session data in an automatic path.
 

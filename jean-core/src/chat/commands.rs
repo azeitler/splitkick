@@ -607,6 +607,14 @@ impl HandoffKind {
     }
 }
 
+/// Whether a completed run resumed or started the Claude conversation `sid`,
+/// i.e. Claude wrote a transcript for it at some point.
+fn completed_claude_run_used(metadata: &super::types::SessionMetadata, sid: &str) -> bool {
+    metadata.runs.iter().any(|run| {
+        run.status == RunStatus::Completed && run.claude_session_id.as_deref() == Some(sid)
+    })
+}
+
 pub(crate) fn resolve_handoff_kind(
     backend_handoff: bool,
     profile_handoff: bool,
@@ -2376,6 +2384,7 @@ pub async fn restore_session_with_base(
         labels: Vec::new(),
         label: None,
         archived_at: None,
+        auto_archived: false,
         last_opened_at: None,
     };
 
@@ -3231,13 +3240,17 @@ pub async fn send_chat_message(
         custom_profile_name.as_deref(),
     );
     let handoff_kind = resolve_handoff_kind(backend_handoff, profile_handoff, pending_fork);
-    // A completed Claude turn left a resume id, but Claude has since deleted the
-    // transcript: the model would silently start over. Replay Jean's copy instead.
+    // A completed Claude turn wrote a transcript under the saved id, but Claude
+    // has since deleted it: the model would silently start over. Replay Jean's
+    // copy instead. An id that never got a transcript (a first turn that failed
+    // fast) is not a lost context.
     let handoff_kind = if matches!(handoff_kind, HandoffKind::None | HandoffKind::NativeFork)
         && effective_backend == Backend::Claude
-        && previous_backend.as_ref() == Some(&Backend::Claude)
         && claude_session_id.as_deref().is_some_and(|sid| {
-            !super::claude::claude_transcript_exists(sid, custom_profile_name.as_deref())
+            previous_metadata
+                .as_ref()
+                .is_some_and(|metadata| completed_claude_run_used(metadata, sid))
+                && !super::claude::claude_transcript_exists(sid, custom_profile_name.as_deref())
         }) {
         log::info!(
             "[SendChat] Claude transcript missing, replaying Jean history session={session_id}"
@@ -6889,6 +6902,33 @@ mod handoff_kind_tests {
         assert!(HandoffKind::ProviderSwitch.clears_target_resume());
         assert!(HandoffKind::ClaudeProfile.clears_target_resume());
         assert!(HandoffKind::LostContext.clears_target_resume());
+    }
+
+    #[test]
+    fn only_an_id_with_a_completed_run_counts_as_a_lost_transcript() {
+        let mut metadata = crate::chat::types::SessionMetadata::new(
+            "s".to_string(),
+            "wt".to_string(),
+            "Session".to_string(),
+            0,
+        );
+        let run = |status: &str, sid: &str| -> crate::chat::types::RunEntry {
+            serde_json::from_value(serde_json::json!({
+                "run_id": format!("r-{sid}-{status}"),
+                "user_message_id": "m",
+                "user_message": "hi",
+                "started_at": 1,
+                "status": status,
+                "claude_session_id": sid,
+            }))
+            .unwrap()
+        };
+        metadata.runs.push(run("completed", "old"));
+        metadata.runs.push(run("cancelled", "fast-fail"));
+
+        assert!(completed_claude_run_used(&metadata, "old"));
+        assert!(!completed_claude_run_used(&metadata, "fast-fail"));
+        assert!(!completed_claude_run_used(&metadata, "never-seen"));
     }
 }
 
