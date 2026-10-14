@@ -52,9 +52,10 @@ function render(svg, size, out, extra = []) {
 }
 
 // -strip drops timestamp chunks, so unchanged artwork keeps the same bytes and
-// the content hash in the web icon names does not churn.
+// the content hash in the web icon names does not churn. PNG32 keeps RGBA:
+// ImageMagick would otherwise save a palette PNG, which Tauri rejects.
 function strip(file) {
-  run('magick', [file, '-strip', file])
+  run('magick', [file, '-strip', `PNG32:${file}`])
 }
 
 mkdirSync(webDir, { recursive: true })
