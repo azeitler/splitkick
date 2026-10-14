@@ -262,6 +262,26 @@ const checkForRecoveryData = async () => {
 
 ## Cleanup Strategies
 
+### Chat history is never deleted automatically
+
+Chat history (session index + `sessions/data/<id>/`) is deleted only by an
+explicit user action. The automatic paths are soft:
+
+- `archive_retention_days` defaults to `0` (never) and `removal_behavior` to
+  `archive`. A plan handoff always archives the original session.
+- A worktree whose folder is missing is **archived** in `load_projects_data`,
+  never dropped. Dropping the record made its history an orphan.
+- The orphan janitors (`cleanup_orphaned_session_indexes`,
+  `cleanup_orphaned_session_data` in `chat/storage.rs`) **move** files to
+  `<data>/trash/<YYYY-MM-DD>/` and skip the data cleanup when any index fails
+  to parse. Nothing empties the trash.
+- `archive_session` deletes only a session that loaded fine with zero
+  messages, and never a terminal session.
+- A Claude resume id whose transcript is gone (`cleanupPeriodDays`) resolves
+  to `HandoffKind::LostContext`, which replays the Jean history.
+
+Do not add a new `remove_dir_all` on session data in an automatic path.
+
 ### Automatic Cleanup
 
 Clean up old recovery files to prevent disk bloat:

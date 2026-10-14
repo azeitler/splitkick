@@ -90,7 +90,7 @@ describe('finishPlanHandoff', () => {
     expect(sessions?.active_session_id).toBe('new')
   })
 
-  it('closes the source session when removal behavior is delete', () => {
+  it('archives, never deletes, the source session when removal behavior is delete', () => {
     finishPlanHandoff({
       ...base,
       queryClient: setup(),
@@ -100,7 +100,8 @@ describe('finishPlanHandoff', () => {
       }),
       messageId: 'plan-msg',
     })
-    expect(invoke).toHaveBeenCalledWith('close_session', expect.anything())
+    expect(invoke).toHaveBeenCalledWith('archive_session', expect.anything())
+    expect(invoke).not.toHaveBeenCalledWith('close_session', expect.anything())
   })
 
   it('records a handoff instead of closing when the setting is off', () => {

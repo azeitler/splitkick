@@ -12503,7 +12503,11 @@ pub async fn cleanup_old_archives(
 
         // Perform git cleanup if we have project info and it's not a base session
         if let Some(proj) = project {
-            if worktree.session_type != SessionType::Base {
+            // A folder that vanished on its own (archived by load_projects_data)
+            // may be on an unmounted drive: keep its branch, unpushed commits may live there.
+            if worktree.session_type != SessionType::Base
+                && std::path::Path::new(&worktree.path).exists()
+            {
                 // Remove git worktree (ignore errors if already gone)
                 if let Err(e) = git::remove_worktree(&proj.path, &worktree.path) {
                     log::warn!("Failed to remove worktree (may be gone): {e}");

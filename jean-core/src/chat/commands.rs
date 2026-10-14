@@ -588,6 +588,10 @@ pub(crate) enum HandoffKind {
     /// Forked session, first turn, backend branches natively (Claude `--fork-session`).
     /// No history injection, and the source resume id is kept.
     NativeFork,
+    /// The backend no longer has the conversation the resume id points to
+    /// (Claude Code deletes transcripts after `cleanupPeriodDays`, 30 by
+    /// default). Jean's own copy is replayed into a fresh native session.
+    LostContext,
 }
 
 impl HandoffKind {
@@ -595,7 +599,10 @@ impl HandoffKind {
     pub(crate) fn clears_target_resume(self) -> bool {
         matches!(
             self,
-            HandoffKind::ProviderSwitch | HandoffKind::ClaudeProfile | HandoffKind::Fork
+            HandoffKind::ProviderSwitch
+                | HandoffKind::ClaudeProfile
+                | HandoffKind::Fork
+                | HandoffKind::LostContext
         )
     }
 }
@@ -2076,9 +2083,13 @@ pub async fn archive_session(
     // for idle sessions (e.g. those waiting for plan approval during clear-context flows).
     let _ = cancel_process_if_running(&app, &session_id, &worktree_id);
 
-    // Load messages from NDJSON to check if session has content (outside lock - read-only)
-    let messages = run_log::load_session_messages(&app, &session_id).unwrap_or_default();
-    let should_delete = messages.is_empty();
+    // Load messages from NDJSON to check if session has content (outside lock - read-only).
+    // Only a session that loaded fine and has no messages is deleted; a load
+    // error must never turn an archive into a delete.
+    let has_no_messages = matches!(
+        run_log::load_session_messages(&app, &session_id),
+        Ok(messages) if messages.is_empty()
+    );
 
     let new_active = with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
         // Find the index before archiving/deleting
@@ -2093,6 +2104,10 @@ pub async fn archive_session(
         if session.archived_at.is_some() {
             return Err("Session is already archived".to_string());
         }
+
+        // Terminal sessions keep their history in the CLI, never in Jean runs
+        let should_delete =
+            has_no_messages && session.primary_surface.as_deref() != Some("terminal");
 
         if should_delete {
             log::trace!("Session has 0 messages, deleting instead of archiving: {session_id}");
@@ -3216,6 +3231,21 @@ pub async fn send_chat_message(
         custom_profile_name.as_deref(),
     );
     let handoff_kind = resolve_handoff_kind(backend_handoff, profile_handoff, pending_fork);
+    // A completed Claude turn left a resume id, but Claude has since deleted the
+    // transcript: the model would silently start over. Replay Jean's copy instead.
+    let handoff_kind = if matches!(handoff_kind, HandoffKind::None | HandoffKind::NativeFork)
+        && effective_backend == Backend::Claude
+        && previous_backend.as_ref() == Some(&Backend::Claude)
+        && claude_session_id.as_deref().is_some_and(|sid| {
+            !super::claude::claude_transcript_exists(sid, custom_profile_name.as_deref())
+        }) {
+        log::info!(
+            "[SendChat] Claude transcript missing, replaying Jean history session={session_id}"
+        );
+        HandoffKind::LostContext
+    } else {
+        handoff_kind
+    };
     // On provider switch, always start a fresh native session for the *target*
     // backend. The previous provider's history is injected via handoff; resuming
     // an old OpenCode/Codex/etc. session would omit that Jean-local context.
@@ -3266,9 +3296,10 @@ pub async fn send_chat_message(
         } else {
             message.clone()
         }
-    } else if handoff_kind == HandoffKind::Fork {
+    } else if matches!(handoff_kind, HandoffKind::Fork | HandoffKind::LostContext) {
         // Forked session, first turn, on a backend that cannot branch its own
-        // transcript. The copied Jean history is the only context the model gets.
+        // transcript, or a backend that lost its transcript. The Jean history
+        // is the only context the model gets.
         let history = super::handoff::build_handoff_history_text(
             &app,
             &session_id,
@@ -3284,7 +3315,11 @@ pub async fn send_chat_message(
                 "[SendChat] injecting hidden fork handoff session={session_id} backend={effective_backend:?} history_chars={}",
                 history.chars().count()
             );
-            let fork_prompt = super::handoff::build_fork_handoff_prompt(&history);
+            let fork_prompt = if handoff_kind == HandoffKind::LostContext {
+                super::handoff::build_lost_context_handoff_prompt(&history)
+            } else {
+                super::handoff::build_fork_handoff_prompt(&history)
+            };
             super::handoff::prepend_hidden_fork_handoff(&message, &fork_prompt)
         }
     } else {
@@ -6853,6 +6888,7 @@ mod handoff_kind_tests {
         assert!(HandoffKind::Fork.clears_target_resume());
         assert!(HandoffKind::ProviderSwitch.clears_target_resume());
         assert!(HandoffKind::ClaudeProfile.clears_target_resume());
+        assert!(HandoffKind::LostContext.clears_target_resume());
     }
 }
 

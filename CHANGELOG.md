@@ -7,6 +7,30 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Chat history is kept for ever by default.** Archived items are no longer
+  deleted after 7 days (the default is now "Never"), and closing a session or
+  worktree archives it instead of deleting it. You can still pick a retention
+  period or "Delete" in Settings → General.
+- **A plan sent to a new session or worktree archives the original session**,
+  never deletes it, whatever the removal setting says.
+
+### Fixed
+
+- **A worktree whose folder went missing no longer loses its history.** It is
+  archived instead of dropped, and its branch is kept. Before, the next start
+  deleted all of its sessions.
+- **The startup cleanup moves orphaned session data to a trash folder**
+  (`trash/<date>/` in the data folder) instead of deleting it, and skips the
+  cleanup when a session index cannot be read.
+- **Archiving a session never deletes it by mistake.** A session whose history
+  failed to load, and every terminal session, is archived, not deleted.
+- **Claude keeps the context of old sessions.** Claude Code deletes its
+  transcripts after 30 days; a session whose transcript is gone now gets its
+  earlier conversation replayed from Jean's own copy, instead of silently
+  starting over.
+
 ## [0.1.73-z.25] - 2026-10-14
 
 Built on Jean 0.1.73.

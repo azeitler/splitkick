@@ -545,50 +545,91 @@ pub fn list_all_session_ids(app: &AppHandle) -> Result<Vec<String>, String> {
     Ok(session_ids)
 }
 
-/// Delete orphaned session data directories that are not referenced by any index file.
-/// Returns the number of orphaned directories deleted.
+/// Move session data directories that no index file references into the trash.
+/// Chat history is never deleted by this janitor: an orphan can be the result
+/// of a bug or of a worktree record that went missing, so it stays recoverable.
+/// If any index file cannot be read or parsed, nothing is moved: its sessions
+/// would otherwise look like orphans.
+/// Returns the number of directories moved.
 pub fn cleanup_orphaned_session_data(app: &AppHandle) -> Result<u32, String> {
-    // Collect all session IDs referenced in index files
     let index_dir = get_index_dir(app)?;
-    let mut referenced_ids = std::collections::HashSet::new();
+    let referenced_ids = match referenced_session_ids(&index_dir) {
+        Ok(ids) => ids,
+        Err(e) => {
+            log::warn!("Skipping orphaned session data cleanup: {e}");
+            return Ok(0);
+        }
+    };
 
-    if let Ok(entries) = fs::read_dir(&index_dir) {
-        for entry in entries.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "json") {
-                if let Ok(content) = fs::read_to_string(&path) {
-                    if let Ok(index) =
-                        serde_json::from_str::<crate::chat::types::WorktreeIndex>(&content)
-                    {
-                        for session in &index.sessions {
-                            referenced_ids.insert(session.id.clone());
-                        }
-                    }
-                }
-            }
+    let data_dir = get_data_dir(app)?;
+    let trash_dir = get_trash_dir(app)?.join("sessions");
+    let mut moved = 0u32;
+
+    for session_id in list_all_session_ids(app)? {
+        if referenced_ids.contains(&session_id) {
+            continue;
+        }
+        let lock = get_metadata_lock(&session_id);
+        let _guard = lock.lock().unwrap();
+        log::debug!("Moving orphaned session data to trash: {session_id}");
+        match move_into_dir(&data_dir.join(&session_id), &trash_dir) {
+            Ok(()) => moved += 1,
+            Err(e) => log::warn!("Failed to move orphaned session data {session_id}: {e}"),
         }
     }
 
-    // Compare with what's on disk
-    let all_on_disk = list_all_session_ids(app)?;
-    let mut deleted = 0u32;
+    if moved > 0 {
+        log::debug!("Moved {moved} orphaned session data directories to trash");
+    }
 
-    for session_id in all_on_disk {
-        if !referenced_ids.contains(&session_id) {
-            log::trace!("Deleting orphaned session data: {session_id}");
-            if let Err(e) = delete_session_data(app, &session_id) {
-                log::warn!("Failed to delete orphaned session data {session_id}: {e}");
-            } else {
-                deleted += 1;
-            }
+    Ok(moved)
+}
+
+/// Every session id listed in the index files of `index_dir`.
+/// Fails if an index file cannot be read or parsed.
+fn referenced_session_ids(index_dir: &Path) -> Result<HashSet<String>, String> {
+    let mut referenced_ids = HashSet::new();
+    let entries =
+        fs::read_dir(index_dir).map_err(|e| format!("Failed to read index directory: {e}"))?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.extension().is_some_and(|ext| ext == "json") {
+            continue;
         }
+        let content = fs::read_to_string(&path)
+            .map_err(|e| format!("Failed to read index {}: {e}", path.display()))?;
+        let index = serde_json::from_str::<crate::chat::types::WorktreeIndex>(&content)
+            .map_err(|e| format!("Failed to parse index {}: {e}", path.display()))?;
+        referenced_ids.extend(index.sessions.into_iter().map(|session| session.id));
     }
+    Ok(referenced_ids)
+}
 
-    if deleted > 0 {
-        log::debug!("Cleaned up {deleted} orphaned session data directories");
+/// Trash for data the janitors remove: `<app data>/trash/<YYYY-MM-DD>/`.
+/// Nothing empties it automatically.
+pub fn get_trash_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {e}"))?;
+    let day = chrono::Local::now().format("%Y-%m-%d").to_string();
+    Ok(app_data_dir.join("trash").join(day))
+}
+
+/// Move `src` (file or directory) into `dest_dir`, keeping its name.
+/// An existing entry with the same name gets a numeric suffix, never overwritten.
+fn move_into_dir(src: &Path, dest_dir: &Path) -> Result<(), String> {
+    let name = src
+        .file_name()
+        .ok_or_else(|| format!("No file name: {}", src.display()))?;
+    fs::create_dir_all(dest_dir).map_err(|e| format!("Failed to create trash: {e}"))?;
+    let mut dest = dest_dir.join(name);
+    let mut n = 1;
+    while dest.exists() {
+        dest = dest_dir.join(format!("{}.{n}", name.to_string_lossy()));
+        n += 1;
     }
-
-    Ok(deleted)
+    fs::rename(src, &dest).map_err(|e| format!("Failed to move {}: {e}", src.display()))
 }
 
 /// Delete session index files that are not associated with a known worktree or
@@ -608,12 +649,15 @@ pub fn cleanup_orphaned_session_indexes(app: &AppHandle) -> Result<u32, String> 
         valid_index_stems.insert(format!("base-{}", sanitize_filename(&project.id)));
     }
 
-    cleanup_orphaned_session_indexes_in_dir(&index_dir, &valid_index_stems)
+    let trash_dir = get_trash_dir(app)?.join("index");
+    cleanup_orphaned_session_indexes_in_dir(&index_dir, &valid_index_stems, &trash_dir)
 }
 
+/// Move index files whose stem is not in `valid_index_stems` into `trash_dir`.
 fn cleanup_orphaned_session_indexes_in_dir(
     index_dir: &Path,
     valid_index_stems: &HashSet<String>,
+    trash_dir: &Path,
 ) -> Result<u32, String> {
     if !index_dir.exists() {
         return Ok(0);
@@ -637,15 +681,15 @@ fn cleanup_orphaned_session_indexes_in_dir(
             continue;
         }
 
-        log::trace!("Deleting orphaned session index: {}", path.display());
-        match fs::remove_file(&path) {
+        log::debug!("Moving orphaned session index to trash: {}", path.display());
+        match move_into_dir(&path, trash_dir) {
             Ok(()) => deleted += 1,
-            Err(e) => log::warn!("Failed to delete orphaned session index {path:?}: {e}"),
+            Err(e) => log::warn!("Failed to move orphaned session index {path:?}: {e}"),
         }
     }
 
     if deleted > 0 {
-        log::debug!("Cleaned up {deleted} orphaned session index file(s)");
+        log::debug!("Moved {deleted} orphaned session index file(s) to trash");
     }
 
     Ok(deleted)
@@ -1555,8 +1599,10 @@ mod tests {
 
         let valid_stems = HashSet::from(["wt-1".to_string(), "base-project-1".to_string()]);
 
+        let trash = tempfile::tempdir().expect("trash dir");
         let deleted =
-            cleanup_orphaned_session_indexes_in_dir(index_dir, &valid_stems).expect("cleanup");
+            cleanup_orphaned_session_indexes_in_dir(index_dir, &valid_stems, trash.path())
+                .expect("cleanup");
 
         assert_eq!(deleted, 2);
         assert!(index_dir.join("wt-1.json").exists());
@@ -1564,6 +1610,30 @@ mod tests {
         assert!(!index_dir.join("orphan-wt.json").exists());
         assert!(!index_dir.join("base-old-project.json").exists());
         assert!(index_dir.join("notes.txt").exists());
+        // Moved, not deleted
+        assert!(trash.path().join("orphan-wt.json").exists());
+        assert!(trash.path().join("base-old-project.json").exists());
+    }
+
+    #[test]
+    fn move_into_dir_never_overwrites() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        let trash = temp.path().join("trash");
+        for _ in 0..2 {
+            let src = temp.path().join("s1");
+            std::fs::create_dir_all(&src).expect("src");
+            std::fs::write(src.join("metadata.json"), "{}").expect("write");
+            move_into_dir(&src, &trash).expect("move");
+        }
+        assert!(trash.join("s1/metadata.json").exists());
+        assert!(trash.join("s1.1/metadata.json").exists());
+    }
+
+    #[test]
+    fn referenced_session_ids_fails_on_corrupt_index() {
+        let temp = tempfile::tempdir().expect("temp dir");
+        std::fs::write(temp.path().join("wt.json"), "{ not json").expect("write");
+        assert!(referenced_session_ids(temp.path()).is_err());
     }
 
     #[test]
