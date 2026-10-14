@@ -200,7 +200,8 @@ function main() {
   try {
     cut = cutChangelog(readFileSync(path, 'utf8'), {
       version,
-      date: new Date().toISOString().slice(0, 10),
+      // Local date: a cut made after midnight belongs to that day, not to UTC's.
+      date: new Date().toLocaleDateString('sv-SE'),
       previousVersion: previous,
       upstream,
     })
