@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **JeanZ continues as Splitkick.** This is the last JeanZ build. JeanZ shows
+  a one-time notice and stops looking for updates; Splitkick is a separate app
+  with its own data folder that imports JeanZ's projects and sessions on first
+  start.
 - **Chat history is kept for ever by default.** Archived items are no longer
   deleted after 7 days (the default is now "Never"), and closing a session or
   worktree archives it instead of deleting it. You can still pick a retention

@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useRef,
-  useState,
-} from 'react'
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   connectTransport,
@@ -41,6 +35,7 @@ import type { Worktree } from '@/types/projects'
 import { initializeCommandSystem } from './lib/commands'
 import { logger } from './lib/logger'
 import { toast } from 'sonner'
+import { useJeanzMovedNotice } from '@/hooks/useJeanzMovedNotice'
 import { cleanupOldFiles } from './lib/recovery'
 import './App.css'
 import MainWindow from './components/layout/MainWindow'
@@ -889,6 +884,7 @@ function App() {
 
   // Apply font settings from preferences
   useFontSettings()
+  useJeanzMovedNotice()
 
   // Apply zoom level from preferences + keyboard shortcuts
   useZoom()
@@ -1043,10 +1039,12 @@ function App() {
   })
   const { data: commandcodeStatus, isLoading: isCommandcodeStatusLoading } =
     useCommandCodeCliStatus({ enabled: nativeCli })
-  const { data: grokStatus, isLoading: isGrokStatusLoading } =
-    useGrokCliStatus({ enabled: nativeCli })
-  const { data: kimiStatus, isLoading: isKimiStatusLoading } =
-    useKimiCliStatus({ enabled: nativeCli })
+  const { data: grokStatus, isLoading: isGrokStatusLoading } = useGrokCliStatus(
+    { enabled: nativeCli }
+  )
+  const { data: kimiStatus, isLoading: isKimiStatusLoading } = useKimiCliStatus(
+    { enabled: nativeCli }
+  )
   const { data: ghStatus, isLoading: isGhStatusLoading } = useGhCliStatus({
     enabled: nativeCli,
   })
@@ -1062,10 +1060,11 @@ function App() {
     useOpencodeCliAuth({
       enabled: nativeCli && !!opencodeStatus?.installed,
     })
-  const { data: cursorAuth, isLoading: isCursorAuthLoading } =
-    useCursorCliAuth({
+  const { data: cursorAuth, isLoading: isCursorAuthLoading } = useCursorCliAuth(
+    {
       enabled: nativeCli && !!cursorStatus?.installed,
-    })
+    }
+  )
   const { data: piAuth, isLoading: isPiAuthLoading } = usePiCliAuth({
     enabled: nativeCli && !!piStatus?.installed,
   })
@@ -1266,8 +1265,7 @@ function App() {
 
     const ghReady = !!ghStatus?.installed && !!ghAuth?.authenticated
     const hasAiBackendReady = aiStatuses.some(
-      (status, index) =>
-        !!status?.installed && !!aiAuth[index]?.authenticated
+      (status, index) => !!status?.installed && !!aiAuth[index]?.authenticated
     )
 
     // If setup is incomplete, onboarding owns the startup surface.

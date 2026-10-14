@@ -28,11 +28,14 @@ const MANIFEST_URL: &str =
 const DESKTOP_MANIFEST_URL: &str =
     "https://github.com/coollabsio/jean/releases/latest/download/latest.json";
 /// The JeanZ build flavor publishes its own releases, and its native updater
-/// reads this feed (`src-tauri/tauri.fork.conf.json`). The Web Access check
+/// reads this feed (`src-tauri/tauri.fork.conf.json`). JeanZ ends with
+/// 0.1.73-z.26: the feed is a fixed release asset that never offers a newer
+/// build, so no JeanZ install can update itself into Splitkick (a different
+/// app, signed with a different key). The Web Access check
 /// must read the same one: against upstream's feed it offered upstream builds
 /// JeanZ cannot install — they are signed with a different key.
 const DESKTOP_MANIFEST_URL_JEANZ: &str =
-    "https://github.com/azeitler/jean/releases/latest/download/latest.json";
+    "https://github.com/azeitler/jean/releases/download/jeanz-final/latest.json";
 
 /// The desktop release feed for this build flavor.
 fn desktop_manifest_url(product_name: Option<&str>) -> &'static str {

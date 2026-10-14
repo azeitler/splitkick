@@ -110,8 +110,10 @@ describe('JeanZ fork configuration', () => {
     // Left unchanged, upstream's latest.json would verify against upstream's
     // pubkey and silently install Jean over JeanZ. Both halves have to move
     // together: the endpoint and the key.
+    // JeanZ ends with 0.1.73-z.26: a fixed asset that never offers a newer
+    // build, so a JeanZ install cannot update itself into Splitkick.
     expect(resolved.plugins.updater.endpoints).toEqual([
-      'https://github.com/azeitler/jean/releases/latest/download/latest.json',
+      'https://github.com/azeitler/jean/releases/download/jeanz-final/latest.json',
     ])
     expect(resolved.plugins.updater.pubkey).not.toBe(
       (base.plugins as { updater: { pubkey: string } }).updater.pubkey
