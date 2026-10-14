@@ -55,6 +55,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   longer touches the left and right edges.
 - **The Recent tab in the sidebar is easier to see.** The Projects / Recent
   switch now has a visible track.
+- **A failed update check tells you why.** "Check for Updates…" now shows the
+  error in its toast, and every failed check, manual or automatic, is written
+  to the app log.
 
 ## [0.1.73-z.25] - 2026-10-14
 
