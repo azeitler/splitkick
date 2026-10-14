@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
+import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
 
 interface ImagePreviewDialogProps {
   open: boolean
@@ -41,20 +42,37 @@ export function ImagePreviewDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg sm:p-4 bg-background/95"
+        className="flex flex-col !w-screen !h-dvh !max-w-screen !max-h-none !rounded-none p-0 pt-[calc(var(--safe-area-top)+3rem)] pb-[calc(var(--safe-area-bottom)+0.5rem)] [&>[data-slot=dialog-close]]:top-[calc(var(--safe-area-top)+1rem)] sm:!w-[calc(100vw-4rem)] sm:!max-w-[calc(100vw-4rem)] sm:!h-auto sm:max-h-[85vh] sm:!rounded-lg sm:p-4 sm:[&>[data-slot=dialog-close]]:top-4 bg-background/95"
         showCloseButton={true}
       >
         <VisuallyHidden>
           <DialogTitle>Image Preview</DialogTitle>
           <DialogDescription>Preview of image: {alt}</DialogDescription>
         </VisuallyHidden>
-        <img
-          src={src}
-          alt={alt}
-          className="max-w-full max-h-[calc(85vh-6rem)] object-contain rounded-md mx-auto"
-        />
+        {/* The app viewport disables browser zoom, so pinch/wheel/double-tap
+            zoom comes from react-zoom-pan-pinch. */}
+        <div className="flex-1 min-h-0 touch-none sm:flex-none">
+          <TransformWrapper
+            minScale={1}
+            maxScale={8}
+            centerOnInit
+            doubleClick={{ mode: 'toggle' }}
+          >
+            <TransformComponent
+              wrapperClass="!w-full !h-full"
+              contentClass="!w-full !h-full items-center justify-center"
+            >
+              <img
+                src={src}
+                alt={alt}
+                draggable={false}
+                className="max-w-full max-h-full sm:max-h-[calc(85vh-6rem)] object-contain rounded-md select-none"
+              />
+            </TransformComponent>
+          </TransformWrapper>
+        </div>
         {canReveal && path && (
-          <div className="flex justify-center">
+          <div className="flex shrink-0 justify-center">
             <Button
               variant="ghost"
               size="sm"
