@@ -7,6 +7,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **The Splitkick download is notarized by Apple**, so macOS opens it without
+  a Gatekeeper warning. 1.0.0-rc.1 was signed but not notarized.
+
 ## [1.0.0-rc.1] - 2026-10-15
 
 Built on Jean 0.1.73.
