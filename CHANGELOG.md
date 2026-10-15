@@ -9,10 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Added
 
-- **Import from Jean.** On first start Splitkick finds an existing Jean (or
-  JeanZ) data folder and offers to import a copy: projects, sessions, chat
-  history, saved contexts, settings and remote hosts. Jean's folder is only
-  read. Worktrees stay where they are. Jean's old defaults that clash are
+- **Import from JeanZ or Jean.** On first start Splitkick finds existing
+  JeanZ or Jean data and offers to import a copy: projects, sessions, chat
+  history, saved contexts, settings, window layout, remote hosts and browser
+  logins. Where both exist, JeanZ's copy wins. The source is only read. Worktrees stay where they are. Jean's old defaults that clash are
   replaced in the copy (Web Access port 3456 → 3460, 7-day archive deletion →
   never, delete on close → archive).
 

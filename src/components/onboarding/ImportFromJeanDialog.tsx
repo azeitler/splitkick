@@ -10,8 +10,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
-import { Label } from '@/components/ui/label'
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { PRODUCT_NAME } from '@/lib/build-info'
 import { formatRelativeTime, toMilliseconds } from '@/lib/relative-time'
 import {
@@ -44,7 +42,6 @@ export function ImportFromJeanDialog() {
   const patchPreferences = usePatchPreferences()
   const [importing, setImporting] = useState(false)
   const [summary, setSummary] = useState<ImportSummary | null>(null)
-  const [useJeanzState, setUseJeanzState] = useState(true)
 
   const source: ImportSource | undefined = sources?.[0]
   const open = !!source || !!summary
@@ -57,10 +54,7 @@ export function ImportFromJeanDialog() {
     if (!source) return
     setImporting(true)
     try {
-      const result = await importFromJean(
-        source.path,
-        source.hasJeanzState && useJeanzState
-      )
+      const result = await importFromJean(source.path)
       setSummary(result)
     } catch (error) {
       toast.error(`Import failed: ${error}`)
@@ -68,7 +62,7 @@ export function ImportFromJeanDialog() {
     } finally {
       setImporting(false)
     }
-  }, [source, useJeanzState, refetch])
+  }, [source, refetch])
 
   const restart = useCallback(async () => {
     const { relaunch } = await import('@tauri-apps/plugin-process')
@@ -121,6 +115,8 @@ export function ImportFromJeanDialog() {
 
   if (!source) return null
   const modified = formatModified(source.lastModified)
+  // Import chain: JeanZ's copy of every item wins over Jean's.
+  const appName = source.hasJeanzState ? 'JeanZ' : 'Jean'
 
   return (
     <Dialog open>
@@ -131,10 +127,11 @@ export function ImportFromJeanDialog() {
         showCloseButton={false}
       >
         <DialogHeader>
-          <DialogTitle>Import from Jean</DialogTitle>
+          <DialogTitle>Import from {appName}</DialogTitle>
           <DialogDescription>
-            {PRODUCT_NAME} found a Jean data folder on this Mac. Import a copy
-            to keep your projects, sessions, chat history and settings.
+            {PRODUCT_NAME} found {appName}&apos;s data on this Mac. Import a
+            copy to keep your projects, sessions, chat history, settings and
+            remote hosts.
           </DialogDescription>
         </DialogHeader>
 
@@ -147,29 +144,8 @@ export function ImportFromJeanDialog() {
           </p>
         </div>
 
-        {source.hasJeanzState && (
-          <RadioGroup
-            value={useJeanzState ? 'jeanz' : 'jean'}
-            onValueChange={value => setUseJeanzState(value === 'jeanz')}
-            className="gap-2 text-sm"
-          >
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="jeanz" id="import-jeanz" />
-              <Label htmlFor="import-jeanz">
-                Use JeanZ&apos;s layout and remote hosts
-              </Label>
-            </div>
-            <div className="flex items-center gap-2">
-              <RadioGroupItem value="jean" id="import-jean" />
-              <Label htmlFor="import-jean">
-                Use Jean&apos;s layout and remote hosts
-              </Label>
-            </div>
-          </RadioGroup>
-        )}
-
         <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted-foreground">
-          <li>The Jean folder is only read, never changed or moved.</li>
+          <li>{appName}&apos;s data is only read, never changed or moved.</li>
           <li>
             Worktrees stay where they are. New worktrees go to ~/splitkick.
           </li>

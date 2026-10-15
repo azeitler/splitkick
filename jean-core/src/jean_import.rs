@@ -30,8 +30,16 @@ const PRE_IMPORT_DIR: &str = ".pre-import";
 /// JeanZ shared Jean's folder and kept its own UI state and activity log.
 const JEANZ_UI_STATE: &str = "ui-state_jeanz.json";
 const JEANZ_ACTIVITY: &str = "activity_jeanz.jsonl";
-/// Bundle identifier of JeanZ, whose WebKit store holds its remote hosts.
+/// Bundle identifier of JeanZ. Its `Application Support` folder holds only
+/// the Tauri plugin state; its WebKit store holds its remote hosts.
 const JEANZ_IDENTIFIER: &str = "com.jean.desktop.jeanz";
+
+/// Import chain: for every item, JeanZ's copy wins over Jean's.
+/// The bundle identifiers whose per-app stores (WebKit, cookies) are copied.
+pub const SOURCE_IDENTIFIERS: [&str; 2] = [JEANZ_IDENTIFIER, crate::brand::JEAN_DATA_DIR_NAME];
+
+/// Tauri plugin state kept per bundle identifier, beside the data folder.
+const PLUGIN_STATE_FILES: [&str; 2] = [".window-state.json", ".persisted-scope"];
 
 /// Jean's old defaults that the import replaces (see `adjust_preferences`).
 const JEAN_DEFAULT_HTTP_PORT: u64 = 3456;
@@ -84,11 +92,9 @@ pub struct ImportSummary {
     pub legacy_mcp_mentions: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct StagedMarker {
-    /// WebKit store (bundle identifier) to copy on the next start.
-    webkit_source: String,
-}
+/// Written last by `stage_import`; its presence means the staging is complete.
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct StagedMarker {}
 
 fn data_dir(app: &AppHandle) -> Result<PathBuf, String> {
     app.path()
@@ -195,7 +201,6 @@ fn source_is_running(_source: &Path) -> bool {
 pub async fn import_from_jean(
     app: AppHandle,
     source_path: String,
-    use_jeanz_state: bool,
 ) -> Result<ImportSummary, String> {
     let target = data_dir(&app)?;
     tokio::task::spawn_blocking(move || {
@@ -213,24 +218,14 @@ pub async fn import_from_jean(
         if source_is_running(&source) {
             return Err("Jean is running. Quit Jean (and JeanZ), then import again.".into());
         }
-        let webkit_source = if use_jeanz_state {
-            JEANZ_IDENTIFIER
-        } else {
-            crate::brand::JEAN_DATA_DIR_NAME
-        };
-        stage_import(&source, &target, use_jeanz_state, webkit_source)
+        stage_import(&source, &target)
     })
     .await
     .map_err(|e| format!("Import failed: {e}"))?
 }
 
 /// Copy, rewrite and adjust into `<target>/.import-staged`, then write the marker.
-fn stage_import(
-    source: &Path,
-    target: &Path,
-    use_jeanz_state: bool,
-    webkit_source: &str,
-) -> Result<ImportSummary, String> {
+fn stage_import(source: &Path, target: &Path) -> Result<ImportSummary, String> {
     let staged = target.join(STAGED_DIR);
     let _ = fs::remove_dir_all(&staged);
     fs::create_dir_all(&staged).map_err(|e| format!("Failed to create staging folder: {e}"))?;
@@ -248,7 +243,10 @@ fn stage_import(
             }
             copy_entry(&entry.path(), &staged.join(&name), &mut summary)?;
         }
-        pick_ui_state(&staged, use_jeanz_state)?;
+        prefer_jeanz_state(&staged)?;
+        if let Some(jeanz_dir) = source.parent().map(|parent| parent.join(JEANZ_IDENTIFIER)) {
+            copy_jeanz_plugin_state(&jeanz_dir, &staged, &mut summary)?;
+        }
         rewrite_paths(&staged, source, target)?;
         adjust_preferences(&staged.join("preferences.json"), &mut summary)?;
         Ok(summary)
@@ -256,10 +254,8 @@ fn stage_import(
 
     match result {
         Ok(summary) => {
-            let marker = serde_json::to_string(&StagedMarker {
-                webkit_source: webkit_source.to_string(),
-            })
-            .map_err(|e| e.to_string())?;
+            let marker =
+                serde_json::to_string(&StagedMarker::default()).map_err(|e| e.to_string())?;
             let tmp = target.join(format!("{STAGED_MARKER}.tmp"));
             fs::write(&tmp, marker).map_err(|e| format!("Failed to write marker: {e}"))?;
             fs::rename(&tmp, target.join(STAGED_MARKER))
@@ -305,20 +301,33 @@ pub fn copy_entry(from: &Path, to: &Path, summary: &mut ImportSummary) -> Result
     Ok(())
 }
 
-/// A JeanZ user keeps JeanZ's UI state and activity log; a Jean user Jean's.
-fn pick_ui_state(staged: &Path, use_jeanz_state: bool) -> Result<(), String> {
+/// JeanZ's UI state and activity log win over Jean's when both exist.
+fn prefer_jeanz_state(staged: &Path) -> Result<(), String> {
     for (jeanz, plain) in [
         (JEANZ_UI_STATE, "ui-state.json"),
         (JEANZ_ACTIVITY, "activity.jsonl"),
     ] {
         let jeanz = staged.join(jeanz);
-        if !jeanz.exists() {
-            continue;
-        }
-        if use_jeanz_state {
+        if jeanz.exists() {
             fs::rename(&jeanz, staged.join(plain)).map_err(|e| format!("{jeanz:?}: {e}"))?;
-        } else {
-            fs::remove_file(&jeanz).map_err(|e| format!("{jeanz:?}: {e}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// JeanZ's window geometry and file grants live in its own
+/// `Application Support/com.jean.desktop.jeanz`; they win over Jean's copies.
+fn copy_jeanz_plugin_state(
+    jeanz_dir: &Path,
+    staged: &Path,
+    summary: &mut ImportSummary,
+) -> Result<(), String> {
+    for name in PLUGIN_STATE_FILES {
+        let from = jeanz_dir.join(name);
+        if from.is_file() {
+            let to = staged.join(name);
+            let _ = fs::remove_file(&to);
+            copy_entry(&from, &to, summary)?;
         }
     }
     Ok(())
@@ -419,19 +428,23 @@ fn collect_mcp_mentions(value: &Value, path: &str, out: &mut Vec<String>) {
 }
 
 /// Move a staged import into place. Call on startup, before anything reads
-/// the data folder. Returns the WebKit store to copy, when an import was applied.
-pub fn apply_staged_import(data_dir: &Path) -> Option<String> {
+/// the data folder. Returns true when an import was applied; the caller then
+/// copies the per-app stores (see [`SOURCE_IDENTIFIERS`]).
+pub fn apply_staged_import(data_dir: &Path) -> bool {
     let marker_path = data_dir.join(STAGED_MARKER);
     let staged = data_dir.join(STAGED_DIR);
-    let marker: StagedMarker =
-        serde_json::from_str(&fs::read_to_string(&marker_path).ok()?).ok()?;
+    if !marker_path.is_file() {
+        return false;
+    }
     if !staged.is_dir() {
         let _ = fs::remove_file(&marker_path);
-        return None;
+        return false;
     }
 
     let pre_import = data_dir.join(PRE_IMPORT_DIR);
-    let entries = fs::read_dir(&staged).ok()?;
+    let Ok(entries) = fs::read_dir(&staged) else {
+        return false;
+    };
     for entry in entries.flatten() {
         let name = entry.file_name();
         let dest = data_dir.join(&name);
@@ -449,7 +462,12 @@ pub fn apply_staged_import(data_dir: &Path) -> Option<String> {
     }
     let _ = fs::remove_dir_all(&staged);
     let _ = fs::remove_file(&marker_path);
-    Some(marker.webkit_source)
+    true
+}
+
+/// The first of `candidates` that exists: the import chain for one item.
+pub fn first_existing(candidates: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
+    candidates.into_iter().find(|path| path.exists())
 }
 
 fn unique_path(path: &Path) -> PathBuf {
@@ -503,6 +521,12 @@ mod tests {
         );
         write(&src.join("logs/app.log"), "log");
         write(&src.join("codex-app-server.pid"), "1");
+        // Stable Jean's plugin state in the shared folder; JeanZ's beside it.
+        write(&src.join(".window-state.json"), "jean-window");
+        write(
+            &root.join(JEANZ_IDENTIFIER).join(".window-state.json"),
+            "jeanz-window",
+        );
         src
     }
 
@@ -514,7 +538,7 @@ mod tests {
         fs::create_dir_all(&target).unwrap();
         let before = fs::read_to_string(src.join("preferences.json")).unwrap();
 
-        let summary = stage_import(&src, &target, true, JEANZ_IDENTIFIER).unwrap();
+        let summary = stage_import(&src, &target).unwrap();
 
         // Source unchanged
         assert_eq!(
@@ -527,12 +551,17 @@ mod tests {
         // Runtime files and logs are not copied
         assert!(!staged.join("logs").exists());
         assert!(!staged.join("codex-app-server.pid").exists());
-        // JeanZ state wins for a JeanZ user
+        // JeanZ wins over Jean: UI state, and the window state from
+        // JeanZ's own Application Support folder
         assert_eq!(
             fs::read_to_string(staged.join("ui-state.json")).unwrap(),
             r#"{"who":"jeanz"}"#
         );
         assert!(!staged.join(JEANZ_UI_STATE).exists());
+        assert_eq!(
+            fs::read_to_string(staged.join(".window-state.json")).unwrap(),
+            "jeanz-window"
+        );
         // Paths point at the copy, but not inside managed CLI folders
         let t = target.to_string_lossy();
         let meta = fs::read_to_string(staged.join("sessions/data/s1/metadata.json")).unwrap();
@@ -560,9 +589,11 @@ mod tests {
     }
 
     #[test]
-    fn a_jean_user_keeps_jean_state_and_custom_values() {
+    fn without_jeanz_the_chain_falls_back_to_jean() {
         let temp = tempfile::tempdir().unwrap();
         let src = jean_fixture(temp.path());
+        fs::remove_file(src.join(JEANZ_UI_STATE)).unwrap();
+        fs::remove_dir_all(temp.path().join(JEANZ_IDENTIFIER)).unwrap();
         write(
             &src.join("preferences.json"),
             r#"{"http_server_port":4000,"archive_retention_days":14,"removal_behavior":"archive"}"#,
@@ -570,14 +601,17 @@ mod tests {
         let target = temp.path().join("app.splitkick.desktop");
         fs::create_dir_all(&target).unwrap();
 
-        let summary = stage_import(&src, &target, false, "com.jean.desktop").unwrap();
+        let summary = stage_import(&src, &target).unwrap();
 
         let staged = target.join(STAGED_DIR);
         assert_eq!(
             fs::read_to_string(staged.join("ui-state.json")).unwrap(),
             r#"{"who":"jean"}"#
         );
-        assert!(!staged.join(JEANZ_UI_STATE).exists());
+        assert_eq!(
+            fs::read_to_string(staged.join(".window-state.json")).unwrap(),
+            "jean-window"
+        );
         let prefs: Value =
             serde_json::from_str(&fs::read_to_string(staged.join("preferences.json")).unwrap())
                 .unwrap();
@@ -592,11 +626,9 @@ mod tests {
         let src = jean_fixture(temp.path());
         let target = temp.path().join("app.splitkick.desktop");
         write(&target.join("preferences.json"), r#"{"fresh":true}"#);
-        stage_import(&src, &target, true, JEANZ_IDENTIFIER).unwrap();
+        stage_import(&src, &target).unwrap();
 
-        let webkit = apply_staged_import(&target);
-
-        assert_eq!(webkit.as_deref(), Some(JEANZ_IDENTIFIER));
+        assert!(apply_staged_import(&target));
         assert!(target.join("projects.json").exists());
         assert!(target.join("sessions/data/s1/metadata.json").exists());
         assert!(fs::read_to_string(target.join("preferences.json"))
@@ -609,7 +641,25 @@ mod tests {
         assert!(!target.join(STAGED_DIR).exists());
         assert!(!target.join(STAGED_MARKER).exists());
         // Nothing to apply the second time
-        assert_eq!(apply_staged_import(&target), None);
+        assert!(!apply_staged_import(&target));
+    }
+
+    #[test]
+    fn the_chain_takes_the_first_existing_store() {
+        let temp = tempfile::tempdir().unwrap();
+        let jeanz = temp.path().join(JEANZ_IDENTIFIER);
+        let jean = temp.path().join("com.jean.desktop");
+        let chain = || {
+            SOURCE_IDENTIFIERS
+                .iter()
+                .map(|id| temp.path().join(id))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(first_existing(chain()), None);
+        fs::create_dir_all(&jean).unwrap();
+        assert_eq!(first_existing(chain()), Some(jean));
+        fs::create_dir_all(&jeanz).unwrap();
+        assert_eq!(first_existing(chain()), Some(jeanz));
     }
 
     #[test]
@@ -638,10 +688,9 @@ mod tests {
             std::env::var("SPLITKICK_IMPORT_TARGET").expect("SPLITKICK_IMPORT_TARGET"),
         );
         fs::create_dir_all(&target).unwrap();
-        let use_jeanz = src.join(JEANZ_UI_STATE).exists();
-        let summary = stage_import(&src, &target, use_jeanz, JEANZ_IDENTIFIER).unwrap();
+        let summary = stage_import(&src, &target).unwrap();
         println!("{summary:#?}");
-        assert!(apply_staged_import(&target).is_some());
+        assert!(apply_staged_import(&target));
         let source_prefix = format!("{}/", src.to_string_lossy());
         let mut leftovers = 0;
         for entry in fs::read_dir(target.join("sessions/data"))
@@ -665,7 +714,7 @@ mod tests {
         let target = temp.path().join("app.splitkick.desktop");
         fs::create_dir_all(&target).unwrap();
 
-        assert!(stage_import(&src, &target, false, "com.jean.desktop").is_err());
+        assert!(stage_import(&src, &target).is_err());
         assert!(!target.join(STAGED_MARKER).exists());
         assert!(!target.join(STAGED_DIR).exists());
     }

@@ -1768,10 +1768,7 @@ pub async fn dispatch_command(
 
         "import_from_jean" => {
             let source_path: String = field(&args, "sourcePath", "source_path")?;
-            let use_jeanz_state: bool = field(&args, "useJeanzState", "use_jeanz_state")?;
-            let result =
-                crate::jean_import::import_from_jean(app.clone(), source_path, use_jeanz_state)
-                    .await?;
+            let result = crate::jean_import::import_from_jean(app.clone(), source_path).await?;
             to_value(result)
         }
 

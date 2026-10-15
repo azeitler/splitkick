@@ -67,11 +67,11 @@ fn apply_pending_import(identifier: &str) {
     let Some(data_dir) = jean_core::resolve_data_dir_for(identifier) else {
         return;
     };
-    let Some(_webkit_source) = jean_core::jean_import::apply_staged_import(&data_dir) else {
+    if !jean_core::jean_import::apply_staged_import(&data_dir) {
         return;
-    };
+    }
     #[cfg(target_os = "macos")]
-    platform::webkit_import::import_webkit_store(&_webkit_source, identifier, &data_dir);
+    platform::webkit_import::import_app_stores(identifier, &data_dir);
 }
 
 fn initialize_core(app: &mut tauri::App) -> Result<jean_core::RuntimeContext, String> {

@@ -177,8 +177,23 @@ On first start, `ImportFromJeanDialog` offers to import a copy of Jean's folder
 stages a copy in `<data>/.import-staged/`, rewrites absolute paths into Jean's
 folder, replaces Jean's clashing defaults and writes a marker; the next start
 moves the staged entries into place (`apply_pending_import` in
-`src-tauri/src/lib.rs`, before the WebView exists) and copies the WebKit store.
-Entries the fresh install had created are kept in `<data>/.pre-import/`.
+`src-tauri/src/lib.rs`, before the WebView exists) and copies the WebKit store
+and the cookies. Entries the fresh install had created are kept in
+`<data>/.pre-import/`.
+
+The import offers no choice. It follows one chain, item by item: **JeanZ's
+copy wins over Jean's**.
+
+| Item                      | JeanZ (first)                                          | Jean (fallback)                   |
+| ------------------------- | ------------------------------------------------------ | --------------------------------- |
+| Projects, sessions, prefs | — (JeanZ always kept them in `com.jean.desktop`)       | `com.jean.desktop`                |
+| UI state, activity log    | `ui-state_jeanz.json`, `activity_jeanz.jsonl`          | `ui-state.json`, `activity.jsonl` |
+| Window state, file grants | `Application Support/com.jean.desktop.jeanz/`          | `com.jean.desktop/`               |
+| WebKit store, cookies     | `WebKit/` and `HTTPStorages/` `com.jean.desktop.jeanz` | the same for `com.jean.desktop`   |
+
+Caches, logs and the macOS preferences plist are not imported.
+`com.jean.desktop.jeanz` never held project data: the JeanZ bundle id and the
+fixed data folder arrived in the same commit (`78a384e8`).
 
 Test against a copy instead of the real folder:
 `SPLITKICK_IMPORT_SOURCE=<copy> SPLITKICK_DATA_DIR=<empty dir> <app binary>`.

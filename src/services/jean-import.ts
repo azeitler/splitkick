@@ -6,7 +6,7 @@ import { usePreferences } from '@/services/preferences'
 /** An existing Jean data folder Splitkick can import (jean_core::jean_import). */
 export interface ImportSource {
   path: string
-  /** The folder holds JeanZ's own UI state, so the user ran JeanZ. */
+  /** JeanZ's data is present; its copy of every item wins over Jean's. */
   hasJeanzState: boolean
   projectCount: number
   worktreeCount: number
@@ -62,12 +62,7 @@ export function useJeanImportPending(): boolean {
   return isPending || (sources?.length ?? 0) > 0
 }
 
-export function importFromJean(
-  sourcePath: string,
-  useJeanzState: boolean
-): Promise<ImportSummary> {
-  return invoke<ImportSummary>('import_from_jean', {
-    sourcePath,
-    useJeanzState,
-  })
+/** Import chain: JeanZ's copy of every item wins over Jean's. */
+export function importFromJean(sourcePath: string): Promise<ImportSummary> {
+  return invoke<ImportSummary>('import_from_jean', { sourcePath })
 }

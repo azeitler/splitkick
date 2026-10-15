@@ -56,7 +56,7 @@ Splitkick installs next to Jean. It has its own bundle identifier (`app.splitkic
 
 ### Coming from Jean or JeanZ
 
-On first start Splitkick finds an existing Jean data folder and offers to **import a copy**. The Jean folder is only read, never changed. Worktrees stay where they are (`~/jean/<project>/`); new worktrees go to `~/splitkick/<project>/`. A `jean.json` in your repositories keeps working; Splitkick reads it when there is no `splitkick.json`.
+On first start Splitkick finds existing JeanZ or Jean data and offers to **import a copy**; where both exist, JeanZ's copy wins. The source is only read, never changed. Worktrees stay where they are (`~/jean/<project>/`); new worktrees go to `~/splitkick/<project>/`. A `jean.json` in your repositories keeps working; Splitkick reads it when there is no `splitkick.json`.
 
 ### Building from source
 

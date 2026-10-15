@@ -48,11 +48,12 @@ describe('ImportFromJeanDialog', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
   })
 
-  it('describes the found folder', () => {
+  it('names JeanZ when its data is present, and offers no choice', () => {
     render(<ImportFromJeanDialog />)
     expect(
-      screen.getByRole('dialog', { name: 'Import from Jean' })
+      screen.getByRole('dialog', { name: 'Import from JeanZ' })
     ).toBeInTheDocument()
+    expect(screen.queryByRole('radio')).not.toBeInTheDocument()
     expect(screen.getByText(source.path)).toBeInTheDocument()
     expect(screen.getByText(/3 projects · 7 worktrees · 42 sessions/))
   })
@@ -66,7 +67,7 @@ describe('ImportFromJeanDialog', () => {
     })
   })
 
-  it('imports JeanZ state by default and shows the summary', async () => {
+  it('imports and shows the summary', async () => {
     mocks.importFromJean.mockResolvedValue({
       sourcePath: source.path,
       copiedFiles: 1200,
@@ -79,7 +80,7 @@ describe('ImportFromJeanDialog', () => {
 
     await user.click(screen.getByRole('button', { name: 'Import a copy' }))
 
-    expect(mocks.importFromJean).toHaveBeenCalledWith(source.path, true)
+    expect(mocks.importFromJean).toHaveBeenCalledWith(source.path)
     expect(
       await screen.findByRole('dialog', { name: 'Import ready' })
     ).toBeInTheDocument()
@@ -89,19 +90,12 @@ describe('ImportFromJeanDialog', () => {
     ).toBeInTheDocument()
   })
 
-  it('imports Jean state when the user picks it', async () => {
-    mocks.importFromJean.mockResolvedValue({
-      sourcePath: source.path,
-      copiedFiles: 1,
-      copiedBytes: 1,
-      changes: [],
-      legacyMcpMentions: [],
-    })
-    const user = userEvent.setup()
+  it('names Jean when there is no JeanZ data', () => {
+    mocks.sources = [{ ...source, hasJeanzState: false }]
     render(<ImportFromJeanDialog />)
-    await user.click(screen.getByLabelText(/Use Jean's layout/))
-    await user.click(screen.getByRole('button', { name: 'Import a copy' }))
-    expect(mocks.importFromJean).toHaveBeenCalledWith(source.path, false)
+    expect(
+      screen.getByRole('dialog', { name: 'Import from Jean' })
+    ).toBeInTheDocument()
   })
 
   it('asks to quit Jean while it runs', () => {
