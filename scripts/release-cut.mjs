@@ -86,10 +86,16 @@ export function cutChangelog(markdown, { version, date, upstream }) {
   )
 }
 
-/** Set `version` in the Splitkick overlay, keeping the rest of the file. */
+/**
+ * Set `version` in the Splitkick overlay. Only that line changes, so the
+ * file keeps its formatting.
+ */
 export function setOverlayVersion(json, version) {
-  const config = JSON.parse(json)
-  return `${JSON.stringify({ ...config, version }, null, 2)}\n`
+  const line = /^(\s*"version":\s*)"[^"]*"/m
+  if (!line.test(json)) {
+    throw new Error('tauri.fork.conf.json has no "version" line')
+  }
+  return json.replace(line, `$1${JSON.stringify(version)}`)
 }
 
 /**

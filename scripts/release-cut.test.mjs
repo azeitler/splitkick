@@ -110,9 +110,10 @@ test('cutting twice in a row is refused, not silently repeated', () => {
   assert.throws(() => cutChangelog(once, OPTIONS), /already has a section/)
 })
 
-test('sets the version in the overlay and keeps the rest', () => {
-  const json = '{\n  "productName": "Splitkick",\n  "version": "1.0.0"\n}\n'
-  const out = JSON.parse(setOverlayVersion(json, '1.0.1'))
-  assert.equal(out.version, '1.0.1')
-  assert.equal(out.productName, 'Splitkick')
+test('sets the version in the overlay and keeps its formatting', () => {
+  const json =
+    '{\n  "productName": "Splitkick",\n  "version": "1.0.0",\n  "pos": { "x": 20, "y": 20 }\n}\n'
+  const out = setOverlayVersion(json, '1.0.1')
+  assert.equal(JSON.parse(out).version, '1.0.1')
+  assert.equal(out, json.replace('"1.0.0"', '"1.0.1"'))
 })
