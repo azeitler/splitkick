@@ -27,24 +27,16 @@ A native desktop app (Tauri) that runs the agent CLIs you already have, across m
 
 ## Screenshots
 
+<img src="screenshots/splitkick-session-dark.png" alt="A worktree with two sessions: the agent fixed a rounding bug and reports the result as a table" />
+
 <table>
 <tr>
-<td><img src="screenshots/SCR-20260304-krym.png" width="400" alt="Screenshot 1" /></td>
-<td><img src="screenshots/SCR-20260304-ksgh.png" width="400" alt="Screenshot 2" /></td>
-</tr>
-<tr>
-<td><img src="screenshots/SCR-20260304-ksjn.png" width="400" alt="Screenshot 3" /></td>
-<td><img src="screenshots/SCR-20260304-ksnq.png" width="400" alt="Screenshot 4" /></td>
-</tr>
-<tr>
-<td><img src="screenshots/SCR-20260304-kstl.png" width="400" alt="Screenshot 5" /></td>
-<td><img src="screenshots/SCR-20260304-ktab.png" width="400" alt="Screenshot 6" /></td>
-</tr>
-<tr>
-<td><img src="screenshots/SCR-20260304-ktwr.png" width="400" alt="Screenshot 7" /></td>
-<td><img src="screenshots/SCR-20260304-kuhk.png" width="400" alt="Screenshot 8" /></td>
+<td><img src="screenshots/splitkick-session-tools.png" alt="The same session with the agent's steps expanded: an edit and a test run" /></td>
+<td><img src="screenshots/splitkick-home.png" alt="Home: recent sessions across all projects, and the project list" /></td>
 </tr>
 </table>
+
+_Demo projects and sessions._
 
 ## Installation
 
@@ -85,11 +77,13 @@ Report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
 
 ## Credits
 
-Splitkick is built on Jean. Jean, and almost all of the code in this repository, is the work of Andras Bacsai and the upstream contributors.
+Splitkick is made by **Andreas Zeitler** (Planetfall Software).
 
-|                                                                                                                                                                            Andras Bacsai                                                                                                                                                                             |
-| :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------: |
-|                                                                                                                                         <img src="https://github.com/andrasbacsai.png" width="200px" alt="Andras Bacsai" />                                                                                                                                          |
-| <a href="https://github.com/andrasbacsai"><img src="https://api.iconify.design/devicon:github.svg" width="25px"></a> <a href="https://x.com/heyandras"><img src="https://api.iconify.design/devicon:twitter.svg" width="25px"></a> <a href="https://bsky.app/profile/heyandras.dev"><img src="https://api.iconify.design/simple-icons:bluesky.svg" width="25px"></a> |
+<img src="https://github.com/azeitler.png" width="160px" alt="Andreas Zeitler" />
 
-Splitkick is maintained by [Andreas Zeitler](https://github.com/azeitler) (Planetfall Software).
+<a href="https://github.com/azeitler"><img src="https://api.iconify.design/devicon:github.svg" width="25px" alt="GitHub"></a>
+<a href="https://linkedin.com/in/azeitler/"><img src="https://api.iconify.design/devicon:linkedin.svg" width="25px" alt="LinkedIn"></a>
+<a href="https://splitkick.app"><img src="src-tauri/icons-fork/source/favicon.svg" width="25px" alt="splitkick.app"></a>
+<a href="https://planetfall.co"><img src="https://api.iconify.design/mdi:web.svg" width="25px" alt="planetfall.co"></a>
+
+Splitkick is built on [Jean](https://github.com/coollabsio/jean). Jean, and almost all of the code in this repository, is the work of [Andras Bacsai](https://github.com/andrasbacsai) ([coolLabs](https://coollabs.io)) and the upstream contributors.
