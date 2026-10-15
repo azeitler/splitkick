@@ -9,6 +9,10 @@
 //!   tree, so a whole-tree copy lands `localStorage` where the WebView looks.
 //! - `~/Library/HTTPStorages/<identifier>.binarycookies`: cookies, e.g. logins
 //!   in the browser pane.
+//! - The macOS defaults domain (`~/Library/Preferences/<identifier>.plist`):
+//!   Open/Save dialog size and last folder, panel positions. Copied with
+//!   `defaults export` / `defaults import`, because `cfprefsd` caches the
+//!   plist and would ignore or overwrite a plain file copy.
 //!
 //! Each store follows the import chain: JeanZ's copy if it exists, otherwise
 //! Jean's (`jean_core::jean_import::SOURCE_IDENTIFIERS`). The copy runs on the
@@ -38,6 +42,43 @@ pub fn import_app_stores(identifier: &str, data_dir: &Path) {
         cookies.join(format!("{identifier}.binarycookies")),
         &data_dir.join(".pre-import").join("cookies.binarycookies"),
     );
+    import_defaults(&library.join("Preferences"), identifier, data_dir);
+}
+
+/// Copy the first existing source's defaults domain into `identifier`'s.
+/// The fresh install's own domain is exported to `.pre-import/` first.
+fn import_defaults(preferences: &Path, identifier: &str, data_dir: &Path) {
+    let Some(source) = SOURCE_IDENTIFIERS
+        .iter()
+        .find(|id| preferences.join(format!("{id}.plist")).is_file())
+    else {
+        return;
+    };
+    let kept = data_dir.join(".pre-import").join("defaults.plist");
+    if preferences.join(format!("{identifier}.plist")).is_file() {
+        let _ = std::fs::create_dir_all(data_dir.join(".pre-import"));
+        let _ = defaults(&["export", identifier, &kept.to_string_lossy()]);
+    }
+    let exported = data_dir.join(".pre-import").join("imported-defaults.plist");
+    let _ = std::fs::create_dir_all(data_dir.join(".pre-import"));
+    if let Err(error) = defaults(&["export", source, &exported.to_string_lossy()])
+        .and_then(|()| defaults(&["import", identifier, &exported.to_string_lossy()]))
+    {
+        eprintln!("Import: could not copy the {source} defaults: {error}");
+    }
+    let _ = std::fs::remove_file(&exported);
+}
+
+fn defaults(args: &[&str]) -> Result<(), String> {
+    let output = std::process::Command::new("/usr/bin/defaults")
+        .args(args)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&output.stderr).trim().to_string())
+    }
 }
 
 /// Replace `dest` with a copy of the first existing source.

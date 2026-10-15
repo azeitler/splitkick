@@ -184,14 +184,15 @@ and the cookies. Entries the fresh install had created are kept in
 The import offers no choice. It follows one chain, item by item: **JeanZ's
 copy wins over Jean's**.
 
-| Item                      | JeanZ (first)                                          | Jean (fallback)                   |
-| ------------------------- | ------------------------------------------------------ | --------------------------------- |
-| Projects, sessions, prefs | — (JeanZ always kept them in `com.jean.desktop`)       | `com.jean.desktop`                |
-| UI state, activity log    | `ui-state_jeanz.json`, `activity_jeanz.jsonl`          | `ui-state.json`, `activity.jsonl` |
-| Window state, file grants | `Application Support/com.jean.desktop.jeanz/`          | `com.jean.desktop/`               |
-| WebKit store, cookies     | `WebKit/` and `HTTPStorages/` `com.jean.desktop.jeanz` | the same for `com.jean.desktop`   |
+| Item                      | JeanZ (first)                                                   | Jean (fallback)                   |
+| ------------------------- | --------------------------------------------------------------- | --------------------------------- |
+| Projects, sessions, prefs | — (JeanZ always kept them in `com.jean.desktop`)                | `com.jean.desktop`                |
+| UI state, activity log    | `ui-state_jeanz.json`, `activity_jeanz.jsonl`                   | `ui-state.json`, `activity.jsonl` |
+| Window state, file grants | `Application Support/com.jean.desktop.jeanz/`                   | `com.jean.desktop/`               |
+| WebKit store, cookies     | `WebKit/` and `HTTPStorages/` `com.jean.desktop.jeanz`          | the same for `com.jean.desktop`   |
+| macOS defaults (plist)    | `com.jean.desktop.jeanz` domain, via `defaults export`/`import` | `com.jean.desktop` domain         |
 
-Caches, logs and the macOS preferences plist are not imported.
+Caches and logs are not imported.
 `com.jean.desktop.jeanz` never held project data: the JeanZ bundle id and the
 fixed data folder arrived in the same commit (`78a384e8`).
 
