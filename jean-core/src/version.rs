@@ -31,15 +31,15 @@ static RELEASE_VERSION: OnceLock<String> = OnceLock::new();
 /// Record the version the build was *released* as, when it differs from the
 /// Cargo version. Safe to call more than once; the first value wins.
 ///
-/// A JeanZ release keeps `Cargo.toml` at the upstream version (`0.1.73`) and
-/// gets its fork suffix (`0.1.73-z.11`) only from CI, as a `tauri build -c`
-/// layer — so the bundle carries it, `CARGO_PKG_VERSION` does not. The desktop
-/// shell passes the bundle version here.
+/// `Cargo.toml` stays at the upstream version (`0.1.73`); the Splitkick
+/// version lives in `src-tauri/tauri.fork.conf.json`, so the bundle carries
+/// it and `CARGO_PKG_VERSION` does not. The desktop shell passes the bundle
+/// version here and to [`set_app_version`]; the web build bakes in the same
+/// version (`vite.config.ts`), so the remote-version check compares like with
+/// like.
 ///
-/// Only the update check reads it: it must compare the installed build against
-/// the release feed the way the native updater does. `app_version()` stays the
-/// plain version, because the remote-version check compares it with the
-/// client's own plain `package.json` version.
+/// The update check reads it: it must compare the installed build against
+/// the release feed the way the native updater does.
 pub fn set_release_version(version: impl Into<String>) {
     let _ = RELEASE_VERSION.set(version.into());
 }

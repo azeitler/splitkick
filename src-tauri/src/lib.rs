@@ -316,8 +316,12 @@ fn setup_runtime(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>>
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Product version must be the desktop package, not jean-core's library version.
-    jean_core::set_app_version(env!("CARGO_PKG_VERSION"));
+    // Product version is the bundle version (the Splitkick version from
+    // tauri.fork.conf.json), not the upstream version in Cargo.toml.
+    let context = tauri::generate_context!();
+    let version: &'static str =
+        Box::leak(context.package_info().version.to_string().into_boxed_str());
+    jean_core::set_app_version(version);
 
     if should_run_server() {
         let runtime = tokio::runtime::Builder::new_multi_thread()
@@ -349,7 +353,6 @@ pub fn run() {
     // An import from Jean is staged by the running app and applied here, on
     // the next start: before anything reads the data folder, and before the
     // main window (with its WebView) exists. See jean_core::jean_import.
-    let context = tauri::generate_context!();
     apply_pending_import(&context.config().identifier);
 
     tauri::Builder::default()

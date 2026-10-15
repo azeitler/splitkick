@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every version display shows the Splitkick version.** The connection
+  windows, the sidebar and Web Access said 0.1.73, the version of the Jean
+  base, instead of the Splitkick version.
+
 ## [1.0.0-rc.2] - 2026-10-15
 
 Built on Jean 0.1.73.

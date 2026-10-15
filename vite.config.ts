@@ -24,15 +24,23 @@ function gitSha(): string {
   }
 }
 
+/**
+ * The Splitkick version (src-tauri/tauri.fork.conf.json, set by
+ * `bun run release:cut`). package.json keeps upstream's version, so it is
+ * only the fallback.
+ */
 function packageVersion(): string {
-  try {
-    const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as {
-      version?: string
+  for (const file of ['src-tauri/tauri.fork.conf.json', 'package.json']) {
+    try {
+      const { version } = JSON.parse(readFileSync(file, 'utf8')) as {
+        version?: string
+      }
+      if (version) return version
+    } catch {
+      // Try the next file.
     }
-    return pkg.version ?? '0.0.0'
-  } catch {
-    return '0.0.0'
   }
+  return '0.0.0'
 }
 
 /** Upstream Jean version this build is based on (tauri.conf.json). */
