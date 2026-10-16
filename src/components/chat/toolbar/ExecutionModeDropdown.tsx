@@ -77,7 +77,7 @@ export function ExecutionModeDropdown({
               type="button"
               disabled={disabled}
               className={cn(
-                'flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
+                'rounded-md flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50',
                 className
               )}
             >

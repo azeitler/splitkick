@@ -67,7 +67,7 @@ export function useWorktreeTerminalStatus(worktreeId: string) {
 
 /**
  * Terminal status indicator with tooltip showing running/failed status and listening ports.
- * Running: yellow square-spinner (original style). Failed: red square.
+ * Running: orange square-spinner (--brand). Failed: red square.
  * Returns null when no run-script terminals are active or failed.
  */
 export function TerminalStatusIndicator({
@@ -89,9 +89,7 @@ export function TerminalStatusIndicator({
           className={cn(
             'shrink-0 fill-none',
             iconSize,
-            hasFailedTerminal
-              ? 'text-red-500'
-              : 'text-amber-500 dark:text-yellow-400 animate-icon-glow'
+            hasFailedTerminal ? 'text-red-500' : 'text-brand animate-icon-glow'
           )}
         />
       </TooltipTrigger>

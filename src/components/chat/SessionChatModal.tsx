@@ -1090,7 +1090,7 @@ export function SessionChatModal({
               onClick={handleRun}
             >
               <Play
-                className={`h-3 w-3 ${hasFailedTerminal ? 'text-red-500' : hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
+                className={`h-3 w-3 ${hasFailedTerminal ? 'text-red-500' : hasRunningTerminal ? 'text-brand animate-icon-glow' : ''}`}
               />
             </Button>
           </TooltipTrigger>
@@ -1116,7 +1116,7 @@ export function SessionChatModal({
                 onClick={handleRun}
               >
                 <Play
-                  className={`h-3 w-3 ${hasFailedTerminal ? 'text-red-500' : hasRunningTerminal ? 'text-amber-500 dark:text-yellow-400 animate-icon-glow' : ''}`}
+                  className={`h-3 w-3 ${hasFailedTerminal ? 'text-red-500' : hasRunningTerminal ? 'text-brand animate-icon-glow' : ''}`}
                 />
               </Button>
             </TooltipTrigger>

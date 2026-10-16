@@ -40,7 +40,7 @@ export function SendCancelButton({
             onClick={onCancel}
             className={cn(
               heightClass,
-              'flex items-center justify-center gap-1.5 px-3 text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90'
+              'flex items-center justify-center gap-1.5 rounded-md px-3 text-xs font-medium transition-colors bg-primary text-primary-foreground hover:bg-primary/90'
             )}
           >
             <span>{queuedMessageCount ? 'Skip to Next' : 'Cancel'}</span>
@@ -85,7 +85,7 @@ export function SendCancelButton({
                 aria-label={actionLabel}
                 className={cn(
                   heightClass,
-                  'flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium transition-colors text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+                  'rounded-md flex items-center justify-center gap-1.5 px-2.5 text-xs font-medium transition-colors text-muted-foreground hover:bg-muted/80 hover:text-foreground'
                 )}
               >
                 <span>{actionLabel}</span>
@@ -111,10 +111,10 @@ export function SendCancelButton({
           disabled={!canSend}
           className={cn(
             heightClass,
-            'flex items-center justify-center px-3 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
+            'flex items-center justify-center rounded-md px-3 text-xs font-medium transition-colors disabled:pointer-events-none disabled:opacity-50',
             canSend
               ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-              : 'text-muted-foreground hover:bg-muted/80 hover:text-foreground'
+              : 'rounded-md text-muted-foreground hover:bg-muted/80 hover:text-foreground'
           )}
         >
           <span>Send</span>

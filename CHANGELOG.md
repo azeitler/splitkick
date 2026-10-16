@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Splitkick orange instead of Jean's yellow.** The dark theme's accent
+  (Send, focus rings, selection) and the "running" indicators in both themes
+  use Splitkick orange. Yellow stays for things that wait for you.
+- **Rounded buttons in the chat input.** Send, Cancel and the controls next to
+  them (model, effort, mode, attachments) have rounded corners.
+
 ### Fixed
 
 - **The DMG download is notarized, not only the app inside it.** macOS

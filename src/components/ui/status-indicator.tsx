@@ -82,7 +82,7 @@ export function StatusIndicator({
         ? 'border-t-destructive bg-destructive/10 forced-colors:border-t-[Highlight]'
         : variant === 'loading'
           ? 'border-t-cyan-500 bg-cyan-500/10 forced-colors:border-t-[Highlight]'
-          : 'border-t-yellow-500 bg-yellow-500/10 forced-colors:border-t-[Highlight]'
+          : 'border-t-brand bg-brand/10 forced-colors:border-t-[Highlight]'
 
     return (
       <span
@@ -97,7 +97,7 @@ export function StatusIndicator({
             ? 'motion-reduce:text-destructive'
             : variant === 'loading'
               ? 'motion-reduce:text-cyan-500'
-              : 'motion-reduce:text-yellow-500',
+              : 'motion-reduce:text-brand',
           shapeClass,
           colorClass,
           className

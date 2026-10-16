@@ -185,7 +185,7 @@ export function DockBurgerButton({
               type="button"
               aria-label={`Menu (${menuShortcut})`}
               className={cn(
-                'flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground',
+                'rounded-md flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground',
                 className
               )}
             >

@@ -547,7 +547,7 @@ export function MobileSettingsMenu({
           <button
             type="button"
             aria-label="Settings"
-            className="flex @xl:hidden h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="rounded-md flex @xl:hidden h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
             disabled={isDisabled}
           >
             <Settings className="h-4 w-4" />

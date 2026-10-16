@@ -17,6 +17,7 @@
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
+  --color-brand: var(--brand);
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -46,6 +47,9 @@
 }
 
 :root {
+  /* Splitkick orange (brand palette: navy #141C2E, orange #FF5A1F, paper #F4F1EC).
+     Accent in the dark theme, and the colour of "running" in both themes. */
+  --brand: #ff5a1f;
   /* Prefer light native form controls (number spinners, etc.) */
   color-scheme: light;
 
@@ -124,15 +128,15 @@
   color-scheme: dark;
 
   /* macOS dark grays (unified toolbar redesign, 2026-10-14): content
-     #1e1e1e, sidebar #2b2b2d. Yellow stays the accent. */
+     #1e1e1e, sidebar #2b2b2d. The accent is Splitkick orange (--brand). */
   --background: #1e1e1e; /* macOS dark window background */
   --foreground: #fafafa; /* light text */
   --card: #252525; /* one step above the background */
   --card-foreground: #fafafa;
   --popover: #2a2a2a; /* menus float above cards */
   --popover-foreground: #fafafa;
-  --primary: #fcd452; /* yellow accent */
-  --primary-foreground: #1e1e1e; /* dark text on yellow */
+  --primary: var(--brand); /* Splitkick orange accent */
+  --primary-foreground: #141c2e; /* Splitkick navy on orange (5.9:1) */
   --secondary: #2a2a2a;
   --secondary-foreground: #fafafa;
   --muted: #2c2c2c;
@@ -144,20 +148,20 @@
   --success: #22c55e; /* green */
   --border: #3a3a3a;
   --input: #3a3a3a;
-  --ring: #fcd452; /* yellow focus ring */
-  --chart-1: #fcd452;
+  --ring: var(--brand); /* orange focus ring */
+  --chart-1: var(--brand);
   --chart-2: #22c55e;
   --chart-3: #6b16ed;
   --chart-4: #dc2626;
   --chart-5: #3b82f6;
   --sidebar: #2b2b2d; /* lighter than the content, as a macOS sidebar */
   --sidebar-foreground: #fafafa;
-  --sidebar-primary: #fcd452; /* yellow */
-  --sidebar-primary-foreground: #101010;
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: #141c2e;
   --sidebar-accent: #3a3a3c;
   --sidebar-accent-foreground: #fafafa;
   --sidebar-border: #3d3d3f;
-  --sidebar-ring: #fcd452;
+  --sidebar-ring: var(--brand);
   --toast-background: #333333; /* distinct from app bg (#1e1e1e) and cards (#252525) */
   --toast-border: #3a3a3a;
 }
@@ -209,7 +213,7 @@
 
 /* Square spinner: rotating conic-gradient border */
 .square-spinner {
-  --spinner-color: oklch(0.795 0.184 86.047); /* yellow-500 */
+  --spinner-color: var(--brand); /* Splitkick orange: running */
   position: relative;
   background: color-mix(in srgb, var(--spinner-color) 10%, transparent);
   border-radius: 2px;
@@ -259,7 +263,7 @@
    Uses transform:rotate on an oversized conic-gradient pseudo-element
    (WebKit doesn't support @property animation needed for the from-angle approach). */
 .card-border-spin {
-  --card-spin-color: oklch(0.795 0.184 86.047); /* yellow-500 */
+  --card-spin-color: var(--brand); /* Splitkick orange: running */
   position: relative;
   overflow: hidden;
   border-radius: calc(var(--radius) - 2px);

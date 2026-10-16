@@ -313,7 +313,7 @@ export function DesktopToolbarControls({
           <button
             type="button"
             aria-label="Magic"
-            className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="rounded-md hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={onOpenMagicModal}
           >
             <Wand2 className="h-3.5 w-3.5" />
@@ -328,7 +328,7 @@ export function DesktopToolbarControls({
             type="button"
             aria-label="Attachments"
             disabled={hasPendingQuestions}
-            className="hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+            className="rounded-md hidden @xl:flex h-8 items-center gap-1 px-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
             onClick={onAttach}
           >
             <Paperclip className="h-3.5 w-3.5" />
@@ -352,7 +352,7 @@ export function DesktopToolbarControls({
               <button
                 type="button"
                 aria-label="Loaded contexts"
-                className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
+                className="rounded-md hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground"
               >
                 <CircleDot className="h-3.5 w-3.5" />
                 <span>
@@ -628,7 +628,7 @@ export function DesktopToolbarControls({
                 target="_blank"
                 rel="noopener noreferrer"
                 className={cn(
-                  'hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium transition-colors select-none hover:bg-muted/80 hover:text-foreground',
+                  'rounded-md hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium transition-colors select-none hover:bg-muted/80 hover:text-foreground',
                   displayStatus
                     ? getPrStatusDisplay(displayStatus).className
                     : 'text-muted-foreground'
@@ -658,7 +658,7 @@ export function DesktopToolbarControls({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-amber-600 dark:text-amber-400 transition-colors cursor-pointer hover:bg-muted/80"
+                className="rounded-md hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-amber-600 dark:text-amber-400 transition-colors cursor-pointer hover:bg-muted/80"
                 onClick={onResolvePrConflicts}
               >
                 <GitMerge className="h-3 w-3" />
@@ -684,7 +684,7 @@ export function DesktopToolbarControls({
                 <DropdownMenuTrigger asChild>
                   <button
                     type="button"
-                    className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                    className="rounded-md hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                   >
                     <span>{providerDisplayName}</span>
                   </button>
@@ -762,7 +762,7 @@ export function DesktopToolbarControls({
         disabled={false}
         sessionHasMessages={sessionHasMessages}
         providerLocked={providerLocked}
-        triggerClassName="rounded-none border-0 bg-transparent px-3"
+        triggerClassName="rounded-md border-0 bg-transparent px-3"
         selectedBackend={selectedBackend}
         selectedModel={selectedModel}
         selectedProvider={selectedProvider}
@@ -786,7 +786,7 @@ export function DesktopToolbarControls({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                  className="rounded-md hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
                   <Brain className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
                   <span>{displayedEffortLabel}</span>
@@ -829,7 +829,7 @@ export function DesktopToolbarControls({
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  className="hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
+                  className="rounded-md hidden @xl:flex h-8 items-center gap-1.5 px-3 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/80 hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
                 >
                   <Brain
                     className={cn(
