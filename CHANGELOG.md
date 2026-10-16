@@ -12,6 +12,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Sessions sit one step in from their status group in the sidebar.** The
   group labels (Waiting, Review, Idle, …) were indented as far as their
   sessions, so a group read as one more session row. (#39)
+- **Paused, Review and Idle apply to a session stuck in Waiting again.** A
+  leftover waiting flag with no question or plan behind it counted as an open
+  question, and an open question outranks those statuses, so picking them did
+  nothing. A real pending question or plan still keeps its priority. (#40)
 
 ## [1.0.1] - 2026-10-16
 

@@ -625,10 +625,12 @@ export function computeSessionCardData(
   // Use waiting_for_input_type to disambiguate when messages haven't loaded yet
   // For backwards compatibility: if type is not set, infer from pending_plan_message_id
   // - If pending_plan_message_id exists → it's a plan
-  // - If waiting but no pending_plan_message_id → it's likely a question
+  // - Otherwise nothing is known to be pending: leave it a bare `waiting`, which
+  //   a manual status may override. Inferring a question here pinned stale
+  //   flags to `input_required`, where Paused/Review/Idle never applied (#40).
+  //   A real pending question is still found in the messages above.
   const inferredWaitingType =
-    session.waiting_for_input_type ??
-    (pendingPlanMessageId ? 'plan' : 'question')
+    session.waiting_for_input_type ?? (pendingPlanMessageId ? 'plan' : null)
   // When sessionSending is true, persisted waiting flags are stale (same as isWaiting above)
   const hasExitPlanMode = sessionSending
     ? hasStreamingExitPlan || hasPendingExitPlan

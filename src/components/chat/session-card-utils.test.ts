@@ -499,6 +499,62 @@ describe('computeSessionCardData', () => {
     expect(card.status).toBe('review')
   })
 
+  // A persisted flag with no type, no pending plan and no pending question used
+  // to be inferred as a question, so Paused/Review/Idle never applied (#40).
+  it.each(['paused', 'review', 'idle'] as const)(
+    'lets a %s override win over a persisted flag with no waiting type',
+    override => {
+      const session = createBaseSession({
+        waiting_for_input: true,
+        waiting_for_input_type: null,
+        status_override: override,
+      })
+
+      const card = computeSessionCardData(session, createBaseStoreState())
+
+      expect(card.automaticStatus).toBe('waiting')
+      expect(card.hasQuestion).toBe(false)
+      expect(card.status).toBe(override)
+    }
+  )
+
+  it('still finds a real question behind a flag with no waiting type', () => {
+    const session = createBaseSession({
+      waiting_for_input: true,
+      waiting_for_input_type: null,
+      status_override: 'review',
+      messages: [
+        {
+          id: 'msg-1',
+          session_id: 'session-1',
+          role: 'assistant',
+          content: '',
+          timestamp: 1,
+          tool_calls: [
+            { id: 'q-1', name: 'AskUserQuestion', input: { questions: [] } },
+          ],
+        },
+      ],
+    })
+
+    const card = computeSessionCardData(session, createBaseStoreState())
+
+    expect(card.automaticStatus).toBe('input_required')
+    expect(card.status).toBe('input_required')
+  })
+
+  it('still reads a pending plan behind a flag with no waiting type', () => {
+    const session = createBaseSession({
+      waiting_for_input: true,
+      waiting_for_input_type: null,
+      pending_plan_message_id: 'msg-plan',
+    })
+
+    const card = computeSessionCardData(session, createBaseStoreState())
+
+    expect(card.automaticStatus).toBe('plan_approval')
+  })
+
   it('ignores a stale persisted waiting flag while a new turn is sending', () => {
     const session = createBaseSession({
       waiting_for_input: true,
