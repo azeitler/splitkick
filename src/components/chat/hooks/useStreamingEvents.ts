@@ -387,6 +387,13 @@ export default function useStreamingEvents({
           state.reviewingSessions
         return { waitingForInputSessionIds, reviewingSessions }
       })
+      // Claude reports denials with the end of a turn, so any still pending
+      // here belong to the previous one. In yolo mode the approval panel is
+      // hidden and nothing else clears them, and `permission` outranks every
+      // manual status (the backend clears its copy in send_chat_message).
+      if (useChatStore.getState().pendingPermissionDenials[session_id]) {
+        useChatStore.getState().clearPendingDenials(session_id)
+      }
       addSendingSession(session_id)
       queryClient.setQueryData<Session>(
         chatQueryKeys.session(session_id),
@@ -396,6 +403,7 @@ export default function useStreamingEvents({
                 ...old,
                 waiting_for_input: false,
                 waiting_for_input_type: null,
+                pending_permission_denials: [],
                 is_reviewing: false,
                 last_run_status: 'running',
               }
@@ -407,7 +415,12 @@ export default function useStreamingEvents({
       queryClient.setQueriesData<WorktreeSessions>(
         { queryKey: chatQueryKeys.sessions(wtId) },
         old =>
-          old?.sessions.some(s => s.id === session_id && s.waiting_for_input)
+          old?.sessions.some(
+            s =>
+              s.id === session_id &&
+              (s.waiting_for_input ||
+                (s.pending_permission_denials?.length ?? 0) > 0)
+          )
             ? {
                 ...old,
                 sessions: old.sessions.map(s =>
@@ -416,6 +429,7 @@ export default function useStreamingEvents({
                         ...s,
                         waiting_for_input: false,
                         waiting_for_input_type: null,
+                        pending_permission_denials: [],
                       }
                     : s
                 ),

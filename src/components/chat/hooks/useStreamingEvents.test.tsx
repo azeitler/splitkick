@@ -1586,6 +1586,69 @@ describe('useStreamingEvents cancellation sanitization', () => {
     }
   })
 
+  // A Claude denial arrives with the end of a turn. In yolo mode the approval
+  // panel is hidden, so nothing else clears it, and `permission` outranks
+  // every manual status: the session sat in Waiting for good.
+  it('clears the previous turn permission denials on send', async () => {
+    const queryClient = createQueryClient()
+    const wrapper = createWrapper(queryClient)
+    const denial = {
+      tool_name: 'Bash',
+      tool_use_id: 'toolu_old',
+      tool_input: { command: 'ls ~/Documents' },
+    }
+    const listed = {
+      id: 'session-1',
+      name: 'Test',
+      order: 0,
+      created_at: 1,
+      updated_at: 1,
+      messages: [],
+      waiting_for_input: false,
+      pending_permission_denials: [denial],
+      last_run_status: 'completed',
+    }
+    const sessionsKey = ['chat', 'sessions', 'worktree-1']
+    queryClient.setQueryData(sessionsKey, { sessions: [listed] })
+    queryClient.setQueryData([...sessionsKey, 'with-counts'], {
+      sessions: [listed],
+    })
+    queryClient.setQueryData(['chat', 'session', 'session-1'], listed)
+    useChatStore.setState({
+      pendingPermissionDenials: { 'session-1': [denial] },
+    })
+
+    renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+    await waitFor(() =>
+      expect(registeredListeners.has('chat:sending')).toBe(true)
+    )
+
+    registeredListeners.get('chat:sending')?.({
+      payload: {
+        session_id: 'session-1',
+        worktree_id: 'worktree-1',
+        user_message: 'next',
+      },
+    })
+
+    expect(
+      useChatStore.getState().pendingPermissionDenials['session-1']
+    ).toBeUndefined()
+    for (const key of [sessionsKey, [...sessionsKey, 'with-counts']]) {
+      const data = queryClient.getQueryData<{
+        sessions: { pending_permission_denials?: unknown[] }[]
+      }>(key)
+      expect(data?.sessions[0]?.pending_permission_denials).toEqual([])
+    }
+    expect(
+      queryClient.getQueryData<{ pending_permission_denials?: unknown[] }>([
+        'chat',
+        'session',
+        'session-1',
+      ])?.pending_permission_denials
+    ).toEqual([])
+  })
+
   it('continues ignoring cancelled run chunks after accepting a new run chunk', async () => {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
       callback(0)

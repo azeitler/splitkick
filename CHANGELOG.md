@@ -9,6 +9,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A session no longer stays in Waiting because of an old blocked tool.**
+  When a hook blocked a tool call, the denial stayed on the session for good:
+  in yolo mode there is no panel to approve or dismiss it, and it outranked
+  Review, Paused and Idle from the status menu. A new message now clears the
+  previous turn's denials. (#49)
 - **Uncaught errors reach the app log.** They went to the console only,
   which a release build cannot open, so a crash such as the file viewer's
   edit-mode error left no trace to report. (#42)

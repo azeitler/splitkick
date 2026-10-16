@@ -3157,6 +3157,10 @@ pub async fn send_chat_message(
                 session.status_override = None;
             }
             session.waiting_for_input_type = None;
+            // Claude reports denials with the end of a turn, so these belong to
+            // the previous one. Left in place (yolo hides the approval panel),
+            // they kept the session in Waiting over any manual status.
+            session.pending_permission_denials.clear();
         }
         Ok(())
     })?;
