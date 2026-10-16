@@ -41,7 +41,10 @@ import './App.css'
 import MainWindow from './components/layout/MainWindow'
 import { ThemeProvider } from './components/ThemeProvider'
 import ErrorBoundary from './components/ErrorBoundary'
-import { shouldSurfaceGlobalError } from '@/lib/global-error-utils'
+import {
+  logGlobalError,
+  shouldSurfaceGlobalError,
+} from '@/lib/global-error-utils'
 import { relaunchAfterUIStateSave } from '@/lib/ui-state-teardown'
 import { useClaudeCliStatus, useClaudeCliAuth } from './services/claude-cli'
 import {
@@ -844,10 +847,11 @@ function App() {
           : typeof reason === 'string'
             ? reason
             : 'Unknown error'
-      logger.error('Unhandled promise rejection', {
+      logGlobalError(
+        'Unhandled promise rejection',
         message,
-        stack: reason instanceof Error ? reason.stack : undefined,
-      })
+        reason instanceof Error ? reason.stack : undefined
+      )
       if (
         shouldSurfaceGlobalError(message) &&
         !isAlreadySurfacedAuthError(message) &&
@@ -860,11 +864,11 @@ function App() {
 
     const handleError = (event: ErrorEvent) => {
       const message = event.error?.message ?? event.message ?? 'Unknown error'
-      logger.error('Uncaught window error', {
+      logGlobalError(
+        'Uncaught window error',
         message,
-        stack: event.error?.stack,
-        filename: event.filename,
-      })
+        event.error?.stack ?? event.filename
+      )
       if (
         shouldSurfaceGlobalError(message) &&
         !isAlreadySurfacedAuthError(message) &&
