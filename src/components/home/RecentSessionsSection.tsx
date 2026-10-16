@@ -208,7 +208,8 @@ export function RecentSessionRow({
           variant={status.indicatorVariant}
           shape={status.indicatorShape}
           label={status.label}
-          className="shrink-0"
+          // The indicator has no size of its own.
+          className="h-2 w-2 shrink-0"
         />
 
         <span className="truncate text-sm">

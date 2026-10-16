@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { render, screen, within } from '@/test/test-utils'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
+import { useChatStore } from '@/store/chat-store'
 import type { AllSessionsResponse, Session } from '@/types/chat'
 import type { Project } from '@/types/projects'
 import { MobileTabShell } from './MobileTabShell'
@@ -334,6 +335,26 @@ describe('MobileTabShell', () => {
       expect(names[0]).toContain('second')
       expect(names[1]).toContain('first')
       expect(names).toHaveLength(2)
+    })
+
+    it("shows each session's status dot and label", () => {
+      withSessions([
+        session('labeled', {
+          last_opened_at: 200,
+          label: { name: 'Needs QA', color: '#e11d48' },
+        }),
+        session('reviewed', { last_opened_at: 100, status_override: 'review' }),
+      ])
+      useChatStore.setState({
+        sessionLabels: { labeled: { name: 'Needs QA', color: '#e11d48' } },
+      })
+      renderShell()
+
+      const list = screen.getByTestId('mobile-history-sessions')
+      expect(within(list).getByText('Needs QA')).toBeInTheDocument()
+      const row = within(list).getByRole('button', { name: /reviewed/ })
+      // The indicator has no size of its own; without one it renders 0×0.
+      expect(within(row).getByRole('img')).toHaveClass('h-2', 'w-2')
     })
 
     it('explains an empty history', () => {

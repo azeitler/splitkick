@@ -604,6 +604,36 @@ export async function prefetchSessions(
  * Hook to get all sessions across all worktrees and projects
  * Used by Load Context modal to show sessions from anywhere
  */
+/**
+ * Copy persisted session labels into the chat store, as `prefetchSessions`
+ * does per worktree. Rows read labels from the store, and web access never
+ * prefetches, so without this a phone showed no labels in Home, Starred or
+ * History. Adds and updates only, like the prefetch: a cleared label is
+ * already gone from the store, and the fresh response no longer carries it.
+ */
+function mergePersistedSessionLabels(response: AllSessionsResponse) {
+  const { sessionLabels } = useChatStore.getState()
+  const updates: Record<string, LabelData> = {}
+  for (const entry of response.entries) {
+    for (const session of entry.sessions) {
+      const label = session.label
+      const current = sessionLabels[session.id]
+      if (
+        label &&
+        (current?.name !== label.name ||
+          current?.color !== label.color ||
+          current?.pinned !== label.pinned)
+      ) {
+        updates[session.id] = label
+      }
+    }
+  }
+  if (Object.keys(updates).length === 0) return
+  useChatStore.setState(state => ({
+    sessionLabels: { ...state.sessionLabels, ...updates },
+  }))
+}
+
 export function useAllSessions(enabled = true) {
   return useQuery({
     queryKey: ['all-sessions'],
@@ -611,6 +641,7 @@ export function useAllSessions(enabled = true) {
       try {
         logger.debug('Loading all sessions')
         const response = await invoke<AllSessionsResponse>('list_all_sessions')
+        mergePersistedSessionLabels(response)
         logger.info('All sessions loaded', {
           entryCount: response.entries.length,
         })

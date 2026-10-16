@@ -18,11 +18,16 @@ vi.mock('sonner', () => ({
   toast: { success: vi.fn(), error: vi.fn() },
 }))
 
+import { renderHook, waitFor } from '@testing-library/react'
+import { QueryClientProvider } from '@tanstack/react-query'
+import { createElement, type ReactNode } from 'react'
 import {
   canReconnectSession,
   prefetchSessions,
   reconnectNativeCliSession,
+  useAllSessions,
 } from './chat'
+import { invoke } from '@/lib/transport'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
@@ -107,6 +112,42 @@ describe('prefetchSessions', () => {
     expect(state.submittedAnswers['session-1']).toEqual({
       'tool-1': [{ questionIndex: 0, selectedOptions: [1] }],
     })
+  })
+})
+
+describe('useAllSessions', () => {
+  it('copies persisted labels into the store (web access never prefetches)', async () => {
+    useChatStore.setState({
+      sessionLabels: { kept: { name: 'Old', color: '#000000' } },
+    })
+    vi.mocked(invoke).mockResolvedValueOnce({
+      entries: [
+        {
+          project_id: 'p1',
+          project_name: 'p',
+          worktree_id: 'w1',
+          worktree_name: 'w',
+          worktree_path: '/w',
+          sessions: [
+            { id: 'labeled', label: { name: 'Needs QA', color: '#e11d48' } },
+            { id: 'kept' },
+          ],
+        },
+      ],
+    })
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children)
+
+    const { result } = renderHook(() => useAllSessions(), { wrapper })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    const labels = useChatStore.getState().sessionLabels
+    expect(labels.labeled).toEqual({ name: 'Needs QA', color: '#e11d48' })
+    // A session without a persisted label keeps what the store has.
+    expect(labels.kept).toEqual({ name: 'Old', color: '#000000' })
   })
 })
 

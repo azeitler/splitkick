@@ -34,6 +34,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Phone: the chat keeps its header when the keyboard opens.** Safari's
   page pan no longer pushes the session header off screen, and there is no
   empty band under the composer, with the keyboard open or after it closes.
+- **Session rows on Home, Starred and History show status and labels.** The
+  status dot had no size, so it never showed. Labels were missing in web
+  access, because only the native app loaded them into the store.
 
 ## [1.0.2] - 2026-10-16
 
