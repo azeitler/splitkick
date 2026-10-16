@@ -20,6 +20,8 @@ import {
   GitPullRequestArrow,
   Globe,
   Paperclip,
+  Pin,
+  PinOff,
   Play,
   Plug,
   Settings,
@@ -27,6 +29,7 @@ import {
   ShieldAlert,
   Sparkles,
   Star,
+  StarOff,
   Terminal,
   Bug,
 } from 'lucide-react'
@@ -58,6 +61,10 @@ import type {
   WorktreeSessions,
 } from '@/types/chat'
 import { groupServersByBackend, mcpKey } from '@/services/mcp'
+import {
+  togglePinnedSession,
+  toggleStarredSession,
+} from '@/components/chat/session-pin-actions'
 import type {
   LoadedIssueContext,
   LoadedPullRequestContext,
@@ -175,6 +182,9 @@ interface MobileSettingsMenuProps {
   prDisplayStatus?: PrDisplayStatus | null
 
   worktreeId?: string | null
+  /** With `sessionId`, shows Pin and Star for the open session. */
+  projectId?: string | null
+  sessionId?: string | null
   onAttach?: () => void
   runScripts?: string[]
   onRunCommand?: (command: string) => void
@@ -227,6 +237,8 @@ export function MobileSettingsMenu({
   prNumber,
   prDisplayStatus,
   worktreeId,
+  projectId,
+  sessionId,
   onAttach,
   runScripts = EMPTY_RUN_SCRIPTS,
   onRunCommand,
@@ -440,6 +452,20 @@ export function MobileSettingsMenu({
       .then(() => toast.success('Resume command copied'))
       .catch(() => toast.error('Failed to copy resume command'))
   }, [getActiveResumeCommand, resumeCommand])
+
+  // Booleans, not the arrays: the item label must flip after a toggle.
+  const isPinned = useProjectsStore(state =>
+    projectId && sessionId
+      ? (state.projectCanvasSettings[projectId]?.pinnedSessions ?? []).some(
+          pin => pin.sessionId === sessionId
+        )
+      : false
+  )
+  const isStarred = useProjectsStore(state =>
+    sessionId
+      ? state.starredSessions.some(star => star.sessionId === sessionId)
+      : false
+  )
 
   const handleToggleTerminal = useCallback(() => {
     if (!worktreeId) return
@@ -865,6 +891,46 @@ export function MobileSettingsMenu({
               <Terminal className="h-4 w-4" />
               Terminal
             </DropdownMenuItem>
+          )}
+          {/* The phone has no reliable long-press on session rows, so the
+              open session's pin and star live here. */}
+          {projectId && sessionId && worktreeId && (
+            <>
+              <DropdownMenuItem
+                onSelect={() =>
+                  void togglePinnedSession({
+                    projectId,
+                    sessionId,
+                    worktreeId,
+                    isPinned,
+                  })
+                }
+              >
+                {isPinned ? (
+                  <PinOff className="h-4 w-4" />
+                ) : (
+                  <Pin className="h-4 w-4" />
+                )}
+                {isPinned ? 'Unpin from Project' : 'Pin to Project'}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() =>
+                  void toggleStarredSession({
+                    projectId,
+                    sessionId,
+                    worktreeId,
+                    isStarred,
+                  })
+                }
+              >
+                {isStarred ? (
+                  <StarOff className="h-4 w-4" />
+                ) : (
+                  <Star className="h-4 w-4" />
+                )}
+                {isStarred ? 'Unstar' : 'Star'}
+              </DropdownMenuItem>
+            </>
           )}
           {resumeCommand && (
             <DropdownMenuItem onSelect={handleCopyResumeCommand}>

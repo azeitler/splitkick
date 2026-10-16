@@ -11,6 +11,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Phone: a worktree lists its sessions.** A chevron on each worktree row in
   a project opens its sessions under the row; tap one to open it.
+- **Phone: pin and star a session.** The gear menu in the composer has Pin
+  to Project and Star for the open session. Before, both needed a long-press
+  that the scrolling tab strip usually swallowed.
 
 ### Fixed
 

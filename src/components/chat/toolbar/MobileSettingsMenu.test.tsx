@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { Zap } from 'lucide-react'
 import { fireEvent, render, screen, within } from '@/test/test-utils'
 import { MobileSettingsMenu } from './MobileSettingsMenu'
+import { useProjectsStore } from '@/store/projects-store'
 import * as platform from '@/lib/platform'
 import type * as ProjectsService from '@/services/projects'
 import type * as GitHubService from '@/services/github'
@@ -40,6 +41,18 @@ vi.mock('@/services/projects', async importOriginal => {
     usePorts: usePortsMock as unknown as typeof actual.usePorts,
   }
 })
+
+const { togglePinnedSessionMock, toggleStarredSessionMock } = vi.hoisted(
+  () => ({
+    togglePinnedSessionMock: vi.fn(() => Promise.resolve()),
+    toggleStarredSessionMock: vi.fn(() => Promise.resolve()),
+  })
+)
+
+vi.mock('@/components/chat/session-pin-actions', () => ({
+  togglePinnedSession: togglePinnedSessionMock,
+  toggleStarredSession: toggleStarredSessionMock,
+}))
 
 vi.mock('@/services/github', async importOriginal => {
   const actual = await importOriginal<typeof GitHubService>()
@@ -123,6 +136,65 @@ const baseProps = {
 }
 
 describe('MobileSettingsMenu', () => {
+  it('pins and stars the open session (no long-press needed)', async () => {
+    const user = userEvent.setup()
+    useProjectsStore.setState({ starredSessions: [] })
+    render(
+      <MobileSettingsMenu
+        {...baseProps}
+        worktreeId="worktree-1"
+        projectId="project-1"
+        sessionId="session-1"
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: /settings/i }))
+    await user.click(screen.getByRole('menuitem', { name: 'Star' }))
+    expect(toggleStarredSessionMock).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      sessionId: 'session-1',
+      worktreeId: 'worktree-1',
+      isStarred: false,
+    })
+
+    await user.click(screen.getByRole('button', { name: /settings/i }))
+    await user.click(screen.getByRole('menuitem', { name: 'Pin to Project' }))
+    expect(togglePinnedSessionMock).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      sessionId: 'session-1',
+      worktreeId: 'worktree-1',
+      isPinned: false,
+    })
+  })
+
+  it('offers Unstar for a starred session, and no marks without a session', async () => {
+    const user = userEvent.setup()
+    useProjectsStore.setState({
+      starredSessions: [
+        {
+          sessionId: 'session-1',
+          projectId: 'project-1',
+          worktreeId: 'worktree-1',
+        },
+      ],
+    })
+    const { rerender } = render(
+      <MobileSettingsMenu
+        {...baseProps}
+        worktreeId="worktree-1"
+        projectId="project-1"
+        sessionId="session-1"
+      />
+    )
+    await user.click(screen.getByRole('button', { name: /settings/i }))
+    expect(screen.getByRole('menuitem', { name: 'Unstar' })).toBeInTheDocument()
+    await user.keyboard('{Escape}')
+
+    rerender(<MobileSettingsMenu {...baseProps} worktreeId="worktree-1" />)
+    await user.click(screen.getByRole('button', { name: /settings/i }))
+    expect(screen.queryByRole('menuitem', { name: /star/i })).toBeNull()
+  })
+
   it('aligns the mobile Effort label with the other setting labels', async () => {
     const user = userEvent.setup()
     const originalInnerWidth = window.innerWidth

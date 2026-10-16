@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures/tauri-mock'
 import {
+  mockPreferences,
   createProject,
   createSession,
   createWorktree,
@@ -286,5 +287,61 @@ test.describe('Phone navigation', () => {
     await mockPage.getByRole('button', { name: 'Search' }).click()
 
     await expect(mockPage.getByRole('dialog')).toBeVisible()
+  })
+})
+
+// The composer swaps to its phone controls by container width, and the mock
+// harness runs at 50% zoom, which makes the composer twice as wide in rem.
+test.describe('Phone session menu at true size', () => {
+  test.use({
+    responseOverrides: {
+      ...phoneOverrides,
+      // The gear menu's session items need the worktree (for its project).
+      get_worktree: worktree,
+      get_ports: [],
+      load_preferences: {
+        ...mockPreferences,
+        zoom_level: 100,
+        mobile_zoom_level: 100,
+      },
+    },
+  })
+
+  test.beforeEach(async ({ mockPage }) => {
+    await mockPage.addStyleTag({
+      content: '.tsqd-parent-container { display: none !important; }',
+    })
+  })
+
+  test('stars and pins the open session from the gear menu', async ({
+    mockPage,
+  }) => {
+    await (await projectCard(mockPage)).click()
+    const layer = mockPage.getByTestId('mobile-project-layer')
+    await layer.getByTestId(`worktree-expand-${worktree.id}`).click()
+    await layer
+      .getByTestId(`worktree-sessions-${worktree.id}`)
+      .getByRole('button', { name: /Opened earlier/ })
+      .click()
+    await expect(mockPage.getByTestId('session-chat-modal-swipe')).toBeVisible()
+
+    const gear = mockPage.getByRole('button', { name: /settings/i }).last()
+    await gear.click()
+    await mockPage.getByRole('menuitem', { name: 'Star' }).click()
+    await expect(mockPage.getByRole('menu')).toHaveCount(0)
+
+    await gear.click()
+    await expect(
+      mockPage.getByRole('menuitem', { name: 'Unstar' })
+    ).toBeVisible()
+    await expect(
+      mockPage.getByRole('menuitem', { name: 'Pin to Project' })
+    ).toBeVisible()
+
+    if (process.env.SIDEBAR_SCREENSHOT_DIR) {
+      await mockPage.screenshot({
+        path: `${process.env.SIDEBAR_SCREENSHOT_DIR}/phone-session-star-pin.png`,
+      })
+    }
   })
 })
