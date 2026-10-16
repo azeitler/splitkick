@@ -306,7 +306,7 @@ ended with 0.1.73-z.26, which reads the fixed `jeanz-final` feed.
 | M3 import            | Done: one chain JeanZ → Jean, incl. window state, WebKit store, cookies, macOS defaults. Used for Andreas' own switch to rc.2 |
 | M4 release pipeline  | Done: semver, `splitkick-v*` tags, notarization fixed (stale `APPLE_ID`/`APPLE_PASSWORD` secrets)                             |
 | M5 bridge and rename | Done: z.26 shipped, `jeanz-final` feed, repo renamed; old URLs redirect (checked)                                             |
-| M6 device check      | Partly: Andreas runs Splitkick daily. Phone Web Access and the in-app update rc → 1.0.0 not confirmed                         |
+| M6 device check      | Done: daily use, in-app update rc.3 → 1.0.0 works, phone Web Access works (Andreas, 2026-10-16)                               |
 | M7 launch            | Release done. Website and docs updated locally (not pushed). Message to coolLabs and upstream PRs open                        |
 
 Resolved items from the unverified list: `mainBinaryName` works (the app runs
@@ -317,15 +317,14 @@ CI certificate is "Developer ID Application: Andreas Zeitler (44S2FAD7EU)".
 
 **Andreas (outward steps):**
 
-1. Check the in-app update: rc.3 → "Check for Updates…" must offer and install 1.0.0.
-2. Phone: Web Access on port 3460 through Tailscale.
-3. Copy `.local-signing/splitkick-updater.key{,.password}` to 1Password.
-4. Push and deploy the website (`splitkick-website` `4b451c9`: live download
+Done: in-app update, phone Web Access, updater key in 1Password.
+
+1. Push and deploy the website (`splitkick-website` `4b451c9`: live download
    link, GitHub URL) and the docs (`splitkick-docs` `227dc58`: 1.0.0 and z.26
    release notes, guides on data folder, import, port 3460).
-5. Message Andras Bacsai (coolLabs); ask about the model catalog CDN too.
-6. Open the upstream PRs from part D (check each against upstream first).
-7. Optional: delete the 1.0.0-rc.1 pre-release (signed, not notarized).
+2. Message Andras Bacsai (coolLabs); ask about the model catalog CDN too.
+3. Open the upstream PRs from part D (check each against upstream first).
+4. Optional: delete the 1.0.0-rc.1 pre-release (signed, not notarized).
 
 **Code (next releases):**
 
