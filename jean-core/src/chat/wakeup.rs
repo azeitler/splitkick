@@ -7,10 +7,10 @@
 //! 2. The scheduler clamps `delaySeconds` to [60, 3600], persists a
 //!    `ScheduledWakeup` on `SessionMetadata`, and inserts an entry into
 //!    an in-memory `BTreeMap<fire_at_unix, ...>` for O(log n) polling.
-//! 3. `BackgroundTaskManager` calls `drain_due()` every 10 s; fired
-//!    entries are removed from disk + memory and broadcast to the
-//!    frontend via `chat:wakeup_fired`, which triggers `sendMessage`
-//!    with the stored prompt.
+//! 3. `BackgroundTaskManager` calls `fire_due()` every 10 s. A fired entry
+//!    is moved from `scheduled_wakeup` into the session's message queue in
+//!    one metadata write, and the Rust queue drain sends it. No window has
+//!    to be open. `chat:wakeup_fired` only tells clients to update the UI.
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -22,7 +22,8 @@ use serde_json::Value;
 use tauri::AppHandle;
 
 use super::storage;
-use super::types::ScheduledWakeup;
+use super::types::{ScheduledWakeup, SessionMetadata};
+use crate::http_server::EmitExt;
 
 const MIN_DELAY_SECS: u64 = 60;
 const MAX_DELAY_SECS: u64 = 3600;
@@ -216,8 +217,9 @@ fn remove_entries_for_session(map: &mut WakeupMap, session_id: &str) {
     }
 }
 
-/// Drain all entries whose `fire_at_unix <= now_unix`. For each,
-/// clear the persisted wakeup on the session and emit `chat:wakeup_fired`.
+/// Drain all entries whose `fire_at_unix <= now_unix`. For each, move the
+/// persisted wakeup into the session's message queue, start the backend
+/// queue drain and emit `chat:wakeup_fired` for the UI.
 ///
 /// Called by BackgroundTaskManager every ~10 s.
 pub fn fire_due(app: &AppHandle) {
@@ -241,25 +243,6 @@ pub fn fire_due(app: &AppHandle) {
     log::info!("wakeup::fire_due: firing {} wakeup(s)", due.len());
 
     for entry in due {
-        if let Err(e) = storage::with_existing_metadata_mut(app, &entry.session_id, |m| {
-            // Only clear if the persisted wakeup matches (avoid racing a newer schedule).
-            let matches = m
-                .scheduled_wakeup
-                .as_ref()
-                .map(|w| w.tool_call_id == entry.tool_call_id)
-                .unwrap_or(false);
-            if matches {
-                m.scheduled_wakeup = None;
-            }
-            matches
-        }) {
-            log::warn!(
-                "wakeup::fire_due: failed to clear persisted wakeup for session={}: {e}",
-                entry.session_id
-            );
-            continue;
-        }
-
         let worktree_path = resolve_worktree_path(app, &entry.worktree_id).unwrap_or_default();
         if worktree_path.is_empty() {
             log::warn!(
@@ -268,6 +251,30 @@ pub fn fire_due(app: &AppHandle) {
             );
             continue;
         }
+
+        let queue = match enqueue_wakeup(app, &entry) {
+            Ok(Some(queue)) => queue,
+            // A newer wakeup replaced this one; it fires on its own.
+            Ok(None) => continue,
+            Err(e) => {
+                log::warn!(
+                    "wakeup::fire_due: failed to enqueue wakeup for session={}: {e}",
+                    entry.session_id
+                );
+                continue;
+            }
+        };
+
+        let _ = app.emit_all(
+            "queue:updated",
+            &serde_json::json!({ "sessionId": entry.session_id, "queue": queue }),
+        );
+        super::commands::trigger_backend_queue_drain(
+            app.clone(),
+            entry.worktree_id.clone(),
+            worktree_path.clone(),
+            entry.session_id.clone(),
+        );
 
         let _ = app.emit(
             "chat:wakeup_fired",
@@ -279,9 +286,65 @@ pub fn fire_due(app: &AppHandle) {
                 tool_call_id: entry.tool_call_id.clone(),
             },
         );
-
-        let _ = (entry.delay_seconds, entry.scheduled_at_unix);
     }
+}
+
+/// Clear the persisted wakeup and append its prompt to the message queue in
+/// one metadata write, so a crash cannot lose the prompt in between.
+/// Returns the new queue, or `None` when the persisted wakeup is no longer
+/// this entry (a newer schedule replaced it).
+fn enqueue_wakeup(app: &AppHandle, entry: &WakeupEntry) -> Result<Option<Vec<Value>>, String> {
+    storage::with_existing_metadata_mut(app, &entry.session_id, |m| {
+        let matches = m
+            .scheduled_wakeup
+            .as_ref()
+            .is_some_and(|w| w.tool_call_id == entry.tool_call_id);
+        if !matches {
+            return None;
+        }
+        m.scheduled_wakeup = None;
+        let message = wakeup_queued_message(m, &entry.prompt, now_unix());
+        m.queued_messages.push(message);
+        Some(m.queued_messages.clone())
+    })
+}
+
+/// Build a queued message (frontend `QueuedMessage` shape) for a fired
+/// wakeup. Settings come only from the session's saved selections; a setting
+/// the session never saved stays out, so `send_chat_message` resolves it
+/// from the session and preferences instead of a hard-coded default.
+fn wakeup_queued_message(metadata: &SessionMetadata, prompt: &str, now: u64) -> Value {
+    let mut message = serde_json::json!({
+        "id": uuid::Uuid::new_v4().to_string(),
+        "message": prompt,
+        "pendingImages": [],
+        "pendingFiles": [],
+        "pendingSkills": [],
+        "pendingTextFiles": [],
+        "provider": metadata.selected_provider,
+        "backend": metadata.backend,
+        "queuedAt": now.saturating_mul(1000),
+    });
+    let fields = message.as_object_mut().expect("json object");
+    if let Some(model) = &metadata.selected_model {
+        fields.insert("model".into(), Value::from(model.clone()));
+    }
+    if let Some(mode) = &metadata.selected_execution_mode {
+        fields.insert("executionMode".into(), Value::from(mode.clone()));
+    }
+    if let Some(level) = &metadata.selected_thinking_level {
+        fields.insert(
+            "thinkingLevel".into(),
+            serde_json::to_value(level).unwrap_or_default(),
+        );
+    }
+    if let Some(level) = &metadata.selected_effort_level {
+        fields.insert(
+            "effortLevel".into(),
+            serde_json::to_value(level).unwrap_or_default(),
+        );
+    }
+    message
 }
 
 /// Resolve a worktree's filesystem path from its ID via the projects registry.
@@ -423,5 +486,86 @@ mod tests {
         assert_eq!(map.get(&100).unwrap().len(), 1);
         remove_entries_for_session(&mut map, "s2");
         assert!(!map.contains_key(&100));
+    }
+
+    fn entry(session_id: &str, tool_call_id: &str) -> WakeupEntry {
+        WakeupEntry {
+            session_id: session_id.into(),
+            worktree_id: "w1".into(),
+            tool_call_id: tool_call_id.into(),
+            prompt: "check the build".into(),
+            reason: String::new(),
+            delay_seconds: 60,
+            scheduled_at_unix: 40,
+        }
+    }
+
+    fn wakeup(tool_call_id: &str) -> ScheduledWakeup {
+        ScheduledWakeup {
+            fire_at_unix: 100,
+            scheduled_at_unix: 40,
+            delay_seconds: 60,
+            prompt: "check the build".into(),
+            reason: String::new(),
+            tool_call_id: tool_call_id.into(),
+        }
+    }
+
+    // A fired wakeup must land in the backend queue, so it runs with no
+    // window open. The old path only emitted an event and lost the prompt
+    // when no frontend listened.
+    #[test]
+    fn a_fired_wakeup_moves_into_the_message_queue() {
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        storage::with_metadata_mut(&app, "s1", "w1", "Session", 0, |m| {
+            m.scheduled_wakeup = Some(wakeup("t1"));
+            Ok(())
+        })
+        .unwrap();
+
+        let queue = enqueue_wakeup(&app, &entry("s1", "t1")).unwrap().unwrap();
+
+        assert_eq!(queue.len(), 1);
+        assert_eq!(queue[0]["message"], "check the build");
+        let metadata = storage::load_metadata(&app, "s1").unwrap().unwrap();
+        assert!(metadata.scheduled_wakeup.is_none());
+        assert_eq!(metadata.queued_messages, queue);
+    }
+
+    #[test]
+    fn a_replaced_wakeup_does_not_enqueue() {
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        storage::with_metadata_mut(&app, "s1", "w1", "Session", 0, |m| {
+            m.scheduled_wakeup = Some(wakeup("t2"));
+            Ok(())
+        })
+        .unwrap();
+
+        assert!(enqueue_wakeup(&app, &entry("s1", "t1")).unwrap().is_none());
+        let metadata = storage::load_metadata(&app, "s1").unwrap().unwrap();
+        assert_eq!(metadata.scheduled_wakeup, Some(wakeup("t2")));
+        assert!(metadata.queued_messages.is_empty());
+    }
+
+    // No hard-coded model or mode: an unset setting stays out so the send
+    // resolves it from the session, never as 'sonnet' / 'yolo'.
+    #[test]
+    fn the_queued_message_only_carries_saved_session_settings() {
+        let mut metadata = SessionMetadata::new("s1".into(), "w1".into(), "Session".into(), 0);
+        let bare = wakeup_queued_message(&metadata, "p", 7);
+        assert!(bare.get("model").is_none());
+        assert!(bare.get("executionMode").is_none());
+        assert!(bare.get("thinkingLevel").is_none());
+        assert_eq!(bare["queuedAt"], 7000);
+
+        metadata.selected_model = Some("claude-opus-4-8".into());
+        metadata.selected_execution_mode = Some("plan".into());
+        let saved = wakeup_queued_message(&metadata, "p", 7);
+        assert_eq!(saved["model"], "claude-opus-4-8");
+        assert_eq!(saved["executionMode"], "plan");
     }
 }

@@ -150,8 +150,12 @@ export function useQueueProcessor(): void {
           store.setSessionReviewing(capturedSessionId, false)
           // Auto-resume on send: clear paused flag too.
           store.setSessionPaused(capturedSessionId, false)
-          store.setExecutingMode(capturedSessionId, msg.executionMode)
-          store.setSelectedModel(capturedSessionId, msg.model)
+          // Backend-built messages (fired wakeups) leave out settings the
+          // session never saved; the send resolves them in Rust.
+          if (msg.executionMode) {
+            store.setExecutingMode(capturedSessionId, msg.executionMode)
+          }
+          if (msg.model) store.setSelectedModel(capturedSessionId, msg.model)
 
           // Get session-approved tools
           const sessionApprovedTools = store.getApprovedTools(capturedSessionId)

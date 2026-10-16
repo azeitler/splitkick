@@ -143,6 +143,12 @@ Built on Jean 0.1.73.
   upstream issue #N. Splitkick now asks GitHub for the repository of the
   `origin` remote. A default repository chosen with `gh repo set-default` is
   still used as before. (#56)
+- **A scheduled wakeup runs with no window open.** When Claude's
+  `ScheduleWakeup` came due, the backend only told the window to send the
+  prompt; with no window open, or on a headless host with no client, the
+  prompt was lost. The backend now puts the prompt in the session's queue and
+  sends it. It uses the session's saved model and mode, not Sonnet and yolo
+  as before when the window had not loaded the session (#38).
 
 ### Changed
 
