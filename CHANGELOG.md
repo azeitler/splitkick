@@ -15,6 +15,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Files open in view mode.** The file viewer opened every file in the
   editor, which threw an error as soon as you selected text. Click Edit to
   change a file. (#42)
+- **Images in the file viewer zoom and pan.** They use the same viewer as
+  images in a chat: pinch, scroll or double-click to zoom. This also works
+  in a remote window. (#42)
 
 ## [1.0.2] - 2026-10-16
 

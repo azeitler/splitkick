@@ -63,6 +63,26 @@ describe('FileContentModal view mode', () => {
   })
 })
 
+// An image showed as a plain <img>, so a screenshot from a remote window could
+// not be zoomed. It now uses the chat's zoomable viewer.
+describe('FileContentModal images', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset()
+    mocks.invoke.mockResolvedValue({ data: 'aGVsbG8=', mimeType: 'image/png' })
+  })
+
+  it('shows an image in the zoomable viewer', async () => {
+    render(<FileContentModal filePath="/repo/shot.png" onClose={vi.fn()} />)
+
+    const image = await screen.findByAltText('shot.png')
+    expect(image).toHaveAttribute('src', 'data:image/png;base64,aGVsbG8=')
+    expect(image.closest('.react-transform-wrapper')).not.toBeNull()
+    expect(mocks.invoke).toHaveBeenCalledWith('read_file_base64', {
+      path: '/repo/shot.png',
+    })
+  })
+})
+
 describe('FileContentModal editor errors', () => {
   beforeEach(() => {
     mocks.invoke.mockReset()

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, type ImgHTMLAttributes } from 'react'
 import { FolderOpen } from 'lucide-react'
 import { convertFileSrc } from '@/lib/transport'
 import { canOpenNativeApps } from '@/lib/environment'
@@ -11,8 +11,38 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { cn } from '@/lib/utils'
 import { VisuallyHidden } from '@radix-ui/react-visually-hidden'
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch'
+
+/**
+ * An image you can zoom and pan: pinch, wheel, or double-click to toggle. It
+ * fills its parent, so give the parent a size.
+ */
+export function ZoomableImage({
+  className,
+  ...imageProps
+}: ImgHTMLAttributes<HTMLImageElement>) {
+  return (
+    <TransformWrapper
+      minScale={1}
+      maxScale={8}
+      centerOnInit
+      doubleClick={{ mode: 'toggle' }}
+    >
+      <TransformComponent
+        wrapperClass="!w-full !h-full"
+        contentClass="!w-full !h-full items-center justify-center"
+      >
+        <img
+          {...imageProps}
+          draggable={false}
+          className={cn('select-none', className)}
+        />
+      </TransformComponent>
+    </TransformWrapper>
+  )
+}
 
 interface ImagePreviewDialogProps {
   open: boolean
@@ -52,24 +82,11 @@ export function ImagePreviewDialog({
         {/* The app viewport disables browser zoom, so pinch/wheel/double-tap
             zoom comes from react-zoom-pan-pinch. */}
         <div className="flex-1 min-h-0 touch-none sm:flex-none">
-          <TransformWrapper
-            minScale={1}
-            maxScale={8}
-            centerOnInit
-            doubleClick={{ mode: 'toggle' }}
-          >
-            <TransformComponent
-              wrapperClass="!w-full !h-full"
-              contentClass="!w-full !h-full items-center justify-center"
-            >
-              <img
-                src={src}
-                alt={alt}
-                draggable={false}
-                className="max-w-full max-h-full sm:max-h-[calc(85vh-6rem)] object-contain rounded-md select-none"
-              />
-            </TransformComponent>
-          </TransformWrapper>
+          <ZoomableImage
+            src={src}
+            alt={alt}
+            className="max-w-full max-h-full sm:max-h-[calc(85vh-6rem)] object-contain rounded-md"
+          />
         </div>
         {canReveal && path && (
           <div className="flex shrink-0 justify-center">

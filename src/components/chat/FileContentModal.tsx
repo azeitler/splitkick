@@ -37,6 +37,7 @@ import type { SyntaxTheme } from '@/types/preferences'
 import { toast } from 'sonner'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { logNativeError } from '@/lib/native-log'
+import { ZoomableImage } from '@/components/chat/ImageLightbox'
 
 // Lazy load CodeEditor (Pierre File + edit mode) so the main bundle stays lean
 const CodeEditor = lazy(() => import('@/components/ui/code-editor'))
@@ -475,19 +476,25 @@ export function FileContentModal({
                     </span>
                   </div>
                 ) : imageSrc ? (
-                  <img
-                    src={imageSrc}
-                    alt={filename ?? 'Image'}
+                  // Zoomable like the chat's image preview. The image comes
+                  // through the backend, so this also works in a remote window.
+                  <div
                     className={cn(
-                      'max-w-full max-h-[calc(85vh-8rem)] object-contain rounded-md',
+                      'w-full h-[calc(100dvh-10rem)] sm:h-[calc(85vh-8rem)] touch-none',
                       !imageLoaded && 'hidden'
                     )}
-                    onLoad={() => setImageLoaded(true)}
-                    onError={() => {
-                      setImageError(true)
-                      setImageLoaded(false)
-                    }}
-                  />
+                  >
+                    <ZoomableImage
+                      src={imageSrc}
+                      alt={filename ?? 'Image'}
+                      className="max-w-full max-h-full object-contain rounded-md"
+                      onLoad={() => setImageLoaded(true)}
+                      onError={() => {
+                        setImageError(true)
+                        setImageLoaded(false)
+                      }}
+                    />
+                  </div>
                 ) : null}
               </div>
             ) : content !== null ? (
