@@ -77,7 +77,10 @@ The project layer is entered one of two ways, decided once when it opens:
 Inside a project, `MobileProjectSegments` switches the canvas between
 **Worktrees** (the worktree list, then the open issues) and **Recent** (the
 project's recent sessions and activity), like the desktop sidebar's Projects /
-Recent tabs. The choice lives in `ui-store.mobileProjectSegment` (not
+Recent tabs. A phone has no sidebar tree, so each worktree row gets a chevron
+(`CanvasWorktreeSessions.tsx`) that lists its sessions under the row; a tap on
+a session opens it, a tap on the row still opens the worktree. The expansion is
+local canvas state, not the sidebar's `expandedWorktreeIds`. The choice lives in `ui-store.mobileProjectSegment` (not
 persisted). On the phone the overview never stacks above the worktrees.
 
 Push mode listens for the session closing with a layout effect, keyed to the
@@ -217,25 +220,31 @@ only while the soft keyboard is closed — see below.
 ### The soft keyboard
 
 iOS Safari ignores `interactive-widget=resizes-content` and does not shrink
-`dvh` for the keyboard, so a bottom-anchored surface inside the `h-dvh
-overflow-hidden` shell ends up underneath it. Two surfaces compensate, both with
-`useVisualViewportBottomInset(ref, !isNativeApp() || isMobile)`:
+`dvh` for the keyboard. It pans the visual viewport instead, which pushes the
+session header off the top. On iOS 26 the pan can also stay after the keyboard
+closes (`visualViewport.offsetTop > 0`, [Apple forums
+800125](https://developer.apple.com/forums/thread/800125)), which leaves a gap
+under the composer and the header under the status bar.
 
-- the chat column in `ChatWindow.tsx`
-- the terminal root in `TerminalView.tsx`
+So the **shell** follows the visual viewport, once: `useVisualViewportShell` in
+`MainWindow` (web access only) sets `--app-height` to `visualViewport.height`,
+scrolls any pan back to 0, and sets `data-keyboard-open` on `<html>`. The shell
+is `h-[var(--app-height,100dvh)]`, and `html, body, #root` use the same
+variable, so the document never outgrows the visible area. Every surface in the
+shell (chat, terminal) sits above the keyboard with no padding of its own.
 
-Measure **per surface**, not once at the shell root. The two are siblings, so
-when the terminal drawer is open the chat column's bottom is already above the
-keyboard and its inset measures 0 — no double compensation. Padding the shell
-root instead would make the terminal's own inset read 0, flip its
-`keyboardOpen` to false, and let `TerminalExtraKeysBar` re-add a 34px dead gap
-above the keyboard.
-
-Pad an element that is `h-full` inside a fixed-height chain, so the padding
-cannot move the element's own bottom edge and start a measure/pad loop. Drop
-`var(--safe-area-bottom)` while the inset is non-zero. If the surface scrolls,
-re-stick to the tail after the shrink, reading "am I at the bottom" through a
-ref so the effect does not re-run on every flip.
+- Do not pad a surface by a measured inset inside the shell. An earlier version
+  did (`useVisualViewportBottomInset` on the chat column and the terminal); it
+  ran together with Safari's pan, lifted the composer twice, and a stale value
+  after the keyboard closed left a band under it.
+- Read "is the keyboard open" from `useSoftKeyboardOpen()`, never from an
+  element's inset (that reads 0 inside the shell). Drop
+  `var(--safe-area-bottom)` while it is true — otherwise a 34px band sits on top
+  of the keyboard.
+- `useVisualViewportBottomInset` stays only for `h-dvh` dialog portals outside
+  the shell (`StandaloneTerminalSurface` in the CLI login and setup dialogs).
+- If a surface scrolls, re-stick to the tail when the keyboard opens, reading
+  "am I at the bottom" through a ref so the effect does not re-run on every flip.
 
 ### Mobile web is not the native app
 
@@ -262,9 +271,9 @@ disable the matching handlers in web access and on mobile (gate on
 
 ## Testing
 
-There is no phone-viewport Playwright project; `e2e/tests/preferences.spec.ts`
-actually widens to 1280x720 to _escape_ the mobile layout. Mobile behaviour is
-covered by unit tests:
+`e2e/tests/mobile-navigation.spec.ts` is the one spec at a phone viewport
+(390x844, touch); `e2e/tests/preferences.spec.ts` widens to 1280x720 to
+_escape_ the mobile layout. The rest is covered by unit tests:
 
 - `src/components/mobile/*.test.ts(x)` — the tab shell, tab bar, each tab,
   the project layer's modal and push entries, and its wiring into the session
@@ -275,7 +284,11 @@ covered by unit tests:
   gutters
 - `src/components/titlebar/TitleBar.safe-area.test.ts` — bar height,
   safe areas, overscroll
-- `src/components/chat/ChatWindow.keyboard-inset.test.ts` and
+- `src/hooks/useVisualViewportShell.test.ts`,
+  `src/components/chat/ChatWindow.keyboard-inset.test.ts` and
   `src/hooks/useVisualViewportBottomInset.test.ts` — soft keyboard
 - `MainWindowContent.mobile-swipe.test.tsx`, `src/hooks/useSwipeBack.test.tsx` —
   phone routing and gestures
+
+Known gaps against the desktop layout are tracked in
+[`mobile-gap-analysis.md`](mobile-gap-analysis.md).
