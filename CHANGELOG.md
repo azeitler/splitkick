@@ -26,6 +26,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   The toolbar now shows a badge with the remote's name next to the title,
   whatever is on screen and also in zen mode. Hover it for the host.
 
+- **A remote window's close, minimise and zoom buttons sit where the local
+  window's do.** A remote window drew them at the macOS default, higher and
+  further left than in the local window. It is now built from the same window
+  settings as the local one, so both match. The same applies to the local
+  window when Splitkick reopens it after you closed it.
+
 ## [1.0.0] - 2026-10-16
 
 Built on Jean 0.1.73.

@@ -113,39 +113,38 @@ pub fn ensure_usable_geometry(window: &tauri::WebviewWindow) {
     let _ = window.center();
 }
 
-/// Window options that `tauri.conf.json` gives the main window.
+/// A connection window, built from the main window's own config.
 ///
-/// A window built at runtime does not read `app.windows[0]`, so these have to
-/// be repeated here. Keep them in step with `tauri.conf.json` and its overlays.
+/// Starting from `tauri.conf.json` and its merged overlays gives the window every
+/// option the main window has, with nothing to keep in step by hand. It is also
+/// the only way the traffic lights land where the main window has them: with
+/// Tauri's `unstable` feature, `WebviewWindowBuilder::traffic_light_position`
+/// sets the position on the webview, not the window, and has no effect
+/// (tauri-apps/tauri#14072). A remote window showed its buttons at the macOS
+/// default while the main window had them at `trafficLightPosition`.
+/// `from_config` sets the config's position on the window itself.
 fn build<'a>(
     app: &'a AppHandle,
-    label: &'a str,
+    label: &str,
     url: WebviewUrl,
     title: String,
-) -> WebviewWindowBuilder<'a, tauri::Wry, AppHandle> {
-    #[allow(unused_mut)]
-    let mut builder = WebviewWindowBuilder::new(app, label, url)
-        .title(title)
-        .inner_size(DEFAULT_WIDTH, DEFAULT_HEIGHT)
-        .min_inner_size(MIN_WIDTH, MIN_HEIGHT)
-        .resizable(true)
-        .center()
-        .shadow(true)
-        // Jean handles drops in HTML; Tauri's native drop swallows those events.
-        // Mirrors `"dragDropEnabled": false` in `tauri.conf.json`.
-        .disable_drag_drop_handler();
+) -> Result<WebviewWindowBuilder<'a, tauri::Wry, AppHandle>, String> {
+    let windows = &app.config().app.windows;
+    let mut config = windows
+        .iter()
+        .find(|window| window.label == MAIN_WINDOW)
+        .or_else(|| windows.first())
+        .cloned()
+        .ok_or_else(|| "No window config to build a connection window from".to_string())?;
+    config.label = label.to_string();
+    config.url = url;
+    config.title = title;
+    // The main window's config size is below its own minimum; a remote window
+    // opens at a usable size instead.
+    config.width = DEFAULT_WIDTH;
+    config.height = DEFAULT_HEIGHT;
 
-    #[cfg(target_os = "macos")]
-    {
-        builder = builder
-            .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .hidden_title(true)
-            // Centred in the 52pt toolbar; mirrors `trafficLightPosition` in
-            // `tauri.conf.json`.
-            .traffic_light_position(tauri::LogicalPosition::new(20.0, 20.0));
-    }
-
-    builder
+    WebviewWindowBuilder::from_config(app, &config).map_err(|error| error.to_string())
 }
 
 fn product_name(app: &AppHandle) -> String {
@@ -176,7 +175,7 @@ pub async fn open_connection_window(
         .filter(|title| !title.is_empty())
         .unwrap_or_else(|| product_name(&app));
 
-    let window = build(&app, &label, url, title)
+    let window = build(&app, &label, url, title)?
         .build()
         .map_err(|error| error.to_string())?;
     crate::configure_app_window(&window);
@@ -231,7 +230,7 @@ pub fn recreate_main_window(app: &AppHandle) -> Result<(), String> {
         MAIN_WINDOW,
         WebviewUrl::App("index.html".into()),
         title,
-    )
+    )?
     .build()
     .map_err(|error| error.to_string())?;
     crate::configure_app_window(&window);
