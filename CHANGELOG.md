@@ -7,6 +7,24 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Splitkick 1.0.0, the first public release.** JeanZ is now Splitkick: a
+  separate app with its own name, icon, bundle identifier and data folder, so
+  it installs and runs next to Jean. Signed and notarized for Apple Silicon,
+  with in-app updates from this repository.
+- **Import from JeanZ or Jean.** On first start Splitkick imports a copy of
+  your projects, sessions, chat history, settings, window layout, remote hosts
+  and browser logins. JeanZ's copy wins where both exist; the source is only
+  read.
+
+### Changed
+
+- **Own worktree folder, MCP server and port.** New worktrees go to
+  `~/splitkick/<project>/`, the MCP server is named `splitkick`, and Web Access
+  defaults to port 3460. A `jean.json` in a repository is still read when there
+  is no `splitkick.json`.
+
 ## [1.0.0-rc.3] - 2026-10-16
 
 Built on Jean 0.1.73.
