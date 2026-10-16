@@ -409,6 +409,14 @@ Built on Jean 0.1.73.
   and Safari history, and a prompt injection could read private data. Not
   granting it is the recommended default; Splitkick works fine without it.
   Onboarding does not ask for it. Closes #31.
+- **Transfer a session to another machine.** Right-click a session, or use
+  the command palette, and choose **Transfer to Remote Splitkick…**: pick a
+  saved connection, a project and a worktree there, and the session is copied
+  with its conversation, pasted files and saved contexts. The agent on the
+  other machine gets the earlier conversation with your first message. The
+  session here does not change. Push and pull the branch yourself; issue and
+  PR context and checkpoints do not go along. Both instances need this
+  version. Closes #35
 
 ## [1.0.1] - 2026-10-16
 

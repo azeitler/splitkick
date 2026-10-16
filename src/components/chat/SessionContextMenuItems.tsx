@@ -10,6 +10,7 @@ import {
   PinOff,
   Play,
   RefreshCw,
+  Send,
   Star,
   StarOff,
   Trash2,
@@ -23,8 +24,12 @@ import {
 } from '@/components/ui/context-menu'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
+import { PRODUCT_NAME } from '@/lib/build-info'
 import { copyToClipboard } from '@/lib/clipboard'
 import { copySplitkickLink } from '@/lib/splitkick-links'
+import { isNativeApp } from '@/lib/environment'
+import { useTransferTargets } from '@/lib/session-transfer'
+import { useUIStore } from '@/store/ui-store'
 import { canReconnectSession, reconnectNativeCliSession } from '@/services/chat'
 import type { Session } from '@/types/chat'
 import { SessionLabelsSubmenu } from './LabelsSubmenu'
@@ -81,6 +86,8 @@ export function SessionContextMenuItems({
   const session = card.session
   const isPausedOverride = card.statusOverride === 'paused'
   const { forkInPlace, forkToWorktree } = useSessionFork()
+  // Web Access cannot reach another instance (CORS), so native only.
+  const canTransfer = useTransferTargets().length > 0 && isNativeApp()
   // Select a boolean, not the pins array: the selector must subscribe to the
   // value that decides the label, or the item would not flip after a pin.
   const isPinned = useProjectsStore(state =>
@@ -220,6 +227,18 @@ export function SessionContextMenuItems({
         <GitBranchPlus className="mr-2 h-4 w-4" />
         Fork Session (new Worktree)
       </ContextMenuItem>
+      {canTransfer && (
+        <ContextMenuItem
+          onSelect={() => {
+            useUIStore
+              .getState()
+              .setTransferSessionTarget({ worktreeId, sessionId: session.id })
+          }}
+        >
+          <Send className="mr-2 h-4 w-4" />
+          Transfer to Remote {PRODUCT_NAME}…
+        </ContextMenuItem>
+      )}
       {resumeCommand && (
         <>
           {onOpenInNativeClient && (

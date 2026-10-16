@@ -4,11 +4,11 @@ Forking copies a Jean session's history into a new session that the user can con
 from, without touching the source. There are three shapes, all sharing one core in
 `jean-core/src/chat/fork.rs`.
 
-| Shape | Command | Working directory | History |
-| --- | --- | --- | --- |
-| **New worktree** | `fork_session_to_worktree` (`projects/commands.rs`) | a new git worktree at the source HEAD, with the dirty tree copied over | all runs |
-| **Same worktree** | `fork_session_in_place` (`chat/fork.rs`) | the source's, shared | all runs |
-| **From a message** | `fork_session_in_place` with `fromMessageId` | the source's, shared | truncated |
+| Shape              | Command                                             | Working directory                                                      | History   |
+| ------------------ | --------------------------------------------------- | ---------------------------------------------------------------------- | --------- |
+| **New worktree**   | `fork_session_to_worktree` (`projects/commands.rs`) | a new git worktree at the source HEAD, with the dirty tree copied over | all runs  |
+| **Same worktree**  | `fork_session_in_place` (`chat/fork.rs`)            | the source's, shared                                                   | all runs  |
+| **From a message** | `fork_session_in_place` with `fromMessageId`        | the source's, shared                                                   | truncated |
 
 Entry points: the session context menu (`SessionContextMenuItems.tsx`, both worktree
 shapes), the message right-click menu (`message-thread-context-menu.tsx`, "Fork from
@@ -71,7 +71,7 @@ A fork shows history the backend has no record of. `PendingFork`, stored on
 `SessionMetadata.pending_fork`, records how the fork's **first send** closes that gap.
 `run_log::complete` clears it in the same atomic write that records the finished run,
 so it fires exactly once per turn that actually ran. A cancelled or crashed first turn
-keeps it, and the retry forks again — clearing it at the *start* would drop
+keeps it, and the retry forks again — clearing it at the _start_ would drop
 `--fork-session` while the source's resume id is still on the session, and the next
 send would append the fork's turns to the source transcript.
 
@@ -89,7 +89,7 @@ cleared and `build_fork_handoff_prompt` wraps the copied Jean history in a hidde
 `message_for_backend` carries it; `RunEntry.user_message` keeps the original text, so
 it never appears in the transcript.
 
-A truncated fork can never go native: `--fork-session` branches from the *end* of the
+A truncated fork can never go native: `--fork-session` branches from the _end_ of the
 backend's transcript, which would hand the model exactly the turns the fork dropped.
 
 Codex is handoff-only today. If its app-server gains a fork option on `thread/resume`
@@ -101,16 +101,64 @@ Codex is handoff-only today. If its app-server gains a fork option on `thread/re
 `resolve_handoff_kind` in `chat/commands.rs` orders the injections, because a provider or
 profile switch already replays the full Jean-local history:
 
-| backend switch | profile switch | `pending_fork` | result |
-| --- | --- | --- | --- |
-| yes | any | any | `ProviderSwitch` |
-| no | yes | any | `ClaudeProfile` |
-| no | no | `Handoff` | `Fork` |
-| no | no | `Native` | `NativeFork` — no injection, resume id kept |
-| no | no | none | `None` |
+| backend switch | profile switch | `pending_fork` | result                                      |
+| -------------- | -------------- | -------------- | ------------------------------------------- |
+| yes            | any            | any            | `ProviderSwitch`                            |
+| no             | yes            | any            | `ClaudeProfile`                             |
+| no             | no             | `Handoff`      | `Fork`                                      |
+| no             | no             | `Native`       | `NativeFork` — no injection, resume id kept |
+| no             | no             | none           | `None`                                      |
 
 Only `NativeFork` (and `None`) leave the target's resume id in place;
 `HandoffKind::clears_target_resume()` encodes that.
+
+## Transfer to a remote Jean
+
+A transfer (issue #35) is a fork across machines: it copies a session into a worktree
+on **another** Jean instance. Code: `jean-core/src/chat/transfer.rs`,
+`src/lib/session-transfer.ts`, `src/components/remote/TransferSessionDialog.tsx`.
+
+1. This window's backend runs `export_session_bundle` (normal `invoke`).
+2. The frontend posts the bundle to the chosen connection with
+   `remoteInvoke(connection, 'import_session_bundle', { worktreeId, bundle })`
+   (`src/lib/remote-invoke.ts` → `POST /api/invoke`). So it also works from a remote
+   window to a third instance.
+
+`SessionBundle` (format version 1, import rejects others):
+
+- `session` and `metadata`, with `runs` reduced by `drop_in_flight_run` — a running
+  turn never ships.
+- `{run_id}.jsonl` run logs of the kept runs (no `.input.jsonl`).
+- Attached saved contexts, named `context-…`; the target prefixes its own session id.
+- Pasted images and text files that the runs reference, base64, only files directly
+  in `pasted-images` / `pasted-texts`.
+- `sourceDirs`: the source's pasted directories. The import replaces them with its
+  own in the run logs (JSON-escaped form) and in `RunEntry.user_message` (raw form).
+
+The import reuses the fork helpers and always uses **`PendingFork::Handoff`**: a
+resume id points into the source machine's `~/.claude`, `~/.codex`, …, so even a
+Claude session cannot go native. Differences from a local fork: the session keeps its
+name (no "Fork of"), and `forked_from_session_id` is `None`, because the source id does
+not exist on the target. The import validates the worktree (exists, not archived) and
+every file name in the bundle before it writes anything.
+
+Not transferred (v1): git-context references, checkpoints and the code. The user
+pushes the branch and pulls it on the remote; the dialog says so.
+
+### `POST /api/invoke`
+
+A generic route (`invoke_handler` in `jean-core/src/http_server/server.rs`) that runs
+one `dispatch_command` over plain HTTP, for callers that have a connection's URL and
+token but no WebSocket to it:
+
+- Body `{ command, args }`; auth like every other route (`?token=` or bearer).
+- `200 { ok: true, data }`, `401 { ok: false, error }` for a bad token,
+  `422 { ok: false, error }` when the command fails.
+- Body limit 256 MiB on this route only; axum's default 2 MB is too small for run logs
+  and images.
+- An older Jean without the route answers **405** (its fallback only takes `GET`), not 404. `remoteInvoke` maps 404 and 405 to "Update … on <name>".
+- Native app only. In Web Access the page origin differs from the target, so CORS
+  blocks the request unless the target lists it in `JEAN_ALLOWED_ORIGINS`.
 
 ## Adding a command
 

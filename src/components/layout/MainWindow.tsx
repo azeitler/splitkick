@@ -104,6 +104,11 @@ const OpenInModal = lazy(() =>
     default: mod.OpenInModal,
   }))
 )
+const TransferSessionDialog = lazy(() =>
+  import('@/components/remote/TransferSessionDialog').then(mod => ({
+    default: mod.TransferSessionDialog,
+  }))
+)
 const RemotePickerModal = lazy(() =>
   import('@/components/magic/RemotePickerModal').then(mod => ({
     default: mod.RemotePickerModal,
@@ -265,6 +270,9 @@ export function MainWindow() {
   const jeanMcpIntroOpen = useUIStore(state => state.jeanMcpIntroOpen)
   const openInModalOpen = useUIStore(state => state.openInModalOpen)
   const remotePickerOpen = useUIStore(state => state.remotePickerOpen)
+  const transferSessionOpen = useUIStore(
+    state => state.transferSessionTarget !== null
+  )
   const resolveConflictsDialogOpen = useUIStore(
     state => state.resolveConflictsDialogOpen
   )
@@ -516,6 +524,8 @@ export function MainWindow() {
   const shouldRenderCliLoginModal = useRetainedMount(cliLoginModalOpen)
   const shouldRenderOpenInModal = useRetainedMount(openInModalOpen)
   const shouldRenderRemotePickerModal = useRetainedMount(remotePickerOpen)
+  const shouldRenderTransferSessionDialog =
+    useRetainedMount(transferSessionOpen)
   const shouldRenderUpdatePrDialog = useRetainedMount(updatePrModalOpen)
   const shouldRenderReviewCommentsDialog = useRetainedMount(
     reviewCommentsModalOpen
@@ -794,6 +804,12 @@ export function MainWindow() {
               )
             }}
           />
+        </Suspense>
+      )}
+      {/* Native only: Web Access cannot reach another instance (CORS). */}
+      {isNativeApp() && shouldRenderTransferSessionDialog && (
+        <Suspense fallback={null}>
+          <TransferSessionDialog />
         </Suspense>
       )}
       {shouldRenderRemotePickerModal && (

@@ -10,11 +10,44 @@ import {
   Download,
   Pencil,
   RotateCcw,
+  Send,
 } from 'lucide-react'
 import type { AppCommand } from './types'
 import { useUIStore } from '@/store/ui-store'
+import { PRODUCT_NAME } from '@/lib/build-info'
+import { isNativeApp } from '@/lib/environment'
+import {
+  getActiveConnectionId,
+  getRemoteConnections,
+} from '@/lib/remote-connections'
+import {
+  getActiveSessionTarget,
+  getTransferTargets,
+} from '@/lib/session-transfer'
 
 export const projectCommands: AppCommand[] = [
+  {
+    id: 'transfer-session-to-remote',
+    label: `Transfer Session to Remote ${PRODUCT_NAME}…`,
+    description:
+      'Copy the current session with its history to another instance',
+    icon: Send,
+    group: 'projects',
+    keywords: ['session', 'transfer', 'remote', 'copy', 'send', 'connection'],
+
+    // Native only: Web Access cannot reach another instance (CORS).
+    isAvailable: context =>
+      isNativeApp() &&
+      context.hasActiveSession() &&
+      getTransferTargets(getRemoteConnections(), getActiveConnectionId())
+        .length > 0,
+
+    execute: () => {
+      const target = getActiveSessionTarget()
+      if (target) useUIStore.getState().setTransferSessionTarget(target)
+    },
+  },
+
   {
     id: 'add-project',
     label: 'Add Project',
