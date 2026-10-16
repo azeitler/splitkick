@@ -89,11 +89,11 @@ import {
 import { useSidebarWidth } from '@/components/layout/SidebarWidthContext'
 import { formatMessageTimestamp, formatRelativeTime } from '@/lib/relative-time'
 import {
+  SIDEBAR_GROUPED_SESSION_ROW_PADDING,
   SIDEBAR_NESTED_ROW_SHAPE,
   SIDEBAR_ROW_SELECTED,
   SIDEBAR_SESSION_GROUP_PADDING,
   SIDEBAR_SESSION_LIST,
-  SIDEBAR_SESSION_ROW_PADDING,
   SIDEBAR_WORKTREE_ROW_PADDING,
 } from './sidebar-row-styles'
 
@@ -1011,7 +1011,7 @@ export function WorktreeItem({
                   const rowClassName = cn(
                     'flex items-center gap-1.5 py-1 cursor-pointer text-sm truncate text-left',
                     SIDEBAR_NESTED_ROW_SHAPE,
-                    SIDEBAR_SESSION_ROW_PADDING,
+                    SIDEBAR_GROUPED_SESSION_ROW_PADDING,
                     activeSessionId === card.session.id && isSelected
                       ? cn(SIDEBAR_ROW_SELECTED, 'font-medium')
                       : activeSessionId === card.session.id

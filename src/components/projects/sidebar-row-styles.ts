@@ -7,7 +7,8 @@
  *
  *   folder / project at depth d   16 + 16·d
  *   workspace                     32 + 16·d
- *   session (and its group label) 48 + 16·d
+ *   session group label (IDLE)    48 + 16·d
+ *   session in a group            60 + 16·d
  *
  * Folders and projects reach depth d through the tree wrapper
  * (`SIDEBAR_INDENT_STEP_PX`, ProjectTree / FolderTreeItem). Workspaces and
@@ -43,11 +44,17 @@ export const SIDEBAR_WORKTREE_SECTION_PADDING = 'pl-[9px]'
  * (23): guide line under the workspace dot (32 + 4 = 36), content from 37. */
 export const SIDEBAR_SESSION_LIST = 'ml-[13px] border-l border-border/40'
 
-/** A session row in that list: 37 + 4 (pill inset) + 7 = glyph at 48. */
+/** A session row in that list without a group label (Pinned, Starred):
+ * 37 + 4 (pill inset) + 7 = glyph at 48. */
 export const SIDEBAR_SESSION_ROW_PADDING = 'pl-[7px] pr-1'
 
 /** A session group label (IDLE, WAITING): 37 + 11 = glyph at 48. */
 export const SIDEBAR_SESSION_GROUP_PADDING = 'pl-[11px]'
+
+/** A session row under a group label: 37 + 4 (pill inset) + 19 = glyph at 60,
+ * one step in from the label, level with its text (48 + 6 dot + 6 gap). Do not
+ * align it with the label: the group then reads as one more row (#39). */
+export const SIDEBAR_GROUPED_SESSION_ROW_PADDING = 'pl-[19px] pr-1'
 
 /** The selected row. */
 export const SIDEBAR_ROW_SELECTED = 'bg-foreground/10 text-foreground'

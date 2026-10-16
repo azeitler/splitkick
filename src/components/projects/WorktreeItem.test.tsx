@@ -219,7 +219,7 @@ describe('WorktreeItem stale fade', () => {
   const DAY = 24 * 60 * 60 * 1000
 
   function rowFor(name: string): HTMLElement {
-    const row = screen.getByText(name).closest('[class*="pl-[7px]"]')
+    const row = screen.getByText(name).closest('[class*="pl-[19px]"]')
     if (!row) throw new Error(`no session row for ${name}`)
     return row as HTMLElement
   }
@@ -335,9 +335,46 @@ describe('WorktreeItem session row right padding', () => {
   it('leaves room after the timestamp for the scrollbar', () => {
     renderItem({})
 
-    const row = screen.getByText('Auth Refactor').closest('[class*="pl-[7px]"]')
+    const row = screen
+      .getByText('Auth Refactor')
+      .closest('[class*="pl-[19px]"]')
     expect(row).not.toBeNull()
     expect((row as HTMLElement).className).toContain('pr-1')
+  })
+})
+
+// The status group label (IDLE, WAITING) and its session rows put their dots
+// in one column, so a group read as one more row (#39).
+describe('WorktreeItem status group indent', () => {
+  beforeEach(() => {
+    mocks.sessions = [session('a', 'Auth Refactor')]
+    useProjectsStore.setState({
+      selectedWorktreeId: null,
+      expandedWorktreeIds: new Set(['wt-1']),
+    })
+  })
+
+  // Glyph column of an element, from its `ml-1` pill inset and `pl-[Npx]`.
+  function glyphOffset(el: HTMLElement): number {
+    const padding = /\bpl-\[(\d+)px\]/.exec(el.className)
+    if (!padding) throw new Error(`no pl-[Npx] in "${el.className}"`)
+    const inset = /\bml-1\b/.test(el.className) ? 4 : 0
+    return inset + Number(padding[1])
+  }
+
+  it('indents the sessions one step in from their group label', () => {
+    renderItem({})
+
+    const row = screen
+      .getByText('Auth Refactor')
+      .closest('[class*="pl-["]') as HTMLElement
+    const label = screen
+      .getAllByText(/idle/i)
+      .map(el => el.closest('[class*="pl-["]') as HTMLElement)
+      .find(el => el && el !== row && !el.contains(row))
+    expect(label).toBeDefined()
+
+    expect(glyphOffset(row)).toBe(glyphOffset(label as HTMLElement) + 12)
   })
 })
 
@@ -470,7 +507,7 @@ describe('WorktreeItem starred glyph', () => {
     const glyphs = screen.getAllByTestId('starred-glyph')
     expect(glyphs).toHaveLength(1)
     expect(
-      screen.getByText('Auth Refactor').closest('[class*="pl-[7px]"]')
+      screen.getByText('Auth Refactor').closest('[class*="pl-[19px]"]')
     ).toContainElement(glyphs[0] ?? null)
   })
 })
@@ -501,7 +538,7 @@ describe('WorktreeItem pinned glyph', () => {
   })
 
   const rowOf = (name: string) =>
-    screen.getByText(name).closest('[class*="pl-[7px]"]') as HTMLElement
+    screen.getByText(name).closest('[class*="pl-[19px]"]') as HTMLElement
 
   it('marks only the pinned rows', () => {
     renderItem({})
@@ -567,7 +604,7 @@ describe('WorktreeItem label position', () => {
     renderItem({})
 
     const label = screen.getByText('Bug')
-    const row = label.closest('[class*="pl-[7px]"]') as HTMLElement
+    const row = label.closest('[class*="pl-[19px]"]') as HTMLElement
     const stamp = Array.from(row.querySelectorAll('span')).find(span =>
       span.getAttribute('title')?.startsWith('Last active:')
     )

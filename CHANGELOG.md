@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sessions sit one step in from their status group in the sidebar.** The
+  group labels (Waiting, Review, Idle, …) were indented as far as their
+  sessions, so a group read as one more session row. (#39)
+
 ## [1.0.1] - 2026-10-16
 
 Built on Jean 0.1.73.
