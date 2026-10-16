@@ -28,37 +28,39 @@ const worktree = createWorktree(project.id, {
   sessions: [recent, earlier, starred],
 })
 
+const phoneOverrides = {
+  list_projects: [project],
+  list_worktrees: [worktree],
+  list_all_sessions: {
+    entries: [
+      {
+        project_id: project.id,
+        project_name: project.name,
+        worktree_id: worktree.id,
+        worktree_name: worktree.name,
+        worktree_path: worktree.path,
+        sessions: [recent, earlier, starred],
+      },
+    ],
+  },
+  // Start at the tab root, with one star.
+  load_ui_state: {
+    ...mockUIState,
+    active_project_id: null,
+    starred_sessions: [
+      {
+        project_id: project.id,
+        worktree_id: worktree.id,
+        session_id: starred.id,
+      },
+    ],
+  },
+}
+
 test.use({
   viewport: { width: 390, height: 844 },
   hasTouch: true,
-  responseOverrides: {
-    list_projects: [project],
-    list_worktrees: [worktree],
-    list_all_sessions: {
-      entries: [
-        {
-          project_id: project.id,
-          project_name: project.name,
-          worktree_id: worktree.id,
-          worktree_name: worktree.name,
-          worktree_path: worktree.path,
-          sessions: [recent, earlier, starred],
-        },
-      ],
-    },
-    // Start at the tab root, with one star.
-    load_ui_state: {
-      ...mockUIState,
-      active_project_id: null,
-      starred_sessions: [
-        {
-          project_id: project.id,
-          worktree_id: worktree.id,
-          session_id: starred.id,
-        },
-      ],
-    },
-  },
+  responseOverrides: phoneOverrides,
 })
 
 /** The project card on the Home tab's Projects list. */
@@ -168,6 +170,45 @@ test.describe('Phone navigation', () => {
         path: `${process.env.SIDEBAR_SCREENSHOT_DIR}/phone-project-recent.png`,
       })
     }
+  })
+
+  test('lists the sessions of a worktree and opens the one tapped', async ({
+    mockPage,
+  }) => {
+    await (await projectCard(mockPage)).click()
+    const layer = mockPage.getByTestId('mobile-project-layer')
+
+    const toggle = layer.getByTestId(`worktree-expand-${worktree.id}`)
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    await toggle.click()
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+
+    const list = layer.getByTestId(`worktree-sessions-${worktree.id}`)
+    await expect(list.getByRole('button')).toHaveCount(3)
+    // A phone touch target (min-h-11), not a desktop tree row. In rem: the
+    // harness zoom scales the root font size.
+    const rowRem = await list
+      .getByRole('button')
+      .first()
+      .evaluate(
+        el =>
+          el.getBoundingClientRect().height /
+          parseFloat(getComputedStyle(document.documentElement).fontSize)
+      )
+    expect(rowRem).toBeGreaterThanOrEqual(2.75)
+
+    if (process.env.SIDEBAR_SCREENSHOT_DIR) {
+      await mockPage.screenshot({
+        path: `${process.env.SIDEBAR_SCREENSHOT_DIR}/phone-worktree-sessions.png`,
+      })
+    }
+
+    await list.getByRole('button', { name: /Opened earlier/ }).click()
+
+    await expect(mockPage.getByTestId('session-chat-modal-swipe')).toBeVisible()
+    await expect(
+      mockPage.locator(`[data-session-id="${earlier.id}"]`)
+    ).toHaveAttribute('aria-current', 'true')
   })
 
   test('pushes a session from History and goes back to History', async ({

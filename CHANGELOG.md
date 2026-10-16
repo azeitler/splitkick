@@ -7,6 +7,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Phone: a worktree lists its sessions.** A chevron on each worktree row in
+  a project opens its sessions under the row; tap one to open it.
+
 ### Fixed
 
 - **A session no longer stays in Waiting because of an old blocked tool.**

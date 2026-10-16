@@ -169,6 +169,10 @@ import {
   isActionableWaitingStatus,
 } from '@/components/chat/session-card-utils'
 import { WorktreeSetupCard } from '@/components/chat/WorktreeSetupCard'
+import {
+  CanvasWorktreeExpandButton,
+  CanvasWorktreeSessions,
+} from './CanvasWorktreeSessions'
 import { OpenInButton } from '@/components/open-in/OpenInButton'
 import { ScriptsButton } from '@/components/open-in/ScriptsButton'
 import { useCanvasStoreState } from '@/components/chat/hooks/useCanvasStoreState'
@@ -2315,6 +2319,26 @@ export function ProjectCanvasView({
     [openWorktreeModal, projectId]
   )
 
+  // Phone only: worktrees whose session list is open under their row. Local
+  // state, not the sidebar's expandedWorktreeIds — that tree is desktop state.
+  const [expandedWorktreeIds, setExpandedWorktreeIds] = useState<
+    ReadonlySet<string>
+  >(() => new Set())
+  const toggleWorktreeSessions = useCallback((worktreeId: string) => {
+    setExpandedWorktreeIds(prev => {
+      const next = new Set(prev)
+      if (!next.delete(worktreeId)) next.add(worktreeId)
+      return next
+    })
+  }, [])
+  const openWorktreeSession = useCallback(
+    (worktreeId: string, worktreePath: string, sessionId: string) => {
+      useChatStore.getState().setActiveSession(worktreeId, sessionId)
+      openWorktreeModal(worktreeId, worktreePath)
+    },
+    [openWorktreeModal]
+  )
+
   // Handle selection from keyboard nav
   const handleSelect = useCallback(
     (index: number) => {
@@ -3943,55 +3967,92 @@ export function ProjectCanvasView({
                                 ref={el => {
                                   cardRefs.current[currentIndex] = el
                                 }}
+                                className={cn(isMobile && 'flex items-start')}
                               >
-                                <WorktreeSectionHeader
-                                  worktree={section.worktree}
-                                  projectId={projectId}
-                                  defaultBranch={project.default_branch}
-                                  openPRs={openPRs}
-                                  cards={section.cards}
-                                  showDetails={true}
-                                  isSelected={selectedIndex === currentIndex}
-                                  shortcutNumber={thisShortcut}
-                                  onRowClick={() => {
-                                    handleSelectedIndexChange(currentIndex)
-                                    handleWorktreeClick(
-                                      section.worktree.id,
-                                      section.worktree.path
-                                    )
-                                  }}
-                                  onDiffClick={setCanvasDiffRequest}
-                                  onSetLabels={
-                                    showWorktreeLabelContextMenu
-                                      ? () =>
-                                          openWorktreeLabelModal(
+                                <div
+                                  className={cn(isMobile && 'min-w-0 flex-1')}
+                                >
+                                  <WorktreeSectionHeader
+                                    worktree={section.worktree}
+                                    projectId={projectId}
+                                    defaultBranch={project.default_branch}
+                                    openPRs={openPRs}
+                                    cards={section.cards}
+                                    showDetails={true}
+                                    isSelected={selectedIndex === currentIndex}
+                                    shortcutNumber={thisShortcut}
+                                    onRowClick={() => {
+                                      handleSelectedIndexChange(currentIndex)
+                                      handleWorktreeClick(
+                                        section.worktree.id,
+                                        section.worktree.path
+                                      )
+                                    }}
+                                    onDiffClick={setCanvasDiffRequest}
+                                    onSetLabels={
+                                      showWorktreeLabelContextMenu
+                                        ? () =>
+                                            openWorktreeLabelModal(
+                                              section.worktree
+                                            )
+                                        : undefined
+                                    }
+                                    assignedLabels={
+                                      showWorktreeLabelContextMenu
+                                        ? resolveWorktreeLabels(
                                             section.worktree
                                           )
-                                      : undefined
-                                  }
-                                  assignedLabels={
-                                    showWorktreeLabelContextMenu
-                                      ? resolveWorktreeLabels(section.worktree)
-                                      : undefined
-                                  }
-                                  availableLabels={labelCatalog}
-                                  onLabelsChange={
-                                    showWorktreeLabelContextMenu
-                                      ? next =>
-                                          void applyWorktreeLabels(
-                                            section.worktree.id,
-                                            next
-                                          )
-                                      : undefined
-                                  }
-                                  onResolveConflicts={
-                                    handleCanvasResolveConflicts
-                                  }
-                                  disableTextSelection={
-                                    disableWorktreeTextSelection
-                                  }
-                                />
+                                        : undefined
+                                    }
+                                    availableLabels={labelCatalog}
+                                    onLabelsChange={
+                                      showWorktreeLabelContextMenu
+                                        ? next =>
+                                            void applyWorktreeLabels(
+                                              section.worktree.id,
+                                              next
+                                            )
+                                        : undefined
+                                    }
+                                    onResolveConflicts={
+                                      handleCanvasResolveConflicts
+                                    }
+                                    disableTextSelection={
+                                      disableWorktreeTextSelection
+                                    }
+                                  />
+                                </div>
+                                {isMobile && (
+                                  <CanvasWorktreeExpandButton
+                                    worktree={section.worktree}
+                                    expanded={expandedWorktreeIds.has(
+                                      section.worktree.id
+                                    )}
+                                    onToggle={() =>
+                                      toggleWorktreeSessions(
+                                        section.worktree.id
+                                      )
+                                    }
+                                  />
+                                )}
                               </div>
+                              {isMobile &&
+                                expandedWorktreeIds.has(
+                                  section.worktree.id
+                                ) && (
+                                  <CanvasWorktreeSessions
+                                    worktree={section.worktree}
+                                    projectId={projectId}
+                                    cards={section.cards}
+                                    onOpen={sessionId =>
+                                      openWorktreeSession(
+                                        section.worktree.id,
+                                        section.worktree.path,
+                                        sessionId
+                                      )
+                                    }
+                                  />
+                                )}
                             </SortableCanvasWorktreeSection>
                           )
                         })
