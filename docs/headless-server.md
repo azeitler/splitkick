@@ -235,6 +235,19 @@ curl "http://127.0.0.1:3456/api/init?token=$JEAN_TOKEN"
 
 The browser UI still uses `/api/init`, `/api/auth`, and `/ws` from the same origin, so reverse proxies do not need to rewrite paths.
 
+`POST /api/invoke` runs one backend command over HTTP, with the same command names and
+args as the WebSocket. Splitkick uses it to send a session to another instance:
+
+```bash
+curl -X POST "http://127.0.0.1:3456/api/invoke?token=$JEAN_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"command":"list_projects","args":{}}'
+# {"ok":true,"data":[...]}  — or {"ok":false,"error":"..."} with 401 / 422
+```
+
+Requests can be up to 256 MiB. A reverse proxy in front must allow that body size for
+this path (Caddy has no limit by default; nginx needs `client_max_body_size`).
+
 ## systemd example
 
 ```ini

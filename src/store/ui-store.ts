@@ -7,6 +7,7 @@ import type {
   SidebarTab,
 } from '@/types/ui-state'
 import type { CliType } from '@/lib/cli-update'
+import type { TransferSessionTarget } from '@/lib/session-transfer'
 import { mergeSeenFailedWorkflowRunIds } from '@/components/shared/workflow-run-utils'
 
 export type PreferencePane =
@@ -135,6 +136,8 @@ interface UIState {
   openInModalOpen: boolean
   remotePickerOpen: boolean
   remotePickerRepoPath: string | null
+  /** Session the "Transfer to Remote Jean" dialog is open for (issue #35). */
+  transferSessionTarget: TransferSessionTarget | null
   loadContextModalOpen: boolean
   linkedProjectsModalOpen: boolean
   magicModalOpen: boolean
@@ -283,6 +286,7 @@ interface UIState {
     callback: (remote: string) => void
   ) => void
   closeRemotePicker: () => void
+  setTransferSessionTarget: (target: TransferSessionTarget | null) => void
   setLoadContextModalOpen: (open: boolean) => void
   setLinkedProjectsModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
@@ -424,6 +428,7 @@ export const useUIStore = create<UIState>()(
       openInModalOpen: false,
       remotePickerOpen: false,
       remotePickerRepoPath: null,
+      transferSessionTarget: null,
       loadContextModalOpen: false,
       linkedProjectsModalOpen: false,
       magicModalOpen: false,
@@ -706,6 +711,22 @@ export const useUIStore = create<UIState>()(
           'closeRemotePicker'
         )
       },
+
+      setTransferSessionTarget: target =>
+        set(
+          state => {
+            const current = state.transferSessionTarget
+            if (
+              current?.worktreeId === target?.worktreeId &&
+              current?.sessionId === target?.sessionId
+            ) {
+              return state
+            }
+            return { transferSessionTarget: target }
+          },
+          undefined,
+          'setTransferSessionTarget'
+        ),
 
       setLoadContextModalOpen: open =>
         set(

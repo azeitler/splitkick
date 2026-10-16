@@ -1,6 +1,6 @@
 use axum::{
     body::Body,
-    extract::{ws::WebSocketUpgrade, Path as AxumPath, Query, State},
+    extract::{ws::WebSocketUpgrade, DefaultBodyLimit, Path as AxumPath, Query, State},
     http::{header, HeaderMap, HeaderValue, StatusCode, Uri},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -226,6 +226,12 @@ pub async fn start_server(
         .route("/ws", get(ws_handler))
         .route("/api/auth", get(auth_handler))
         .route("/api/commit-jobs", post(start_commit_job_handler))
+        // Only this route takes large bodies: a transferred session carries its
+        // run logs and pasted images. Axum's default limit is 2 MB.
+        .route(
+            "/api/invoke",
+            post(invoke_handler).layer(DefaultBodyLimit::max(INVOKE_BODY_LIMIT)),
+        )
         .route("/api/init", get(init_handler))
         .route("/api/version", get(version_handler))
         .route("/api/files/{*filepath}", get(file_handler))
@@ -437,6 +443,67 @@ async fn start_commit_job_handler(
     {
         Ok(result) => (StatusCode::ACCEPTED, Json(result)).into_response(),
         Err(error) => (StatusCode::CONFLICT, error).into_response(),
+    }
+}
+
+/// Body limit for `POST /api/invoke`.
+const INVOKE_BODY_LIMIT: usize = 256 * 1024 * 1024;
+
+#[derive(Deserialize)]
+struct InvokeRequest {
+    command: String,
+    #[serde(default)]
+    args: Value,
+}
+
+/// Run one dispatch command over plain HTTP: `POST /api/invoke?token=…` with
+/// `{ command, args }`.
+///
+/// For callers that hold a connection's URL and token but no WebSocket to it, such
+/// as a window that sends a session to another Jean (`src/lib/remote-invoke.ts`).
+/// Same commands, args and auth as the WebSocket transport. Answers
+/// `{ ok: true, data }`, or `{ ok: false, error }` with 401 (bad token) or 422
+/// (the command failed).
+async fn invoke_handler(
+    headers: HeaderMap,
+    Query(params): Query<WsAuth>,
+    State(state): State<AppState>,
+    Json(request): Json<InvokeRequest>,
+) -> Response {
+    if state.token_required
+        && !request_is_authorized(params.token.as_deref(), &headers, &state.token)
+    {
+        return (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({ "ok": false, "error": "Invalid token" })),
+        )
+            .into_response();
+    }
+
+    // Same as the WebSocket path: dispatch targets do blocking work (file I/O,
+    // git, `PROJECTS_LOCK`), so keep them off the async workers.
+    let app = state.app.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        tauri::async_runtime::block_on(super::dispatch::dispatch_command(
+            &app,
+            &request.command,
+            request.args,
+        ))
+    })
+    .await;
+
+    match result {
+        Ok(Ok(data)) => Json(serde_json::json!({ "ok": true, "data": data })).into_response(),
+        Ok(Err(error)) => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            Json(serde_json::json!({ "ok": false, "error": error })),
+        )
+            .into_response(),
+        Err(error) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "ok": false, "error": format!("Command panicked: {error}") })),
+        )
+            .into_response(),
     }
 }
 
@@ -1766,5 +1833,73 @@ mod tests {
             &canonical_sibling,
             &[canonical_root]
         ));
+    }
+
+    /// `POST /api/invoke` runs dispatch commands over plain HTTP: token checked,
+    /// errors reported as JSON, and bodies above axum's 2 MB default accepted.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn invoke_route_dispatches_commands_with_token_auth() {
+        use reqwest::StatusCode;
+        use serde_json::Value;
+
+        let temp = tempfile::tempdir().unwrap();
+        let app =
+            crate::runtime::RuntimeContext::new(temp.path().into(), temp.path().into()).unwrap();
+        let handle = crate::http_server::server::start_server(
+            app,
+            0,
+            "secret".to_string(),
+            "127.0.0.1".to_string(),
+            true,
+        )
+        .await
+        .unwrap();
+        let base = format!("http://127.0.0.1:{}/api/invoke", handle.port);
+        let client = reqwest::Client::new();
+        let post = |token: &str, body: Value| {
+            client
+                .post(format!("{base}?token={token}"))
+                .json(&body)
+                .send()
+        };
+
+        let denied = post(
+            "wrong",
+            serde_json::json!({ "command": "get_server_platform" }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(denied.status(), StatusCode::UNAUTHORIZED);
+        let body: Value = denied.json().await.unwrap();
+        assert_eq!(body["ok"], false);
+
+        // 3 MB of padding: above axum's default limit, below the route's own.
+        let padding = "x".repeat(3 * 1024 * 1024);
+        let ok = post(
+            "secret",
+            serde_json::json!({ "command": "get_server_platform", "args": { "pad": padding } }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(ok.status(), StatusCode::OK);
+        let body: Value = ok.json().await.unwrap();
+        assert_eq!(body["ok"], true);
+        assert_eq!(
+            body["data"],
+            Value::String(crate::server_platform_name().to_string())
+        );
+
+        let failed = post(
+            "secret",
+            serde_json::json!({ "command": "no_such_command" }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(failed.status(), StatusCode::UNPROCESSABLE_ENTITY);
+        let body: Value = failed.json().await.unwrap();
+        assert_eq!(body["ok"], false);
+        assert!(body["error"].as_str().unwrap().contains("no_such_command"));
+
+        let _ = handle.shutdown_tx.send(());
     }
 }

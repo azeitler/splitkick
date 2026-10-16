@@ -332,6 +332,23 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["sessions", "session"]);
             to_value(result)
         }
+        // Session transfer to another Jean (issue #35). The source exports over its
+        // own transport; the frontend posts the bundle to the target's `/api/invoke`.
+        "export_session_bundle" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let result =
+                crate::chat::export_session_bundle(app.clone(), worktree_id, session_id).await?;
+            to_value(result)
+        }
+        "import_session_bundle" => {
+            let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
+            let bundle: crate::chat::SessionBundle = from_field(&args, "bundle")?;
+            let result =
+                crate::chat::import_session_bundle(app.clone(), worktree_id, bundle).await?;
+            emit_cache_invalidation(app, &["sessions", "session"]);
+            to_value(result)
+        }
         "delete_worktree" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             crate::projects::delete_worktree(app.clone(), worktree_id).await?;
@@ -4417,6 +4434,8 @@ mod tests {
             // A fork adds a session too, so the tab strip must refresh.
             "fork_session_in_place",
             "fork_session_to_worktree",
+            // A transferred session lands as a new tab on the target.
+            "import_session_bundle",
         ] {
             let start = source
                 .find(&format!("\n        \"{command}\" =>"))

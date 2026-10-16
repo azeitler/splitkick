@@ -232,3 +232,25 @@ describe('project home request', () => {
     expect(useUIStore.getState()).toBe(before)
   })
 })
+
+describe('transfer session target', () => {
+  beforeEach(() => {
+    useUIStore.setState({ transferSessionTarget: null })
+  })
+
+  it('opens and closes, and ignores a repeat of the same target', () => {
+    const { setTransferSessionTarget } = useUIStore.getState()
+    setTransferSessionTarget({ worktreeId: 'w1', sessionId: 's1' })
+    expect(useUIStore.getState().transferSessionTarget).toEqual({
+      worktreeId: 'w1',
+      sessionId: 's1',
+    })
+
+    const before = useUIStore.getState()
+    setTransferSessionTarget({ worktreeId: 'w1', sessionId: 's1' })
+    expect(useUIStore.getState()).toBe(before)
+
+    setTransferSessionTarget(null)
+    expect(useUIStore.getState().transferSessionTarget).toBeNull()
+  })
+})
