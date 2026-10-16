@@ -222,6 +222,7 @@ import { getPathUpdateAction } from '@/lib/cli-update'
 import { BackendPaneHeader, SettingsSection } from '../SettingsSection'
 import { BackendCliSourceCards } from '../BackendCliSourceCards'
 import { AiLanguageField } from './AiLanguageField'
+import { FullDiskAccessSection } from './FullDiskAccessSection'
 import {
   resolveDefaultModelForBackend,
   resolvePiDefaultModel,
@@ -3023,6 +3024,8 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
           </div>
         </SettingsSection>
       )}
+
+      {isGeneralScope && <FullDiskAccessSection />}
 
       {isGeneralScope && isWindows && isNativeApp() && (
         <WslSettingsSection

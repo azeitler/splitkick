@@ -133,6 +133,12 @@ pub async fn dispatch_command(
         // Preferences & UI State
         // =====================================================================
         "get_server_platform" => to_value(crate::server_platform_name()),
+        "get_full_disk_access_status" => to_value(crate::platform::full_disk_access_status()),
+        "open_full_disk_access_settings" => {
+            crate::platform::ensure_native_open_allowed("System Settings")?;
+            crate::platform::open_full_disk_access_settings()?;
+            Ok(Value::Null)
+        }
         "check_server_update" => {
             let result = crate::server_update::check_server_update(app).await?;
             to_value(result)
