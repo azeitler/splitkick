@@ -9,6 +9,7 @@ import {
   toFileUrl,
 } from '@/lib/path-utils'
 import { openExternal } from '@/lib/platform'
+import { getRemotePreviewUrl } from '@/lib/remote-preview'
 import { invoke } from '@/lib/transport'
 import { openUrlInEmbeddedBrowser } from '@/hooks/useBrowserPane'
 import { useChatStore } from '@/store/chat-store'
@@ -116,13 +117,12 @@ export function classifyChatLink(
 
 /**
  * Whether a link of this kind can open in the embedded browser here. The
- * browser is a native webview, so web access cannot use it; a local page also
- * needs the local backend, because with a remote backend the path names a
- * file on the other machine.
+ * browser is a native webview, so web access cannot use it. With a remote
+ * backend a local page names a file on the other machine; it opens as the
+ * preview URL that backend serves (see `getRemotePreviewUrl`).
  */
 export function canOpenInEmbeddedBrowser(kind: ChatLinkKind | null): boolean {
-  if (kind === 'web') return isNativeApp()
-  if (kind === 'page') return isLocalBackend()
+  if (kind === 'web' || kind === 'page') return isNativeApp()
   return false
 }
 
@@ -191,6 +191,25 @@ export function openChatLink(
   // resolved path is not what belongs on screen: `~/Downloads/a.png` must
   // read back as `~/Downloads/a.png`.
   const label = toLocalReferencePath(splitFileRefSuffix(href)[0]) ?? href
+
+  if (kind === 'page' && canOpenInEmbeddedBrowser(kind) && !isLocalBackend()) {
+    const [ref, suffix] = splitFileRefSuffix(href)
+    const path = resolvedPath ?? resolveLocalPath(ref, rootPath)
+    if (!path) return false
+    void getRemotePreviewUrl(path, suffix)
+      .then(url =>
+        system
+          ? openExternal(url)
+          : openUrlInEmbeddedBrowser(url, label).then(opened => {
+              if (!opened) void openExternal(url)
+            })
+      )
+      .catch(error => {
+        toast.error(`Cannot preview ${label}: ${error}`)
+        useUIStore.getState().setViewingFilePath(path, label)
+      })
+    return true
+  }
 
   if (kind === 'page' && canOpenInEmbeddedBrowser(kind)) {
     const page = resolvedPath

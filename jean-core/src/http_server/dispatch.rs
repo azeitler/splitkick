@@ -1790,6 +1790,11 @@ pub async fn dispatch_command(
             let result = crate::http_server::server::get_server_status(app.clone()).await;
             to_value(result)
         }
+        "get_preview_url" => {
+            let path: String = from_field(&args, "path")?;
+            let url = crate::http_server::server::get_preview_url(app.clone(), path).await?;
+            to_value(serde_json::json!({ "url": url }))
+        }
         "list_http_bind_host_options" => {
             let result = crate::http_server::server::list_bind_host_options();
             to_value(result)

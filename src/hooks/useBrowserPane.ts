@@ -3,6 +3,7 @@ import { invoke, listen } from '@/lib/transport'
 import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import { isPaneTextUrl, isVideoFile, toFileUrl } from '@/lib/path-utils'
 import { isLoopbackHost } from '@/lib/remote-editor'
+import { getRemotePreviewUrl } from '@/lib/remote-preview'
 import { isBlankTabUrl, useBrowserStore } from '@/store/browser-store'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
@@ -249,9 +250,15 @@ export function useBrowserEvents(): void {
             void openUrlInWorktreeBrowser(worktreeId, url)
           }
         } else if (path && isLocalBackend()) {
-          // The path names a file on the backend's machine; with a remote
-          // backend it does not exist here.
           void openUrlInWorktreeBrowser(worktreeId, toFileUrl(path))
+        } else if (path && isNativeApp()) {
+          // The path names a file on the remote backend's machine; load the
+          // preview that backend serves for it.
+          void getRemotePreviewUrl(path)
+            .then(url => openUrlInWorktreeBrowser(worktreeId, url))
+            .catch(error => {
+              console.error('Failed to open remote preview', error)
+            })
         }
       })
     )

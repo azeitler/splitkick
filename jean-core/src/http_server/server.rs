@@ -230,6 +230,8 @@ pub async fn start_server(
         .route("/api/version", get(version_handler))
         .route("/api/files/{*filepath}", get(file_handler))
         .route("/api/project-files/{*filepath}", get(project_file_handler))
+        .route("/preview/{root_id}/{sig}/", get(preview_index_handler))
+        .route("/preview/{root_id}/{sig}/{*relpath}", get(preview_handler))
         .fallback(get(static_handler))
         .layer(CompressionLayer::new().br(true).gzip(true))
         .layer(cors)
@@ -1062,6 +1064,50 @@ async fn project_file_handler(
     }
 }
 
+async fn preview_index_handler(
+    AxumPath((root_id, sig)): AxumPath<(String, String)>,
+    State(state): State<AppState>,
+) -> Response {
+    serve_preview(&state, &root_id, &sig, "").await
+}
+
+/// Static preview of a project/worktree file for remote clients (see
+/// `preview.rs`). Authorized by the per-root signature in the path.
+async fn preview_handler(
+    AxumPath((root_id, sig, relpath)): AxumPath<(String, String, String)>,
+    State(state): State<AppState>,
+) -> Response {
+    serve_preview(&state, &root_id, &sig, &relpath).await
+}
+
+async fn serve_preview(state: &AppState, root_id: &str, sig: &str, relpath: &str) -> Response {
+    use super::preview;
+
+    if state.token_required && !preview::sig_is_valid(&state.token, root_id, sig) {
+        return (StatusCode::UNAUTHORIZED, "Invalid preview link").into_response();
+    }
+    let Some(path) = preview::resolve_preview_file(&state.app, root_id, relpath) else {
+        return (StatusCode::NOT_FOUND, "File not found").into_response();
+    };
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => Response::builder()
+            .header("Content-Type", preview::preview_mime(&path))
+            // Agents rewrite these files constantly.
+            .header("Cache-Control", "no-store")
+            .header("X-Content-Type-Options", "nosniff")
+            // Opaque origin: the page shares an origin with the web UI and
+            // must not read its stored token.
+            .header(
+                "Content-Security-Policy",
+                "sandbox allow-scripts allow-forms allow-popups allow-modals",
+            )
+            .body(Body::from(bytes))
+            .unwrap()
+            .into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "Cannot read file").into_response(),
+    }
+}
+
 fn static_mime_from_extension(path: &std::path::Path) -> &'static str {
     match path.extension().and_then(|e| e.to_str()) {
         Some("html") => "text/html; charset=utf-8",
@@ -1369,6 +1415,16 @@ fn is_tailscale_ipv6(ip: Ipv6Addr) -> bool {
 }
 
 /// Get current server status. Called from dispatch.
+/// Preview URL path (no host) for an absolute file path on this backend.
+pub async fn get_preview_url(app: AppHandle, path: String) -> Result<String, String> {
+    let token = match app.try_state::<Arc<Mutex<Option<HttpServerHandle>>>>() {
+        Some(handle_state) => handle_state.lock().await.as_ref().map(|h| h.token.clone()),
+        None => None,
+    }
+    .ok_or("HTTP server is not running")?;
+    super::preview::preview_url_path(&app, &token, &path)
+}
+
 pub async fn get_server_status(app: AppHandle) -> ServerStatus {
     match app.try_state::<Arc<Mutex<Option<HttpServerHandle>>>>() {
         Some(handle_state) => {

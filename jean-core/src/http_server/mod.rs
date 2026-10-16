@@ -1,6 +1,7 @@
 pub mod assets;
 pub mod auth;
 pub mod dispatch;
+pub mod preview;
 pub mod server;
 pub mod websocket;
 

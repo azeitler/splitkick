@@ -4,6 +4,7 @@ import { isLocalBackend, isNativeApp } from '@/lib/environment'
 import { openExternal } from '@/lib/platform'
 import { invoke } from '@/lib/transport'
 import { openUrlInEmbeddedBrowser } from '@/hooks/useBrowserPane'
+import { getRemotePreviewUrl } from '@/lib/remote-preview'
 import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import type * as Environment from '@/lib/environment'
@@ -22,6 +23,7 @@ vi.mock('@/lib/transport', async importOriginal => ({
 vi.mock('@/hooks/useBrowserPane', () => ({
   openUrlInEmbeddedBrowser: vi.fn(),
 }))
+vi.mock('@/lib/remote-preview', () => ({ getRemotePreviewUrl: vi.fn() }))
 
 function setEnvironment({
   native,
@@ -138,14 +140,62 @@ describe('openChatLink', () => {
     expect(openUrlInEmbeddedBrowser).not.toHaveBeenCalled()
   })
 
-  it('shows local pages in the file viewer without the local backend', () => {
+  it('opens pages of a remote backend as its preview URL', async () => {
     setEnvironment({ native: true, local: false })
+    vi.mocked(getRemotePreviewUrl).mockResolvedValue(
+      'https://remote:3460/preview/wt/SIG/out/report.html#summary'
+    )
+    vi.mocked(openUrlInEmbeddedBrowser).mockResolvedValue(true)
+
+    expect(openChatLink('out/report.html#summary')).toBe(true)
+
+    expect(getRemotePreviewUrl).toHaveBeenCalledWith(
+      '/repo/wt/out/report.html',
+      '#summary'
+    )
+    await vi.waitFor(() =>
+      expect(openUrlInEmbeddedBrowser).toHaveBeenCalledWith(
+        'https://remote:3460/preview/wt/SIG/out/report.html#summary',
+        'out/report.html'
+      )
+    )
+    expect(useUIStore.getState().viewingFilePath).toBeNull()
+  })
+
+  it('opens remote previews in the system browser on Cmd-click', async () => {
+    setEnvironment({ native: true, local: false })
+    vi.mocked(getRemotePreviewUrl).mockResolvedValue('https://remote/p/a.html')
+
+    openChatLink('/repo/wt/a.html', { system: true })
+
+    await vi.waitFor(() =>
+      expect(openExternal).toHaveBeenCalledWith('https://remote/p/a.html')
+    )
+    expect(openUrlInEmbeddedBrowser).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the file viewer when the remote preview fails', async () => {
+    setEnvironment({ native: true, local: false })
+    vi.mocked(getRemotePreviewUrl).mockRejectedValue(new Error('outside'))
+
+    openChatLink('out/report.html')
+
+    await vi.waitFor(() =>
+      expect(useUIStore.getState().viewingFilePath).toBe(
+        '/repo/wt/out/report.html'
+      )
+    )
+  })
+
+  it('shows local pages in the file viewer in web access', () => {
+    setEnvironment({ native: false, local: false })
 
     openChatLink('out/report.html#summary')
 
     expect(useUIStore.getState().viewingFilePath).toBe(
       '/repo/wt/out/report.html'
     )
+    expect(getRemotePreviewUrl).not.toHaveBeenCalled()
     expect(openUrlInEmbeddedBrowser).not.toHaveBeenCalled()
   })
 

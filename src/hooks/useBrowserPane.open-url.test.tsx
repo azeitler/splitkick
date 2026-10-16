@@ -6,13 +6,17 @@ import { useChatStore } from '@/store/chat-store'
 import { useUIStore } from '@/store/ui-store'
 import type { BrowserNewTabEvent, BrowserOpenUrlEvent } from '@/types/browser'
 
-const { invokeMock, listenMock, localBackend } = vi.hoisted(() => ({
-  invokeMock: vi.fn(),
-  listenMock: vi.fn(),
-  localBackend: { value: true },
-}))
+const { invokeMock, listenMock, localBackend, previewMock } = vi.hoisted(
+  () => ({
+    invokeMock: vi.fn(),
+    listenMock: vi.fn(),
+    localBackend: { value: true },
+    previewMock: vi.fn(),
+  })
+)
 
 vi.mock('@/lib/transport', () => ({ invoke: invokeMock, listen: listenMock }))
+vi.mock('@/lib/remote-preview', () => ({ getRemotePreviewUrl: previewMock }))
 vi.mock('@/lib/environment', () => ({
   isNativeApp: () => true,
   isLocalBackend: () => localBackend.value,
@@ -92,13 +96,18 @@ describe('browser:open-url event', () => {
     )
   })
 
-  it('ignores file paths from a remote backend', async () => {
+  it('opens file paths from a remote backend as its preview URL', async () => {
     localBackend.value = false
+    previewMock.mockResolvedValue('https://remote/preview/wt/SIG/report.html')
 
     handler({ payload: { worktreeId: 'wt-visible', path: '/tmp/report.html' } })
-    await Promise.resolve()
 
-    expect(tabUrls('wt-visible')).toEqual([])
+    expect(previewMock).toHaveBeenCalledWith('/tmp/report.html')
+    await vi.waitFor(() =>
+      expect(tabUrls('wt-visible')).toEqual([
+        'https://remote/preview/wt/SIG/report.html',
+      ])
+    )
   })
 
   it('opens a public URL on a client connected to a remote backend', async () => {

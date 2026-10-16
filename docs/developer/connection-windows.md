@@ -99,6 +99,38 @@ reaching for `app.get_webview_window("main")`. Tauri injects the caller. See
 New window labels also need a capability entry — `capabilities/default.json`
 and `desktop.json` list `["main", "remote-*"]`.
 
+## Previewing the remote backend's files
+
+An agent on the remote machine writes HTML pages there, so a `file://` URL
+names a file this machine does not have. The remote's HTTP server serves them
+instead (`jean-core/src/http_server/preview.rs`):
+
+```
+/preview/<rootId>/<sig>/<path relative to the root>
+```
+
+- `rootId` is a worktree or project id. The path is relative to its root, so a
+  page's relative `css/site.css` and `../img/a.png` resolve.
+- `sig` is an HMAC-SHA256 of `rootId` keyed by the server token. Sub-resource
+  requests cannot carry `?token=`, so the signature works as a capability for
+  the whole root. The token itself is not in the URL. Regenerating the token
+  invalidates every preview link.
+- Paths are canonicalized and must stay in the root (`..` and symlinks out are
+  refused). A directory serves its `index.html`.
+- Responses send `Cache-Control: no-store` and
+  `Content-Security-Policy: sandbox …`. The sandbox gives the page an opaque
+  origin, because it shares an origin with web access, whose token sits in
+  `localStorage`.
+
+The `get_preview_url` command (WebSocket dispatch only) maps an absolute
+backend path to that URL path; `getRemotePreviewUrl` (`src/lib/remote-preview.ts`)
+prefixes the connection URL. `openChatLink` and the `browser:open-url` `path`
+branch in `useBrowserPane.ts` use it whenever the backend is remote.
+
+Limits: static files only (a remote `localhost:5173` dev server is still not
+reachable), root-absolute paths (`/css/x.css`) do not resolve, and a backend
+behind Cloudflare Access needs a login in the browser pane.
+
 ## Known limits
 
 - `localStorage` is shared between windows but is not live-synced: the module

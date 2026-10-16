@@ -140,7 +140,7 @@ describe('MessageThreadContextMenu', () => {
     )
   })
 
-  it('hides the item for a local page the backend does not share', async () => {
+  it('offers the item for a page on a remote backend, via its preview', async () => {
     mocks.isLocalBackend.mockReturnValue(false)
 
     render(
@@ -155,8 +155,8 @@ describe('MessageThreadContextMenu', () => {
       await screen.findByRole('menuitem', { name: /copy url/i })
     ).toBeInTheDocument()
     expect(
-      screen.queryByRole('menuitem', { name: /open in default browser/i })
-    ).toBeNull()
+      screen.getByRole('menuitem', { name: /open in default browser/i })
+    ).toBeInTheDocument()
   })
 
   it('hides the item for a link to a file a browser cannot show', async () => {

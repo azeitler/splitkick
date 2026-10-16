@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **A remote window shows the remote agent's HTML pages.** Click an HTML file
+  in a chat, or let the agent open one, and it loads in the browser pane with
+  its styles, scripts and images. The remote instance serves the files of its
+  projects and worktrees for this. Cmd-click opens the page in your browser.
+  Only static files; a dev server on the remote machine is still not
+  reachable. (#37)
+
 ### Changed
 
 - **Splitkick orange instead of Jean's yellow.** The dark theme's accent
