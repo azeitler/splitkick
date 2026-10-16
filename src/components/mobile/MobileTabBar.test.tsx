@@ -131,6 +131,17 @@ describe('MobileTabBar', () => {
       )
     })
 
+    it.each([
+      [49, 'text-green-500'],
+      [50, 'text-amber-500'],
+      [74, 'text-amber-500'],
+      [75, 'text-destructive'],
+    ])('colours %i%% usage %s', (percent, className) => {
+      mocks.peak = { label: 'Claude · Session', percent }
+      render(<MobileTabBar />)
+      expect(screen.getByTestId('usage-tab-ring')).toHaveClass(className)
+    })
+
     it('fetches usage on demand in dev builds, like the desktop badge', () => {
       // Vitest runs in DEV: no fetch until the Usage tab is shown.
       render(<MobileTabBar />)

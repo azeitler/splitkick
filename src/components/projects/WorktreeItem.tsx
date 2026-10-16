@@ -893,7 +893,7 @@ export function WorktreeItem({
                     <button
                       type="button"
                       onClick={handlePull}
-                      className="shrink-0 rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary transition-colors hover:bg-primary/20"
+                      className="shrink-0 rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-foreground/20"
                     >
                       <span className="flex items-center gap-0.5">
                         <ArrowDown className="h-3 w-3" />

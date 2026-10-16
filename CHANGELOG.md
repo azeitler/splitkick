@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Filled buttons are white in the dark theme, not orange.** Orange read as
+  an error on Send, Cancel, Update and count badges. Orange stays for focus,
+  selection and running states; the title bar update badges turn neutral too.
+- **Usage meters go green, amber, red.** Green below 50%, amber from 50%, red
+  from 75% — in the title bar ring, the Usage settings and the mobile tab.
+- **The sidebar pull badge (↓N) is white.** It was orange, the same as errors.
+
 ### Fixed
 
 - **Sessions sit one step in from their status group in the sidebar.** The

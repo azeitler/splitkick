@@ -99,7 +99,7 @@ export function usePeakUsage(fetchEnabled: boolean): PeakUsage | null {
 }
 
 export const RING_CLASS: Record<UsageSeverity, string> = {
-  normal: 'text-primary',
+  normal: 'text-green-500',
   warning: 'text-amber-500',
   critical: 'text-destructive',
 }

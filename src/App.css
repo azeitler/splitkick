@@ -128,15 +128,16 @@
   color-scheme: dark;
 
   /* macOS dark grays (unified toolbar redesign, 2026-10-14): content
-     #1e1e1e, sidebar #2b2b2d. The accent is Splitkick orange (--brand). */
+     #1e1e1e, sidebar #2b2b2d. Splitkick orange (--brand) marks focus, selection
+     and running states; filled buttons (--primary) stay neutral. */
   --background: #1e1e1e; /* macOS dark window background */
   --foreground: #fafafa; /* light text */
   --card: #252525; /* one step above the background */
   --card-foreground: #fafafa;
   --popover: #2a2a2a; /* menus float above cards */
   --popover-foreground: #fafafa;
-  --primary: var(--brand); /* Splitkick orange accent */
-  --primary-foreground: #141c2e; /* Splitkick navy on orange (5.9:1) */
+  --primary: #fafafa; /* neutral: orange reads as an error on filled buttons */
+  --primary-foreground: #1e1e1e; /* dark text on white (16:1) */
   --secondary: #2a2a2a;
   --secondary-foreground: #fafafa;
   --muted: #2c2c2c;

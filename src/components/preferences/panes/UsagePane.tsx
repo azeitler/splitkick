@@ -49,16 +49,16 @@ export function clampPercent(value: number): number {
 
 export type UsageSeverity = 'normal' | 'warning' | 'critical'
 
-/** Shared meter thresholds: amber from 70%, red from 90%. */
+/** Shared meter thresholds: green below 50%, amber from 50%, red from 75%. */
 export function usageSeverity(usedPercent: number): UsageSeverity {
   const p = clampPercent(usedPercent)
-  if (p >= 90) return 'critical'
-  if (p >= 70) return 'warning'
+  if (p >= 75) return 'critical'
+  if (p >= 50) return 'warning'
   return 'normal'
 }
 
 const BAR_CLASS: Record<UsageSeverity, string> = {
-  normal: 'bg-primary',
+  normal: 'bg-green-500',
   warning: 'bg-amber-500',
   critical: 'bg-destructive',
 }
