@@ -211,6 +211,9 @@ jobs:
         if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' }}
         env:
           VERSION: ${{ steps.version.outputs.version }}
+          NOTARY_APPLE_ID: ${{ secrets.APPLE_ID }}
+          NOTARY_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
           DMG=$(find "$BUNDLE_DIR/dmg" -name '*.dmg' -print -quit)
@@ -219,13 +222,24 @@ jobs:
             exit 1
           fi
           mv "$DMG" "$DMG_NAME"
-          cp "$DMG_NAME" "Splitkick-$VERSION-aarch64.dmg"
           APP="$BUNDLE_DIR/macos/Splitkick.app"
           codesign -dv --verbose=4 "$APP" 2>&1 | sed -n 's/^Authority=/authority: /p' || true
+          # Tauri notarizes the .app only; the DMG around it is signed but was
+          # never sent to Apple, so Gatekeeper rejects the download itself
+          # ("Unnotarized Developer ID"). Notarize and staple the DMG too.
+          # A failure here fails the build: never publish a DMG Gatekeeper rejects.
+          if xcrun stapler validate "$APP" > /dev/null 2>&1; then
+            xcrun notarytool submit "$DMG_NAME" \
+              --apple-id "$NOTARY_APPLE_ID" --password "$NOTARY_PASSWORD" --team-id "$TEAM_ID" \
+              --wait --timeout 30m
+            xcrun stapler staple "$DMG_NAME"
+            xcrun stapler validate "$DMG_NAME"
+          fi
+          cp "$DMG_NAME" "Splitkick-$VERSION-aarch64.dmg"
           # `spctl -a` accepts a Developer ID build that was never notarized as
           # long as the copy is not quarantined, so it cannot be used here. A
           # stapled ticket is the only definitive test.
-          if xcrun stapler validate "$APP" > /dev/null 2>&1; then
+          if xcrun stapler validate "$APP" > /dev/null 2>&1 && xcrun stapler validate "$DMG_NAME" > /dev/null 2>&1; then
             STATUS="notarized"
           elif codesign -dv --verbose=2 "$APP" 2>&1 | grep -q 'Authority=Developer ID Application'; then
             STATUS="signed, not notarized (Gatekeeper will warn)"

@@ -7,6 +7,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **The DMG download is notarized, not only the app inside it.** macOS
+  rejected the downloaded 1.0.0 DMG as not notarized, although the app in it
+  was.
+
 ## [1.0.0] - 2026-10-16
 
 Built on Jean 0.1.73.

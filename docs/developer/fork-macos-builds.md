@@ -139,6 +139,12 @@ not notarized. The "Collect the DMG" step reports which.
 and the bundler rejects a certificate that does not match the identity.
 Never use coolLabs' identity for Splitkick.
 
+Tauri notarizes only the `.app`. The "Collect the DMG" step then sends the DMG
+itself to Apple (`notarytool submit --wait`) and staples it, because Gatekeeper
+checks the downloaded DMG too and rejects an unnotarized one. Check a release
+with `spctl -a -vv -t open --context context:primary-signature <dmg>` (must
+say `Notarized Developer ID`) and `xcrun stapler validate <dmg>`.
+
 The in-app update is signed with a separate minisign key, read as a pair:
 
 | Secret                                   | Content                                          |
