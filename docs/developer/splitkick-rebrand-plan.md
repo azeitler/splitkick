@@ -317,14 +317,14 @@ CI certificate is "Developer ID Application: Andreas Zeitler (44S2FAD7EU)".
 
 **Andreas (outward steps):**
 
-Done: in-app update, phone Web Access, updater key in 1Password.
+Done: in-app update, phone Web Access, updater key in 1Password, message to
+Andras Bacsai (coolLabs) sent 2026-10-16 (offers the part D PRs, asks about
+the model catalog CDN); wait for his answer before opening PRs.
 
-1. Push and deploy the website (`splitkick-website` `4b451c9`: live download
-   link, GitHub URL) and the docs (`splitkick-docs` `227dc58`: 1.0.0 and z.26
-   release notes, guides on data folder, import, port 3460).
-2. Message Andras Bacsai (coolLabs); ask about the model catalog CDN too.
-3. Open the upstream PRs from part D (check each against upstream first).
-4. Optional: delete the 1.0.0-rc.1 pre-release (signed, not notarized).
+1. Push the roadmap change: website `d87b2f9` and docs `5b65b81` (push
+   notifications and the Forgejo/Gitea dashboard dropped, 2026-10-16).
+2. Open the upstream PRs from part D (check each against upstream first).
+3. Optional: delete the 1.0.0-rc.1 pre-release (signed, not notarized).
 
 **Code (next releases):**
 
