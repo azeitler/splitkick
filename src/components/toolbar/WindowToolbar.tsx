@@ -4,6 +4,7 @@ import {
   FolderTree,
   Minimize2,
   PanelLeft,
+  Server,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -16,6 +17,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useNavigationHistoryStore } from '@/store/navigation-history-store'
 import { goBack, goForward } from '@/lib/navigation-history'
 import { isNativeApp } from '@/lib/environment'
+import { useActiveRemoteConnection } from '@/lib/remote-connections'
 import { isClientLinux, isClientMacOS } from '@/lib/platform'
 import { usePreferences } from '@/services/preferences'
 import {
@@ -161,6 +163,44 @@ function NavigationButtons() {
 }
 
 /**
+ * Which remote instance this window drives.
+ *
+ * The toolbar's own, independent of the view on screen. The remote name used to
+ * live only in the window title, and a view that fills the title slot hides
+ * that — so a remote window looked exactly like the local one. The native
+ * title is no help either: the unified toolbar hides it.
+ */
+function RemoteInstanceBadge() {
+  const remote = useActiveRemoteConnection()
+  if (!remote) return null
+
+  let host = remote.url
+  try {
+    host = new URL(remote.url).host
+  } catch {
+    // Show the raw URL rather than nothing.
+  }
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          data-testid="remote-instance-badge"
+          aria-label={`Remote instance ${remote.name}`}
+          className="ml-1.5 flex min-w-0 max-w-[12rem] shrink-0 items-center gap-1 rounded-md border border-sky-500/40 bg-sky-500/10 px-1.5 py-0.5 text-xs font-medium text-sky-700 dark:text-sky-300"
+        >
+          <Server className="size-3 shrink-0" aria-hidden />
+          <span className="truncate @max-[520px]:hidden">{remote.name}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent>
+        Remote instance {remote.name} · {host}
+      </TooltipContent>
+    </Tooltip>
+  )
+}
+
+/**
  * The toolbar above the main column. Its title, chips, actions and search
  * come from the view on screen (`ToolbarContent`); without one it shows
  * `fallbackTitle`.
@@ -198,6 +238,9 @@ export function WindowToolbar({ fallbackTitle }: { fallbackTitle: string }) {
         </>
       )}
       {!zenMode && <NavigationButtons />}
+
+      {/* Shown in zen too: knowing which machine a window drives is never chrome. */}
+      <RemoteInstanceBadge />
 
       <div
         {...drag}

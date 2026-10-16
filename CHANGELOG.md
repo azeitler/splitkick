@@ -20,6 +20,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **The DMG download is notarized, not only the app inside it.** macOS
   rejected the downloaded 1.0.0 DMG as not notarized, although the app in it
   was.
+- **A remote window shows which instance it drives again.** Since the Mac-style
+  toolbar, the remote name sat only in the window title, and every view that
+  fills the toolbar title hid it, so a remote window looked like the local one.
+  The toolbar now shows a badge with the remote's name next to the title,
+  whatever is on screen and also in zen mode. Hover it for the host.
 
 ## [1.0.0] - 2026-10-16
 
