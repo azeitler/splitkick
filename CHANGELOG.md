@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-16
+
+Built on Jean 0.1.73.
+
 ### Changed
 
 - **Filled buttons are white in the dark theme, not orange.** Orange read as
@@ -1670,7 +1674,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.1...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.2...HEAD
+[1.0.2]: https://github.com/azeitler/jean/compare/splitkick-v1.0.1...splitkick-v1.0.2
 [1.0.1]: https://github.com/azeitler/jean/compare/splitkick-v1.0.0...splitkick-v1.0.1
 [1.0.0]: https://github.com/azeitler/jean/compare/splitkick-v1.0.0-rc.3...splitkick-v1.0.0
 [1.0.0-rc.3]: https://github.com/azeitler/jean/compare/splitkick-v1.0.0-rc.2...splitkick-v1.0.0-rc.3
