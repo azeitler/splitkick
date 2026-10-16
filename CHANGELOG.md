@@ -16,6 +16,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   leftover waiting flag with no question or plan behind it counted as an open
   question, and an open question outranks those statuses, so picking them did
   nothing. A real pending question or plan still keeps its priority. (#40)
+- **The file viewer shows and logs its own errors.** When the editor fails to
+  draw a file, the viewer shows the error with a Reload button and keeps your
+  unsaved changes, instead of replacing the code with a raw error box. The
+  error is also written to the app log, so a report can include it. (#42)
 
 ## [1.0.1] - 2026-10-16
 

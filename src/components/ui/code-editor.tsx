@@ -14,8 +14,11 @@ import {
 export interface CodeEditorProps {
   /** Initial content of the editor (parent remounts via key when content must reset) */
   value: string
-  /** Filename used for language detection and editor cache key */
+  /** Filename used for language detection */
   fileName?: string
+  /** Unique per file (the full path); Pierre keys render and edit state by it.
+   * Defaults to the file name. */
+  cacheKey?: string
   /** Language hint when filename is missing */
   language?: string
   /** Callback when content changes */
@@ -41,6 +44,7 @@ function guessFileName(language?: string): string {
 export const CodeEditor = memo(function CodeEditor({
   value,
   fileName,
+  cacheKey,
   language,
   onChange,
   readOnly = false,
@@ -68,10 +72,10 @@ export const CodeEditor = memo(function CodeEditor({
     () => ({
       name,
       contents: value,
-      cacheKey: name,
+      cacheKey: cacheKey ?? name,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- initial session only
-    [name]
+    [name, cacheKey]
   )
 
   const options = useMemo(
@@ -84,6 +88,9 @@ export const CodeEditor = memo(function CodeEditor({
       overflow: 'wrap' as const,
       disableFileHeader: true,
       unsafeCSS: PIERRE_UNSAFE_CSS,
+      // Throw render errors instead of drawing Pierre's error box into the
+      // shadow root, so the caller's error boundary shows and logs them (#42).
+      disableErrorHandling: true,
     }),
     [
       resolvedTheme,

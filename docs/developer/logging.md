@@ -118,3 +118,8 @@ function MyComponent() {
 - No sensitive data should be logged (passwords, tokens, etc.)
 - Consider log rotation for long-running applications
 - Frontend logs stay in browser - not sent to backend by default
+- To get a frontend error into the app log file (a release build has no
+  devtools), use `logNativeError()` from `src/lib/native-log.ts`. Example: the
+  file viewer's error boundary (`FileContentModal.tsx`) logs Pierre render
+  errors this way; `CodeEditor` sets Pierre's `disableErrorHandling` so they
+  reach the boundary instead of Pierre's own in-shadow-root error box.

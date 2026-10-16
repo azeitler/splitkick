@@ -35,6 +35,8 @@ import { usePreferences } from '@/services/preferences'
 import { cn } from '@/lib/utils'
 import type { SyntaxTheme } from '@/types/preferences'
 import { toast } from 'sonner'
+import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { logNativeError } from '@/lib/native-log'
 
 // Lazy load CodeEditor (Pierre File + edit mode) so the main bundle stays lean
 const CodeEditor = lazy(() => import('@/components/ui/code-editor'))
@@ -102,6 +104,32 @@ function SyntaxHighlightedCode({
       className="text-xs [&_pre]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0 [&_pre]:whitespace-pre-wrap [&_pre]:break-words [&_pre]:[overflow-wrap:anywhere] [&_code]:!bg-transparent [&_code]:whitespace-pre-wrap [&_code]:break-words p-3 bg-muted rounded-md overflow-x-hidden select-text cursor-text"
       dangerouslySetInnerHTML={{ __html: html }}
     />
+  )
+}
+
+/** Shown in place of the editor when it throws while rendering. */
+function EditorErrorFallback({
+  message,
+  onReload,
+}: {
+  message: string
+  onReload: () => void
+}) {
+  return (
+    <div className="flex flex-col items-start gap-2 py-4 px-3 bg-destructive/10 text-destructive rounded-md">
+      <div className="flex items-center gap-2">
+        <AlertCircle className="h-4 w-4 shrink-0" />
+        <span className="text-sm">
+          The editor could not show this file. Your unsaved changes are kept.
+        </span>
+      </div>
+      <span className="text-xs font-mono break-words [overflow-wrap:anywhere]">
+        {message}
+      </span>
+      <Button variant="outline" size="sm" onClick={onReload}>
+        Reload editor
+      </Button>
+    </div>
   )
 }
 
@@ -402,14 +430,30 @@ export function FileContentModal({
                 </div>
               }
             >
-              <CodeEditor
-                key={`${filePath}:${editorEpoch}`}
-                value={editedContent ?? content}
-                fileName={filename ?? undefined}
-                language={language}
-                onChange={setEditedContent}
-                className="h-full min-w-0"
-              />
+              <ErrorBoundary
+                resetKeys={[filePath, editorEpoch]}
+                onError={error =>
+                  logNativeError(
+                    `File viewer failed for ${filePath}: ${error.stack ?? error.message}`
+                  )
+                }
+                fallbackRender={({ error }) => (
+                  <EditorErrorFallback
+                    message={error.message}
+                    onReload={() => setEditorEpoch(e => e + 1)}
+                  />
+                )}
+              >
+                <CodeEditor
+                  key={`${filePath}:${editorEpoch}`}
+                  value={editedContent ?? content}
+                  fileName={filename ?? undefined}
+                  cacheKey={filePath ?? undefined}
+                  language={language}
+                  onChange={setEditedContent}
+                  className="h-full min-w-0"
+                />
+              </ErrorBoundary>
             </Suspense>
           </div>
         ) : !isLoading && !error ? (
