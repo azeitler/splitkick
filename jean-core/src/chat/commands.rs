@@ -1159,7 +1159,7 @@ pub async fn create_session(
     Ok(session)
 }
 
-fn trigger_backend_queue_drain(
+pub(crate) fn trigger_backend_queue_drain(
     app: AppHandle,
     worktree_id: String,
     worktree_path: String,

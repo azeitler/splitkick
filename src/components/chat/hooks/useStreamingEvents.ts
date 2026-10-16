@@ -63,11 +63,10 @@ import type {
   WakeupScheduledEvent,
   WakeupCancelledEvent,
   PendingWakeupEntry,
-  QueuedMessage,
   ContentBlock,
   ChatMessage,
 } from '@/types/chat'
-import { persistEnqueue, saveCancelledMessage } from '@/services/chat'
+import { saveCancelledMessage } from '@/services/chat'
 import { stripAllMarkers } from '@/components/chat/message-content-utils'
 import {
   applySessionSettingToSession,
@@ -2356,49 +2355,15 @@ export default function useStreamingEvents({
       }
     )
 
-    // Handle ScheduleWakeup fires — the Rust scheduler emits this when a
-    // persisted wakeup's fire_at_unix <= now. Enqueue the stored prompt so
-    // the existing queue processor drives it through send_chat_message with
-    // the session's current model/backend/execution-mode settings.
+    // Handle ScheduleWakeup fires. The Rust scheduler already moved the
+    // prompt into the session's queue and started the backend drain, so the
+    // turn runs with no window open. Here only the tool row status changes.
     const unlistenWakeupFired = listen<WakeupFiredEvent>(
       'chat:wakeup_fired',
       event => {
-        const { session_id, worktree_id, worktree_path, prompt, tool_call_id } =
-          event.payload
-        const store = useChatStore.getState()
-        store.markScheduledWakeupStatus(tool_call_id, 'fired')
-        const model = store.selectedModels[session_id] ?? 'sonnet'
-        const executionMode = store.executionModes[session_id] ?? 'yolo'
-        const thinkingLevel = store.thinkingLevels[session_id] ?? 'off'
-        const backend = store.selectedBackends[session_id]
-        const provider = store.selectedProviders?.[session_id] ?? null
-        const queuedMessage: QueuedMessage = {
-          id: generateId(),
-          message: prompt,
-          pendingImages: [],
-          pendingFiles: [],
-          pendingSkills: [],
-          pendingTextFiles: [],
-          model,
-          provider,
-          executionMode,
-          thinkingLevel,
-          backend,
-          queuedAt: Date.now(),
-        }
-        // Ensure the queue processor can resolve worktree → path and
-        // session → worktree when firing this message.
-        if (worktree_id && worktree_path) {
-          store.registerWorktreePath(worktree_id, worktree_path)
-        }
-        useChatStore.setState(s => ({
-          sessionWorktreeMap: {
-            ...s.sessionWorktreeMap,
-            [session_id]: worktree_id,
-          },
-        }))
-        store.enqueueMessage(session_id, queuedMessage)
-        persistEnqueue(worktree_id, worktree_path, session_id, queuedMessage)
+        useChatStore
+          .getState()
+          .markScheduledWakeupStatus(event.payload.tool_call_id, 'fired')
       }
     )
 
