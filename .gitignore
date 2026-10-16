@@ -39,7 +39,6 @@ docs/superpowers/
 # Rust build artifacts for standalone server wrapper
 src-server/target/
 jean-core/target/
-jean-core/Cargo.lock
 
 # Local scratch reproduction harnesses
 /scratch/
