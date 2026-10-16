@@ -399,6 +399,16 @@ Built on Jean 0.1.73.
   draw a file, the viewer shows the error with a Reload button and keeps your
   unsaved changes, instead of replacing the code with a raw error box. The
   error is also written to the app log, so a report can include it. (#42)
+- **Full Disk Access as an opt-in setting on macOS.** Settings → General has
+  a "Full Disk Access (macOS)" section with the status for this session, an
+  Open System Settings button and Relaunch now (macOS applies the grant only
+  after a relaunch). It stops the repeated "would like to access data from
+  other apps" prompts, because every tool an agent runs inherits the grant.
+  Before the buttons it explains the risk: Splitkick and every program an
+  agent starts could then read all of your files, including Mail, Messages
+  and Safari history, and a prompt injection could read private data. Not
+  granting it is the recommended default; Splitkick works fine without it.
+  Onboarding does not ask for it. Closes #31.
 
 ## [1.0.1] - 2026-10-16
 
