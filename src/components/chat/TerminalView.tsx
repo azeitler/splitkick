@@ -5,7 +5,7 @@ import { middleClickClose } from '@/lib/middle-click'
 import { useTerminal } from '@/hooks/useTerminal'
 import { useTerminalBackgroundColor } from '@/hooks/useTerminalThemeSync'
 import { useIsMobile } from '@/hooks/use-mobile'
-import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset'
+import { useSoftKeyboardOpen } from '@/hooks/useVisualViewportShell'
 import { isNativeApp } from '@/lib/environment'
 import {
   isPanelTerminal,
@@ -71,10 +71,9 @@ const TerminalTabContent = memo(function TerminalTabContent({
   const isMobile = useIsMobile()
   // Soft-keyboard special keys + arrow gesture: web access always, plus narrow viewports.
   const showExtraKeys = !isNativeApp() || isMobile
-  const keyboardInset = useVisualViewportBottomInset(
-    rootRef,
-    showExtraKeys && isActive
-  )
+  // The shell follows the visual viewport (useVisualViewportShell), so the
+  // terminal already shrinks above the soft keyboard.
+  const keyboardOpen = useSoftKeyboardOpen()
   const { isDraggingImage, dropHandlers } = useTerminalImageDrop(terminal.id)
   const { initTerminal, fit, focus } = useTerminal({
     terminalId: terminal.id,
@@ -129,28 +128,22 @@ const TerminalTabContent = memo(function TerminalTabContent({
     }
   }, [canAttach, fit, focus])
 
-  // Soft keyboard open/close changes our padding → re-fit the emulator.
+  // Soft keyboard open/close resizes the shell → re-fit the emulator.
   useEffect(() => {
     if (!canAttach || !initialized.current) return
     const timeoutId = setTimeout(() => fit(), 50)
     return () => clearTimeout(timeoutId)
-  }, [keyboardInset, canAttach, fit])
+  }, [keyboardOpen, canAttach, fit])
 
   return (
     <div
       ref={rootRef}
       data-terminal-id={terminal.id}
-      data-keyboard-inset={keyboardInset > 0 ? keyboardInset : undefined}
       className={cn(
         'relative flex h-full w-full flex-col',
         !isActive && 'hidden'
       )}
-      style={{
-        backgroundColor: terminalBg,
-        // Lift the extra-keys bar (and shrink the emulator) above the soft keyboard.
-        // box-sizing:border-box is global — padding reduces content box, not outer size.
-        paddingBottom: keyboardInset > 0 ? keyboardInset : undefined,
-      }}
+      style={{ backgroundColor: terminalBg }}
       onDragOver={dropHandlers.onDragOver}
       onDragLeave={dropHandlers.onDragLeave}
       onDrop={dropHandlers.onDrop}
@@ -182,7 +175,7 @@ const TerminalTabContent = memo(function TerminalTabContent({
       {showExtraKeys && isActive && (
         <TerminalExtraKeysBar
           terminalId={terminal.id}
-          keyboardOpen={keyboardInset > 0}
+          keyboardOpen={keyboardOpen}
         />
       )}
     </div>

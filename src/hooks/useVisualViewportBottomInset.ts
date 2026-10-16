@@ -11,6 +11,10 @@ import { useEffect, useState, type RefObject } from 'react'
  * even with `interactive-widget=resizes-content`; consumers should apply this
  * value as `padding-bottom` so bottom chrome (e.g. terminal extra-keys bar)
  * rides above the keyboard.
+ *
+ * Only for surfaces outside the app shell (`h-dvh` dialog portals). The shell
+ * itself follows the visual viewport (`useVisualViewportShell`), so inside it
+ * this reads 0 — use `useSoftKeyboardOpen` there.
  */
 export function useVisualViewportBottomInset(
   elementRef: RefObject<HTMLElement | null>,

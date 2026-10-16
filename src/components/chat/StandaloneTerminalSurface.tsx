@@ -10,6 +10,7 @@ import { useTerminal } from '@/hooks/useTerminal'
 import { useTerminalBackgroundColor } from '@/hooks/useTerminalThemeSync'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useVisualViewportBottomInset } from '@/hooks/useVisualViewportBottomInset'
+import { useSoftKeyboardOpen } from '@/hooks/useVisualViewportShell'
 import { isNativeApp } from '@/lib/environment'
 import { isLoginTerminalContainerReady } from '@/lib/terminal-dimensions'
 import { focusTerminal, writeTerminalInput } from '@/lib/terminal-instances'
@@ -58,7 +59,11 @@ export function StandaloneTerminalSurface({
   const showExtraKeys =
     forceExtraKeys === true ||
     (forceExtraKeys !== false && (!isNativeApp() || isMobile))
+  // Dialogs are h-dvh portals outside the app shell, so they still pad
+  // themselves above the keyboard. Inside the shell the inset reads 0 while
+  // the keyboard is open, so the extra-keys bar asks the shell instead.
   const keyboardInset = useVisualViewportBottomInset(rootRef, showExtraKeys)
+  const keyboardOpen = useSoftKeyboardOpen()
   const terminalBg = useTerminalBackgroundColor()
 
   const handleNativePaste = async (event: KeyboardEvent) => {
@@ -172,7 +177,7 @@ export function StandaloneTerminalSurface({
       {showExtraKeys && (
         <TerminalExtraKeysBar
           terminalId={terminalId}
-          keyboardOpen={keyboardInset > 0}
+          keyboardOpen={keyboardOpen || keyboardInset > 0}
         />
       )}
     </div>

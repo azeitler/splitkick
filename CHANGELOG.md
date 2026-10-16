@@ -23,6 +23,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Images in the file viewer zoom and pan.** They use the same viewer as
   images in a chat: pinch, scroll or double-click to zoom. This also works
   in a remote window. (#42)
+- **Phone: the chat keeps its header when the keyboard opens.** Safari's
+  page pan no longer pushes the session header off screen, and there is no
+  empty band under the composer, with the keyboard open or after it closes.
 
 ## [1.0.2] - 2026-10-16
 

@@ -18,6 +18,7 @@ import { SidebarFooter } from '@/components/sidebar/SidebarFooter'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { useIsTouchDevice } from '@/hooks/use-touch-device'
 import { useSwipeDown } from '@/hooks/useSwipeDown'
+import { useVisualViewportShell } from '@/hooks/useVisualViewportShell'
 import { DevModeBanner } from './DevModeBanner'
 import { SidebarWidthProvider } from './SidebarWidthContext'
 import { MainWindowContent } from './MainWindowContent'
@@ -295,6 +296,7 @@ export function MainWindow() {
   )
 
   const isMobile = useIsMobile()
+  useVisualViewportShell(!isNativeApp())
   const zenMode = useUIStore(state => state.zenMode)
   // A phone has no title bar: each screen carries its own heading (the tab's
   // large title, the project header, the session header), and the bar only
@@ -600,7 +602,8 @@ export function MainWindow() {
     <div
       ref={isTouch ? swipeDown.containerRef : undefined}
       className={cn(
-        'flex h-dvh w-full flex-col overflow-hidden bg-background',
+        // --app-height follows the visual viewport in web access (soft keyboard).
+        'flex h-[var(--app-height,100dvh)] w-full flex-col overflow-hidden bg-background',
         roundedClass
       )}
     >

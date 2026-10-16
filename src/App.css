@@ -384,7 +384,7 @@
   body,
   #root {
     min-height: 100%;
-    min-height: 100dvh;
+    min-height: var(--app-height, 100dvh);
     background: var(--background);
   }
 
@@ -398,7 +398,9 @@
        often makes text look soft — see max-resolution override below. */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    min-height: 100dvh;
+    /* --app-height: the visible area in web access (useVisualViewportShell),
+       so the document never outgrows the soft keyboard's viewport. */
+    min-height: var(--app-height, 100dvh);
     /* 100vw includes the classic scrollbar width and forces a permanent
        horizontal overflow in desktop web access. */
     min-width: 100%;
