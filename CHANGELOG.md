@@ -37,6 +37,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Session rows on Home, Starred and History show status and labels.** The
   status dot had no size, so it never showed. Labels were missing in web
   access, because only the native app loaded them into the store.
+- **Phone: projects sit under their folders, in sidebar order.** Home →
+  Projects listed every loose project first and the folders below them,
+  ignoring the order you set. Folders now come first, each with a clear
+  heading, then the projects without a folder.
 
 ## [1.0.2] - 2026-10-16
 

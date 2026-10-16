@@ -78,47 +78,61 @@ export interface ProjectGroup {
  * management (create, rename, drag) to the desktop. A nested folder is shown
  * as one heading with its full path rather than as a tree.
  *
- * Root projects come first, then folders in list order. Folders with no
- * projects are dropped: on a phone they are a heading over nothing.
+ * Same order as the sidebar tree (`ProjectTree`): folders first, nested
+ * folders right after their parent, then the projects at the root; each list
+ * by its `order`. Folders with no projects are dropped: on a phone they are a
+ * heading over nothing.
  */
 export function groupProjectsByFolder(
   entries: readonly Project[]
 ): ProjectGroup[] {
   const byId = new Map(entries.map(entry => [entry.id, entry]))
+  const byOrder = (a: Project, b: Project) => (a.order ?? 0) - (b.order ?? 0)
 
-  const folderPath = (folderId: string): string => {
-    const names: string[] = []
-    const seen = new Set<string>()
-    let current = byId.get(folderId)
-    while (current && isFolder(current) && !seen.has(current.id)) {
-      seen.add(current.id)
-      names.unshift(current.name)
-      current = current.parent_id ? byId.get(current.parent_id) : undefined
-    }
-    return names.join(' / ')
-  }
-
-  const root: Project[] = []
-  const grouped = new Map<string, Project[]>()
-
+  // Children per folder id; `null` is the root. A parent that is missing or
+  // not a folder counts as the root, as before.
+  const children = new Map<string | null, Project[]>()
   for (const entry of entries) {
-    if (isFolder(entry)) continue
     const parent = entry.parent_id ? byId.get(entry.parent_id) : undefined
-    if (!parent || !isFolder(parent)) {
-      root.push(entry)
-      continue
-    }
-    const list = grouped.get(parent.id)
+    const key = parent && isFolder(parent) ? parent.id : null
+    const list = children.get(key)
     if (list) list.push(entry)
-    else grouped.set(parent.id, [entry])
+    else children.set(key, [entry])
   }
+  for (const list of children.values()) list.sort(byOrder)
 
   const groups: ProjectGroup[] = []
-  if (root.length > 0) {
-    groups.push({ id: 'root', title: null, projects: root })
+  const visited = new Set<string>()
+  const visit = (folder: Project, title: string) => {
+    if (visited.has(folder.id)) return
+    visited.add(folder.id)
+    const kids = children.get(folder.id) ?? []
+    const projects = kids.filter(kid => !isFolder(kid))
+    if (projects.length > 0) groups.push({ id: folder.id, title, projects })
+    for (const sub of kids.filter(isFolder)) {
+      visit(sub, `${title} / ${sub.name}`)
+    }
   }
-  for (const [folderId, projects] of grouped) {
-    groups.push({ id: folderId, title: folderPath(folderId), projects })
+
+  const rootEntries = children.get(null) ?? []
+  for (const folder of rootEntries.filter(isFolder)) {
+    visit(folder, folder.name)
+  }
+
+  // Folders no root reaches (a cycle in hand-edited data) still list their
+  // projects, under the folder's own name.
+  for (const [folderId, kids] of children) {
+    if (folderId === null || visited.has(folderId)) continue
+    const projects = kids.filter(kid => !isFolder(kid))
+    const folder = byId.get(folderId)
+    if (projects.length > 0 && folder) {
+      groups.push({ id: folderId, title: folder.name, projects })
+    }
+  }
+
+  const rootProjects = rootEntries.filter(entry => !isFolder(entry))
+  if (rootProjects.length > 0) {
+    groups.push({ id: 'root', title: null, projects: rootProjects })
   }
   return groups
 }

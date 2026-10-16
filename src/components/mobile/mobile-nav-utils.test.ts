@@ -87,21 +87,37 @@ describe('recentlyOpenedSessions', () => {
 })
 
 describe('groupProjectsByFolder', () => {
-  it('puts root projects first, then one heading per folder', () => {
+  it('lists folders first, then root projects, as the sidebar does', () => {
     const groups = groupProjectsByFolder([
-      project('work', { is_folder: true }),
       project('acme', { parent_id: 'work' }),
       project('jean'),
+      project('work', { is_folder: true }),
     ])
 
     expect(groups).toEqual([
-      { id: 'root', title: null, projects: [project('jean')] },
       {
         id: 'work',
         title: 'work',
         projects: [project('acme', { parent_id: 'work' })],
       },
+      { id: 'root', title: null, projects: [project('jean')] },
     ])
+  })
+
+  it('orders folders and projects by their order, not list position', () => {
+    const groups = groupProjectsByFolder([
+      project('b-site', { parent_id: 'clients', order: 1 }),
+      project('notes', { order: 2 }),
+      project('a-site', { parent_id: 'clients', order: 0 }),
+      project('clients', { is_folder: true, order: 1 }),
+      project('cli', { parent_id: 'tools', order: 0 }),
+      project('tools', { is_folder: true, order: 0 }),
+      project('blog', { order: 1 }),
+    ])
+
+    expect(groups.map(group => group.title)).toEqual(['tools', 'clients', null])
+    expect(groups[1]?.projects.map(p => p.id)).toEqual(['a-site', 'b-site'])
+    expect(groups[2]?.projects.map(p => p.id)).toEqual(['blog', 'notes'])
   })
 
   it('names a nested folder by its full path', () => {

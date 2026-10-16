@@ -1,5 +1,5 @@
 import { memo, useCallback, useMemo, useState } from 'react'
-import { Archive, MessagesSquare, Plus, Settings } from 'lucide-react'
+import { Archive, Folder, MessagesSquare, Plus, Settings } from 'lucide-react'
 import type { Project } from '@/types/projects'
 import type { MobileHomeSegment } from '@/types/ui-state'
 import { cn } from '@/lib/utils'
@@ -292,10 +292,22 @@ function HomeProjects({ projects }: { projects: Project[] }) {
       )}
       <div className="flex flex-col gap-5" data-testid="mobile-home-projects">
         {groups.map(group => (
-          <div key={group.id} className="flex flex-col gap-2">
-            {group.title && (
-              <h3 className="truncate px-1 text-sm font-medium text-muted-foreground">
-                {group.title}
+          <div
+            key={group.id}
+            className="flex flex-col gap-2"
+            data-testid={`mobile-project-group-${group.id}`}
+          >
+            {/* Root projects come last, under the folders, so they need a
+                heading too, or they read as part of the last folder. */}
+            {(group.title || groups.length > 1) && (
+              <h3 className="flex min-w-0 items-center gap-1.5 px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                {group.title && <Folder className="size-3.5 shrink-0" />}
+                <span className="truncate">
+                  {group.title ?? 'Other projects'}
+                </span>
+                <span className="font-normal tabular-nums">
+                  {group.projects.length}
+                </span>
               </h3>
             )}
             <div className="flex flex-col gap-2">
