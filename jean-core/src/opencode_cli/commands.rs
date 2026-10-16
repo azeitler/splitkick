@@ -854,7 +854,11 @@ fn extract_binary_from_zip(archive_bytes: &[u8], binary_name: &str) -> Result<Ve
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry: {e}"))?;
 
-        let path = std::path::Path::new(file.name());
+        let entry_name = file
+            .name()
+            .map_err(|e| format!("Failed to read zip entry name: {e}"))?
+            .to_string();
+        let path = std::path::Path::new(&entry_name);
         if let Some(name) = path.file_name() {
             if name == binary_name {
                 let mut data = Vec::new();

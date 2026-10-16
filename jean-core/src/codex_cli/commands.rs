@@ -2459,7 +2459,10 @@ fn extract_zip_entry_by_file_name(
         let mut file = archive
             .by_index(i)
             .map_err(|e| format!("Failed to read zip entry: {e}"))?;
-        let name = file.name().to_string();
+        let name = file
+            .name()
+            .map_err(|e| format!("Failed to read zip entry name: {e}"))?
+            .to_string();
         let file_name = std::path::Path::new(&name)
             .file_name()
             .and_then(|n| n.to_str())
