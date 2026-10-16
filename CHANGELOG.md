@@ -12,6 +12,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - **Uncaught errors reach the app log.** They went to the console only,
   which a release build cannot open, so a crash such as the file viewer's
   edit-mode error left no trace to report. (#42)
+- **Files open in view mode.** The file viewer opened every file in the
+  editor, which threw an error as soon as you selected text. Click Edit to
+  change a file. (#42)
 
 ## [1.0.2] - 2026-10-16
 

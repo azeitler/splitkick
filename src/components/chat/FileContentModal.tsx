@@ -177,8 +177,8 @@ export function FileContentModal({
       ? (preferences?.syntax_theme_dark ?? 'vitesse-black')
       : (preferences?.syntax_theme_light ?? 'github-light')
 
-  // Always use Jean's Pierre inline editor for in-app file viewing — same on
-  // desktop and mobile. External editors stay available via "Open in Editor".
+  // Edit mode uses Jean's Pierre inline editor — same on desktop and mobile.
+  // External editors stay available via "Open in Editor".
   /** Bumps when content should remount the Pierre edit session (load / discard). */
   const [editorEpoch, setEditorEpoch] = useState(0)
 
@@ -195,8 +195,9 @@ export function FileContentModal({
       if (signal.cancelled) return
       setContent(fileContent)
       setEditedContent(fileContent)
-      // Open in edit mode by default (matches mobile file browser)
-      setIsEditing(true)
+      // Open in view mode; Edit starts the Pierre editor. Edit mode threw as
+      // soon as you selected text (#42), and reading must not depend on it.
+      setIsEditing(false)
     } catch (err) {
       if (signal.cancelled) return
       setError(err instanceof Error ? err.message : String(err))

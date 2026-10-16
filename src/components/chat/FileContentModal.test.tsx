@@ -14,6 +14,13 @@ vi.mock('@/lib/native-log', () => ({ logNativeError: mocks.logNativeError }))
 vi.mock('@/services/preferences', () => ({
   usePreferences: () => ({ data: null }),
 }))
+vi.mock('@/hooks/useSyntaxHighlighting', () => ({
+  useSyntaxHighlighting: (content: string) => ({
+    html: `<pre data-testid="highlighted">${content}</pre>`,
+    isLoading: false,
+    error: null,
+  }),
+}))
 // Stands in for Pierre throwing while it renders (#42).
 vi.mock('@/components/ui/code-editor', () => ({
   default: ({ value }: { value: string }) => {
@@ -21,6 +28,40 @@ vi.mock('@/components/ui/code-editor', () => ({
     return <div data-testid="code-editor">{value}</div>
   },
 }))
+
+async function openEditor(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: 'Edit' }))
+}
+
+// Edit mode threw an uncaught error as soon as you selected text, and every
+// file opened in it (#42). Reading a file must not depend on the editor.
+describe('FileContentModal view mode', () => {
+  beforeEach(() => {
+    mocks.invoke.mockReset()
+    mocks.invoke.mockResolvedValue('const a = 1\n')
+    mocks.editorThrows = false
+  })
+
+  it('opens a file in view mode, not in the editor', async () => {
+    render(<FileContentModal filePath="/repo/src/index.ts" onClose={vi.fn()} />)
+
+    expect(await screen.findByTestId('highlighted')).toHaveTextContent(
+      'const a = 1'
+    )
+    expect(screen.queryByTestId('code-editor')).toBeNull()
+  })
+
+  it('switches to the editor on Edit', async () => {
+    const user = userEvent.setup()
+    render(<FileContentModal filePath="/repo/src/index.ts" onClose={vi.fn()} />)
+
+    await openEditor(user)
+
+    expect(await screen.findByTestId('code-editor')).toHaveTextContent(
+      'const a = 1'
+    )
+  })
+})
 
 describe('FileContentModal editor errors', () => {
   beforeEach(() => {
@@ -32,7 +73,9 @@ describe('FileContentModal editor errors', () => {
   })
 
   it('shows the error in the modal and writes it to the app log', async () => {
+    const user = userEvent.setup()
     render(<FileContentModal filePath="/repo/src/index.ts" onClose={vi.fn()} />)
+    await openEditor(user)
 
     expect(
       await screen.findByText(/The editor could not show this file/)
@@ -51,6 +94,7 @@ describe('FileContentModal editor errors', () => {
   it('reloads the editor with the edited content', async () => {
     const user = userEvent.setup()
     render(<FileContentModal filePath="/repo/src/index.ts" onClose={vi.fn()} />)
+    await openEditor(user)
     await screen.findByText(/The editor could not show this file/)
 
     mocks.editorThrows = false
