@@ -292,7 +292,7 @@ export async function createChatSession(page: Page): Promise<Locator> {
   const before = await page.locator('[data-session-id]').count()
   // The tab bar's + button, or the empty state's button before any session.
   await page.getByRole('button', { name: 'New session' }).first().click()
-  await page.getByRole('button', { name: 'Jean Chat' }).click()
+  await page.getByRole('button', { name: /^\S+ Chat / }).click()
   const tabs = page.locator('[data-session-id]')
   await expect(tabs).toHaveCount(before + 1, { timeout: 3000 })
   return tabs
