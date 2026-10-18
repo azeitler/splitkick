@@ -14,7 +14,11 @@ import { browserBackend } from '@/hooks/useBrowserPane'
 import { isLocalBackend } from '@/lib/environment'
 import { invoke } from '@/lib/transport'
 import { logger } from '@/lib/logger'
-import { getCurrentUIState } from '@/lib/ui-state-snapshot'
+import {
+  getCurrentUIState,
+  rememberHostFileBrowserVisible,
+} from '@/lib/ui-state-snapshot'
+import { isMobileViewport } from '@/hooks/use-mobile'
 import { flushUIState } from '@/lib/ui-state-flush'
 import { registerUIStateSaver } from '@/lib/ui-state-teardown'
 import type { BrowserTab } from '@/types/browser'
@@ -249,7 +253,13 @@ export function useUIStatePersistence() {
       logger.debug('Restoring file browser visibility', {
         visible: uiState.file_browser_visible,
       })
-      useUIStore.getState().setFileBrowserVisible(uiState.file_browser_visible)
+      rememberHostFileBrowserVisible(uiState.file_browser_visible)
+      // A phone's file drawer stays closed until opened there.
+      if (!isMobileViewport()) {
+        useUIStore
+          .getState()
+          .setFileBrowserVisible(uiState.file_browser_visible)
+      }
     }
 
     if (uiState.zen_mode !== undefined) {

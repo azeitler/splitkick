@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **The phone no longer opens the file browser on its own.** The phone and
+  the desktop host share one saved layout, so a file panel open on the host
+  opened the file drawer on every phone load, and closing the drawer on the
+  phone closed the host's panel too. The drawer now opens only when you open
+  it on the phone, and the host's panel stays as you left it.
+
 ## [1.0.5] - 2026-10-18
 
 Built on Jean 0.1.73.
