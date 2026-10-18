@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Selecting text in the file viewer's editor works on macOS 15.** The
+  editor asked WebKit for the selection in a form that only newer WebKit
+  builds know, so every selection threw "Type error" and broke the editor.
+  Splitkick now translates the call for the older WebKit. (#42)
+
 ## [1.0.3] - 2026-10-16
 
 Built on Jean 0.1.73.
