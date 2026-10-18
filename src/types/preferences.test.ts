@@ -18,11 +18,48 @@ import {
   GROK_DEFAULT_MAGIC_PROMPT_MODELS,
   GROK_DEFAULT_MAGIC_PROMPT_MODES,
   KIMI_DEFAULT_MAGIC_PROMPT_BACKENDS,
+  modelOptions,
+  normalizeClaudeModel,
   PI_DEFAULT_MAGIC_PROMPT_BACKENDS,
   PI_DEFAULT_MAGIC_PROMPT_MODELS,
   resolveMagicPromptBackend,
   resolveMagicPromptProvider,
 } from './preferences'
+
+// The saved default model went through normalizeClaudeModel on every load,
+// and an id it did not list fell back to Opus 4.8: picking a newer model
+// never stuck.
+describe('normalizeClaudeModel', () => {
+  it('lists the current Claude models', () => {
+    const values = modelOptions.map(option => option.value)
+    for (const id of [
+      'claude-fable-5-1',
+      'claude-opus-5-5',
+      'claude-sonnet-5-5',
+      'claude-haiku-5-5',
+    ]) {
+      expect(values).toContain(id)
+    }
+  })
+
+  it('keeps a saved current model', () => {
+    expect(normalizeClaudeModel('claude-opus-5-5')).toBe('claude-opus-5-5')
+    expect(normalizeClaudeModel('claude-fable-5-1')).toBe('claude-fable-5-1')
+  })
+
+  it('keeps a Claude model id it does not list yet', () => {
+    expect(normalizeClaudeModel('claude-opus-6')).toBe('claude-opus-6')
+    expect(normalizeClaudeModel('claude-sonnet-6-1[1m]')).toBe(
+      'claude-sonnet-6-1[1m]'
+    )
+  })
+
+  it('still replaces values that are no Claude model id', () => {
+    expect(normalizeClaudeModel('')).toBe('claude-opus-4-8[1m]')
+    expect(normalizeClaudeModel('gpt-5.5')).toBe('claude-opus-4-8[1m]')
+    expect(normalizeClaudeModel('sonnet')).toBe('claude-sonnet-5')
+  })
+})
 
 describe('default release notes prompt', () => {
   it('requires a v-prefixed version title without an app/version body heading', () => {
