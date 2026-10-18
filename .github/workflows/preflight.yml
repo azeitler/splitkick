@@ -390,3 +390,16 @@ jobs:
             echo "- in-app update: $UPDATE"
             echo "- download: https://github.com/${{ github.repository }}/releases/latest/download/$DMG_NAME"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # After a final release the website shows the new download facts and the
+      # docs get its release notes: scripts/sync-sites.sh runs each repo's own
+      # sync script and pushes the result to its main, so Vercel deploys both.
+      # Deploy keys with write access, one per repo, are the two secrets below.
+      - name: Update the website and the docs
+        if: ${{ inputs.publishFlavor && matrix.platform == 'macos-latest' && steps.version.outputs.publish == 'true' && steps.version.outputs.prerelease != 'true' }}
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WEBSITE_DEPLOY_KEY: ${{ secrets.SPLITKICK_WEBSITE_DEPLOY_KEY }}
+          DOCS_DEPLOY_KEY: ${{ secrets.SPLITKICK_DOCS_DEPLOY_KEY }}
+        run: bash scripts/sync-sites.sh "$VERSION"
