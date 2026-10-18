@@ -143,9 +143,7 @@ describe('WorktreeDropdownMenu', () => {
     expect(
       screen.getByRole('menuitem', { name: /open in/i })
     ).toBeInTheDocument()
-    expect(
-      screen.queryByRole('menuitem', { name: /finder/i })
-    ).toBeNull()
+    expect(screen.queryByRole('menuitem', { name: /finder/i })).toBeNull()
   })
 
   it('shows open-in editor/terminal/finder when the remote backend allows native open', async () => {

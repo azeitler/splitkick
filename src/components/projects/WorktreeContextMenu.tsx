@@ -88,9 +88,7 @@ export function WorktreeContextMenu({
           </ContextMenuSub>
         )}
 
-        {(canOpenInEditor() || canOpenNativeApps()) && (
-          <ContextMenuSeparator />
-        )}
+        {(canOpenInEditor() || canOpenNativeApps()) && <ContextMenuSeparator />}
 
         {canOpenInEditor() && (
           <ContextMenuItem onClick={handleOpenInEditor}>
