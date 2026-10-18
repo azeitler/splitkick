@@ -324,3 +324,8 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 
 - The unified-toolbar mockups also drew macOS-style sidebar rows. The spec scoped only the chrome, and I left the rows out silently. The user saw that gap after the build.
 - Before writing a spec from approved mockups, list every visible difference between mockup and current UI, and mark each one in scope or out of scope in the spec. Ask about each one that is unclear.
+
+## 2026-10-15 — GitHub posts on own repos need no approval
+- User changed the global rule: issues, PRs, comments, labels, reviews on repos owned by `azeitler` or their orgs are posted directly, then reported with a link.
+- Still ask for: other owners' repos (upstream `coollabsio/jean`), `git push`, releases, publishing, deploys.
+- Fork is now `azeitler/splitkick` (renamed from `azeitler/jean`); use `--repo azeitler/splitkick`.

@@ -768,3 +768,11 @@ dead turn, so the UI skipped the follow-up message and stayed on "sending"
 - [x] Test `ImageLightbox.test.tsx`, changelog
 - [x] Proof: `bun run check:all` green; Playwright 390×844 + 1280×800 screenshots, pinch → scale 2.5, wheel → scale 8
 - [ ] Manual pinch on a real phone (web access)
+
+## 2026-10-16 — Phone gap analysis, worktree sessions, keyboard spacing
+
+- [x] Audit phone vs desktop gaps → `docs/developer/mobile-gap-analysis.md`
+- [x] Canvas worktree row lists its sessions on a phone (`CanvasWorktreeSessions.tsx`)
+- [x] Shell follows the visual viewport (`useVisualViewportShell`); no per-surface keyboard padding
+- [x] Fix stale "Jean Chat" matcher in the e2e fixture (7 desktop e2e failures since the rename)
+- Result: unit 3252/3252, e2e 46/46. Not checked on an iPhone: no simulator on this machine.
