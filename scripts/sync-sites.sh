@@ -35,8 +35,10 @@ sync() {
     fi
     # shellcheck disable=SC2086
     git add -- $paths
+    # Vercel deploys a commit only when its author is a member of the Vercel team, so the
+    # author is Andreas (his GitHub-linked address); the committer marks it as automated.
     git -c user.name="Splitkick release" -c user.email="release@splitkick.app" \
-      commit --quiet -m "chore: Splitkick $VERSION"
+      commit --quiet --author="${SYNC_AUTHOR:-Andreas Zeitler <andreas@planetfall.co>}" -m "chore: Splitkick $VERSION"
     git push --quiet origin HEAD:main
     echo "$name: pushed $(git rev-parse --short HEAD)"
   )
