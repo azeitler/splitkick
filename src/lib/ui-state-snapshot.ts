@@ -4,6 +4,7 @@ import { useUIStore } from '@/store/ui-store'
 import { useTerminalStore } from '@/store/terminal-store'
 import { useBrowserStore } from '@/store/browser-store'
 import { isLocalBackend } from '@/lib/environment'
+import { isMobileViewport } from '@/hooks/use-mobile'
 import type { PendingImage, PendingTextFile } from '@/types/chat'
 import type {
   PendingImageDraft,
@@ -60,6 +61,18 @@ function serializePendingTextFiles(
  * immediate save path (`@/lib/ui-state-flush`) needs the same snapshot
  * without rendering a component.
  */
+/**
+ * The desktop's file panel state, as loaded. UI state is one blob per backend,
+ * shared by the desktop host and a phone on web access, but the phone's file
+ * drawer is its own: a phone neither opens its drawer from this value nor
+ * writes its drawer state back over it.
+ */
+let hostFileBrowserVisible = false
+
+export function rememberHostFileBrowserVisible(visible: boolean): void {
+  hostFileBrowserVisible = visible
+}
+
 export function getCurrentUIState(): UIState {
   const {
     activeWorktreeId,
@@ -160,7 +173,9 @@ export function getCurrentUIState(): UIState {
     left_sidebar_size: leftSidebarSize,
     left_sidebar_visible: leftSidebarVisible,
     file_browser_size: fileBrowserSize,
-    file_browser_visible: fileBrowserVisible,
+    file_browser_visible: isMobileViewport()
+      ? hostFileBrowserVisible
+      : fileBrowserVisible,
     zen_mode: zenMode,
     active_session_ids: activeSessionIds,
     input_drafts: inputDrafts,

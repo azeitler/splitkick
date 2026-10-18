@@ -1,7 +1,7 @@
 import { createElement, type PropsWithChildren } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { renderHook, waitFor } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useTerminalStore } from '@/store/terminal-store'
 import { useUIStore } from '@/store/ui-store'
 import { useChatStore } from '@/store/chat-store'
@@ -385,6 +385,89 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
         input_drafts: { 'session-1': 'unsent message' },
       })
     )
+  })
+
+  // UI state is one blob per backend, shared by the desktop host and a phone
+  // on web access. The host's open file panel opened the phone's file drawer
+  // on every load, and the phone's drawer state closed the host's panel.
+  describe('file browser on a phone', () => {
+    const desktopWidth = window.innerWidth
+    const setWidth = (width: number) =>
+      Object.defineProperty(window, 'innerWidth', {
+        configurable: true,
+        value: width,
+      })
+    afterEach(() => setWidth(desktopWidth))
+
+    it('does not open the phone drawer from the host panel state', async () => {
+      setWidth(390)
+      useUIStore.setState({ fileBrowserVisible: false })
+      mockUseUIState.mockReturnValue({
+        data: buildUiState({ file_browser_visible: true }),
+        isSuccess: true,
+      })
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      })
+
+      renderHook(() => useUIStatePersistence(), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      await waitFor(() => {
+        expect(useUIStore.getState().uiStateInitialized).toBe(true)
+      })
+      expect(useUIStore.getState().fileBrowserVisible).toBe(false)
+    })
+
+    it('keeps the host panel state when the phone saves', async () => {
+      setWidth(390)
+      useUIStore.setState({ fileBrowserVisible: false })
+      mockUseUIState.mockReturnValue({
+        data: buildUiState({ file_browser_visible: true }),
+        isSuccess: true,
+      })
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      })
+      renderHook(() => useUIStatePersistence(), {
+        wrapper: createWrapper(queryClient),
+      })
+      await waitFor(() => {
+        expect(useUIStore.getState().uiStateInitialized).toBe(true)
+      })
+
+      useUIStore.getState().setFileBrowserVisible(true)
+      useUIStore.getState().setFileBrowserVisible(false)
+      useUIStore.getState().setZenMode(true)
+
+      await waitFor(() => {
+        expect(mockSaveUIState).toHaveBeenCalledWith(
+          expect.objectContaining({ zen_mode: true })
+        )
+      })
+      for (const [saved] of mockSaveUIState.mock.calls) {
+        expect(saved.file_browser_visible).toBe(true)
+      }
+    })
+
+    it('still restores the panel on a desktop', async () => {
+      useUIStore.setState({ fileBrowserVisible: false })
+      mockUseUIState.mockReturnValue({
+        data: buildUiState({ file_browser_visible: true }),
+        isSuccess: true,
+      })
+      const queryClient = new QueryClient({
+        defaultOptions: { queries: { retry: false } },
+      })
+      renderHook(() => useUIStatePersistence(), {
+        wrapper: createWrapper(queryClient),
+      })
+
+      await waitFor(() => {
+        expect(useUIStore.getState().fileBrowserVisible).toBe(true)
+      })
+    })
   })
 
   it('debounces persistence when zen mode changes', async () => {
