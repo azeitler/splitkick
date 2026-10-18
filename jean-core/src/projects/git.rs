@@ -3152,25 +3152,30 @@ mod tests {
 
         // The elapsed check is the whole point: if the process group kill
         // misses the descendant, `sleep` keeps the stdout pipe open and
-        // reading it blocks for the full 30 seconds.
+        // reading it blocks for the full 60 seconds.
         //
         // Keep the two numbers far apart. Everything before the deadline
         // counts towards `elapsed`, including starting a login shell, which
         // costs seconds on a loaded CI runner and has nothing to do with what
-        // this test asserts. A tight budget fails there while the kill works
-        // perfectly.
+        // this test asserts. A 15 s budget against `sleep 30` failed there
+        // (2026-10-18) while the kill works: a missed kill can never finish
+        // below the sleep, so half of it is the budget.
         let error = run_jean_script_with_timeout(
             "setup",
             path,
             path,
             "test-branch",
-            "echo started; sleep 30",
+            "echo started; sleep 60",
             Duration::from_millis(100),
         )
         .unwrap_err();
 
         assert!(error.starts_with("setup script timed out after"));
-        assert!(started.elapsed() < Duration::from_secs(15));
+        let elapsed = started.elapsed();
+        assert!(
+            elapsed < Duration::from_secs(30),
+            "the script outlived its timeout: {elapsed:?}"
+        );
     }
 
     // ========================================================================
