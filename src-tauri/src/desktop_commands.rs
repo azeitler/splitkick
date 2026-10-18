@@ -291,6 +291,31 @@ pub async fn open_log_directory(app: AppHandle) -> Result<(), String> {
     open_worktree_in_finder(path).await
 }
 
+/// The log file `tauri_plugin_log` writes now. Rotation leaves older files
+/// beside it with a time stamp in the name, so take the newest `.log`.
+pub(crate) fn newest_log_file(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir)
+        .ok()?
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "log"))
+        .filter_map(|entry| Some((entry.metadata().ok()?.modified().ok()?, entry.path())))
+        .max_by_key(|(modified, _)| *modified)
+        .map(|(_, path)| path)
+}
+
+/// Help → Show Log: open the current log file in the default app (Console on
+/// macOS), or the log folder when there is no file yet.
+pub(crate) async fn show_log_file(app: &AppHandle) -> Result<(), String> {
+    let dir = app
+        .path()
+        .app_log_dir()
+        .map_err(|error| error.to_string())?;
+    match newest_log_file(&dir) {
+        Some(file) => open_path_in_default_app(file.to_string_lossy().into_owned()).await,
+        None => open_worktree_in_finder(dir.to_string_lossy().into_owned()).await,
+    }
+}
+
 #[tauri::command]
 pub async fn open_project_worktrees_folder(
     runtime: State<'_, CoreRuntime>,
@@ -433,4 +458,39 @@ pub async fn install_remote_jean_server(
     })
     .await
     .map_err(|error| format!("Remote install task failed: {error}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::newest_log_file;
+    use std::fs::{self, File, FileTimes};
+    use std::time::{Duration, SystemTime};
+
+    fn write(dir: &std::path::Path, name: &str, age_secs: u64) {
+        let file = File::create(dir.join(name)).expect("create");
+        let modified = SystemTime::now() - Duration::from_secs(age_secs);
+        file.set_times(FileTimes::new().set_modified(modified))
+            .expect("set mtime");
+    }
+
+    #[test]
+    fn picks_the_newest_log_file() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        write(dir.path(), "Splitkick_2026-10-16_10-00-00.log", 600);
+        write(dir.path(), "Splitkick.log", 5);
+        write(dir.path(), "notes.txt", 0);
+
+        assert_eq!(
+            newest_log_file(dir.path()),
+            Some(dir.path().join("Splitkick.log"))
+        );
+    }
+
+    #[test]
+    fn none_without_log_files_or_folder() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        fs::write(dir.path().join("notes.txt"), "x").expect("write");
+        assert_eq!(newest_log_file(dir.path()), None);
+        assert_eq!(newest_log_file(&dir.path().join("missing")), None);
+    }
 }

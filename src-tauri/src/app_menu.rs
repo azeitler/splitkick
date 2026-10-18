@@ -236,6 +236,8 @@ pub(crate) fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::e
             "help.install-ai-backends",
             "Install AI Backends",
         )?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("show-log", "Show Log").build(app)?)
         .build()?;
     let menu = MenuBuilder::new(app)
         .item(&app_menu)
@@ -264,6 +266,15 @@ pub(crate) fn install_menu_events(app: &tauri::App) {
             if let Some(window) = focused {
                 let _ = window.minimize();
             }
+            return;
+        }
+        if event.id().as_ref() == "show-log" {
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = crate::desktop_commands::show_log_file(&app).await {
+                    log::warn!("Show Log failed: {error}");
+                }
+            });
             return;
         }
         let Some((frontend_event, payload)) = menu_event(event.id().as_ref()) else {
