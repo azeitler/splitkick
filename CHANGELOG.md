@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.0.4] - 2026-10-18
+
+Built on Jean 0.1.73.
+
 ### Fixed
 
 - **Selecting text in the file viewer's editor works on macOS 15.** The
@@ -1720,7 +1724,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.3...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.4...HEAD
+[1.0.4]: https://github.com/azeitler/jean/compare/splitkick-v1.0.3...splitkick-v1.0.4
 [1.0.3]: https://github.com/azeitler/jean/compare/splitkick-v1.0.2...splitkick-v1.0.3
 [1.0.2]: https://github.com/azeitler/jean/compare/splitkick-v1.0.1...splitkick-v1.0.2
 [1.0.1]: https://github.com/azeitler/jean/compare/splitkick-v1.0.0...splitkick-v1.0.1
