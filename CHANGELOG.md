@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.0.5] - 2026-10-18
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Help → Show Log.** Opens Splitkick's log file in Console, so an error can
@@ -1737,7 +1741,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.4...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.5...HEAD
+[1.0.5]: https://github.com/azeitler/jean/compare/splitkick-v1.0.4...splitkick-v1.0.5
 [1.0.4]: https://github.com/azeitler/jean/compare/splitkick-v1.0.3...splitkick-v1.0.4
 [1.0.3]: https://github.com/azeitler/jean/compare/splitkick-v1.0.2...splitkick-v1.0.3
 [1.0.2]: https://github.com/azeitler/jean/compare/splitkick-v1.0.1...splitkick-v1.0.2
