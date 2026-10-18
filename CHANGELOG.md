@@ -7,6 +7,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Help → Show Log.** Opens Splitkick's log file in Console, so an error can
+  be read and sent with a report without searching for the file.
+
 ### Fixed
 
 - **No more Reload menu on a right-click.** Where Splitkick has no menu of
