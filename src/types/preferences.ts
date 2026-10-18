@@ -1490,6 +1490,10 @@ export const fileEditModeOptions: { value: FileEditMode; label: string }[] = [
 ]
 
 export type ClaudeModel =
+  | 'claude-fable-5-1'
+  | 'claude-opus-5-5'
+  | 'claude-sonnet-5-5'
+  | 'claude-haiku-5-5'
   | 'claude-fable-5'
   | 'claude-opus-5'
   | 'claude-sonnet-5'
@@ -1511,6 +1515,10 @@ export type ClaudeModel =
   | 'haiku'
 
 export const modelOptions: { value: ClaudeModel; label: string }[] = [
+  { value: 'claude-fable-5-1', label: 'Claude Fable 5.1' },
+  { value: 'claude-opus-5-5', label: 'Claude Opus 5.5' },
+  { value: 'claude-sonnet-5-5', label: 'Claude Sonnet 5.5' },
+  { value: 'claude-haiku-5-5', label: 'Claude Haiku 5.5' },
   { value: 'claude-fable-5', label: 'Claude Fable 5' },
   { value: 'claude-opus-5', label: 'Claude Opus 5' },
   { value: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
@@ -1530,6 +1538,9 @@ const legacyClaudeDefaultModelMap = {
   'claude-opus-4-6-fast': 'claude-opus-4-6[1m]-fast',
   sonnet: 'claude-sonnet-5',
 } as const satisfies Partial<Record<ClaudeModel, ClaudeModel>>
+
+/** `claude-<family>-<version>`, optionally `[1m]` and `-fast`. */
+const CLAUDE_MODEL_ID = /^claude-[a-z]+-[0-9][a-z0-9-]*(\[1m\])?(-fast)?$/
 
 const knownClaudeModels = new Set<string>([
   ...modelOptions.map(option => option.value),
@@ -1564,7 +1575,10 @@ export function normalizeClaudeModel(
     ]
   }
 
-  return knownClaudeModels.has(model)
+  // Keep any well-formed Claude model id, also one this list does not have
+  // yet: the CLI takes it as is. Dropping unknown ids reset every newer model
+  // the user picked to the default on the next load.
+  return knownClaudeModels.has(model) || CLAUDE_MODEL_ID.test(model)
     ? (model as ClaudeModel)
     : 'claude-opus-4-8[1m]'
 }

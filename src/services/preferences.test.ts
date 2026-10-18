@@ -112,6 +112,10 @@ describe('model option helpers', () => {
 
   it('offers Claude 1M variants alongside standard context models', () => {
     expect(modelOptions.map(option => option.value)).toEqual([
+      'claude-fable-5-1',
+      'claude-opus-5-5',
+      'claude-sonnet-5-5',
+      'claude-haiku-5-5',
       'claude-fable-5',
       'claude-opus-5',
       'claude-sonnet-5',

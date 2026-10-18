@@ -9,6 +9,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A newer default Claude model sticks.** Settings only knew Claude models
+  up to Opus 5, and on every start a model it did not list went back to
+  Opus 4.8. Fable 5.1, Opus 5.5, Sonnet 5.5 and Haiku 5.5 are in the model
+  lists now, and a saved Claude model id is kept even when it is newer than
+  the list.
 - **The phone no longer opens the file browser on its own.** The phone and
   the desktop host share one saved layout, so a file panel open on the host
   opened the file drawer on every phone load, and closing the drawer on the
