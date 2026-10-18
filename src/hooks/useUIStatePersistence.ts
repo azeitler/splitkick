@@ -336,6 +336,11 @@ export function useUIStatePersistence() {
       useChatStore.setState({ inputDrafts })
     }
 
+    const sessionErrors = uiState.session_errors ?? {}
+    if (Object.keys(sessionErrors).length > 0) {
+      useChatStore.setState({ errors: sessionErrors })
+    }
+
     const dismissedSetupScripts = Object.fromEntries(
       (uiState.dismissed_setup_scripts ?? []).map(worktreeId => [
         worktreeId,
@@ -992,6 +997,7 @@ export function useUIStatePersistence() {
     let prevLastActiveWorktreeId = useChatStore.getState().lastActiveWorktreeId
     let prevActiveSessionIds = useChatStore.getState().activeSessionIds
     let prevInputDrafts = useChatStore.getState().inputDrafts
+    let prevErrors = useChatStore.getState().errors
     let prevPendingImages = useChatStore.getState().pendingImages
     let prevPendingTextFiles = useChatStore.getState().pendingTextFiles
     let prevDismissedSetupScripts =
@@ -1139,6 +1145,7 @@ export function useUIStatePersistence() {
         state.lastActiveWorktreeId !== prevLastActiveWorktreeId
       const sessionsChanged = state.activeSessionIds !== prevActiveSessionIds
       const inputDraftsChanged = state.inputDrafts !== prevInputDrafts
+      const errorsChanged = state.errors !== prevErrors
       const pendingImagesChanged = state.pendingImages !== prevPendingImages
       const pendingTextFilesChanged =
         state.pendingTextFiles !== prevPendingTextFiles
@@ -1153,6 +1160,7 @@ export function useUIStatePersistence() {
         worktreeChanged ||
         sessionsChanged ||
         inputDraftsChanged ||
+        errorsChanged ||
         pendingImagesChanged ||
         pendingTextFilesChanged ||
         dismissedSetupScriptsChanged ||
@@ -1164,6 +1172,7 @@ export function useUIStatePersistence() {
         prevLastActiveWorktreeId = state.lastActiveWorktreeId
         prevActiveSessionIds = state.activeSessionIds
         prevInputDrafts = state.inputDrafts
+        prevErrors = state.errors
         prevPendingImages = state.pendingImages
         prevPendingTextFiles = state.pendingTextFiles
         prevDismissedSetupScripts = state.dismissedSetupScripts

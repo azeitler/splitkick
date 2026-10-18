@@ -2947,6 +2947,10 @@ pub struct UIState {
     #[serde(default)]
     pub input_drafts: std::collections::HashMap<String, String>,
 
+    /// Last failed-run error per session, shown until dismissed or the next send
+    #[serde(default)]
+    pub session_errors: std::collections::HashMap<String, String>,
+
     /// Unsent image attachments per session (files already on disk)
     #[serde(default)]
     pub pending_images: std::collections::HashMap<String, Vec<PendingImageDraft>>,
@@ -3221,6 +3225,7 @@ impl Default for UIState {
             zen_mode: None,
             active_session_ids: std::collections::HashMap::new(),
             input_drafts: std::collections::HashMap::new(),
+            session_errors: std::collections::HashMap::new(),
             pending_images: std::collections::HashMap::new(),
             pending_text_files: std::collections::HashMap::new(),
             dismissed_setup_scripts: Vec::new(),
