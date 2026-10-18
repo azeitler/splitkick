@@ -42,3 +42,6 @@ jean-core/target/
 
 # Local scratch reproduction harnesses
 /scratch/
+
+# Playwright MCP console logs
+.playwright-mcp/
