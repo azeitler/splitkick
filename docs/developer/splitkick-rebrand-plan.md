@@ -158,7 +158,7 @@ The Tauri updater replaces the running `.app` in place. Letting `JeanZ.app` upda
 - Upstream `coollabsio/jean` is at v1.0.11 (`upstream/main` = `bf10f321`). Fork base: v0.1.73; review baseline `docs/upstream/last-sync.json` = `41390c61`. The 1.0.1 merge (`1cf20d58`) was reverted in `54d762af` (z.14) because remote-host ids broke. 189 fork-only commits; 391+ upstream commits pending, 73 high-risk.
 - **Rename does not merge anything.** Splitkick 1.0.0 stays on the 0.1.73 base.
 - **Merge strategy (proposal, not now):**
-  1. Keep `bun run upstream:review` (`/upstream-review`) as the intake. Take fixes by **cherry-pick** in small batches (data-loss and security fixes first, e.g. `bf10f321`), each released normally.
+  1. Keep `/upstream-review` (an agent review, see `docs/developer/upstream-sync.md`) as the intake. Take fixes by **cherry-pick** in small batches (data-loss and security fixes first, e.g. `bf10f321`), each released normally.
   2. A full base move to upstream 1.x happens on a branch `upstream-1.x`, never directly on `main`: merge, re-run `check:branding`, resolve the brand files listed in A2, then run the M-matrix below **plus remote hosts** (the failure that forced the revert). Ship as `rc` to a test feed only; `main` takes it after one week of daily use.
   3. Before any base move that changes the data format: one-way migration with an automatic backup copy (the updater cannot downgrade; lesson from z.14).
   4. Because Splitkick has its own version line, a base move is a minor/major Splitkick release with "Built on Jean 1.x" in About; no version jump problems.
@@ -332,5 +332,5 @@ The upstream relationship and the part D PRs are Andreas's from here on.
 - Update the website for each release: `DOWNLOAD_URL`, size and sha256 in
   `splitkick-website/src/site.ts` (versioned DMG on purpose).
 - `.local-signing/push-secrets.sh` and `validate.sh` still use the JeanZ names.
-- Upstream base move (part C) when wanted: `upstream:review`, then a
+- Upstream base move (part C) when wanted: `/upstream-review`, then a
   `upstream-1.x` branch with the full M-matrix incl. remote hosts.
