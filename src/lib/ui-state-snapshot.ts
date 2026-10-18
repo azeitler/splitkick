@@ -80,6 +80,7 @@ export function getCurrentUIState(): UIState {
     lastActiveWorktreeId,
     activeSessionIds,
     inputDrafts,
+    errors,
     pendingImages,
     pendingTextFiles,
     dismissedSetupScripts,
@@ -179,6 +180,11 @@ export function getCurrentUIState(): UIState {
     zen_mode: zenMode,
     active_session_ids: activeSessionIds,
     input_drafts: inputDrafts,
+    session_errors: Object.fromEntries(
+      Object.entries(errors).filter(
+        (entry): entry is [string, string] => !!entry[1]
+      )
+    ),
     pending_images: serializePendingImages(pendingImages),
     pending_text_files: serializePendingTextFiles(pendingTextFiles),
     dismissed_setup_scripts: Object.keys(dismissedSetupScripts),

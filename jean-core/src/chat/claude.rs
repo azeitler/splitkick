@@ -1490,6 +1490,15 @@ fn startup_failure_message(
     )
 }
 
+/// Error to show when the CLI printed non-JSON output (e.g. a crash message)
+/// and no assistant content.
+fn cli_error_message(full_content: &str, error_lines: &[String]) -> Option<String> {
+    if error_lines.is_empty() || !full_content.is_empty() {
+        return None;
+    }
+    Some(format!("Claude CLI failed: {}", error_lines.join("\n")))
+}
+
 fn terminate_failed_startup(pid: u32) {
     if pid <= 1 {
         return;
@@ -2549,15 +2558,15 @@ pub fn tail_claude_output(
         return Err(error);
     }
 
-    if !error_lines.is_empty() && full_content.is_empty() {
-        let error_text = error_lines.join("\n");
-        log::warn!("CLI error output for session {session_id}: {error_text}");
+    let cli_error = cli_error_message(&full_content, &error_lines);
+    if let Some(error) = &cli_error {
+        log::warn!("CLI error output for session {session_id}: {error}");
         let _ = app.emit_all(
             "chat:error",
             &ErrorEvent {
                 session_id: session_id.to_string(),
                 worktree_id: worktree_id.to_string(),
-                error: format!("Claude CLI failed: {error_text}"),
+                error: error.clone(),
             },
         );
     }
@@ -2567,7 +2576,9 @@ pub fn tail_claude_output(
     // When the process died naturally (not user cancel) but produced content,
     // we still emit chat:done so the frontend properly transitions from
     // streaming to persisted state (#209).
-    if !user_cancelled {
+    // Skip it after chat:error: the error handler already ends the turn, and
+    // chat:done would clear the error banner, so the send fails silently.
+    if !user_cancelled && cli_error.is_none() {
         let done_event = DoneEvent {
             session_id: session_id.to_string(),
             worktree_id: worktree_id.to_string(),
@@ -2684,6 +2695,17 @@ mod tests {
         assert_eq!(startup_failure_message(true, true, "", &[]), None);
         assert_eq!(startup_failure_message(true, false, "done", &[]), None);
         assert_eq!(startup_failure_message(false, false, "", &[]), None);
+    }
+
+    #[test]
+    fn cli_error_message_only_without_content() {
+        let lines = vec!["error: An unknown error occurred".to_string()];
+        assert_eq!(
+            cli_error_message("", &lines).as_deref(),
+            Some("Claude CLI failed: error: An unknown error occurred")
+        );
+        assert_eq!(cli_error_message("partial answer", &lines), None);
+        assert_eq!(cli_error_message("", &[]), None);
     }
 
     #[test]

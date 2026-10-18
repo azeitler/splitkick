@@ -9,6 +9,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A failed send shows its error and keeps it.** When the Claude CLI
+  stopped at once (for example when macOS blocks the worktree folder), the
+  error flashed and vanished, and the prompt went back to the input with no
+  reason. The error now stays above the input until you dismiss it or send
+  again, also after a restart.
 - **A newer default Claude model sticks.** Settings only knew Claude models
   up to Opus 5, and on every start a model it did not list went back to
   Opus 4.8. Fable 5.1, Opus 5.5, Sonnet 5.5 and Haiku 5.5 are in the model

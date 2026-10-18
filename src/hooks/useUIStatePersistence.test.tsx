@@ -110,9 +110,62 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
       activeSessionIds: {},
       sessionWorktreeMap: {},
       inputDrafts: {},
+      errors: {},
       pendingImages: {},
       pendingTextFiles: {},
       dismissedSetupScripts: {},
+    })
+  })
+
+  it('restores the error of a failed send', async () => {
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({
+        session_errors: { 'session-1': 'Claude CLI failed: boom' },
+      }),
+      isSuccess: true,
+    })
+
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useChatStore.getState().errors).toEqual({
+        'session-1': 'Claude CLI failed: boom',
+      })
+    })
+  })
+
+  it('saves session errors and drops dismissed ones', async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(queryClient),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useChatStore.getState().setError('session-1', 'Claude CLI failed: boom')
+    useChatStore.getState().setError('session-2', null)
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          session_errors: { 'session-1': 'Claude CLI failed: boom' },
+        })
+      )
     })
   })
 

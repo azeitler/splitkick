@@ -142,6 +142,8 @@ export interface UIState {
   active_session_ids: Record<string, string>
   /** Unsent chat textarea content per session */
   input_drafts?: Record<string, string>
+  /** Last failed-run error per session, shown until dismissed or the next send */
+  session_errors?: Record<string, string>
   /**
    * Unsent image attachments per session (files already on disk).
    * Only fully-saved images are persisted — loading placeholders are omitted.

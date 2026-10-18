@@ -2522,9 +2522,10 @@ export const useChatStore = create<ChatUIState>()(
       // Error handling (session-based)
       setError: (sessionId, error) =>
         set(
-          state => ({
-            errors: { ...state.errors, [sessionId]: error },
-          }),
+          state => {
+            if ((state.errors[sessionId] ?? null) === error) return state
+            return { errors: { ...state.errors, [sessionId]: error } }
+          },
           undefined,
           'setError'
         ),
