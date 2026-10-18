@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **No more Reload menu on a right-click.** Where Splitkick has no menu of
+  its own, a right-click showed WebKit's default menu with Reload and Inspect
+  Element, and Reload threw away the window's state. That menu is gone; text
+  fields, the editor and selected text keep Cut, Copy and Paste. The browser
+  pane keeps its browser menu.
+
 ## [1.0.4] - 2026-10-18
 
 Built on Jean 0.1.73.
