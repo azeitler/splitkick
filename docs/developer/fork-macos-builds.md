@@ -87,6 +87,17 @@ On the push, `scripts/splitkick-version.mjs` reports `publish=true` only when
 the overlay version has a CHANGELOG section and no `splitkick-v<version>` tag.
 Every other push builds and signs but publishes nothing.
 
+After a final release (not an `-rc.N`), the step "Update the website and the
+docs" runs `scripts/sync-sites.sh`. It clones `Digitalheld/splitkick-website`
+and `azeitler/splitkick-docs`, runs their own sync scripts
+(`scripts/sync-release.mjs`: version, size and sha256 on the download card;
+`scripts/sync-changelog.mjs`: a release-notes page from this `CHANGELOG.md`)
+and pushes the result to their `main`, so Vercel deploys both. Each repo has a
+deploy key with write access; the private keys are the secrets
+`SPLITKICK_WEBSITE_DEPLOY_KEY` and `SPLITKICK_DOCS_DEPLOY_KEY`. Without them
+the step skips that repo with a warning. Test it locally against bare repos with
+`SYNC_REMOTE_BASE=file:///path/to/bare/`.
+
 ## Version numbers
 
 Splitkick uses plain semver from `1.0.0`, independent of the Jean version it is
