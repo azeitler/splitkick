@@ -1,0 +1,5 @@
+{
+  "sha": "41390c61",
+  "date": "2026-08-25",
+  "note": "The upstream point the fork really contains. The 1.0.1 merge (1cf20d58, upstream 4dbc022e) was reverted in 54d762af, so `git merge-base main upstream/main` returns 4dbc022e and hides 173 upstream commits the fork does not have. Move this only after an upstream merge is kept on main."
+}
