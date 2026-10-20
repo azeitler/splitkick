@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A prompt sent just after a reply is queued, not bounced.** For a few
+  seconds after a reply, Splitkick still saves the turn's file changes (longer
+  in iCloud folders). A prompt sent then went back into the input with no
+  message. It now goes into the queue and runs as soon as Splitkick is free.
+
 ## [1.0.6] - 2026-10-18
 
 Built on Jean 0.1.73.
