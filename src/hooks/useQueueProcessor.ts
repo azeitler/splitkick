@@ -17,6 +17,9 @@ import { buildMessageWithRefs } from '@/components/chat/message-with-refs'
 // GIT_ALLOWED_TOOLS duplicated from ChatWindow - tools always allowed for git operations
 const GIT_ALLOWED_TOOLS = ['Bash', 'Read', 'Glob', 'Grep']
 
+/** Wait before retrying a queued message that lost the send race. */
+export const QUEUE_RACE_RETRY_MS = 1000
+
 /**
  * Global queue processor hook - must be at App level so it stays active
  * even when ChatWindow is unmounted (e.g., when viewing a different worktree)
@@ -161,6 +164,7 @@ export function useQueueProcessor(): void {
           const fullMessage = buildMessageWithRefs(msg)
 
           // Send the message
+          let raceLost = false
           sendMessage.mutate(
             {
               sessionId: capturedSessionId,
@@ -188,6 +192,7 @@ export function useQueueProcessor(): void {
                 // another client). Requeue the original message at the front
                 // so it retries when the active run completes — never drop it.
                 if (!isDuplicateSendError(error)) return
+                raceLost = true
                 logger.warn(
                   'Queue processor: send race lost, requeueing message',
                   { sessionId: capturedSessionId, messageId: msg.id }
@@ -209,8 +214,15 @@ export function useQueueProcessor(): void {
                 })
               },
               onSettled: () => {
-                processingRef.current.delete(capturedSessionId)
-                setSettleTrigger(t => t + 1)
+                const release = () => {
+                  processingRef.current.delete(capturedSessionId)
+                  setSettleTrigger(t => t + 1)
+                }
+                // The backend is still busy with the previous run. Retrying
+                // at once would spin until it is free; the backend drain also
+                // picks the message up when that run ends.
+                if (raceLost) setTimeout(release, QUEUE_RACE_RETRY_MS)
+                else release()
               },
             }
           )

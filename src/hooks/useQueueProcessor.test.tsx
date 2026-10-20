@@ -2,7 +2,7 @@ import { renderHook, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useChatStore } from '@/store/chat-store'
 import { useQueueProcessor } from './useQueueProcessor'
-import { persistDequeue } from '@/services/chat'
+import { isDuplicateSendError, persistDequeue } from '@/services/chat'
 import type { QueuedMessage } from '@/types/chat'
 
 const env = vi.hoisted(() => ({
@@ -99,6 +99,31 @@ describe('useQueueProcessor', () => {
         '/tmp/worktree',
         'session-1'
       )
+    })
+  })
+
+  it('waits before retrying a message that lost the send race', async () => {
+    vi.mocked(persistDequeue).mockResolvedValue(queuedMessage)
+    vi.mocked(isDuplicateSendError).mockReturnValue(true)
+    sendMessageMutate.mockImplementation((_vars, opts) => {
+      useChatStore.getState().removeSendingSession('session-1')
+      opts.onError(new Error('Session already has an active request'))
+      opts.onSettled()
+    })
+    useChatStore.setState({
+      messageQueues: { 'session-1': [queuedMessage] },
+      sessionWorktreeMap: { 'session-1': 'worktree-1' },
+      worktreePaths: { 'worktree-1': '/tmp/worktree' },
+    })
+
+    renderHook(() => useQueueProcessor())
+
+    await waitFor(() => expect(sendMessageMutate).toHaveBeenCalledTimes(1))
+    await new Promise(resolve => setTimeout(resolve, 300))
+    expect(sendMessageMutate).toHaveBeenCalledTimes(1)
+
+    await waitFor(() => expect(sendMessageMutate).toHaveBeenCalledTimes(2), {
+      timeout: 2000,
     })
   })
 })

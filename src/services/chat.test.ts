@@ -26,6 +26,7 @@ import {
   prefetchSessions,
   reconnectNativeCliSession,
   useAllSessions,
+  useSendMessage,
 } from './chat'
 import { invoke } from '@/lib/transport'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
@@ -112,6 +113,54 @@ describe('prefetchSessions', () => {
     expect(state.submittedAnswers['session-1']).toEqual({
       'tool-1': [{ questionIndex: 0, selectedOptions: [1] }],
     })
+  })
+})
+
+describe('useSendMessage duplicate send', () => {
+  // The backend still holds the send slot for a few seconds after chat:done
+  // (checkpoint finalize). A prompt sent then must run later, not bounce back
+  // into the input with no error.
+  it('queues a rejected direct submit instead of restoring the input', async () => {
+    useChatStore.setState({ inputDrafts: {}, sendingSessionIds: {} })
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'send_chat_message') {
+        throw 'Session already has an active request'
+      }
+      return []
+    })
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    })
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children)
+
+    const { result } = renderHook(() => useSendMessage(), { wrapper })
+    result.current.mutate({
+      sessionId: 's1',
+      worktreeId: 'w1',
+      worktreePath: '/w',
+      message: 'Pdf versandbericht ist abgelegt',
+      model: 'claude-opus-5-5',
+      executionMode: 'yolo',
+      thinkingLevel: 'ultrathink',
+    })
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        'enqueue_message',
+        expect.objectContaining({
+          worktreeId: 'w1',
+          worktreePath: '/w',
+          sessionId: 's1',
+          message: expect.objectContaining({
+            message: 'Pdf versandbericht ist abgelegt',
+            model: 'claude-opus-5-5',
+            executionMode: 'yolo',
+          }),
+        })
+      )
+    )
+    expect(useChatStore.getState().inputDrafts.s1).toBeUndefined()
   })
 })
 

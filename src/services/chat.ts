@@ -2026,9 +2026,12 @@ export function useSendMessage() {
       }
 
       // Benign race: another queue consumer (backend drain / another client)
-      // started a run for this session first. Queued messages are requeued by
-      // the queue processor's per-call onError. Direct submits restore the
-      // draft so typed text isn't lost.
+      // started a run for this session first, or the backend is still
+      // finishing the previous run after chat:done (checkpoint finalize can
+      // take seconds on slow folders). Queued messages are requeued by the
+      // queue processor's per-call onError. Direct submits go into the queue,
+      // so they run once the backend is free instead of bouncing back into
+      // the input with no explanation.
       //
       // After cancel, a brief residual race can still produce this error while
       // the cancelled worker tears down (#329). Do NOT leave sending sticky —
@@ -2039,15 +2042,29 @@ export function useSendMessage() {
           fromQueue: variables.fromQueue ?? false,
         })
         if (!variables.fromQueue) {
-          const {
-            inputDrafts,
-            setInputDraft,
-            removeSendingSession,
-            clearExecutingMode,
-          } = useChatStore.getState()
-          if (!inputDrafts[sessionId]?.trim()) {
-            setInputDraft(sessionId, variables.message)
+          const { selectedModels, removeSendingSession, clearExecutingMode } =
+            useChatStore.getState()
+          const queued: QueuedMessage = {
+            id: generateId(),
+            message: variables.message,
+            pendingImages: [],
+            pendingFiles: [],
+            pendingSkills: [],
+            pendingTextFiles: [],
+            model: variables.model ?? selectedModels[sessionId] ?? '',
+            provider: variables.customProfileName ?? null,
+            executionMode: variables.executionMode ?? 'plan',
+            thinkingLevel: variables.thinkingLevel ?? 'off',
+            effortLevel: variables.effortLevel,
+            mcpConfig: variables.mcpConfig,
+            backend: variables.backend as Backend | undefined,
+            queuedAt: Date.now(),
           }
+          // Backend first: its queue:updated event fills the local queue, and
+          // it drains the queue when the active run ends. A local enqueue
+          // would wake the queue processor before the backend has the message,
+          // and its empty dequeue would clear the local copy.
+          persistEnqueue(worktreeId, variables.worktreePath, sessionId, queued)
           removeSendingSession(sessionId)
           clearExecutingMode(sessionId)
         }
