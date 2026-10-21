@@ -234,7 +234,7 @@ function App() {
   }, [])
 
   const relaunchApp = useCallback(async () => {
-    const { relaunch } = await import('@tauri-apps/plugin-process')
+    const { relaunchApp: relaunch } = await import('@/lib/relaunch')
     // Replace the app bundle only now. On macOS a process whose bundle was
     // replaced loses its privacy (TCC) identity: protected folders such as
     // iCloud Drive then fail with "Operation not permitted" until a restart.

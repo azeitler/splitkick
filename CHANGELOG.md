@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **One Dock tile after a restart.** Since 15 October (Tauri 2.12) a restart
+  after an update opened a second copy of Splitkick next to the one in the
+  Dock, so the Dock showed Splitkick twice and the pinned tile stayed with
+  the old copy. The restart now waits for the old copy to end and opens
+  Splitkick once, like a click in the Dock. The same applies to the restart
+  after an import from Jean.
+
 ## [1.0.8] - 2026-10-21
 
 Built on Jean 0.1.73.

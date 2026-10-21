@@ -1,7 +1,7 @@
 use base64::Engine;
 use serde_json::{json, Value};
 use std::io::Cursor;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_dialog::DialogExt;
 
@@ -460,10 +460,60 @@ pub async fn install_remote_jean_server(
     .map_err(|error| format!("Remote install task failed: {error}"))?
 }
 
+/// Waits for the old process to end (at most 30 s), then opens the bundle
+/// once through LaunchServices, like a normal launch from the Dock.
+#[cfg(target_os = "macos")]
+const RELAUNCH_SCRIPT: &str = r#"i=0; while kill -0 "$1" 2>/dev/null && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i+1)); done; exec /usr/bin/open "$2""#;
+
+/// `.../Splitkick.app` for a binary at `.../Splitkick.app/Contents/MacOS/Splitkick`.
+#[cfg(any(target_os = "macos", test))]
+fn macos_bundle_root(exe: &std::path::Path) -> Option<std::path::PathBuf> {
+    let named = |dir: &std::path::Path, name: &str| dir.file_name().is_some_and(|n| n == name);
+    let macos_dir = exe.parent().filter(|dir| named(dir, "MacOS"))?;
+    let contents = macos_dir.parent().filter(|dir| named(dir, "Contents"))?;
+    let bundle = contents.parent()?;
+    let is_app = bundle
+        .extension()
+        .is_some_and(|extension| extension == "app");
+    is_app.then(|| bundle.to_path_buf())
+}
+
+/// Relaunch the app, e.g. to apply an update.
+///
+/// Tauri 2.12 relaunches a macOS app with `open -n`, which starts a second
+/// instance while this one still runs: the Dock shows two tiles, and the
+/// pinned tile stays with the old process. A helper waits for this process
+/// to end and opens the bundle once, so the new process gets the pinned tile.
+/// Dev builds and other platforms use Tauri's own relaunch.
+#[tauri::command]
+pub fn relaunch_app(app: AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let exe = std::env::current_exe().map_err(|error| error.to_string())?;
+        if let Some(bundle) = macos_bundle_root(&exe) {
+            Command::new("/bin/sh")
+                .arg("-c")
+                .arg(RELAUNCH_SCRIPT)
+                .arg("relaunch")
+                .arg(std::process::id().to_string())
+                .arg(&bundle)
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .map_err(|error| format!("Failed to start the relaunch helper: {error}"))?;
+            app.exit(0);
+            return Ok(());
+        }
+    }
+    app.restart()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::newest_log_file;
+    use super::{macos_bundle_root, newest_log_file};
     use std::fs::{self, File, FileTimes};
+    use std::path::Path;
     use std::time::{Duration, SystemTime};
 
     fn write(dir: &std::path::Path, name: &str, age_secs: u64) {
@@ -492,5 +542,26 @@ mod tests {
         fs::write(dir.path().join("notes.txt"), "x").expect("write");
         assert_eq!(newest_log_file(dir.path()), None);
         assert_eq!(newest_log_file(&dir.path().join("missing")), None);
+    }
+
+    #[test]
+    fn bundle_root_is_the_app_folder_of_a_bundled_binary() {
+        let exe = Path::new("/Applications/Splitkick.app/Contents/MacOS/Splitkick");
+        assert_eq!(
+            macos_bundle_root(exe).as_deref(),
+            Some(Path::new("/Applications/Splitkick.app"))
+        );
+    }
+
+    #[test]
+    fn bundle_root_is_none_outside_a_bundle() {
+        assert_eq!(
+            macos_bundle_root(Path::new("/repo/target/debug/jean")),
+            None
+        );
+        assert_eq!(
+            macos_bundle_root(Path::new("/tmp/Not.app/MacOS/Splitkick")),
+            None
+        );
     }
 }
