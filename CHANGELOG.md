@@ -7,6 +7,20 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A clear error when macOS blocks the worktree folder.** Claude then failed
+  with a wrong hint about "low max file descriptors". Splitkick now checks
+  the folder before it sends and says what to do: restart Splitkick (needed
+  after an update) or allow it in Privacy & Security. The prompt goes back
+  into the input.
+- **Updates no longer cut off iCloud folders.** Splitkick installed an
+  update as soon as it was downloaded, while the old version kept running.
+  macOS then denied the running app its folders in iCloud Drive until you
+  restarted it. An update is now downloaded first and installed when you
+  click Restart. If you quit instead, Splitkick offers it again on the next
+  start.
+
 ## [1.0.7] - 2026-10-21
 
 Built on Jean 0.1.73.

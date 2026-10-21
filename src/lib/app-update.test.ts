@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import {
+  installAndRelaunch,
   resolveInstallPendingAction,
   shouldOfferUpdateCheck,
 } from './app-update'
@@ -95,5 +96,37 @@ describe('resolveInstallPendingAction', () => {
         hasPendingUpdateObject: false,
       })
     ).toBe('noop')
+  })
+})
+
+describe('installAndRelaunch', () => {
+  it('installs the downloaded update before the relaunch', async () => {
+    const calls: string[] = []
+    await installAndRelaunch(
+      { install: async () => void calls.push('install') },
+      async () => void calls.push('relaunch')
+    )
+    expect(calls).toEqual(['install', 'relaunch'])
+  })
+
+  it('only relaunches when nothing was downloaded', async () => {
+    const relaunch = vi.fn(async () => undefined)
+    await installAndRelaunch(null, relaunch)
+    expect(relaunch).toHaveBeenCalledOnce()
+  })
+
+  it('does not relaunch when the install fails', async () => {
+    const relaunch = vi.fn(async () => undefined)
+    await expect(
+      installAndRelaunch(
+        {
+          install: async () => {
+            throw new Error('bad signature')
+          },
+        },
+        relaunch
+      )
+    ).rejects.toThrow('bad signature')
+    expect(relaunch).not.toHaveBeenCalled()
   })
 })
