@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.0.9] - 2026-10-21
+
+Built on Jean 0.1.73.
+
 ### Fixed
 
 - **One Dock tile after a restart.** Since 15 October (Tauri 2.12) a restart
@@ -1801,7 +1805,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.8...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.9...HEAD
+[1.0.9]: https://github.com/azeitler/jean/compare/splitkick-v1.0.8...splitkick-v1.0.9
 [1.0.8]: https://github.com/azeitler/jean/compare/splitkick-v1.0.7...splitkick-v1.0.8
 [1.0.7]: https://github.com/azeitler/jean/compare/splitkick-v1.0.6...splitkick-v1.0.7
 [1.0.6]: https://github.com/azeitler/jean/compare/splitkick-v1.0.5...splitkick-v1.0.6
