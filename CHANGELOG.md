@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.0.8] - 2026-10-21
+
+Built on Jean 0.1.73.
+
 ### Fixed
 
 - **A clear error when macOS blocks the worktree folder.** Claude then failed
@@ -1788,7 +1792,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.7...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.8...HEAD
+[1.0.8]: https://github.com/azeitler/jean/compare/splitkick-v1.0.7...splitkick-v1.0.8
 [1.0.7]: https://github.com/azeitler/jean/compare/splitkick-v1.0.6...splitkick-v1.0.7
 [1.0.6]: https://github.com/azeitler/jean/compare/splitkick-v1.0.5...splitkick-v1.0.6
 [1.0.5]: https://github.com/azeitler/jean/compare/splitkick-v1.0.4...splitkick-v1.0.5
