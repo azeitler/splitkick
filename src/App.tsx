@@ -70,6 +70,7 @@ import type { HostInstallPhase } from './store/ui-store'
 import {
   resolveInstallPendingAction,
   shouldOfferUpdateCheck,
+  installAndRelaunch,
 } from './lib/app-update'
 import type { AppPreferences } from './types/preferences'
 import { useChatStore } from './store/chat-store'
@@ -201,6 +202,10 @@ function App() {
   // Holds the update object so the title bar indicator can trigger install later
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pendingUpdateRef = useRef<any>(null)
+  // Downloaded update, installed right before the relaunch
+  const downloadedUpdateRef = useRef<{ install: () => Promise<void> } | null>(
+    null
+  )
 
   useEffect(() => {
     invoke<'mac' | 'windows' | 'linux'>('get_server_platform')
@@ -230,7 +235,21 @@ function App() {
 
   const relaunchApp = useCallback(async () => {
     const { relaunch } = await import('@tauri-apps/plugin-process')
-    await relaunchAfterUIStateSave(relaunch)
+    // Replace the app bundle only now. On macOS a process whose bundle was
+    // replaced loses its privacy (TCC) identity: protected folders such as
+    // iCloud Drive then fail with "Operation not permitted" until a restart.
+    const downloaded = downloadedUpdateRef.current
+    try {
+      await relaunchAfterUIStateSave(() =>
+        installAndRelaunch(downloaded, async () => {
+          downloadedUpdateRef.current = null
+          await relaunch()
+        })
+      )
+    } catch (error) {
+      logger.error(`Update installation failed: ${String(error)}`)
+      toast.error(`Update failed: ${String(error)}`, { duration: 8000 })
+    }
   }, [])
 
   /** Returns whether the package is on disk and the app can relaunch. */
@@ -238,7 +257,8 @@ function App() {
     async (update: {
       version: string
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      downloadAndInstall: (cb: (event: any) => void) => Promise<void>
+      download: (cb: (event: any) => void) => Promise<void>
+      install: () => Promise<void>
     }): Promise<boolean> => {
       const ui = useUIStore.getState()
 
@@ -263,7 +283,7 @@ function App() {
       ui.setUpdateModalVersion(null)
 
       try {
-        await update.downloadAndInstall(event => {
+        await update.download(event => {
           switch (event.event) {
             case 'Started':
               totalBytes = event.data.contentLength ?? 0
@@ -279,8 +299,7 @@ function App() {
               }
               break
             case 'Finished':
-              logger.info('Download complete, installing...')
-              toast.loading('Installing update...', { id: toastId })
+              logger.info('Download complete')
               break
           }
         })
@@ -296,8 +315,10 @@ function App() {
           })
         }
 
-        // Package is on disk; app must relaunch. Clear the download handle and
-        // record ready state so further UI actions relaunch instead of re-downloading.
+        // Package is downloaded; relaunchApp installs it. Clear the offer
+        // handle and record ready state so further UI actions relaunch
+        // instead of re-downloading.
+        downloadedUpdateRef.current = update
         pendingUpdateRef.current = null
         const store = useUIStore.getState()
         store.setIsUpdateInstalling(false)
@@ -305,16 +326,19 @@ function App() {
         store.setUpdateModalVersion(null)
         store.setPendingUpdateVersion(null)
 
-        toast.success(`Update ${update.version} installed!`, {
-          id: toastId,
-          duration: Infinity,
-          action: {
-            label: 'Restart',
-            onClick: () => {
-              void relaunchApp()
+        toast.success(
+          `Update ${update.version} is ready. Restart to install it.`,
+          {
+            id: toastId,
+            duration: Infinity,
+            action: {
+              label: 'Restart',
+              onClick: () => {
+                void relaunchApp()
+              },
             },
-          },
-        })
+          }
+        )
         return true
       } catch (updateError) {
         const errorStr = String(updateError)

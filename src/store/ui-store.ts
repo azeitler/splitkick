@@ -243,7 +243,7 @@ interface UIState {
    * Prevents re-download loops while the old binary is still running (#507).
    */
   updateReadyVersion: string | null
-  /** True while downloadAndInstall is in progress */
+  /** True while the update download is in progress */
   isUpdateInstalling: boolean
   /**
    * Pending update of the *host* this client is connected to (remote / Web
