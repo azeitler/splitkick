@@ -402,6 +402,7 @@ pub fn run() {
             dock::set_dock_badge,
             dock::set_dock_sessions,
             desktop_commands::send_native_notification,
+            desktop_commands::relaunch_app,
             desktop_commands::read_clipboard_image,
             desktop_commands::write_clipboard_text,
             desktop_commands::read_clipboard_text,

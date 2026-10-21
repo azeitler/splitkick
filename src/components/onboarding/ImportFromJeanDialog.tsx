@@ -65,8 +65,8 @@ export function ImportFromJeanDialog() {
   }, [source, refetch])
 
   const restart = useCallback(async () => {
-    const { relaunch } = await import('@tauri-apps/plugin-process')
-    await relaunch()
+    const { relaunchApp } = await import('@/lib/relaunch')
+    await relaunchApp()
   }, [])
 
   if (!open) return null
