@@ -164,6 +164,41 @@ describe('useSendMessage duplicate send', () => {
   })
 })
 
+describe('useSendMessage refused send', () => {
+  it('shows the error and puts the prompt back into the input', async () => {
+    useChatStore.setState({
+      inputDrafts: {},
+      errors: {},
+      lastSentMessages: { s1: 'hello' },
+    })
+    const refusal =
+      'macOS does not let Splitkick read the worktree folder /w. Restart Splitkick.'
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'send_chat_message') throw refusal
+      return []
+    })
+    const client = new QueryClient({
+      defaultOptions: { mutations: { retry: false } },
+    })
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children)
+
+    const { result } = renderHook(() => useSendMessage(), { wrapper })
+    result.current.mutate({
+      sessionId: 's1',
+      worktreeId: 'w1',
+      worktreePath: '/w',
+      message: 'hello',
+    })
+
+    await waitFor(() =>
+      expect(useChatStore.getState().errors.s1).toBe(refusal)
+    )
+    expect(useChatStore.getState().inputDrafts.s1).toBe('hello')
+    expect(useChatStore.getState().lastSentMessages.s1).toBeUndefined()
+  })
+})
+
 describe('useAllSessions', () => {
   it('copies persisted labels into the store (web access never prefetches)', async () => {
     useChatStore.setState({

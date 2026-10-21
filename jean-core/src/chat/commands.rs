@@ -2863,6 +2863,13 @@ pub async fn send_chat_message(
         return Err("Worktree path cannot be empty".to_string());
     }
 
+    // A CLI started in a folder it cannot read fails with a misleading error
+    // (Claude: "low max file descriptors"). Say what is wrong instead.
+    if let Err(e) = check_worktree_readable(&worktree_path) {
+        log::warn!("[SendChat] REJECTED session={session_id} — worktree not readable");
+        return Err(e);
+    }
+
     clear_stale_pending_cancel_before_send(&session_id);
 
     // Guard: atomically claim the session's send slot for the duration of this
@@ -6350,6 +6357,65 @@ fn upsert_plan_handoff(
 ) {
     handoffs.retain(|existing| existing.message_id != handoff.message_id);
     handoffs.push(handoff);
+}
+
+/// Rejects a worktree folder the app may not read. On macOS this is the
+/// privacy system (TCC): it also happens when the app bundle was replaced by
+/// an update while the old process still runs.
+fn check_worktree_readable(worktree_path: &str) -> Result<(), String> {
+    match std::fs::read_dir(worktree_path) {
+        Err(e) if e.kind() == std::io::ErrorKind::PermissionDenied => {
+            Err(worktree_access_denied_message(worktree_path))
+        }
+        // Other errors (e.g. a WSL path) are left to the backend to report.
+        _ => Ok(()),
+    }
+}
+
+fn worktree_access_denied_message(worktree_path: &str) -> String {
+    if cfg!(target_os = "macos") {
+        format!(
+            "macOS does not let Splitkick read the worktree folder {worktree_path}. \
+             Restart Splitkick (this is needed after an update). If it still fails, \
+             allow Splitkick in System Settings → Privacy & Security → Files & Folders \
+             or Full Disk Access."
+        )
+    } else {
+        format!(
+            "Splitkick may not read the worktree folder {worktree_path}. Check its permissions."
+        )
+    }
+}
+
+#[cfg(all(test, unix))]
+mod worktree_readable_tests {
+    use super::check_worktree_readable;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn rejects_an_unreadable_worktree_with_a_clear_message() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().to_str().unwrap().to_string();
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o000)).unwrap();
+
+        let result = check_worktree_readable(&path);
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        // root reads any folder; the check has nothing to reject then.
+        if std::fs::read_dir("/var/root").is_ok() {
+            return;
+        }
+        let error = result.unwrap_err();
+        assert!(error.contains(&path), "{error}");
+        assert!(error.contains("Restart Splitkick") || !cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn accepts_readable_and_missing_worktrees() {
+        let dir = tempfile::tempdir().unwrap();
+        assert!(check_worktree_readable(dir.path().to_str().unwrap()).is_ok());
+        assert!(check_worktree_readable("/no/such/worktree").is_ok());
+    }
 }
 
 #[cfg(test)]

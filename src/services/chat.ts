@@ -2137,6 +2137,19 @@ export function useSendMessage() {
       // Real errors with no streamed content — rollback to previous state
       setError(sessionId, errorMessage || 'Unknown error occurred')
 
+      // The send was refused before it started (e.g. unreadable worktree).
+      // Put the prompt back so it can be sent again, unless the user already
+      // typed something new.
+      const store = useChatStore.getState()
+      const lastSent = store.lastSentMessages[sessionId]
+      if (lastSent) {
+        if (!store.inputDrafts[sessionId]?.trim()) {
+          store.setInputDraft(sessionId, lastSent)
+          store.restoreAttachments(sessionId)
+        }
+        store.clearLastSentMessage(sessionId)
+      }
+
       if (context?.previous) {
         queryClient.setQueryData(
           chatQueryKeys.session(sessionId),
