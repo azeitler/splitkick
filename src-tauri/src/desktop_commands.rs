@@ -460,10 +460,38 @@ pub async fn install_remote_jean_server(
     .map_err(|error| format!("Remote install task failed: {error}"))?
 }
 
-/// Waits for the old process to end (at most 30 s), then opens the bundle
-/// once through LaunchServices, like a normal launch from the Dock.
+/// Relaunch helper: `$1` old pid, `$2` app bundle, `$3` bundle id, `$4` log.
+///
+/// Waits until the old process has ended and LaunchServices has let go of it
+/// (an `open` before that only activates the dying instance), opens the
+/// bundle like a launch from the Dock, and checks that the app runs again,
+/// with up to three tries. If the old process outlives a minute it does not
+/// open at all, for the same reason. Every step goes to `$4`, so a failed
+/// restart can be read back.
 #[cfg(target_os = "macos")]
-const RELAUNCH_SCRIPT: &str = r#"i=0; while kill -0 "$1" 2>/dev/null && [ "$i" -lt 300 ]; do sleep 0.1; i=$((i+1)); done; exec /usr/bin/open "$2""#;
+const RELAUNCH_SCRIPT: &str = r#"
+log="$4"
+say() { printf '%s %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$*" >> "$log"; }
+say "waiting for pid $1 to end"
+i=0
+while kill -0 "$1" 2>/dev/null; do
+  if [ "$i" -ge 600 ]; then say "pid $1 still runs after 60 s; not relaunching"; exit 1; fi
+  sleep 0.1; i=$((i+1))
+done
+i=0
+while [ -n "$(/usr/bin/lsappinfo find pid="$1")" ] && [ "$i" -lt 50 ]; do sleep 0.1; i=$((i+1)); done
+for try in 1 2 3; do
+  say "open, try $try: $2"
+  /usr/bin/open "$2" >> "$log" 2>&1
+  j=0
+  while [ "$j" -lt 50 ]; do
+    if [ -n "$(/usr/bin/lsappinfo find bundleid="$3")" ]; then say "relaunched"; exit 0; fi
+    sleep 0.1; j=$((j+1))
+  done
+done
+say "the app did not start after 3 tries"
+exit 1
+"#;
 
 /// `.../Splitkick.app` for a binary at `.../Splitkick.app/Contents/MacOS/Splitkick`.
 #[cfg(any(target_os = "macos", test))]
@@ -491,12 +519,23 @@ pub fn relaunch_app(app: AppHandle) -> Result<(), String> {
     {
         let exe = std::env::current_exe().map_err(|error| error.to_string())?;
         if let Some(bundle) = macos_bundle_root(&exe) {
+            use std::os::unix::process::CommandExt;
+            let log_dir = app
+                .path()
+                .app_log_dir()
+                .map_err(|error| error.to_string())?;
+            let _ = std::fs::create_dir_all(&log_dir);
             Command::new("/bin/sh")
                 .arg("-c")
                 .arg(RELAUNCH_SCRIPT)
                 .arg("relaunch")
                 .arg(std::process::id().to_string())
                 .arg(&bundle)
+                .arg(&app.config().identifier)
+                .arg(log_dir.join("relaunch.log"))
+                // Its own process group: a signal to this app's group during
+                // shutdown must not take the helper with it.
+                .process_group(0)
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())

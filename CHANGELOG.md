@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Splitkick starts again after "Restart" for an update.** The restart quit
+  the app but sometimes did not open it again. The helper that reopens
+  Splitkick now waits until macOS has fully let go of the old app, checks that
+  the new one runs, and tries again if not. Each restart is written to
+  `relaunch.log` in the log folder (Help → Show Log), so a failed one can be
+  traced.
+
 ## [1.0.12] - 2026-10-23
 
 Built on Jean 0.1.73.
