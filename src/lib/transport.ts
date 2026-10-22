@@ -312,6 +312,19 @@ export async function invoke<T>(
   return wsTransport.invoke<T>(command, args)
 }
 
+/** Waits before each check of a dropped remote server, about 20 s in all. */
+export const REMOTE_DROP_PROBE_DELAYS_MS = [500, 1_500, 3_000, 5_000, 10_000]
+
+/** Whether the active remote's auth endpoint answers at all. */
+async function remoteServerAnswers(): Promise<boolean> {
+  try {
+    const res = await fetchBackend(backendUrl('api/auth'))
+    return res.ok || res.status === 401
+  } catch {
+    return false
+  }
+}
+
 /** Commands that only read, by naming convention. */
 const READ_COMMAND_PREFIXES = ['get_', 'list_', 'read_', 'search_']
 
@@ -883,7 +896,7 @@ class WsTransport {
 
       this.setConnected(false)
       if (wasConnected && getActiveRemoteConnection()) {
-        this.setAuthError('Connection to the selected Jean server was lost.')
+        void this.recoverRemoteAfterDrop()
       }
 
       // Clear event buffer — stale events from a dead connection
@@ -1142,6 +1155,25 @@ class WsTransport {
         }
       }
     }
+  }
+
+  /**
+   * A native remote window recovers from a dropped socket by a reload, never
+   * a second socket in the same page. Most drops are short (the server was
+   * busy, the network blinked), so reload as soon as the server answers
+   * again; the recovery screen shows only when it stays unreachable.
+   */
+  private async recoverRemoteAfterDrop(): Promise<void> {
+    for (const delay of REMOTE_DROP_PROBE_DELAYS_MS) {
+      await new Promise(resolve => setTimeout(resolve, delay))
+      if (await remoteServerAnswers()) {
+        window.location.reload()
+        return
+      }
+    }
+    this.setAuthError(
+      `Connection to the selected ${PRODUCT_NAME} server was lost.`
+    )
   }
 
   private scheduleConnectRetry(): void {

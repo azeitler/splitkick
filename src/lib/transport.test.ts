@@ -143,6 +143,53 @@ describe('transport bootstrap', () => {
     vi.doUnmock('./remote-connections')
   })
 
+  it('reloads a remote window once the dropped server answers again', async () => {
+    const reload = vi.fn()
+    vi.stubGlobal('location', { ...window.location, reload })
+    const transport = await loadRemoteNativeTransportModule()
+    const { result } = renderHook(() => transport.useWsAuthError())
+
+    transport.connectTransport()
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1))
+    await flushAsync()
+
+    vi.useFakeTimers()
+    getWs(0).close()
+    // A short drop shows no error screen.
+    expect(result.current).toBeNull()
+
+    await vi.advanceTimersByTimeAsync(
+      transport.REMOTE_DROP_PROBE_DELAYS_MS[0] ?? 0
+    )
+    expect(reload).toHaveBeenCalledTimes(1)
+    expect(result.current).toBeNull()
+  })
+
+  it('shows the recovery screen when the dropped server stays away', async () => {
+    const reload = vi.fn()
+    vi.stubGlobal('location', { ...window.location, reload })
+    const transport = await loadRemoteNativeTransportModule()
+    const { result } = renderHook(() => transport.useWsAuthError())
+
+    transport.connectTransport()
+    await waitFor(() => expect(MockWebSocket.instances.length).toBe(1))
+    await flushAsync()
+
+    vi.useFakeTimers()
+    vi.mocked(fetch).mockRejectedValue(new Error('offline'))
+    getWs(0).close()
+    const total = transport.REMOTE_DROP_PROBE_DELAYS_MS.reduce(
+      (sum, delay) => sum + delay,
+      0
+    )
+    await vi.advanceTimersByTimeAsync(total)
+
+    expect(reload).not.toHaveBeenCalled()
+    expect(result.current).toBe(
+      'Connection to the selected Splitkick server was lost.'
+    )
+  })
+
   it('routes native shared commands to the selected remote Jean', async () => {
     const transport = await loadRemoteNativeTransportModule()
 

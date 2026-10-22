@@ -215,23 +215,11 @@ pub async fn handle_ws_connection(
     // Main loop — four event sources, never blocks on command dispatch.
     loop {
         tokio::select! {
-            // ── Heartbeat tick ───────────────────────────────────────
-            _ = ping_interval.tick() => {
-                if last_inbound.elapsed() > PONG_TIMEOUT {
-                    log::warn!("WS client idle > {PONG_TIMEOUT:?}, dropping connection");
-                    break;
-                }
-                if ws_tx.send(Message::Ping(vec![].into())).await.is_err() {
-                    break;
-                }
-                if ws_tx
-                    .send(Message::Text(APP_HEARTBEAT_JSON.into()))
-                    .await
-                    .is_err()
-                {
-                    break;
-                }
-            }
+            // Biased, client messages first: after the workers were busy, the
+            // tick and the client's pong can be ready at once. An unbiased
+            // pick could run the idle check before reading the pong and drop
+            // a client that answered.
+            biased;
 
             // ── Incoming command from client ──────────────────────────
             msg = ws_rx.next() => {
@@ -298,6 +286,24 @@ pub async fn handle_ws_connection(
                     }
                     Some(Ok(Message::Pong(_))) => {} // liveness already bumped above
                     _ => {} // Ignore binary
+                }
+            }
+
+            // ── Heartbeat tick ───────────────────────────────────────
+            _ = ping_interval.tick() => {
+                if last_inbound.elapsed() > PONG_TIMEOUT {
+                    log::warn!("WS client idle > {PONG_TIMEOUT:?}, dropping connection");
+                    break;
+                }
+                if ws_tx.send(Message::Ping(vec![].into())).await.is_err() {
+                    break;
+                }
+                if ws_tx
+                    .send(Message::Text(APP_HEARTBEAT_JSON.into()))
+                    .await
+                    .is_err()
+                {
+                    break;
                 }
             }
 

@@ -7,6 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Remote connections stay up.** A window connected to another Splitkick
+  server dropped its connection again and again and showed "Couldn't
+  connect". When the server was busy, it could drop a client that had
+  answered its ping; it now reads the client's answer first. After a real
+  drop, the window now reloads by itself as soon as the server answers
+  again, and the error screen shows only when the server stays away for
+  about 20 seconds. ([#52](https://github.com/azeitler/splitkick/issues/52))
+
 ## [1.0.11] - 2026-10-22
 
 Built on Jean 0.1.73.
