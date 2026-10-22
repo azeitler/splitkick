@@ -12,13 +12,18 @@ import {
 
 const mocks = vi.hoisted(() => ({
   entries: [] as AllSessionsEntry[],
+  isError: false,
+  refetch: vi.fn(),
   navigateToSession: vi.fn(),
 }))
 
 vi.mock('@/services/chat', async importOriginal => ({
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports
   ...(await importOriginal<typeof import('@/services/chat')>()),
-  useAllSessions: () => ({ data: { entries: mocks.entries } }),
+  useAllSessions: () =>
+    mocks.isError
+      ? { data: undefined, isError: true, refetch: mocks.refetch }
+      : { data: { entries: mocks.entries }, refetch: mocks.refetch },
   useRenameSession: () => ({ mutate: vi.fn() }),
   useArchiveSession: () => ({ mutate: vi.fn() }),
   useCloseSession: () => ({ mutate: vi.fn() }),
@@ -57,6 +62,8 @@ function entry(project: string, worktree: string, sessions: Session[]) {
 describe('SidebarRecentSessions', () => {
   beforeEach(() => {
     mocks.navigateToSession.mockClear()
+    mocks.isError = false
+    mocks.refetch.mockClear()
     const now = Date.now()
     mocks.entries = [
       entry('Jean', 'main', [
@@ -149,5 +156,16 @@ describe('SidebarRecentSessions', () => {
     mocks.entries = []
     render(<SidebarRecentSessions />)
     expect(screen.getByText('No sessions yet')).toBeInTheDocument()
+  })
+
+  it('reports a failed load with a retry, not as "no sessions"', async () => {
+    mocks.isError = true
+    render(<SidebarRecentSessions />)
+
+    expect(screen.getByText('Could not load sessions')).toBeInTheDocument()
+    expect(screen.queryByText('No sessions yet')).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(mocks.refetch).toHaveBeenCalled()
   })
 })

@@ -9,6 +9,7 @@ import {
   flattenAllSessions,
   groupSessionsByDay,
 } from '@/components/home/home-utils'
+import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { useAllSessions } from '@/services/chat'
@@ -30,7 +31,7 @@ export const SIDEBAR_RECENT_LIMIT = 30
  */
 export function SidebarRecentSessions() {
   const isMobile = useIsMobile()
-  const { data, isLoading } = useAllSessions()
+  const { data, isLoading, isError, refetch } = useAllSessions()
   const storeState = useCanvasStoreState()
   // The open session: the active one of the selected workspace, as in the tree.
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
@@ -84,6 +85,20 @@ export function SidebarRecentSessions() {
     return (
       <div className="flex items-center justify-center p-4">
         <span className="text-sm text-muted-foreground">Loading...</span>
+      </div>
+    )
+  }
+
+  // A failed load is not an empty list: say so and offer a retry.
+  if (isError && !data) {
+    return (
+      <div className="flex items-center justify-center gap-2 px-2 py-4">
+        <span className="truncate text-sm text-muted-foreground/50">
+          Could not load sessions
+        </span>
+        <Button variant="ghost" size="sm" onClick={() => void refetch()}>
+          Retry
+        </Button>
       </div>
     )
   }

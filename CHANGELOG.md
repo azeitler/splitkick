@@ -7,6 +7,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Fast loading with many projects.** Each project row in the sidebar loads
+  four GitHub badges, and with many projects Splitkick started hundreds of
+  `gh` processes at once. They blocked the backend, so the Recent tab said
+  "No sessions yet" and other views stayed on "Loading…" for a long time. Now
+  at most four of these GitHub calls run at the same time, and the other
+  commands do not wait for them. When the session list cannot load, the
+  Recent tab says so and offers Retry. A view no longer waits forever for a
+  lost answer, and a stalled background `git fetch` stops after 30 seconds.
+  ([#51](https://github.com/azeitler/splitkick/issues/51))
+
 ## [1.0.9] - 2026-10-21
 
 Built on Jean 0.1.73.

@@ -35,6 +35,11 @@ class MockWebSocket {
   }
 }
 
+/** A promise executor that never resolves or rejects. */
+function neverSettle(): void {
+  // Intentionally empty
+}
+
 async function flushAsync() {
   await Promise.resolve()
   await Promise.resolve()
@@ -248,6 +253,56 @@ describe('transport bootstrap', () => {
     // Mismatch only warns; auth error stays null and the socket still opens.
     await waitFor(() => expect(MockWebSocket.instances.length).toBe(1))
     expect(result.current).toBeNull()
+  })
+
+  it('fails a native read whose answer never arrives', async () => {
+    vi.useFakeTimers()
+    try {
+      // Never settles, like an answer the IPC dropped.
+      const tauriInvoke = vi.fn(() => new Promise(neverSettle))
+      const transport = await loadNativeTransportModule(tauriInvoke)
+
+      const read = transport.invoke('list_recent_activity')
+      const failed = expect(read).rejects.toThrow(
+        "Command 'list_recent_activity' timed out after 60s"
+      )
+      await vi.advanceTimersByTimeAsync(transport.NATIVE_READ_TIMEOUT_MS)
+      await failed
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not time out a queued GitHub list read', async () => {
+    vi.useFakeTimers()
+    try {
+      const tauriInvoke = vi.fn(() => new Promise(neverSettle))
+      const transport = await loadNativeTransportModule(tauriInvoke)
+
+      const onSettled = vi.fn()
+      transport.invoke('list_workflow_runs').then(onSettled, onSettled)
+      await vi.advanceTimersByTimeAsync(transport.NATIVE_READ_TIMEOUT_MS * 2)
+
+      expect(onSettled).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('does not time out a native write', async () => {
+    vi.useFakeTimers()
+    try {
+      const tauriInvoke = vi.fn(() => new Promise(neverSettle))
+      const transport = await loadNativeTransportModule(tauriInvoke)
+
+      const onSettled = vi.fn()
+      transport.invoke('create_worktree').then(onSettled, onSettled)
+      await vi.advanceTimersByTimeAsync(transport.NATIVE_READ_TIMEOUT_MS * 2)
+
+      expect(onSettled).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('routes shared native commands through the jean-core dispatcher', async () => {
