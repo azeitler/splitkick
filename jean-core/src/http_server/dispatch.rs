@@ -3,6 +3,20 @@ use tauri::AppHandle;
 
 use super::EmitExt;
 
+/// Concurrent GitHub list commands.
+///
+/// Each sidebar project row loads four GitHub badges, and every one runs a
+/// blocking `gh` process on an async worker. With many projects that is
+/// hundreds of processes at once, which holds every worker and makes even a
+/// local command such as `list_all_sessions` wait. Waiting for a slot yields
+/// the worker instead.
+static GITHUB_LIST_SLOTS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(4);
+
+async fn github_list_slot() -> Option<tokio::sync::SemaphorePermit<'static>> {
+    // The semaphore is never closed, so this only returns None in theory.
+    GITHUB_LIST_SLOTS.acquire().await.ok()
+}
+
 #[derive(Debug, PartialEq)]
 struct StartTerminalArgs {
     terminal_id: String,
@@ -801,6 +815,7 @@ pub async fn dispatch_command(
         "list_github_issues" => {
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let state: Option<String> = from_field_opt(&args, "state")?;
+            let _slot = github_list_slot().await;
             let result =
                 crate::projects::list_github_issues(app.clone(), project_path, state).await?;
             to_value(result)
@@ -815,6 +830,7 @@ pub async fn dispatch_command(
         "list_github_prs" => {
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let state: Option<String> = from_field_opt(&args, "state")?;
+            let _slot = github_list_slot().await;
             let result = crate::projects::list_github_prs(app.clone(), project_path, state).await?;
             to_value(result)
         }
@@ -927,6 +943,7 @@ pub async fn dispatch_command(
         "list_dependabot_alerts" => {
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let state: Option<String> = field_opt(&args, "state", "state")?;
+            let _slot = github_list_slot().await;
             let result =
                 crate::projects::list_dependabot_alerts(app.clone(), project_path, state).await?;
             to_value(result)
@@ -997,6 +1014,7 @@ pub async fn dispatch_command(
         "list_repository_advisories" => {
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let state: Option<String> = field_opt(&args, "state", "state")?;
+            let _slot = github_list_slot().await;
             let result =
                 crate::projects::list_repository_advisories(app.clone(), project_path, state)
                     .await?;
@@ -3684,6 +3702,7 @@ pub async fn dispatch_command(
         "list_workflow_runs" => {
             let project_path: String = field(&args, "projectPath", "project_path")?;
             let branch: Option<String> = from_field_opt(&args, "branch")?;
+            let _slot = github_list_slot().await;
             let result =
                 crate::projects::list_workflow_runs(app.clone(), project_path, branch).await?;
             to_value(result)
@@ -4021,6 +4040,22 @@ fn field_nullable_option<T: serde::de::DeserializeOwned>(
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[tokio::test]
+    async fn github_list_calls_beyond_the_limit_wait_for_a_slot() {
+        let mut held = Vec::new();
+        for _ in 0..4 {
+            held.push(github_list_slot().await);
+        }
+        let waiting =
+            tokio::time::timeout(std::time::Duration::from_millis(50), github_list_slot()).await;
+        assert!(waiting.is_err(), "a fifth call must wait");
+
+        held.pop();
+        let next =
+            tokio::time::timeout(std::time::Duration::from_millis(50), github_list_slot()).await;
+        assert!(next.is_ok(), "a freed slot must be handed on");
+    }
 
     #[test]
     fn headless_dispatch_rejects_native_open_when_not_allowed() {

@@ -1,6 +1,7 @@
 use crate::platform::wsl_aware_command;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::{Output, Stdio};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
 
@@ -57,13 +58,58 @@ pub struct GitBranchStatus {
 }
 
 /// Fetch the latest changes from origin for a specific branch
+/// Longest a status fetch may run. A fetch over a stalled connection has no
+/// end of its own, and it holds one of the eight status workers while it
+/// waits; a few of them stop every worktree's status.
+const FETCH_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// `git fetch <remote> <branch>`, killed after [`FETCH_TIMEOUT`].
+fn run_fetch(repo_path: &str, remote: &str, branch: &str) -> Result<Output, String> {
+    run_fetch_with_timeout(repo_path, remote, branch, FETCH_TIMEOUT)
+}
+
+fn run_fetch_with_timeout(
+    repo_path: &str,
+    remote: &str,
+    branch: &str,
+    timeout: Duration,
+) -> Result<Output, String> {
+    let mut child = wsl_aware_command("git", Some(Path::new(repo_path)))
+        .args(["fetch", remote, branch])
+        // A fetch prints next to nothing, so the pipe cannot fill up while
+        // we poll; stderr is kept for the error checks of the callers.
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("Failed to run git fetch: {e}"))?;
+    let deadline = Instant::now() + timeout;
+    while child
+        .try_wait()
+        .map_err(|e| format!("Failed to wait for git fetch: {e}"))?
+        .is_none()
+    {
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            let message = format!(
+                "git fetch {remote} {branch} timed out after {}s in {repo_path}",
+                timeout.as_secs()
+            );
+            // Callers ignore fetch errors, so this is the only trace of it.
+            log::warn!("{message}");
+            return Err(message);
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    child
+        .wait_with_output()
+        .map_err(|e| format!("Failed to read git fetch output: {e}"))
+}
+
 fn fetch_origin_branch(repo_path: &str, branch: &str) -> Result<(), String> {
     log::trace!("Fetching origin/{branch} in {repo_path}");
 
-    let output = wsl_aware_command("git", Some(Path::new(repo_path)))
-        .args(["fetch", "origin", branch])
-        .output()
-        .map_err(|e| format!("Failed to run git fetch: {e}"))?;
+    let output = run_fetch(repo_path, "origin", branch)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -90,10 +136,7 @@ fn fetch_origin_branch_from_remote(
 ) -> Result<(), String> {
     log::trace!("Fetching {remote}/{branch} in {repo_path}");
 
-    let output = wsl_aware_command("git", Some(Path::new(repo_path)))
-        .args(["fetch", remote, branch])
-        .output()
-        .map_err(|e| format!("Failed to run git fetch: {e}"))?;
+    let output = run_fetch(repo_path, remote, branch)?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -1075,6 +1118,37 @@ mod tests {
             args.join(" "),
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn fetch_over_a_stalled_connection_is_killed() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let repo = temp.path();
+        run_test_git(repo, &["init", "--initial-branch", "main"]);
+        // An "ssh" that never answers, like a dead network connection.
+        run_test_git(repo, &["config", "core.sshCommand", "sh -c 'sleep 30' --"]);
+        run_test_git(
+            repo,
+            &[
+                "remote",
+                "add",
+                "origin",
+                "ssh://git@example.invalid/repo.git",
+            ],
+        );
+
+        let started = Instant::now();
+        let result = run_fetch_with_timeout(
+            &repo.to_string_lossy(),
+            "origin",
+            "main",
+            Duration::from_secs(1),
+        );
+
+        let error = result.expect_err("a stalled fetch must time out");
+        assert!(error.contains("timed out after 1s"), "{error}");
+        assert!(started.elapsed() < Duration::from_secs(10));
     }
 
     #[test]

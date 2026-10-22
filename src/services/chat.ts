@@ -648,7 +648,8 @@ export function useAllSessions(enabled = true) {
         return response
       } catch (error) {
         logger.error('Failed to load all sessions', { error })
-        return { entries: [] }
+        // An empty list here would read as "no sessions" for five minutes.
+        return preserveQueryCacheOnError(error)
       }
     },
     enabled,

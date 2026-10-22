@@ -15,6 +15,7 @@ import {
   setWsConnected,
 } from './environment'
 import { generateId } from './uuid'
+import { logNativeError } from './native-log'
 import { isServerWindows } from './platform'
 import { getActiveRemoteConnection } from './remote-connections'
 import { prepareRemoteEditorOpenArgs } from './remote-editor'
@@ -299,12 +300,64 @@ export async function invoke<T>(
     if (DESKTOP_ONLY_COMMANDS.has(command)) {
       return tauriInvoke<T>(command, args)
     }
-    return tauriInvoke<T>('dispatch_core_command', {
+    const call = tauriInvoke<T>('dispatch_core_command', {
       command,
       args: args ?? {},
     })
+    return isReadCommand(command) ? withNativeReadTimeout(command, call) : call
   }
   return wsTransport.invoke<T>(command, args)
+}
+
+/** Commands that only read, by naming convention. */
+const READ_COMMAND_PREFIXES = ['get_', 'list_', 'read_', 'search_']
+
+/**
+ * GitHub list reads the backend queues (`GITHUB_LIST_SLOTS` in
+ * `jean-core/src/http_server/dispatch.rs`). With many projects the queue of
+ * sidebar badges can be longer than the timeout; failing them would only
+ * retry them and make the queue longer.
+ */
+const QUEUED_READ_COMMANDS = new Set([
+  'list_github_issues',
+  'list_github_prs',
+  'list_dependabot_alerts',
+  'list_repository_advisories',
+  'list_workflow_runs',
+])
+
+function isReadCommand(command: string): boolean {
+  return (
+    !QUEUED_READ_COMMANDS.has(command) &&
+    READ_COMMAND_PREFIXES.some(prefix => command.startsWith(prefix))
+  )
+}
+
+/** Same limit as a WebSocket command; reads finish well within it. */
+export const NATIVE_READ_TIMEOUT_MS = 60_000
+
+/**
+ * Fail a native read whose answer never arrives.
+ *
+ * After a long run the Tauri IPC can drop an answer, and the caller then
+ * waits forever: a query stays on "Loading…" until the app restarts. A
+ * timeout turns that into an error the query retries. Only reads get one, so
+ * a time-out can never hide a write that is still running.
+ */
+function withNativeReadTimeout<T>(
+  command: string,
+  call: Promise<T>
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const timer = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => {
+      const message = `Command '${command}' timed out after ${NATIVE_READ_TIMEOUT_MS / 1000}s`
+      // To the log file too: a release build has no console to read.
+      logNativeError(`[transport] ${message}`)
+      reject(new Error(message))
+    }, NATIVE_READ_TIMEOUT_MS)
+  })
+  return Promise.race([call, timer]).finally(() => clearTimeout(timeout))
 }
 
 /**
