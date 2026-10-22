@@ -173,6 +173,7 @@ function containNativeUnlisten(
 
 const DESKTOP_ONLY_COMMANDS = new Set([
   'set_window_vibrancy',
+  'relaunch_app',
   'set_menu_accelerators',
   'set_dock_badge',
   'set_dock_sessions',
@@ -221,6 +222,8 @@ const DESKTOP_ONLY_COMMANDS = new Set([
 // content is connected to a remote Jean backend.
 const LOCAL_SHELL_COMMANDS = new Set([
   'set_window_vibrancy',
+  // An update installs into this app, so the restart is this app's too.
+  'relaunch_app',
   'set_menu_accelerators',
   'set_dock_badge',
   'set_dock_sessions',

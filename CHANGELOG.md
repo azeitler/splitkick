@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Restarting after an update works again.** Since 1.0.9 the restart failed
+  with "Update failed: Unknown command: relaunch_app", so the update only took
+  effect after you quit and reopened Splitkick by hand. Restart from a remote
+  window restarts this Mac's app, too.
+
 ## [1.0.10] - 2026-10-22
 
 Built on Jean 0.1.73.
