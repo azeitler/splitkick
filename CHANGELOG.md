@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.0.10] - 2026-10-22
+
+Built on Jean 0.1.73.
+
 ### Fixed
 
 - **Fast loading with many projects.** Each project row in the sidebar loads
@@ -1817,7 +1821,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.9...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.0.10...HEAD
+[1.0.10]: https://github.com/azeitler/jean/compare/splitkick-v1.0.9...splitkick-v1.0.10
 [1.0.9]: https://github.com/azeitler/jean/compare/splitkick-v1.0.8...splitkick-v1.0.9
 [1.0.8]: https://github.com/azeitler/jean/compare/splitkick-v1.0.7...splitkick-v1.0.8
 [1.0.7]: https://github.com/azeitler/jean/compare/splitkick-v1.0.6...splitkick-v1.0.7
