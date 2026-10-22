@@ -328,6 +328,44 @@ describe('transport bootstrap', () => {
     })
   })
 
+  // A command registered only in src-tauri's generate_handler! must reach its
+  // own handler. Routed through dispatch_core_command, jean-core answered
+  // "Unknown command: relaunch_app", and every update restart failed (1.0.9).
+  it('routes every desktop shell command to its own native handler', async () => {
+    const { readFileSync } = await import('node:fs')
+    const { resolve } = await import('node:path')
+    const libRs = readFileSync(
+      resolve(process.cwd(), 'src-tauri/src/lib.rs'),
+      'utf8'
+    )
+    const handler = /generate_handler!\[([\s\S]*?)\]/.exec(libRs)?.[1] ?? ''
+    const commands = [...handler.matchAll(/(?:\w+::)*(\w+)\s*,/g)]
+      .map(match => match[1] as string)
+      .filter(name => name !== 'dispatch_core_command')
+    expect(commands).toContain('relaunch_app')
+
+    const tauriInvoke = vi.fn().mockResolvedValue(undefined)
+    const transport = await loadNativeTransportModule(tauriInvoke)
+    for (const command of commands) {
+      await transport.invoke(command)
+    }
+
+    const routed = tauriInvoke.mock.calls.map(([name]) => name)
+    expect(routed).toEqual(commands)
+  })
+
+  it('relaunches the local app from a remote window', async () => {
+    const tauriInvoke = vi.fn().mockResolvedValue(undefined)
+    const transport = await loadRemoteNativeTransportModule(
+      undefined,
+      tauriInvoke
+    )
+
+    await transport.invoke('relaunch_app')
+
+    expect(tauriInvoke).toHaveBeenCalledWith('relaunch_app', undefined)
+  })
+
   it('opens remote worktrees in local Zed via ssh:// targets', async () => {
     const tauriInvoke = vi.fn().mockResolvedValue(undefined)
     const transport = await loadRemoteNativeTransportModule(
