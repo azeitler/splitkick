@@ -122,6 +122,10 @@ export interface UIState {
   starred_sessions?: StarredSessionEntry[]
   /** Whether the sidebar's Starred section is collapsed */
   starred_sessions_collapsed?: boolean
+  /** Whether the sidebar's Folders section is collapsed */
+  folders_section_collapsed?: boolean
+  /** Whether the sidebar's Projects section is collapsed */
+  projects_section_collapsed?: boolean
   /** Whether the project canvas hides its Home rail */
   project_rail_hidden?: boolean
   /** The phone layout's selected bottom tab; absent means Home */
@@ -234,6 +238,8 @@ export const defaultUIState: UIState = {
   expanded_pinned_project_ids: [],
   starred_sessions: [],
   starred_sessions_collapsed: false,
+  folders_section_collapsed: false,
+  projects_section_collapsed: false,
   project_rail_hidden: false,
   mobile_active_tab: null,
   sidebar_tab: null,

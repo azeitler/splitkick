@@ -1,3 +1,15 @@
+# Sidebar layout (#55)
+
+- [x] Tabs at the top; Projects tab: Home + Starred pinned, then Folders, Projects, Archived (scrolls). Footer removed.
+- [x] Folders/Projects headers use `SidebarSectionRow` (collapsible, "+ New", bulk toggle); collapsed state persisted (`folders_section_collapsed`, `projects_section_collapsed`).
+- [x] Archived row opens `ArchivedView` in the main area (`archivedViewOpen`, not persisted); phones keep the dialog.
+- [x] Reveal re-opens the section that holds the target.
+
+## Review
+
+- `check:all` parts green (typecheck, eslint, branding, rustfmt, clippy 1.99.1, 3320 Vitest, Rust tests).
+- Live (dev build, demo repos): new order, Archived view, sections stay open after restart. Not verified live: drag and drop, collapse click (AX press could not find the toggle), phone layout.
+
 # Desktop: Mac-style unified toolbar (spec 2026-10-14-unified-toolbar-design.md)
 
 - [x] Shell: `toolbar-slots.tsx` (portal slots, newest owner wins), `WindowToolbar`, `SidebarHeader`/`SidebarFooter`, `UpdatesButton`, 52pt height, traffic lights centred (`trafficLightPosition`).

@@ -322,7 +322,7 @@ Shared infrastructure in `src/components/chat/`:
 src/
 ├── components/
 │   ├── actions/           # ActionsSidebar
-│   ├── archive/           # ArchivedModal
+│   ├── archive/           # ArchivedView (main area) and ArchivedModal (phone)
 │   ├── chat/              # ChatWindow + 50 files, 12 extracted hooks in chat/hooks/
 │   ├── command-palette/   # CommandPalette (cmdk-based)
 │   ├── commit/            # CommitModal

@@ -29,6 +29,12 @@ const ChatWindow = lazy(() =>
   }))
 )
 
+const ArchivedView = lazy(() =>
+  import('@/components/archive/ArchivedModal').then(mod => ({
+    default: mod.ArchivedView,
+  }))
+)
+
 const ProjectCanvasView = lazy(() =>
   import('@/components/dashboard/ProjectCanvasView').then(mod => ({
     default: mod.ProjectCanvasView,
@@ -94,6 +100,16 @@ export function MainWindowContent({
   })
 
   const selectedProjectId = useProjectsStore(state => state.selectedProjectId)
+  const archivedViewOpen = useUIStore(state => state.archivedViewOpen)
+
+  // The Archived view replaces Home only while nothing is selected. Opening a
+  // project or a session (from anywhere, also a restore) closes it, so going
+  // back later lands on Home.
+  useEffect(() => {
+    if (selectedProjectId || activeWorktreeId) {
+      useUIStore.getState().setArchivedViewOpen(false)
+    }
+  }, [selectedProjectId, activeWorktreeId])
   const setAddProjectDialogOpen = useProjectsStore(
     state => state.setAddProjectDialogOpen
   )
@@ -167,6 +183,10 @@ export function MainWindowContent({
     </Suspense>
   ) : children ? (
     children
+  ) : archivedViewOpen ? (
+    <Suspense fallback={<JeanLoadingScreen />}>
+      <ArchivedView />
+    </Suspense>
   ) : realProjects.length > 0 ? (
     <HomeView
       projects={realProjects}

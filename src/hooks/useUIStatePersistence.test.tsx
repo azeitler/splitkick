@@ -1213,6 +1213,69 @@ describe('useUIStatePersistence — terminal restore on web refresh', () => {
     })
   })
 
+  it('persists and restores the Folders and Projects sections', async () => {
+    useProjectsStore.setState({
+      foldersSectionCollapsed: false,
+      projectsSectionCollapsed: false,
+    })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(
+        new QueryClient({
+          defaultOptions: {
+            queries: { retry: false },
+            mutations: { retry: false },
+          },
+        })
+      ),
+    })
+
+    await waitFor(() => {
+      expect(useUIStore.getState().uiStateInitialized).toBe(true)
+    })
+
+    useProjectsStore.getState().toggleFoldersSectionCollapsed()
+    useProjectsStore.getState().toggleProjectsSectionCollapsed()
+
+    await waitFor(() => {
+      expect(mockSaveUIState).toHaveBeenCalledWith(
+        expect.objectContaining({
+          folders_section_collapsed: true,
+          projects_section_collapsed: true,
+        })
+      )
+    })
+
+    // And the saved values come back on the next load.
+    useProjectsStore.setState({
+      foldersSectionCollapsed: false,
+      projectsSectionCollapsed: false,
+    })
+    mockUseUIState.mockReturnValue({
+      data: buildUiState({
+        folders_section_collapsed: true,
+        projects_section_collapsed: true,
+      }),
+      isSuccess: true,
+    })
+    useUIStore.setState({ uiStateInitialized: false })
+    renderHook(() => useUIStatePersistence(), {
+      wrapper: createWrapper(
+        new QueryClient({
+          defaultOptions: {
+            queries: { retry: false },
+            mutations: { retry: false },
+          },
+        })
+      ),
+    })
+
+    await waitFor(() => {
+      const state = useProjectsStore.getState()
+      expect(state.foldersSectionCollapsed).toBe(true)
+      expect(state.projectsSectionCollapsed).toBe(true)
+    })
+  })
+
   it('persists and restores the project overview rail', async () => {
     useProjectsStore.setState({ projectRailHidden: false })
     const queryClient = new QueryClient({

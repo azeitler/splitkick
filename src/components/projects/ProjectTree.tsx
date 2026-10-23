@@ -17,13 +17,19 @@ import {
   extractInstruction,
   type Instruction,
 } from '@atlaskit/pragmatic-drag-and-drop-hitbox/list-item'
-import { ChevronsDownUp, ChevronsUpDown } from 'lucide-react'
+import {
+  Briefcase,
+  ChevronsDownUp,
+  ChevronsUpDown,
+  Folder,
+  Plus,
+} from 'lucide-react'
 import { isFolder, type Project } from '@/types/projects'
 import { ProjectTreeItem } from './ProjectTreeItem'
 import { FolderTreeItem } from './FolderTreeItem'
 import { useReorderItems, useMoveItem } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
-import { Separator } from '@/components/ui/separator'
+import { SidebarSectionRow } from '@/components/chat/SidebarSectionRow'
 import {
   Tooltip,
   TooltipContent,
@@ -61,6 +67,11 @@ function getMaxSubtreeDepth(projects: Project[], itemId: string): number {
 
 interface ProjectTreeProps {
   projects: Project[]
+  /** "+ New" in the Folders header */
+  onNewFolder?: () => void
+  /** "+ New" in the Projects header */
+  onNewProject?: () => void
+  newProjectDisabled?: boolean
 }
 
 function canMoveIntoFolder({
@@ -385,7 +396,37 @@ function BulkExpandToggle({
   )
 }
 
-export function ProjectTree({ projects }: ProjectTreeProps) {
+/** "+ New" at the right of a section header. */
+function SectionNewButton({
+  label,
+  onClick,
+  disabled,
+}: {
+  label: string
+  onClick?: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="flex h-5 shrink-0 items-center gap-0.5 rounded px-1 text-xs text-muted-foreground hover:bg-accent-foreground/10 hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+    >
+      <Plus className="size-3" aria-hidden="true" />
+      New
+    </button>
+  )
+}
+
+export function ProjectTree({
+  projects,
+  onNewFolder,
+  onNewProject,
+  newProjectDisabled,
+}: ProjectTreeProps) {
   const reorderItems = useReorderItems()
   const moveItem = useMoveItem()
   const {
@@ -396,6 +437,8 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
     collapseAllFolders,
     expandAllProjects,
     collapseAllProjects,
+    foldersSectionCollapsed,
+    projectsSectionCollapsed,
   } = useProjectsStore()
   const [activeId, setActiveId] = useState<string | null>(null)
   const [overFolderId, setOverFolderId] = useState<string | null>(null)
@@ -419,7 +462,6 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
   const rootProjects = rootItems
     .filter(p => !isFolder(p))
     .sort((a, b) => a.order - b.order)
-  const hasBothTypes = rootFolders.length > 0 && rootProjects.length > 0
 
   // IDs for bulk expand/collapse actions (across all nesting levels)
   const allFolderIds = useMemo(
@@ -436,6 +478,15 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
   const anyFolderExpanded = allFolderIds.some(id => expandedFolderIds.has(id))
   const anyProjectExpanded = allProjectIds.some(id =>
     expandedProjectIds.has(id)
+  )
+
+  const toggleFoldersSection = useCallback(
+    () => useProjectsStore.getState().toggleFoldersSectionCollapsed(),
+    []
+  )
+  const toggleProjectsSection = useCallback(
+    () => useProjectsStore.getState().toggleProjectsSectionCollapsed(),
+    []
   )
 
   const clearDragState = useCallback(() => {
@@ -779,63 +830,85 @@ export function ProjectTree({ projects }: ProjectTreeProps) {
       onDrop={handleNativeTreeDrop}
       onDragEnd={handleNativeTreeDragEnd}
     >
-      {rootFolders.length > 0 && (
-        <div className="group/header flex items-center justify-between pl-3 pr-2 pb-1 pt-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-            Folders
-          </span>
-          <BulkExpandToggle
-            isExpanded={anyFolderExpanded}
-            onExpandAll={() => expandAllFolders(allFolderIds)}
-            onCollapseAll={collapseAllFolders}
-            section="folders"
+      <SidebarSectionRow
+        icon={<Folder className="size-3.5 shrink-0" aria-hidden="true" />}
+        label="Folders"
+        count={rootFolders.length}
+        noun="folder"
+        expanded={!foldersSectionCollapsed}
+        onToggle={toggleFoldersSection}
+        // Same inset and gap as the Home and Starred rows above.
+        className="gap-1 pl-3"
+        testId="sidebar-folders-toggle"
+        actions={
+          <>
+            {rootFolders.length > 0 && !foldersSectionCollapsed && (
+              <BulkExpandToggle
+                isExpanded={anyFolderExpanded}
+                onExpandAll={() => expandAllFolders(allFolderIds)}
+                onCollapseAll={collapseAllFolders}
+                section="folders"
+              />
+            )}
+            <SectionNewButton label="New folder" onClick={onNewFolder} />
+          </>
+        }
+      />
+      {!foldersSectionCollapsed &&
+        rootFolders.map(item => (
+          <SortableItem
+            key={item.id}
+            item={item}
+            allProjects={projects}
+            depth={0}
+            isOverFolder={overFolderId === item.id}
+            expandedFolderIds={expandedFolderIds}
+            overFolderId={overFolderId}
+            insertBeforeId={insertBeforeId}
+            activeId={activeId}
           />
-        </div>
-      )}
-      {rootFolders.map(item => (
-        <SortableItem
-          key={item.id}
-          item={item}
-          allProjects={projects}
-          depth={0}
-          isOverFolder={overFolderId === item.id}
-          expandedFolderIds={expandedFolderIds}
-          overFolderId={overFolderId}
-          insertBeforeId={insertBeforeId}
-          activeId={activeId}
-        />
-      ))}
-      {hasBothTypes && (
-        <div className="px-3 py-2">
-          <Separator />
-        </div>
-      )}
-      {rootProjects.length > 0 && (
-        <div className="group/header flex items-center justify-between pl-3 pr-2 pb-1 pt-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground/50">
-            Projects
-          </span>
-          <BulkExpandToggle
-            isExpanded={anyProjectExpanded}
-            onExpandAll={() => expandAllProjects(allProjectIds)}
-            onCollapseAll={collapseAllProjects}
-            section="projects"
+        ))}
+      <SidebarSectionRow
+        icon={<Briefcase className="size-3.5 shrink-0" aria-hidden="true" />}
+        label="Projects"
+        count={rootProjects.length}
+        noun="project"
+        expanded={!projectsSectionCollapsed}
+        onToggle={toggleProjectsSection}
+        className="gap-1 pl-3"
+        testId="sidebar-projects-toggle"
+        actions={
+          <>
+            {rootProjects.length > 0 && !projectsSectionCollapsed && (
+              <BulkExpandToggle
+                isExpanded={anyProjectExpanded}
+                onExpandAll={() => expandAllProjects(allProjectIds)}
+                onCollapseAll={collapseAllProjects}
+                section="projects"
+              />
+            )}
+            <SectionNewButton
+              label="New project"
+              onClick={onNewProject}
+              disabled={newProjectDisabled}
+            />
+          </>
+        }
+      />
+      {!projectsSectionCollapsed &&
+        rootProjects.map(item => (
+          <SortableItem
+            key={item.id}
+            item={item}
+            allProjects={projects}
+            depth={0}
+            isOverFolder={false}
+            expandedFolderIds={expandedFolderIds}
+            overFolderId={overFolderId}
+            insertBeforeId={insertBeforeId}
+            activeId={activeId}
           />
-        </div>
-      )}
-      {rootProjects.map(item => (
-        <SortableItem
-          key={item.id}
-          item={item}
-          allProjects={projects}
-          depth={0}
-          isOverFolder={false}
-          expandedFolderIds={expandedFolderIds}
-          overFolderId={overFolderId}
-          insertBeforeId={insertBeforeId}
-          activeId={activeId}
-        />
-      ))}
+        ))}
 
       {/* Root drop zone - visible when dragging an item that's inside a folder */}
       {activeId &&

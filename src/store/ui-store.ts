@@ -189,6 +189,9 @@ interface UIState {
    *  Holds the value of the row's `data-sidebar-row-id`; null when nothing is
    *  pending. One reveal per navigation, so scrolling away does not re-scroll. */
   pendingSidebarRevealId: string | null
+  /** Whether the main area shows the Archived view. Only meaningful while no
+   *  project and no worktree is selected; not persisted. */
+  archivedViewOpen: boolean
   /** Project whose canvas must show its own home page once, not the last
    *  session. Set by a sidebar project-row click; the canvas consumes it, even
    *  when it mounts later. */
@@ -327,6 +330,7 @@ interface UIState {
   markWorktreeForAutoInvestigateSentryIssue: (worktreeId: string) => void
   consumeAutoInvestigateSentryIssue: (worktreeId: string) => boolean
   markSidebarReveal: (rowId: string) => void
+  setArchivedViewOpen: (open: boolean) => void
   clearSidebarReveal: (rowId: string) => void
   requestProjectHome: (projectId: string) => void
   clearProjectHomeRequest: (projectId: string) => void
@@ -446,6 +450,7 @@ export const useUIStore = create<UIState>()(
       autoOpenSessionWorktreeIds: new Set(),
       pendingAutoOpenSessionIds: {},
       pendingSidebarRevealId: null,
+      archivedViewOpen: false,
       pendingProjectHomeId: null,
       sessionChatModalOpen: false,
       mobileActiveTab: 'home',
@@ -1050,6 +1055,16 @@ export const useUIStore = create<UIState>()(
         )
         return true
       },
+
+      setArchivedViewOpen: open =>
+        set(
+          state =>
+            state.archivedViewOpen === open
+              ? state
+              : { archivedViewOpen: open },
+          undefined,
+          'setArchivedViewOpen'
+        ),
 
       markSidebarReveal: rowId =>
         set(

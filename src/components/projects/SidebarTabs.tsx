@@ -8,7 +8,7 @@ const TABS: { id: SidebarTab; label: string }[] = [
 ]
 
 /**
- * The Projects / Recent switch below the Home row.
+ * The Projects / Recent switch at the very top of the sidebar.
  *
  * Recent is a jump list of the latest sessions across every project, so an
  * active session is one click away without scrolling the tree. The choice is

@@ -206,6 +206,12 @@ export function useUIStatePersistence() {
     if (uiState.starred_sessions_collapsed) {
       useProjectsStore.getState().setStarredSectionCollapsed(true)
     }
+    if (uiState.folders_section_collapsed) {
+      useProjectsStore.getState().setFoldersSectionCollapsed(true)
+    }
+    if (uiState.projects_section_collapsed) {
+      useProjectsStore.getState().setProjectsSectionCollapsed(true)
+    }
     if (uiState.project_rail_hidden) {
       useProjectsStore.getState().setProjectRailHidden(true)
     }
@@ -969,6 +975,10 @@ export function useUIStatePersistence() {
     let prevStarredSessions = useProjectsStore.getState().starredSessions
     let prevStarredSectionCollapsed =
       useProjectsStore.getState().starredSectionCollapsed
+    let prevFoldersSectionCollapsed =
+      useProjectsStore.getState().foldersSectionCollapsed
+    let prevProjectsSectionCollapsed =
+      useProjectsStore.getState().projectsSectionCollapsed
     let prevProjectRailHidden = useProjectsStore.getState().projectRailHidden
     let prevExpandedPinnedProjectIds =
       useProjectsStore.getState().expandedPinnedProjectIds
@@ -1038,6 +1048,9 @@ export function useUIStatePersistence() {
       const starredChanged =
         state.starredSessions !== prevStarredSessions ||
         state.starredSectionCollapsed !== prevStarredSectionCollapsed
+      const sectionsCollapsedChanged =
+        state.foldersSectionCollapsed !== prevFoldersSectionCollapsed ||
+        state.projectsSectionCollapsed !== prevProjectsSectionCollapsed
       const projectRailChanged =
         state.projectRailHidden !== prevProjectRailHidden
       const pinnedProjectIdsChanged =
@@ -1061,6 +1074,7 @@ export function useUIStatePersistence() {
         worktreeIdsChanged ||
         pinnedProjectIdsChanged ||
         starredChanged ||
+        sectionsCollapsedChanged ||
         projectRailChanged ||
         selectedProjectChanged ||
         accessTimestampsChanged ||
@@ -1074,6 +1088,8 @@ export function useUIStatePersistence() {
         prevExpandedPinnedProjectIds = state.expandedPinnedProjectIds
         prevStarredSessions = state.starredSessions
         prevStarredSectionCollapsed = state.starredSectionCollapsed
+        prevFoldersSectionCollapsed = state.foldersSectionCollapsed
+        prevProjectsSectionCollapsed = state.projectsSectionCollapsed
         prevProjectRailHidden = state.projectRailHidden
         prevSelectedProjectId = state.selectedProjectId
         prevProjectAccessTimestamps = state.projectAccessTimestamps

@@ -15,7 +15,7 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 
 /**
- * Starred sessions at the top of the sidebar, under the Home row.
+ * Starred sessions near the top of the sidebar, pinned under the Home row.
  *
  * A star is global, so the section shows whatever project is selected. Rows
  * resolve against the all-sessions cache the Home view, the command palette

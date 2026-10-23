@@ -31,7 +31,8 @@ export function sidebarRowId(kind: 'project' | 'session', id: string): string {
 }
 
 /**
- * Expand every folder above a project, so its row exists in the tree.
+ * Expand every folder above a project, and the sidebar section that holds
+ * it, so its row exists in the tree.
  *
  * Reads the projects list straight from the query cache: navigation happens
  * outside React, and the list is already loaded whenever the sidebar is up.
@@ -41,9 +42,18 @@ function expandAncestorFolders(projectId: string): void {
   if (!projects) return
 
   const byId = new Map(projects.map(project => [project.id, project]))
-  const { expandFolder } = useProjectsStore.getState()
+  const {
+    expandFolder,
+    setFoldersSectionCollapsed,
+    setProjectsSectionCollapsed,
+  } = useProjectsStore.getState()
 
   let parentId = byId.get(projectId)?.parent_id
+  // A project inside a folder lives in the Folders section, a root project in
+  // the Projects section; a collapsed section would hide the target.
+  if (parentId) setFoldersSectionCollapsed(false)
+  else setProjectsSectionCollapsed(false)
+
   const seen = new Set<string>()
   while (parentId && !seen.has(parentId)) {
     seen.add(parentId)
