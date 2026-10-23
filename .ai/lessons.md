@@ -329,3 +329,14 @@ null)`. Writing with `setItem` and reading it back returns `null`, so a test
 - User changed the global rule: issues, PRs, comments, labels, reviews on repos owned by `azeitler` or their orgs are posted directly, then reported with a link.
 - Still ask for: other owners' repos (upstream `coollabsio/jean`), `git push`, releases, publishing, deploys.
 - Fork is now `azeitler/splitkick` (renamed from `azeitler/jean`); use `--repo azeitler/splitkick`.
+
+## Check sidebar geometry against the shared constants
+
+- A new sidebar row or section must use the column constants in
+  `sidebar-row-styles.ts`, not ad-hoc padding copied from a neighbour.
+- Check both columns: the glyph and the label. A `gap-1.5` instead of `gap-1`
+  moves the label 2 px even when the glyph lines up.
+- Children of a section sit one step (16 px) in from the section header.
+- A section header must not reuse the icon of its own rows.
+- Verify with a screenshot and a per-row pixel scan of the first glyph and
+  label columns, not by eye.
