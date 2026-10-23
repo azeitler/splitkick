@@ -12,8 +12,9 @@
  *   session group label (IDLE)    64 + 16·d
  *   session in a group            76 + 16·d
  *
- * Folders and projects reach depth d through the tree wrapper
- * (`SIDEBAR_INDENT_STEP_PX`, ProjectTree / FolderTreeItem), inside the
+ * Folder and project rows share one shape (`SIDEBAR_ROW_SHAPE`,
+ * `SIDEBAR_PROJECT_ROW_PADDING`). They reach depth d through the tree
+ * wrapper: one `SIDEBAR_INDENT_STEP_PX` per nested level (ProjectTree), inside the
  * section's one-step indent (`SIDEBAR_SECTION_ITEMS_INDENT_PX`). Workspaces and
  * sessions sit in lists with a guide line under the parent's glyph, so their
  * offsets below are measured from that line. Change one value, check them all.
