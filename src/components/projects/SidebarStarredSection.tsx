@@ -13,6 +13,12 @@ import { navigateToSession } from '@/lib/navigate-to-session'
 import { useAllSessions } from '@/services/chat'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
+import { cn } from '@/lib/utils'
+import {
+  SIDEBAR_SECTION_HEADER_PADDING,
+  SIDEBAR_WORKTREE_LIST,
+  SIDEBAR_WORKTREE_ROW_PADDING,
+} from './sidebar-row-styles'
 
 /**
  * Starred sessions near the top of the sidebar, pinned under the Home row.
@@ -74,17 +80,18 @@ export function SidebarStarredSection() {
         count={shortcuts.length}
         expanded={!collapsed}
         onToggle={handleToggle}
-        // Same inset and gap as the Home row above it: glyph on the section
-        // header column, label on the project-name column.
-        className="gap-1 pl-3"
+        // Glyph and label on the Home row's columns.
+        className={cn('gap-1', SIDEBAR_SECTION_HEADER_PADDING)}
         testId="sidebar-starred-toggle"
       />
       {!collapsed && (
-        <div className="ml-4 border-l border-border/40 py-0.5">
+        // The guide line runs under the header glyph and the rows sit one
+        // step in (glyph at 32), as a project's workspace list does.
+        <div className={cn(SIDEBAR_WORKTREE_LIST, 'py-0.5')}>
           <SessionShortcutRows
             shortcuts={shortcuts}
             variant="sidebar"
-            sidebarRowClassName="py-1 pl-2 pr-1"
+            sidebarRowClassName={cn('py-1', SIDEBAR_WORKTREE_ROW_PADDING)}
             // Every row here is a star; marking each would be noise.
             showStarGlyph={false}
             onOpen={handleOpen}

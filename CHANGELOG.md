@@ -21,7 +21,9 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   The Projects tab shows Home and Starred (both stay in place), then Folders
   and Projects, then Archived. Folders and Projects work like Starred: click
   the header to fold the section, and the app remembers it. Each header has
-  its own "+ New" button. Archived opens the archived items in the main area,
+  its own "+ New" button. The section icons line up with Home, and the rows
+  of each section sit one step in, like starred sessions. The Folders header
+  has its own icon, so it does not look like a folder. Archived opens the archived items in the main area,
   like Home. The "+ New" and "Archived" buttons at the bottom are gone. (#55)
 
 ## [1.0.13] - 2026-10-23

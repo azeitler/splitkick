@@ -21,7 +21,7 @@ import {
   Briefcase,
   ChevronsDownUp,
   ChevronsUpDown,
-  Folder,
+  Folders,
   Plus,
 } from 'lucide-react'
 import { isFolder, type Project } from '@/types/projects'
@@ -44,7 +44,11 @@ import {
 import { reorderWithClosestEdge } from '@/lib/drag-and-drop/reorder'
 import { announceDrag } from '@/lib/drag-and-drop/live-region'
 import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
-import { SIDEBAR_INDENT_STEP_PX } from './sidebar-row-styles'
+import {
+  SIDEBAR_INDENT_STEP_PX,
+  SIDEBAR_SECTION_HEADER_PADDING,
+  SIDEBAR_SECTION_ITEMS_INDENT_PX,
+} from './sidebar-row-styles'
 
 const MAX_NESTING_DEPTH = 3
 
@@ -831,14 +835,15 @@ export function ProjectTree({
       onDragEnd={handleNativeTreeDragEnd}
     >
       <SidebarSectionRow
-        icon={<Folder className="size-3.5 shrink-0" aria-hidden="true" />}
+        // Stacked folders, so the header does not look like one of its rows.
+        icon={<Folders className="size-3.5 shrink-0" aria-hidden="true" />}
         label="Folders"
         count={rootFolders.length}
         noun="folder"
         expanded={!foldersSectionCollapsed}
         onToggle={toggleFoldersSection}
-        // Same inset and gap as the Home and Starred rows above.
-        className="gap-1 pl-3"
+        // Glyph and label on the Home row's columns.
+        className={SIDEBAR_SECTION_HEADER_PADDING}
         testId="sidebar-folders-toggle"
         actions={
           <>
@@ -854,20 +859,26 @@ export function ProjectTree({
           </>
         }
       />
-      {!foldersSectionCollapsed &&
-        rootFolders.map(item => (
-          <SortableItem
-            key={item.id}
-            item={item}
-            allProjects={projects}
-            depth={0}
-            isOverFolder={overFolderId === item.id}
-            expandedFolderIds={expandedFolderIds}
-            overFolderId={overFolderId}
-            insertBeforeId={insertBeforeId}
-            activeId={activeId}
-          />
-        ))}
+      {!foldersSectionCollapsed && rootFolders.length > 0 && (
+        <div
+          data-testid="sidebar-folders-items"
+          style={{ paddingLeft: SIDEBAR_SECTION_ITEMS_INDENT_PX }}
+        >
+          {rootFolders.map(item => (
+            <SortableItem
+              key={item.id}
+              item={item}
+              allProjects={projects}
+              depth={0}
+              isOverFolder={overFolderId === item.id}
+              expandedFolderIds={expandedFolderIds}
+              overFolderId={overFolderId}
+              insertBeforeId={insertBeforeId}
+              activeId={activeId}
+            />
+          ))}
+        </div>
+      )}
       <SidebarSectionRow
         icon={<Briefcase className="size-3.5 shrink-0" aria-hidden="true" />}
         label="Projects"
@@ -875,7 +886,7 @@ export function ProjectTree({
         noun="project"
         expanded={!projectsSectionCollapsed}
         onToggle={toggleProjectsSection}
-        className="gap-1 pl-3"
+        className={SIDEBAR_SECTION_HEADER_PADDING}
         testId="sidebar-projects-toggle"
         actions={
           <>
@@ -895,20 +906,26 @@ export function ProjectTree({
           </>
         }
       />
-      {!projectsSectionCollapsed &&
-        rootProjects.map(item => (
-          <SortableItem
-            key={item.id}
-            item={item}
-            allProjects={projects}
-            depth={0}
-            isOverFolder={false}
-            expandedFolderIds={expandedFolderIds}
-            overFolderId={overFolderId}
-            insertBeforeId={insertBeforeId}
-            activeId={activeId}
-          />
-        ))}
+      {!projectsSectionCollapsed && rootProjects.length > 0 && (
+        <div
+          data-testid="sidebar-projects-items"
+          style={{ paddingLeft: SIDEBAR_SECTION_ITEMS_INDENT_PX }}
+        >
+          {rootProjects.map(item => (
+            <SortableItem
+              key={item.id}
+              item={item}
+              allProjects={projects}
+              depth={0}
+              isOverFolder={false}
+              expandedFolderIds={expandedFolderIds}
+              overFolderId={overFolderId}
+              insertBeforeId={insertBeforeId}
+              activeId={activeId}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Root drop zone - visible when dragging an item that's inside a folder */}
       {activeId &&
