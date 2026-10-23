@@ -7,6 +7,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **Notifications name the session.** A banner now reads, for example,
+  “Session “Fix the relaunch helper” finished”, with the project and worktree
+  below, instead of a generic “Session finished”. Long names are shortened.
+  The same goes for failed sessions and sessions that need your input. (#54)
+
 ## [1.0.13] - 2026-10-23
 
 Built on Jean 0.1.73.

@@ -41,6 +41,49 @@ export function nativeSessionTarget(
   }
 }
 
+/** Longest session name a banner title shows before it is cut with "…". */
+const NAME_LIMIT = 40
+
+function shortName(name: string): string {
+  const clean = name.replace(/\s+/g, ' ').trim()
+  return clean.length > NAME_LIMIT
+    ? `${clean.slice(0, NAME_LIMIT).trimEnd()}…`
+    : clean
+}
+
+/**
+ * Banner text for a session event: the session's name in the title, so a
+ * banner says which session finished, and its project and worktree below.
+ * `openName` is the name of the open session, which may be newer than the
+ * session list. Without any name the title stays generic.
+ */
+export function sessionNotificationText(
+  sessionId: string,
+  event: 'finished' | 'failed' | 'input',
+  openName?: string
+): { title: string; body: string | undefined } {
+  const entry = queryClient
+    .getQueryData<AllSessionsResponse>(['all-sessions'])
+    ?.entries.find(e => e.sessions.some(s => s.id === sessionId))
+  const name =
+    openName?.trim() || entry?.sessions.find(s => s.id === sessionId)?.name
+  const body = entry
+    ? `${entry.project_name} › ${entry.worktree_name}`
+    : undefined
+  const verb = {
+    finished: 'finished',
+    failed: 'failed',
+    input: 'needs your input',
+  }[event]
+  if (!name?.trim()) {
+    return {
+      title: event === 'input' ? 'Needs your input' : `Session ${verb}`,
+      body,
+    }
+  }
+  return { title: `Session “${shortName(name)}” ${verb}`, body }
+}
+
 function sendNativeNotification(
   sessionId: string | undefined,
   title: string,
@@ -76,11 +119,8 @@ export function notifyIfBackground(
 
 /** Whether the given session is currently open in the full chat view or modal. */
 export function isSessionCurrentlyViewed(sessionId: string): boolean {
-  const {
-    activeWorktreeId,
-    activeSessionIds,
-    sessionWorktreeMap,
-  } = useChatStore.getState()
+  const { activeWorktreeId, activeSessionIds, sessionWorktreeMap } =
+    useChatStore.getState()
   const worktreeId = sessionWorktreeMap[sessionId]
   if (!worktreeId) return false
 
