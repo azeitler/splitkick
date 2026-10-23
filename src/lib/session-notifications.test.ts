@@ -19,8 +19,16 @@ const allSessions = {
   entries: [
     {
       project_id: 'p-1',
+      project_name: 'splitkick',
       worktree_id: 'wt-1',
-      sessions: [{ id: 'session-1' }],
+      worktree_name: 'main',
+      sessions: [
+        { id: 'session-1', name: 'Fix the relaunch helper' },
+        {
+          id: 'session-long',
+          name: 'Investigate why the sidebar badges block the backend on large setups',
+        },
+      ],
     },
   ],
 }
@@ -81,9 +89,8 @@ describe('session-notifications', () => {
   })
 
   it('notifies when focused on a different session (issue #626)', async () => {
-    const { notifySessionNeedsAttention } = await import(
-      './session-notifications'
-    )
+    const { notifySessionNeedsAttention } =
+      await import('./session-notifications')
     notifySessionNeedsAttention('session-1', 'Needs your input', 'My session')
     expect(invoke).toHaveBeenCalledWith('send_native_notification', {
       title: 'Needs your input',
@@ -95,9 +102,8 @@ describe('session-notifications', () => {
 
   it('skips OS banner when the session is actively viewed and window focused', async () => {
     chatState.activeWorktreeId = 'wt-1'
-    const { notifySessionNeedsAttention } = await import(
-      './session-notifications'
-    )
+    const { notifySessionNeedsAttention } =
+      await import('./session-notifications')
     notifySessionNeedsAttention('session-1', 'Needs your input', 'My session')
     expect(invoke).not.toHaveBeenCalled()
   })
@@ -108,9 +114,8 @@ describe('session-notifications', () => {
       configurable: true,
       value: () => false,
     })
-    const { notifySessionNeedsAttention } = await import(
-      './session-notifications'
-    )
+    const { notifySessionNeedsAttention } =
+      await import('./session-notifications')
     notifySessionNeedsAttention('session-1', 'Needs your input', 'My session')
     expect(invoke).toHaveBeenCalledWith('send_native_notification', {
       title: 'Needs your input',
@@ -137,9 +142,8 @@ describe('session-notifications', () => {
 
   it('sends no session from a connection window (its ids are remote)', async () => {
     connectionWindow = true
-    const { notifySessionNeedsAttention } = await import(
-      './session-notifications'
-    )
+    const { notifySessionNeedsAttention } =
+      await import('./session-notifications')
     notifySessionNeedsAttention('session-1', 'Needs your input', 'My session')
     expect(invoke).toHaveBeenCalledWith(
       'send_native_notification',
@@ -148,13 +152,60 @@ describe('session-notifications', () => {
   })
 
   it('sends no session when the session is not in the session list', async () => {
-    const { notifySessionNeedsAttention } = await import(
-      './session-notifications'
-    )
+    const { notifySessionNeedsAttention } =
+      await import('./session-notifications')
     notifySessionNeedsAttention('session-x', 'Needs your input', 'Other')
     expect(invoke).toHaveBeenCalledWith(
       'send_native_notification',
       expect.objectContaining({ session: null })
+    )
+  })
+})
+
+// "Session finished" alone did not say which session; with many running at
+// once the banner was useless.
+describe('sessionNotificationText', () => {
+  it('names the session in the title, with project and worktree below', async () => {
+    const { sessionNotificationText } = await import('./session-notifications')
+    expect(sessionNotificationText('session-1', 'finished')).toEqual({
+      title: 'Session “Fix the relaunch helper” finished',
+      body: 'splitkick › main',
+    })
+    expect(sessionNotificationText('session-1', 'failed').title).toBe(
+      'Session “Fix the relaunch helper” failed'
+    )
+    expect(sessionNotificationText('session-1', 'input')).toEqual({
+      title: 'Session “Fix the relaunch helper” needs your input',
+      body: 'splitkick › main',
+    })
+  })
+
+  it('shortens a long name', async () => {
+    const { sessionNotificationText } = await import('./session-notifications')
+    const { title } = sessionNotificationText('session-long', 'finished')
+    expect(title).toBe(
+      'Session “Investigate why the sidebar badges block…” finished'
+    )
+  })
+
+  it('prefers the name of the open session', async () => {
+    const { sessionNotificationText } = await import('./session-notifications')
+    expect(
+      sessionNotificationText('session-1', 'finished', 'Renamed just now').title
+    ).toBe('Session “Renamed just now” finished')
+  })
+
+  it('falls back to the plain text without a name', async () => {
+    const { sessionNotificationText } = await import('./session-notifications')
+    expect(sessionNotificationText('unknown', 'finished')).toEqual({
+      title: 'Session finished',
+      body: undefined,
+    })
+    expect(sessionNotificationText('unknown', 'failed').title).toBe(
+      'Session failed'
+    )
+    expect(sessionNotificationText('unknown', 'input').title).toBe(
+      'Needs your input'
     )
   })
 })

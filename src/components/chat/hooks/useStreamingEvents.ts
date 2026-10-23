@@ -27,6 +27,7 @@ import { playNotificationSound } from '@/lib/sounds'
 import {
   notifyIfBackground,
   notifySessionNeedsAttention,
+  sessionNotificationText,
 } from '@/lib/session-notifications'
 import { findPlanFilePath } from '@/components/chat/tool-call-utils'
 import { generateId } from '@/lib/uuid'
@@ -315,20 +316,25 @@ export default function useStreamingEvents({
     // notify when Jean is focused on a different session (issue #626).
     const notifySession = (
       sessionId: string,
-      title: string,
+      event: 'finished' | 'failed' | 'input',
       kind: 'waiting' | 'lifecycle' = 'lifecycle'
     ): void => {
       const prefs = queryClient.getQueryData<AppPreferences>(
         preferencesQueryKeys.preferences()
       )
       if (prefs?.desktop_notifications_enabled === false) return
-      const name = queryClient.getQueryData<Session>(
+      const openName = queryClient.getQueryData<Session>(
         chatQueryKeys.session(sessionId)
       )?.name
+      const { title, body } = sessionNotificationText(
+        sessionId,
+        event,
+        openName
+      )
       if (kind === 'waiting') {
-        notifySessionNeedsAttention(sessionId, title, name)
+        notifySessionNeedsAttention(sessionId, title, body)
       } else {
-        notifyIfBackground(title, name, sessionId)
+        notifyIfBackground(title, body, sessionId)
       }
     }
 
@@ -830,7 +836,7 @@ export default function useStreamingEvents({
       setPendingCodexMcpElicitationRequests(sessionId, next)
       setWaitingForInput(sessionId, true)
       playWaitingSound()
-      notifySession(sessionId, 'Needs your input', 'waiting')
+      notifySession(sessionId, 'input', 'waiting')
       persistCodexPendingState(sessionId, worktreeId, {
         pendingCodexMcpElicitationRequests: next,
       })
@@ -849,7 +855,7 @@ export default function useStreamingEvents({
         setPendingCodexPermissionRequests(session_id, next)
         setWaitingForInput(session_id, true)
         playWaitingSound()
-        notifySession(session_id, 'Needs your input', 'waiting')
+        notifySession(session_id, 'input', 'waiting')
         persistCodexPendingState(session_id, worktree_id, {
           pendingCodexPermissionRequests: next,
         })
@@ -875,7 +881,7 @@ export default function useStreamingEvents({
           setPendingOpencodePermissionRequests(session_id, next)
           setWaitingForInput(session_id, true)
           playWaitingSound()
-          notifySession(session_id, 'Needs your input')
+          notifySession(session_id, 'input')
           persistCodexPendingState(session_id, worktree_id, {
             pendingOpencodePermissionRequests: next,
           })
@@ -924,7 +930,7 @@ export default function useStreamingEvents({
           setPendingCodexCommandApprovalRequests(session_id, next)
           setWaitingForInput(session_id, true)
           playWaitingSound()
-          notifySession(session_id, 'Needs your input', 'waiting')
+          notifySession(session_id, 'input', 'waiting')
           persistCodexPendingState(session_id, worktree_id, {
             pendingCodexCommandApprovalRequests: next,
           })
@@ -961,7 +967,7 @@ export default function useStreamingEvents({
         if (next === current) return
 
         playWaitingSound()
-        notifySession(session_id, 'Needs your input', 'waiting')
+        notifySession(session_id, 'input', 'waiting')
         persistCodexPendingState(session_id, worktree_id, {
           pendingCodexUserInputRequests: next,
         })
@@ -1009,7 +1015,7 @@ export default function useStreamingEvents({
           setPendingCodexDynamicToolCallRequests(session_id, next)
           setWaitingForInput(session_id, true)
           playWaitingSound()
-          notifySession(session_id, 'Needs your input', 'waiting')
+          notifySession(session_id, 'input', 'waiting')
           persistCodexPendingState(session_id, worktree_id, {
             pendingCodexDynamicToolCallRequests: next,
           })
@@ -1293,7 +1299,7 @@ export default function useStreamingEvents({
 
           // Play waiting sound
           playWaitingSound()
-          notifySession(sessionId, 'Needs your input', 'waiting')
+          notifySession(sessionId, 'input', 'waiting')
         }
       } else if (event.payload.waiting_for_plan) {
         // Codex/Opencode plan-mode run completed with content — enter plan-waiting state.
@@ -1456,7 +1462,7 @@ export default function useStreamingEvents({
 
         // Play waiting sound
         playWaitingSound()
-        notifySession(sessionId, 'Needs your input', 'waiting')
+        notifySession(sessionId, 'input', 'waiting')
       } else {
         // No blocking tools — add optimistic message FIRST, then batch-clear state.
         // This eliminates the flicker gap where neither streaming nor persisted content is visible.
@@ -1550,7 +1556,7 @@ export default function useStreamingEvents({
           }
 
           playWaitingSound()
-          notifySession(sessionId, 'Needs your input', 'waiting')
+          notifySession(sessionId, 'input', 'waiting')
         } else {
           // 2. Update last_run_status + session state in caches so UI reflects immediately.
           // CRITICAL: Include waiting_for_input/is_reviewing so
@@ -1615,7 +1621,7 @@ export default function useStreamingEvents({
             webAccessSoundsEnabled:
               preferences?.web_access_sounds_enabled ?? true,
           })
-          notifySession(sessionId, 'Session finished')
+          notifySession(sessionId, 'finished')
 
           // Auto-save context (fire-and-forget, no blocking)
           if (preferences?.auto_save_context === true) {
@@ -1853,7 +1859,7 @@ export default function useStreamingEvents({
       // Batch-clear all streaming state in a single Zustand set()
       useChatStore.getState().failSession(session_id)
 
-      notifySession(session_id, 'Session failed')
+      notifySession(session_id, 'failed')
 
       // Invalidate sessions list to update last_run_status in tab bar
       if (sessionWorktreeId) {
@@ -2220,87 +2226,83 @@ export default function useStreamingEvents({
     // covers a prompt that never started, and `hasContent` is a frontend guess
     // that is false while the backend still holds output the frontend never
     // received. Acting on that guess duplicates the prompt (issue #671).
-    const unlistenUndoSend = listen<UndoSendEvent>(
-      'chat:undo-send',
-      event => {
-        const { session_id, user_message } = event.payload
-        const store = useChatStore.getState()
+    const unlistenUndoSend = listen<UndoSendEvent>('chat:undo-send', event => {
+      const { session_id, user_message } = event.payload
+      const store = useChatStore.getState()
 
-        const dropSentState = () => {
-          store.clearLastSentAttachments(session_id)
-          store.clearLastSentMessage(session_id)
-        }
-
-        // Queued messages mean the user chose "Skip to Next". The queue
-        // processor drives the next prompt; keep the input clear.
-        if ((store.messageQueues[session_id] ?? []).length > 0) {
-          dropSentState()
-          return
-        }
-
-        // Never overwrite text the user typed after cancelling.
-        if ((store.inputDrafts[session_id] ?? '').trim()) {
-          dropSentState()
-          return
-        }
-
-        // lastSentMessages holds the raw typed text. It is in-memory only, so
-        // it is missing after a reload, or when another client or the MCP tool
-        // issued the cancel. Fall back to the message the backend stored, minus
-        // its attachment markers.
-        const text =
-          store.lastSentMessages[session_id] ??
-          stripAllMarkers(user_message ?? '').trim()
-        if (!text) {
-          dropSentState()
-          return
-        }
-
-        store.setInputDraft(session_id, text)
-        if (store.lastSentAttachments[session_id]) {
-          store.restoreAttachments(session_id)
-        }
+      const dropSentState = () => {
+        store.clearLastSentAttachments(session_id)
         store.clearLastSentMessage(session_id)
-
-        // Drop the turn from the cache now. The chat:cancelled handler appended
-        // an empty `cancelled-<session>-<ts>` placeholder, and the user message
-        // is still there. Leaving them shows the prompt in the history and in
-        // the input at the same time until the refetch lands.
-        queryClient.setQueryData<Session>(
-          chatQueryKeys.session(session_id),
-          old => {
-            if (!old) return old
-            const messages = [...old.messages]
-            const last = messages.at(-1)
-            if (
-              last?.role === 'assistant' &&
-              last.cancelled === true &&
-              last.id.startsWith(`cancelled-${session_id}-`) &&
-              !last.content.trim() &&
-              (last.tool_calls?.length ?? 0) === 0 &&
-              (last.content_blocks?.length ?? 0) === 0
-            ) {
-              messages.pop()
-            }
-            if (messages.at(-1)?.role === 'user') {
-              messages.pop()
-            }
-            if (messages.length === old.messages.length) return old
-            return { ...old, messages }
-          }
-        )
-        useChatStore
-          .getState()
-          .setSessionReviewing(
-            session_id,
-            (queryClient.getQueryData<Session>(
-              chatQueryKeys.session(session_id)
-            )?.messages.length ?? 0) > 0
-          )
-
-        toast.info('Message restored to input')
       }
-    )
+
+      // Queued messages mean the user chose "Skip to Next". The queue
+      // processor drives the next prompt; keep the input clear.
+      if ((store.messageQueues[session_id] ?? []).length > 0) {
+        dropSentState()
+        return
+      }
+
+      // Never overwrite text the user typed after cancelling.
+      if ((store.inputDrafts[session_id] ?? '').trim()) {
+        dropSentState()
+        return
+      }
+
+      // lastSentMessages holds the raw typed text. It is in-memory only, so
+      // it is missing after a reload, or when another client or the MCP tool
+      // issued the cancel. Fall back to the message the backend stored, minus
+      // its attachment markers.
+      const text =
+        store.lastSentMessages[session_id] ??
+        stripAllMarkers(user_message ?? '').trim()
+      if (!text) {
+        dropSentState()
+        return
+      }
+
+      store.setInputDraft(session_id, text)
+      if (store.lastSentAttachments[session_id]) {
+        store.restoreAttachments(session_id)
+      }
+      store.clearLastSentMessage(session_id)
+
+      // Drop the turn from the cache now. The chat:cancelled handler appended
+      // an empty `cancelled-<session>-<ts>` placeholder, and the user message
+      // is still there. Leaving them shows the prompt in the history and in
+      // the input at the same time until the refetch lands.
+      queryClient.setQueryData<Session>(
+        chatQueryKeys.session(session_id),
+        old => {
+          if (!old) return old
+          const messages = [...old.messages]
+          const last = messages.at(-1)
+          if (
+            last?.role === 'assistant' &&
+            last.cancelled === true &&
+            last.id.startsWith(`cancelled-${session_id}-`) &&
+            !last.content.trim() &&
+            (last.tool_calls?.length ?? 0) === 0 &&
+            (last.content_blocks?.length ?? 0) === 0
+          ) {
+            messages.pop()
+          }
+          if (messages.at(-1)?.role === 'user') {
+            messages.pop()
+          }
+          if (messages.length === old.messages.length) return old
+          return { ...old, messages }
+        }
+      )
+      useChatStore
+        .getState()
+        .setSessionReviewing(
+          session_id,
+          (queryClient.getQueryData<Session>(chatQueryKeys.session(session_id))
+            ?.messages.length ?? 0) > 0
+        )
+
+      toast.info('Message restored to input')
+    })
 
     // Handle context compaction events
     const unlistenCompacting = listen<CompactingEvent>(
@@ -2429,12 +2431,7 @@ export default function useStreamingEvents({
         case 'thinkingLevel':
           store.setThinkingLevel(
             session_id,
-            value as
-              | 'off'
-              | 'adaptive'
-              | 'think'
-              | 'megathink'
-              | 'ultrathink'
+            value as 'off' | 'adaptive' | 'think' | 'megathink' | 'ultrathink'
           )
           break
         case 'effortLevel':
