@@ -220,7 +220,9 @@ function SortableItem({
 
   const style: React.CSSProperties = {
     opacity: activeId === item.id ? 0.35 : 1,
-    paddingLeft: depth > 0 ? `${depth * SIDEBAR_INDENT_STEP_PX}px` : undefined,
+    // Nested rows render inside their parent's wrapper, so one step per
+    // level adds up to the depth on its own.
+    paddingLeft: depth > 0 ? `${SIDEBAR_INDENT_STEP_PX}px` : undefined,
   }
 
   const closestEdge =
@@ -246,7 +248,6 @@ function SortableItem({
         <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />
         <FolderTreeItem
           folder={item}
-          depth={depth}
           childCount={allProjects.filter(p => p.parent_id === item.id).length}
           isDropTarget={isOverFolder}
           dragHandleRef={dragHandleRef}

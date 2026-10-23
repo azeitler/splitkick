@@ -6,12 +6,14 @@ import { useProjectsStore } from '@/store/projects-store'
 import { useRenameFolder } from '@/services/projects'
 import { CollapsedCountBadge } from './CollapsedCountBadge'
 import { FolderContextMenu } from './FolderContextMenu'
-import { SIDEBAR_INDENT_STEP_PX } from './sidebar-row-styles'
+import {
+  SIDEBAR_PROJECT_ROW_PADDING,
+  SIDEBAR_ROW_SHAPE,
+} from './sidebar-row-styles'
 
 interface FolderTreeItemProps {
   folder: Project
   children: React.ReactNode
-  depth: number
   /** Direct children (projects + sub-folders), shown as a badge when collapsed */
   childCount: number
   isDropTarget?: boolean
@@ -22,7 +24,6 @@ interface FolderTreeItemProps {
 export function FolderTreeItem({
   folder,
   children,
-  depth,
   childCount,
   isDropTarget,
   dragHandleRef,
@@ -120,17 +121,19 @@ export function FolderTreeItem({
   return (
     <FolderContextMenu folder={folder}>
       <div>
-        {/* Folder Row */}
+        {/* Folder Row: the project row's shape, spacing and type, so the two
+            read as siblings. The tree wrapper indents nested rows. */}
         <div
           ref={dragHandleRef}
+          data-testid={`folder-row-${folder.id}`}
           className={cn(
-            'group flex cursor-pointer items-center gap-1 px-3 py-1.5 transition-colors duration-150',
-            'text-[13px] font-medium text-muted-foreground/70 hover:bg-accent/50 hover:text-muted-foreground',
-            isDropTarget && 'bg-primary/10 text-primary'
+            'group relative flex cursor-pointer items-center gap-1.5 overflow-hidden py-1.5 transition-colors duration-150',
+            SIDEBAR_ROW_SHAPE,
+            SIDEBAR_PROJECT_ROW_PADDING,
+            isDropTarget
+              ? 'bg-primary/10 text-primary'
+              : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
           )}
-          style={{
-            paddingLeft: `${SIDEBAR_INDENT_STEP_PX * (depth + 1)}px`,
-          }}
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
         >
@@ -138,13 +141,14 @@ export function FolderTreeItem({
           <button
             type="button"
             aria-label={isExpanded ? 'Collapse folder' : 'Expand folder'}
-            className="flex h-4 w-4 shrink-0 items-center justify-center rounded hover:bg-accent-foreground/10"
+            className="flex size-4 shrink-0 items-center justify-center rounded hover:bg-accent-foreground/10"
             onClick={handleChevronClick}
           >
+            {/* The project avatar's size. */}
             {isExpanded ? (
-              <FolderOpen className="size-3.5" />
+              <FolderOpen className="size-4" />
             ) : (
-              <Folder className="size-3.5" />
+              <Folder className="size-4" />
             )}
           </button>
 

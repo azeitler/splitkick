@@ -52,12 +52,17 @@ vi.mock('./FolderTreeItem', () => ({
   FolderTreeItem: ({
     folder,
     dragHandleRef,
+    children,
   }: {
     folder: Project
     dragHandleRef?: React.Ref<HTMLDivElement>
+    children?: React.ReactNode
   }) => (
-    <div ref={dragHandleRef} data-testid={`folder-${folder.id}`}>
-      {folder.name}
+    <div>
+      <div ref={dragHandleRef} data-testid={`folder-${folder.id}`}>
+        {folder.name}
+      </div>
+      {children}
     </div>
   ),
 }))
@@ -264,5 +269,26 @@ describe('ProjectTree sections', () => {
     )
 
     expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled()
+  })
+})
+
+describe('ProjectTree nesting', () => {
+  it('indents each nested level by one step, not by its depth again', () => {
+    const outer = { ...folder, id: 'outer' }
+    const inner = { ...folder, id: 'inner', parent_id: 'outer' }
+    const leaf = { ...project, id: 'leaf', parent_id: 'inner' }
+    useProjectsStore.setState({
+      expandedFolderIds: new Set(['outer', 'inner']),
+      foldersSectionCollapsed: false,
+    })
+    render(<ProjectTree projects={[outer, inner, leaf]} />)
+
+    const wrapper = (id: string) =>
+      screen.getByTestId(id).closest('[data-pdnd-tree-id]') as HTMLElement
+
+    // Wrappers nest, so a step per level adds up to the depth on its own.
+    expect(wrapper('folder-outer').style.paddingLeft).toBe('')
+    expect(wrapper('folder-inner').style.paddingLeft).toBe('16px')
+    expect(wrapper('project-leaf').style.paddingLeft).toBe('16px')
   })
 })
