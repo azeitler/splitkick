@@ -9,6 +9,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Changed
 
+- **The connection rows react to the mouse.** In the server connections
+  dialog a row now lights up on hover, darkens while you click it, and shows
+  a focus ring for the keyboard. The connection this window drives has a
+  light background. Before, the rows gave no feedback at all. (#53)
 - **Notifications name the session.** A banner now reads, for example,
   “Session “Fix the relaunch helper” finished”, with the project and worktree
   below, instead of a generic “Session finished”. Long names are shortened.
