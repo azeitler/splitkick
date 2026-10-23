@@ -7,8 +7,12 @@ import { useRenameFolder } from '@/services/projects'
 import { CollapsedCountBadge } from './CollapsedCountBadge'
 import { FolderContextMenu } from './FolderContextMenu'
 import {
+  SIDEBAR_NESTED_CHILD_LIST,
+  SIDEBAR_NESTED_ROW_SHAPE,
   SIDEBAR_PROJECT_ROW_PADDING,
   SIDEBAR_ROW_SHAPE,
+  SIDEBAR_WORKTREE_LIST,
+  SIDEBAR_WORKTREE_ROW_PADDING,
 } from './sidebar-row-styles'
 
 interface FolderTreeItemProps {
@@ -16,6 +20,8 @@ interface FolderTreeItemProps {
   children: React.ReactNode
   /** Direct children (projects + sub-folders), shown as a badge when collapsed */
   childCount: number
+  /** Sits in a parent folder's list: nested row shape, shifted guide line */
+  nested?: boolean
   isDropTarget?: boolean
   /** Only this row starts a drag, not the nested items below it */
   dragHandleRef?: React.Ref<HTMLDivElement>
@@ -25,6 +31,7 @@ export function FolderTreeItem({
   folder,
   children,
   childCount,
+  nested = false,
   isDropTarget,
   dragHandleRef,
 }: FolderTreeItemProps) {
@@ -122,14 +129,14 @@ export function FolderTreeItem({
     <FolderContextMenu folder={folder}>
       <div>
         {/* Folder Row: the project row's shape, spacing and type, so the two
-            read as siblings. The tree wrapper indents nested rows. */}
+            read as siblings. A parent folder's list indents nested rows. */}
         <div
           ref={dragHandleRef}
           data-testid={`folder-row-${folder.id}`}
           className={cn(
             'group relative flex cursor-pointer items-center gap-1.5 overflow-hidden py-1.5 transition-colors duration-150',
-            SIDEBAR_ROW_SHAPE,
-            SIDEBAR_PROJECT_ROW_PADDING,
+            nested ? SIDEBAR_NESTED_ROW_SHAPE : SIDEBAR_ROW_SHAPE,
+            nested ? SIDEBAR_WORKTREE_ROW_PADDING : SIDEBAR_PROJECT_ROW_PADDING,
             isDropTarget
               ? 'bg-primary/10 text-primary'
               : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
@@ -177,8 +184,19 @@ export function FolderTreeItem({
           )}
         </div>
 
-        {/* Children (nested projects/folders) */}
-        {isExpanded && children}
+        {/* Children (nested projects/folders), on the same guide line a
+            project draws under its avatar for its workspaces */}
+        {isExpanded && (
+          <div
+            className={cn(
+              childCount > 0 && 'py-0.5',
+              childCount > 0 &&
+                (nested ? SIDEBAR_NESTED_CHILD_LIST : SIDEBAR_WORKTREE_LIST)
+            )}
+          >
+            {children}
+          </div>
+        )}
       </div>
     </FolderContextMenu>
   )

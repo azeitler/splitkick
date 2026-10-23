@@ -63,7 +63,10 @@ import {
   type WorktreeDropSnapshot,
   type WorktreeReorderDragState,
 } from '@/lib/drag-and-drop/worktree-reorder-ux'
-import { SIDEBAR_WORKTREE_LIST } from './sidebar-row-styles'
+import {
+  SIDEBAR_NESTED_CHILD_LIST,
+  SIDEBAR_WORKTREE_LIST,
+} from './sidebar-row-styles'
 
 interface SortableWorktreeProps {
   worktree: Worktree
@@ -198,6 +201,8 @@ interface WorktreeListProps {
   sessionFilterOpen?: boolean
   /** Called once a session row is picked, so the project filter can close. */
   onSessionSelected?: () => void
+  /** The project sits in a folder's list, so its avatar is one step in. */
+  nested?: boolean
 }
 
 export function WorktreeList({
@@ -208,6 +213,7 @@ export function WorktreeList({
   sessionFilterQuery = '',
   sessionFilterOpen = false,
   onSessionSelected,
+  nested = false,
 }: WorktreeListProps) {
   const reorderWorktrees = useReorderWorktrees()
   const worktreeSortMode = useProjectsStore(
@@ -655,7 +661,10 @@ export function WorktreeList({
 
   return (
     <div
-      className={cn('py-0.5', SIDEBAR_WORKTREE_LIST)}
+      className={cn(
+        'py-0.5',
+        nested ? SIDEBAR_NESTED_CHILD_LIST : SIDEBAR_WORKTREE_LIST
+      )}
       onPointerDown={event => event.stopPropagation()}
       onKeyDown={event => event.stopPropagation()}
       onDragOver={handleNativeDragOver}

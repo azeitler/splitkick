@@ -49,20 +49,25 @@ import { ProjectContextMenu } from './ProjectContextMenu'
 import { SessionFilterInput } from './SessionFilterInput'
 import { useSessionFilter } from './useSessionFilter'
 import {
+  SIDEBAR_NESTED_ROW_SHAPE,
   SIDEBAR_PROJECT_ROW_PADDING,
   SIDEBAR_ROW_SELECTED,
   SIDEBAR_ROW_SHAPE,
+  SIDEBAR_WORKTREE_ROW_PADDING,
 } from './sidebar-row-styles'
 
 interface ProjectTreeItemProps {
   project: Project
   /** Only this row starts a drag, not the worktree list below it */
   dragHandleRef?: React.Ref<HTMLDivElement>
+  /** Sits in a folder's list: nested row shape, shifted guide line */
+  nested?: boolean
 }
 
 export function ProjectTreeItem({
   project,
   dragHandleRef,
+  nested = false,
 }: ProjectTreeItemProps) {
   const isMobile = useIsMobile()
   const { data: preferences } = usePreferences()
@@ -321,8 +326,8 @@ export function ProjectTreeItem({
           ref={dragHandleRef}
           className={cn(
             'group relative flex cursor-pointer items-center gap-1.5 py-1.5 overflow-hidden transition-colors duration-150',
-            SIDEBAR_ROW_SHAPE,
-            SIDEBAR_PROJECT_ROW_PADDING,
+            nested ? SIDEBAR_NESTED_ROW_SHAPE : SIDEBAR_ROW_SHAPE,
+            nested ? SIDEBAR_WORKTREE_ROW_PADDING : SIDEBAR_PROJECT_ROW_PADDING,
             showSelection
               ? SIDEBAR_ROW_SELECTED
               : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
@@ -567,6 +572,7 @@ export function ProjectTreeItem({
             sessionFilterQuery={filter.activeQuery}
             sessionFilterOpen={filter.isOpen}
             onSessionSelected={closeFilter}
+            nested={nested}
           />
         )}
       </div>

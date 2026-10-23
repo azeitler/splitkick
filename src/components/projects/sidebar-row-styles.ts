@@ -13,8 +13,9 @@
  *   session in a group            76 + 16·d
  *
  * Folder and project rows share one shape (`SIDEBAR_ROW_SHAPE`,
- * `SIDEBAR_PROJECT_ROW_PADDING`). They reach depth d through the tree
- * wrapper: one `SIDEBAR_INDENT_STEP_PX` per nested level (ProjectTree), inside the
+ * `SIDEBAR_PROJECT_ROW_PADDING`). Inside a folder they sit in the folder's
+ * guide-lined list, like workspaces in a project, and take the nested shape
+ * (`SIDEBAR_NESTED_ROW_SHAPE`, `SIDEBAR_WORKTREE_ROW_PADDING`), inside the
  * section's one-step indent (`SIDEBAR_SECTION_ITEMS_INDENT_PX`). Workspaces and
  * sessions sit in lists with a guide line under the parent's glyph, so their
  * offsets below are measured from that line. Change one value, check them all.
@@ -43,8 +44,13 @@ export const SIDEBAR_NESTED_ROW_SHAPE =
 export const SIDEBAR_PROJECT_ROW_PADDING = 'pl-2 pr-1'
 
 /** The workspace list of a project: guide line under the project avatar
- * (16 + 7), content from 23. */
+ * (16 + 7), content from 23. A top-level folder's child list uses it too. */
 export const SIDEBAR_WORKTREE_LIST = 'ml-[22px] border-l border-border/40'
+
+/** The child list of a row that sits in a folder's list (nested folder or
+ * project). Its glyph is at 23 + 9 = 32, so the guide line moves with it:
+ * 23 + 15 = 38, the same 6 right of the glyph as 22 is right of 16. */
+export const SIDEBAR_NESTED_CHILD_LIST = 'ml-[15px] border-l border-border/40'
 
 /** A workspace row in that list: 23 + 4 (pill inset) + 5 = glyph at 32. */
 export const SIDEBAR_WORKTREE_ROW_PADDING = 'pl-[5px] pr-1'
