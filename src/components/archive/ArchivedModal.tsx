@@ -55,10 +55,40 @@ import { useChatStore } from '@/store/chat-store'
 import { navigateToRestoredItem } from '@/lib/restore-navigation'
 import type { Worktree, Project } from '@/types/projects'
 import type { ArchivedSessionEntry } from '@/types/chat'
+import {
+  ToolbarContent,
+  useHasWindowToolbar,
+} from '@/components/toolbar/toolbar-slots'
+import { ToolbarPaletteSearch } from '@/components/toolbar/ToolbarSearchField'
 
 interface ArchivedModalProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+}
+
+/** The Archived view in the main area, opened from the sidebar's Archived row. */
+export function ArchivedView() {
+  // Like Home: the window toolbar names the view.
+  const hasToolbar = useHasWindowToolbar()
+  return (
+    <>
+      {hasToolbar && (
+        <ToolbarContent
+          title="Archived"
+          subtitle="Worktrees and sessions you archived."
+          search={<ToolbarPaletteSearch />}
+        />
+      )}
+      <ArchivedItems variant="page" open onOpenChange={() => undefined} />
+    </>
+  )
+}
+
+/** The Archived dialog. The phone layout uses it; it has no main area. */
+export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
+  return (
+    <ArchivedItems variant="dialog" open={open} onOpenChange={onOpenChange} />
+  )
 }
 
 /** Format a Unix timestamp to a human-readable date */
@@ -98,7 +128,11 @@ interface CleanupResult {
   deleted_orphan_indexes?: number
 }
 
-export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
+function ArchivedItems({
+  variant,
+  open,
+  onOpenChange,
+}: ArchivedModalProps & { variant: 'dialog' | 'page' }) {
   const queryClient = useQueryClient()
   const { data: preferences } = usePreferences()
   const isDelete = (preferences?.removal_behavior ?? 'archive') === 'delete'
@@ -472,235 +506,256 @@ export function ArchivedModal({ open, onOpenChange }: ArchivedModalProps) {
   const sessionsCount = archivedSessions?.length ?? 0
   const isEmpty = worktreesCount === 0 && sessionsCount === 0 && !isLoading
 
-  return (
+  const title = (
     <>
-      <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[90vw] sm:!max-w-[90vw] sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg flex flex-col overflow-hidden">
-          <DialogHeader className="shrink-0">
-            <DialogTitle className="flex items-center gap-2">
-              <Archive className="h-4 w-4" />
-              Archived Items
-              {!isEmpty && (
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={() => setDeleteConfirm({ type: 'all' })}
-                  disabled={isDeletingAll}
-                >
-                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
-                  Delete All
-                </Button>
-              )}
-            </DialogTitle>
-          </DialogHeader>
+      <Archive className="h-4 w-4" />
+      Archived Items
+      {!isEmpty && (
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => setDeleteConfirm({ type: 'all' })}
+          disabled={isDeletingAll}
+        >
+          <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+          Delete All
+        </Button>
+      )}
+    </>
+  )
 
-          {/* Search Input */}
-          <div className="relative shrink-0">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search archived items..."
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              className="pl-8"
-            />
-          </div>
+  const content = (
+    <>
+      {/* Search Input */}
+      <div className="relative shrink-0">
+        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search archived items..."
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          className="pl-8"
+        />
+      </div>
 
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-            </div>
-          ) : isEmpty ? (
-            <div className="text-center py-8 text-muted-foreground">
-              No archived items.
-              <br />
-              {isDelete ? (
-                <span className="text-sm">
-                  Removal behavior is set to delete — closed items are
-                  permanently removed.{' '}
-                  <button
-                    type="button"
-                    className="underline hover:text-foreground transition-colors"
-                    onClick={() => {
-                      onOpenChange(false)
-                      useUIStore.getState().openPreferencesPane('general')
-                    }}
-                  >
-                    Change in Settings
-                  </button>
-                </span>
-              ) : (
-                <span className="text-sm">
-                  Archive worktrees and sessions to keep them for later without
-                  cluttering your workspace.
-                </span>
-              )}
-            </div>
-          ) : searchQuery ? (
-            // Consolidated search results view
-            <ScrollArea className="flex-1 min-h-0">
-              {filteredWorktreesCount === 0 && filteredSessionsCount === 0 ? (
-                <div className="text-center py-6 text-muted-foreground text-sm">
-                  No results found for &ldquo;{searchQuery}&rdquo;
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {sortedSearchResults.map(result =>
-                    result.type === 'worktree' ? (
-                      <SearchResultItem
-                        key={`worktree-${result.worktree.id}`}
-                        type="worktree"
-                        name={result.worktree.name}
-                        subtitle={
-                          <>
-                            <span className="font-mono text-xs">
-                              {result.worktree.branch}
-                            </span>
-                            <span className="text-border mx-1">•</span>
-                            <span>{result.projectName}</span>
-                          </>
-                        }
-                        archivedAt={result.worktree.archived_at}
-                        isCurrentContext={result.isCurrentContext}
-                        onRestore={() => handleRestoreWorktree(result.worktree)}
-                        onDelete={() =>
-                          handleDeleteWorktreeForever(result.worktree)
-                        }
-                        isRestoring={
-                          unarchiveWorktree.isPending &&
-                          unarchiveWorktree.variables === result.worktree.id
-                        }
-                        disabled={unarchiveWorktree.isPending}
-                      />
-                    ) : (
-                      <SearchResultItem
-                        key={`session-${result.entry.session.id}`}
-                        type="session"
-                        name={result.entry.session.name}
-                        subtitle={
-                          <>
-                            <span>
-                              {result.entry.session.message_count ??
-                                result.entry.session.messages.length}{' '}
-                              messages
-                            </span>
-                            <span className="text-border mx-1">•</span>
-                            <span>
-                              {result.entry.project_name} /{' '}
-                              {result.entry.worktree_name}
-                            </span>
-                          </>
-                        }
-                        archivedAt={result.entry.session.archived_at}
-                        isCurrentContext={result.isCurrentContext}
-                        onRestore={() => handleRestoreSession(result.entry)}
-                        onDelete={() =>
-                          handleDeleteSessionForever(result.entry)
-                        }
-                        isRestoring={
-                          unarchiveSession.isPending &&
-                          unarchiveSession.variables?.sessionId ===
-                            result.entry.session.id
-                        }
-                        disabled={unarchiveSession.isPending}
-                      />
-                    )
-                  )}
-                </div>
-              )}
-            </ScrollArea>
+      {isLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        </div>
+      ) : isEmpty ? (
+        <div className="text-center py-8 text-muted-foreground">
+          No archived items.
+          <br />
+          {isDelete ? (
+            <span className="text-sm">
+              Removal behavior is set to delete — closed items are permanently
+              removed.{' '}
+              <button
+                type="button"
+                className="underline hover:text-foreground transition-colors"
+                onClick={() => {
+                  onOpenChange(false)
+                  useUIStore.getState().openPreferencesPane('general')
+                }}
+              >
+                Change in Settings
+              </button>
+            </span>
           ) : (
-            // Tab-based view when not searching
-            <div className="flex flex-col flex-1 min-h-0 gap-4">
-              <div className="flex gap-1 p-1 bg-muted rounded-lg shrink-0">
-                <Button
-                  variant={activeTab === 'worktrees' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  onClick={() => setActiveTab('worktrees')}
-                  className="flex-1 flex items-center justify-center gap-1.5"
-                >
-                  <GitBranch className="h-3.5 w-3.5" />
-                  Worktrees
-                  {worktreesCount > 0 && (
-                    <span className="ml-1 text-xs bg-background px-1.5 py-0.5 rounded-full">
-                      {worktreesCount}
-                    </span>
-                  )}
-                </Button>
-                <Button
-                  variant={activeTab === 'sessions' ? 'secondary' : 'ghost'}
-                  size="sm"
-                  onClick={() => setActiveTab('sessions')}
-                  className="flex-1 flex items-center justify-center gap-1.5"
-                >
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  Sessions
-                  {sessionsCount > 0 && (
-                    <span className="ml-1 text-xs bg-background px-1.5 py-0.5 rounded-full">
-                      {sessionsCount}
-                    </span>
-                  )}
-                </Button>
-              </div>
-
-              {activeTab === 'worktrees' && (
-                <ScrollArea className="flex-1 min-h-0">
-                  {groupedWorktrees.length === 0 ? (
-                    <div className="text-center py-6 text-muted-foreground text-sm">
-                      No archived worktrees
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {groupedWorktrees.map(group => (
-                        <WorktreeProjectGroup
-                          key={group.project.id}
-                          group={group}
-                          isCurrentProject={group.isCurrentProject}
-                          onRestore={handleRestoreWorktree}
-                          onDeleteForever={handleDeleteWorktreeForever}
-                          isRestoring={unarchiveWorktree.isPending}
-                          restoringId={
-                            unarchiveWorktree.isPending
-                              ? unarchiveWorktree.variables
-                              : null
-                          }
-                        />
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
-              )}
-
-              {activeTab === 'sessions' && (
-                <ScrollArea className="flex-1 min-h-0">
-                  {groupedSessions.length === 0 ? (
-                    <div className="text-center py-6 text-muted-foreground text-sm">
-                      No archived sessions
-                    </div>
-                  ) : (
-                    <div className="space-y-4">
-                      {groupedSessions.map(group => (
-                        <SessionWorktreeGroup
-                          key={group.worktree_id}
-                          group={group}
-                          isCurrentWorktree={group.isCurrentWorktree}
-                          onRestore={handleRestoreSession}
-                          onDeleteForever={handleDeleteSessionForever}
-                          isRestoring={unarchiveSession.isPending}
-                          restoringId={
-                            unarchiveSession.isPending
-                              ? (unarchiveSession.variables?.sessionId ?? null)
-                              : null
-                          }
-                        />
-                      ))}
-                    </div>
-                  )}
-                </ScrollArea>
+            <span className="text-sm">
+              Archive worktrees and sessions to keep them for later without
+              cluttering your workspace.
+            </span>
+          )}
+        </div>
+      ) : searchQuery ? (
+        // Consolidated search results view
+        <ScrollArea className="flex-1 min-h-0">
+          {filteredWorktreesCount === 0 && filteredSessionsCount === 0 ? (
+            <div className="text-center py-6 text-muted-foreground text-sm">
+              No results found for &ldquo;{searchQuery}&rdquo;
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+              {sortedSearchResults.map(result =>
+                result.type === 'worktree' ? (
+                  <SearchResultItem
+                    key={`worktree-${result.worktree.id}`}
+                    type="worktree"
+                    name={result.worktree.name}
+                    subtitle={
+                      <>
+                        <span className="font-mono text-xs">
+                          {result.worktree.branch}
+                        </span>
+                        <span className="text-border mx-1">•</span>
+                        <span>{result.projectName}</span>
+                      </>
+                    }
+                    archivedAt={result.worktree.archived_at}
+                    isCurrentContext={result.isCurrentContext}
+                    onRestore={() => handleRestoreWorktree(result.worktree)}
+                    onDelete={() =>
+                      handleDeleteWorktreeForever(result.worktree)
+                    }
+                    isRestoring={
+                      unarchiveWorktree.isPending &&
+                      unarchiveWorktree.variables === result.worktree.id
+                    }
+                    disabled={unarchiveWorktree.isPending}
+                  />
+                ) : (
+                  <SearchResultItem
+                    key={`session-${result.entry.session.id}`}
+                    type="session"
+                    name={result.entry.session.name}
+                    subtitle={
+                      <>
+                        <span>
+                          {result.entry.session.message_count ??
+                            result.entry.session.messages.length}{' '}
+                          messages
+                        </span>
+                        <span className="text-border mx-1">•</span>
+                        <span>
+                          {result.entry.project_name} /{' '}
+                          {result.entry.worktree_name}
+                        </span>
+                      </>
+                    }
+                    archivedAt={result.entry.session.archived_at}
+                    isCurrentContext={result.isCurrentContext}
+                    onRestore={() => handleRestoreSession(result.entry)}
+                    onDelete={() => handleDeleteSessionForever(result.entry)}
+                    isRestoring={
+                      unarchiveSession.isPending &&
+                      unarchiveSession.variables?.sessionId ===
+                        result.entry.session.id
+                    }
+                    disabled={unarchiveSession.isPending}
+                  />
+                )
               )}
             </div>
           )}
-        </DialogContent>
-      </Dialog>
+        </ScrollArea>
+      ) : (
+        // Tab-based view when not searching
+        <div className="flex flex-col flex-1 min-h-0 gap-4">
+          <div className="flex gap-1 p-1 bg-muted rounded-lg shrink-0">
+            <Button
+              variant={activeTab === 'worktrees' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setActiveTab('worktrees')}
+              className="flex-1 flex items-center justify-center gap-1.5"
+            >
+              <GitBranch className="h-3.5 w-3.5" />
+              Worktrees
+              {worktreesCount > 0 && (
+                <span className="ml-1 text-xs bg-background px-1.5 py-0.5 rounded-full">
+                  {worktreesCount}
+                </span>
+              )}
+            </Button>
+            <Button
+              variant={activeTab === 'sessions' ? 'secondary' : 'ghost'}
+              size="sm"
+              onClick={() => setActiveTab('sessions')}
+              className="flex-1 flex items-center justify-center gap-1.5"
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+              Sessions
+              {sessionsCount > 0 && (
+                <span className="ml-1 text-xs bg-background px-1.5 py-0.5 rounded-full">
+                  {sessionsCount}
+                </span>
+              )}
+            </Button>
+          </div>
+
+          {activeTab === 'worktrees' && (
+            <ScrollArea className="flex-1 min-h-0">
+              {groupedWorktrees.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  No archived worktrees
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {groupedWorktrees.map(group => (
+                    <WorktreeProjectGroup
+                      key={group.project.id}
+                      group={group}
+                      isCurrentProject={group.isCurrentProject}
+                      onRestore={handleRestoreWorktree}
+                      onDeleteForever={handleDeleteWorktreeForever}
+                      isRestoring={unarchiveWorktree.isPending}
+                      restoringId={
+                        unarchiveWorktree.isPending
+                          ? unarchiveWorktree.variables
+                          : null
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          )}
+
+          {activeTab === 'sessions' && (
+            <ScrollArea className="flex-1 min-h-0">
+              {groupedSessions.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground text-sm">
+                  No archived sessions
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {groupedSessions.map(group => (
+                    <SessionWorktreeGroup
+                      key={group.worktree_id}
+                      group={group}
+                      isCurrentWorktree={group.isCurrentWorktree}
+                      onRestore={handleRestoreSession}
+                      onDeleteForever={handleDeleteSessionForever}
+                      isRestoring={unarchiveSession.isPending}
+                      restoringId={
+                        unarchiveSession.isPending
+                          ? (unarchiveSession.variables?.sessionId ?? null)
+                          : null
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          )}
+        </div>
+      )}
+    </>
+  )
+
+  return (
+    <>
+      {variant === 'page' ? (
+        <div
+          data-testid="archived-view"
+          className="flex h-full min-h-0 flex-col gap-4 overflow-hidden p-6 font-sans"
+        >
+          <h1 className="flex items-center gap-2 text-lg font-semibold">
+            {title}
+          </h1>
+          {content}
+        </div>
+      ) : (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+          <DialogContent className="!w-screen !h-dvh !max-w-screen !max-h-none !rounded-none sm:!w-[90vw] sm:!max-w-[90vw] sm:!h-[85vh] sm:!max-h-[85vh] sm:!rounded-lg flex flex-col overflow-hidden">
+            <DialogHeader className="shrink-0">
+              <DialogTitle className="flex items-center gap-2">
+                {title}
+              </DialogTitle>
+            </DialogHeader>
+            {content}
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog

@@ -154,3 +154,83 @@ describe('ProjectTree drag handle', () => {
     expect(handles).not.toContain(undefined)
   })
 })
+
+describe('ProjectTree sections', () => {
+  beforeEach(() => {
+    useProjectsStore.setState({
+      expandedProjectIds: new Set(),
+      expandedFolderIds: new Set(),
+      foldersSectionCollapsed: false,
+      projectsSectionCollapsed: false,
+    })
+  })
+
+  it('renders the Folders section above the Projects section', () => {
+    render(<ProjectTree projects={projects} />)
+
+    const folders = screen.getByTestId('sidebar-folders-toggle')
+    const projectsToggle = screen.getByTestId('sidebar-projects-toggle')
+    expect(
+      folders.compareDocumentPosition(projectsToggle) &
+        Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    expect(folders).toHaveAttribute('aria-expanded', 'true')
+    expect(projectsToggle).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('collapses Folders and shows the folder count', async () => {
+    const user = userEvent.setup()
+    render(<ProjectTree projects={projects} />)
+
+    await user.click(screen.getByTestId('sidebar-folders-toggle'))
+
+    expect(useProjectsStore.getState().foldersSectionCollapsed).toBe(true)
+    expect(screen.queryByTestId('folder-folder-1')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('1 folder')).toBeInTheDocument()
+    // The other section stays open.
+    expect(screen.getByTestId('project-project-1')).toBeInTheDocument()
+  })
+
+  it('collapses Projects and shows the project count', async () => {
+    const user = userEvent.setup()
+    render(<ProjectTree projects={projects} />)
+
+    await user.click(screen.getByTestId('sidebar-projects-toggle'))
+
+    expect(useProjectsStore.getState().projectsSectionCollapsed).toBe(true)
+    expect(screen.queryByTestId('project-project-1')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('1 project')).toBeInTheDocument()
+  })
+
+  it('keeps both headers and their New buttons when the tree is empty', async () => {
+    const user = userEvent.setup()
+    const onNewFolder = vi.fn()
+    const onNewProject = vi.fn()
+    render(
+      <ProjectTree
+        projects={[]}
+        onNewFolder={onNewFolder}
+        onNewProject={onNewProject}
+      />
+    )
+
+    await user.click(screen.getByRole('button', { name: 'New folder' }))
+    await user.click(screen.getByRole('button', { name: 'New project' }))
+
+    expect(onNewFolder).toHaveBeenCalledOnce()
+    expect(onNewProject).toHaveBeenCalledOnce()
+  })
+
+  it('disables New project while setup is incomplete', () => {
+    render(
+      <ProjectTree
+        projects={projects}
+        onNewFolder={vi.fn()}
+        onNewProject={vi.fn()}
+        newProjectDisabled
+      />
+    )
+
+    expect(screen.getByRole('button', { name: 'New project' })).toBeDisabled()
+  })
+})

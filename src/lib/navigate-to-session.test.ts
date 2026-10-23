@@ -78,6 +78,42 @@ describe('navigateToSession sidebar follow', () => {
     )
   })
 
+  it('opens a collapsed Folders section that holds the target', () => {
+    useProjectsStore.setState({
+      foldersSectionCollapsed: true,
+      projectsSectionCollapsed: true,
+    })
+
+    navigateToSession({
+      projectId: 'project-1',
+      worktreeId: 'wt-1',
+      sessionId: 'session-1',
+    })
+
+    const state = useProjectsStore.getState()
+    expect(state.foldersSectionCollapsed).toBe(false)
+    // The other section is none of the reveal's business.
+    expect(state.projectsSectionCollapsed).toBe(true)
+  })
+
+  it('opens a collapsed Projects section for a root project', () => {
+    queryClient.setQueryData(projectsQueryKeys.list(), [project('project-1')])
+    useProjectsStore.setState({
+      foldersSectionCollapsed: true,
+      projectsSectionCollapsed: true,
+    })
+
+    navigateToSession({
+      projectId: 'project-1',
+      worktreeId: 'wt-1',
+      sessionId: 'session-1',
+    })
+
+    const state = useProjectsStore.getState()
+    expect(state.projectsSectionCollapsed).toBe(false)
+    expect(state.foldersSectionCollapsed).toBe(true)
+  })
+
   it('queues the session row for a single reveal', () => {
     navigateToSession({
       projectId: 'project-1',

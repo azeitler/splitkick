@@ -189,6 +189,7 @@ import { useWindowMaximized } from '@/hooks/use-window-maximized'
 import { useTerminalThemeSync } from '@/hooks/useTerminalThemeSync'
 import { useUIStore } from '@/store/ui-store'
 import { useIsHomeActive } from '@/components/home/useIsHomeActive'
+import { openArchivedView } from '@/lib/archived-view'
 import { useProjectsStore } from '@/store/projects-store'
 import { useDockSync } from '@/hooks/useDockSync'
 import { useMainWindowEventListeners } from '@/hooks/useMainWindowEventListeners'
@@ -398,14 +399,19 @@ export function MainWindow() {
   // Handle restore-last-archived keybinding
   useRestoreLastArchived()
 
-  // Archive modal state (triggered by command palette or sidebar button)
+  // Archived items (command palette, dock, sidebar row): the Archived view in
+  // the main area on desktop, a dialog on phones, which have no main area
+  // beside the sidebar.
   const [archivedModalOpen, setArchivedModalOpen] = useState(false)
   useEffect(() => {
-    const handler = () => setArchivedModalOpen(true)
+    const handler = () => {
+      if (isMobile) setArchivedModalOpen(true)
+      else openArchivedView()
+    }
     window.addEventListener('command:open-archived-modal', handler)
     return () =>
       window.removeEventListener('command:open-archived-modal', handler)
-  }, [])
+  }, [isMobile])
 
   // Auto-cleanup old archived items on startup
   useArchiveCleanup()

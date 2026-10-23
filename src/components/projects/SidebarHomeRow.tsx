@@ -10,11 +10,12 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { SIDEBAR_ROW_SELECTED, SIDEBAR_ROW_SHAPE } from './sidebar-row-styles'
 
 /**
- * The Home row, at the top of the sidebar above the Projects / Recent tabs.
+ * The Home row, at the top of the sidebar's Projects tab.
  *
  * Home is the state where no project and no worktree is selected, so the row
- * only has to clear both. That keeps the view in step with the existing
- * `active_project_id` persistence, without a second source of truth.
+ * only has to clear both (and close the Archived view, which shares that
+ * state). That keeps the view in step with the existing `active_project_id`
+ * persistence, without a second source of truth.
  *
  * Geometry: the 14px glyph sits on the 12px inset shared by the section
  * headers and the folder glyphs directly beneath it, and the 4px gap puts the
@@ -24,11 +25,13 @@ export function SidebarHomeRow() {
   const sidebarWidth = useSidebarWidth()
   const isMobile = useIsMobile()
   const isNarrow = sidebarWidth < 180
-  const isActive = useIsHomeActive()
+  const archivedOpen = useUIStore(state => state.archivedViewOpen)
+  const isActive = useIsHomeActive() && !archivedOpen
 
   const handleClick = useCallback(() => {
     useProjectsStore.getState().selectProject(null)
     useChatStore.getState().clearActiveWorktree()
+    useUIStore.getState().setArchivedViewOpen(false)
     if (isMobile) {
       useUIStore.getState().setLeftSidebarVisible(false)
     }

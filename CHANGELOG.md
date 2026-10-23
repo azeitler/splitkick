@@ -17,6 +17,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   “Session “Fix the relaunch helper” finished”, with the project and worktree
   below, instead of a generic “Session finished”. Long names are shortened.
   The same goes for failed sessions and sessions that need your input. (#54)
+- **A new sidebar layout.** The Projects | Recent switch is now at the top.
+  The Projects tab shows Home and Starred (both stay in place), then Folders
+  and Projects, then Archived. Folders and Projects work like Starred: click
+  the header to fold the section, and the app remembers it. Each header has
+  its own "+ New" button. Archived opens the archived items in the main area,
+  like Home. The "+ New" and "Archived" buttons at the bottom are gone. (#55)
 
 ## [1.0.13] - 2026-10-23
 
