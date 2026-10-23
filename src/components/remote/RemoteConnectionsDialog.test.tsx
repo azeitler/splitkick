@@ -113,6 +113,22 @@ describe('RemoteConnectionsDialog', () => {
     expect(labels.length).toBeGreaterThan(0)
   })
 
+  // The rows gave no feedback at all: no hover, no press, no focus ring.
+  it('gives a connection row hover, press and focus feedback', () => {
+    render(<RemoteConnectionsDialog reloadApp={vi.fn()} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Server connections' }))
+
+    const select = screen.getByRole('button', { name: /^Local/ })
+    const row = select.closest('[data-connection-row]')
+    expect(row).not.toBeNull()
+    expect(row?.className).toMatch(/has-\[\[data-row-select\]:hover\]:/)
+    expect(row?.className).toMatch(/has-\[\[data-row-select\]:active\]:/)
+    // Local is the connection this window drives.
+    expect(row?.getAttribute('data-active')).toBe('true')
+    expect(select.className).toMatch(/focus-visible:/)
+    expect(select.className).toContain('cursor-pointer')
+  })
+
   it('adds and selects a remote from a complete Web Access URL', async () => {
     const reloadApp = vi.fn()
     render(<RemoteConnectionsDialog reloadApp={reloadApp} />)

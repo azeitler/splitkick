@@ -905,6 +905,10 @@ function AddModeTabs({
   )
 }
 
+/** A button that selects its connection row; the row shows the feedback. */
+const ROW_SELECT_BUTTON =
+  'flex cursor-pointer items-center text-left outline-none focus-visible:outline-none disabled:cursor-default disabled:opacity-60'
+
 function ConnectionRow({
   name,
   detail,
@@ -929,11 +933,24 @@ function ConnectionRow({
   const hasActions = Boolean(onEdit || onDelete)
 
   return (
-    <div className="rounded-md border p-2">
+    // The whole row reacts to its two select buttons (name, address). Edit and
+    // Delete keep their own hover, so they do not light up the row.
+    <div
+      data-connection-row=""
+      data-active={active}
+      className={cn(
+        'rounded-md border p-2 transition-colors',
+        'has-[[data-row-select]:hover]:bg-foreground/5',
+        'has-[[data-row-select]:active]:bg-foreground/10',
+        'has-[[data-row-select]:focus-visible]:ring-2 has-[[data-row-select]:focus-visible]:ring-ring/50',
+        active && 'border-foreground/20 bg-foreground/[0.04]'
+      )}
+    >
       {/* Top row: name + version always share full width so versions align */}
       <button
         type="button"
-        className="flex w-full items-center gap-2 text-left text-sm font-medium disabled:opacity-60"
+        data-row-select=""
+        className={cn(ROW_SELECT_BUTTON, 'w-full gap-2 text-sm font-medium')}
         onClick={onSelect}
         disabled={connecting}
       >
@@ -963,7 +980,11 @@ function ConnectionRow({
       <div className="ml-4 flex items-center gap-1">
         <button
           type="button"
-          className="min-w-0 flex-1 truncate text-left text-xs text-muted-foreground disabled:opacity-60"
+          data-row-select=""
+          className={cn(
+            ROW_SELECT_BUTTON,
+            'block min-w-0 flex-1 truncate text-xs text-muted-foreground'
+          )}
           onClick={onSelect}
           disabled={connecting}
         >
