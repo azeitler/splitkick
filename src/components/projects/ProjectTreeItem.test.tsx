@@ -51,8 +51,18 @@ vi.mock('@/components/shared/SecurityAlertsBadge', () => ({
 }))
 
 vi.mock('./WorktreeList', () => ({
-  WorktreeList: ({ sessionFilterQuery }: { sessionFilterQuery?: string }) => (
-    <div data-testid="worktree-list" data-filter={sessionFilterQuery ?? ''} />
+  WorktreeList: ({
+    sessionFilterQuery,
+    nested,
+  }: {
+    sessionFilterQuery?: string
+    nested?: boolean
+  }) => (
+    <div
+      data-testid="worktree-list"
+      data-filter={sessionFilterQuery ?? ''}
+      data-nested={String(Boolean(nested))}
+    />
   ),
 }))
 
@@ -260,5 +270,31 @@ describe('ProjectTreeItem', () => {
       projectId: 'project-1',
       name: 'jean-app',
     })
+  })
+
+  it('uses the nested row geometry inside a folder', () => {
+    render(<ProjectTreeItem project={project} nested />)
+
+    const row = screen.getByTestId('project-row-project-1')
+    // Inside a folder's hairline list, like a workspace row in a project.
+    expect(row).toHaveClass('ml-1', 'pl-[5px]')
+    expect(row).not.toHaveClass('mx-2')
+    expect(screen.getByTestId('worktree-list')).toHaveAttribute(
+      'data-nested',
+      'true'
+    )
+  })
+
+  it('keeps the top-level geometry outside a folder', () => {
+    render(<ProjectTreeItem project={project} />)
+
+    expect(screen.getByTestId('project-row-project-1')).toHaveClass(
+      'mx-2',
+      'pl-2'
+    )
+    expect(screen.getByTestId('worktree-list')).toHaveAttribute(
+      'data-nested',
+      'false'
+    )
   })
 })

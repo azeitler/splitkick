@@ -24,10 +24,13 @@ const folder: Project = {
   is_folder: true,
 }
 
-function renderRow() {
+function renderRow({
+  nested = false,
+  childCount = 2,
+}: { nested?: boolean; childCount?: number } = {}) {
   render(
-    <FolderTreeItem folder={folder} childCount={2}>
-      <div />
+    <FolderTreeItem folder={folder} childCount={childCount} nested={nested}>
+      <div data-testid="folder-child" />
     </FolderTreeItem>
   )
   return screen.getByTestId('folder-row-folder-1')
@@ -77,5 +80,39 @@ describe('FolderTreeItem row style', () => {
       .getByRole('button', { name: 'Expand folder' })
       .querySelector('svg')
     expect(icon).toHaveClass('size-4')
+  })
+})
+
+describe('FolderTreeItem children', () => {
+  beforeEach(() => {
+    useProjectsStore.setState({
+      expandedFolderIds: new Set(['folder-1']),
+      editingFolderId: null,
+    })
+  })
+
+  it('draws the same hairline under its glyph as a project does', () => {
+    renderRow()
+
+    const list = screen.getByTestId('folder-child').parentElement
+    // SIDEBAR_WORKTREE_LIST, the list under a top-level project avatar.
+    expect(list).toHaveClass('ml-[22px]', 'border-l', 'border-border/40')
+  })
+
+  it('moves the hairline with the glyph when the folder is nested', () => {
+    const row = renderRow({ nested: true })
+
+    expect(row).toHaveClass('ml-1', 'pl-[5px]')
+    expect(row).not.toHaveClass('mx-2')
+    const list = screen.getByTestId('folder-child').parentElement
+    expect(list).toHaveClass('ml-[15px]', 'border-l')
+  })
+
+  it('draws no hairline for an empty folder', () => {
+    renderRow({ childCount: 0 })
+
+    expect(screen.getByTestId('folder-child').parentElement).not.toHaveClass(
+      'border-l'
+    )
   })
 })

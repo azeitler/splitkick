@@ -24,8 +24,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   its own "+ New" button. The section icons line up with Home, and the rows
   of each section sit one step in, like starred sessions. The Folders header
   has its own icon, so it does not look like a folder. Folder rows now look
-  like project rows: the same font, icon size, spacing and hover. A folder
-  inside a folder is now indented one step, not two. Archived opens the archived items in the main area,
+  like project rows: the same font, icon size, spacing and hover. An open
+  folder draws the same thin guide line under its icon that a project draws
+  for its workspaces. A folder inside a folder is now indented one step, not
+  two. Archived opens the archived items in the main area,
   like Home. The "+ New" and "Archived" buttons at the bottom are gone. (#55)
 
 ## [1.0.13] - 2026-10-23

@@ -35,12 +35,18 @@ vi.mock('./ProjectTreeItem', () => ({
   ProjectTreeItem: ({
     project,
     dragHandleRef,
+    nested,
   }: {
     project: Project
     dragHandleRef?: React.Ref<HTMLDivElement>
+    nested?: boolean
   }) => (
     <div>
-      <div ref={dragHandleRef} data-testid={`project-${project.id}`}>
+      <div
+        ref={dragHandleRef}
+        data-testid={`project-${project.id}`}
+        data-nested={String(Boolean(nested))}
+      >
         {project.name}
       </div>
       <div data-testid={`project-body-${project.id}`} />
@@ -53,13 +59,19 @@ vi.mock('./FolderTreeItem', () => ({
     folder,
     dragHandleRef,
     children,
+    nested,
   }: {
     folder: Project
     dragHandleRef?: React.Ref<HTMLDivElement>
     children?: React.ReactNode
+    nested?: boolean
   }) => (
     <div>
-      <div ref={dragHandleRef} data-testid={`folder-${folder.id}`}>
+      <div
+        ref={dragHandleRef}
+        data-testid={`folder-${folder.id}`}
+        data-nested={String(Boolean(nested))}
+      >
         {folder.name}
       </div>
       {children}
@@ -273,7 +285,7 @@ describe('ProjectTree sections', () => {
 })
 
 describe('ProjectTree nesting', () => {
-  it('indents each nested level by one step, not by its depth again', () => {
+  it('marks rows inside a folder as nested and pads no wrapper', () => {
     const outer = { ...folder, id: 'outer' }
     const inner = { ...folder, id: 'inner', parent_id: 'outer' }
     const leaf = { ...project, id: 'leaf', parent_id: 'inner' }
@@ -283,12 +295,25 @@ describe('ProjectTree nesting', () => {
     })
     render(<ProjectTree projects={[outer, inner, leaf]} />)
 
-    const wrapper = (id: string) =>
-      screen.getByTestId(id).closest('[data-pdnd-tree-id]') as HTMLElement
-
-    // Wrappers nest, so a step per level adds up to the depth on its own.
-    expect(wrapper('folder-outer').style.paddingLeft).toBe('')
-    expect(wrapper('folder-inner').style.paddingLeft).toBe('16px')
-    expect(wrapper('project-leaf').style.paddingLeft).toBe('16px')
+    // The folder's hairline list indents its rows; a wrapper padding on top
+    // would indent them twice.
+    for (const id of ['folder-outer', 'folder-inner', 'project-leaf']) {
+      const wrapper = screen
+        .getByTestId(id)
+        .closest('[data-pdnd-tree-id]') as HTMLElement
+      expect(wrapper.style.paddingLeft).toBe('')
+    }
+    expect(screen.getByTestId('folder-outer')).toHaveAttribute(
+      'data-nested',
+      'false'
+    )
+    expect(screen.getByTestId('folder-inner')).toHaveAttribute(
+      'data-nested',
+      'true'
+    )
+    expect(screen.getByTestId('project-leaf')).toHaveAttribute(
+      'data-nested',
+      'true'
+    )
   })
 })

@@ -45,7 +45,6 @@ import { reorderWithClosestEdge } from '@/lib/drag-and-drop/reorder'
 import { announceDrag } from '@/lib/drag-and-drop/live-region'
 import { DropIndicator } from '@/components/drag-and-drop/DropIndicator'
 import {
-  SIDEBAR_INDENT_STEP_PX,
   SIDEBAR_SECTION_HEADER_PADDING,
   SIDEBAR_SECTION_ITEMS_INDENT_PX,
 } from './sidebar-row-styles'
@@ -220,10 +219,12 @@ function SortableItem({
 
   const style: React.CSSProperties = {
     opacity: activeId === item.id ? 0.35 : 1,
-    // Nested rows render inside their parent's wrapper, so one step per
-    // level adds up to the depth on its own.
-    paddingLeft: depth > 0 ? `${SIDEBAR_INDENT_STEP_PX}px` : undefined,
   }
+
+  // Inside a folder, the row sits in the folder's guide-lined list.
+  const nested = depth > 0
+  // The drop line spans the row's pill.
+  const dropInset = nested ? 'left-1 right-2' : 'left-2 right-2'
 
   const closestEdge =
     insertBeforeId === item.id
@@ -245,9 +246,10 @@ function SortableItem({
           activeId === item.id && 'cursor-grabbing'
         )}
       >
-        <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />
+        <DropIndicator edge={closestEdge} insetClassName={dropInset} />
         <FolderTreeItem
           folder={item}
+          nested={nested}
           childCount={allProjects.filter(p => p.parent_id === item.id).length}
           isDropTarget={isOverFolder}
           dragHandleRef={dragHandleRef}
@@ -278,8 +280,12 @@ function SortableItem({
         activeId === item.id && 'cursor-grabbing'
       )}
     >
-      <DropIndicator edge={closestEdge} insetClassName="left-2 right-2" />
-      <ProjectTreeItem project={item} dragHandleRef={dragHandleRef} />
+      <DropIndicator edge={closestEdge} insetClassName={dropInset} />
+      <ProjectTreeItem
+        project={item}
+        dragHandleRef={dragHandleRef}
+        nested={nested}
+      />
     </div>
   )
 }
