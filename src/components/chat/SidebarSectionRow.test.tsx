@@ -39,6 +39,9 @@ describe('SidebarSectionRow', () => {
     const toggle = screen.getByTestId('section-toggle')
     const action = screen.getByRole('button', { name: 'New' })
     expect(toggle).not.toContainElement(action)
+    // The Home row's gap, so the label lines up with the Home label.
+    expect(toggle).toHaveClass('gap-1')
+    expect(toggle).not.toHaveClass('gap-1.5')
 
     await userEvent.click(action)
     expect(onAction).toHaveBeenCalledOnce()

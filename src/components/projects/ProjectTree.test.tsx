@@ -178,6 +178,38 @@ describe('ProjectTree sections', () => {
     expect(projectsToggle).toHaveAttribute('aria-expanded', 'true')
   })
 
+  it('gives the Folders header its own icon, not the folder-row icon', () => {
+    render(<ProjectTree projects={projects} />)
+
+    const icon = screen
+      .getByTestId('sidebar-folders-toggle')
+      .querySelector('svg')
+    expect(icon).toHaveClass('lucide-folders')
+    expect(icon).not.toHaveClass('lucide-folder')
+  })
+
+  it('indents the rows of both sections one step in from their header', () => {
+    render(<ProjectTree projects={projects} />)
+
+    const folders = screen.getByTestId('sidebar-folders-items')
+    const projectRows = screen.getByTestId('sidebar-projects-items')
+    expect(folders).toHaveStyle({ paddingLeft: '16px' })
+    expect(projectRows).toHaveStyle({ paddingLeft: '16px' })
+    expect(folders).toContainElement(screen.getByTestId('folder-folder-1'))
+    expect(projectRows).toContainElement(
+      screen.getByTestId('project-project-1')
+    )
+  })
+
+  it('puts the section header glyphs on the Home row column', () => {
+    render(<ProjectTree projects={projects} />)
+
+    for (const id of ['sidebar-folders-toggle', 'sidebar-projects-toggle']) {
+      // With actions, the padding sits on the wrapper around the toggle.
+      expect(screen.getByTestId(id).parentElement).toHaveClass('pl-4')
+    }
+  })
+
   it('collapses Folders and shows the folder count', async () => {
     const user = userEvent.setup()
     render(<ProjectTree projects={projects} />)
