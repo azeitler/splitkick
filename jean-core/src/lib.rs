@@ -250,6 +250,8 @@ pub struct AppPreferences {
     pub ai_language: String, // Preferred language for AI responses (empty = default)
     #[serde(default = "default_allow_web_tools_in_plan_mode")]
     pub allow_web_tools_in_plan_mode: bool, // Allow WebFetch/WebSearch in plan mode without prompts
+    #[serde(default = "default_schedule_missed_runs")]
+    pub schedule_missed_runs: String, // Schedule due while app was off: catch_up (run once), skip
     #[serde(default = "default_waiting_sound")]
     pub waiting_sound: String, // Sound when session is waiting for input: none, workwork
     #[serde(default = "default_review_sound")]
@@ -862,6 +864,10 @@ fn default_sync_zoom_levels() -> bool {
 
 fn default_allow_web_tools_in_plan_mode() -> bool {
     true // Enabled by default
+}
+
+fn default_schedule_missed_runs() -> String {
+    "catch_up".to_string()
 }
 
 fn default_waiting_sound() -> String {
@@ -2813,6 +2819,7 @@ impl Default for AppPreferences {
             file_edit_mode: default_file_edit_mode(),
             ai_language: String::new(),
             allow_web_tools_in_plan_mode: default_allow_web_tools_in_plan_mode(),
+            schedule_missed_runs: default_schedule_missed_runs(),
             waiting_sound: default_waiting_sound(),
             review_sound: default_review_sound(),
             web_access_sounds_enabled: default_web_access_sounds_enabled(),

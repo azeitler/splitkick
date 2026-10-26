@@ -141,6 +141,14 @@ Built on Jean 0.1.73.
   have more than one. Claude's own wakeup keeps its rule: one per session,
   the newest replaces the older. Wakeups saved by an earlier version move to
   the new list at the next start. (#38)
+- **Repeating schedules.** A schedule can repeat: every hour, daily at a
+  time, on weekdays, weekly, or by a cron pattern. The time is read in the
+  schedule's own time zone, so "daily at 09:00" stays at 09:00 when the
+  clocks change. The banner shows the rule, the next time and the last run.
+  A new setting, Settings → General → Scheduled prompts → Missed runs,
+  decides what happens to a schedule that came due while Splitkick or the
+  computer was off: run it once at the next start (the default), or skip it.
+  A repeating schedule never runs once per missed time. (#38)
 
 ### Fixed
 

@@ -147,7 +147,7 @@ import {
   useModelCatalog,
 } from '@/services/model-catalog'
 import { withAdaptiveEffortOption } from '@/components/chat/toolbar/toolbar-options'
-import type { AppPreferences } from '@/types/preferences'
+import type { AppPreferences, ScheduleMissedRuns } from '@/types/preferences'
 import {
   effortLevelOptions,
   codexReasoningOptions,
@@ -4790,6 +4790,39 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                     <Play className="h-4 w-4" />
                   </Button>
                 </div>
+              </InlineField>
+            </div>
+          </SettingsSection>
+
+          <SettingsSection
+            title="Scheduled prompts"
+            anchorId="pref-general-section-schedules"
+          >
+            <div className="space-y-4">
+              <InlineField
+                label="Missed runs"
+                description={`A schedule that came due while ${PRODUCT_NAME} or the computer was off. A repeating schedule runs at most once, never once per missed time.`}
+              >
+                <Select
+                  value={preferences?.schedule_missed_runs ?? 'catch_up'}
+                  onValueChange={value => {
+                    if (preferences) {
+                      patchPreferences.mutate({
+                        schedule_missed_runs: value as ScheduleMissedRuns,
+                      })
+                    }
+                  }}
+                >
+                  <SelectTrigger className="w-full sm:w-80">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="catch_up">
+                      Run once at the next start
+                    </SelectItem>
+                    <SelectItem value="skip">Skip</SelectItem>
+                  </SelectContent>
+                </Select>
               </InlineField>
             </div>
           </SettingsSection>

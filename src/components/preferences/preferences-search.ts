@@ -532,6 +532,17 @@ const sectionEntries: PreferenceSearchEntry[] = [
     fallbackAnchorId: 'pref-pane-general',
   },
   {
+    id: 'general-schedules',
+    pane: 'general',
+    paneTitle: 'General',
+    type: 'section',
+    title: 'Scheduled prompts',
+    sectionTitle: 'General',
+    keywords: ['schedule', 'missed runs', 'catch up', 'repeat'],
+    anchorId: 'pref-general-section-schedules',
+    fallbackAnchorId: 'pref-pane-general',
+  },
+  {
     id: 'general-auto-generate',
     pane: 'general',
     paneTitle: 'General',

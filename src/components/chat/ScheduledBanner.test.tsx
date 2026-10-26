@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@/test/test-utils'
-import { ScheduledBanner } from './ScheduledBanner'
+import { ScheduledBanner, scheduleHeadline } from './ScheduledBanner'
 import type { Schedule } from '@/types/chat'
 import type * as Environment from '@/lib/environment'
 
@@ -69,5 +69,34 @@ describe('ScheduledBanner', () => {
     const { container } = render(<ScheduledBanner sessionId="s1" />)
     await waitFor(() => expect(invoke).toHaveBeenCalled())
     expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('scheduleHeadline', () => {
+  const now = Date.UTC(2026, 9, 26, 10, 0, 0)
+  const base = schedule('a', 's1', 'p')
+
+  it('names a one-off by the time until it runs', () => {
+    expect(
+      scheduleHeadline({ ...base, fire_at_unix: now / 1000 + 3 * 3600 }, now)
+    ).toMatch(/^Scheduled · in 3h \(/)
+  })
+
+  it('names a repeating schedule by its rule, next time and last run', () => {
+    const text = scheduleHeadline(
+      {
+        ...base,
+        fire_at_unix: now / 1000 + 3600,
+        recurrence: {
+          cron: '0 9 * * 1-5',
+          tz: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        },
+        last_run_unix: now / 1000 - 2 * 86400,
+        last_outcome: 'skipped',
+      },
+      now
+    )
+    expect(text).toMatch(/^Repeats weekdays at 09:00 · next in 1h \(/)
+    expect(text).toMatch(/· last 2d ago \(skipped\)$/)
   })
 })

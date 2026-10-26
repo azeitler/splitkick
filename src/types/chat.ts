@@ -400,6 +400,17 @@ export interface Schedule {
   fire_at_unix: number
   created_at_unix: number
   tool_call_id?: string
+  /** Repeat rule; absent = one-off */
+  recurrence?: ScheduleRecurrence
+  /** When a repeating schedule last came due (seconds) */
+  last_run_unix?: number
+  last_outcome?: 'queued' | 'skipped' | 'failed'
+}
+
+/** 5-field cron pattern read in an IANA time zone. */
+export interface ScheduleRecurrence {
+  cron: string
+  tz: string
 }
 
 /** Returned by `list_pending_wakeups` — hydrates the UI store on mount. */

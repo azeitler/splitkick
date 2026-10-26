@@ -1,9 +1,15 @@
 import { useCallback, useMemo, useState } from 'react'
-import { Clock, X } from 'lucide-react'
+import { Clock, Repeat, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
-import { formatMessageTimestamp, formatTimeUntil } from '@/lib/relative-time'
+import {
+  formatMessageTimestamp,
+  formatRelativeTime,
+  formatTimeUntil,
+} from '@/lib/relative-time'
+import { describeRecurrence } from '@/lib/schedule-format'
+import type { Schedule } from '@/types/chat'
 import {
   deleteSchedule,
   schedulesQueryKeys,
@@ -14,9 +20,22 @@ interface ScheduledBannerProps {
   sessionId: string | null
 }
 
+/** "Scheduled · in 2h (…)" or "Repeats daily at 09:00 · next in 2h (…)". */
+export function scheduleHeadline(schedule: Schedule, now = Date.now()): string {
+  const when = `${formatTimeUntil(schedule.fire_at_unix, now)} (${formatMessageTimestamp(schedule.fire_at_unix, now)})`
+  if (!schedule.recurrence) return `Scheduled · ${when}`
+  let text = `Repeats ${describeRecurrence(schedule.recurrence)} · next ${when}`
+  if (schedule.last_run_unix) {
+    text += ` · last ${formatRelativeTime(schedule.last_run_unix, now)}`
+    if (schedule.last_outcome && schedule.last_outcome !== 'queued')
+      text += ` (${schedule.last_outcome})`
+  }
+  return text
+}
+
 /**
  * Pending schedules of the session, soonest first, each with a cancel
- * button: "Scheduled · in 2h (Oct 26th 26, 14:00)" and the prompt.
+ * button, its headline (see `scheduleHeadline`) and the prompt.
  */
 export function ScheduledBanner({ sessionId }: ScheduledBannerProps) {
   const queryClient = useQueryClient()
@@ -54,11 +73,14 @@ export function ScheduledBanner({ sessionId }: ScheduledBannerProps) {
           key={schedule.id}
           className="flex items-start gap-2 rounded-md border border-border bg-muted/40 px-3 py-2 text-sm"
         >
-          <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          {schedule.recurrence ? (
+            <Repeat className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          ) : (
+            <Clock className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          )}
           <div className="min-w-0 flex-1">
             <div className="text-xs font-medium text-muted-foreground">
-              Scheduled · {formatTimeUntil(schedule.fire_at_unix)} (
-              {formatMessageTimestamp(schedule.fire_at_unix)})
+              {scheduleHeadline(schedule)}
             </div>
             <div className="truncate text-foreground">{schedule.prompt}</div>
           </div>
