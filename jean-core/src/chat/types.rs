@@ -974,14 +974,13 @@ pub struct Session {
     #[serde(default)]
     pub loaded_run_start_index: usize,
 
-    /// Pending ScheduleWakeup request (one per session, last-wins).
-    /// Fires the stored prompt into this session after fire_at_unix.
+    /// The session's next pending schedule (agent wakeup or user prompt),
+    /// filled from `schedules.json`. Read-only for clients.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scheduled_wakeup: Option<ScheduledWakeup>,
 }
 
-/// A ScheduleWakeup request originated from the Claude CLI tool.
-/// Persisted on Session so it survives app restarts.
+/// A pending schedule in the shape the UI renders (see `schedules::Schedule`).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ScheduledWakeup {
     /// Unix timestamp (seconds) when the wakeup should fire
@@ -1318,7 +1317,10 @@ impl SessionMetadata {
             follow_ups: self.follow_ups.clone(),
             total_runs: self.runs.len(),
             loaded_run_start_index: self.runs.len(),
-            scheduled_wakeup: self.scheduled_wakeup.clone(),
+            // Schedules live in `schedules.json`; the metadata field only
+            // holds wakeups from before it existed, until migrated at start.
+            scheduled_wakeup: super::schedules::next_wakeup_for_session(&self.id)
+                .or_else(|| self.scheduled_wakeup.clone()),
         }
     }
 
@@ -1376,7 +1378,8 @@ impl SessionMetadata {
         self.enabled_mcp_servers = session.enabled_mcp_servers.clone();
         self.table_checked_rows = session.table_checked_rows.clone();
         self.label = session.label.clone();
-        self.scheduled_wakeup = session.scheduled_wakeup.clone();
+        // NOTE: Do NOT copy scheduled_wakeup back. It is filled from
+        // `schedules.json` and would re-create a wakeup the user cancelled.
         // NOTE: Do NOT overwrite queued_messages here. Queue state is managed
         // exclusively by enqueue/dequeue/remove/clear operations which use
         // atomic read-modify-write via with_existing_metadata_mut. Overwriting
@@ -1870,7 +1873,8 @@ pub struct SessionMetadata {
     #[serde(default)]
     pub runs: Vec<RunEntry>,
 
-    /// Pending ScheduleWakeup request (one per session, last-wins)
+    /// Legacy: pending ScheduleWakeup from before `schedules.json`. Read
+    /// once at startup, moved into the schedule list, then cleared.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scheduled_wakeup: Option<ScheduledWakeup>,
 

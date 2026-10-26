@@ -134,6 +134,13 @@ Built on Jean 0.1.73.
   sends “continue”, and **Resume with message** puts the cursor in the
   message box. The icon and the banner go away when the next run starts.
   This also works for a run that stopped while Splitkick was closed.
+- **See and cancel scheduled prompts in the chat.** A banner above the
+  messages shows each pending scheduled prompt of the session, when it runs
+  (for example "in 2h", with date and time), and an X to cancel it. All
+  schedules are now kept in one list, `schedules.json`, and a session can
+  have more than one. Claude's own wakeup keeps its rule: one per session,
+  the newest replaces the older. Wakeups saved by an earlier version move to
+  the new list at the next start. (#38)
 
 ### Fixed
 

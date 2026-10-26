@@ -24,12 +24,12 @@ pub(crate) mod pi;
 pub mod recap;
 pub mod registry;
 pub mod run_log;
+pub mod schedules;
 pub mod search;
 pub mod session_links;
 pub mod storage;
 pub mod tail;
 pub mod types;
-pub mod wakeup;
 
 pub use commands::*;
 pub use follow_ups::edit_session_follow_ups;

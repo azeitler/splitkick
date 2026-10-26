@@ -335,7 +335,7 @@ impl BackgroundTaskManager {
                         last_wakeup_poll_time.store(now, Ordering::Relaxed);
                         let app_handle = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            crate::chat::wakeup::fire_due(&app_handle);
+                            crate::chat::schedules::fire_due(&app_handle);
                         });
                     }
                 }

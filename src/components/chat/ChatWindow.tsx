@@ -151,6 +151,7 @@ import {
 import { CodexGoalBanner } from './CodexGoalBanner'
 import { CurrentSessionContext } from './CurrentSessionContext'
 import { SessionOriginBanner } from './SessionOriginBanner'
+import { ScheduledBanner } from './ScheduledBanner'
 import { StreamingStatusBar } from './StreamingStatusBar'
 import { ChatErrorFallback } from './ChatErrorFallback'
 import { logger } from '@/lib/logger'
@@ -3205,6 +3206,9 @@ export function ChatWindow({
                                   }
                                 />
                               )}
+                            <ScheduledBanner
+                              sessionId={activeSessionId ?? null}
+                            />
                             <CodexGoalBanner
                               sessionId={activeSessionId ?? null}
                               worktreeId={activeWorktreeId ?? null}

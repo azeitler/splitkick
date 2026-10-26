@@ -3,6 +3,7 @@ import {
   formatLastActive,
   formatMessageTimestamp,
   formatRelativeTime,
+  formatTimeUntil,
   toMilliseconds,
 } from './relative-time'
 
@@ -157,5 +158,24 @@ describe('formatLastActive', () => {
     expect(formatLastActive(Math.floor((now - 3 * DAY) / 1000), now)).toBe(
       '3 days ago'
     )
+  })
+})
+
+describe('formatTimeUntil', () => {
+  const now = 1_700_000_000_000
+
+  it('reads "now" for a time past or under a minute ahead', () => {
+    expect(formatTimeUntil(now - HOUR, now)).toBe('now')
+    expect(formatTimeUntil(now + 30_000, now)).toBe('now')
+  })
+
+  it('counts minutes, hours and days ahead', () => {
+    expect(formatTimeUntil(now + 5 * MINUTE, now)).toBe('in 5m')
+    expect(formatTimeUntil(now + 3 * HOUR, now)).toBe('in 3h')
+    expect(formatTimeUntil(now + 2 * DAY, now)).toBe('in 2d')
+  })
+
+  it('accepts unix seconds', () => {
+    expect(formatTimeUntil(now / 1000 + 3 * 3600, now)).toBe('in 3h')
   })
 })

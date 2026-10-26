@@ -368,7 +368,7 @@ export interface Session {
   total_runs?: number
   /** Index (in metadata.runs) of the first run included in `messages`. 0 = oldest loaded. */
   loaded_run_start_index?: number
-  /** Pending ScheduleWakeup request (one per session, last-wins) */
+  /** The session's next pending schedule (agent wakeup or user prompt) */
   scheduled_wakeup?: ScheduledWakeup
 }
 
@@ -385,6 +385,23 @@ export interface ScheduledWakeup {
   tool_call_id: string
 }
 
+/**
+ * A prompt that fires into a session at `fire_at_unix` (seconds). Agent
+ * schedules come from Claude's ScheduleWakeup, user schedules from the user.
+ * Returned by `list_schedules`, soonest first (snake_case, Pattern A).
+ */
+export interface Schedule {
+  id: string
+  origin: 'agent' | 'user'
+  session_id: string
+  worktree_id: string
+  prompt: string
+  reason: string
+  fire_at_unix: number
+  created_at_unix: number
+  tool_call_id?: string
+}
+
 /** Returned by `list_pending_wakeups` — hydrates the UI store on mount. */
 export interface PendingWakeupEntry {
   session_id: string
@@ -399,6 +416,7 @@ export interface WakeupFiredEvent {
   worktree_path: string
   prompt: string
   tool_call_id: string
+  schedule_id: string
 }
 
 /** Emitted by Rust when a ScheduleWakeup is newly scheduled (UI countdown). */
@@ -406,6 +424,7 @@ export interface WakeupScheduledEvent {
   session_id: string
   worktree_id: string
   wakeup: ScheduledWakeup
+  schedule_id: string
 }
 
 /** Emitted by Rust when a ScheduleWakeup is cancelled. */
@@ -413,6 +432,7 @@ export interface WakeupCancelledEvent {
   session_id: string
   worktree_id: string
   tool_call_id: string | null
+  schedule_id: string
 }
 
 /**

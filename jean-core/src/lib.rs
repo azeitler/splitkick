@@ -4609,8 +4609,8 @@ pub fn initialize_runtime(context: &RuntimeContext) -> Result<(), String> {
         None::<jean_mcp_socket::JeanMcpSocketHandle>,
     )));
 
-    if let Err(error) = chat::wakeup::load_all_from_disk(context) {
-        log::warn!("Failed to restore scheduled wakeups: {error}");
+    if let Err(error) = chat::schedules::load_all_from_disk(context) {
+        log::warn!("Failed to restore schedules: {error}");
     }
     let task_manager = background_tasks::BackgroundTaskManager::new(context.clone());
     task_manager.start();
