@@ -16,8 +16,8 @@ use super::storage::{
     get_session_dir, list_all_session_ids, load_metadata, save_metadata, with_metadata_mut,
 };
 use super::types::{
-    is_claude_compaction_summary_text, Backend, ChatMessage, ContentBlock, LoadedMessages,
-    MessageRole, RunEntry, RunStatus, ToolCall, UsageData,
+    is_claude_compaction_summary_text, Backend, ChatMessage, ContentBlock, LimitHit,
+    LoadedMessages, MessageRole, RunEntry, RunStatus, ToolCall, UsageData,
 };
 
 // ============================================================================
@@ -67,6 +67,7 @@ impl RunLogWriter {
         assistant_message_id: &str,
         claude_session_id: Option<&str>,
         usage: Option<UsageData>,
+        limit_hit: Option<LimitHit>,
     ) -> Result<(), String> {
         let now = now_timestamp();
         let run_id = self.run_id.clone();
@@ -87,6 +88,7 @@ impl RunLogWriter {
                     run.assistant_message_id = Some(assistant_message_id.to_string());
                     run.claude_session_id = claude_sid.clone();
                     run.usage = usage.clone();
+                    run.limit_hit = limit_hit.clone();
                     checkpoint_id = run.checkpoint_id.clone();
                 }
 
@@ -462,6 +464,7 @@ pub fn start_run(
         kimi_session_id: None,
         antigravity_session_id: None,
         checkpoint_id: None,
+        limit_hit: None,
     };
 
     with_metadata_mut(
@@ -1643,7 +1646,7 @@ mod tests {
         );
 
         writer
-            .complete("assistant-1", Some("claude-sid-new"), None)
+            .complete("assistant-1", Some("claude-sid-new"), None, None)
             .unwrap();
 
         assert_eq!(
@@ -1683,6 +1686,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         }
     }
 
@@ -2207,6 +2211,7 @@ Move services between instances without downtime.
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let lines = vec![
@@ -2579,6 +2584,9 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
 
                     if completed {
                         run.status = RunStatus::Completed;
+                        if run.backend.as_ref().unwrap_or(&metadata_backend) == &Backend::Claude {
+                            run.limit_hit = jsonl_limit_hit(app, &session_id, &run.run_id);
+                        }
                         metadata.is_reviewing = false;
                         if metadata.status_override.as_deref() == Some("review") {
                             metadata.status_override = None;
@@ -2669,6 +2677,27 @@ pub fn recover_incomplete_runs(app: &tauri::AppHandle) -> Result<Vec<RecoveredRu
 
 /// Check if a run's JSONL file contains a "type":"result" line,
 /// indicating the CLI process completed successfully (vs crashing).
+/// Read Claude's usage-limit stop from the end of a run's JSONL (the limit
+/// assistant message and the result are the last lines).
+fn jsonl_limit_hit(app: &tauri::AppHandle, session_id: &str, run_id: &str) -> Option<LimitHit> {
+    use std::io::{Seek, SeekFrom};
+    let jsonl_path = get_session_dir(app, session_id)
+        .ok()?
+        .join(format!("{run_id}.jsonl"));
+    let mut file = File::open(&jsonl_path).ok()?;
+    let file_len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    if file_len > 32768 {
+        file.seek(SeekFrom::End(-32768)).ok()?;
+    }
+    let mut limit_hit = None;
+    for line in BufReader::new(file).lines().map_while(Result::ok) {
+        if let Ok(msg) = serde_json::from_str::<serde_json::Value>(&line) {
+            super::claude::merge_limit_hit(&mut limit_hit, &msg);
+        }
+    }
+    limit_hit
+}
+
 pub fn jsonl_has_result_line(app: &tauri::AppHandle, session_id: &str, run_id: &str) -> bool {
     let session_dir = match get_session_dir(app, session_id) {
         Ok(d) => d,

@@ -590,6 +590,25 @@ re-exported as `jean_core::open_url_in_browser`). On Windows it runs `cmd /c sta
 `silent_command()` so the intermediary console never flashes. Do not call raw
 `Command::new("cmd")` with `/c start`.
 
+## Claude usage-limit stops
+
+When the account hits its usage limit, Claude CLI ends the turn with a
+synthetic assistant message ("You've hit your session limit · resets 8:30pm")
+marked `api_error: "usage_limit_reached"` / `error: "rate_limit"` with
+`api_error_params.rate_limit_info.resetsAt`, then a `result` with
+`is_error: true` and `api_error_status: 429`. The run still completes normally.
+
+- `limit_hit_from_line` / `merge_limit_hit` in `jean-core/src/chat/claude.rs`
+  detect it (top-level lines only; subagent failures are ignored).
+- It is stored as `RunEntry.limit_hit` (`{ resets_at }`) by
+  `RunLogWriter::complete`, also on the resume-tail and crash-recovery paths
+  (`jsonl_limit_hit` in `run_log.rs`), and surfaced as
+  `Session.last_run_limit_hit`. A new run is the new last run, so the state
+  clears on the next send.
+- UI: `SessionCardData.limitHit` drives the Zap `LimitGlyph` in sidebar rows
+  (`src/components/chat/limit-hit.tsx`); `LimitHitBanner` in `ChatWindow` offers
+  **Resume** (sends "continue") and **Resume with message** (focuses the composer).
+
 ## Antigravity CLI backend
 
 Jean integrates Google's native `agy` executable through its documented headless interface. Interactive turns use `agy -p --output-format stream-json`; structured one-shot operations use `--output-format json --json-schema`. Jean maps Plan to `--mode plan`, Build to `--mode accept-edits`, and Yolo to `--mode accept-edits --dangerously-skip-permissions`.

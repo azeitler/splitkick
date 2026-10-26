@@ -103,13 +103,14 @@ export function usePendingAttachments({
     [activeSessionId, setInputDraft]
   )
 
-  const handleCommandExecute = useCallback(
-    (command: ClaudeCommand) => {
+  /** Send a plain text prompt now, or queue it while a run is active. */
+  const sendTextMessage = useCallback(
+    (message: string) => {
       if (!activeSessionId || !activeWorktreeId || !activeWorktreePath) return
 
       const queuedMessage: QueuedMessage = {
         id: generateId(),
-        message: `Run the /${command.name} command from ${command.path}`,
+        message,
         pendingImages: [],
         pendingFiles: [],
         pendingSkills: [],
@@ -151,11 +152,18 @@ export function usePendingAttachments({
     [activeSessionId, activeWorktreeId, activeWorktreePath, sendMessageNow]
   )
 
+  const handleCommandExecute = useCallback(
+    (command: ClaudeCommand) =>
+      sendTextMessage(`Run the /${command.name} command from ${command.path}`),
+    [sendTextMessage]
+  )
+
   return {
     handleRemovePendingImage,
     handleRemovePendingTextFile,
     handleRemovePendingSkill,
     handleRemovePendingFile,
     handleCommandExecute,
+    sendTextMessage,
   }
 }

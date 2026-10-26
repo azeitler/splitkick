@@ -1,7 +1,7 @@
 use super::coalesce::ChunkCoalescer;
 use super::run_log::tool_result_content_to_string;
 use super::types::{
-    is_claude_compaction_summary_text, CompactMetadata, ContentBlock, EffortLevel,
+    is_claude_compaction_summary_text, CompactMetadata, ContentBlock, EffortLevel, LimitHit,
     PermissionDenial, PermissionDeniedEvent, ThinkingLevel, ToolCall, UsageData,
 };
 use crate::http_server::EmitExt;
@@ -144,6 +144,8 @@ pub struct ClaudeResponse {
     pub cancelled: bool,
     /// Token usage for this response
     pub usage: Option<UsageData>,
+    /// Set when Claude stopped the run because the usage limit was hit
+    pub limit_hit: Option<LimitHit>,
 }
 
 /// Payload for text chunk events sent to frontend
@@ -1408,6 +1410,7 @@ pub fn execute_claude_detached(
                 content_blocks: vec![],
                 cancelled: true,
                 usage: None,
+                limit_hit: None,
             },
         ));
     }
@@ -1556,6 +1559,7 @@ pub fn tail_claude_output(
     let mut user_cancelled = false; // True only for explicit user cancel (not process death)
     let mut startup_failed = false; // True when Claude produced no output before the startup timeout / died starting up
     let mut usage: Option<UsageData> = None;
+    let mut limit_hit: Option<LimitHit> = None;
     let mut error_lines: Vec<String> = Vec::new();
 
     // Track Monitor tool_use_ids that are currently armed along with their
@@ -1674,6 +1678,8 @@ pub fn tail_claude_output(
             if msg_type != "assistant" {
                 flush_pending_chunks(app, session_id, worktree_id, &run_id, &mut chunk_coalescer);
             }
+
+            merge_limit_hit(&mut limit_hit, &msg);
 
             match msg_type {
                 "assistant" => {
@@ -1974,6 +1980,7 @@ pub fn tail_claude_output(
                                                 content_blocks,
                                                 cancelled: false,
                                                 usage: None, // No usage for partial responses
+                                                limit_hit,
                                             });
                                         }
                                     }
@@ -2602,7 +2609,50 @@ pub fn tail_claude_output(
         content_blocks,
         cancelled,
         usage,
+        limit_hit,
     })
+}
+
+/// Detect Claude's "You've hit your session limit" stop on a top-level
+/// stream-json line. Claude marks the synthetic assistant message with
+/// `api_error: "usage_limit_reached"` (`error: "rate_limit"`) and the final
+/// result with `is_error: true` + `api_error_status: 429`. Subagent lines
+/// (`parent_tool_use_id` set) are ignored: the main turn decides.
+pub fn limit_hit_from_line(msg: &serde_json::Value) -> Option<LimitHit> {
+    if msg.get("parent_tool_use_id").is_some_and(|v| !v.is_null()) {
+        return None;
+    }
+    let hit = match msg.get("type").and_then(|v| v.as_str()) {
+        Some("assistant") => {
+            msg.get("api_error").and_then(|v| v.as_str()) == Some("usage_limit_reached")
+                || msg.get("error").and_then(|v| v.as_str()) == Some("rate_limit")
+        }
+        Some("result") => {
+            msg.get("is_error").and_then(|v| v.as_bool()) == Some(true)
+                && msg.get("api_error_status").and_then(|v| v.as_u64()) == Some(429)
+        }
+        _ => false,
+    };
+    if !hit {
+        return None;
+    }
+    let resets_at = msg
+        .get("api_error_params")
+        .and_then(|p| p.get("rate_limit_info"))
+        .and_then(|i| i.get("resetsAt"))
+        .and_then(|v| v.as_u64());
+    Some(LimitHit { resets_at })
+}
+
+/// Merge a newly seen limit signal into the run's state, keeping a known
+/// reset time when a later line (the result) has none.
+pub fn merge_limit_hit(current: &mut Option<LimitHit>, msg: &serde_json::Value) {
+    if let Some(hit) = limit_hit_from_line(msg) {
+        let resets_at = hit
+            .resets_at
+            .or_else(|| current.as_ref().and_then(|c| c.resets_at));
+        *current = Some(LimitHit { resets_at });
+    }
 }
 
 #[cfg(test)]
@@ -2645,6 +2695,71 @@ mod tests {
             &root.path().join("missing"),
             "sid-1.jsonl"
         ));
+    }
+
+    #[test]
+    fn limit_hit_is_read_from_the_synthetic_assistant_message() {
+        let line = serde_json::json!({
+            "type": "assistant",
+            "parent_tool_use_id": null,
+            "error": "rate_limit",
+            "is_api_error_message": true,
+            "api_error": "usage_limit_reached",
+            "api_error_params": {"rate_limit_info": {"status": "rejected", "resetsAt": 1791570600u64}},
+            "message": {"content": [{"type": "text", "text": "You've hit your session limit · resets 8:30pm (Europe/Berlin)"}]}
+        });
+        assert_eq!(
+            limit_hit_from_line(&line),
+            Some(LimitHit {
+                resets_at: Some(1791570600)
+            })
+        );
+    }
+
+    #[test]
+    fn limit_hit_keeps_the_reset_time_when_the_result_follows() {
+        let assistant = serde_json::json!({
+            "type": "assistant",
+            "api_error": "usage_limit_reached",
+            "api_error_params": {"rate_limit_info": {"resetsAt": 1791570600u64}}
+        });
+        let result = serde_json::json!({
+            "type": "result",
+            "is_error": true,
+            "api_error_status": 429,
+            "result": "You've hit your session limit · resets 8:30pm (Europe/Berlin)"
+        });
+        let mut hit = None;
+        merge_limit_hit(&mut hit, &assistant);
+        merge_limit_hit(&mut hit, &result);
+        assert_eq!(
+            hit,
+            Some(LimitHit {
+                resets_at: Some(1791570600)
+            })
+        );
+
+        // A result alone still marks the run, without a reset time.
+        let mut hit = None;
+        merge_limit_hit(&mut hit, &result);
+        assert_eq!(hit, Some(LimitHit { resets_at: None }));
+    }
+
+    #[test]
+    fn limit_hit_ignores_subagents_and_normal_results() {
+        let subagent = serde_json::json!({
+            "type": "assistant",
+            "parent_tool_use_id": "toolu_1",
+            "api_error": "usage_limit_reached"
+        });
+        assert_eq!(limit_hit_from_line(&subagent), None);
+
+        let ok = serde_json::json!({"type": "result", "is_error": false, "result": "done"});
+        assert_eq!(limit_hit_from_line(&ok), None);
+
+        let other_error =
+            serde_json::json!({"type": "result", "is_error": true, "api_error_status": 500});
+        assert_eq!(limit_hit_from_line(&other_error), None);
     }
 
     #[test]
@@ -2881,6 +2996,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         }
     }
 

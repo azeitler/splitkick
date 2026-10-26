@@ -154,6 +154,7 @@ import {
   isSteerCapableBackend,
 } from '@/lib/backend-auto-steer'
 import { ErrorBanner } from './ErrorBanner'
+import { LimitHitBanner } from './LimitHitBanner'
 import {
   VirtualizedMessageList,
   type VirtualizedMessageListHandle,
@@ -2801,6 +2802,7 @@ export function ChatWindow({
     handleRemovePendingSkill,
     handleRemovePendingFile,
     handleCommandExecute,
+    sendTextMessage,
   } = usePendingAttachments({
     activeSessionId,
     activeWorktreeId,
@@ -2818,6 +2820,15 @@ export function ChatWindow({
     setInputDraft,
     sendMessageNow,
   })
+
+  const handleResumeAfterLimit = useCallback(
+    () => sendTextMessage('continue'),
+    [sendTextMessage]
+  )
+  const handleResumeWithMessage = useCallback(
+    () => inputRef.current?.focus(),
+    []
+  )
 
   // Pre-calculate last plan message index for approve button logic
   const lastPlanMessageIndex = useMemo(() => {
@@ -3571,6 +3582,15 @@ export function ChatWindow({
                         onScrollToBottom={scrollToBottom}
                       />
                     </div>
+
+                    {/* Claude stopped the last run at the usage limit */}
+                    {session?.last_run_limit_hit && !isSending && (
+                      <LimitHitBanner
+                        limit={session.last_run_limit_hit}
+                        onResume={handleResumeAfterLimit}
+                        onResumeWithMessage={handleResumeWithMessage}
+                      />
+                    )}
 
                     {/* Error banner - shows when request fails */}
                     {currentError && (

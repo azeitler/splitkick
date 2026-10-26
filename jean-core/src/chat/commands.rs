@@ -3577,6 +3577,8 @@ pub async fn send_chat_message(
         error_emitted: bool,
         usage: Option<super::types::UsageData>,
         backend: Backend,
+        /// Claude stopped the run at the usage limit
+        limit_hit: Option<super::types::LimitHit>,
     }
 
     // Execute CLI in detached mode on a dedicated OS thread.
@@ -3801,6 +3803,7 @@ pub async fn send_chat_message(
                                     error_emitted: false,
                                     usage: response.usage,
                                     backend: Backend::Claude,
+                                    limit_hit: response.limit_hit,
                                 },
                             ));
                         }
@@ -4283,6 +4286,7 @@ pub async fn send_chat_message(
                             error_emitted: response.error_emitted,
                             usage: response.usage,
                             backend: Backend::Codex,
+                            limit_hit: None,
                         },
                     )),
                     Err(e) => {
@@ -4662,6 +4666,7 @@ pub async fn send_chat_message(
                                 error_emitted: false,
                                 usage: response.usage,
                                 backend: Backend::Opencode,
+                                limit_hit: None,
                             },
                         ))
                     }
@@ -4818,6 +4823,7 @@ pub async fn send_chat_message(
                             error_emitted: false,
                             usage: response.usage,
                             backend: Backend::Cursor,
+                            limit_hit: None,
                         },
                     )),
                     Err(e) => {
@@ -4859,6 +4865,7 @@ pub async fn send_chat_message(
                             error_emitted: false,
                             usage: response.usage,
                             backend: Backend::Commandcode,
+                            limit_hit: None,
                         },
                     )),
                     Err(e) => {
@@ -5002,6 +5009,7 @@ pub async fn send_chat_message(
                             error_emitted: false,
                             usage: response.usage,
                             backend: Backend::Pi,
+                            limit_hit: None,
                         },
                     )),
                     Err(e) => {
@@ -5162,6 +5170,7 @@ pub async fn send_chat_message(
                             error_emitted: false,
                             usage: response.usage,
                             backend: Backend::Grok,
+                            limit_hit: None,
                         },
                     )),
                     Err(e) => {
@@ -5207,6 +5216,7 @@ pub async fn send_chat_message(
                             error_emitted: false,
                             usage: response.usage,
                             backend: Backend::Kimi,
+                            limit_hit: None,
                         },
                     )),
                     Err(error) => Err(error),
@@ -5251,6 +5261,7 @@ pub async fn send_chat_message(
                             error_emitted: false,
                             usage: response.usage,
                             backend: Backend::Antigravity,
+                            limit_hit: None,
                         },
                     )),
                     Err(error) => Err(error),
@@ -5294,7 +5305,7 @@ pub async fn send_chat_message(
                     );
                     let salvage_msg_id = Uuid::new_v4().to_string();
                     if let Err(complete_err) =
-                        run_log_writer.complete(&salvage_msg_id, partial_sid.as_deref(), None)
+                        run_log_writer.complete(&salvage_msg_id, partial_sid.as_deref(), None, None)
                     {
                         log::warn!("Failed to complete salvaged run: {complete_err}");
                     }
@@ -5357,7 +5368,7 @@ pub async fn send_chat_message(
                 );
                 let salvage_msg_id = Uuid::new_v4().to_string();
                 if let Err(complete_err) =
-                    run_log_writer.complete(&salvage_msg_id, partial_sid.as_deref(), None)
+                    run_log_writer.complete(&salvage_msg_id, partial_sid.as_deref(), None, None)
                 {
                     log::warn!("Failed to complete salvaged run after panic: {complete_err}");
                 }
@@ -5748,9 +5759,12 @@ pub async fn send_chat_message(
             &resume_id_for_log,
             has_resume_worthy_payload,
         );
-        if let Err(e) =
-            run_log_writer.complete(&assistant_msg_id, resume_sid, unified_response.usage)
-        {
+        if let Err(e) = run_log_writer.complete(
+            &assistant_msg_id,
+            resume_sid,
+            unified_response.usage,
+            unified_response.limit_hit,
+        ) {
             log::warn!("Failed to complete run log: {e}");
         }
     }
@@ -8807,7 +8821,9 @@ pub async fn resume_session(
                     RunLogWriter::resume(&app_clone, &session_id_clone, &run_id_clone)
                 {
                     let assistant_message_id = uuid::Uuid::new_v4().to_string();
-                    if let Err(e) = writer.complete(&assistant_message_id, None, usage.clone()) {
+                    if let Err(e) =
+                        writer.complete(&assistant_message_id, None, usage.clone(), None)
+                    {
                         log::error!("Failed to mark resumed Pi run completed: {e}");
                     }
                 }
@@ -8879,6 +8895,7 @@ pub async fn resume_session(
                                 &assistant_message_id,
                                 None,
                                 response.usage.clone(),
+                                None,
                             );
                         }
                         if !response.session_id.is_empty() {
@@ -8988,7 +9005,7 @@ pub async fn resume_session(
                 {
                     let assistant_message_id = uuid::Uuid::new_v4().to_string();
                     if let Err(error) =
-                        writer.complete(&assistant_message_id, None, response.usage.clone())
+                        writer.complete(&assistant_message_id, None, response.usage.clone(), None)
                     {
                         log::error!("Failed to mark resumed Kimi run completed: {error}");
                     }
@@ -9089,7 +9106,9 @@ pub async fn resume_session(
                     let assistant_message_id = uuid::Uuid::new_v4().to_string();
                     // Do not pass grok id as claude_session_id — complete() only
                     // knows Claude's resume field. Persist grok_session_id below.
-                    if let Err(e) = writer.complete(&assistant_message_id, None, usage.clone()) {
+                    if let Err(e) =
+                        writer.complete(&assistant_message_id, None, usage.clone(), None)
+                    {
                         log::error!("Failed to mark resumed Grok run completed: {e}");
                     }
                 }
@@ -9158,7 +9177,7 @@ pub async fn resume_session(
             };
 
             // Tail the output file — Claude backend only (Codex handled above)
-            let (resume_id, usage, cancelled) = {
+            let (resume_id, usage, cancelled, limit_hit) = {
                 match super::claude::tail_claude_output(
                     &app_clone,
                     &session_id_clone,
@@ -9166,7 +9185,12 @@ pub async fn resume_session(
                     &output_file,
                     pid,
                 ) {
-                    Ok(response) => (response.session_id, response.usage, response.cancelled),
+                    Ok(response) => (
+                        response.session_id,
+                        response.usage,
+                        response.cancelled,
+                        response.limit_hit,
+                    ),
                     Err(e) => {
                         log::error!(
                             "Resume Claude tail failed for run: {run_id_clone}, error: {e}"
@@ -9211,7 +9235,7 @@ pub async fn resume_session(
                         Some(resume_id.as_str())
                     };
                     if let Err(e) =
-                        writer.complete(&assistant_message_id, resume_sid, usage.clone())
+                        writer.complete(&assistant_message_id, resume_sid, usage.clone(), limit_hit)
                     {
                         log::error!("Failed to mark run as completed: {e}");
                     }

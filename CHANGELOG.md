@@ -7,6 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **You can see which sessions hit the Claude session limit.** When Claude
+  stops a run with “You've hit your session limit”, the session now shows an
+  amber lightning icon in the sidebar. Its tooltip gives the reset time. In
+  the chat, a banner shows the same message with two buttons: **Resume**
+  sends “continue”, and **Resume with message** puts the cursor in the
+  message box. The icon and the banner go away when the next run starts.
+  This also works for a run that stopped while Splitkick was closed.
+
 ### Fixed
 
 - **A fork's GitHub lists show the fork, not the original.** In a project

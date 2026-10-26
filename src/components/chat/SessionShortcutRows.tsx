@@ -9,6 +9,7 @@ import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import type { Session } from '@/types/chat'
 import { DraftGlyph } from './DraftGlyph'
+import { LimitGlyph } from './limit-hit'
 import { LabelModal } from './LabelModal'
 import { PinGlyph } from './PinGlyph'
 import { StarGlyph } from './StarGlyph'
@@ -185,6 +186,7 @@ export function SessionShortcutRows({
         )
         const markGlyphs = (
           <>
+            {card.limitHit && <LimitGlyph limit={card.limitHit} />}
             {showStarGlyph && starredIds.has(shortcut.sessionId) && (
               <StarGlyph />
             )}

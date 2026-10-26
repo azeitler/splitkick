@@ -348,6 +348,8 @@ export interface Session {
   terminal_label?: string
   /** Status of the last run (for immediate status on app restart) */
   last_run_status?: RunStatus
+  /** Set when Claude stopped the last run at the usage (session) limit */
+  last_run_limit_hit?: LimitHit
   /** Execution mode of the last run (plan/build/yolo) */
   last_run_execution_mode?: ExecutionMode
   /** Unix timestamp when the last run started */
@@ -1797,6 +1799,12 @@ export interface SessionDebugInfo {
 }
 
 /** User-assigned label with color for session cards */
+/** Claude stopped a run because the account hit its usage limit. */
+export interface LimitHit {
+  /** Unix timestamp (seconds) when the limit resets, if known */
+  resets_at?: number
+}
+
 export interface LabelData {
   /** Label name (e.g. "Needs testing") */
   name: string
