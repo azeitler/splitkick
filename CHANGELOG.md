@@ -7,6 +7,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A fork's GitHub lists show the fork, not the original.** In a project
+  with an `upstream` remote, the issues, pull requests, CI runs and PR status
+  came from the upstream repository, and a worktree for issue #N loaded the
+  upstream issue #N. Splitkick now asks GitHub for the repository of the
+  `origin` remote. A default repository chosen with `gh repo set-default` is
+  still used as before. (#56)
+
 ### Changed
 
 - **The connection rows react to the mouse.** In the server connections

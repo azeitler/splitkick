@@ -11,8 +11,72 @@ use serde::{Deserialize, Serialize};
 
 use super::types::{JeanConfig, MergeType};
 
-fn gh_command(gh: &Path, repo_path: &str) -> std::process::Command {
-    crate::platform::resolved_cli_command(gh, Some(Path::new(repo_path)))
+/// A `gh` command for a project, pinned to the project's own repository.
+///
+/// Without `--repo`, `gh` picks the repository by remote name, and a remote
+/// called `upstream` wins over `origin`. In a fork every issue, PR and run
+/// therefore came from the upstream repository, and an issue number of the
+/// fork loaded the upstream issue with that number (#56). `GH_REPO` pins `gh`
+/// to `origin`, the repository the context cache already names its files
+/// after. A choice made with `gh repo set-default`, or a `GH_REPO` already
+/// set, is left alone.
+pub(crate) fn gh_command(gh: &Path, repo_path: &str) -> std::process::Command {
+    let mut command = crate::platform::resolved_cli_command(gh, Some(Path::new(repo_path)));
+    if std::env::var_os("GH_REPO").is_none() {
+        if let Some(repo) = gh_repo_for(repo_path) {
+            command.env("GH_REPO", repo);
+        }
+    }
+    command
+}
+
+/// `owner/repo` of the `origin` remote, unless `gh repo set-default` chose a
+/// repository (it stores `remote.<name>.gh-resolved`). Takes the output of
+/// `git config --get-regexp ^remote\.`.
+fn gh_repo_from_git_config(config: &str) -> Option<String> {
+    let mut origin = None;
+    for line in config.lines() {
+        let Some((key, value)) = line.trim().split_once(' ') else {
+            continue;
+        };
+        if key.starts_with("remote.") && key.ends_with(".gh-resolved") {
+            return None;
+        }
+        if key == "remote.origin.url" {
+            origin = Some(value.trim());
+        }
+    }
+    let url = normalize_github_url(origin?)?;
+    let mut parts = url.strip_prefix("https://github.com/")?.split('/');
+    let (owner, repo) = (parts.next()?, parts.next()?);
+    (!owner.is_empty() && !repo.is_empty()).then(|| format!("{owner}/{repo}"))
+}
+
+/// How long a project's `gh` repository is reused. The sidebar badges run
+/// many `gh` calls at once; one `git config` per project and minute is enough.
+const GH_REPO_TTL: Duration = Duration::from_secs(60);
+
+static GH_REPO_CACHE: Lazy<Mutex<std::collections::HashMap<String, (Instant, Option<String>)>>> =
+    Lazy::new(|| Mutex::new(std::collections::HashMap::new()));
+
+fn gh_repo_for(repo_path: &str) -> Option<String> {
+    if let Ok(cache) = GH_REPO_CACHE.lock() {
+        if let Some((at, repo)) = cache.get(repo_path) {
+            if at.elapsed() < GH_REPO_TTL {
+                return repo.clone();
+            }
+        }
+    }
+    let repo = wsl_aware_command("git", Some(Path::new(repo_path)))
+        .args(["config", "--get-regexp", r"^remote\."])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .and_then(|output| gh_repo_from_git_config(&String::from_utf8_lossy(&output.stdout)));
+    if let Ok(mut cache) = GH_REPO_CACHE.lock() {
+        cache.insert(repo_path.to_string(), (Instant::now(), repo.clone()));
+    }
+    repo
 }
 
 static WORKTREE_CREATE_LOCK: Lazy<Mutex<()>> = Lazy::new(|| Mutex::new(()));
@@ -3018,6 +3082,48 @@ fn handle_merge_failure(repo_path: &str, stdout: &[u8], stderr: &[u8]) -> MergeR
 
 #[cfg(test)]
 mod tests {
+    use super::gh_repo_from_git_config;
+
+    // A fork with an `upstream` remote: gh picks `upstream` by name, so an
+    // issue number of the fork loaded the upstream issue (#56).
+    #[test]
+    fn gh_repo_is_the_origin_remote_of_a_fork() {
+        let config = "remote.origin.url git@github.com:azeitler/splitkick.git\n\
+                      remote.origin.fetch +refs/heads/*:refs/remotes/origin/*\n\
+                      remote.upstream.url https://github.com/coollabsio/jean.git\n";
+        assert_eq!(
+            gh_repo_from_git_config(config).as_deref(),
+            Some("azeitler/splitkick")
+        );
+    }
+
+    #[test]
+    fn gh_repo_reads_https_origins() {
+        let config = "remote.origin.url https://github.com/coollabsio/jean\n";
+        assert_eq!(
+            gh_repo_from_git_config(config).as_deref(),
+            Some("coollabsio/jean")
+        );
+    }
+
+    /// `gh repo set-default` stores `gh-resolved`; that choice wins.
+    #[test]
+    fn gh_repo_respects_gh_repo_set_default() {
+        let config = "remote.origin.url git@github.com:azeitler/splitkick.git\n\
+                      remote.upstream.url https://github.com/coollabsio/jean.git\n\
+                      remote.upstream.gh-resolved base\n";
+        assert_eq!(gh_repo_from_git_config(config), None);
+    }
+
+    #[test]
+    fn gh_repo_is_none_without_a_github_origin() {
+        assert_eq!(gh_repo_from_git_config(""), None);
+        assert_eq!(
+            gh_repo_from_git_config("remote.origin.url git@gitlab.com:a/b.git\n"),
+            None
+        );
+    }
+
     use super::*;
 
     // ========================================================================
