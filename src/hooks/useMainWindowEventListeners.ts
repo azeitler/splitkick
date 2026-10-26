@@ -13,6 +13,7 @@ import { useBrowserStore } from '@/store/browser-store'
 import { resolveBrowserSurfaceTarget } from '@/hooks/useBrowserPane'
 import { projectsQueryKeys } from '@/services/projects'
 import { chatQueryKeys, refreshWorktreeSessionsCaches } from '@/services/chat'
+import { schedulesQueryKeys } from '@/services/schedules'
 import type {
   AllSessionsResponse,
   QueuedMessage,
@@ -184,6 +185,11 @@ export function applyCacheInvalidationKeys(
         })
         queryClient.invalidateQueries({
           queryKey: ['saved-contexts'],
+        })
+        break
+      case 'schedules':
+        queryClient.invalidateQueries({
+          queryKey: schedulesQueryKeys.all,
         })
         break
     }

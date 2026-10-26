@@ -3378,6 +3378,19 @@ pub async fn dispatch_command(
             let entries = crate::chat::list_pending_wakeups().await?;
             to_value(entries)
         }
+        "list_schedules" => to_value(crate::chat::list_schedules().await?),
+        "create_schedule" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let prompt: String = from_field(&args, "prompt")?;
+            let fire_at_unix: u64 = field(&args, "fireAtUnix", "fire_at_unix")?;
+            to_value(
+                crate::chat::create_schedule(app.clone(), session_id, prompt, fire_at_unix).await?,
+            )
+        }
+        "delete_schedule" => {
+            let schedule_id: String = field(&args, "scheduleId", "schedule_id")?;
+            to_value(crate::chat::delete_schedule(app.clone(), schedule_id).await?)
+        }
 
         // =====================================================================
         // Chat (additional)

@@ -709,6 +709,15 @@ describe('applySessionRenamedToCaches', () => {
 })
 
 describe('applyCacheInvalidationKeys', () => {
+  it('invalidates the schedule list for schedules keys', () => {
+    const queryClient = new QueryClient()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    applyCacheInvalidationKeys(queryClient, ['schedules'])
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['schedules'] })
+  })
+
   it('invalidates chat queries and all-sessions for sessions keys', () => {
     const queryClient = new QueryClient()
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')

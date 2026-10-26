@@ -40,6 +40,23 @@ export function formatRelativeTime(
   return `${Math.floor(diffMs / yearMs)}y ago`
 }
 
+/**
+ * Compact label for a time ahead — `now`, `in 5m`, `in 3h`, `in 2d`.
+ * A time already past reads `now` (it fires on the next tick).
+ *
+ * `now` is injectable so the tests stay deterministic.
+ */
+export function formatTimeUntil(timestamp: number, now = Date.now()): string {
+  const diffMs = toMilliseconds(timestamp) - now
+  const minuteMs = 60_000
+  const hourMs = 60 * minuteMs
+  const dayMs = 24 * hourMs
+  if (diffMs < minuteMs) return 'now'
+  if (diffMs < hourMs) return `in ${Math.floor(diffMs / minuteMs)}m`
+  if (diffMs < dayMs) return `in ${Math.floor(diffMs / hourMs)}h`
+  return `in ${Math.floor(diffMs / dayMs)}d`
+}
+
 function isSameDay(a: Date, b: Date): boolean {
   return (
     a.getFullYear() === b.getFullYear() &&

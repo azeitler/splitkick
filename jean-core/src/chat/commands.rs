@@ -10772,24 +10772,43 @@ pub(crate) fn trigger_grok_queue_steer(app: AppHandle, worktree_id: String, sess
     });
 }
 
-/// Cancel the pending ScheduleWakeup for a session (user-initiated).
+/// Cancel every pending schedule of a session (user-initiated).
 pub async fn cancel_session_wakeup(app: AppHandle, session_id: String) -> Result<bool, String> {
-    let cleared = super::wakeup::cancel(&app, &session_id)?;
-    Ok(cleared.is_some())
+    super::schedules::cancel_session(&app, &session_id)
 }
 
-/// Fetch the pending ScheduleWakeup for a session (UI hydration).
+/// Fetch the session's next pending schedule as a wakeup (UI hydration).
 pub async fn get_scheduled_wakeup(
-    app: AppHandle,
+    _app: AppHandle,
     session_id: String,
 ) -> Result<Option<super::types::ScheduledWakeup>, String> {
-    super::wakeup::get_for_session(&app, &session_id)
+    Ok(super::schedules::next_wakeup_for_session(&session_id))
 }
 
-/// List all currently-pending ScheduleWakeup entries across sessions.
+/// List all pending schedules as wakeups across sessions.
 /// Used by the frontend at mount to hydrate the indicator store.
-pub async fn list_pending_wakeups() -> Result<Vec<super::wakeup::PendingWakeupEntry>, String> {
-    Ok(super::wakeup::list_pending())
+pub async fn list_pending_wakeups() -> Result<Vec<super::schedules::PendingWakeupEntry>, String> {
+    Ok(super::schedules::list_pending())
+}
+
+/// List every pending schedule, soonest first.
+pub async fn list_schedules() -> Result<Vec<super::schedules::Schedule>, String> {
+    Ok(super::schedules::list())
+}
+
+/// Schedule a prompt into a session at `fire_at_unix` (seconds).
+pub async fn create_schedule(
+    app: AppHandle,
+    session_id: String,
+    prompt: String,
+    fire_at_unix: u64,
+) -> Result<super::schedules::Schedule, String> {
+    super::schedules::create(&app, &session_id, &prompt, fire_at_unix)
+}
+
+/// Delete one schedule. Returns whether it existed.
+pub async fn delete_schedule(app: AppHandle, schedule_id: String) -> Result<bool, String> {
+    super::schedules::delete(&app, &schedule_id)
 }
 
 /// Answer a pending OpenCode question by calling the OpenCode Question.reply API.
