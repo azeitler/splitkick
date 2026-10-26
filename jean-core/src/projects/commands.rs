@@ -60,9 +60,7 @@ use crate::http_server::EmitExt;
 use crate::platform::silent_command;
 use crate::platform::wsl_aware_command;
 
-fn gh_command(gh: &Path, project_path: &str) -> std::process::Command {
-    crate::platform::resolved_cli_command(gh, Some(Path::new(project_path)))
-}
+use super::git::gh_command;
 
 static RELEASE_NOTES_PAREN_RE: Lazy<Regex> =
     Lazy::new(|| Regex::new(r"\(([^)]*)\)").expect("valid release notes parenthetical regex"));

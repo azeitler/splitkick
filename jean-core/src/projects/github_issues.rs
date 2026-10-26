@@ -1,15 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::AppHandle;
 
 use super::git::get_repo_identifier;
 use crate::gh_cli::config::resolve_gh_binary;
 
-fn gh_command(gh: &Path, project_path: &str) -> Command {
-    crate::platform::resolved_cli_command(gh, Some(Path::new(project_path)))
-}
+use super::git::gh_command;
 
 // =============================================================================
 // GitHub Types

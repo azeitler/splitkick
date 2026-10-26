@@ -2,11 +2,8 @@ use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
 use crate::gh_cli::config::resolve_gh_binary;
-use std::path::Path;
 
-fn gh_command(gh: &Path, project_path: &str) -> std::process::Command {
-    crate::platform::resolved_cli_command(gh, Some(Path::new(project_path)))
-}
+use super::git::gh_command;
 
 // =============================================================================
 // GitHub Actions Types
