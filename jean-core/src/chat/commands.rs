@@ -10796,14 +10796,16 @@ pub async fn list_schedules() -> Result<Vec<super::schedules::Schedule>, String>
     Ok(super::schedules::list())
 }
 
-/// Schedule a prompt into a session at `fire_at_unix` (seconds).
+/// Schedule a prompt into a session: once at `fire_at_unix` (seconds), or
+/// repeating by `recurrence`.
 pub async fn create_schedule(
     app: AppHandle,
     session_id: String,
     prompt: String,
-    fire_at_unix: u64,
+    fire_at_unix: Option<u64>,
+    recurrence: Option<super::schedules::Recurrence>,
 ) -> Result<super::schedules::Schedule, String> {
-    super::schedules::create(&app, &session_id, &prompt, fire_at_unix)
+    super::schedules::create(&app, &session_id, &prompt, fire_at_unix, recurrence)
 }
 
 /// Delete one schedule. Returns whether it existed.

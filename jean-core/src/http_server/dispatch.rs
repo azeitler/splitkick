@@ -3382,9 +3382,18 @@ pub async fn dispatch_command(
         "create_schedule" => {
             let session_id: String = field(&args, "sessionId", "session_id")?;
             let prompt: String = from_field(&args, "prompt")?;
-            let fire_at_unix: u64 = field(&args, "fireAtUnix", "fire_at_unix")?;
+            let fire_at_unix: Option<u64> = field_opt(&args, "fireAtUnix", "fire_at_unix")?;
+            let recurrence: Option<crate::chat::schedules::Recurrence> =
+                from_field_opt(&args, "recurrence")?;
             to_value(
-                crate::chat::create_schedule(app.clone(), session_id, prompt, fire_at_unix).await?,
+                crate::chat::create_schedule(
+                    app.clone(),
+                    session_id,
+                    prompt,
+                    fire_at_unix,
+                    recurrence,
+                )
+                .await?,
             )
         }
         "delete_schedule" => {
