@@ -570,6 +570,7 @@ mod tests {
                 kimi_session_id: None,
                 antigravity_session_id: None,
                 checkpoint_id: None,
+                limit_hit: None,
             },
             RunEntry {
                 run_id: "run-2".to_string(),
@@ -597,6 +598,7 @@ mod tests {
                 kimi_session_id: None,
                 antigravity_session_id: None,
                 checkpoint_id: None,
+                limit_hit: None,
             },
         ];
 
@@ -671,6 +673,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         });
 
         assert_eq!(latest_completed_backend(&metadata), Some(Backend::Claude));
@@ -732,6 +735,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         });
         metadata.runs.push(RunEntry {
             run_id: "run-2".to_string(),
@@ -759,6 +763,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         });
 
         assert_eq!(

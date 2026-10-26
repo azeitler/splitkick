@@ -5292,6 +5292,7 @@ Ship the feature end-to-end with tests and clear handoff notes for YOLO.
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
         let message = parse_grok_run_to_message(&lines, &run).unwrap();
         assert!(message.content.contains("Partial reply before failure."));
@@ -6123,6 +6124,7 @@ Ship the feature end-to-end with tests and clear handoff notes for YOLO.
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
         let message = parse_grok_run_to_message(&lines, &run).unwrap();
         assert_eq!(message.content, "Survived restart");
@@ -6201,6 +6203,7 @@ Ship the feature end-to-end with tests and clear handoff notes for YOLO.
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
         let message = parse_grok_run_to_message(&lines, &run).unwrap();
         assert_eq!(message.content, "BeforeAfter");

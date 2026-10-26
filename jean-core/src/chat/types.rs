@@ -918,6 +918,9 @@ pub struct Session {
     /// Status of the last run (running/resumable/completed/cancelled/crashed)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_status: Option<RunStatus>,
+    /// Usage limit hit by the last run (Claude only)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_run_limit_hit: Option<LimitHit>,
     /// Execution mode of the last run (plan/build/yolo)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_run_execution_mode: Option<String>,
@@ -1052,6 +1055,7 @@ impl Session {
             enabled_mcp_servers: None,
             table_checked_rows: HashMap::new(),
             last_run_status: None,
+            last_run_limit_hit: None,
             last_run_execution_mode: None,
             last_run_started_at: None,
             label: None,
@@ -1280,6 +1284,7 @@ impl SessionMetadata {
             table_checked_rows: self.table_checked_rows.clone(),
             // Populate from last run for status recovery on app restart
             last_run_status: last_run.map(|r| r.status.clone()),
+            last_run_limit_hit: last_run.and_then(|r| r.limit_hit.clone()),
             last_run_execution_mode: last_run.and_then(|r| r.execution_mode.clone()),
             last_run_started_at: last_run.map(|r| r.started_at),
             label: self.label.clone(),
@@ -1594,6 +1599,18 @@ pub struct RunEntry {
     /// AI change checkpoint id captured before this run (working-tree snapshot).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub checkpoint_id: Option<String>,
+    /// Set when Claude stopped this run because the account hit its usage
+    /// (session) limit. The sidebar and chat show a resume affordance.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub limit_hit: Option<LimitHit>,
+}
+
+/// Claude stopped a run because the account hit its usage limit.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LimitHit {
+    /// Unix timestamp (seconds) when the limit resets, if Claude reported it
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resets_at: Option<u64>,
 }
 
 impl RunEntry {
@@ -2508,6 +2525,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         });
 
         let restored = metadata.to_session();
@@ -2555,6 +2573,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         });
 
         assert!(metadata.find_run("run-1").is_some());
@@ -2589,6 +2608,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         // Cancelled-with-content now renders user + partial assistant (incl tool calls).
@@ -2644,6 +2664,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         });
         metadata.runs.push(RunEntry {
             run_id: "run-completed".to_string(),
@@ -2671,6 +2692,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         });
 
         // Cancelled partial turn (user + assistant) + completed turn (user + assistant) = 4.
@@ -2716,6 +2738,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         });
 
         assert!(metadata.latest_claude_session_id().is_none());
@@ -2747,6 +2770,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         });
 
         assert_eq!(metadata.latest_claude_session_id(), Some("claude-sess-abc"));

@@ -1795,6 +1795,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let lines = vec![

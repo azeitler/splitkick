@@ -251,6 +251,29 @@ describe('computeSessionCardData', () => {
     }
   }
 
+  it('exposes a Claude usage-limit stop until a new run starts', () => {
+    const session: Session = {
+      ...createBaseSession(),
+      last_run_status: 'completed',
+      last_run_limit_hit: { resets_at: 1791570600 },
+    }
+
+    const idle = computeSessionCardData(session, createBaseStoreState())
+    expect(idle.limitHit).toEqual({ resets_at: 1791570600 })
+
+    const resumed = computeSessionCardData(
+      session,
+      createBaseStoreState({ sendingSessionIds: { 'session-1': true } })
+    )
+    expect(resumed.limitHit).toBeNull()
+
+    const normal = computeSessionCardData(
+      createBaseSession(),
+      createBaseStoreState()
+    )
+    expect(normal.limitHit).toBeNull()
+  })
+
   it('keeps streaming codex plans in planning status until the run actually pauses', () => {
     const session = createBaseSession()
 

@@ -1643,7 +1643,7 @@ pub fn resume_codex_after_crash(
                             );
                         }
                     } else if let Err(e) =
-                        writer.complete(&assistant_message_id, None, response.usage)
+                        writer.complete(&assistant_message_id, None, response.usage, None)
                     {
                         log::error!("Failed to complete run after crash recovery: {e}");
                     } else if let Err(e) =
@@ -1724,7 +1724,7 @@ pub fn resume_codex_after_crash(
                 // Run completed before the crash — mark as completed
                 if let Ok(mut writer) = RunLogWriter::resume(app, session_id, run_id) {
                     let assistant_message_id = uuid::Uuid::new_v4().to_string();
-                    if let Err(e) = writer.complete(&assistant_message_id, None, None) {
+                    if let Err(e) = writer.complete(&assistant_message_id, None, None, None) {
                         log::error!("Failed to complete run during crash recovery: {e}");
                     } else if let Err(e) =
                         persist_codex_recovered_completion_state(app, session_id, run_id)
@@ -1774,7 +1774,7 @@ pub fn resume_codex_after_crash(
             log::trace!("Codex crash recovery: thread idle, marking run {run_id} as completed");
             if let Ok(mut writer) = RunLogWriter::resume(app, session_id, run_id) {
                 let assistant_message_id = uuid::Uuid::new_v4().to_string();
-                if let Err(e) = writer.complete(&assistant_message_id, None, None) {
+                if let Err(e) = writer.complete(&assistant_message_id, None, None, None) {
                     log::error!("Failed to complete run during crash recovery: {e}");
                 } else if let Err(e) =
                     persist_codex_recovered_completion_state(app, session_id, run_id)
@@ -6100,6 +6100,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6159,6 +6160,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6215,6 +6217,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6276,6 +6279,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6339,6 +6343,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6412,6 +6417,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6533,6 +6539,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6592,6 +6599,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6656,6 +6664,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6701,6 +6710,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
@@ -6860,6 +6870,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: None,
+            limit_hit: None,
         };
 
         let message = parse_codex_run_to_message(&lines, &run).expect("message");
