@@ -744,6 +744,12 @@ export function WorktreeItem({
     ]
   )
 
+  // Anything rendered under the row inside this workspace: filter field,
+  // session list or the "no matching sessions" note.
+  const hasChildBlock =
+    filter.isOpen ||
+    (showSessions && (isFilterActive || sessionGroups.length > 0))
+
   return (
     <div>
       {/* Sticks under the project row while its sessions scroll
@@ -751,7 +757,13 @@ export function WorktreeItem({
       <div
         ref={stickyRef}
         data-sidebar-sticky=""
-        className="sticky z-[1] bg-sidebar"
+        className={cn(
+          'sticky z-[1] bg-sidebar',
+          // The gap above the sessions is part of this block, so a stuck
+          // selected row keeps it to the hairline (#59). The session list
+          // drops its top padding to match.
+          hasChildBlock && 'pb-0.5'
+        )}
         style={{ top: 'var(--sb-worktree-top)' }}
       >
         <WorktreeContextMenu actions={menuActions}>
@@ -994,7 +1006,12 @@ export function WorktreeItem({
 
       {/* Expandable session list grouped by status */}
       {showSessions && sessionGroups.length > 0 && (
-        <div className={cn('py-0.5', SIDEBAR_SESSION_LIST)}>
+        <div
+          className={cn(
+            filter.isOpen ? 'py-0.5' : 'pb-0.5',
+            SIDEBAR_SESSION_LIST
+          )}
+        >
           {sessionGroups.map(group => {
             const groupConfig = statusConfig[group.indicatorStatus]
             return (

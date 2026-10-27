@@ -9,6 +9,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **A selected row keeps its spacing in the sticky sidebar.** When a selected
+  project, worktree or session row stuck at the top, its highlight touched the
+  row below it and the line under the stack. The stuck rows now keep the same
+  small gap they have while they scroll. (#59)
+
 - **The usage check runs every 5 minutes again, not every second.** When
   Claude's usage could not be refreshed (an expired login, rate limiting), the
   app kept asking again at once, every second, and with every window switch.

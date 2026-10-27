@@ -116,3 +116,29 @@ describe('FolderTreeItem children', () => {
     )
   })
 })
+
+describe('FolderTreeItem sticky block (#59)', () => {
+  it('owns the gap above its children, so a stuck folder keeps it', () => {
+    useProjectsStore.setState({
+      expandedFolderIds: new Set(['folder-1']),
+      editingFolderId: null,
+    })
+    const row = renderRow()
+
+    // The sticky block carries the 2 px; the list no longer starts with it.
+    expect(row.parentElement).toHaveClass('pb-0.5')
+    const list = screen.getByTestId('folder-child').parentElement
+    expect(list).toHaveClass('pb-0.5')
+    expect(list).not.toHaveClass('py-0.5')
+  })
+
+  it('adds no gap while the folder is collapsed', () => {
+    useProjectsStore.setState({
+      expandedFolderIds: new Set(),
+      editingFolderId: null,
+    })
+    const row = renderRow()
+
+    expect(row.parentElement).not.toHaveClass('pb-0.5')
+  })
+})

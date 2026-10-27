@@ -730,6 +730,10 @@ body:not(.native-app) kbd {
 .sidebar-sticky-scroll {
   --sb-sec-h: 2rem; /* section header height */
   --sb-row-h: 2rem; /* folder, project and worktree row height */
+  /* The 2px between a row and its children. It belongs to the row's sticky
+     block (pb-0.5 while children show), so a stuck selected row keeps it to
+     the next stuck row and to the hairline (#59). */
+  --sb-row-gap: 0.125rem;
   --sb-starred: 0; /* 1 while the Starred section takes slot 0 */
   --sb-folders-top: calc(var(--sb-starred) * var(--sb-sec-h));
   --sb-projects-top: calc((var(--sb-starred) + 1) * var(--sb-sec-h));
@@ -746,18 +750,24 @@ body:not(.native-app) kbd {
 /* Rows of the Folders section stick under the Starred and Folders headers. */
 .sidebar-sticky-folders {
   --sb-folder-top: calc((var(--sb-starred) + 1) * var(--sb-sec-h));
-  --sb-project-top: calc(var(--sb-folder-top) + var(--sb-row-h));
-  --sb-worktree-top: calc(var(--sb-project-top) + var(--sb-row-h));
+  --sb-project-top: calc(
+    var(--sb-folder-top) + var(--sb-row-h) + var(--sb-row-gap)
+  );
+  --sb-worktree-top: calc(
+    var(--sb-project-top) + var(--sb-row-h) + var(--sb-row-gap)
+  );
 }
 /* Rows of the Projects section stick under all three headers. */
 .sidebar-sticky-projects {
   --sb-project-top: calc((var(--sb-starred) + 2) * var(--sb-sec-h));
-  --sb-worktree-top: calc(var(--sb-project-top) + var(--sb-row-h));
+  --sb-worktree-top: calc(
+    var(--sb-project-top) + var(--sb-row-h) + var(--sb-row-gap)
+  );
 }
 /* A revealed or focused session lands below the stack, not under it. */
 .sidebar-sticky-scroll [data-sidebar-row-id^='session:'] {
   scroll-margin-top: calc(
-    var(--sb-worktree-top, 0px) + var(--sb-row-h) + 0.5rem
+    var(--sb-worktree-top, 0px) + var(--sb-row-h) + var(--sb-row-gap) + 0.5rem
   );
 }
 /* Hairline under the lowest stuck row only, across the full sidebar width

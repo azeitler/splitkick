@@ -69,6 +69,7 @@ export function FolderTreeItem({
   }, [isEditing])
 
   const stickyRef = useRef<HTMLDivElement>(null)
+  const hasChildList = isExpanded && childCount > 0
 
   const handleClick = useCallback(() => {
     keepStuckRowInSlot(stickyRef.current)
@@ -139,7 +140,12 @@ export function FolderTreeItem({
         <div
           ref={stickyRef}
           data-sidebar-sticky={nested ? undefined : ''}
-          className={cn(!nested && 'sticky z-[3] bg-sidebar')}
+          className={cn(
+            !nested && 'sticky z-[3] bg-sidebar',
+            // The gap above the children is part of this block, so a stuck
+            // row keeps it to the next stuck row and the hairline (#59).
+            hasChildList && 'pb-0.5'
+          )}
           style={nested ? undefined : { top: 'var(--sb-folder-top)' }}
         >
           {/* Folder Row: the project row's shape, spacing and type, so the two
@@ -206,7 +212,7 @@ export function FolderTreeItem({
         {isExpanded && (
           <div
             className={cn(
-              childCount > 0 && 'py-0.5',
+              childCount > 0 && 'pb-0.5',
               childCount > 0 &&
                 (nested ? SIDEBAR_NESTED_CHILD_LIST : SIDEBAR_WORKTREE_LIST)
             )}

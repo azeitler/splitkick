@@ -662,7 +662,9 @@ export function WorktreeList({
   return (
     <div
       className={cn(
-        'py-0.5',
+        // Right under the project row, the 2 px top gap belongs to the row's
+        // sticky block (#59); under the open filter field the list keeps it.
+        sessionFilterOpen ? 'py-0.5' : 'pb-0.5',
         nested ? SIDEBAR_NESTED_CHILD_LIST : SIDEBAR_WORKTREE_LIST
       )}
       onPointerDown={event => event.stopPropagation()}
