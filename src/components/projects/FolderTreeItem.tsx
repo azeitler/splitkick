@@ -14,6 +14,7 @@ import {
   SIDEBAR_WORKTREE_LIST,
   SIDEBAR_WORKTREE_ROW_PADDING,
 } from './sidebar-row-styles'
+import { keepStuckRowInSlot } from './sidebar-sticky'
 
 interface FolderTreeItemProps {
   folder: Project
@@ -67,13 +68,17 @@ export function FolderTreeItem({
     }
   }, [isEditing])
 
+  const stickyRef = useRef<HTMLDivElement>(null)
+
   const handleClick = useCallback(() => {
+    keepStuckRowInSlot(stickyRef.current)
     toggleFolderExpanded(folder.id)
   }, [folder.id, toggleFolderExpanded])
 
   const handleChevronClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
+      keepStuckRowInSlot(stickyRef.current)
       toggleFolderExpanded(folder.id)
     },
     [folder.id, toggleFolderExpanded]
@@ -128,60 +133,72 @@ export function FolderTreeItem({
   return (
     <FolderContextMenu folder={folder}>
       <div>
-        {/* Folder Row: the project row's shape, spacing and type, so the two
-            read as siblings. A parent folder's list indents nested rows. */}
+        {/* A top-level folder row sticks under the Starred and Folders
+            headers while its projects scroll (sidebar-sticky.ts). Nested
+            folders scroll, so the stack does not grow with the depth. */}
         <div
-          ref={dragHandleRef}
-          data-testid={`folder-row-${folder.id}`}
-          className={cn(
-            'group relative flex cursor-pointer items-center gap-1.5 overflow-hidden py-1.5 transition-colors duration-150',
-            nested ? SIDEBAR_NESTED_ROW_SHAPE : SIDEBAR_ROW_SHAPE,
-            nested ? SIDEBAR_WORKTREE_ROW_PADDING : SIDEBAR_PROJECT_ROW_PADDING,
-            isDropTarget
-              ? 'bg-primary/10 text-primary'
-              : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
-          )}
-          onClick={handleClick}
-          onDoubleClick={handleDoubleClick}
+          ref={stickyRef}
+          data-sidebar-sticky={nested ? undefined : ''}
+          className={cn(!nested && 'sticky z-[3] bg-sidebar')}
+          style={nested ? undefined : { top: 'var(--sb-folder-top)' }}
         >
-          {/* Folder Icon */}
-          <button
-            type="button"
-            aria-label={isExpanded ? 'Collapse folder' : 'Expand folder'}
-            className="flex size-4 shrink-0 items-center justify-center rounded hover:bg-accent-foreground/10"
-            onClick={handleChevronClick}
-          >
-            {/* The project avatar's size. */}
-            {isExpanded ? (
-              <FolderOpen className="size-4" />
-            ) : (
-              <Folder className="size-4" />
+          {/* Folder Row: the project row's shape, spacing and type, so the two
+              read as siblings. A parent folder's list indents nested rows. */}
+          <div
+            ref={dragHandleRef}
+            data-testid={`folder-row-${folder.id}`}
+            className={cn(
+              'group relative flex h-8 cursor-pointer items-center gap-1.5 overflow-hidden py-1.5 transition-colors duration-150',
+              nested ? SIDEBAR_NESTED_ROW_SHAPE : SIDEBAR_ROW_SHAPE,
+              nested
+                ? SIDEBAR_WORKTREE_ROW_PADDING
+                : SIDEBAR_PROJECT_ROW_PADDING,
+              isDropTarget
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
             )}
-          </button>
-
-          {/* Name (editable) */}
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              value={editName}
-              onChange={e => setEditName(e.target.value)}
-              onBlur={() => handleSubmitRename(true)}
-              onKeyDown={handleKeyDown}
-              aria-label="Rename folder"
-              className="flex-1 bg-transparent text-base outline-none ring-1 ring-primary/50 rounded px-1 md:text-sm"
-              onClick={e => e.stopPropagation()}
-              autoFocus
-            />
-          ) : (
-            <span className="flex flex-1 items-center gap-0.5 truncate text-sm">
-              <span className="truncate">{folder.name}</span>
-              {/* Hidden child count while the row is collapsed */}
-              {!isExpanded && (
-                <CollapsedCountBadge count={childCount} noun="item" />
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+          >
+            {/* Folder Icon */}
+            <button
+              type="button"
+              aria-label={isExpanded ? 'Collapse folder' : 'Expand folder'}
+              className="flex size-4 shrink-0 items-center justify-center rounded hover:bg-accent-foreground/10"
+              onClick={handleChevronClick}
+            >
+              {/* The project avatar's size. */}
+              {isExpanded ? (
+                <FolderOpen className="size-4" />
+              ) : (
+                <Folder className="size-4" />
               )}
-            </span>
-          )}
+            </button>
+
+            {/* Name (editable) */}
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                onBlur={() => handleSubmitRename(true)}
+                onKeyDown={handleKeyDown}
+                aria-label="Rename folder"
+                className="flex-1 bg-transparent text-base outline-none ring-1 ring-primary/50 rounded px-1 md:text-sm"
+                onClick={e => e.stopPropagation()}
+                autoFocus
+              />
+            ) : (
+              <span className="flex flex-1 items-center gap-0.5 truncate text-sm">
+                <span className="truncate">{folder.name}</span>
+                {/* Hidden child count while the row is collapsed */}
+                {!isExpanded && (
+                  <CollapsedCountBadge count={childCount} noun="item" />
+                )}
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Children (nested projects/folders), on the same guide line a

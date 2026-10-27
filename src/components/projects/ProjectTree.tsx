@@ -26,10 +26,10 @@ import {
 } from 'lucide-react'
 import { isFolder, type Project } from '@/types/projects'
 import { ProjectTreeItem } from './ProjectTreeItem'
+import { SidebarStickySectionHeader } from './SidebarStickySectionHeader'
 import { FolderTreeItem } from './FolderTreeItem'
 import { useReorderItems, useMoveItem } from '@/services/projects'
 import { useProjectsStore } from '@/store/projects-store'
-import { SidebarSectionRow } from '@/components/chat/SidebarSectionRow'
 import {
   Tooltip,
   TooltipContent,
@@ -835,13 +835,17 @@ export function ProjectTree({
   }, [expandFolder, expandedFolderIds, overFolderId])
 
   return (
+    // `contents`: the Folders and Projects headers share the scroller as their
+    // containing block with Starred, so each stays stuck in its slot after you
+    // scroll past its section (sidebar-sticky.ts).
     <div
-      className="py-1"
+      className="contents"
       onDragOver={handleNativeTreeDragOver}
       onDrop={handleNativeTreeDrop}
       onDragEnd={handleNativeTreeDragEnd}
     >
-      <SidebarSectionRow
+      <SidebarStickySectionHeader
+        top="var(--sb-folders-top)"
         // Stacked folders, so the header does not look like one of its rows.
         icon={<Folders className="size-3.5 shrink-0" aria-hidden="true" />}
         label="Folders"
@@ -869,6 +873,7 @@ export function ProjectTree({
       {!foldersSectionCollapsed && rootFolders.length > 0 && (
         <div
           data-testid="sidebar-folders-items"
+          className="sidebar-sticky-folders"
           style={{ paddingLeft: SIDEBAR_SECTION_ITEMS_INDENT_PX }}
         >
           {rootFolders.map(item => (
@@ -886,7 +891,8 @@ export function ProjectTree({
           ))}
         </div>
       )}
-      <SidebarSectionRow
+      <SidebarStickySectionHeader
+        top="var(--sb-projects-top)"
         icon={<Briefcase className="size-3.5 shrink-0" aria-hidden="true" />}
         label="Projects"
         count={rootProjects.length}
@@ -916,6 +922,7 @@ export function ProjectTree({
       {!projectsSectionCollapsed && rootProjects.length > 0 && (
         <div
           data-testid="sidebar-projects-items"
+          className="sidebar-sticky-projects"
           style={{ paddingLeft: SIDEBAR_SECTION_ITEMS_INDENT_PX }}
         >
           {rootProjects.map(item => (

@@ -55,6 +55,7 @@ import {
   SIDEBAR_ROW_SHAPE,
   SIDEBAR_WORKTREE_ROW_PADDING,
 } from './sidebar-row-styles'
+import { keepStuckRowInSlot } from './sidebar-sticky'
 
 interface ProjectTreeItemProps {
   project: Project
@@ -150,6 +151,7 @@ export function ProjectTreeItem({
   const [isEditing, setIsEditing] = useState(false)
   const [editName, setEditName] = useState(project.name)
   const inputRef = useRef<HTMLInputElement>(null)
+  const stickyRef = useRef<HTMLDivElement>(null)
   const editStartTimeRef = useRef<number>(0)
   const updateSettings = useUpdateProjectSettings()
 
@@ -227,6 +229,7 @@ export function ProjectTreeItem({
   const handleChevronClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
+      keepStuckRowInSlot(stickyRef.current)
       toggleProjectExpanded(project.id)
     },
     [project.id, toggleProjectExpanded]
@@ -321,234 +324,250 @@ export function ProjectTreeItem({
   return (
     <ProjectContextMenu project={project}>
       <div>
-        {/* Project Row */}
+        {/* Project Row: sticks under the section headers (and the folder
+            row) while its worktrees scroll (sidebar-sticky.ts). The filter
+            input below scrolls, so the stack keeps fixed row heights. */}
         <div
-          ref={dragHandleRef}
-          className={cn(
-            'group relative flex cursor-pointer items-center gap-1.5 py-1.5 overflow-hidden transition-colors duration-150',
-            nested ? SIDEBAR_NESTED_ROW_SHAPE : SIDEBAR_ROW_SHAPE,
-            nested ? SIDEBAR_WORKTREE_ROW_PADDING : SIDEBAR_PROJECT_ROW_PADDING,
-            showSelection
-              ? SIDEBAR_ROW_SELECTED
-              : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
-          )}
-          onClick={handleClick}
-          onDoubleClick={handleDoubleClick}
-          data-testid={`project-row-${project.id}`}
-          data-sidebar-row-id={sidebarRowId('project', project.id)}
+          ref={stickyRef}
+          data-sidebar-sticky=""
+          className="sticky z-[2] bg-sidebar"
+          style={{ top: 'var(--sb-project-top)' }}
         >
-          {/* Avatar */}
-          {avatarUrl ? (
-            <img
-              src={avatarUrl}
-              alt={project.name}
-              className="size-4 shrink-0 rounded object-cover"
-              onError={() => setImgErrorKey(avatarKey)}
-            />
-          ) : (
-            <div className="flex size-4 shrink-0 items-center justify-center rounded bg-muted-foreground/20">
-              <span className="text-[10px] font-medium uppercase">
-                {project.name[0]}
-              </span>
-            </div>
-          )}
+          <div
+            ref={dragHandleRef}
+            className={cn(
+              'group relative flex h-8 cursor-pointer items-center gap-1.5 py-1.5 overflow-hidden transition-colors duration-150',
+              nested ? SIDEBAR_NESTED_ROW_SHAPE : SIDEBAR_ROW_SHAPE,
+              nested
+                ? SIDEBAR_WORKTREE_ROW_PADDING
+                : SIDEBAR_PROJECT_ROW_PADDING,
+              showSelection
+                ? SIDEBAR_ROW_SELECTED
+                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+            )}
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            data-testid={`project-row-${project.id}`}
+            data-sidebar-row-id={sidebarRowId('project', project.id)}
+          >
+            {/* Avatar */}
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={project.name}
+                className="size-4 shrink-0 rounded object-cover"
+                onError={() => setImgErrorKey(avatarKey)}
+              />
+            ) : (
+              <div className="flex size-4 shrink-0 items-center justify-center rounded bg-muted-foreground/20">
+                <span className="text-[10px] font-medium uppercase">
+                  {project.name[0]}
+                </span>
+              </div>
+            )}
 
-          {/* Name + Chevron */}
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              aria-label="Project name"
-              value={editName}
-              onChange={e => setEditName(e.target.value)}
-              onBlur={() => handleSubmitRename(true)}
-              onKeyDown={handleRenameKeyDown}
-              className="flex-1 bg-transparent text-base outline-none ring-1 ring-primary/50 rounded px-1 md:text-sm"
-              onClick={e => e.stopPropagation()}
-              autoFocus
-            />
-          ) : (
-            <span className="flex flex-1 items-center gap-0.5 truncate text-sm">
-              <span className="truncate">{project.name}</span>
-              {/* Hidden workspace count while the row is collapsed */}
-              {!showWorktrees && (
-                <CollapsedCountBadge
-                  count={worktrees.length}
-                  noun="workspace"
-                />
-              )}
-              {hasWorktrees && (
-                <button
-                  type="button"
-                  aria-label={
-                    isExpanded ? 'Collapse project' : 'Expand project'
-                  }
-                  className={cn(
-                    'flex size-4 shrink-0 items-center justify-center rounded transition-opacity hover:bg-accent-foreground/10',
-                    isMobile
-                      ? 'opacity-70'
-                      : 'opacity-0 group-hover:opacity-50 hover:!opacity-100'
-                  )}
-                  onClick={handleChevronClick}
-                >
-                  <ChevronDown
-                    className={cn(
-                      'size-3 transition-transform',
-                      isExpanded && 'rotate-180'
-                    )}
+            {/* Name + Chevron */}
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                aria-label="Project name"
+                value={editName}
+                onChange={e => setEditName(e.target.value)}
+                onBlur={() => handleSubmitRename(true)}
+                onKeyDown={handleRenameKeyDown}
+                className="flex-1 bg-transparent text-base outline-none ring-1 ring-primary/50 rounded px-1 md:text-sm"
+                onClick={e => e.stopPropagation()}
+                autoFocus
+              />
+            ) : (
+              <span className="flex flex-1 items-center gap-0.5 truncate text-sm">
+                <span className="truncate">{project.name}</span>
+                {/* Hidden workspace count while the row is collapsed */}
+                {!showWorktrees && (
+                  <CollapsedCountBadge
+                    count={worktrees.length}
+                    noun="workspace"
                   />
-                </button>
-              )}
-            </span>
-          )}
+                )}
+                {hasWorktrees && (
+                  <button
+                    type="button"
+                    aria-label={
+                      isExpanded ? 'Collapse project' : 'Expand project'
+                    }
+                    className={cn(
+                      'flex size-4 shrink-0 items-center justify-center rounded transition-opacity hover:bg-accent-foreground/10',
+                      isMobile
+                        ? 'opacity-70'
+                        : 'opacity-0 group-hover:opacity-50 hover:!opacity-100'
+                    )}
+                    onClick={handleChevronClick}
+                  >
+                    <ChevronDown
+                      className={cn(
+                        'size-3 transition-transform',
+                        isExpanded && 'rotate-180'
+                      )}
+                    />
+                  </button>
+                )}
+              </span>
+            )}
 
-          {/* Base branch pull/push indicators (when no base session) */}
-          {gitSyncButton &&
-          (baseBranchBehindCount > 0 || baseBranchAheadCount > 0) ? (
+            {/* Base branch pull/push indicators (when no base session) */}
+            {gitSyncButton &&
+            (baseBranchBehindCount > 0 || baseBranchAheadCount > 0) ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleBaseSync}
+                    className="shrink-0 rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-500 transition-colors hover:bg-violet-500/20"
+                  >
+                    <span className="flex items-center gap-0.5">
+                      <ArrowDownUp className="h-3 w-3" />
+                      {baseBranchBehindCount > 0 && baseBranchAheadCount > 0
+                        ? `${baseBranchBehindCount}/${baseBranchAheadCount}`
+                        : baseBranchBehindCount > 0
+                          ? baseBranchBehindCount
+                          : baseBranchAheadCount}
+                    </span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {(() => {
+                    const parts: string[] = []
+                    if (baseBranchBehindCount > 0) {
+                      parts.push(
+                        `pull ${baseBranchBehindCount} commit${baseBranchBehindCount > 1 ? 's' : ''}`
+                      )
+                    }
+                    if (baseBranchAheadCount > 0) {
+                      parts.push(
+                        `push ${baseBranchAheadCount} commit${baseBranchAheadCount > 1 ? 's' : ''}`
+                      )
+                    }
+                    return `Sync ${project.default_branch}: ${parts.join(', ')}`
+                  })()}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <>
+                {baseBranchBehindCount > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handleBasePull}
+                        className="shrink-0 rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-foreground/20"
+                      >
+                        <span className="flex items-center gap-0.5">
+                          <ArrowDown className="h-3 w-3" />
+                          {baseBranchBehindCount}
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{`Pull ${baseBranchBehindCount} commit${baseBranchBehindCount > 1 ? 's' : ''} on ${project.default_branch}`}</TooltipContent>
+                  </Tooltip>
+                )}
+                {baseBranchAheadCount > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handleBasePush}
+                        className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
+                      >
+                        <span className="flex items-center gap-0.5">
+                          <ArrowUp className="h-3 w-3" />
+                          {baseBranchAheadCount}
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{`Push ${baseBranchAheadCount} commit${baseBranchAheadCount > 1 ? 's' : ''} on ${project.default_branch}`}</TooltipContent>
+                  </Tooltip>
+                )}
+              </>
+            )}
+
+            {showStatusBadges && (
+              <div className="hidden items-center gap-1 sm:flex">
+                <NewIssuesBadge
+                  projectPath={project.path}
+                  projectId={project.id}
+                />
+                <OpenPRsBadge
+                  projectPath={project.path}
+                  projectId={project.id}
+                />
+                <SecurityAlertsBadge
+                  projectPath={project.path}
+                  projectId={project.id}
+                />
+                <FailedRunsBadge projectPath={project.path} />
+              </div>
+            )}
+
+            {/* Filter sessions */}
+            {hasWorktrees && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleToggleFilter}
+                    aria-label="Filter sessions"
+                    aria-expanded={filter.isOpen}
+                    className={cn(
+                      'flex size-4 shrink-0 items-center justify-center rounded hover:bg-accent-foreground/10 hover:opacity-100',
+                      filter.isOpen
+                        ? 'text-foreground opacity-100'
+                        : 'opacity-50'
+                    )}
+                  >
+                    <Search className="size-3.5" />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>Filter sessions</TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* Sort sessions — shown under the same condition as the filter */}
+            {hasWorktrees && <SessionSortMenu projectId={project.id} />}
+
+            {/* Settings */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={handleBaseSync}
-                  className="shrink-0 rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-500 transition-colors hover:bg-violet-500/20"
+                  onClick={e => {
+                    e.stopPropagation()
+                    openProjectSettings(project.id)
+                  }}
+                  aria-label="Project settings"
+                  className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
                 >
-                  <span className="flex items-center gap-0.5">
-                    <ArrowDownUp className="h-3 w-3" />
-                    {baseBranchBehindCount > 0 && baseBranchAheadCount > 0
-                      ? `${baseBranchBehindCount}/${baseBranchAheadCount}`
-                      : baseBranchBehindCount > 0
-                        ? baseBranchBehindCount
-                        : baseBranchAheadCount}
-                  </span>
+                  <Settings className="size-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>
-                {(() => {
-                  const parts: string[] = []
-                  if (baseBranchBehindCount > 0) {
-                    parts.push(
-                      `pull ${baseBranchBehindCount} commit${baseBranchBehindCount > 1 ? 's' : ''}`
-                    )
-                  }
-                  if (baseBranchAheadCount > 0) {
-                    parts.push(
-                      `push ${baseBranchAheadCount} commit${baseBranchAheadCount > 1 ? 's' : ''}`
-                    )
-                  }
-                  return `Sync ${project.default_branch}: ${parts.join(', ')}`
-                })()}
-              </TooltipContent>
+              <TooltipContent>Project settings</TooltipContent>
             </Tooltip>
-          ) : (
-            <>
-              {baseBranchBehindCount > 0 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={handleBasePull}
-                      className="shrink-0 rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-foreground/20"
-                    >
-                      <span className="flex items-center gap-0.5">
-                        <ArrowDown className="h-3 w-3" />
-                        {baseBranchBehindCount}
-                      </span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>{`Pull ${baseBranchBehindCount} commit${baseBranchBehindCount > 1 ? 's' : ''} on ${project.default_branch}`}</TooltipContent>
-                </Tooltip>
-              )}
-              {baseBranchAheadCount > 0 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={handleBasePush}
-                      className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
-                    >
-                      <span className="flex items-center gap-0.5">
-                        <ArrowUp className="h-3 w-3" />
-                        {baseBranchAheadCount}
-                      </span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>{`Push ${baseBranchAheadCount} commit${baseBranchAheadCount > 1 ? 's' : ''} on ${project.default_branch}`}</TooltipContent>
-                </Tooltip>
-              )}
-            </>
-          )}
 
-          {showStatusBadges && (
-            <div className="hidden items-center gap-1 sm:flex">
-              <NewIssuesBadge
-                projectPath={project.path}
-                projectId={project.id}
-              />
-              <OpenPRsBadge projectPath={project.path} projectId={project.id} />
-              <SecurityAlertsBadge
-                projectPath={project.path}
-                projectId={project.id}
-              />
-              <FailedRunsBadge projectPath={project.path} />
-            </div>
-          )}
-
-          {/* Filter sessions */}
-          {hasWorktrees && (
+            {/* Add Worktree */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
-                  onClick={handleToggleFilter}
-                  aria-label="Filter sessions"
-                  aria-expanded={filter.isOpen}
-                  className={cn(
-                    'flex size-4 shrink-0 items-center justify-center rounded hover:bg-accent-foreground/10 hover:opacity-100',
-                    filter.isOpen ? 'text-foreground opacity-100' : 'opacity-50'
-                  )}
+                  onClick={handleAddWorktree}
+                  aria-label="New worktree"
+                  className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
                 >
-                  <Search className="size-3.5" />
+                  <Plus className="size-3.5" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Filter sessions</TooltipContent>
+              <TooltipContent>New worktree</TooltipContent>
             </Tooltip>
-          )}
-
-          {/* Sort sessions — shown under the same condition as the filter */}
-          {hasWorktrees && <SessionSortMenu projectId={project.id} />}
-
-          {/* Settings */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={e => {
-                  e.stopPropagation()
-                  openProjectSettings(project.id)
-                }}
-                aria-label="Project settings"
-                className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-              >
-                <Settings className="size-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>Project settings</TooltipContent>
-          </Tooltip>
-
-          {/* Add Worktree */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                onClick={handleAddWorktree}
-                aria-label="New worktree"
-                className="flex size-4 shrink-0 items-center justify-center rounded opacity-50 hover:bg-accent-foreground/10 hover:opacity-100"
-              >
-                <Plus className="size-3.5" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>New worktree</TooltipContent>
-          </Tooltip>
+          </div>
         </div>
 
         {filter.isOpen && (

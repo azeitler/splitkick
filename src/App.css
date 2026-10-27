@@ -720,3 +720,55 @@ body:not(.native-app) kbd {
 .window-blurred .square-spinner::before {
   animation-play-state: paused !important;
 }
+
+/* Sidebar sticky stack (#45). The projects scroller holds Starred, Folders and
+   Projects. A section header you scroll past stays stuck in its slot, stacked
+   above the next one; below them the folder, project and worktree rows stick
+   and the next row pushes them out. Only session rows scroll. Every `top` comes
+   from these variables, so the short-window cap is one change.
+   See src/components/projects/sidebar-sticky.ts. */
+.sidebar-sticky-scroll {
+  --sb-sec-h: 2rem; /* section header height */
+  --sb-row-h: 2rem; /* folder, project and worktree row height */
+  --sb-starred: 0; /* 1 while the Starred section takes slot 0 */
+  --sb-folders-top: calc(var(--sb-starred) * var(--sb-sec-h));
+  --sb-projects-top: calc((var(--sb-starred) + 1) * var(--sb-sec-h));
+}
+.sidebar-sticky-scroll:has([data-sidebar-starred]) {
+  --sb-starred: 1;
+}
+/* Short window: smaller headers keep the stack at most 3 × 24 + 64 px. */
+@media (max-height: 600px) {
+  .sidebar-sticky-scroll {
+    --sb-sec-h: 1.5rem;
+  }
+}
+/* Rows of the Folders section stick under the Starred and Folders headers. */
+.sidebar-sticky-folders {
+  --sb-folder-top: calc((var(--sb-starred) + 1) * var(--sb-sec-h));
+  --sb-project-top: calc(var(--sb-folder-top) + var(--sb-row-h));
+  --sb-worktree-top: calc(var(--sb-project-top) + var(--sb-row-h));
+}
+/* Rows of the Projects section stick under all three headers. */
+.sidebar-sticky-projects {
+  --sb-project-top: calc((var(--sb-starred) + 2) * var(--sb-sec-h));
+  --sb-worktree-top: calc(var(--sb-project-top) + var(--sb-row-h));
+}
+/* A revealed or focused session lands below the stack, not under it. */
+.sidebar-sticky-scroll [data-sidebar-row-id^='session:'] {
+  scroll-margin-top: calc(
+    var(--sb-worktree-top, 0px) + var(--sb-row-h) + 0.5rem
+  );
+}
+/* Hairline under the lowest stuck row only, across the full sidebar width
+   (set by useSidebarStickyStack). */
+[data-sidebar-stack-bottom]::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: calc(-1 * var(--sb-x, 0px));
+  right: 0;
+  height: 1px;
+  background: var(--sidebar-border);
+  pointer-events: none;
+}

@@ -6,7 +6,6 @@ import {
   SessionShortcutRows,
   type SessionShortcut,
 } from '@/components/chat/SessionShortcutRows'
-import { SidebarSectionRow } from '@/components/chat/SidebarSectionRow'
 import { resolveStarredSessions } from '@/components/home/home-utils'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { navigateToSession } from '@/lib/navigate-to-session'
@@ -19,6 +18,7 @@ import {
   SIDEBAR_WORKTREE_LIST,
   SIDEBAR_WORKTREE_ROW_PADDING,
 } from './sidebar-row-styles'
+import { SidebarStickySectionHeader } from './SidebarStickySectionHeader'
 
 /**
  * Starred sessions near the top of the sidebar, pinned under the Home row.
@@ -73,8 +73,15 @@ export function SidebarStarredSection() {
   if (shortcuts.length === 0) return null
 
   return (
-    <div data-testid="sidebar-starred-section">
-      <SidebarSectionRow
+    // `contents`: the header's containing block is the whole scroller, so it
+    // stays stuck in slot 0 after you scroll past Starred.
+    <div
+      data-testid="sidebar-starred-section"
+      data-sidebar-starred=""
+      className="contents"
+    >
+      <SidebarStickySectionHeader
+        top="0px"
         icon={<Star className="size-3.5 shrink-0" aria-hidden="true" />}
         label="Starred"
         count={shortcuts.length}

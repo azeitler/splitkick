@@ -47,7 +47,9 @@ export function SidebarSectionRow({
       onClick={onToggle}
       data-testid={testId}
       className={cn(
-        'group relative flex w-full cursor-pointer items-center gap-1.5 overflow-hidden py-1.5 pr-2 text-left text-muted-foreground transition-colors duration-150 hover:text-foreground',
+        // 2rem, as py-1.5 + text-sm; the projects sidebar shrinks it on a
+        // short window (--sb-sec-h, App.css).
+        'group relative flex h-[var(--sb-sec-h,2rem)] w-full cursor-pointer items-center gap-1.5 overflow-hidden py-1.5 pr-2 text-left text-muted-foreground transition-colors duration-150 hover:text-foreground',
         // With actions, the wrapper carries the hover background and the
         // padding; the toggle keeps the Home row's gap, so the label sits on
         // the Home label's column.
