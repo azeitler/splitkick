@@ -97,6 +97,7 @@ import {
   SIDEBAR_SESSION_LIST,
   SIDEBAR_WORKTREE_ROW_PADDING,
 } from './sidebar-row-styles'
+import { keepStuckRowInSlot } from './sidebar-sticky'
 
 interface WorktreeItemProps {
   worktree: Worktree
@@ -352,9 +353,13 @@ export function WorktreeItem({
   // easier to find.
   const isFaded = shouldFadeRow(lastActivityAt, isSelected)
 
+  // The row's sticky block (sidebar-sticky.ts).
+  const stickyRef = useRef<HTMLDivElement>(null)
+
   const handleChevronClick = useCallback(
     (e: React.MouseEvent) => {
       e.stopPropagation()
+      keepStuckRowInSlot(stickyRef.current)
       toggleWorktreeExpanded(worktree.id)
     },
     [worktree.id, toggleWorktreeExpanded]
@@ -741,218 +746,227 @@ export function WorktreeItem({
 
   return (
     <div>
-      <WorktreeContextMenu actions={menuActions}>
-        <div
-          role="button"
-          tabIndex={0}
-          className={cn(
-            'group relative flex cursor-pointer items-center gap-1.5 py-1.5 overflow-hidden transition-colors duration-150',
-            SIDEBAR_NESTED_ROW_SHAPE,
-            SIDEBAR_WORKTREE_ROW_PADDING,
-            showSelection
-              ? SIDEBAR_ROW_SELECTED
-              : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
-            isFaded && 'opacity-50 hover:opacity-100'
-          )}
-          onClick={handleClick}
-          onKeyDown={e => {
-            if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault()
-              handleClick()
-            }
-          }}
-          {...middleClickClose(handleWorktreeMiddleClose)}
-          onDoubleClick={handleDoubleClick}
-        >
-          {/* Chat status indicator (spinner/dot) */}
-          <StatusIndicator
-            status={indicatorStatus}
-            variant={indicatorVariant}
-            className="h-2 w-2"
-          />
-
-          {/* Terminal running/failed indicator */}
-          <TerminalStatusIndicator worktreeId={worktree.id} />
-
-          {/* Workspace name - editable on double-click */}
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="text"
-              aria-label="Worktree name"
-              value={editValue}
-              onChange={e => setEditValue(e.target.value)}
-              onKeyDown={handleKeyDown}
-              onBlur={handleBlur}
-              onClick={e => e.stopPropagation()}
-              className="flex-1 bg-transparent text-base outline-none ring-1 ring-ring rounded px-1 md:text-sm"
+      {/* Sticks under the project row while its sessions scroll
+          (sidebar-sticky.ts). */}
+      <div
+        ref={stickyRef}
+        data-sidebar-sticky=""
+        className="sticky z-[1] bg-sidebar"
+        style={{ top: 'var(--sb-worktree-top)' }}
+      >
+        <WorktreeContextMenu actions={menuActions}>
+          <div
+            role="button"
+            tabIndex={0}
+            className={cn(
+              'group relative flex h-8 cursor-pointer items-center gap-1.5 py-1.5 overflow-hidden transition-colors duration-150',
+              SIDEBAR_NESTED_ROW_SHAPE,
+              SIDEBAR_WORKTREE_ROW_PADDING,
+              showSelection
+                ? SIDEBAR_ROW_SELECTED
+                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50',
+              isFaded && 'opacity-50 hover:opacity-100'
+            )}
+            onClick={handleClick}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                handleClick()
+              }
+            }}
+            {...middleClickClose(handleWorktreeMiddleClose)}
+            onDoubleClick={handleDoubleClick}
+          >
+            {/* Chat status indicator (spinner/dot) */}
+            <StatusIndicator
+              status={indicatorStatus}
+              variant={indicatorVariant}
+              className="h-2 w-2"
             />
-          ) : (
-            <span
-              className={cn(
-                'flex flex-1 items-center gap-0.5 truncate text-sm',
-                isBase && 'font-medium'
-              )}
-            >
-              <span className="truncate">{worktree.name}</span>
-              {/* The base session is named after the default branch, so it
-                  reads as an ordinary "main" workspace without this pill. */}
-              {isBase && !isNarrowSidebar && <BaseSessionBadge />}
-              {/* Hidden session count while the row is collapsed */}
-              {!showSessions && (
-                <CollapsedCountBadge count={sessionCount} noun="session" />
-              )}
-              {/* Chevron for expand/collapse sessions */}
-              <button
-                type="button"
-                aria-label={
-                  isExpanded ? 'Collapse sessions' : 'Expand sessions'
-                }
-                className="flex size-4 shrink-0 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-50 hover:!opacity-100 hover:bg-accent-foreground/10"
-                onClick={handleChevronClick}
+
+            {/* Terminal running/failed indicator */}
+            <TerminalStatusIndicator worktreeId={worktree.id} />
+
+            {/* Workspace name - editable on double-click */}
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                type="text"
+                aria-label="Worktree name"
+                value={editValue}
+                onChange={e => setEditValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                onBlur={handleBlur}
+                onClick={e => e.stopPropagation()}
+                className="flex-1 bg-transparent text-base outline-none ring-1 ring-ring rounded px-1 md:text-sm"
+              />
+            ) : (
+              <span
+                className={cn(
+                  'flex flex-1 items-center gap-0.5 truncate text-sm',
+                  isBase && 'font-medium'
+                )}
               >
-                <ChevronDown
-                  className={cn(
-                    'size-3 transition-transform',
-                    isExpanded && 'rotate-180'
-                  )}
-                />
-              </button>
-              {sessionCount > 0 && (
+                <span className="truncate">{worktree.name}</span>
+                {/* The base session is named after the default branch, so it
+                    reads as an ordinary "main" workspace without this pill. */}
+                {isBase && !isNarrowSidebar && <BaseSessionBadge />}
+                {/* Hidden session count while the row is collapsed */}
+                {!showSessions && (
+                  <CollapsedCountBadge count={sessionCount} noun="session" />
+                )}
+                {/* Chevron for expand/collapse sessions */}
                 <button
                   type="button"
-                  aria-label="Filter sessions"
-                  aria-expanded={filter.isOpen}
-                  className={cn(
-                    'flex size-4 shrink-0 items-center justify-center rounded transition-opacity hover:bg-accent-foreground/10 hover:!opacity-100',
-                    filter.isOpen
-                      ? 'text-foreground opacity-100'
-                      : isMobile
-                        ? 'opacity-70'
-                        : 'opacity-0 group-hover:opacity-50'
-                  )}
-                  onClick={handleToggleFilter}
+                  aria-label={
+                    isExpanded ? 'Collapse sessions' : 'Expand sessions'
+                  }
+                  className="flex size-4 shrink-0 items-center justify-center rounded opacity-0 transition-opacity group-hover:opacity-50 hover:!opacity-100 hover:bg-accent-foreground/10"
+                  onClick={handleChevronClick}
                 >
-                  <Search className="size-3" />
+                  <ChevronDown
+                    className={cn(
+                      'size-3 transition-transform',
+                      isExpanded && 'rotate-180'
+                    )}
+                  />
                 </button>
-              )}
-              {/* Show branch name only when different from displayed name */}
-              {(() => {
-                const displayBranch =
-                  gitStatus?.current_branch ?? worktree.branch
-                return displayBranch !== worktree.name ? (
-                  <span className="ml-0.5 inline-flex max-w-[80px] items-center gap-0.5 truncate text-xs text-muted-foreground">
-                    <GitBranch className="h-2.5 w-2.5" />
-                    {displayBranch}
-                  </span>
-                ) : null
-              })()}
-            </span>
-          )}
-
-          {/* Sync / Pull / Push badges */}
-          {gitSyncButton && (behindCount > 0 || pushCount > 0) ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  onClick={handleSync}
-                  className="shrink-0 rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-500 transition-colors hover:bg-violet-500/20"
-                >
-                  <span className="flex items-center gap-0.5">
-                    <ArrowDownUp className="h-3 w-3" />
-                    {behindCount > 0 && pushCount > 0
-                      ? `${behindCount}/${pushCount}`
-                      : behindCount > 0
-                        ? behindCount
-                        : pushCount}
-                  </span>
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
+                {sessionCount > 0 && (
+                  <button
+                    type="button"
+                    aria-label="Filter sessions"
+                    aria-expanded={filter.isOpen}
+                    className={cn(
+                      'flex size-4 shrink-0 items-center justify-center rounded transition-opacity hover:bg-accent-foreground/10 hover:!opacity-100',
+                      filter.isOpen
+                        ? 'text-foreground opacity-100'
+                        : isMobile
+                          ? 'opacity-70'
+                          : 'opacity-0 group-hover:opacity-50'
+                    )}
+                    onClick={handleToggleFilter}
+                  >
+                    <Search className="size-3" />
+                  </button>
+                )}
+                {/* Show branch name only when different from displayed name */}
                 {(() => {
-                  const parts: string[] = []
-                  if (behindCount > 0) {
-                    parts.push(
-                      `pull ${behindCount} commit${behindCount > 1 ? 's' : ''}`
-                    )
-                  }
-                  if (pushCount > 0) {
-                    parts.push(
-                      `push ${pushCount} commit${pushCount > 1 ? 's' : ''}`
-                    )
-                  }
-                  return `Sync: ${parts.join(', ')}`
+                  const displayBranch =
+                    gitStatus?.current_branch ?? worktree.branch
+                  return displayBranch !== worktree.name ? (
+                    <span className="ml-0.5 inline-flex max-w-[80px] items-center gap-0.5 truncate text-xs text-muted-foreground">
+                      <GitBranch className="h-2.5 w-2.5" />
+                      {displayBranch}
+                    </span>
+                  ) : null
                 })()}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <>
-              {behindCount > 0 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={handlePull}
-                      className="shrink-0 rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-foreground/20"
-                    >
-                      <span className="flex items-center gap-0.5">
-                        <ArrowDown className="h-3 w-3" />
-                        {behindCount}
-                      </span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>{`Pull ${behindCount} commit${behindCount > 1 ? 's' : ''} from remote`}</TooltipContent>
-                </Tooltip>
-              )}
+              </span>
+            )}
 
-              {pushCount > 0 && (
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={handlePush}
-                      className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
-                    >
-                      <span className="flex items-center gap-0.5">
-                        <ArrowUp className="h-3 w-3" />
-                        {pushCount}
-                      </span>
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>{`Push ${pushCount} commit${pushCount > 1 ? 's' : ''} to remote`}</TooltipContent>
-                </Tooltip>
-              )}
-            </>
-          )}
+            {/* Sync / Pull / Push badges */}
+            {gitSyncButton && (behindCount > 0 || pushCount > 0) ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={handleSync}
+                    className="shrink-0 rounded bg-violet-500/10 px-1.5 py-0.5 text-[11px] font-medium text-violet-500 transition-colors hover:bg-violet-500/20"
+                  >
+                    <span className="flex items-center gap-0.5">
+                      <ArrowDownUp className="h-3 w-3" />
+                      {behindCount > 0 && pushCount > 0
+                        ? `${behindCount}/${pushCount}`
+                        : behindCount > 0
+                          ? behindCount
+                          : pushCount}
+                    </span>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  {(() => {
+                    const parts: string[] = []
+                    if (behindCount > 0) {
+                      parts.push(
+                        `pull ${behindCount} commit${behindCount > 1 ? 's' : ''}`
+                      )
+                    }
+                    if (pushCount > 0) {
+                      parts.push(
+                        `push ${pushCount} commit${pushCount > 1 ? 's' : ''}`
+                      )
+                    }
+                    return `Sync: ${parts.join(', ')}`
+                  })()}
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <>
+                {behindCount > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handlePull}
+                        className="shrink-0 rounded bg-foreground/10 px-1.5 py-0.5 text-[11px] font-medium text-foreground transition-colors hover:bg-foreground/20"
+                      >
+                        <span className="flex items-center gap-0.5">
+                          <ArrowDown className="h-3 w-3" />
+                          {behindCount}
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{`Pull ${behindCount} commit${behindCount > 1 ? 's' : ''} from remote`}</TooltipContent>
+                  </Tooltip>
+                )}
 
-          {/* Uncommitted changes */}
-          {hasUncommitted && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium">
-                  <span className="text-green-500">+{uncommittedAdded}</span>
-                  <span className="text-muted-foreground">/</span>
-                  <span className="text-red-500">-{uncommittedRemoved}</span>
-                </span>
-              </TooltipTrigger>
-              <TooltipContent>{`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}</TooltipContent>
-            </Tooltip>
-          )}
+                {pushCount > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        onClick={handlePush}
+                        className="shrink-0 rounded bg-orange-500/10 px-1.5 py-0.5 text-[11px] font-medium text-orange-500 transition-colors hover:bg-orange-500/20"
+                      >
+                        <span className="flex items-center gap-0.5">
+                          <ArrowUp className="h-3 w-3" />
+                          {pushCount}
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>{`Push ${pushCount} commit${pushCount > 1 ? 's' : ''} to remote`}</TooltipContent>
+                  </Tooltip>
+                )}
+              </>
+            )}
 
-          {/* Last activity across the workspace's sessions, shown in every state
-              once past the age threshold. Dropped on a narrow sidebar, where
-              the git badges already own the remaining space. */}
-          {!isNarrowSidebar && shouldShowLastActive(lastActivityAt) && (
-            <span
-              className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70"
-              title={`Last active: ${formatMessageTimestamp(lastActivityAt)}`}
-            >
-              {formatRelativeTime(lastActivityAt)}
-            </span>
-          )}
-        </div>
-      </WorktreeContextMenu>
+            {/* Uncommitted changes */}
+            {hasUncommitted && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] font-medium">
+                    <span className="text-green-500">+{uncommittedAdded}</span>
+                    <span className="text-muted-foreground">/</span>
+                    <span className="text-red-500">-{uncommittedRemoved}</span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>{`Uncommitted: +${uncommittedAdded}/-${uncommittedRemoved} lines`}</TooltipContent>
+              </Tooltip>
+            )}
+
+            {/* Last activity across the workspace's sessions, shown in every state
+                once past the age threshold. Dropped on a narrow sidebar, where
+                the git badges already own the remaining space. */}
+            {!isNarrowSidebar && shouldShowLastActive(lastActivityAt) && (
+              <span
+                className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70"
+                title={`Last active: ${formatMessageTimestamp(lastActivityAt)}`}
+              >
+                {formatRelativeTime(lastActivityAt)}
+              </span>
+            )}
+          </div>
+        </WorktreeContextMenu>
+      </div>
 
       {/* Rendered outside the context-menu trigger, or a right-click inside the
           field would open the workspace context menu. */}

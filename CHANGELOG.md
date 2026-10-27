@@ -7,6 +7,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Changed
+
+- **The sidebar keeps its headers in view while you scroll.** Starred,
+  Folders and Projects now scroll in one list. A section header you scroll
+  past stays at the top, stacked above the next one. Below the headers, the
+  folder, project and worktree rows stay too, so you always see where the
+  sessions on screen belong; the next row pushes the old one out. Click a
+  stuck header to jump to the start of its section. A thin line marks the
+  bottom of the stack. On a short window the headers get smaller. (#45)
+
 ## [1.0.14] - 2026-10-26
 
 Built on Jean 0.1.73.

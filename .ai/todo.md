@@ -1,3 +1,13 @@
+# Sidebar sticky stack (#45)
+
+- [x] Mockup (`docs/mockups/sidebar-sticky/`); chosen: full stack, stuck section headers stack and jump on click, hairline.
+- [x] Starred moved into the projects scroller; section wrappers `display: contents`; headers via `SidebarStickySectionHeader`.
+- [x] Folder (top level), project and worktree rows sticky; offsets as CSS variables in `App.css`; 24 px headers below 600 px height.
+- [x] `useSidebarStickyStack` marks stuck rows + hairline; `keepStuckRowInSlot` on collapse; `scroll-margin-top` for reveal.
+- [x] Tests (`sidebar-sticky.test.tsx`), typecheck, eslint `src`, 407 test files pass; checked in the dev build over web access (WebKit, 420/700 px).
+
+Result: done. `check:all` lint step fails only on old scratch files in `tmp/` (not part of this change).
+
 # Sidebar layout (#55)
 
 - [x] Tabs at the top; Projects tab: Home + Starred pinned, then Folders, Projects, Archived (scrolls). Footer removed.
