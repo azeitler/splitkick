@@ -297,4 +297,22 @@ describe('ProjectTreeItem', () => {
       'false'
     )
   })
+
+  it('owns the gap above its worktrees in the sticky block (#59)', () => {
+    render(<ProjectTreeItem project={project} />)
+
+    // A selected row's pill then keeps its 2 px to the next stuck row.
+    expect(
+      screen.getByTestId('project-row-project-1').parentElement
+    ).toHaveClass('pb-0.5')
+  })
+
+  it('adds no gap while the project is collapsed (#59)', () => {
+    useProjectsStore.setState({ expandedProjectIds: new Set() })
+    render(<ProjectTreeItem project={project} />)
+
+    expect(
+      screen.getByTestId('project-row-project-1').parentElement
+    ).not.toHaveClass('pb-0.5')
+  })
 })

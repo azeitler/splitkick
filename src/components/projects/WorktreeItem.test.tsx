@@ -813,3 +813,34 @@ describe('WorktreeItem selection', () => {
     expect(workspaceRow()).not.toHaveClass('bg-foreground/10')
   })
 })
+
+describe('WorktreeItem sticky block (#59)', () => {
+  function stickyBlock(): HTMLElement {
+    const block = screen
+      .getByText(worktree.name)
+      .closest('[data-sidebar-sticky]')
+    if (!block) throw new Error('no sticky block')
+    return block as HTMLElement
+  }
+
+  beforeEach(() => {
+    mocks.sessions = [session('a', 'Auth Refactor')]
+  })
+
+  it('owns the gap above its sessions, so a stuck workspace keeps it', () => {
+    useProjectsStore.setState({ expandedWorktreeIds: new Set(['wt-1']) })
+    renderItem({})
+
+    expect(stickyBlock()).toHaveClass('pb-0.5')
+    const list = screen.getByText('Auth Refactor').closest('.border-l')
+    expect(list).toHaveClass('pb-0.5')
+    expect(list).not.toHaveClass('py-0.5')
+  })
+
+  it('adds no gap while its sessions are hidden', () => {
+    useProjectsStore.setState({ expandedWorktreeIds: new Set() })
+    renderItem({})
+
+    expect(stickyBlock()).not.toHaveClass('pb-0.5')
+  })
+})

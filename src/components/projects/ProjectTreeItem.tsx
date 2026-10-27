@@ -330,7 +330,13 @@ export function ProjectTreeItem({
         <div
           ref={stickyRef}
           data-sidebar-sticky=""
-          className="sticky z-[2] bg-sidebar"
+          className={cn(
+            'sticky z-[2] bg-sidebar',
+            // The gap above the worktrees is part of this block, so a stuck
+            // selected row keeps it to the next stuck row and the hairline
+            // (#59). WorktreeList drops its top padding to match.
+            showWorktrees && 'pb-0.5'
+          )}
           style={{ top: 'var(--sb-project-top)' }}
         >
           <div
