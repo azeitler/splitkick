@@ -5,6 +5,7 @@
  * the embedded Claude CLI binary.
  */
 
+import { getUsageRefetchInterval, getUsageStaleTime } from '@/lib/usage-timing'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { invoke, useWsConnectionStatus } from '@/lib/transport'
 import { listen } from '@/lib/transport'
@@ -23,7 +24,6 @@ import { hasBackendTransport } from '@/lib/environment'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
-const USAGE_REFRESH_MS = 1000 * 60 * 5
 
 // Query keys for Claude CLI
 export const claudeCliQueryKeys = {
@@ -77,18 +77,6 @@ export function useClaudePathDetection(options?: { enabled?: boolean }) {
     staleTime: 1000 * 60 * 30, // 30 min cache
     gcTime: 1000 * 60 * 60,
   })
-}
-
-function getUsageStaleTime(snapshot?: ClaudeUsageSnapshot): number {
-  if (!snapshot?.fetchedAt) return 0
-  const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS
-  return Math.max(0, expiresAtMs - Date.now())
-}
-
-function getUsageRefetchInterval(snapshot?: ClaudeUsageSnapshot): number {
-  if (!snapshot?.fetchedAt) return USAGE_REFRESH_MS
-  const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS
-  return Math.max(1_000, expiresAtMs - Date.now())
 }
 
 /**
@@ -343,7 +331,6 @@ export function useClaudeCliSetup() {
       },
     })
   }
-
 
   return {
     status: status.data,

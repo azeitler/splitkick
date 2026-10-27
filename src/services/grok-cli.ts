@@ -2,6 +2,7 @@
  * Grok Build CLI management service.
  */
 
+import { getUsageRefetchInterval, getUsageStaleTime } from '@/lib/usage-timing'
 import { PRODUCT_NAME } from '@/lib/build-info'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { invoke } from '@/lib/transport'
@@ -19,7 +20,6 @@ import type {
 import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
-const USAGE_REFRESH_MS = 1000 * 60 * 5
 
 export const grokCliQueryKeys = {
   all: ['grok-cli'] as const,
@@ -29,18 +29,6 @@ export const grokCliQueryKeys = {
   models: () => [...grokCliQueryKeys.all, 'models'] as const,
   versions: () => [...grokCliQueryKeys.all, 'versions'] as const,
   installCommand: () => [...grokCliQueryKeys.all, 'install-command'] as const,
-}
-
-function getUsageStaleTime(snapshot?: GrokUsageSnapshot): number {
-  if (!snapshot?.fetchedAt) return 0
-  const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS
-  return Math.max(0, expiresAtMs - Date.now())
-}
-
-function getUsageRefetchInterval(snapshot?: GrokUsageSnapshot): number {
-  if (!snapshot?.fetchedAt) return USAGE_REFRESH_MS
-  const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS
-  return Math.max(1_000, expiresAtMs - Date.now())
 }
 
 const fallbackGrokVersions: GrokReleaseInfo[] = [

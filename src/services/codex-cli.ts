@@ -5,6 +5,7 @@
  * the embedded Codex CLI binary.
  */
 
+import { getUsageRefetchInterval, getUsageStaleTime } from '@/lib/usage-timing'
 import {
   useQuery,
   useMutation,
@@ -28,7 +29,6 @@ import { hasBackendTransport } from '@/lib/environment'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
 
 const isTauri = hasBackendTransport
-const USAGE_REFRESH_MS = 1000 * 60 * 5
 
 // Query keys for Codex CLI
 export const codexCliQueryKeys = {
@@ -82,18 +82,6 @@ export function useCodexPathDetection(options?: { enabled?: boolean }) {
     staleTime: 1000 * 60 * 30,
     gcTime: 1000 * 60 * 60,
   })
-}
-
-function getUsageStaleTime(snapshot?: CodexUsageSnapshot): number {
-  if (!snapshot?.fetchedAt) return 0
-  const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS
-  return Math.max(0, expiresAtMs - Date.now())
-}
-
-function getUsageRefetchInterval(snapshot?: CodexUsageSnapshot): number {
-  if (!snapshot?.fetchedAt) return USAGE_REFRESH_MS
-  const expiresAtMs = snapshot.fetchedAt * 1000 + USAGE_REFRESH_MS
-  return Math.max(1_000, expiresAtMs - Date.now())
 }
 
 /**
@@ -373,7 +361,6 @@ export function useCodexCliSetup() {
       },
     })
   }
-
 
   return {
     status: status.data,

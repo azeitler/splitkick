@@ -7,6 +7,14 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Fixed
+
+- **The usage check runs every 5 minutes again, not every second.** When
+  Claude's usage could not be refreshed (an expired login, rate limiting), the
+  app kept asking again at once, every second, and with every window switch.
+  It now waits the full 5 minutes. The same applies to Codex and Grok usage.
+  (#58)
+
 ## [1.0.15] - 2026-10-27
 
 Built on Jean 0.1.73.
