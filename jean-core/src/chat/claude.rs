@@ -312,6 +312,14 @@ pub fn claude_transcript_exists(
     claude_session_id: &str,
     custom_profile_name: Option<&str>,
 ) -> bool {
+    let file_name = format!("{claude_session_id}.jsonl");
+    claude_config_dirs(custom_profile_name)
+        .iter()
+        .any(|dir| transcript_in_projects_dir(&dir.join("projects"), &file_name))
+}
+
+/// Config dirs Claude may keep its transcripts in, most specific first.
+fn claude_config_dirs(custom_profile_name: Option<&str>) -> Vec<std::path::PathBuf> {
     let mut config_dirs: Vec<std::path::PathBuf> =
         load_custom_profile_env_vars(custom_profile_name)
             .into_iter()
@@ -324,19 +332,80 @@ pub fn claude_transcript_exists(
     if let Some(home) = dirs::home_dir() {
         config_dirs.push(home.join(".claude"));
     }
-    let file_name = format!("{claude_session_id}.jsonl");
     config_dirs
-        .iter()
-        .any(|dir| transcript_in_projects_dir(&dir.join("projects"), &file_name))
 }
 
 fn transcript_in_projects_dir(projects_dir: &std::path::Path, file_name: &str) -> bool {
-    let Ok(entries) = std::fs::read_dir(projects_dir) else {
+    find_transcript_in_projects_dir(projects_dir, file_name).is_some()
+}
+
+fn find_transcript_in_projects_dir(
+    projects_dir: &std::path::Path,
+    file_name: &str,
+) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(projects_dir)
+        .ok()?
+        .flatten()
+        .map(|entry| entry.path().join(file_name))
+        .find(|path| path.is_file())
+}
+
+/// How long Jean waits for Claude to write a blocking tool call to its own
+/// transcript before it kills the CLI. Normally this takes well under a second.
+const TRANSCRIPT_FLUSH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Wait until Claude's transcript for `claude_session_id` holds `tool_use_id`.
+///
+/// Claude streams a finished `assistant` message to stdout before it writes it
+/// to `<config dir>/projects/<cwd>/<id>.jsonl`. A kill in between drops the
+/// turn from the transcript: on `--resume` the model sees a synthetic
+/// "No response requested." where its question was (#57). The CLI is parked
+/// on Jean's dialog permission prompt meanwhile, so it is free to write.
+/// Returns false on timeout; the caller kills the CLI anyway.
+fn wait_for_transcript_entry(
+    config_dirs: &[std::path::PathBuf],
+    claude_session_id: &str,
+    tool_use_id: &str,
+    timeout: std::time::Duration,
+) -> bool {
+    let file_name = format!("{claude_session_id}.jsonl");
+    let needle = format!("\"{tool_use_id}\"");
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        let written = config_dirs.iter().any(|dir| {
+            find_transcript_in_projects_dir(&dir.join("projects"), &file_name)
+                .is_some_and(|path| file_tail_contains(&path, &needle))
+        });
+        if written {
+            return true;
+        }
+        if std::time::Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(25));
+    }
+}
+
+/// Whether the last few MB of `path` contain `needle`. The entry Jean waits
+/// for is the newest one, so a long transcript is never read in full.
+fn file_tail_contains(path: &std::path::Path, needle: &str) -> bool {
+    use std::io::{Read, Seek, SeekFrom};
+    const TAIL_BYTES: u64 = 4 * 1024 * 1024;
+    let Ok(mut file) = std::fs::File::open(path) else {
         return false;
     };
-    entries
-        .flatten()
-        .any(|entry| entry.path().join(file_name).is_file())
+    let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    if file
+        .seek(SeekFrom::Start(len.saturating_sub(TAIL_BYTES)))
+        .is_err()
+    {
+        return false;
+    }
+    let mut buf = Vec::new();
+    if file.read_to_end(&mut buf).is_err() {
+        return false;
+    }
+    String::from_utf8_lossy(&buf).contains(needle)
 }
 
 /// Claude CLI refuses `--session-id <id>` when a transcript for `<id>` exists.
@@ -1418,7 +1487,14 @@ pub fn execute_claude_detached(
     // Tail the output file for real-time updates
     // Use match to ensure unregister_process is always called, even on error
     super::increment_tailer_count();
-    let response = match tail_claude_output(app, session_id, worktree_id, output_file, pid) {
+    let response = match tail_claude_output(
+        app,
+        session_id,
+        worktree_id,
+        output_file,
+        pid,
+        custom_profile_name,
+    ) {
         Ok(resp) => {
             super::decrement_tailer_count();
             super::registry::unregister_process(session_id);
@@ -1530,6 +1606,7 @@ pub fn tail_claude_output(
     worktree_id: &str,
     output_file: &std::path::Path,
     pid: u32,
+    custom_profile_name: Option<&str>,
 ) -> Result<ClaudeResponse, String> {
     use super::detached::is_process_alive;
     use super::tail::{next_poll_interval, NdjsonTailer};
@@ -1947,6 +2024,22 @@ pub fn tail_claude_output(
                                         // may do it — see `is_blocking_tool`.
                                         if is_blocking_tool(&name) {
                                             log::trace!("Detected blocking tool {name}, killing detached process");
+
+                                            // Let Claude write the call to its own transcript
+                                            // first, or `--resume` loses the question (#57).
+                                            if !claude_session_id.is_empty()
+                                                && is_process_alive(pid)
+                                                && !wait_for_transcript_entry(
+                                                    &claude_config_dirs(custom_profile_name),
+                                                    &claude_session_id,
+                                                    &id,
+                                                    TRANSCRIPT_FLUSH_TIMEOUT,
+                                                )
+                                            {
+                                                log::warn!(
+                                                    "Claude transcript {claude_session_id} lacks {name} {id} after {TRANSCRIPT_FLUSH_TIMEOUT:?}; killing anyway"
+                                                );
+                                            }
 
                                             // Kill the detached process
                                             #[cfg(unix)]
@@ -2694,6 +2787,59 @@ mod tests {
         assert!(!transcript_in_projects_dir(
             &root.path().join("missing"),
             "sid-1.jsonl"
+        ));
+    }
+
+    /// The CLI streams the finished `AskUserQuestion` to stdout before it
+    /// writes it to its own transcript. Killing in between left the resumed
+    /// model with "No response requested." instead of its question (#57).
+    #[test]
+    fn waits_until_the_transcript_holds_the_blocking_tool_call() {
+        use std::time::Duration;
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("projects").join("-Users-me-repo");
+        std::fs::create_dir_all(&dir).unwrap();
+        let transcript = dir.join("sid-1.jsonl");
+        std::fs::write(&transcript, "{\"type\":\"user\"}\n").unwrap();
+
+        let writer = {
+            let transcript = transcript.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(150));
+                let mut file = std::fs::OpenOptions::new()
+                    .append(true)
+                    .open(&transcript)
+                    .unwrap();
+                std::io::Write::write_all(
+                    &mut file,
+                    b"{\"type\":\"assistant\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"toolu_ask\",\"name\":\"AskUserQuestion\"}]}}\n",
+                )
+                .unwrap();
+            })
+        };
+
+        let started = std::time::Instant::now();
+        let config_dirs = vec![root.path().to_path_buf()];
+        assert!(wait_for_transcript_entry(
+            &config_dirs,
+            "sid-1",
+            "toolu_ask",
+            Duration::from_secs(5)
+        ));
+        assert!(started.elapsed() >= Duration::from_millis(150));
+        writer.join().unwrap();
+    }
+
+    #[test]
+    fn transcript_wait_gives_up_after_the_timeout() {
+        use std::time::Duration;
+        let root = tempfile::tempdir().unwrap();
+        let config_dirs = vec![root.path().to_path_buf()];
+        assert!(!wait_for_transcript_entry(
+            &config_dirs,
+            "sid-missing",
+            "toolu_ask",
+            Duration::from_millis(100)
         ));
     }
 

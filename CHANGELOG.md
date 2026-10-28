@@ -51,6 +51,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ### Fixed
 
+- **Claude remembers the question it asked.** When a Claude turn ended with a
+  question or a plan, Splitkick stopped the CLI before Claude wrote that turn
+  to its own transcript. After the answer, the model saw "No response
+  requested." in place of its question, so a draft shown in an option preview
+  was lost. Splitkick now waits until the turn is on disk before it stops the
+  CLI. (#57)
 - **A selected row keeps its spacing in the sticky sidebar.** When a selected
   project, worktree or session row stuck at the top, its highlight touched the
   row below it and the line under the stack. The stuck rows now keep the same
