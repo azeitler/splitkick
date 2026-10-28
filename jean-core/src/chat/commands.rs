@@ -9158,6 +9158,7 @@ pub async fn resume_session(
             None => continue,
         };
         let output_file = session_dir.join(format!("{run_id}.jsonl"));
+        let custom_profile_name = run.custom_profile_name.clone();
 
         log::trace!(
             "Resuming run: {run_id}, PID: {pid}, output: {:?}",
@@ -9206,6 +9207,7 @@ pub async fn resume_session(
                     &worktree_id_clone,
                     &output_file,
                     pid,
+                    custom_profile_name.as_deref(),
                 ) {
                     Ok(response) => (
                         response.session_id,
