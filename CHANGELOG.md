@@ -7,6 +7,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Copy image.** Right-click an image in a chat message, or use the button in
+  the image viewer or the file viewer, to copy the image itself. When the copy
+  fails, an error toast tells you why. (#68)
+
+### Fixed
+
+- **The image viewer shows "Open in browser" in a remote session.** "Reveal in
+  Finder" pointed at a path on the other machine. Remote sessions and Web Access
+  now open the image URL that machine serves; local sessions keep Reveal. (#68)
+
 ## [1.2.0] - 2026-10-29
 
 Built on Jean 0.1.73.

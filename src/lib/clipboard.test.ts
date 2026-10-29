@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const invokeMock = vi.fn()
 
@@ -13,6 +13,7 @@ vi.mock('./transport', () => ({
 const {
   copyToClipboard,
   copyHtmlToClipboard,
+  copyImageToClipboard,
   normalizeClipboardForTerminal,
   readFromClipboard,
 } = await import('./clipboard')
@@ -102,6 +103,85 @@ describe('copyHtmlToClipboard', () => {
 
     expect(write).not.toHaveBeenCalled()
     expect(document.execCommand).toHaveBeenCalledWith('copy')
+  })
+})
+
+describe('copyImageToClipboard', () => {
+  class FakeClipboardItem {
+    constructor(readonly items: Record<string, Promise<Blob>>) {}
+  }
+
+  beforeEach(() => {
+    setSecureContext(true)
+    vi.stubGlobal('ClipboardItem', FakeClipboardItem)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  function stubClipboardWrite() {
+    const write = vi.fn(async (_items: FakeClipboardItem[]) => undefined)
+    const writeText = vi.fn()
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { write, writeText },
+    })
+    return { write, writeText }
+  }
+
+  it('writes the fetched PNG as an image, not as text', async () => {
+    const png = new Blob(['png-bytes'], { type: 'image/png' })
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      blob: async () => png,
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const { write, writeText } = stubClipboardWrite()
+
+    await copyImageToClipboard('asset://localhost/shot.png')
+
+    expect(fetchMock).toHaveBeenCalledWith('asset://localhost/shot.png')
+    const [[[item]]] = write.mock.calls as unknown as [[[FakeClipboardItem]]]
+    expect(Object.keys(item.items)).toEqual(['image/png'])
+    await expect(item.items['image/png']).resolves.toBe(png)
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it('rejects when the image request fails', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({ ok: false, status: 404 }))
+    )
+    const { write } = stubClipboardWrite()
+    write.mockImplementation(async (items: FakeClipboardItem[]) => {
+      await items[0]?.items['image/png']
+    })
+
+    await expect(copyImageToClipboard('/api/files/x.png')).rejects.toThrow(
+      /404/
+    )
+  })
+
+  it('rejects on plain HTTP instead of copying text', async () => {
+    setSecureContext(false)
+    const { write, writeText } = stubClipboardWrite()
+
+    await expect(copyImageToClipboard('/api/files/x.png')).rejects.toThrow(
+      /plain HTTP/
+    )
+    expect(write).not.toHaveBeenCalled()
+    expect(writeText).not.toHaveBeenCalled()
+  })
+
+  it('rejects when the browser has no ClipboardItem', async () => {
+    vi.stubGlobal('ClipboardItem', undefined)
+    stubClipboardWrite()
+
+    await expect(copyImageToClipboard('/api/files/x.png')).rejects.toThrow(
+      /cannot copy images/
+    )
   })
 })
 

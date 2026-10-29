@@ -129,6 +129,52 @@ export async function copyHtmlToClipboard(
   await copyToClipboard(fallbackPlainText)
 }
 
+/**
+ * Copy an image itself (not its URL) to the clipboard as PNG. Needs the async
+ * Clipboard API, so a secure context. Throws when the copy fails; there is no
+ * text fallback, because pasting a URL where an image was expected is wrong.
+ */
+export async function copyImageToClipboard(src: string): Promise<void> {
+  if (isInsecureWebContext()) {
+    throw new Error(
+      `Copy failed: browsers block image copy on plain HTTP except localhost. Open ${PRODUCT_NAME} via HTTPS (Tailscale Serve or a reverse proxy), or use http://localhost on this machine.`
+    )
+  }
+  if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+    throw new Error('Copy failed: this browser cannot copy images.')
+  }
+  // Pass the blob as a promise: WebKit drops the user gesture when the write
+  // only starts after the fetch.
+  await navigator.clipboard.write([
+    new ClipboardItem({ 'image/png': fetchImageAsPng(src) }),
+  ])
+}
+
+async function fetchImageAsPng(src: string): Promise<Blob> {
+  const response = await fetch(src)
+  if (!response.ok) {
+    throw new Error(
+      `Copy failed: the image request returned ${response.status}.`
+    )
+  }
+  const blob = await response.blob()
+  if (blob.type === 'image/png') return blob
+
+  // Browsers only accept PNG for image clipboard writes.
+  const bitmap = await createImageBitmap(blob)
+  const canvas = document.createElement('canvas')
+  canvas.width = bitmap.width
+  canvas.height = bitmap.height
+  canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
+  bitmap.close()
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(png => {
+      if (png) resolve(png)
+      else reject(new Error('Copy failed: could not convert the image to PNG.'))
+    }, 'image/png')
+  })
+}
+
 function execCommandCopyFallback(text: string): boolean {
   if (typeof document.execCommand !== 'function') return false
 

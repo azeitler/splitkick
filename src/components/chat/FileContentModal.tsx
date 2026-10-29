@@ -15,6 +15,7 @@ import {
   Eye,
   Save,
   ExternalLink,
+  Copy,
 } from 'lucide-react'
 import { invoke } from '@/lib/transport'
 import {
@@ -37,7 +38,7 @@ import type { SyntaxTheme } from '@/types/preferences'
 import { toast } from 'sonner'
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
 import { logNativeError } from '@/lib/native-log'
-import { ZoomableImage } from '@/components/chat/ImageLightbox'
+import { copyImage, ZoomableImage } from '@/components/chat/ImageLightbox'
 
 // Lazy load CodeEditor (Pierre File + edit mode) so the main bundle stays lean
 const CodeEditor = lazy(() => import('@/components/ui/code-editor'))
@@ -349,6 +350,19 @@ export function FileContentModal({
               <FileText className="h-4 w-4 shrink-0" />
             )}
             <span className="truncate">{filename}</span>
+
+            {isImage && imageSrc && imageLoaded && (
+              <div className="ml-auto flex items-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => copyImage(imageSrc)}
+                >
+                  <Copy className="h-4 w-4 sm:mr-1" />
+                  <span className="hidden sm:inline">Copy image</span>
+                </Button>
+              </div>
+            )}
 
             {/* Action buttons - only for non-image files */}
             {!isImage && content !== null && (
