@@ -23,6 +23,18 @@ fn is_false(value: &bool) -> bool {
     !*value
 }
 
+/// A note for a future turn in a session's follow-up list (#46).
+/// Never sent automatically; the user uses or queues it later.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct FollowUp {
+    pub id: String,
+    pub text: String,
+    #[serde(default)]
+    pub done: bool,
+    /// Unix timestamp in milliseconds
+    pub created_at: u64,
+}
+
 /// Deserializes label from either a plain string (old format) or a LabelData object (new format).
 fn deserialize_label_compat<'de, D>(deserializer: D) -> Result<Option<LabelData>, D::Error>
 where
@@ -941,6 +953,9 @@ pub struct Session {
     /// Messages queued for sending (persisted so they survive page refresh / sync across clients)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queued_messages: Vec<serde_json::Value>,
+    /// Follow-up notes for future turns (#46). Never sent automatically.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub follow_ups: Vec<FollowUp>,
 
     // ========================================================================
     // Pagination metadata (populated by get_session)
@@ -1060,6 +1075,7 @@ impl Session {
             last_run_started_at: None,
             label: None,
             queued_messages: vec![],
+            follow_ups: vec![],
             total_runs: 0,
             loaded_run_start_index: 0,
             scheduled_wakeup: None,
@@ -1289,6 +1305,7 @@ impl SessionMetadata {
             last_run_started_at: last_run.map(|r| r.started_at),
             label: self.label.clone(),
             queued_messages: self.queued_messages.clone(),
+            follow_ups: self.follow_ups.clone(),
             total_runs: self.runs.len(),
             loaded_run_start_index: self.runs.len(),
             scheduled_wakeup: self.scheduled_wakeup.clone(),
@@ -1814,6 +1831,11 @@ pub struct SessionMetadata {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub queued_messages: Vec<serde_json::Value>,
 
+    /// Follow-up notes for future turns (#46). Changed only through
+    /// `edit_session_follow_ups` (atomic, like the queue).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub follow_ups: Vec<FollowUp>,
+
     /// Unix timestamp when session was last opened/viewed by the user
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub last_opened_at: Option<u64>,
@@ -1967,6 +1989,7 @@ impl SessionMetadata {
             table_checked_rows: HashMap::new(),
             label: None,
             queued_messages: vec![],
+            follow_ups: vec![],
             last_opened_at: None,
             primary_surface: None,
             terminal_command: None,

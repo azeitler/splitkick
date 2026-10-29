@@ -119,10 +119,14 @@ export function usePendingAttachments({
         provider: selectedProviderRef.current,
         executionMode: executionModeRef.current,
         thinkingLevel: selectedThinkingLevelRef.current,
+        // Same rule as useMessageSending's handleSubmit.
         effortLevel:
           useAdaptiveThinkingRef.current ||
           isCodexBackendRef.current ||
-          selectedBackendRef.current === 'pi'
+          selectedBackendRef.current === 'pi' ||
+          selectedBackendRef.current === 'grok' ||
+          selectedBackendRef.current === 'kimi' ||
+          selectedBackendRef.current === 'antigravity'
             ? selectedEffortLevelRef.current
             : undefined,
         mcpConfig: buildMcpConfigJson(
@@ -130,6 +134,7 @@ export function usePendingAttachments({
           enabledMcpServersRef.current,
           selectedBackendRef.current
         ),
+        backend: selectedBackendRef.current,
         queuedAt: Date.now(),
       }
 

@@ -32,6 +32,7 @@ import { DesktopToolbarControls } from '@/components/chat/toolbar/DesktopToolbar
 import { DockBurgerButton } from '@/components/chat/toolbar/DockBurgerButton'
 import { ExecutionModeDropdown } from '@/components/chat/toolbar/ExecutionModeDropdown'
 import { SendCancelButton } from '@/components/chat/toolbar/SendCancelButton'
+import { FollowUpsButton } from '@/components/chat/toolbar/FollowUpsButton'
 import { ContextViewerDialog } from '@/components/chat/toolbar/ContextViewerDialog'
 import {
   AlertDialog,
@@ -147,6 +148,10 @@ export const ChatToolbar = memo(function ChatToolbar({
   willSteer,
   steerWithModifier,
   queuedMessageCount,
+  followUpCount = 0,
+  followUpsOpen = false,
+  onToggleFollowUps,
+  followUpsShortcut,
   availableMcpServers,
   enabledMcpServers,
   onToggleMcpServer,
@@ -681,7 +686,15 @@ export const ChatToolbar = memo(function ChatToolbar({
             <div className="h-4 w-px shrink-0 bg-border/50" />
           </div>
 
-          <div className="shrink-0">
+          <div className="flex shrink-0 items-center gap-1">
+            {onToggleFollowUps && (
+              <FollowUpsButton
+                openCount={followUpCount}
+                open={followUpsOpen}
+                onToggle={onToggleFollowUps}
+                shortcut={followUpsShortcut}
+              />
+            )}
             <SendCancelButton
               isSending={isSending}
               canSend={canSend}

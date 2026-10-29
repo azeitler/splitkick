@@ -1,3 +1,17 @@
+# Follow-up list (#46)
+
+- [x] Session file field `follow_ups` + atomic `edit_session_follow_ups` op (add/update/remove/reorder/clear_done), dispatch arm, Rust tests.
+- [x] MCP `add_follow_up` (defaults to the calling session, rate-limited).
+- [x] `FollowUpsPanel` (corner panel / phone sheet), `FollowUpsButton` before Send (badge = open count, also in zen mode).
+- [x] Use (append to composer, tick off) and Queue (busy only, moves into the queue); `append-chat-input` now updates the send button.
+- [x] `mod+j` shortcut + Session menu item; "Add to follow-ups" in the message context menu.
+- [x] check:all, clippy 1.99.1, screenshots, commit.
+
+## Review
+
+- `check:all` green (411 test files, Rust tests); clippy 1.99.1 clean for jean-core, src-server, src-tauri.
+- Live (headless server of this worktree, port 3471, copy of dev data): add, tick off, Use (composer + Send enabled), saved in the session file; phone sheet at 390 px. Not checked live: drag, MCP tool from an agent, the native dev window (port 1420 was taken by another worktree).
+
 # Sidebar sticky stack (#45)
 
 - [x] Mockup (`docs/mockups/sidebar-sticky/`); chosen: full stack, stuck section headers stack and jump on click, hairline.

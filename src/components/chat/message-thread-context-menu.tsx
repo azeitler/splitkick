@@ -1,5 +1,5 @@
 import { useCallback, useContext, useState, type ReactElement } from 'react'
-import { Copy, ExternalLink, FolderOpen, GitFork } from 'lucide-react'
+import { Copy, ExternalLink, FolderOpen, GitFork, ListTodo } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   ContextMenu,
@@ -38,6 +38,9 @@ export function suppressDefaultContextMenu(
 ): void {
   event.preventDefault()
 }
+
+/** Window event that adds `detail.text` to the active session's follow-up list. */
+export const ADD_FOLLOW_UP_EVENT = 'add-follow-up'
 
 interface MessageThreadContextMenuProps {
   children: ReactElement
@@ -157,6 +160,15 @@ export function MessageThreadContextMenu({
   const revealPath = useRevealPathInFileManager()
   const canCopyMessage = Boolean(onCopyMessage || messageText.trim())
   const canCopySelection = selection.length > 0
+  // The selected text, else the whole message. ChatWindow owns the list and
+  // listens for the event (#46).
+  const followUpText = selection || messageText.trim()
+  const handleAddFollowUp = useCallback(() => {
+    if (!followUpText) return
+    window.dispatchEvent(
+      new CustomEvent(ADD_FOLLOW_UP_EVENT, { detail: { text: followUpText } })
+    )
+  }, [followUpText])
 
   return (
     <ContextMenu onOpenChange={handleOpenChange}>
@@ -192,6 +204,12 @@ export function MessageThreadContextMenu({
           <ContextMenuItem onSelect={handleCopyMessage}>
             <Copy className="h-4 w-4" />
             {copyMessageLabel}
+          </ContextMenuItem>
+        )}
+        {followUpText && (
+          <ContextMenuItem onSelect={handleAddFollowUp}>
+            <ListTodo className="h-4 w-4" />
+            Add to follow-ups
           </ContextMenuItem>
         )}
         {!canCopySelection && !canCopyMessage && !onForkFromHere && (

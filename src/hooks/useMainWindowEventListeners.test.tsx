@@ -622,16 +622,17 @@ describe('dialog overlay keybinding passthrough', () => {
     ).toBe(false)
   })
 
-  it.each(['toggle_zen_mode', 'clear_session_context'] as const)(
-    'allows %s through the open session chat modal',
-    action => {
-      useUIStore.setState({ sessionChatModalOpen: true })
+  it.each([
+    'toggle_zen_mode',
+    'clear_session_context',
+    'add_follow_up',
+  ] as const)('allows %s through the open session chat modal', action => {
+    useUIStore.setState({ sessionChatModalOpen: true })
 
-      expect(
-        shouldAllowKeybindingThroughOpenOverlay(action, useUIStore.getState())
-      ).toBe(true)
-    }
-  )
+    expect(
+      shouldAllowKeybindingThroughOpenOverlay(action, useUIStore.getState())
+    ).toBe(true)
+  })
 })
 
 describe('applySessionRenamedToCaches', () => {

@@ -19,6 +19,12 @@ const { mobileState, nativeState, slashPopoverMock } = vi.hoisted(() => ({
   slashPopoverMock: vi.fn(() => null),
 }))
 
+type StoreListener = (
+  state: { inputDrafts: Record<string, string> },
+  prevState: { inputDrafts: Record<string, string> }
+) => void
+const storeListeners: StoreListener[] = []
+
 const storeState = {
   inputDrafts: {} as Record<string, string>,
   setInputDraft: vi.fn(),
@@ -58,7 +64,10 @@ vi.mock('@/lib/transport', () => ({
 vi.mock('@/store/chat-store', () => ({
   useChatStore: {
     getState: () => storeState,
-    subscribe: vi.fn(() => vi.fn()),
+    subscribe: vi.fn((listener: StoreListener) => {
+      storeListeners.push(listener)
+      return vi.fn()
+    }),
   },
 }))
 
@@ -283,6 +292,40 @@ describe('ChatInput attachments', () => {
       'session-1',
       'not sent yet'
     )
+  })
+
+  it('reports a value after an external append already changed the textarea', () => {
+    const onHasValueChange = vi.fn()
+    const formRef = createRef<HTMLFormElement>()
+    const inputRef = createRef<HTMLTextAreaElement>()
+    storeListeners.length = 0
+    render(
+      <ChatInput
+        activeSessionId="session-1"
+        activeWorktreePath="/tmp/worktree"
+        isSending={false}
+        executionMode="build"
+        focusChatShortcut="⌘K"
+        onSubmit={vi.fn()}
+        onCancel={vi.fn()}
+        formRef={formRef}
+        inputRef={inputRef}
+        onHasValueChange={onHasValueChange}
+      />
+    )
+    onHasValueChange.mockClear()
+
+    // `append-chat-input` writes the DOM first, then the store draft.
+    const textarea = screen.getByRole('textbox') as HTMLTextAreaElement
+    textarea.value = 'check the tests'
+    for (const listener of storeListeners) {
+      listener(
+        { inputDrafts: { 'session-1': 'check the tests' } },
+        { inputDrafts: {} }
+      )
+    }
+
+    expect(onHasValueChange).toHaveBeenCalledWith(true)
   })
 
   it('restores attachments from rich copied prompt metadata', async () => {

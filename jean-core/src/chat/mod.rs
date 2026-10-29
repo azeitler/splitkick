@@ -10,6 +10,7 @@ mod commands;
 pub(crate) mod context_instructions;
 pub(crate) mod cursor;
 pub mod detached;
+pub mod follow_ups;
 pub mod fork;
 pub(crate) mod grok;
 pub(crate) mod handoff;
@@ -30,6 +31,7 @@ pub mod types;
 pub mod wakeup;
 
 pub use commands::*;
+pub use follow_ups::edit_session_follow_ups;
 pub use fork::fork_session_in_place;
 pub use native_history::*;
 pub use storage::{preserve_base_sessions, restore_base_sessions, with_sessions_mut};

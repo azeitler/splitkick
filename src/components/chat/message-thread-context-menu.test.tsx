@@ -287,6 +287,34 @@ describe('MessageThreadContextMenu', () => {
     window.getSelection = original
   })
 
+  it.each([
+    ['the selected text', 'selected bit', 'selected bit'],
+    ['the whole message without a selection', '', 'Full message body'],
+  ])('adds %s to the follow-ups', async (_label, selected, expected) => {
+    const user = userEvent.setup()
+    const original = window.getSelection
+    window.getSelection = () => ({ toString: () => selected }) as Selection
+    const added = vi.fn()
+    const listener = (event: Event) =>
+      added((event as CustomEvent<{ text: string }>).detail.text)
+    window.addEventListener('add-follow-up', listener)
+
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <div>message body</div>
+      </MessageThreadContextMenu>
+    )
+
+    fireEvent.contextMenu(screen.getByText('message body'))
+    await user.click(
+      await screen.findByRole('menuitem', { name: /add to follow-ups/i })
+    )
+
+    expect(added).toHaveBeenCalledWith(expected)
+    window.removeEventListener('add-follow-up', listener)
+    window.getSelection = original
+  })
+
   it('copies the URL when right-clicking an element inside a link', async () => {
     const user = userEvent.setup()
     const original = window.getSelection

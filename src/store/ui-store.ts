@@ -192,6 +192,9 @@ interface UIState {
   /** Whether the main area shows the Archived view. Only meaningful while no
    *  project and no worktree is selected; not persisted. */
   archivedViewOpen: boolean
+  /** Whether the follow-up list (#46) is open next to the send button.
+   *  Not persisted. */
+  followUpsOpen: boolean
   /** Project whose canvas must show its own home page once, not the last
    *  session. Set by a sidebar project-row click; the canvas consumes it, even
    *  when it mounts later. */
@@ -331,6 +334,7 @@ interface UIState {
   consumeAutoInvestigateSentryIssue: (worktreeId: string) => boolean
   markSidebarReveal: (rowId: string) => void
   setArchivedViewOpen: (open: boolean) => void
+  setFollowUpsOpen: (open: boolean) => void
   clearSidebarReveal: (rowId: string) => void
   requestProjectHome: (projectId: string) => void
   clearProjectHomeRequest: (projectId: string) => void
@@ -451,6 +455,7 @@ export const useUIStore = create<UIState>()(
       pendingAutoOpenSessionIds: {},
       pendingSidebarRevealId: null,
       archivedViewOpen: false,
+      followUpsOpen: false,
       pendingProjectHomeId: null,
       sessionChatModalOpen: false,
       mobileActiveTab: 'home',
@@ -1064,6 +1069,14 @@ export const useUIStore = create<UIState>()(
               : { archivedViewOpen: open },
           undefined,
           'setArchivedViewOpen'
+        ),
+
+      setFollowUpsOpen: open =>
+        set(
+          state =>
+            state.followUpsOpen === open ? state : { followUpsOpen: open },
+          undefined,
+          'setFollowUpsOpen'
         ),
 
       markSidebarReveal: rowId =>

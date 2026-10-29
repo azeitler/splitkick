@@ -94,6 +94,7 @@ import type {
   PendingFile,
   Question,
   QuestionAnswer,
+  FollowUp,
 } from '@/types/chat'
 import {
   findCodexUserInputRequest,
@@ -126,9 +127,13 @@ import { ChatInput } from './ChatInput'
 import { SessionDebugPanel } from './SessionDebugPanel'
 import { ChatToolbar } from './ChatToolbar'
 import { SendCancelButton } from './toolbar/SendCancelButton'
+import { FollowUpsButton } from './toolbar/FollowUpsButton'
 import { ReviewResultsPanel } from './ReviewResultsPanel'
 import { ReviewMethodModal } from './ReviewMethodModal'
 import { QueuedPromptsPanel } from './QueuedPromptsPanel'
+import { FollowUpsPanel } from './FollowUpsPanel'
+import { ADD_FOLLOW_UP_EVENT } from './message-thread-context-menu'
+import { useFollowUpActions } from './hooks/useFollowUpActions'
 import { useQueuedPromptActions } from './hooks/useQueuedPromptActions'
 import { FloatingButtons } from './FloatingButtons'
 import { PlanDialog } from './PlanDialog'
@@ -261,6 +266,7 @@ const EMPTY_PENDING_FILES: PendingFile[] = []
 let reviewSurfaceMountCount = 0
 const EMPTY_PENDING_SKILLS: PendingSkill[] = []
 const EMPTY_QUEUED_MESSAGES: QueuedMessage[] = []
+const EMPTY_FOLLOW_UPS: FollowUp[] = []
 const EMPTY_PERMISSION_DENIALS: PermissionDenial[] = []
 const EMPTY_CODEX_PERMISSION_REQUESTS: CodexPermissionRequest[] = []
 const EMPTY_OPENCODE_PERMISSION_REQUESTS: OpenCodePermissionRequest[] = []
@@ -2821,6 +2827,46 @@ export function ChatWindow({
     sendMessageNow,
   })
 
+  // Follow-up list (#46): read from the session file, changed through atomic ops
+  const {
+    onEdit: handleEditFollowUps,
+    onUse: handleUseFollowUp,
+    onQueue: handleQueueFollowUp,
+  } = useFollowUpActions({
+    sessionId: activeSessionId ?? null,
+    worktreeId: activeWorktreeId ?? null,
+    worktreePath: activeWorktreePath ?? null,
+    sendTextMessage,
+  })
+  const followUpsOpen = useUIStore(state => state.followUpsOpen)
+  const followUps =
+    (session?.id === activeSessionId ? session?.follow_ups : undefined) ??
+    EMPTY_FOLLOW_UPS
+  const openFollowUpCount = useMemo(
+    () => followUps.filter(item => !item.done).length,
+    [followUps]
+  )
+  const handleToggleFollowUps = useCallback(() => {
+    const { followUpsOpen, setFollowUpsOpen } = useUIStore.getState()
+    setFollowUpsOpen(!followUpsOpen)
+  }, [])
+  const setFollowUpsOpen = useUIStore(state => state.setFollowUpsOpen)
+  // "Add to follow-ups" from the message context menu
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const { text } = (event as CustomEvent<{ text: string }>).detail
+      void handleEditFollowUps({ kind: 'add', text }).then(added => {
+        if (added) toast.success('Added to follow-ups')
+      })
+    }
+    window.addEventListener(ADD_FOLLOW_UP_EVENT, handler)
+    return () => window.removeEventListener(ADD_FOLLOW_UP_EVENT, handler)
+  }, [handleEditFollowUps])
+  const followUpsShortcut = formatShortcutDisplay(
+    (preferences?.keybindings?.add_follow_up ??
+      DEFAULT_KEYBINDINGS.add_follow_up) as string
+  )
+
   const handleResumeAfterLimit = useCallback(
     () => sendTextMessage('continue'),
     [sendTextMessage]
@@ -3613,6 +3659,18 @@ export function ChatWindow({
                           // open, small window): mx-auto alone left it flush.
                           className="relative md:mx-auto md:mb-3 md:w-[calc(100%-3rem)] md:max-w-3xl xl:max-w-4xl"
                         >
+                          {/* Follow-up list: corner panel above the composer (sheet on phones) */}
+                          {activeSessionId && (
+                            <FollowUpsPanel
+                              open={followUpsOpen}
+                              onOpenChange={setFollowUpsOpen}
+                              items={followUps}
+                              isSessionBusy={isSending}
+                              onEdit={handleEditFollowUps}
+                              onUse={handleUseFollowUp}
+                              onQueue={handleQueueFollowUp}
+                            />
+                          )}
                           {/* Queued prompts - rendered as an extension above the chat input */}
                           {activeSessionId &&
                             currentQueuedMessages.length > 0 && (
@@ -3781,7 +3839,13 @@ export function ChatWindow({
 
                               {/* Bottom toolbar */}
                               {zenMode ? (
-                                <div className="shrink-0 pr-3">
+                                <div className="flex shrink-0 items-center gap-1 pr-3">
+                                  <FollowUpsButton
+                                    openCount={openFollowUpCount}
+                                    open={followUpsOpen}
+                                    onToggle={handleToggleFollowUps}
+                                    shortcut={followUpsShortcut}
+                                  />
                                   <SendCancelButton
                                     isSending={isSending}
                                     canSend={
@@ -3943,6 +4007,10 @@ export function ChatWindow({
                                     queuedMessageCount={
                                       currentQueuedMessages.length
                                     }
+                                    followUpCount={openFollowUpCount}
+                                    followUpsOpen={followUpsOpen}
+                                    onToggleFollowUps={handleToggleFollowUps}
+                                    followUpsShortcut={followUpsShortcut}
                                     availableMcpServers={availableMcpServers}
                                     enabledMcpServers={enabledMcpServers}
                                     onToggleMcpServer={handleToggleMcpServer}

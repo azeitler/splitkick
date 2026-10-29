@@ -214,6 +214,7 @@ pub(crate) fn create_app_menu(app: &mut tauri::App) -> Result<(), Box<dyn std::e
         .item(&keybinding_item(app, "cancel_prompt", "Cancel Prompt")?)
         .separator()
         .item(&keybinding_item(app, "toggle_session_label", "Label…")?)
+        .item(&keybinding_item(app, "add_follow_up", "Add Follow-up…")?)
         .item(&keybinding_item(
             app,
             "clear_session_context",
