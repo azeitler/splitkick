@@ -408,6 +408,41 @@ Read the history carefully, reconstruct the task state, and answer the user's la
     )
 }
 
+/// Tells the model that the session moved to another folder (`chat::session_move`).
+/// Earlier turns name absolute paths of the old worktree. `None` when the session
+/// is back in the folder its earlier turns ran in.
+pub(crate) fn build_moved_note(from_path: &str, to_path: &str) -> Option<String> {
+    (from_path != to_path).then(|| format!(
+        "This Splitkick session moved from the folder `{from_path}` to the folder `{to_path}`. Paths in earlier turns refer to the old folder. Work under the new folder from now on, and do not edit files in the old one."
+    ))
+}
+
+/// The history replay for a moved session on a backend whose resume id is bound to
+/// the old folder: the move cleared it, so the model starts a fresh conversation.
+pub(crate) fn build_moved_handoff_prompt(history: &str, move_note: Option<&str>) -> String {
+    let note = move_note.map(|note| format!(" {note}")).unwrap_or_default();
+    format!(
+        r#"You are continuing an existing chat session.{note}
+
+Your backend has no record of the earlier conversation in this folder, so the history below is the conversation you already had with the user — do not claim you lack prior context.
+
+Read the history carefully, reconstruct the task state, and answer the user's latest message with full continuity. Do not mention this hidden handoff unless it is directly relevant.
+
+<jean_local_history>
+{history}
+</jean_local_history>"#
+    )
+}
+
+/// Put the move note in front of a handoff prompt that already replays history,
+/// so a turn carries one hidden block, not two.
+pub(crate) fn with_move_note(prompt: String, move_note: Option<&str>) -> String {
+    match move_note {
+        Some(note) => format!("{note}\n\n{prompt}"),
+        None => prompt,
+    }
+}
+
 pub(crate) fn prepend_hidden_fork_handoff(user_message: &str, fork_prompt: &str) -> String {
     format!(
         "{FORK_OPEN_TAG}\n{}\n{FORK_CLOSE_TAG}\n\n{}",
@@ -422,6 +457,39 @@ mod tests {
     use crate::chat::types::{
         Backend, ChatMessage, ContentBlock, MessageRole, RunEntry, RunStatus, SessionMetadata,
     };
+
+    #[test]
+    fn moved_handoff_prompt_names_both_folders_and_carries_the_history() {
+        let note = build_moved_note("/old/wt", "/new/wt");
+        let prompt = build_moved_handoff_prompt("### User\nfix the parser", note.as_deref());
+        assert!(prompt.contains("`/old/wt`"), "{prompt}");
+        assert!(prompt.contains("`/new/wt`"), "{prompt}");
+        assert!(prompt.contains("### User\nfix the parser"), "{prompt}");
+        assert!(
+            prompt.contains("no record of the earlier conversation"),
+            "{prompt}"
+        );
+    }
+
+    #[test]
+    fn a_session_back_in_its_first_folder_gets_no_move_note() {
+        assert_eq!(build_moved_note("/same/wt", "/same/wt"), None);
+        let prompt = build_moved_handoff_prompt("### User\nfix the parser", None);
+        assert!(!prompt.contains("moved"), "{prompt}");
+        assert!(prompt.contains("### User\nfix the parser"), "{prompt}");
+    }
+
+    #[test]
+    fn move_note_goes_in_front_of_an_existing_prompt() {
+        let note = build_moved_note("/old/wt", "/new/wt").unwrap();
+        let combined = with_move_note("REPLAY".to_string(), Some(&note));
+        assert!(
+            combined.starts_with("This Splitkick session moved"),
+            "{combined}"
+        );
+        assert!(combined.ends_with("REPLAY"), "{combined}");
+        assert_eq!(with_move_note("REPLAY".to_string(), None), "REPLAY");
+    }
 
     #[test]
     fn lost_context_prompt_carries_the_history() {

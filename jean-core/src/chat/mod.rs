@@ -27,6 +27,7 @@ pub mod run_log;
 pub mod schedules;
 pub mod search;
 pub mod session_links;
+pub mod session_move;
 pub mod storage;
 pub mod tail;
 pub mod transfer;

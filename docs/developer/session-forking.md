@@ -107,10 +107,44 @@ profile switch already replays the full Jean-local history:
 | no             | yes            | any            | `ClaudeProfile`                             |
 | no             | no             | `Handoff`      | `Fork`                                      |
 | no             | no             | `Native`       | `NativeFork` — no injection, resume id kept |
+| no             | no             | none, move pending, not Claude | `Moved`                     |
 | no             | no             | none           | `None`                                      |
 
 Only `NativeFork` (and `None`) leave the target's resume id in place;
 `HandoffKind::clears_target_resume()` encodes that.
+
+## Moved sessions
+
+`chat/session_move.rs` moves a session to another worktree, in the same or another
+project (#67). The session keeps its id, history, run logs, attachments and settings.
+The UI uses the `move_session` dispatch command (refuses a running session); the MCP
+tool `move_session` uses the same function, but moves a running session after its turn.
+
+The new worktree is another folder, so the backend context needs care:
+
+- **Claude** resumes a conversation by id from any folder: it looks in the current
+  project and its worktrees, then in every other project
+  (https://code.claude.com/docs/en/sessions, "Resume by session ID or name"). The move
+  keeps `claude_session_id`. The next turn only gets a hidden note: the session moved
+  from `<old path>` to `<new path>`, earlier paths refer to the old folder.
+  Exception: when the transcript is in more than one project folder, Claude reports
+  "not found", so the send uses `LostContext` (replay) instead.
+- **Every other backend** binds its resume id to the folder (OpenCode `?directory=`,
+  Cursor `--workspace`, Antigravity's cwd cache) or nobody knows. `prepare_moved_metadata`
+  clears those ids, and the next send is `HandoffKind::Moved`: the history replay with
+  the move note.
+
+`SessionMetadata.pending_move` (`{ from_path }`) is the one-shot marker. Like
+`pending_fork`, `run_log::complete` clears it, so a cancelled first turn still gets the
+handoff. A second move before any turn keeps the first path. A fork clears it.
+
+**When you add a resume id for a new backend, clear it in `prepare_moved_metadata` too.**
+
+Not carried over: checkpoints (their store is per worktree and the git refs are local
+to the repo), so restore buttons for earlier turns go away. The frontend
+(`handleSessionMoved` in `src/lib/session-move.ts`, on the `session:moved` event) fixes
+the state that names the old worktree or project: the session → worktree map, the old
+tab, last-opened, the pin. It also closes the session terminal in the old folder.
 
 ## Transfer to a remote Jean
 

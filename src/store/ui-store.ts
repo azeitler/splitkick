@@ -138,6 +138,8 @@ interface UIState {
   remotePickerRepoPath: string | null
   /** Session the "Transfer to Remote Jean" dialog is open for (issue #35). */
   transferSessionTarget: TransferSessionTarget | null
+  /** Session the "Move to…" dialog is open for (issue #67). */
+  moveSessionTarget: TransferSessionTarget | null
   loadContextModalOpen: boolean
   linkedProjectsModalOpen: boolean
   magicModalOpen: boolean
@@ -287,6 +289,7 @@ interface UIState {
   ) => void
   closeRemotePicker: () => void
   setTransferSessionTarget: (target: TransferSessionTarget | null) => void
+  setMoveSessionTarget: (target: TransferSessionTarget | null) => void
   setLoadContextModalOpen: (open: boolean) => void
   setLinkedProjectsModalOpen: (open: boolean) => void
   setMagicModalOpen: (open: boolean) => void
@@ -429,6 +432,7 @@ export const useUIStore = create<UIState>()(
       remotePickerOpen: false,
       remotePickerRepoPath: null,
       transferSessionTarget: null,
+      moveSessionTarget: null,
       loadContextModalOpen: false,
       linkedProjectsModalOpen: false,
       magicModalOpen: false,
@@ -726,6 +730,22 @@ export const useUIStore = create<UIState>()(
           },
           undefined,
           'setTransferSessionTarget'
+        ),
+
+      setMoveSessionTarget: target =>
+        set(
+          state => {
+            const current = state.moveSessionTarget
+            if (
+              current?.worktreeId === target?.worktreeId &&
+              current?.sessionId === target?.sessionId
+            ) {
+              return state
+            }
+            return { moveSessionTarget: target }
+          },
+          undefined,
+          'setMoveSessionTarget'
         ),
 
       setLoadContextModalOpen: open =>

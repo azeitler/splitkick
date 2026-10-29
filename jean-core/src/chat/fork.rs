@@ -272,6 +272,8 @@ pub(crate) fn prepare_forked_metadata(
     metadata.started_by_session_id = None;
     metadata.forked_from_session_id = Some(source_session_id.to_string());
     metadata.pending_fork = Some(strategy);
+    // A fork carries its own handoff; a move the source never finished is not its.
+    metadata.pending_move = None;
     metadata
 }
 
@@ -873,6 +875,27 @@ mod tests {
         assert_eq!(metadata.claude_session_id.as_deref(), Some("claude-1"));
         assert_eq!(metadata.pending_fork, Some(PendingFork::Native));
         assert_eq!(metadata.antigravity_session_id, None);
+    }
+
+    #[test]
+    fn prepare_forked_metadata_drops_a_pending_move() {
+        let mut source = metadata_with_every_resume_id(Backend::Claude);
+        source.pending_move = Some(super::super::types::PendingMove {
+            from_path: "/old/worktree".to_string(),
+        });
+        let forked_session =
+            prepare_forked_session(&source.to_session(), 1, 1234, PendingFork::Native);
+
+        let metadata = prepare_forked_metadata(
+            Some(source),
+            &forked_session,
+            "source-session",
+            "target-worktree",
+            three_runs(),
+            PendingFork::Native,
+        );
+
+        assert_eq!(metadata.pending_move, None);
     }
 
     #[test]

@@ -317,6 +317,20 @@ pub async fn dispatch_command(
             emit_cache_invalidation(app, &["projects", "sessions", "session"]);
             to_value(result)
         }
+        "move_session" => {
+            let session_id: String = field(&args, "sessionId", "session_id")?;
+            let target_worktree_id: String =
+                field(&args, "targetWorktreeId", "target_worktree_id")?;
+            // The UI refuses a running session; only MCP defers a move.
+            let result = crate::chat::session_move::move_session_to_worktree(
+                app,
+                &session_id,
+                &target_worktree_id,
+                crate::chat::session_move::MoveWhenRunning::Refuse,
+            )?;
+            emit_cache_invalidation(app, &["projects", "sessions", "session"]);
+            to_value(result)
+        }
         "fork_session_in_place" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let session_id: String = field(&args, "sessionId", "session_id")?;
@@ -4436,6 +4450,8 @@ mod tests {
             "fork_session_to_worktree",
             // A transferred session lands as a new tab on the target.
             "import_session_bundle",
+            // A moved session leaves one tab strip and joins another.
+            "move_session",
         ] {
             let start = source
                 .find(&format!("\n        \"{command}\" =>"))

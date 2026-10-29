@@ -109,6 +109,11 @@ const TransferSessionDialog = lazy(() =>
     default: mod.TransferSessionDialog,
   }))
 )
+const MoveSessionDialog = lazy(() =>
+  import('@/components/chat/MoveSessionDialog').then(mod => ({
+    default: mod.MoveSessionDialog,
+  }))
+)
 const RemotePickerModal = lazy(() =>
   import('@/components/magic/RemotePickerModal').then(mod => ({
     default: mod.RemotePickerModal,
@@ -273,6 +278,7 @@ export function MainWindow() {
   const transferSessionOpen = useUIStore(
     state => state.transferSessionTarget !== null
   )
+  const moveSessionOpen = useUIStore(state => state.moveSessionTarget !== null)
   const resolveConflictsDialogOpen = useUIStore(
     state => state.resolveConflictsDialogOpen
   )
@@ -526,6 +532,7 @@ export function MainWindow() {
   const shouldRenderRemotePickerModal = useRetainedMount(remotePickerOpen)
   const shouldRenderTransferSessionDialog =
     useRetainedMount(transferSessionOpen)
+  const shouldRenderMoveSessionDialog = useRetainedMount(moveSessionOpen)
   const shouldRenderUpdatePrDialog = useRetainedMount(updatePrModalOpen)
   const shouldRenderReviewCommentsDialog = useRetainedMount(
     reviewCommentsModalOpen
@@ -809,6 +816,11 @@ export function MainWindow() {
       {shouldRenderTransferSessionDialog && (
         <Suspense fallback={null}>
           <TransferSessionDialog />
+        </Suspense>
+      )}
+      {shouldRenderMoveSessionDialog && (
+        <Suspense fallback={null}>
+          <MoveSessionDialog />
         </Suspense>
       )}
       {shouldRenderRemotePickerModal && (

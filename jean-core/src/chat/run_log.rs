@@ -104,6 +104,9 @@ impl RunLogWriter {
                 // resume id is still on the session, and the next send would
                 // append the fork's turns to the source transcript.
                 metadata.pending_fork = None;
+                // Same for a move: a cancelled first turn in the new worktree
+                // must still get the move handoff on retry.
+                metadata.pending_move = None;
 
                 Ok(())
             },
@@ -1615,6 +1618,9 @@ mod tests {
 
         with_metadata_mut(&app, session_id, worktree_id, name, 0, |metadata| {
             metadata.pending_fork = Some(PendingFork::Native);
+            metadata.pending_move = Some(crate::chat::types::PendingMove {
+                from_path: "/old/worktree".to_string(),
+            });
             Ok(())
         })
         .unwrap();
@@ -1644,6 +1650,14 @@ mod tests {
             Some(PendingFork::Native),
             "the marker must still be there while the turn runs"
         );
+        assert!(
+            load_metadata(&app, session_id)
+                .unwrap()
+                .unwrap()
+                .pending_move
+                .is_some(),
+            "the move marker must still be there while the turn runs"
+        );
 
         writer
             .complete("assistant-1", Some("claude-sid-new"), None, None)
@@ -1656,6 +1670,14 @@ mod tests {
                 .pending_fork,
             None,
             "a finished turn consumes the marker"
+        );
+        assert_eq!(
+            load_metadata(&app, session_id)
+                .unwrap()
+                .unwrap()
+                .pending_move,
+            None,
+            "a finished turn consumes the move marker"
         );
     }
 

@@ -1690,6 +1690,19 @@ pub enum PendingFork {
     Handoff,
 }
 
+/// A session that moved to another worktree and has not finished a turn there yet.
+///
+/// Set by `chat::session_move` and consumed by `run_log::complete`, like
+/// [`PendingFork`]. The next send tells the model that paths changed, and every
+/// backend except Claude (which resumes by id from any folder) replays the
+/// Splitkick history. See `docs/developer/session-forking.md`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PendingMove {
+    /// Worktree path the session's earlier turns ran in.
+    pub from_path: String,
+}
+
 /// Session metadata - single source of truth for session data and run history
 /// Stored in sessions/data/{session_id}/metadata.json
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1888,6 +1901,9 @@ pub struct SessionMetadata {
     /// One-shot marker consumed by the fork's first send.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pending_fork: Option<PendingFork>,
+    /// One-shot marker consumed by the first turn after a move.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pending_move: Option<PendingMove>,
     /// Storage format version for migrations
     #[serde(default = "default_manifest_version")]
     pub version: u32,
@@ -2019,6 +2035,7 @@ impl SessionMetadata {
             forked_from_session_id: None,
             started_by_session_id: None,
             pending_fork: None,
+            pending_move: None,
             version: 1,
         }
     }

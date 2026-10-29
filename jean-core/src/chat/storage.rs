@@ -1138,11 +1138,15 @@ fn move_session_between_indexes(
 }
 
 /// Move an existing session to another worktree without changing its identity or data files.
+///
+/// `prepare` changes the metadata under the same locks, before it is saved
+/// (`chat::session_move` uses it for the resume ids and the move marker).
 pub fn move_session(
     app: &AppHandle,
     source_worktree_id: &str,
     target_worktree_id: &str,
     session_id: &str,
+    prepare: impl FnOnce(&mut SessionMetadata),
 ) -> Result<(), String> {
     if source_worktree_id == target_worktree_id {
         return Err("Source and target worktrees are the same".to_string());
@@ -1172,6 +1176,7 @@ pub fn move_session(
     }
 
     move_session_between_indexes(&mut source, &mut target, &mut metadata, session_id)?;
+    prepare(&mut metadata);
     save_index_internal(app, &source)?;
     save_index_internal(app, &target)?;
     save_metadata_internal(app, &metadata)?;

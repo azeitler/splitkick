@@ -845,3 +845,15 @@ dead turn, so the UI skipped the follow-up message and stayed on "sending"
 - [x] Copy Link in session, worktree (sidebar + modal header) and project menus
 - [x] Proof: check:all steps green (typecheck, lint, branding, fmt, clippy, 412 test files, rust tests); clippy 1.99.1 x3; web-access screenshots of chat links and click
 - Not done (later per issue): OS scheme registration, https links, unarchive from the badge
+
+# Move a session to another project or worktree (#67)
+
+- [x] `chat/session_move.rs`: one move for UI (refuses running) and MCP (moves after the turn); `session:moved` / `session:move-failed` events; MCP immediate move now invalidates the cache.
+- [x] Context: Claude keeps its resume id (resumes by id from any folder) + hidden move note; other backends' ids cleared, `HandoffKind::Moved` replays the history. `pending_move` cleared on the first finished turn; a fork drops it.
+- [x] UI: "Move to…" in the shared session menu, ⌘K "Move Session to…", `MoveSessionDialog` (no preselection); `handleSessionMoved` fixes session map, old tab, last-opened, pin, session terminal.
+- [x] Tests (Rust + vitest), docs, changelog, check:all, clippy 1.99.1.
+
+## Review
+
+- Live (headless server of this worktree, port 3467, own data dir in `tmp/live67`, 3 test repos): Claude session shop → blog answered its code word natively (same Claude id, move note in its transcript); Codex session blog → docs answered from the replay (new thread id).
+- Found live and fixed: the target's cached session list made ChatWindow open the first tab, so a message went to the wrong session. `moveSession` now refetches the target list first.

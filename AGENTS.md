@@ -525,7 +525,8 @@ Full details in `docs/developer/session-forking.md`. The parts that bite:
     transcript, handing the model the turns the fork deliberately dropped.
 - **Precedence:** `resolve_handoff_kind` in `chat/commands.rs`. A provider or profile
   switch already replays the full history, so it outranks the fork injection.
-- **When adding a resume id for a new backend, clear it in `fork.rs` too.** Missing
+- **When adding a resume id for a new backend, clear it in `fork.rs` and in
+  `session_move.rs` (`prepare_moved_metadata`) too.** Missing
   `antigravity_session_id` there made Antigravity forks resume the source conversation.
 - **Copied runs must be sanitised** (`sanitize_forked_run`): `checkpoint_id` points at
   the source worktree's checkpoint store, `pid`/`codex_turn_id` are stale, and a
