@@ -504,6 +504,20 @@ fn resolve_send_execution_mode(
         .or_else(|| normalize_optional_string(session_selected_mode))
 }
 
+/// A send with an explicit execution mode makes it the session's selected mode,
+/// so the toolbar and follow-up sends match the mode the session runs in (#61).
+/// Returns the mode when it changed, so callers can notify clients.
+fn adopt_send_execution_mode(session: &mut Session, explicit_mode: Option<&str>) -> Option<String> {
+    let mode = explicit_mode
+        .map(str::trim)
+        .filter(|mode| matches!(*mode, "plan" | "build" | "yolo"))?;
+    if session.selected_execution_mode.as_deref() == Some(mode) {
+        return None;
+    }
+    session.selected_execution_mode = Some(mode.to_string());
+    Some(mode.to_string())
+}
+
 fn build_kimi_system_prompt(
     app: &AppHandle,
     worktree_id: &str,
@@ -3093,8 +3107,10 @@ pub async fn send_chat_message(
     // MCP (and other non-UI callers) often omit per-turn settings. Fall back to
     // the session's persisted choices so `set_session_model` / toolbar selection
     // are respected when `model` / `executionMode` are not passed on the send.
-    // Explicit non-empty values remain one-shot overrides.
+    // An explicit model is a one-shot override; an explicit execution mode
+    // also becomes the session's mode (see adopt_send_execution_mode).
     let mut model = resolve_send_model(model, session_selected_model, None);
+    let explicit_execution_mode = execution_mode.clone();
     let execution_mode =
         resolve_send_execution_mode(execution_mode, session_selected_execution_mode);
     let thinking_level = thinking_level.or(session_selected_thinking_level);
@@ -3152,26 +3168,50 @@ pub async fn send_chat_message(
 
     // Clear stale completion flags from previous turn — prevents approve
     // buttons from appearing after a web reload during this turn.
-    with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
-        if let Some(session) = sessions.find_session_mut(&session_id) {
-            session.waiting_for_input = false;
-            session.is_reviewing = false;
-            // Auto-resume on send: sending a message clears a review or paused
-            // override so the session rejoins the live status flow.
-            if matches!(
-                session.status_override.as_deref(),
-                Some("review") | Some("paused")
-            ) {
-                session.status_override = None;
+    let adopted_execution_mode =
+        with_sessions_mut(&app, &worktree_path, &worktree_id, |sessions| {
+            let mut adopted_execution_mode = None;
+            if let Some(session) = sessions.find_session_mut(&session_id) {
+                adopted_execution_mode =
+                    adopt_send_execution_mode(session, explicit_execution_mode.as_deref());
+                session.waiting_for_input = false;
+                session.is_reviewing = false;
+                // Auto-resume on send: sending a message clears a review or paused
+                // override so the session rejoins the live status flow.
+                if matches!(
+                    session.status_override.as_deref(),
+                    Some("review") | Some("paused")
+                ) {
+                    session.status_override = None;
+                }
+                session.waiting_for_input_type = None;
+                // Claude reports denials with the end of a turn, so these belong to
+                // the previous one. Left in place (yolo hides the approval panel),
+                // they kept the session in Waiting over any manual status.
+                session.pending_permission_denials.clear();
             }
-            session.waiting_for_input_type = None;
-            // Claude reports denials with the end of a turn, so these belong to
-            // the previous one. Left in place (yolo hides the approval panel),
-            // they kept the session in Waiting over any manual status.
-            session.pending_permission_denials.clear();
+            Ok(adopted_execution_mode)
+        })?;
+    // Senders outside the toolbar (MCP, queue drain, auto-fix) pass the mode
+    // for the turn; update every client's toolbar to it (#61).
+    if let Some(mode) = adopted_execution_mode {
+        if let Err(e) = broadcast_session_setting(
+            app.clone(),
+            session_id.clone(),
+            "executionMode".to_string(),
+            mode,
+        )
+        .await
+        {
+            log::error!("Failed to broadcast execution mode for session {session_id}: {e}");
         }
-        Ok(())
-    })?;
+        if let Err(e) = app.emit_all(
+            "cache:invalidate",
+            &serde_json::json!({ "keys": ["sessions"], "worktreeIds": [&worktree_id] }),
+        ) {
+            log::error!("Failed to emit cache:invalidate: {e}");
+        }
+    }
 
     // Build context for Claude
     let context = ClaudeContext::new(worktree_path.clone());
@@ -11467,6 +11507,33 @@ mod tests {
             resolve_send_execution_mode(Some("".to_string()), Some("plan".to_string())),
             Some("plan".to_string())
         );
+    }
+
+    #[test]
+    fn explicit_send_execution_mode_becomes_session_mode() {
+        // #61: an MCP send with executionMode "yolo" ran yolo but left the
+        // session on its old mode, so the toolbar and follow-ups used "plan".
+        let mut session = Session::new("Session 1".to_string(), 0, Backend::Claude);
+        assert_eq!(
+            adopt_send_execution_mode(&mut session, Some("yolo")),
+            Some("yolo".to_string())
+        );
+        assert_eq!(session.selected_execution_mode.as_deref(), Some("yolo"));
+
+        // Same mode again: nothing changed, nothing to broadcast.
+        assert_eq!(adopt_send_execution_mode(&mut session, Some("yolo")), None);
+
+        // No mode, an empty mode or an unknown mode keeps the session's mode.
+        assert_eq!(adopt_send_execution_mode(&mut session, None), None);
+        assert_eq!(adopt_send_execution_mode(&mut session, Some(" ")), None);
+        assert_eq!(adopt_send_execution_mode(&mut session, Some("auto")), None);
+        assert_eq!(session.selected_execution_mode.as_deref(), Some("yolo"));
+
+        assert_eq!(
+            adopt_send_execution_mode(&mut session, Some("plan")),
+            Some("plan".to_string())
+        );
+        assert_eq!(session.selected_execution_mode.as_deref(), Some("plan"));
     }
 
     #[test]

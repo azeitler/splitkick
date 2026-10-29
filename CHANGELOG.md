@@ -81,6 +81,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   A project or session picked in ⌘K while Recent shows now switches the
   sidebar to Projects and reveals it there. A project revealed above the view
   now lands below the stuck section headers, not under them. (#60)
+- **A session started by chat keeps the mode it runs in.** A message sent
+  through the Splitkick MCP tool with an execution mode (for example yolo) ran
+  in that mode, but the toolbar still showed plan, and the next answer or
+  approval from the app ran in plan. The mode now becomes the session's mode,
+  and open windows switch the toolbar to it. The model given with such a
+  message still applies to that one turn only. (#61)
 
 ## [1.0.15] - 2026-10-27
 

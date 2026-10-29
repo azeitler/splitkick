@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import useStreamingEvents from './useStreamingEvents'
 import { useChatStore } from '@/store/chat-store'
 import { preferencesQueryKeys } from '@/services/preferences'
+import { chatQueryKeys } from '@/services/chat'
+import type { Session } from '@/types/chat'
 import type { AppPreferences } from '@/types/preferences'
 
 const {
@@ -2065,5 +2067,47 @@ describe('useStreamingEvents replay dedupe', () => {
     expect(
       useChatStore.getState().streamingReplayContentBlocks['session-1']
     ).toBeUndefined()
+  })
+})
+
+// #61: a turn started outside the toolbar (Splitkick MCP send_chat_message with
+// executionMode) makes that mode the session's mode. The backend broadcasts it,
+// and an open session whose toolbar value is already in the store must switch,
+// so the display and the next follow-up use the mode the session runs in.
+describe('useStreamingEvents execution mode from another sender', () => {
+  beforeEach(() => {
+    setupListenMock()
+    useChatStore.setState({ executionModes: { 'session-1': 'plan' } })
+  })
+
+  it('updates an open session to the mode the backend adopted', async () => {
+    const queryClient = createQueryClient()
+    const wrapper = createWrapper(queryClient)
+    queryClient.setQueryData(chatQueryKeys.session('session-1'), {
+      id: 'session-1',
+      name: 'Test',
+      order: 0,
+      created_at: 1,
+      updated_at: 1,
+      messages: [],
+      selected_execution_mode: 'plan',
+    } as Session)
+
+    renderHook(() => useStreamingEvents({ queryClient }), { wrapper })
+    await waitFor(() =>
+      expect(registeredListeners.has('session:setting-changed')).toBe(true)
+    )
+
+    registeredListeners.get('session:setting-changed')?.({
+      payload: { session_id: 'session-1', key: 'executionMode', value: 'yolo' },
+    })
+
+    // Toolbar and follow-up sends (answers, approvals) read the store first.
+    expect(useChatStore.getState().executionModes['session-1']).toBe('yolo')
+    expect(useChatStore.getState().getExecutionMode('session-1')).toBe('yolo')
+    expect(
+      queryClient.getQueryData<Session>(chatQueryKeys.session('session-1'))
+        ?.selected_execution_mode
+    ).toBe('yolo')
   })
 })
