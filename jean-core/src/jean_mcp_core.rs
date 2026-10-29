@@ -1316,7 +1316,7 @@ async fn run_tool(
                 response.hits.extend(remote.hits);
                 response
                     .hits
-                    .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                    .sort_by_key(|hit| std::cmp::Reverse(hit.updated_at));
                 if response.hits.len() > limit {
                     response.hits.truncate(limit);
                     response.truncated = true;
