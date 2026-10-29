@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { navigateToProject, navigateToSession } from './navigate-to-session'
+import {
+  navigateToProject,
+  navigateToSession,
+  navigateToWorktree,
+} from './navigate-to-session'
 import { queryClient } from './query-client'
 import { projectsQueryKeys } from '@/services/projects'
 import { useChatStore } from '@/store/chat-store'
@@ -357,5 +361,60 @@ describe('navigateToProject with openLastSession', () => {
     navigateToProject('project-1')
 
     expectCanvasOnly()
+  })
+})
+
+describe('navigateToWorktree', () => {
+  function session(id: string, archived = false): Session {
+    return { id, archived_at: archived ? 1 : undefined } as Session
+  }
+
+  beforeEach(() => {
+    queryClient.setQueryData(projectsQueryKeys.list(), [project('project-1')])
+    queryClient.setQueryData<AllSessionsResponse>(['all-sessions'], {
+      entries: [
+        {
+          project_id: 'project-1',
+          project_name: 'project-1',
+          worktree_id: 'wt-1',
+          worktree_name: 'wt-1',
+          worktree_path: '/wt-1',
+          sessions: [session('archived', true), session('live')],
+        },
+      ],
+    } as AllSessionsResponse)
+    useChatStore.setState({ activeSessionIds: {} })
+    useProjectsStore.setState({
+      selectedProjectId: null,
+      selectedWorktreeId: null,
+    })
+    useUIStore.setState({ pendingAutoOpenSessionIds: {} })
+  })
+
+  it('opens the session the user last had open in the worktree', () => {
+    useChatStore.setState({ activeSessionIds: { 'wt-1': 'remembered' } })
+
+    navigateToWorktree('project-1', 'wt-1')
+
+    expect(useUIStore.getState().pendingAutoOpenSessionIds['wt-1']).toBe(
+      'remembered'
+    )
+  })
+
+  it('falls back to the first session that is not archived', () => {
+    navigateToWorktree('project-1', 'wt-1')
+
+    expect(useUIStore.getState().pendingAutoOpenSessionIds['wt-1']).toBe('live')
+  })
+
+  it('shows the project canvas with the worktree selected when it has no session', () => {
+    navigateToWorktree('project-1', 'wt-empty')
+
+    const state = useProjectsStore.getState()
+    expect(state.selectedProjectId).toBe('project-1')
+    expect(state.selectedWorktreeId).toBe('wt-empty')
+    expect(useUIStore.getState().pendingAutoOpenSessionIds['wt-empty']).toBe(
+      undefined
+    )
   })
 })

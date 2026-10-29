@@ -31,6 +31,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   the mix: "Pinned", "Starred" or "Pinned & Starred". A pin or star glyph
   shows on a row when not every row has it. You no longer have to pin a
   starred session to keep it at the top. (#41)
+- **Chat links to sessions, worktrees and projects.** A link such as
+  `[Fix redirects](splitkick://session/<id>)` in a chat shows the target's
+  name and opens it on click: a session in the session modal, a worktree or a
+  project on its canvas. A link to an archived or unknown target is marked
+  "archived" or "not found". Agents get the link from `list_all_sessions`,
+  `search_sessions` and `get_current_context`, and **Copy Link** in the
+  session, worktree and project menus copies one. (#44)
 
 ### Fixed
 

@@ -1262,6 +1262,11 @@ pub async fn dispatch_command(
                 .await?;
             Ok(Value::Null)
         }
+        "resolve_splitkick_link" => {
+            let kind: String = from_field(&args, "kind")?;
+            let id: String = from_field(&args, "id")?;
+            to_value(crate::links::resolve_splitkick_link(app, &kind, &id)?)
+        }
         "get_session" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;

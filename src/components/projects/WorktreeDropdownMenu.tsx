@@ -7,6 +7,7 @@ import {
   FolderOpen,
   GitBranch,
   GitPullRequestArrow,
+  Link,
   MoreHorizontal,
   Play,
   Plus,
@@ -102,6 +103,7 @@ export function WorktreeDropdownMenu({
     gitClient,
     handleArchiveOrClose,
     handleDelete,
+    handleCopyLink,
   } = useWorktreeMenuActions({ worktree, projectId })
   const isMobile = useIsMobile()
   // On native desktop the auth query runs in App.tsx; on web/mobile access it doesn't.
@@ -334,6 +336,10 @@ export function WorktreeDropdownMenu({
               Open in {getGitClientLabel(gitClient)}
             </DropdownMenuItem>
           )}
+          <DropdownMenuItem onClick={handleCopyLink}>
+            <Link className="mr-2 h-4 w-4" />
+            Copy Link
+          </DropdownMenuItem>
 
           <DropdownMenuSeparator />
 

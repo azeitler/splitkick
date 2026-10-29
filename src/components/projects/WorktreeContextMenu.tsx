@@ -1,6 +1,7 @@
 import {
   Archive,
   Code,
+  Link,
   FolderOpen,
   GitBranch,
   Play,
@@ -63,6 +64,7 @@ export function WorktreeContextMenu({
     gitClient,
     handleArchiveOrClose,
     handleDelete,
+    handleCopyLink,
   } = actions
 
   return (
@@ -124,6 +126,10 @@ export function WorktreeContextMenu({
             Open in {getGitClientLabel(gitClient)}
           </ContextMenuItem>
         )}
+        <ContextMenuItem onClick={handleCopyLink}>
+          <Link className="mr-2 h-4 w-4" />
+          Copy Link
+        </ContextMenuItem>
 
         <ContextMenuSeparator />
 

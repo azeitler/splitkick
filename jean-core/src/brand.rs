@@ -46,3 +46,7 @@ pub const DEFAULT_HTTP_PORT: u16 = 3460;
 /// (`src-tauri/tauri.fork.conf.json`).
 pub const DESKTOP_MANIFEST_URL: &str =
     "https://github.com/azeitler/splitkick/releases/latest/download/latest.json";
+
+/// Scheme of the links that point to a session, worktree or project
+/// (`splitkick://session/<id>`). Chat renders them; the OS does not know it yet.
+pub const LINK_SCHEME: &str = "splitkick";

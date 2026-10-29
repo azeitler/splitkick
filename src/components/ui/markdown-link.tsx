@@ -16,6 +16,8 @@ import {
 } from '@/lib/chat-links'
 import { splitFileRefSuffix } from '@/lib/path-utils'
 import { useFileReference } from '@/lib/file-reference'
+import { parseSplitkickLink } from '@/lib/splitkick-links'
+import { SplitkickLink } from '@/components/chat/SplitkickLink'
 
 const LINK_CLASS = 'underline underline-offset-2 hover:text-foreground'
 
@@ -41,6 +43,18 @@ export function MarkdownLink({
   href?: string
   children: ReactNode
 }) {
+  const linkRef = parseSplitkickLink(href)
+  if (href && linkRef) {
+    return (
+      <SplitkickLink href={href} linkRef={linkRef}>
+        {children}
+      </SplitkickLink>
+    )
+  }
+  return <ChatLink href={href}>{children}</ChatLink>
+}
+
+function ChatLink({ href, children }: { href?: string; children: ReactNode }) {
   const rootPath = useContext(LocalPathRootContext)
   const kind = classifyChatLink(href)
   const [pickerOpen, setPickerOpen] = useState(false)

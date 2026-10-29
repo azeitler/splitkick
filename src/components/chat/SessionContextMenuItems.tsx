@@ -3,6 +3,7 @@ import {
   Copy,
   GitBranchPlus,
   GitFork,
+  Link,
   Pause,
   Pencil,
   Pin,
@@ -23,6 +24,7 @@ import {
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { copyToClipboard } from '@/lib/clipboard'
+import { copySplitkickLink } from '@/lib/splitkick-links'
 import { canReconnectSession, reconnectNativeCliSession } from '@/services/chat'
 import type { Session } from '@/types/chat'
 import { SessionLabelsSubmenu } from './LabelsSubmenu'
@@ -263,6 +265,12 @@ export function SessionContextMenuItems({
       >
         <Copy className="mr-2 h-4 w-4" />
         Copy Session ID
+      </ContextMenuItem>
+      <ContextMenuItem
+        onSelect={() => copySplitkickLink('session', session.id, session.name)}
+      >
+        <Link className="mr-2 h-4 w-4" />
+        Copy Link
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem
