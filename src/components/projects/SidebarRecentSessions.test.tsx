@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
   isError: false,
   refetch: vi.fn(),
   navigateToSession: vi.fn(),
+  preferences: undefined as { sidebar_recent_limit: number } | undefined,
 }))
 
 vi.mock('@/services/chat', async importOriginal => ({
@@ -27,6 +28,12 @@ vi.mock('@/services/chat', async importOriginal => ({
   useRenameSession: () => ({ mutate: vi.fn() }),
   useArchiveSession: () => ({ mutate: vi.fn() }),
   useCloseSession: () => ({ mutate: vi.fn() }),
+}))
+
+vi.mock('@/services/preferences', async importOriginal => ({
+  // eslint-disable-next-line @typescript-eslint/consistent-type-imports
+  ...(await importOriginal<typeof import('@/services/preferences')>()),
+  usePreferences: () => ({ data: mocks.preferences }),
 }))
 
 vi.mock('@/lib/navigate-to-session', async importOriginal => ({
@@ -64,6 +71,7 @@ describe('SidebarRecentSessions', () => {
     mocks.navigateToSession.mockClear()
     mocks.isError = false
     mocks.refetch.mockClear()
+    mocks.preferences = undefined
     const now = Date.now()
     mocks.entries = [
       entry('Jean', 'main', [
@@ -150,6 +158,27 @@ describe('SidebarRecentSessions', () => {
         'button'
       )
     ).toHaveLength(SIDEBAR_RECENT_LIMIT)
+  })
+
+  it('caps the list at the sidebar_recent_limit preference', () => {
+    const now = Date.now()
+    mocks.preferences = { sidebar_recent_limit: 10 }
+    mocks.entries = [
+      entry(
+        'Jean',
+        'main',
+        Array.from({ length: 15 }, (_, i) =>
+          session(`s-${i}`, `Session ${i}`, now - i * 1000)
+        )
+      ),
+    ]
+    render(<SidebarRecentSessions />)
+
+    expect(
+      within(screen.getByTestId('sidebar-recent-sessions')).getAllByRole(
+        'button'
+      )
+    ).toHaveLength(10)
   })
 
   it('says so when there are no sessions', () => {

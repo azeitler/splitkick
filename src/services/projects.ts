@@ -32,7 +32,7 @@ import { getFileManagerName } from '@/lib/platform'
 
 import type { AppPreferences } from '@/types/preferences'
 import type { AdvisoryContext } from '@/types/github'
-import { hasBackend, hasBackendTransport } from '@/lib/environment'
+import { hasBackend, hasBackendTransport, isNativeApp } from '@/lib/environment'
 import { openExternal, preOpenWindow } from '@/lib/platform'
 import { shouldSuppressAutoFixConflictNotification } from './worktree-conflict-events'
 import { preserveQueryCacheOnError } from '@/lib/query-error'
@@ -2299,6 +2299,57 @@ export function useOpenWorktreeInTerminal() {
             : 'Unknown error occurred'
       logger.error('Failed to open in Terminal', { error })
       toast.error('Failed to open in Terminal', { description: message })
+    },
+  })
+}
+
+/**
+ * Tool ids (editors, terminals, git clients) installed on this Mac. Null when
+ * the host cannot tell: then every option is shown.
+ */
+export function useInstalledApps() {
+  return useQuery({
+    queryKey: ['installed-apps'],
+    queryFn: async (): Promise<Set<string> | null> => {
+      const ids = await invoke<string[] | null>('detect_installed_apps')
+      return ids ? new Set(ids) : null
+    },
+    enabled: isNativeApp(),
+    staleTime: Infinity,
+    // An app installed while Splitkick runs shows up on the next focus.
+    refetchOnWindowFocus: 'always',
+  })
+}
+
+/**
+ * Hook to open a worktree in the git client (Tower, Fork, ...)
+ */
+export function useOpenWorktreeInGitClient() {
+  return useMutation({
+    mutationFn: async ({
+      worktreePath,
+      gitClient,
+    }: {
+      worktreePath: string
+      gitClient?: string | null
+    }): Promise<void> => {
+      logger.debug('Opening worktree in git client', {
+        worktreePath,
+        gitClient,
+      })
+      await invoke('open_worktree_in_git_client', { worktreePath, gitClient })
+      logger.info('Opened worktree in git client')
+    },
+    // No query invalidation: OS app side effect only
+    onError: error => {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'string'
+            ? error
+            : 'Unknown error occurred'
+      logger.error('Failed to open in git client', { error })
+      toast.error('Failed to open in git client', { description: message })
     },
   })
 }

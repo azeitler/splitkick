@@ -1198,8 +1198,9 @@ export interface AppPreferences {
   terminal_renderer?: TerminalRenderer // Embedded terminal renderer: 'xterm' or 'ghostty-web' (experimental)
   terminal_font?: TerminalFont // Embedded terminal font
   terminal_font_size?: number // Embedded terminal font size in pixels
-  editor: EditorApp // Editor app: 'zed' | 'vscode' | 'vscodium' | 'cursor' | 'xcode' | 'intellij'
-  open_in: OpenInDefault // Default Open In action: 'editor' | 'terminal' | 'finder' | 'github'
+  editor: EditorApp // Editor app: 'zed' | 'vscode' | 'vscodium' | 'cursor' | 'xcode' | 'intellij' | 'sublime'
+  open_in: OpenInDefault // Default Open In action: 'editor' | 'terminal' | 'finder' | 'github' | 'git-client'
+  git_client: GitClientApp | null // Git client app; null = first installed one
   auto_branch_naming: boolean // Automatically generate branch names from first message
   branch_naming_model: ClaudeModel // Model for generating branch names
   auto_session_naming: boolean // Automatically generate session names from first message
@@ -1335,6 +1336,7 @@ export interface AppPreferences {
   jean_mcp_enabled: boolean // Expose Jean MCP server to spawned CLIs through explicit CLI config entries
   jean_mcp_max_depth: number // Max recursive spawn depth via Jean MCP (default 3)
   jean_mcp_rate_limit_per_minute: number // Per-source rate limit for session-spawning tools (default 20)
+  sidebar_recent_limit: number // Sessions in the sidebar Recent tab (default 30)
 }
 
 export type TerminalBackgroundMode = 'auto' | 'light' | 'dark' | 'custom'
@@ -2033,6 +2035,7 @@ export type EditorApp =
   | 'cursor'
   | 'xcode'
   | 'intellij'
+  | 'sublime'
 
 const allEditorOptions: {
   value: EditorApp
@@ -2061,6 +2064,11 @@ const allEditorOptions: {
     label: 'IntelliJ IDEA',
     platforms: ['mac', 'windows', 'linux'],
   },
+  {
+    value: 'sublime',
+    label: 'Sublime Text',
+    platforms: ['mac', 'windows', 'linux'],
+  },
 ]
 
 export function getEditorOptions(): { value: EditorApp; label: string }[] {
@@ -2072,13 +2080,72 @@ export function getEditorOptions(): { value: EditorApp; label: string }[] {
 export const editorOptions: { value: EditorApp; label: string }[] =
   getEditorOptions()
 
-export type OpenInDefault = 'editor' | 'terminal' | 'finder' | 'github'
+export type GitClientApp = 'tower' | 'fork' | 'github-desktop' | 'sourcetree'
+
+const allGitClientOptions: {
+  value: GitClientApp
+  label: string
+  platforms: Platform[]
+}[] = [
+  { value: 'tower', label: 'Tower', platforms: ['mac'] },
+  { value: 'fork', label: 'Fork', platforms: ['mac'] },
+  { value: 'github-desktop', label: 'GitHub Desktop', platforms: ['mac'] },
+  { value: 'sourcetree', label: 'Sourcetree', platforms: ['mac'] },
+]
+
+export function getGitClientOptions(): {
+  value: GitClientApp
+  label: string
+}[] {
+  return allGitClientOptions.filter(opt =>
+    opt.platforms.includes(getCurrentPlatform())
+  )
+}
+
+/**
+ * Keep the options that are installed. `installed` is null when the host
+ * cannot tell (not macOS, or detection not loaded yet): keep all. The saved
+ * value always stays, so the select never shows an empty value.
+ */
+export function filterInstalled<T extends string>(
+  options: { value: T; label: string }[],
+  installed: ReadonlySet<string> | null | undefined,
+  current?: string | null
+): { value: T; label: string }[] {
+  if (!installed) return options
+  return options.filter(
+    opt => installed.has(opt.value) || opt.value === current
+  )
+}
+
+/**
+ * The git client to open: the saved one, else the first installed one.
+ * Null when there is none (the Open In entries then stay hidden).
+ */
+export function resolveGitClient(
+  preferred: GitClientApp | null | undefined,
+  installed: ReadonlySet<string> | null | undefined
+): GitClientApp | null {
+  if (preferred) return preferred
+  if (!installed) return null
+  return (
+    allGitClientOptions.find(opt => installed.has(opt.value))?.value ?? null
+  )
+}
+
+export type OpenInDefault =
+  | 'editor'
+  | 'terminal'
+  | 'finder'
+  | 'github'
+  | 'git-client'
 
 export const openInDefaultOptions: { value: OpenInDefault; label: string }[] = [
   { value: 'editor', label: 'Editor' },
   { value: 'terminal', label: 'Terminal' },
   { value: 'finder', label: 'Finder' },
   { value: 'github', label: 'GitHub' },
+  { value: 'git-client', label: 'Git Client' },
 ]
 
 export type NewSessionKind = 'chat' | 'terminal' | CliBackend
@@ -2108,7 +2175,8 @@ export function getNewSessionKindLabel(
 export function getOpenInDefaultLabel(
   openIn: OpenInDefault | undefined,
   editor: EditorApp | undefined,
-  terminal: TerminalApp | undefined
+  terminal: TerminalApp | undefined,
+  gitClient?: GitClientApp | null
 ): string {
   switch (openIn) {
     case 'editor':
@@ -2119,6 +2187,8 @@ export function getOpenInDefaultLabel(
       return 'Finder'
     case 'github':
       return 'GitHub'
+    case 'git-client':
+      return getGitClientLabel(gitClient)
     default:
       return getEditorLabel(editor)
   }
@@ -2333,6 +2403,13 @@ export function getTerminalLabel(terminal: TerminalApp | undefined): string {
   return option?.label ?? 'Terminal'
 }
 
+export function getGitClientLabel(
+  gitClient: GitClientApp | null | undefined
+): string {
+  const option = allGitClientOptions.find(opt => opt.value === gitClient)
+  return option?.label ?? 'Git Client'
+}
+
 export function getEditorLabel(editor: EditorApp | undefined): string {
   // Search all options (not just platform-filtered) so saved cross-platform values resolve
   const option = allEditorOptions.find(opt => opt.value === editor)
@@ -2350,6 +2427,7 @@ export const defaultPreferences: AppPreferences = {
   terminal_font_size: 13,
   editor: 'zed',
   open_in: 'editor',
+  git_client: null,
   auto_branch_naming: true,
   branch_naming_model: 'sonnet',
   auto_session_naming: true,
@@ -2474,4 +2552,5 @@ export const defaultPreferences: AppPreferences = {
   jean_mcp_enabled: true, // Default: enabled
   jean_mcp_max_depth: 3,
   jean_mcp_rate_limit_per_minute: 20,
+  sidebar_recent_limit: 30,
 }

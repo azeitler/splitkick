@@ -7,12 +7,14 @@ import {
   useOpenWorktreeInFinder,
   useOpenWorktreeInTerminal,
   useOpenWorktreeInEditor,
+  useOpenWorktreeInGitClient,
   useRunScripts,
 } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
 import { useSessions } from '@/services/chat'
 import { useTerminalStore } from '@/store/terminal-store'
 import { useUIStore } from '@/store/ui-store'
+import { useGitClient } from '@/components/open-in/use-git-client'
 
 interface UseWorktreeMenuActionsProps {
   worktree: Worktree
@@ -30,6 +32,8 @@ export function useWorktreeMenuActions({
   const openInFinder = useOpenWorktreeInFinder()
   const openInTerminal = useOpenWorktreeInTerminal()
   const openInEditor = useOpenWorktreeInEditor()
+  const openInGitClient = useOpenWorktreeInGitClient()
+  const gitClient = useGitClient()
   const { data: runScripts = [] } = useRunScripts(worktree.path)
   const { data: preferences } = usePreferences()
   const { data: sessionsData } = useSessions(worktree.id, worktree.path)
@@ -79,6 +83,10 @@ export function useWorktreeMenuActions({
     })
   }, [openInEditor, worktree.path, preferences?.editor])
 
+  const handleOpenInGitClient = useCallback(() => {
+    openInGitClient.mutate({ worktreePath: worktree.path, gitClient })
+  }, [openInGitClient, worktree.path, gitClient])
+
   const handleArchiveOrClose = useCallback(() => {
     if (isBase) {
       closeBaseSession.mutate({ worktreeId: worktree.id, projectId })
@@ -110,6 +118,7 @@ export function useWorktreeMenuActions({
     hasMessages,
     runScripts,
     preferences,
+    gitClient,
 
     // Handlers
     handleRun,
@@ -118,6 +127,7 @@ export function useWorktreeMenuActions({
     handleOpenInFinder,
     handleOpenInTerminal,
     handleOpenInEditor,
+    handleOpenInGitClient,
     handleArchiveOrClose,
     handleDelete,
   }

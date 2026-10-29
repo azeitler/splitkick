@@ -193,6 +193,8 @@ const DESKTOP_ONLY_COMMANDS = new Set([
   'open_project_worktrees_folder',
   'open_worktree_in_terminal',
   'open_worktree_in_editor',
+  'open_worktree_in_git_client',
+  'detect_installed_apps',
   'open_project_on_github',
   'open_branch_on_github',
   'open_log_directory',

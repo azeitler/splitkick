@@ -4915,6 +4915,7 @@ fn format_open_error(app_name: &str, error: &std::io::Error) -> String {
         "cursor" => "Cursor ('cursor')",
         "zed" => "Zed ('zed')",
         "xcode" => "Xcode ('xed')",
+        "sublime" => "Sublime Text ('subl')",
         other => other,
     };
     if error.kind() == std::io::ErrorKind::NotFound {
@@ -5088,6 +5089,11 @@ pub async fn open_worktree_in_terminal(
     Ok(())
 }
 
+/// Sublime Text's bundled CLI. GUI apps rarely have `subl` in PATH, and this
+/// one (unlike `open -a`) still takes a `path:line:column` target.
+pub const MACOS_SUBLIME_CLI: &str =
+    "/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl";
+
 /// Open a worktree path in the configured editor app (macOS)
 pub async fn open_worktree_in_editor(
     worktree_path: String,
@@ -5146,6 +5152,18 @@ pub async fn open_worktree_in_editor(
             "xcode" => std::process::Command::new("xed")
                 .arg(&worktree_path)
                 .spawn(),
+            "sublime" => match std::process::Command::new("subl")
+                .arg(&worktree_path)
+                .spawn()
+            {
+                Ok(child) => Ok(child),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                    std::process::Command::new(MACOS_SUBLIME_CLI)
+                        .arg(&worktree_path)
+                        .spawn()
+                }
+                Err(e) => Err(e),
+            },
             "intellij" => match std::process::Command::new("idea")
                 .arg(&worktree_path)
                 .spawn()
@@ -5217,6 +5235,10 @@ pub async fn open_worktree_in_editor(
             "xcode" => {
                 return Err("Xcode is only available on macOS".to_string());
             }
+            "sublime" => std::process::Command::new("cmd")
+                .args(["/c", "subl", &worktree_path])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn(),
             "vscodium" => std::process::Command::new("cmd")
                 .args(["/c", "codium", &worktree_path])
                 .creation_flags(CREATE_NO_WINDOW)
@@ -5255,6 +5277,9 @@ pub async fn open_worktree_in_editor(
             "xcode" => {
                 return Err("Xcode is only available on macOS".to_string());
             }
+            "sublime" => std::process::Command::new("subl")
+                .arg(&worktree_path)
+                .spawn(),
             "vscodium" => std::process::Command::new("codium")
                 .arg(&worktree_path)
                 .spawn(),

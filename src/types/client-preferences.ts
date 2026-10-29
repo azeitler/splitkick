@@ -8,6 +8,7 @@ export const CLIENT_PREFERENCE_KEYS = [
   'terminal_font_size',
   'editor',
   'open_in',
+  'git_client',
   'ui_font_size',
   'chat_font_size',
   'ui_font',

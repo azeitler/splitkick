@@ -7,6 +7,7 @@ mod connection_window;
 mod desktop_commands;
 mod dock;
 mod http_server;
+mod installed_apps;
 mod platform;
 mod remote_install;
 
@@ -415,6 +416,8 @@ pub fn run() {
             desktop_commands::open_project_worktrees_folder,
             desktop_commands::open_worktree_in_terminal,
             desktop_commands::open_worktree_in_editor,
+            desktop_commands::open_worktree_in_git_client,
+            desktop_commands::detect_installed_apps,
             desktop_commands::open_project_on_github,
             desktop_commands::open_branch_on_github,
             desktop_commands::set_project_avatar,

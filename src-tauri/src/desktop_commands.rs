@@ -376,6 +376,53 @@ pub async fn open_worktree_in_editor(
     jean_core::open_worktree_in_editor(worktree_path, editor).await
 }
 
+/// Tool ids (editors, terminals, git clients) installed on this Mac.
+/// `None` on other platforms: there the frontend shows every option.
+#[tauri::command]
+pub async fn detect_installed_apps() -> Result<Option<Vec<String>>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(Some(crate::installed_apps::installed_tool_ids(
+            crate::installed_apps::is_bundle_installed,
+        )))
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+pub async fn open_worktree_in_git_client(
+    worktree_path: String,
+    git_client: Option<String>,
+) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        let git_client = git_client.unwrap_or_else(|| "tower".to_string());
+        if git_client == "tower" {
+            // Tower's CLI takes the repository folder. GUI apps often lack
+            // /usr/local/bin in PATH, so try the install location too.
+            for binary in ["gittower", "/usr/local/bin/gittower"] {
+                if Command::new(binary).arg(&worktree_path).spawn().is_ok() {
+                    return Ok(());
+                }
+            }
+        }
+        let bundle_id = crate::installed_apps::bundle_id_for(&git_client)
+            .ok_or_else(|| format!("Unknown git client: {git_client}"))?;
+        spawn(
+            "open",
+            &["-b".to_string(), bundle_id.to_string(), worktree_path],
+        )
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (worktree_path, git_client);
+        Err("Git clients are only supported on macOS".to_string())
+    }
+}
+
 #[tauri::command]
 pub async fn open_project_on_github(
     runtime: State<'_, CoreRuntime>,

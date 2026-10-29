@@ -1,16 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
 import { render, screen } from '@/test/test-utils'
 import { OpenInModal } from './OpenInModal'
 
 const localBackendState = vi.hoisted(() => ({ value: true }))
 const nativeOpenAllowedState = vi.hoisted(() => ({ value: false }))
 const remoteEditorLocallyState = vi.hoisted(() => ({ value: false }))
+const installedAppsState = vi.hoisted(() => ({
+  value: null as Set<string> | null,
+}))
 
 const mocks = vi.hoisted(() => ({
   setOpenInModalOpen: vi.fn(),
   openPreferencesPane: vi.fn(),
   openRemotePicker: vi.fn(),
   openExternal: vi.fn(),
+  openInGitClient: vi.fn(),
 }))
 
 interface UiStoreMock {
@@ -129,6 +134,8 @@ vi.mock('@/services/projects', () => ({
   useOpenWorktreeInFinder: () => ({ mutate: vi.fn() }),
   useOpenWorktreeInTerminal: () => ({ mutate: vi.fn() }),
   useOpenWorktreeInEditor: () => ({ mutate: vi.fn() }),
+  useOpenWorktreeInGitClient: () => ({ mutate: mocks.openInGitClient }),
+  useInstalledApps: () => ({ data: installedAppsState.value }),
   usePorts: () => ({ data: [] }),
 }))
 
@@ -172,6 +179,7 @@ describe('OpenInModal', () => {
     localBackendState.value = true
     nativeOpenAllowedState.value = false
     remoteEditorLocallyState.value = false
+    installedAppsState.value = null
   })
 
   it('hides Finder/editor/terminal in browser/headless mode without native open', async () => {
@@ -236,6 +244,41 @@ describe('OpenInModal', () => {
     expect(screen.getByText('Ghostty')).toBeInTheDocument()
     expect(screen.getByText('Finder')).toBeInTheDocument()
     expect(screen.getByText('GitHub')).toBeInTheDocument()
+  })
+
+  it('shows the installed git client with C and opens the worktree in it', async () => {
+    installedAppsState.value = new Set(['zed', 'tower'])
+
+    const user = userEvent.setup()
+    render(<OpenInModal />)
+
+    expect(await screen.findByText('Tower')).toBeInTheDocument()
+    expect(screen.getByText('C')).toBeInTheDocument()
+    await user.click(screen.getByText('Tower'))
+    expect(mocks.openInGitClient).toHaveBeenCalledWith({
+      worktreePath: '/repo/worktree',
+      gitClient: 'tower',
+    })
+  })
+
+  it('hides the git client when none is installed', async () => {
+    installedAppsState.value = new Set(['zed'])
+
+    render(<OpenInModal />)
+
+    expect(await screen.findByText('Zed')).toBeInTheDocument()
+    expect(screen.queryByText('Tower')).not.toBeInTheDocument()
+  })
+
+  it('hides the git client on remote connections', async () => {
+    localBackendState.value = false
+    nativeOpenAllowedState.value = true
+    installedAppsState.value = new Set(['tower'])
+
+    render(<OpenInModal />)
+
+    expect(await screen.findByText('Finder')).toBeInTheDocument()
+    expect(screen.queryByText('Tower')).not.toBeInTheDocument()
   })
 
   it('shows worktree and loaded security/advisory context URLs', async () => {
