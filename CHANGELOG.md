@@ -13,23 +13,21 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   starts two sealed Splitkick servers on this Mac (own home folder, data,
   ports) and checks session transfer, remote connections, session links,
   follow-ups, MCP sends and parent/child sessions in the real UI. (#65)
-
-### Changed
-
-- **Session transfer works in Web Access.** The target must allow the page's
-  address (`JEAN_ALLOWED_ORIGINS`); the error says so. (#65)
-### Changed
-
-- **The follow-up list opens beside the chat when there is room.** Its button
-  moved to the far right of the bar under the input (also in zen mode). In a
-  wide window the list opens in the free space to the right of the chat; when
-  the window, sidebar, file browser or browser pane leaves too little room, it
-  opens above the input, as before. Phones keep the bottom sheet. (#66)
 - **You can move a session to another project or worktree.** Use "Move to…" in
   the session menu (sidebar, tabs, canvas) or "Move Session to…" in ⌘K. The
   session keeps its history. Claude continues its conversation; other backends
   get the history replayed on the next message. A running session or one with
   queued messages cannot move. (#67)
+
+### Changed
+
+- **Session transfer works in Web Access.** The target must allow the page's
+  address (`JEAN_ALLOWED_ORIGINS`); the error says so. (#65)
+- **The follow-up list opens beside the chat when there is room.** Its button
+  moved to the far right of the bar under the input (also in zen mode). In a
+  wide window the list opens in the free space to the right of the chat; when
+  the window, sidebar, file browser or browser pane leaves too little room, it
+  opens above the input, as before. Phones keep the bottom sheet. (#66)
 
 ## [1.1.0] - 2026-10-29
 
