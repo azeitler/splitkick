@@ -13,6 +13,7 @@
  */
 
 import { PRODUCT_NAME } from '@/lib/build-info'
+import { isNativeApp } from '@/lib/environment'
 import type { RemoteConnection } from './remote-connections'
 import { isSsoProxyResponse, SSO_PROXY_ERROR } from './remote-version'
 
@@ -51,12 +52,23 @@ export async function remoteInvoke<T>(
   )
 
   try {
-    const res = await fetchImpl(requestUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, args }),
-      signal: controller.signal,
-    })
+    let res: Response
+    try {
+      res = await fetchImpl(requestUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command, args }),
+        signal: controller.signal,
+      })
+    } catch (error) {
+      // A browser hides a CORS refusal behind a plain network error.
+      if (error instanceof TypeError && !isNativeApp()) {
+        throw new Error(
+          `Could not reach ${target.name}. In Web Access the target must allow this origin: start it with JEAN_ALLOWED_ORIGINS=${window.location.origin}`
+        )
+      }
+      throw error
+    }
     // Known statuses first: axum answers 405 and 413 as plain text, which the
     // login-proxy check would read as a proxy page.
     if (res.status === 401) {

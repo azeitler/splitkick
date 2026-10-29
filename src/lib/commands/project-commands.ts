@@ -15,7 +15,6 @@ import {
 import type { AppCommand } from './types'
 import { useUIStore } from '@/store/ui-store'
 import { PRODUCT_NAME } from '@/lib/build-info'
-import { isNativeApp } from '@/lib/environment'
 import {
   getActiveConnectionId,
   getRemoteConnections,
@@ -35,9 +34,8 @@ export const projectCommands: AppCommand[] = [
     group: 'projects',
     keywords: ['session', 'transfer', 'remote', 'copy', 'send', 'connection'],
 
-    // Native only: Web Access cannot reach another instance (CORS).
+    // Web Access works too when the target allows this origin (CORS).
     isAvailable: context =>
-      isNativeApp() &&
       context.hasActiveSession() &&
       getTransferTargets(getRemoteConnections(), getActiveConnectionId())
         .length > 0,

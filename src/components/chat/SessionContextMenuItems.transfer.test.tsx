@@ -100,13 +100,12 @@ describe('SessionContextMenuItems — transfer', () => {
     ).toBeNull()
   })
 
-  it('is hidden in Web Access', async () => {
+  it('is shown in Web Access', async () => {
     isNativeApp.mockReturnValue(false)
     await openMenu()
 
-    await screen.findByRole('menuitem', { name: /fork session \(same/i })
     expect(
-      screen.queryByRole('menuitem', { name: /transfer to remote/i })
-    ).toBeNull()
+      await screen.findByRole('menuitem', { name: /transfer to remote/i })
+    ).toBeTruthy()
   })
 })
