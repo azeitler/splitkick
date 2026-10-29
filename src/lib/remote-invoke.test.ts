@@ -125,4 +125,30 @@ describe('remoteInvoke', () => {
       )
     ).rejects.toThrow('Timed out waiting for Studio.')
   })
+
+  it('names the origin to allow when Web Access cannot reach the target', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError('Failed to fetch')
+    })
+    await expect(
+      remoteInvoke(target, 'list_projects', {}, { fetchImpl })
+    ).rejects.toThrow(
+      `Could not reach Studio. In Web Access the target must allow this origin: start it with JEAN_ALLOWED_ORIGINS=${window.location.origin}`
+    )
+  })
+
+  it('keeps the network error in the native app', async () => {
+    const fetchImpl = vi.fn(async () => {
+      throw new TypeError('Load failed')
+    })
+    const tauriWindow = window as unknown as Record<string, unknown>
+    tauriWindow.__TAURI_INTERNALS__ = { invoke: vi.fn() }
+    try {
+      await expect(
+        remoteInvoke(target, 'list_projects', {}, { fetchImpl })
+      ).rejects.toThrow('Load failed')
+    } finally {
+      delete tauriWindow.__TAURI_INTERNALS__
+    }
+  })
 })

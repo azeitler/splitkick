@@ -27,7 +27,6 @@ import { useProjectsStore } from '@/store/projects-store'
 import { PRODUCT_NAME } from '@/lib/build-info'
 import { copyToClipboard } from '@/lib/clipboard'
 import { copySplitkickLink } from '@/lib/splitkick-links'
-import { isNativeApp } from '@/lib/environment'
 import { useTransferTargets } from '@/lib/session-transfer'
 import { useUIStore } from '@/store/ui-store'
 import { canReconnectSession, reconnectNativeCliSession } from '@/services/chat'
@@ -86,8 +85,8 @@ export function SessionContextMenuItems({
   const session = card.session
   const isPausedOverride = card.statusOverride === 'paused'
   const { forkInPlace, forkToWorktree } = useSessionFork()
-  // Web Access cannot reach another instance (CORS), so native only.
-  const canTransfer = useTransferTargets().length > 0 && isNativeApp()
+  // Web Access works too when the target allows this origin (CORS).
+  const canTransfer = useTransferTargets().length > 0
   // Select a boolean, not the pins array: the selector must subscribe to the
   // value that decides the label, or the item would not flip after a pin.
   const isPinned = useProjectsStore(state =>

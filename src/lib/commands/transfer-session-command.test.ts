@@ -51,8 +51,9 @@ describe('Transfer Session palette command', () => {
     expect(command.isAvailable?.(context(true))).toBe(false)
 
     connections.list = [{ id: 'studio', name: 'Studio', url: 'u', token: 't' }]
+    // Web Access too: the target can allow this origin (CORS).
     isNativeApp.mockReturnValue(false)
-    expect(command.isAvailable?.(context(true))).toBe(false)
+    expect(command.isAvailable?.(context(true))).toBe(true)
   })
 
   it('opens the dialog for the active session', async () => {

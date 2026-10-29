@@ -806,8 +806,7 @@ export function MainWindow() {
           />
         </Suspense>
       )}
-      {/* Native only: Web Access cannot reach another instance (CORS). */}
-      {isNativeApp() && shouldRenderTransferSessionDialog && (
+      {shouldRenderTransferSessionDialog && (
         <Suspense fallback={null}>
           <TransferSessionDialog />
         </Suspense>

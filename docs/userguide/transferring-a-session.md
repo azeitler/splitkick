@@ -43,6 +43,9 @@ agent can answer questions about the earlier conversation.
 
 ## Limits
 
-- Only in the desktop app, not in Web Access in a browser.
+- In Web Access in a browser, the target must allow the page's address. Start the target
+  with `JEAN_ALLOWED_ORIGINS=<address of this page>` (for example
+  `https://splitkick.example.com`). Otherwise the transfer fails with "Could not reach …".
+  The desktop app needs no setting.
 - The menu item shows only when you have a connection other than the one this window
   shows.
