@@ -13,6 +13,7 @@ import {
 
 const mocks = vi.hoisted(() => ({
   copyToClipboard: vi.fn(),
+  copyImageToClipboard: vi.fn(async () => undefined),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   openChatLink: vi.fn(),
@@ -22,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/lib/clipboard', () => ({
   copyToClipboard: mocks.copyToClipboard,
+  copyImageToClipboard: mocks.copyImageToClipboard,
 }))
 
 vi.mock('@/lib/chat-links', async importOriginal => ({
@@ -549,5 +551,70 @@ describe('MessageThreadContextMenu — Reveal in the file manager', () => {
         path: '/repo/wt/docs/notes.md',
       })
     )
+  })
+})
+
+describe('MessageThreadContextMenu — Copy image', () => {
+  beforeEach(() => {
+    mocks.copyImageToClipboard.mockReset()
+    mocks.copyImageToClipboard.mockResolvedValue(undefined)
+    mocks.toastSuccess.mockReset()
+    mocks.toastError.mockReset()
+  })
+
+  const renderImage = (src: string) => {
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <p>
+          <button type="button" data-local-path="/tmp/shot.png">
+            <img alt="shot" src={src} />
+          </button>
+        </p>
+      </MessageThreadContextMenu>
+    )
+  }
+
+  it('copies the image the menu was opened on', async () => {
+    const user = userEvent.setup()
+    renderImage('https://remote.example.com/api/files/shot.png?token=t')
+    fireEvent.contextMenu(screen.getByAltText('shot'))
+
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Copy image' })
+    )
+
+    expect(mocks.copyImageToClipboard).toHaveBeenCalledWith(
+      'https://remote.example.com/api/files/shot.png?token=t'
+    )
+    await waitFor(() =>
+      expect(mocks.toastSuccess).toHaveBeenCalledWith('Image copied')
+    )
+  })
+
+  it('toasts an error when the copy fails', async () => {
+    mocks.copyImageToClipboard.mockRejectedValue(new Error('Copy failed: x'))
+    const user = userEvent.setup()
+    renderImage('https://example.com/shot.png')
+    fireEvent.contextMenu(screen.getByAltText('shot'))
+
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Copy image' })
+    )
+
+    await waitFor(() =>
+      expect(mocks.toastError).toHaveBeenCalledWith('Copy failed: x')
+    )
+  })
+
+  it('offers no Copy image away from an image', async () => {
+    render(
+      <MessageThreadContextMenu messageText="Full message body">
+        <p>plain text</p>
+      </MessageThreadContextMenu>
+    )
+    fireEvent.contextMenu(screen.getByText('plain text'))
+
+    await screen.findByRole('menuitem', { name: /copy message/i })
+    expect(screen.queryByRole('menuitem', { name: 'Copy image' })).toBeNull()
   })
 })

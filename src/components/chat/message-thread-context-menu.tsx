@@ -1,5 +1,12 @@
 import { useCallback, useContext, useState, type ReactElement } from 'react'
-import { Copy, ExternalLink, FolderOpen, GitFork, ListTodo } from 'lucide-react'
+import {
+  Copy,
+  ExternalLink,
+  FolderOpen,
+  GitFork,
+  ImageIcon,
+  ListTodo,
+} from 'lucide-react'
 import { toast } from 'sonner'
 import {
   ContextMenu,
@@ -21,6 +28,7 @@ import { useFileReference } from '@/lib/file-reference'
 import { getFileManagerName } from '@/lib/platform'
 import { splitFileRefSuffix } from '@/lib/path-utils'
 import { useRevealPathInFileManager } from '@/services/projects'
+import { copyImage } from './ImageLightbox'
 
 /** Read the current window selection as trimmed plain text. */
 export function getTrimmedSelectionText(): string {
@@ -79,6 +87,7 @@ export function MessageThreadContextMenu({
   const [linkUrl, setLinkUrl] = useState('')
   const [linkHref, setLinkHref] = useState('')
   const [imagePath, setImagePath] = useState('')
+  const [imageSrc, setImageSrc] = useState('')
   const rootPath = useContext(LocalPathRootContext)
 
   const handleContextMenu = useCallback((event: React.MouseEvent) => {
@@ -94,6 +103,12 @@ export function MessageThreadContextMenu({
     const image =
       target instanceof Element ? target.closest('[data-local-path]') : null
     setImagePath(image?.getAttribute('data-local-path') ?? '')
+    // The loaded URL, so Copy image also works for web images and remote files.
+    const img =
+      target instanceof Element
+        ? (target.closest('img') ?? image?.querySelector('img'))
+        : null
+    setImageSrc(img?.currentSrc || img?.src || '')
   }, [])
 
   const handleOpenChange = useCallback((open: boolean) => {
@@ -186,6 +201,12 @@ export function MessageThreadContextMenu({
           <ContextMenuItem onSelect={() => revealPath.mutate(revealTarget)}>
             <FolderOpen className="h-4 w-4" />
             Reveal in {getFileManagerName()}
+          </ContextMenuItem>
+        )}
+        {imageSrc && (
+          <ContextMenuItem onSelect={() => copyImage(imageSrc)}>
+            <ImageIcon className="h-4 w-4" />
+            Copy image
           </ContextMenuItem>
         )}
         {linkUrl && (

@@ -1,8 +1,10 @@
 import { useState, useCallback, type ImgHTMLAttributes } from 'react'
-import { FolderOpen } from 'lucide-react'
+import { Copy, ExternalLink, FolderOpen } from 'lucide-react'
+import { toast } from 'sonner'
 import { convertFileSrc } from '@/lib/transport'
-import { canOpenNativeApps } from '@/lib/environment'
-import { getFileManagerName } from '@/lib/platform'
+import { copyImageToClipboard } from '@/lib/clipboard'
+import { isLocalBackend } from '@/lib/environment'
+import { getFileManagerName, openExternal } from '@/lib/platform'
 import { useRevealPathInFileManager } from '@/services/projects'
 import { Button } from '@/components/ui/button'
 import {
@@ -44,6 +46,18 @@ export function ZoomableImage({
   )
 }
 
+/** Copy the image at `src` to the clipboard and toast the result. */
+export function copyImage(src: string): void {
+  void copyImageToClipboard(src)
+    .then(() => toast.success('Image copied'))
+    .catch(err =>
+      toast.error(err instanceof Error ? err.message : 'Failed to copy image')
+    )
+}
+
+// Inline sources a browser tab cannot open as a page.
+const INLINE_IMAGE_SRC_RE = /^(data|blob):/i
+
 interface ImagePreviewDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
@@ -51,13 +65,15 @@ interface ImagePreviewDialogProps {
   src: string
   /** Alt text for accessibility */
   alt: string
-  /** Local file path; enables "Reveal in {file manager}" */
+  /** File path; enables "Reveal in {file manager}" in a local session */
   path?: string
 }
 
 /**
- * Full-size image preview. A local image also gets a Reveal button when this
- * machine can open the native file manager.
+ * Full-size image preview with Copy image. In a local session a local image
+ * also gets Reveal in {file manager}. In a remote session or web access the
+ * file is on the other machine, so it gets Open in browser instead, which opens
+ * the URL that machine serves.
  */
 export function ImagePreviewDialog({
   open,
@@ -67,7 +83,9 @@ export function ImagePreviewDialog({
   path,
 }: ImagePreviewDialogProps) {
   const revealPath = useRevealPathInFileManager()
-  const canReveal = Boolean(path) && canOpenNativeApps()
+  const local = isLocalBackend()
+  const canReveal = Boolean(path) && local
+  const canOpenInBrowser = !local && !INLINE_IMAGE_SRC_RE.test(src)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -88,8 +106,8 @@ export function ImagePreviewDialog({
             className="max-w-full max-h-full sm:max-h-[calc(85vh-6rem)] object-contain rounded-md"
           />
         </div>
-        {canReveal && path && (
-          <div className="flex shrink-0 justify-center">
+        <div className="flex shrink-0 justify-center gap-1">
+          {canReveal && path && (
             <Button
               variant="ghost"
               size="sm"
@@ -98,8 +116,26 @@ export function ImagePreviewDialog({
               <FolderOpen className="h-4 w-4" />
               Reveal in {getFileManagerName()}
             </Button>
-          </div>
-        )}
+          )}
+          {canOpenInBrowser && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                void openExternal(src).catch(() =>
+                  toast.error('Failed to open the image in the browser')
+                )
+              }
+            >
+              <ExternalLink className="h-4 w-4" />
+              Open in browser
+            </Button>
+          )}
+          <Button variant="ghost" size="sm" onClick={() => copyImage(src)}>
+            <Copy className="h-4 w-4" />
+            Copy image
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   )

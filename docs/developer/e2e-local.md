@@ -29,6 +29,7 @@ fast check for the UI alone.
 | MCP send keeps the mode (#61)   | `sessions.spec.ts`          | `send_chat_message` with `executionMode: "yolo"` runs in Yolo and keeps it after reload                                |
 | Parent/child inserts (#62)      | `sessions.spec.ts`          | "Sent to session …" and "Started session …" in the parent, "Started by …" in the child                                 |
 | Auto-archive (#50)              | `auto-archive.spec.ts`      | API level: a merged PR archives a clean worktree                                                                       |
+| Copy image (#68)                | `images.spec.ts`            | Copy image puts a PNG on the clipboard; the viewer shows Open in browser + Copy image, no Reveal                       |
 
 ## Sealing
 
