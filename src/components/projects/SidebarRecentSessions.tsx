@@ -13,11 +13,15 @@ import { Button } from '@/components/ui/button'
 import { useIsMobile } from '@/hooks/use-mobile'
 import { navigateToSession } from '@/lib/navigate-to-session'
 import { useAllSessions } from '@/services/chat'
+import { usePreferences } from '@/services/preferences'
 import { useChatStore } from '@/store/chat-store'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
 
-/** The list is a jump list, not an archive; older sessions live in the tree. */
+/**
+ * The list is a jump list, not an archive; older sessions live in the tree.
+ * Default for `sidebar_recent_limit` (Settings → General → Worktrees).
+ */
 export const SIDEBAR_RECENT_LIMIT = 30
 
 /**
@@ -33,6 +37,8 @@ export function SidebarRecentSessions() {
   const isMobile = useIsMobile()
   const { data, isLoading, isError, refetch } = useAllSessions()
   const storeState = useCanvasStoreState()
+  const { data: preferences } = usePreferences()
+  const limit = preferences?.sidebar_recent_limit ?? SIDEBAR_RECENT_LIMIT
   // The open session: the active one of the selected workspace, as in the tree.
   const selectedWorktreeId = useProjectsStore(state => state.selectedWorktreeId)
   const activeSessionId = useChatStore(state =>
@@ -42,10 +48,7 @@ export function SidebarRecentSessions() {
   )
 
   const groups = useMemo(() => {
-    const rows = flattenAllSessions(data?.entries ?? []).slice(
-      0,
-      SIDEBAR_RECENT_LIMIT
-    )
+    const rows = flattenAllSessions(data?.entries ?? []).slice(0, limit)
     return groupSessionsByDay(rows).map(group => ({
       label: group.label,
       shortcuts: group.rows.map(
@@ -61,7 +64,7 @@ export function SidebarRecentSessions() {
         })
       ),
     }))
-  }, [data?.entries, storeState])
+  }, [data?.entries, limit, storeState])
 
   const handleOpen = useCallback(
     (shortcut: SessionShortcut) => {

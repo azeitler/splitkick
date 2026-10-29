@@ -139,6 +139,7 @@ import {
   TooltipContent,
 } from '@/components/ui/tooltip'
 import { usePreferences, usePatchPreferences } from '@/services/preferences'
+import { useInstalledApps } from '@/services/projects'
 import {
   getCatalogDefaultModelOptions,
   getCatalogModelOptions,
@@ -155,6 +156,9 @@ import {
   backendOptions,
   getTerminalOptions,
   getEditorOptions,
+  getGitClientOptions,
+  filterInstalled,
+  resolveGitClient,
   gitPollIntervalOptions,
   remotePollIntervalOptions,
   archiveRetentionOptions,
@@ -175,6 +179,7 @@ import {
   type CliBackend,
   type TerminalApp,
   type EditorApp,
+  type GitClientApp,
   type NotificationSound,
   openInDefaultOptions,
   type OpenInDefault,
@@ -326,6 +331,18 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
     })
   const remoteServerVersion = remoteServerInfo?.appVersion
   const { data: preferences } = usePreferences()
+  const { data: installedApps } = useInstalledApps()
+  const gitClientOptions = filterInstalled(
+    getGitClientOptions(),
+    installedApps,
+    preferences?.git_client
+  )
+  // Without detection (null) every client is listed, so "first installed"
+  // falls back to the first one shown.
+  const gitClient =
+    resolveGitClient(preferences?.git_client, installedApps) ??
+    gitClientOptions[0]?.value ??
+    null
   const { data: modelCatalog } = useModelCatalog()
   const codexReasoning = getCatalogModelReasoning(
     modelCatalog,
@@ -1415,6 +1432,12 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
   const handleEditorChange = (value: EditorApp) => {
     if (preferences) {
       patchPreferences.mutate({ editor: value })
+    }
+  }
+
+  const handleGitClientChange = (value: GitClientApp) => {
+    if (preferences) {
+      patchPreferences.mutate({ git_client: value })
     }
   }
 
@@ -4476,7 +4499,11 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {getEditorOptions().map(option => (
+                    {filterInstalled(
+                      getEditorOptions(),
+                      installedApps,
+                      preferences?.editor
+                    ).map(option => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
@@ -4499,7 +4526,34 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {getTerminalOptions().map(option => (
+                    {filterInstalled(
+                      getTerminalOptions(),
+                      installedApps,
+                      preferences?.terminal
+                    ).map(option => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </InlineField>
+            )}
+
+            {isNativeApp() && gitClientOptions.length > 0 && (
+              <InlineField
+                label="Git Client"
+                description="App to open repositories in"
+              >
+                <Select
+                  value={gitClient ?? undefined}
+                  onValueChange={handleGitClientChange}
+                >
+                  <SelectTrigger className="w-full sm:w-80">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {gitClientOptions.map(option => (
                       <SelectItem key={option.value} value={option.value}>
                         {option.label}
                       </SelectItem>
@@ -4522,11 +4576,17 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {openInDefaultOptions.map(option => (
-                      <SelectItem key={option.value} value={option.value}>
-                        {option.label}
-                      </SelectItem>
-                    ))}
+                    {openInDefaultOptions
+                      .filter(
+                        option =>
+                          option.value !== 'git-client' ||
+                          gitClientOptions.length > 0
+                      )
+                      .map(option => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </InlineField>
@@ -4807,6 +4867,29 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
                     if (preferences) {
                       patchPreferences.mutate({
                         restore_last_session: checked,
+                      })
+                    }
+                  }}
+                />
+              </InlineField>
+
+              <InlineField
+                label="Recent sessions"
+                description="Sessions shown in the sidebar Recent tab (5–200)"
+              >
+                <Input
+                  type="number"
+                  min={5}
+                  max={200}
+                  className="w-20"
+                  value={preferences?.sidebar_recent_limit ?? 30}
+                  onChange={e => {
+                    if (preferences) {
+                      patchPreferences.mutate({
+                        sidebar_recent_limit: Math.max(
+                          5,
+                          Math.min(200, parseInt(e.target.value, 10) || 30)
+                        ),
                       })
                     }
                   }}

@@ -2,6 +2,7 @@ import {
   Archive,
   Code,
   FolderOpen,
+  GitBranch,
   Play,
   Terminal,
   Trash2,
@@ -27,7 +28,11 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from '@/components/ui/context-menu'
-import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
+import {
+  getEditorLabel,
+  getGitClientLabel,
+  getTerminalLabel,
+} from '@/types/preferences'
 import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { getFileManagerName } from '@/lib/platform'
 import type { useWorktreeMenuActions } from './useWorktreeMenuActions'
@@ -54,6 +59,8 @@ export function WorktreeContextMenu({
     handleOpenInFinder,
     handleOpenInTerminal,
     handleOpenInEditor,
+    handleOpenInGitClient,
+    gitClient,
     handleArchiveOrClose,
     handleDelete,
   } = actions
@@ -108,6 +115,13 @@ export function WorktreeContextMenu({
           <ContextMenuItem onClick={handleOpenInTerminal}>
             <Terminal className="mr-2 h-4 w-4" />
             Open in {getTerminalLabel(preferences?.terminal)}
+          </ContextMenuItem>
+        )}
+
+        {gitClient && (
+          <ContextMenuItem onClick={handleOpenInGitClient}>
+            <GitBranch className="mr-2 h-4 w-4" />
+            Open in {getGitClientLabel(gitClient)}
           </ContextMenuItem>
         )}
 

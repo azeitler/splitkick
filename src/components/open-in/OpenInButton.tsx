@@ -3,6 +3,7 @@ import {
   ChevronDown,
   Code,
   FolderOpen,
+  GitBranch,
   Github,
   Settings,
   SquareArrowOutUpRight,
@@ -26,11 +27,13 @@ import {
   useOpenWorktreeInTerminal,
   useOpenWorktreeInFinder,
   useOpenBranchOnGitHub,
+  useOpenWorktreeInGitClient,
 } from '@/services/projects'
 import { usePreferences } from '@/services/preferences'
-import { getOpenInDefaultLabel } from '@/types/preferences'
+import { getGitClientLabel, getOpenInDefaultLabel } from '@/types/preferences'
 import { canOpenInEditor, canOpenNativeApps } from '@/lib/environment'
 import { useUIStore } from '@/store/ui-store'
+import { useGitClient } from './use-git-client'
 
 interface OpenInButtonProps {
   worktreePath: string
@@ -49,6 +52,8 @@ export function OpenInButton({
   const openInTerminal = useOpenWorktreeInTerminal()
   const openInFinder = useOpenWorktreeInFinder()
   const openOnGitHub = useOpenBranchOnGitHub()
+  const openInGitClient = useOpenWorktreeInGitClient()
+  const gitClient = useGitClient()
 
   const canNative = canOpenNativeApps()
   const canEditor = canOpenInEditor()
@@ -65,6 +70,9 @@ export function OpenInButton({
         case 'finder':
           openInFinder.mutate(worktreePath)
           break
+        case 'git-client':
+          openInGitClient.mutate({ worktreePath, gitClient })
+          break
         case 'github':
           if (branch) openOnGitHub.mutate({ repoPath: worktreePath, branch })
           else
@@ -79,6 +87,8 @@ export function OpenInButton({
       openInTerminal,
       openInFinder,
       openOnGitHub,
+      openInGitClient,
+      gitClient,
       worktreePath,
       branch,
       preferences?.editor,
@@ -95,16 +105,19 @@ export function OpenInButton({
         ? preferred
         : preferred === 'github' && branch
           ? 'github'
-          : canEditor
-            ? 'editor'
-            : branch
-              ? 'github'
-              : 'editor'
+          : preferred === 'git-client' && gitClient
+            ? 'git-client'
+            : canEditor
+              ? 'editor'
+              : branch
+                ? 'github'
+                : 'editor'
 
   const defaultLabel = getOpenInDefaultLabel(
     effectiveDefault,
     preferences?.editor,
-    preferences?.terminal
+    preferences?.terminal,
+    gitClient
   )
 
   if (!canEditor && !canNative) return null
@@ -164,6 +177,12 @@ export function OpenInButton({
             <DropdownMenuItem onSelect={() => openAction('finder')}>
               <FolderOpen className="h-4 w-4" />
               Finder
+            </DropdownMenuItem>
+          )}
+          {gitClient && (
+            <DropdownMenuItem onSelect={() => openAction('git-client')}>
+              <GitBranch className="h-4 w-4" />
+              {getGitClientLabel(gitClient)}
             </DropdownMenuItem>
           )}
           {branch && (

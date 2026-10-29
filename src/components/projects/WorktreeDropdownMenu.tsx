@@ -40,7 +40,11 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Button } from '@/components/ui/button'
 import type { Worktree } from '@/types/projects'
-import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
+import {
+  getEditorLabel,
+  getGitClientLabel,
+  getTerminalLabel,
+} from '@/types/preferences'
 import { ghCliQueryKeys, useGhCliAuth } from '@/services/gh-cli'
 import {
   useDependabotAlerts,
@@ -94,6 +98,8 @@ export function WorktreeDropdownMenu({
     handleOpenInFinder,
     handleOpenInTerminal,
     handleOpenInEditor,
+    handleOpenInGitClient,
+    gitClient,
     handleArchiveOrClose,
     handleDelete,
   } = useWorktreeMenuActions({ worktree, projectId })
@@ -319,6 +325,13 @@ export function WorktreeDropdownMenu({
             <DropdownMenuItem onClick={handleOpenInTerminal}>
               <Terminal className="mr-2 h-4 w-4" />
               Open in {getTerminalLabel(preferences?.terminal)}
+            </DropdownMenuItem>
+          )}
+
+          {gitClient && (
+            <DropdownMenuItem onClick={handleOpenInGitClient}>
+              <GitBranch className="mr-2 h-4 w-4" />
+              Open in {getGitClientLabel(gitClient)}
             </DropdownMenuItem>
           )}
 

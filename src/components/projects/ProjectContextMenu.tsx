@@ -4,6 +4,7 @@ import {
   ExternalLink,
   Folder,
   FolderOpen,
+  GitBranch,
   Home,
   Plus,
   Settings,
@@ -25,6 +26,7 @@ import {
   useOpenProjectWorktreesFolder,
   useOpenWorktreeInEditor,
   useOpenWorktreeInFinder,
+  useOpenWorktreeInGitClient,
   useOpenWorktreeInTerminal,
   useRemoveProject,
   useWorktrees,
@@ -32,7 +34,12 @@ import {
 import { usePreferences } from '@/services/preferences'
 import { useProjectsStore } from '@/store/projects-store'
 import { useUIStore } from '@/store/ui-store'
-import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
+import {
+  getEditorLabel,
+  getGitClientLabel,
+  getTerminalLabel,
+} from '@/types/preferences'
+import { useGitClient } from '@/components/open-in/use-git-client'
 import { getFileManagerName } from '@/lib/platform'
 import { isNativeApp } from '@/lib/environment'
 
@@ -53,6 +60,8 @@ export function ProjectContextMenu({
   const openWorktreesFolder = useOpenProjectWorktreesFolder()
   const openInTerminal = useOpenWorktreeInTerminal()
   const openInEditor = useOpenWorktreeInEditor()
+  const openInGitClient = useOpenWorktreeInGitClient()
+  const gitClient = useGitClient()
   const { data: worktrees = [] } = useWorktrees(project.id)
   const { data: preferences } = usePreferences()
   const { openProjectSettings, selectProject } = useProjectsStore()
@@ -83,6 +92,10 @@ export function ProjectContextMenu({
       worktreePath: project.path,
       editor: preferences?.editor,
     })
+  }
+
+  const handleOpenInGitClient = () => {
+    openInGitClient.mutate({ worktreePath: project.path, gitClient })
   }
 
   const handleNewWorktree = () => {
@@ -147,6 +160,13 @@ export function ProjectContextMenu({
           <Terminal className="mr-2 h-4 w-4" />
           Open in {getTerminalLabel(preferences?.terminal)}
         </ContextMenuItem>
+
+        {gitClient && (
+          <ContextMenuItem onClick={handleOpenInGitClient}>
+            <GitBranch className="mr-2 h-4 w-4" />
+            Open in {getGitClientLabel(gitClient)}
+          </ContextMenuItem>
+        )}
 
         <ContextMenuSeparator />
 

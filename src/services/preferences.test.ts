@@ -298,6 +298,7 @@ describe('preferences service', () => {
         terminal: 'terminal',
         editor: 'vscode',
         open_in: 'editor',
+        git_client: null,
         auto_branch_naming: true,
         branch_naming_model: 'haiku',
         auto_session_naming: true,
@@ -406,6 +407,7 @@ describe('preferences service', () => {
         jean_mcp_enabled: false,
         jean_mcp_max_depth: 3,
         jean_mcp_rate_limit_per_minute: 20,
+        sidebar_recent_limit: 30,
       }
       vi.mocked(invoke).mockResolvedValueOnce(mockPreferences)
 
@@ -457,6 +459,7 @@ describe('preferences service', () => {
         terminal: 'terminal',
         editor: 'vscode',
         open_in: 'editor',
+        git_client: null,
         auto_branch_naming: true,
         branch_naming_model: 'haiku',
         auto_session_naming: true,
@@ -568,6 +571,7 @@ describe('preferences service', () => {
         jean_mcp_enabled: false,
         jean_mcp_max_depth: 3,
         jean_mcp_rate_limit_per_minute: 20,
+        sidebar_recent_limit: 30,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithOldBinding)
 
@@ -632,6 +636,7 @@ describe('preferences service', () => {
         terminal: 'terminal',
         editor: 'vscode',
         open_in: 'editor',
+        git_client: null,
         auto_branch_naming: true,
         branch_naming_model: 'haiku',
         auto_session_naming: true,
@@ -741,6 +746,7 @@ describe('preferences service', () => {
         jean_mcp_enabled: false,
         jean_mcp_max_depth: 3,
         jean_mcp_rate_limit_per_minute: 20,
+        sidebar_recent_limit: 30,
       }
       vi.mocked(invoke).mockResolvedValueOnce(prefsWithDeprecatedFastModel)
 
@@ -766,6 +772,7 @@ describe('preferences service', () => {
         terminal: 'warp',
         editor: 'cursor',
         open_in: 'editor',
+        git_client: null,
         auto_branch_naming: false,
         branch_naming_model: 'haiku',
         auto_session_naming: true,
@@ -874,6 +881,7 @@ describe('preferences service', () => {
         jean_mcp_enabled: false,
         jean_mcp_max_depth: 3,
         jean_mcp_rate_limit_per_minute: 20,
+        sidebar_recent_limit: 30,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -901,6 +909,7 @@ describe('preferences service', () => {
         terminal: 'terminal',
         editor: 'vscode',
         open_in: 'editor',
+        git_client: null,
         auto_branch_naming: true,
         branch_naming_model: 'haiku',
         auto_session_naming: true,
@@ -1009,6 +1018,7 @@ describe('preferences service', () => {
         jean_mcp_enabled: false,
         jean_mcp_max_depth: 3,
         jean_mcp_rate_limit_per_minute: 20,
+        sidebar_recent_limit: 30,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -1078,6 +1088,7 @@ describe('preferences service', () => {
         terminal: 'terminal',
         editor: 'vscode',
         open_in: 'editor',
+        git_client: null,
         auto_branch_naming: true,
         branch_naming_model: 'haiku',
         auto_session_naming: true,
@@ -1186,6 +1197,7 @@ describe('preferences service', () => {
         jean_mcp_enabled: false,
         jean_mcp_max_depth: 3,
         jean_mcp_rate_limit_per_minute: 20,
+        sidebar_recent_limit: 30,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {
@@ -1211,6 +1223,7 @@ describe('preferences service', () => {
         terminal: 'terminal',
         editor: 'vscode',
         open_in: 'editor',
+        git_client: null,
         auto_branch_naming: true,
         branch_naming_model: 'haiku',
         auto_session_naming: true,
@@ -1319,6 +1332,7 @@ describe('preferences service', () => {
         jean_mcp_enabled: false,
         jean_mcp_max_depth: 3,
         jean_mcp_rate_limit_per_minute: 20,
+        sidebar_recent_limit: 30,
       }
 
       const { result } = renderHook(() => useSavePreferences(), {

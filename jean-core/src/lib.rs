@@ -184,9 +184,11 @@ pub struct AppPreferences {
     #[serde(default = "default_terminal_font_size")]
     pub terminal_font_size: u32, // Embedded terminal font size in pixels (10-24)
     #[serde(default = "default_editor")]
-    pub editor: String, // Editor app: zed, vscode, vscodium, cursor, xcode, intellij
+    pub editor: String, // Editor app: zed, vscode, vscodium, cursor, xcode, intellij, sublime
     #[serde(default = "default_open_in")]
-    pub open_in: String, // Default Open In action: editor, terminal, finder, github
+    pub open_in: String, // Default Open In action: editor, terminal, finder, github, git-client
+    #[serde(default)]
+    pub git_client: Option<String>, // Git client app: tower, fork, github-desktop, sourcetree (None = first installed)
     #[serde(default = "default_auto_branch_naming")]
     pub auto_branch_naming: bool, // Automatically generate branch names from first message
     #[serde(default = "default_branch_naming_model")]
@@ -438,6 +440,8 @@ pub struct AppPreferences {
     pub jean_mcp_max_depth: u32, // Max recursive spawn depth via Jean MCP (default 3)
     #[serde(default = "default_jean_mcp_rate_limit")]
     pub jean_mcp_rate_limit_per_minute: u32, // Per-source rate limit for session-spawning tools (default 20)
+    #[serde(default = "default_sidebar_recent_limit")]
+    pub sidebar_recent_limit: u32, // Sessions in the sidebar Recent tab (default 30)
 }
 
 fn default_jean_mcp_enabled() -> bool {
@@ -450,6 +454,10 @@ fn default_jean_mcp_max_depth() -> u32 {
 
 fn default_jean_mcp_rate_limit() -> u32 {
     20
+}
+
+fn default_sidebar_recent_limit() -> u32 {
+    30
 }
 
 fn default_true() -> Option<bool> {
@@ -1173,6 +1181,29 @@ mod tests {
         let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
 
         assert!(prefs.web_access_sounds_enabled);
+    }
+
+    #[test]
+    fn app_preferences_default_sidebar_recent_limit_for_existing_prefs() {
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        prefs_json
+            .as_object_mut()
+            .unwrap()
+            .remove("sidebar_recent_limit");
+
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+
+        assert_eq!(prefs.sidebar_recent_limit, 30);
+    }
+
+    #[test]
+    fn app_preferences_default_git_client_for_existing_prefs() {
+        let mut prefs_json = serde_json::to_value(AppPreferences::default()).unwrap();
+        prefs_json.as_object_mut().unwrap().remove("git_client");
+
+        let prefs: AppPreferences = serde_json::from_value(prefs_json).unwrap();
+
+        assert_eq!(prefs.git_client, None);
     }
 
     #[test]
@@ -2750,6 +2781,7 @@ impl Default for AppPreferences {
             terminal_font_size: default_terminal_font_size(),
             editor: default_editor(),
             open_in: default_open_in(),
+            git_client: None,
             auto_branch_naming: default_auto_branch_naming(),
             branch_naming_model: default_branch_naming_model(),
             auto_session_naming: default_auto_session_naming(),
@@ -2876,6 +2908,7 @@ impl Default for AppPreferences {
             jean_mcp_enabled: default_jean_mcp_enabled(),
             jean_mcp_max_depth: default_jean_mcp_max_depth(),
             jean_mcp_rate_limit_per_minute: default_jean_mcp_rate_limit(),
+            sidebar_recent_limit: default_sidebar_recent_limit(),
         }
     }
 }

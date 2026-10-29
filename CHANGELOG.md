@@ -7,6 +7,23 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **You can set how many sessions the sidebar Recent tab shows.** Settings →
+  General → Worktrees → Recent sessions (5–200, default 30).
+
+- **You can open a worktree or project in your git client.** Tower, Fork,
+  GitHub Desktop and Sourcetree are supported (macOS). Set it in Settings →
+  General → Git Client; it shows in Open In (key C), the Open button and the
+  worktree and project menus. Tower opens through its `gittower` CLI when it
+  is installed. (#43)
+
+- **Sublime Text is an editor choice.** Files open at the line, like in the
+  other editors. (#43)
+
+- **Settings show only the editors, terminals and git clients you have
+  installed** (macOS). The app you chose stays in the list. (#43)
+
 ### Fixed
 
 - **A selected row keeps its spacing in the sticky sidebar.** When a selected

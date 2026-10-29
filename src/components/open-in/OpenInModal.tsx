@@ -5,6 +5,7 @@ import {
   Folder,
   Settings,
   Github,
+  GitBranch,
   GitPullRequest,
   CircleDot,
   Globe,
@@ -25,6 +26,7 @@ import {
   useOpenWorktreeInFinder,
   useOpenWorktreeInTerminal,
   useOpenWorktreeInEditor,
+  useOpenWorktreeInGitClient,
   type GitHubRemote,
   useProjects,
   useWorktree,
@@ -37,7 +39,12 @@ import {
   useLoadedAdvisoryContexts,
 } from '@/services/github'
 import { usePreferences } from '@/services/preferences'
-import { getEditorLabel, getTerminalLabel } from '@/types/preferences'
+import {
+  getEditorLabel,
+  getGitClientLabel,
+  getTerminalLabel,
+} from '@/types/preferences'
+import { useGitClient } from './use-git-client'
 import { notify } from '@/lib/notifications'
 import { openExternal } from '@/lib/platform'
 import { cn } from '@/lib/utils'
@@ -79,6 +86,8 @@ export function OpenInModal() {
   const openInFinder = useOpenWorktreeInFinder()
   const openInTerminal = useOpenWorktreeInTerminal()
   const openInEditor = useOpenWorktreeInEditor()
+  const openInGitClient = useOpenWorktreeInGitClient()
+  const gitClient = useGitClient()
   const { data: preferences } = usePreferences()
   const activeSessionId = useChatStore(state =>
     selectedWorktreeId
@@ -123,7 +132,7 @@ export function OpenInModal() {
 
   const { data: ports } = usePorts(targetPath)
 
-  // Base options (Editor, Terminal, Finder, GitHub)
+  // Base options (Editor, Terminal, Finder, GitHub, Git client)
   const baseOptions = useMemo(() => {
     const allOptions: ModalOption[] = [
       {
@@ -150,6 +159,16 @@ export function OpenInModal() {
         icon: Github,
         key: 'G',
       },
+      ...(gitClient
+        ? [
+            {
+              id: 'git-client',
+              label: getGitClientLabel(gitClient),
+              icon: GitBranch,
+              key: 'C',
+            },
+          ]
+        : []),
       ...(worktree?.pr_url
         ? [
             {
@@ -170,6 +189,7 @@ export function OpenInModal() {
   }, [
     preferences?.editor,
     preferences?.terminal,
+    gitClient,
     canOpenLocally,
     canOpenEditor,
     worktree?.pr_url,
@@ -347,6 +367,9 @@ export function OpenInModal() {
         case 'finder':
           openInFinder.mutate(targetPath)
           break
+        case 'git-client':
+          openInGitClient.mutate({ worktreePath: targetPath, gitClient })
+          break
         case 'open-pr':
           if (worktree?.pr_url) {
             openExternal(worktree.pr_url)
@@ -392,6 +415,8 @@ export function OpenInModal() {
       openInEditor,
       openInTerminal,
       openInFinder,
+      openInGitClient,
+      gitClient,
       openRemotePicker,
       worktree,
       preferences,
