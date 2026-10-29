@@ -294,11 +294,14 @@ describe('CommandPalette sessions', () => {
     fireEvent.click(screen.getByText('Deploy pipeline'))
 
     expect(setCommandPaletteOpen).toHaveBeenCalledWith(false)
-    expect(navigateToSession).toHaveBeenCalledWith({
-      projectId: 'project-2',
-      worktreeId: 'worktree-2',
-      sessionId: 'session-recent',
-    })
+    expect(navigateToSession).toHaveBeenCalledWith(
+      {
+        projectId: 'project-2',
+        worktreeId: 'worktree-2',
+        sessionId: 'session-recent',
+      },
+      { showProjectsTab: true }
+    )
   })
 
   it('filters sessions by project name and renames the heading', () => {
@@ -458,11 +461,14 @@ describe('CommandPalette search mode', () => {
     fireEvent.click(row)
 
     expect(setCommandPaletteOpen).toHaveBeenCalledWith(false)
-    expect(navigateToSession).toHaveBeenCalledWith({
-      projectId: 'project-2',
-      worktreeId: 'worktree-2',
-      sessionId: 'session-hit',
-    })
+    expect(navigateToSession).toHaveBeenCalledWith(
+      {
+        projectId: 'project-2',
+        worktreeId: 'worktree-2',
+        sessionId: 'session-hit',
+      },
+      { showProjectsTab: true }
+    )
   })
 
   it('ignores Tab with a modifier, so app shortcuts still get through', () => {
@@ -505,11 +511,14 @@ describe('CommandPalette dedicated tabs', () => {
     fireEvent.click(screen.getByText('Deploy pipeline'))
 
     expect(setCommandPaletteOpen).toHaveBeenCalledWith(false)
-    expect(navigateToSession).toHaveBeenCalledWith({
-      projectId: 'project-2',
-      worktreeId: 'worktree-2',
-      sessionId: 'session-recent',
-    })
+    expect(navigateToSession).toHaveBeenCalledWith(
+      {
+        projectId: 'project-2',
+        worktreeId: 'worktree-2',
+        sessionId: 'session-recent',
+      },
+      { showProjectsTab: true }
+    )
   })
 
   it('gives projects the whole window, with no commands mixed in', () => {
@@ -673,6 +682,7 @@ describe('CommandPalette pinned project matches', () => {
     expect(setCommandPaletteOpen).toHaveBeenCalledWith(false)
     expect(navigateToProject).toHaveBeenCalledWith('project-2', {
       openLastSession: true,
+      showProjectsTab: true,
     })
   })
 

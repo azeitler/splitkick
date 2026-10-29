@@ -224,7 +224,12 @@ export function CommandPalette({
         keywords: ['project', 'switch', 'open', project.name.toLowerCase()],
         // Switching projects is usually a return to where you were, so the
         // last session there opens too; the canvas shows when there is none.
-        execute: () => navigateToProject(project.id, { openLastSession: true }),
+        // The Projects tab shows, so the revealed row can be seen (#60).
+        execute: () =>
+          navigateToProject(project.id, {
+            openLastSession: true,
+            showProjectsTab: true,
+          }),
       }))
   }, [projects, appDataDir, projectAccessTimestamps, selectedProjectId])
 
@@ -318,11 +323,14 @@ export function CommandPalette({
     (cmd: SessionCommand) => {
       setCommandPaletteOpen(false)
       setSearch('')
-      navigateToSession({
-        projectId: cmd.projectId,
-        worktreeId: cmd.worktreeId,
-        sessionId: cmd.session.id,
-      })
+      navigateToSession(
+        {
+          projectId: cmd.projectId,
+          worktreeId: cmd.worktreeId,
+          sessionId: cmd.session.id,
+        },
+        { showProjectsTab: true }
+      )
     },
     [setCommandPaletteOpen]
   )
@@ -340,11 +348,14 @@ export function CommandPalette({
     (hit: SessionSearchHit) => {
       setCommandPaletteOpen(false)
       setSearch('')
-      navigateToSession({
-        projectId: hit.project_id,
-        worktreeId: hit.worktree_id,
-        sessionId: hit.session_id,
-      })
+      navigateToSession(
+        {
+          projectId: hit.project_id,
+          worktreeId: hit.worktree_id,
+          sessionId: hit.session_id,
+        },
+        { showProjectsTab: true }
+      )
     },
     [setCommandPaletteOpen]
   )

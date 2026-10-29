@@ -23,6 +23,12 @@ export interface SessionNavigationOptions {
    * the row they clicked.
    */
   revealInSidebar?: boolean
+  /**
+   * Switch the sidebar to the Projects tab, so the revealed row can be seen.
+   * Defaults to false: the Recent tab keeps showing when a session opens from
+   * it, while the hidden tree follows in the background (#60).
+   */
+  showProjectsTab?: boolean
 }
 
 /** `data-sidebar-row-id` of a tree row, so a reveal can find it in the DOM. */
@@ -75,7 +81,10 @@ function expandAncestorFolders(projectId: string): void {
  */
 export function navigateToSession(
   target: SessionNavigationTarget,
-  { revealInSidebar = true }: SessionNavigationOptions = {}
+  {
+    revealInSidebar = true,
+    showProjectsTab = false,
+  }: SessionNavigationOptions = {}
 ): void {
   const {
     selectedProjectId,
@@ -117,6 +126,7 @@ export function navigateToSession(
   if (revealInSidebar) {
     ui.markSidebarReveal(sidebarRowId('session', target.sessionId))
   }
+  if (showProjectsTab) ui.setSidebarTab('projects')
 }
 
 /**
@@ -153,6 +163,8 @@ export interface ProjectNavigationOptions {
    * was archived or deleted. Defaults to false.
    */
   openLastSession?: boolean
+  /** See `SessionNavigationOptions.showProjectsTab`. */
+  showProjectsTab?: boolean
 }
 
 /**
@@ -202,16 +214,21 @@ export function resolveLastOpenedSession(
  */
 export function navigateToProject(
   projectId: string,
-  { openLastSession = false }: ProjectNavigationOptions = {}
+  {
+    openLastSession = false,
+    showProjectsTab = false,
+  }: ProjectNavigationOptions = {}
 ): void {
   const target = openLastSession ? resolveLastOpenedSession(projectId) : null
   if (target) {
-    navigateToSession(target)
+    navigateToSession(target, { showProjectsTab })
     return
   }
 
   useChatStore.getState().clearActiveWorktree()
   useProjectsStore.getState().selectProject(projectId)
   expandAncestorFolders(projectId)
-  useUIStore.getState().markSidebarReveal(sidebarRowId('project', projectId))
+  const ui = useUIStore.getState()
+  ui.markSidebarReveal(sidebarRowId('project', projectId))
+  if (showProjectsTab) ui.setSidebarTab('projects')
 }

@@ -113,18 +113,17 @@ describe('SidebarRecentSessions', () => {
     expect(screen.queryByRole('region', { name: 'Yesterday' })).toBeNull()
   })
 
-  it('opens a session without revealing it in the hidden tree', async () => {
+  // #60: the Projects tree follows in the background, so the session is in
+  // view when the user switches tabs. Recent stays the active tab.
+  it('opens a session and reveals it in the Projects tree', async () => {
     render(<SidebarRecentSessions />)
 
     await userEvent.click(screen.getByText('Deploy pipeline'))
-    expect(mocks.navigateToSession).toHaveBeenCalledWith(
-      {
-        projectId: 'id-Coolify',
-        worktreeId: 'id-feat/deploy',
-        sessionId: 's-new',
-      },
-      { revealInSidebar: false }
-    )
+    expect(mocks.navigateToSession).toHaveBeenCalledWith({
+      projectId: 'id-Coolify',
+      worktreeId: 'id-feat/deploy',
+      sessionId: 's-new',
+    })
   })
 
   it('highlights the open session', () => {

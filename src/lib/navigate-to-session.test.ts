@@ -418,3 +418,78 @@ describe('navigateToWorktree', () => {
     )
   })
 })
+
+// #60: CMD+K from the Recent tab shows the Projects tab, so the revealed row
+// can be seen. Other entry points leave the tab as it is.
+describe('navigation and the sidebar tab', () => {
+  const target = {
+    projectId: 'project-1',
+    worktreeId: 'wt-1',
+    sessionId: 'session-1',
+  }
+
+  beforeEach(() => {
+    queryClient.clear()
+    queryClient.setQueryData(projectsQueryKeys.list(), [project('project-1')])
+    useProjectsStore.setState({
+      selectedProjectId: null,
+      selectedWorktreeId: null,
+      expandedProjectIds: new Set<string>(),
+      expandedFolderIds: new Set<string>(),
+      expandedWorktreeIds: new Set<string>(),
+    })
+    useChatStore.setState({ lastOpenedPerProject: {} })
+    useUIStore.setState({ sidebarTab: 'recent', pendingSidebarRevealId: null })
+  })
+
+  it('keeps the Recent tab by default', () => {
+    navigateToSession(target)
+    navigateToProject('project-1')
+
+    expect(useUIStore.getState().sidebarTab).toBe('recent')
+  })
+
+  it('shows the Projects tab for a session and still reveals it', () => {
+    navigateToSession(target, { showProjectsTab: true })
+
+    expect(useUIStore.getState().sidebarTab).toBe('projects')
+    expect(useUIStore.getState().pendingSidebarRevealId).toBe(
+      'session:session-1'
+    )
+  })
+
+  it('shows the Projects tab for a project and reveals its row', () => {
+    navigateToProject('project-1', { showProjectsTab: true })
+
+    expect(useUIStore.getState().sidebarTab).toBe('projects')
+    expect(useUIStore.getState().pendingSidebarRevealId).toBe(
+      'project:project-1'
+    )
+  })
+
+  it('shows the Projects tab when the project reopens its last session', () => {
+    useChatStore.setState({ lastOpenedPerProject: { 'project-1': target } })
+    queryClient.setQueryData<AllSessionsResponse>(['all-sessions'], {
+      entries: [
+        {
+          project_id: 'project-1',
+          project_name: 'project-1',
+          worktree_id: 'wt-1',
+          worktree_name: 'main',
+          worktree_path: '/tmp/project-1',
+          sessions: [{ id: 'session-1', name: 'session-1' } as Session],
+        },
+      ],
+    })
+
+    navigateToProject('project-1', {
+      openLastSession: true,
+      showProjectsTab: true,
+    })
+
+    expect(useUIStore.getState().sidebarTab).toBe('projects')
+    expect(useUIStore.getState().pendingSidebarRevealId).toBe(
+      'session:session-1'
+    )
+  })
+})

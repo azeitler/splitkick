@@ -29,6 +29,14 @@ describe('sidebar sticky stack gap', () => {
     )
   })
 
+  // #60: a project revealed upwards lands in its own sticky slot, below the
+  // section headers, not under them.
+  it('lands a revealed project below the stuck section headers', () => {
+    expect(css).toMatch(
+      /\[data-sidebar-row-id\^='project:'\] \{\s*scroll-margin-top: var\(--sb-project-top, 0px\);/
+    )
+  })
+
   it('drops the worktree list top padding when it follows the project block', () => {
     const source = readFileSync(resolve(__dirname, 'WorktreeList.tsx'), 'utf8')
     expect(source).toContain("sessionFilterOpen ? 'py-0.5' : 'pb-0.5'")
