@@ -1,6 +1,14 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Copy } from 'lucide-react'
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu'
 import { useTheme } from '@/hooks/use-theme'
+import { copyToClipboard } from '@/lib/clipboard'
 import { isNativeApp } from '@/lib/environment'
 import {
   Toaster as Sonner,
@@ -16,6 +24,13 @@ const WHEEL_DISMISS_THRESHOLD = 32
 const WHEEL_DISMISS_RESET_MS = 180
 const TOASTER_Z_INDEX = 2147483647
 const MOBILE_BREAKPOINT = 768
+
+// Errors must stay until the user closes them, so they can be read and copied.
+// Sonner has no per-type duration, so patch `toast.error` once here: it covers
+// new error toasts and loading toasts that turn into errors by id (#69).
+const showErrorToast = toast.error
+toast.error = (message, data) =>
+  showErrorToast(message, { ...data, duration: Infinity, closeButton: true })
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest('button, a'))
@@ -243,27 +258,83 @@ function ToastActionHotkey() {
   return null
 }
 
+/** Plain text of the error toast that holds `target`: title, then description. */
+export function getErrorToastText(target: EventTarget | null): string | null {
+  const toastElement = getToastElement(target)
+  if (toastElement?.getAttribute('data-type') !== 'error') return null
+
+  const text = ['[data-title]', '[data-description]']
+    .map(selector => toastElement.querySelector(selector)?.textContent?.trim())
+    .filter(Boolean)
+    .join('\n')
+  return text || null
+}
+
+async function copyErrorText(text: string) {
+  try {
+    await copyToClipboard(text)
+    toast.success('Error copied')
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : String(error))
+  }
+}
+
+/** Right-click (long-press on touch) on an error toast opens "Copy error". */
+function ErrorToastContextMenu({ children }: { children: React.ReactNode }) {
+  const [errorText, setErrorText] = useState('')
+
+  // Radix opens on contextmenu, and on touch after a long press that starts at
+  // pointerdown. Prevent both for other toasts, so only errors get the menu.
+  const captureErrorText = (event: React.SyntheticEvent) => {
+    const text = getErrorToastText(event.target)
+    if (text) setErrorText(text)
+    else event.preventDefault()
+  }
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger
+        asChild
+        onContextMenu={captureErrorText}
+        onPointerDown={event => {
+          if (event.pointerType !== 'mouse') captureErrorText(event)
+        }}
+      >
+        <div className="contents">{children}</div>
+      </ContextMenuTrigger>
+      <ContextMenuContent style={{ zIndex: TOASTER_Z_INDEX }}>
+        <ContextMenuItem onSelect={() => void copyErrorText(errorText)}>
+          <Copy />
+          Copy error
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  )
+}
+
 const Toaster = ({ position, style, ...props }: ToasterProps) => {
   const { theme = 'system' } = useTheme()
   const resolvedPosition = position ?? 'bottom-right'
 
   const content = (
     <>
-      <Sonner
-        theme={theme as ToasterProps['theme']}
-        position={resolvedPosition}
-        className="toaster group"
-        style={
-          {
-            '--normal-bg': 'var(--toast-background)',
-            '--normal-text': 'var(--popover-foreground)',
-            '--normal-border': 'var(--toast-border, var(--border))',
-            ...style,
-            zIndex: TOASTER_Z_INDEX,
-          } as React.CSSProperties
-        }
-        {...props}
-      />
+      <ErrorToastContextMenu>
+        <Sonner
+          theme={theme as ToasterProps['theme']}
+          position={resolvedPosition}
+          className="toaster group"
+          style={
+            {
+              '--normal-bg': 'var(--toast-background)',
+              '--normal-text': 'var(--popover-foreground)',
+              '--normal-border': 'var(--toast-border, var(--border))',
+              ...style,
+              zIndex: TOASTER_Z_INDEX,
+            } as React.CSSProperties
+          }
+          {...props}
+        />
+      </ErrorToastContextMenu>
       <ToastGestureDismiss position={resolvedPosition} />
       <ToastActionHotkey />
     </>
