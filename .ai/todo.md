@@ -1,3 +1,15 @@
+# Local two-instance e2e (#65)
+
+- [x] Transfer in Web Access (gate removed, CORS hint in `remoteInvoke`, tests, user guide).
+- [x] `e2e/local/`: launcher (desktop binary `--headless`, temp HOME/data/port/token), stub claude, fixtures, leak guard, artefacts.
+- [x] Specs: remote connection, transfer A→B, link #44, follow-ups #46, MCP mode #61, parent/child #62, auto-archive #50.
+- [x] Docs (`docs/developer/e2e-local.md`), CHANGELOG, check:all.
+
+## Review
+
+- `bun run test:e2e:local`: 6 passed (23 s) from a clean start; temp roots removed, leak guard clean.
+- No product bug found. Two test-side findings: bare `splitkick://` text is not a link (markdown links are the contract); a first MCP send into a fresh session reads "Started session" by design.
+
 # Follow-up list (#46)
 
 - [x] Session file field `follow_ups` + atomic `edit_session_follow_ups` op (add/update/remove/reorder/clear_done), dispatch arm, Rust tests.

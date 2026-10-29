@@ -7,6 +7,18 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **A local end-to-end run with two instances.** `bun run test:e2e:local`
+  starts two sealed Splitkick servers on this Mac (own home folder, data,
+  ports) and checks session transfer, remote connections, session links,
+  follow-ups, MCP sends and parent/child sessions in the real UI. (#65)
+
+### Changed
+
+- **Session transfer works in Web Access.** The target must allow the page's
+  address (`JEAN_ALLOWED_ORIGINS`); the error says so. (#65)
+
 ## [1.1.0] - 2026-10-29
 
 Built on Jean 0.1.73.

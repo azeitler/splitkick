@@ -13,7 +13,8 @@ bun run check:all
 # Individual test commands
 bun run test        # TypeScript tests (watch mode)
 bun run test:run    # TypeScript tests (single run)
-bun run test:e2e    # E2E browser tests (Playwright)
+bun run test:e2e    # E2E browser tests (Playwright, mocked backend)
+bun run test:e2e:local  # Two real instances, transfer etc. (see e2e-local.md)
 bun run rust:test   # Rust tests
 ```
 
@@ -206,6 +207,12 @@ await mockPage.keyboard.press('Enter')
 ```
 
 ### Key Mock Data Settings
+
+### Real backend: two instances
+
+For features that need a real backend or two instances (session transfer,
+remote connections, MCP), use `bun run test:e2e:local`. See
+[e2e-local.md](e2e-local.md).
 
 ## TypeScript Testing
 
