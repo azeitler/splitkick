@@ -7,6 +7,10 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-10-29
+
+Built on Jean 0.1.73.
+
 ### Added
 
 - **Session backup and search across devices.** Settings → General →
@@ -2124,7 +2128,8 @@ Built on Jean 0.1.73.
     status now wins over a waiting status. It still does not hide a run that is
     in flight, scheduled, or crashed.
 
-[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.2.1...HEAD
+[unreleased]: https://github.com/azeitler/jean/compare/splitkick-v1.2.2...HEAD
+[1.2.2]: https://github.com/azeitler/jean/compare/splitkick-v1.2.1...splitkick-v1.2.2
 [1.2.1]: https://github.com/azeitler/jean/compare/splitkick-v1.2.0...splitkick-v1.2.1
 [1.2.0]: https://github.com/azeitler/jean/compare/splitkick-v1.1.0...splitkick-v1.2.0
 [1.1.0]: https://github.com/azeitler/jean/compare/splitkick-v1.0.15...splitkick-v1.1.0
