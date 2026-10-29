@@ -228,6 +228,21 @@ export const ChatInput = memo(function ChatInput({
         setShowHint(false)
         onHasValueChangeRef.current?.(true)
         resizeTextarea()
+        return
+      }
+
+      // React to external writes that already changed the DOM (the
+      // `append-chat-input` event: follow-up "Use", file browser "@file").
+      // Typing sets valueRef first, so it never reaches this branch.
+      if (
+        draft !== prevDraft &&
+        inputRef.current?.value === draft &&
+        valueRef.current !== draft
+      ) {
+        valueRef.current = draft
+        setShowHint(!draft.trim())
+        onHasValueChangeRef.current?.(Boolean(draft.trim()))
+        resizeTextarea()
       }
     })
   }, [activeSessionId, inputRef, resizeTextarea])

@@ -168,3 +168,52 @@ describe('ChatToolbar zen mode', () => {
     expect(await screen.findByRole('menu')).toBeInTheDocument()
   })
 })
+
+describe('ChatToolbar follow-ups button', () => {
+  it('sits directly in front of Send and shows the open count', async () => {
+    const onToggleFollowUps = vi.fn()
+    renderChatToolbar({
+      hasInputValue: true,
+      followUpCount: 3,
+      onToggleFollowUps,
+    })
+
+    const button = screen.getByRole('button', {
+      name: 'Follow-ups (3 open)',
+    })
+    const send = screen.getByRole('button', { name: /^send$/i })
+    expect(button.compareDocumentPosition(send)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING
+    )
+    expect(screen.getByTestId('follow-ups-badge')).toHaveTextContent('3')
+
+    await userEvent.click(button)
+    expect(onToggleFollowUps).toHaveBeenCalledTimes(1)
+  })
+
+  it('hides the badge when no item is open', () => {
+    renderChatToolbar({ followUpCount: 0, onToggleFollowUps: vi.fn() })
+    expect(
+      screen.getByRole('button', { name: 'Follow-ups' })
+    ).toBeInTheDocument()
+    expect(screen.queryByTestId('follow-ups-badge')).toBeNull()
+  })
+
+  it('stays visible in zen mode', () => {
+    useUIStore.setState({ zenMode: true })
+    renderChatToolbar({ followUpCount: 1, onToggleFollowUps: vi.fn() })
+    expect(
+      screen
+        .getByRole('button', { name: 'Follow-ups (1 open)' })
+        .closest('.hidden')
+    ).toBeNull()
+  })
+
+  it('marks the pressed state while the panel is open', () => {
+    renderChatToolbar({ followUpsOpen: true, onToggleFollowUps: vi.fn() })
+    expect(screen.getByRole('button', { name: 'Follow-ups' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    )
+  })
+})

@@ -293,7 +293,9 @@ export function shouldAllowKeybindingThroughOpenOverlay(
   // still need the global "Open in..." picker from there (Cmd/Ctrl+O).
   if (
     uiState.sessionChatModalOpen &&
-    (action === 'toggle_zen_mode' || action === 'clear_session_context')
+    (action === 'toggle_zen_mode' ||
+      action === 'clear_session_context' ||
+      action === 'add_follow_up')
   ) {
     return true
   }
@@ -511,6 +513,12 @@ function executeKeybindingAction(
     case 'clear_session_context':
       logger.debug('Keybinding: clear_session_context')
       void commandContext.clearSessionHistory()
+      break
+    case 'add_follow_up':
+      logger.debug('Keybinding: add_follow_up')
+      useUIStore.getState().setFollowUpsOpen(true)
+      // The panel focuses its input on mount; this covers an already open one.
+      window.dispatchEvent(new CustomEvent('focus-follow-up-input'))
       break
     case 'open_preferences':
       logger.debug('Keybinding: open_preferences')

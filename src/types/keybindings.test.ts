@@ -255,6 +255,12 @@ describe('eventToShortcutString', () => {
 
     expect(Object.fromEntries(definitions)).toEqual(DEFAULT_KEYBINDINGS)
   })
+
+  it('gives every default shortcut to one action only', () => {
+    const shortcuts = Object.values(DEFAULT_KEYBINDINGS)
+    expect(new Set(shortcuts).size).toBe(shortcuts.length)
+    expect(DEFAULT_KEYBINDINGS.add_follow_up).toBe('mod+j')
+  })
 })
 
 describe('formatShortcutDisplay', () => {

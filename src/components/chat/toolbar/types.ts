@@ -113,6 +113,11 @@ export interface ChatToolbarProps {
   willSteer?: boolean
   steerWithModifier?: boolean
   queuedMessageCount?: number
+  /** Follow-up list (#46): open item count, panel state and toggle. */
+  followUpCount?: number
+  followUpsOpen?: boolean
+  onToggleFollowUps?: () => void
+  followUpsShortcut?: string
 
   availableMcpServers: McpServerInfo[]
   enabledMcpServers: string[]

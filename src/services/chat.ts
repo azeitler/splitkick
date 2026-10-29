@@ -32,6 +32,8 @@ import type {
   LabelData,
   QueuedMessage,
   Backend,
+  FollowUp,
+  FollowUpOp,
 } from '@/types/chat'
 import { isTauri, projectsQueryKeys } from '@/services/projects'
 import { hasBackendTransport } from '@/lib/environment'
@@ -2897,6 +2899,43 @@ export async function dismissPlanHandoff(
 // ============================================================================
 // Queue Persistence (cross-client sync)
 // ============================================================================
+
+/**
+ * Change a session's follow-up list (#46). The backend applies the operation
+ * under the session lock and returns the new list, which is written into the
+ * open session's query cache. Other clients refetch through the
+ * worktree-scoped `cache:invalidate` the command emits.
+ */
+export function useEditFollowUps(
+  sessionId: string | null,
+  worktreeId: string | null,
+  worktreePath: string | null
+) {
+  const queryClient = useQueryClient()
+  return useCallback(
+    async (op: FollowUpOp): Promise<boolean> => {
+      if (!sessionId || !worktreeId || !worktreePath) return false
+      try {
+        const followUps = await invoke<FollowUp[]>('edit_session_follow_ups', {
+          worktreeId,
+          worktreePath,
+          sessionId,
+          op,
+        })
+        queryClient.setQueryData<Session | null>(
+          chatQueryKeys.session(sessionId),
+          old => (old ? { ...old, follow_ups: followUps } : old)
+        )
+        return true
+      } catch (error) {
+        logger.error('Failed to edit follow-ups', { error, sessionId, op })
+        toast.error(`Could not change the follow-up list: ${error}`)
+        return false
+      }
+    },
+    [queryClient, sessionId, worktreeId, worktreePath]
+  )
+}
 
 /**
  * Persist an enqueued message to the backend for cross-client sync.

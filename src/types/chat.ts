@@ -358,6 +358,8 @@ export interface Session {
   label?: LabelData
   /** Messages queued for sending (synced between native + web clients) */
   queued_messages?: QueuedMessage[]
+  /** Follow-up notes for future turns, never sent automatically (#46) */
+  follow_ups?: FollowUp[]
   /** Total number of runs in this session's metadata (for "more on disk" check) */
   total_runs?: number
   /** Index (in metadata.runs) of the first run included in `messages`. 0 = oldest loaded. */
@@ -1561,6 +1563,27 @@ export interface ReviewFinding {
   /** Suggested fix options (multiple alternatives) */
   suggestions: SuggestionOption[]
 }
+
+// ============================================================================
+// Follow-up List Types (#46)
+// ============================================================================
+
+/** A note for a future turn. Never sent automatically. */
+export interface FollowUp {
+  id: string
+  text: string
+  done: boolean
+  /** Unix timestamp in milliseconds */
+  created_at: number
+}
+
+/** One change to a follow-up list, applied atomically by the backend. */
+export type FollowUpOp =
+  | { kind: 'add'; text: string }
+  | { kind: 'update'; id: string; text?: string; done?: boolean }
+  | { kind: 'remove'; id: string }
+  | { kind: 'reorder'; ids: string[] }
+  | { kind: 'clear_done' }
 
 // ============================================================================
 // Message Queue Types

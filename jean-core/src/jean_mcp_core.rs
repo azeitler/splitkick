@@ -62,6 +62,7 @@ impl McpRole {
 
 const RATE_LIMIT_WINDOW: Duration = Duration::from_secs(60);
 const RATE_LIMITED_TOOLS: &[&str] = &[
+    "add_follow_up",
     "add_project",
     "archive_session",
     "archive_worktree",
@@ -482,6 +483,7 @@ fn tool_registry_session() -> Value {
         {"name":"read_session_messages","description":"Read the most recent messages of one session, in chronological order. Keep the output small: role \"user\" returns only the user prompts (the cheapest way to see what a session was for), excludeTools drops tool calls, and maxCharsPerMessage cuts long messages. Use list_all_sessions or search_sessions first to pick the session.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":50,"description":"Maximum number of messages returned, counted from the end of the session."},"role":{"type":"string","enum":["user","assistant","all"],"default":"all","description":"user reads the prompts from session metadata and never touches a run log."},"excludeTools":{"type":"boolean","default":false,"description":"Drop tool calls. Tool payloads are most of the bytes in a normal session."},"maxCharsPerMessage":{"type":"integer","minimum":100,"maximum":20000,"description":"Cut each message to this many characters."}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"set_session_model","description":"Persist the selected model (and optionally backend) on a Splitkick session without sending a message. Prefer this when switching models for later turns; pass model on send_chat_message for a one-shot override only. When backend is omitted, Splitkick infers it from the model id when possible (e.g. grok/*, gpt-*, cursor/*). Returns sessionId, model, backend.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"model":{"type":"string","description":"Model id as used in Splitkick (e.g. claude-sonnet-4-6[1m], gpt-5.6-sol, grok/grok-4.6)."},"backend":{"type":"string","enum":["claude","codex","cursor","opencode","pi","commandcode","grok","kimi","antigravity"],"description":"Optional backend override. Inferred from model when omitted."}},"required":["sessionId","model"],"additionalProperties":false}},
         {"name":"set_session_status","description":"Set or clear the manual status on a Splitkick session. Use \"completed\" after you finish the work in the current session so it leaves Splitkick's unread/attention list. Omit sessionId to target the calling session. Live automatic states (running, waiting for input, plan approval, crashed) still take priority while the session is active; the manual status shows once the session goes idle. Sending a new message clears \"paused\" and \"review\" automatically. Pass status null to clear. Returns sessionId and status.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string","description":"Session to update. Defaults to the calling session."},"status":{"type":["string","null"],"enum":["idle","review","paused","completed","cancelled",null],"description":"Manual status to pin, or null to clear it."}},"required":["status"],"additionalProperties":false}},
+        {"name":"add_follow_up","description":"Add a note to the user's follow-up list of a Splitkick session: a short item the user may want to ask or do in a later turn (e.g. \"also check the tests\"). It is NOT sent to you and nothing runs; the user sees it next to the send button and decides later. Use it when you notice work that is out of scope for the current turn. Omit sessionId to target the calling session. Returns sessionId and the new followUp.","inputSchema":{"type":"object","properties":{"text":{"type":"string","minLength":1,"description":"The note, one short line."},"sessionId":{"type":"string","description":"Session whose list gets the note. Defaults to the calling session."}},"required":["text"],"additionalProperties":false}},
         {"name":"get_usage","description":"Fetch subscription/usage snapshots for Claude, Codex, and/or Grok (same data as Splitkick Settings → Usage). Use to decide whether to switch models when a plan is near limits. Optional backend filters to one provider; omit or pass \"all\" for every available snapshot. Per-backend failures are reported in errors without failing the whole call.","inputSchema":{"type":"object","properties":{"backend":{"type":"string","enum":["claude","codex","grok","all"],"default":"all","description":"Which provider usage to fetch. Default all."}},"additionalProperties":false}},
         {"name":"get_worktree_changes","description":"Get a bounded summary of a worktree's git changes: porcelain status, ahead/behind counts, diff stats, and changed files. Does not return full diffs.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"maxFiles":{"type":"integer","minimum":1,"maximum":500,"default":100}},"required":["worktreeId"],"additionalProperties":false}},
         {"name":"get_worktree_diff","description":"Get a bounded unified git diff for a worktree. diffType is uncommitted (HEAD vs working tree) or branch (origin/base...HEAD). Optional path limits to one pathspec; maxBytes is capped.","inputSchema":{"type":"object","properties":{"worktreeId":{"type":"string"},"diffType":{"type":"string","enum":["uncommitted","branch"],"default":"uncommitted"},"path":{"type":"string"},"maxBytes":{"type":"integer","minimum":1,"maximum":200000,"default":60000}},"required":["worktreeId"],"additionalProperties":false}},
@@ -1461,6 +1463,41 @@ async fn run_tool(
             Ok(json!({
                 "sessionId": session_id,
                 "status": status,
+            }))
+        }
+        "add_follow_up" => {
+            let text = require_nonempty_str(&args, "text")?;
+            let session_id = match optional_str(&args, "sessionId") {
+                Some(id) => id,
+                None => {
+                    if source == "anon" {
+                        return Err(no_current_context_error(source));
+                    }
+                    source.to_string()
+                }
+            };
+            let (worktree_id, worktree_path) = resolve_session_worktree(app, &session_id)?;
+            let list = dispatch_command(
+                app,
+                "edit_session_follow_ups",
+                json!({
+                    "sessionId": session_id.clone(),
+                    "worktreeId": worktree_id,
+                    "worktreePath": worktree_path,
+                    "op": { "kind": "add", "text": text },
+                }),
+            )
+            .await
+            .map_err(ToolError::internal)?;
+            // The new item is the last one; Add always appends.
+            let follow_up = list
+                .as_array()
+                .and_then(|items| items.last())
+                .cloned()
+                .unwrap_or(Value::Null);
+            Ok(json!({
+                "sessionId": session_id,
+                "followUp": follow_up,
             }))
         }
         "get_usage" => {
@@ -3818,6 +3855,19 @@ mod tests {
         assert!(
             RATE_LIMITED_TOOLS.contains(&"set_session_model"),
             "set_session_model mutates session state and should be rate-limited"
+        );
+    }
+
+    #[test]
+    fn tool_registry_add_follow_up_defaults_to_the_calling_session() {
+        let tools = tool_registry();
+        let add = find_tool(&tools, "add_follow_up");
+        // sessionId is optional: the tool defaults to the calling session.
+        assert_eq!(add["inputSchema"]["required"], json!(["text"]));
+        assert!(add["inputSchema"]["properties"]["sessionId"].is_object());
+        assert!(
+            RATE_LIMITED_TOOLS.contains(&"add_follow_up"),
+            "add_follow_up mutates session state and should be rate-limited"
         );
     }
 

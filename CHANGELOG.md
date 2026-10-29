@@ -38,6 +38,16 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   "archived" or "not found". Agents get the link from `list_all_sessions`,
   `search_sessions` and `get_current_context`, and **Copy Link** in the
   session, worktree and project menus copies one. (#44)
+- **Follow-up list: notes for later turns, next to the send button.** While
+  the agent works, write down what to ask next. The list button sits in front
+  of Send and shows how many notes are open; the list opens above the composer
+  (a bottom sheet on phones). Tick notes off, edit, delete or drag them into a
+  new order. "Use" puts a note into the message box; "Queue" moves it into the
+  message queue while a turn runs. Notes are never sent on their own. Add them
+  with Cmd/Ctrl+J, with "Add to follow-ups" in the right-click menu of a
+  message (the selected text or the whole message), or let the agent add them
+  through the `add_follow_up` MCP tool. Each session keeps its own list; it
+  stays after a restart and shows in web access. (#46)
 
 ### Fixed
 
