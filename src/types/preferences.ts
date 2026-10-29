@@ -1204,6 +1204,9 @@ export interface AppPreferences {
   editor: EditorApp // Editor app: 'zed' | 'vscode' | 'vscodium' | 'cursor' | 'xcode' | 'intellij' | 'sublime'
   open_in: OpenInDefault // Default Open In action: 'editor' | 'terminal' | 'finder' | 'github' | 'git-client'
   git_client: GitClientApp | null // Git client app; null = first installed one
+  session_backup_dir: string | null // Shared, synced folder for the session backup; null = off
+  session_backup_device_name: string | null // Name other devices see; null = ComputerName
+  session_backup_search_remote: boolean // Also search the backups of other devices
   auto_branch_naming: boolean // Automatically generate branch names from first message
   branch_naming_model: ClaudeModel // Model for generating branch names
   auto_session_naming: boolean // Automatically generate session names from first message
@@ -2432,6 +2435,9 @@ export const defaultPreferences: AppPreferences = {
   editor: 'zed',
   open_in: 'editor',
   git_client: null,
+  session_backup_dir: null,
+  session_backup_device_name: null,
+  session_backup_search_remote: true,
   auto_branch_naming: true,
   branch_naming_model: 'sonnet',
   auto_session_naming: true,

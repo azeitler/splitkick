@@ -67,6 +67,7 @@ mod platform;
 mod prerequisites;
 mod projects;
 mod server_update;
+pub mod session_backup;
 mod terminal;
 mod version;
 
@@ -190,6 +191,12 @@ pub struct AppPreferences {
     pub open_in: String, // Default Open In action: editor, terminal, finder, github, git-client
     #[serde(default)]
     pub git_client: Option<String>, // Git client app: tower, fork, github-desktop, sourcetree (None = first installed)
+    #[serde(default)]
+    pub session_backup_dir: Option<String>, // Shared, synced folder for the session backup (None = off)
+    #[serde(default)]
+    pub session_backup_device_name: Option<String>, // Device name shown on other devices (None = ComputerName)
+    #[serde(default = "default_session_backup_search_remote")]
+    pub session_backup_search_remote: bool, // Also search the backups of other devices
     #[serde(default = "default_auto_branch_naming")]
     pub auto_branch_naming: bool, // Automatically generate branch names from first message
     #[serde(default = "default_branch_naming_model")]
@@ -465,6 +472,10 @@ fn default_sidebar_recent_limit() -> u32 {
 
 fn default_true() -> Option<bool> {
     None
+}
+
+fn default_session_backup_search_remote() -> bool {
+    true
 }
 
 fn default_restore_last_session() -> bool {
@@ -2789,6 +2800,9 @@ impl Default for AppPreferences {
             editor: default_editor(),
             open_in: default_open_in(),
             git_client: None,
+            session_backup_dir: None,
+            session_backup_device_name: None,
+            session_backup_search_remote: true,
             auto_branch_naming: default_auto_branch_naming(),
             branch_naming_model: default_branch_naming_model(),
             auto_session_naming: default_auto_session_naming(),
@@ -4644,6 +4658,7 @@ pub async fn start_runtime_services(context: RuntimeContext) -> Result<(), Strin
         preferences.wsl_enabled && !preferences.wsl_distro.trim().is_empty(),
         preferences.wsl_distro.clone(),
     );
+    session_backup::start_scheduler(context.clone());
     sync_jean_mcp_socket_from_preferences(context, &preferences).await
 }
 
@@ -4740,6 +4755,8 @@ pub async fn run_server() -> Result<(), String> {
     initialize_runtime(&context)?;
 
     let mut preferences = load_preferences(context.clone()).await.unwrap_or_default();
+    // A headless server is an instance too, so it backs up like the desktop app.
+    session_backup::start_scheduler(context.clone());
     if let Err(error) = sync_jean_mcp_socket_from_preferences(context.clone(), &preferences).await {
         log::warn!("Failed to start Splitkick MCP proxy socket: {error}");
     }

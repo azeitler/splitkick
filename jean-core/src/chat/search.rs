@@ -52,6 +52,12 @@ pub struct SessionSearchHit {
     /// message matched, so a session found by its title still shows up.
     #[serde(default, skip_serializing_if = "is_false")]
     pub name_match: bool,
+    /// Set only on hits from another device's backup (see `session_backup`).
+    /// Such a session cannot be opened here.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instance_id: Option<String>,
 }
 
 fn is_false(value: &bool) -> bool {
@@ -192,6 +198,8 @@ fn name_only_hit(
         match_count: 0,
         updated_at: session.last_message_at.unwrap_or(session.updated_at),
         name_match: true,
+        device_name: None,
+        instance_id: None,
     }
 }
 
@@ -379,6 +387,8 @@ pub async fn search_session_messages(
             match_count: matching.len(),
             updated_at: session.last_message_at.unwrap_or(session.updated_at),
             name_match: name_hit,
+            device_name: None,
+            instance_id: None,
         });
     }
 

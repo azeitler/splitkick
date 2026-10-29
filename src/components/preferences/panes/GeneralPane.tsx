@@ -223,6 +223,7 @@ import { BackendPaneHeader, SettingsSection } from '../SettingsSection'
 import { BackendCliSourceCards } from '../BackendCliSourceCards'
 import { AiLanguageField } from './AiLanguageField'
 import { FullDiskAccessSection } from './FullDiskAccessSection'
+import { SessionBackupSection } from './SessionBackupSection'
 import {
   resolveDefaultModelForBackend,
   resolvePiDefaultModel,
@@ -3024,6 +3025,8 @@ export const GeneralPane: React.FC<{ scope?: PreferencesPaneScope }> = ({
           </div>
         </SettingsSection>
       )}
+
+      {isGeneralScope && <SessionBackupSection />}
 
       {isGeneralScope && <FullDiskAccessSection />}
 
