@@ -63,6 +63,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   requested." in place of its question, so a draft shown in an option preview
   was lost. Splitkick now waits until the turn is on disk before it stops the
   CLI. (#57)
+- **The iPhone Home Screen app reaches the bottom of the screen.** On iOS 26
+  a Home Screen app got a viewport shorter than the screen by the status bar,
+  and the app kept its height to that short value, so a band stayed under it.
+  The page is now as tall as the screen in that mode, and the app only follows
+  the measured height while the keyboard is open. (#63)
+
 - **A selected row keeps its spacing in the sticky sidebar.** When a selected
   project, worktree or session row stuck at the top, its highlight touched the
   row below it and the line under the stack. The stuck rows now keep the same
