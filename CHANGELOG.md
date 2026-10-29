@@ -7,6 +7,19 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ## [Unreleased]
 
+### Added
+
+- **Session backup and search across devices.** Settings → General →
+  **Setup Backup** picks a synced folder (iCloud Drive, Syncthing, Nextcloud,
+  Dropbox), names this device and runs the first backup with a progress bar;
+  the app waits until it is done or stopped. After that, only new and changed
+  files are backed up, in the background: every 10 minutes and after each
+  run. The new **Other devices** tab in ⌘K searches the sessions of
+  your other devices, at the same time as **Search messages**; each tab shows
+  its number of results. Without a backup, the tab offers **Setup Backup**.
+  The MCP `search_sessions` tool also finds them, with the device name. They
+  open on their own device only. (#70)
+
 ## [1.2.1] - 2026-10-29
 
 Built on Jean 0.1.73.

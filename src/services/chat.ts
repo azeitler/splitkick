@@ -711,6 +711,36 @@ export function useSessionMessageSearch(query: string, enabled = true) {
 }
 
 /**
+ * Search the session backups that other devices wrote into the shared backup
+ * folder (see `session_backup` in jean-core). A separate query from the local
+ * search, so local hits show first and remote rows add on when ready. Returns
+ * nothing while no backup folder is set.
+ */
+export function useRemoteSessionSearch(query: string, enabled = true) {
+  const trimmed = query.trim()
+  const longEnough = trimmed.length >= MIN_SESSION_SEARCH_LEN
+
+  return useQuery({
+    queryKey: ['remote-session-search', trimmed],
+    queryFn: async (): Promise<SessionSearchResponse> => {
+      try {
+        return await invoke<SessionSearchResponse>('search_remote_sessions', {
+          query: trimmed,
+        })
+      } catch (error) {
+        logger.error('Remote session search failed', { error })
+        return { hits: [], truncated: false }
+      }
+    },
+    enabled: enabled && longEnough,
+    // Other devices' backups arrive through the sync service at its own pace.
+    staleTime: 1000 * 60,
+    gcTime: 1000 * 60,
+    placeholderData: previous => previous,
+  })
+}
+
+/**
  * Hook to get a single session with full message history
  */
 export function useSession(

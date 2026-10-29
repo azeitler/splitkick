@@ -1795,6 +1795,12 @@ export interface SessionSearchHit {
    * matching, so the palette never sees this.
    */
   name_match?: boolean
+  /**
+   * Set only on hits from another device's backup. Such a session is not on
+   * this device and cannot be opened here.
+   */
+  device_name?: string
+  instance_id?: string
 }
 
 /** Response from the search_session_messages Tauri command */

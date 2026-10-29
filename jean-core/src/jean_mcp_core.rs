@@ -1299,10 +1299,29 @@ async fn run_tool(
                 match_names: true,
                 limit: Some(limit),
             };
-            let response =
-                crate::chat::search::search_session_messages(app.clone(), query, options)
+            let mut response = crate::chat::search::search_session_messages(
+                app.clone(),
+                query.clone(),
+                options.clone(),
+            )
+            .await
+            .map_err(ToolError::internal)?;
+            // Sessions from other devices' backups, merged by recency.
+            let remote =
+                crate::session_backup::search::search_remote_sessions(app.clone(), query, options)
                     .await
                     .map_err(ToolError::internal)?;
+            if !remote.hits.is_empty() {
+                response.truncated |= remote.truncated;
+                response.hits.extend(remote.hits);
+                response
+                    .hits
+                    .sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+                if response.hits.len() > limit {
+                    response.hits.truncate(limit);
+                    response.truncated = true;
+                }
+            }
             Ok(search_sessions_result(&response))
         }
         "set_session_model" => {
@@ -2108,6 +2127,16 @@ fn search_sessions_result(response: &crate::chat::search::SessionSearchResponse)
             }
             if hit.name_match {
                 map.insert("nameMatch".to_string(), Value::Bool(true));
+            }
+            if let Some(device) = &hit.device_name {
+                // A session from another device's backup does not exist here,
+                // so a link to it would lead nowhere.
+                map.remove("link");
+                map.insert("device".to_string(), json!(device));
+                map.insert(
+                    "note".to_string(),
+                    json!(format!("This session is on {device}. Open it there.")),
+                );
             }
             result
         })
@@ -4633,6 +4662,8 @@ mod tests {
                     match_count: 3,
                     updated_at: 100,
                     name_match: false,
+                    device_name: None,
+                    instance_id: None,
                 },
                 crate::chat::search::SessionSearchHit {
                     session_id: "s2".to_string(),
@@ -4647,6 +4678,8 @@ mod tests {
                     match_count: 0,
                     updated_at: 90,
                     name_match: true,
+                    device_name: None,
+                    instance_id: None,
                 },
             ],
             truncated: true,
@@ -4664,7 +4697,41 @@ mod tests {
         assert_eq!(result["results"][1]["nameMatch"], json!(true));
         assert!(result["results"][1].get("snippet").is_none());
         assert!(result["results"][1].get("messageId").is_none());
+        assert!(result["results"][0].get("device").is_none());
     }
+
+    #[test]
+    fn remote_search_results_name_the_device_and_drop_the_link() {
+        let response = crate::chat::search::SessionSearchResponse {
+            hits: vec![crate::chat::search::SessionSearchHit {
+                session_id: "s9".to_string(),
+                session_name: "Backup design".to_string(),
+                project_id: "p1".to_string(),
+                project_name: "jean".to_string(),
+                worktree_id: "w9".to_string(),
+                worktree_name: "elsewhere".to_string(),
+                worktree_path: String::new(),
+                snippet: "…sync folder…".to_string(),
+                message_id: Some("m9".to_string()),
+                match_count: 1,
+                updated_at: 100,
+                name_match: false,
+                device_name: Some("mb16".to_string()),
+                instance_id: Some("other".to_string()),
+            }],
+            truncated: false,
+        };
+
+        let result = search_sessions_result(&response);
+
+        assert_eq!(result["results"][0]["device"], "mb16");
+        assert!(result["results"][0].get("link").is_none());
+        assert!(result["results"][0]["note"]
+            .as_str()
+            .unwrap()
+            .contains("mb16"));
+    }
+
     /// A data directory with one session whose three user prompts live in
     /// metadata and whose run logs were never written.
     fn session_with_prompts_but_no_run_logs() -> (tempfile::TempDir, AppHandle) {

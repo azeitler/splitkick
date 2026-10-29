@@ -1255,6 +1255,44 @@ pub async fn dispatch_command(
                 crate::chat::search::search_session_messages(app.clone(), query, options).await?;
             to_value(result)
         }
+        "search_remote_sessions" => {
+            let query: String = from_field(&args, "query")?;
+            let options = crate::chat::search::SessionSearchOptions {
+                project_id: field_opt(&args, "projectId", "project_id")?,
+                include_archived: field_opt(&args, "includeArchived", "include_archived")?
+                    .unwrap_or(false),
+                match_names: field_opt(&args, "matchNames", "match_names")?.unwrap_or(false),
+                limit: from_field_opt(&args, "limit")?,
+            };
+            let result =
+                crate::session_backup::search::search_remote_sessions(app.clone(), query, options)
+                    .await?;
+            to_value(result)
+        }
+        "get_session_backup_status" => to_value(crate::session_backup::backup_status(app)?),
+        "estimate_session_backup" => {
+            let dir: String = from_field(&args, "dir")?;
+            let app = app.clone();
+            let result = tauri::async_runtime::spawn_blocking(move || {
+                crate::session_backup::estimate_backup(&app, &dir)
+            })
+            .await
+            .map_err(|e| format!("Estimate failed: {e}"))??;
+            to_value(result)
+        }
+        "run_session_backup_now" => {
+            // Returns at once; progress arrives as `session-backup:progress`.
+            let app = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = crate::session_backup::run_backup(app).await;
+            });
+            Ok(Value::Null)
+        }
+        "cancel_session_backup" => {
+            crate::session_backup::cancel_backup();
+            Ok(Value::Null)
+        }
+        "get_default_device_name" => to_value(crate::session_backup::default_device_name()),
         "start_background_investigation" => {
             let worktree_id: String = field(&args, "worktreeId", "worktree_id")?;
             let worktree_path: String = field(&args, "worktreePath", "worktree_path")?;

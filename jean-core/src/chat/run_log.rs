@@ -128,6 +128,7 @@ impl RunLogWriter {
         }
 
         self.record_activity(ActivityKind::SessionCompleted);
+        crate::session_backup::request_backup_soon();
 
         log::trace!("Run completed: {}", self.run_id);
         Ok(())
@@ -187,6 +188,7 @@ impl RunLogWriter {
         }
 
         self.record_activity(ActivityKind::SessionCancelled);
+        crate::session_backup::request_backup_soon();
 
         log::trace!("Run cancelled: {}", self.run_id);
         Ok(())
@@ -215,6 +217,7 @@ impl RunLogWriter {
         )?;
 
         self.record_activity(ActivityKind::SessionCrashed);
+        crate::session_backup::request_backup_soon();
 
         log::trace!("Run marked as crashed: {}", self.run_id);
         Ok(())
@@ -367,6 +370,7 @@ impl RunLogWriter {
         )?;
 
         self.record_activity(ActivityKind::SessionCrashed);
+        crate::session_backup::request_backup_soon();
 
         log::trace!("Run marked as crashed: {}", self.run_id);
         Ok(())

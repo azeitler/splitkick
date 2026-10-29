@@ -13,6 +13,7 @@ const {
   selectConnection,
   setCommandPaletteOpen,
   showToast,
+  toastInfo,
   warnRemoteVersionMismatch,
 } = vi.hoisted(() => ({
   fetchRemoteServerInfo: vi.fn(async () => ({
@@ -27,6 +28,7 @@ const {
   selectConnection: vi.fn(),
   setCommandPaletteOpen: vi.fn(),
   showToast: vi.fn(),
+  toastInfo: vi.fn(),
   warnRemoteVersionMismatch: vi.fn(() => false),
 }))
 
@@ -53,6 +55,29 @@ const searchResult = {
     },
   ],
 }
+
+const remoteSearchResult = {
+  truncated: false,
+  hits: [
+    {
+      session_id: 'session-elsewhere',
+      session_name: 'Backup design',
+      project_id: 'project-2',
+      project_name: 'Coolify',
+      worktree_id: 'worktree-9',
+      worktree_name: 'feat/backup',
+      worktree_path: '',
+      snippet: '…the parser in the sync folder…',
+      message_id: 'message-9',
+      match_count: 1,
+      updated_at: 1_700_000_000_000,
+      device_name: 'mb16',
+      instance_id: 'instance-b',
+    },
+  ],
+}
+
+vi.mock('sonner', () => ({ toast: { info: toastInfo } }))
 
 const remoteConnections = [
   {
@@ -84,8 +109,17 @@ vi.mock('@/hooks/use-command-context', () => ({
   useCommandContext: () => ({ showToast }),
 }))
 
+const preferencesState: { data: { session_backup_dir: string } | undefined } = {
+  data: undefined,
+}
+
 vi.mock('@/services/preferences', () => ({
-  usePreferences: () => ({ data: undefined }),
+  usePreferences: () => preferencesState,
+}))
+
+vi.mock('@/components/preferences/SetupBackupDialog', () => ({
+  SetupBackupDialog: ({ open }: { open: boolean }) =>
+    open ? <div>Setup Backup dialog</div> : null,
 }))
 
 const defaultProjects = [
@@ -138,6 +172,10 @@ vi.mock('@/services/chat', () => ({
       isFetching: false,
     }
   },
+  useRemoteSessionSearch: (query: string, enabled: boolean) => ({
+    data: enabled && query.trim().length >= 3 ? remoteSearchResult : undefined,
+    isFetching: false,
+  }),
   useAllSessions: () => ({
     data: {
       entries: [
@@ -341,6 +379,7 @@ describe('CommandPalette search mode', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     searchCalls.length = 0
+    preferencesState.data = undefined
   })
 
   const typeQuery = (value: string) =>
@@ -398,6 +437,11 @@ describe('CommandPalette search mode', () => {
     ).toBeInTheDocument()
 
     pressTab()
+    expect(
+      screen.getByPlaceholderText('Search sessions on your other devices...')
+    ).toBeInTheDocument()
+
+    pressTab()
     expect(screen.getByText('Recent Sessions')).toBeInTheDocument()
   })
 
@@ -406,12 +450,12 @@ describe('CommandPalette search mode', () => {
 
     pressTab(true)
     expect(
-      screen.getByPlaceholderText('Search across all session messages...')
+      screen.getByPlaceholderText('Search sessions on your other devices...')
     ).toBeInTheDocument()
 
     pressTab(true)
     expect(
-      screen.getByPlaceholderText('Search projects...')
+      screen.getByPlaceholderText('Search across all session messages...')
     ).toBeInTheDocument()
   })
 
@@ -469,6 +513,73 @@ describe('CommandPalette search mode', () => {
       },
       { showProjectsTab: true }
     )
+  })
+
+  const remoteRow = () =>
+    document.querySelector('[data-value="remote:instance-b:session-elsewhere"]')
+
+  it('searches both tabs in parallel and shows each count as a pill', async () => {
+    preferencesState.data = { session_backup_dir: '/shared' }
+    render(<CommandPalette />)
+    goToSearchMode()
+    typeQuery('parser')
+
+    await waitFor(() => expect(hitRow()).not.toBeNull())
+    // Only local hits on the messages tab; the other tab still has a count.
+    expect(remoteRow()).toBeNull()
+    expect(screen.getByTestId('palette-pill-search').textContent).toBe('1')
+    expect(screen.getByTestId('palette-pill-devices').textContent).toBe('1')
+    expect(searchCalls.at(-1)).toEqual({ query: 'parser', enabled: true })
+  })
+
+  it('offers Setup Backup on the devices tab when no backup is set up', () => {
+    render(<CommandPalette />)
+    goToSearchMode()
+    pressTab()
+    typeQuery('parser')
+
+    expect(screen.queryByTestId('palette-pill-devices')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Setup Backup' }))
+
+    expect(setCommandPaletteOpen).toHaveBeenCalledWith(false)
+    expect(screen.getByText('Setup Backup dialog')).toBeInTheDocument()
+  })
+
+  it('lists other devices’ hits as info only', async () => {
+    preferencesState.data = { session_backup_dir: '/shared' }
+    render(<CommandPalette />)
+    goToSearchMode()
+    pressTab()
+    typeQuery('parser')
+
+    await waitFor(() => expect(remoteRow()).not.toBeNull())
+
+    const row = remoteRow()
+    if (!row) throw new Error('remote hit row never rendered')
+    expect(hitRow()).toBeNull()
+    expect(screen.getAllByText('Other devices').length).toBeGreaterThan(0)
+    expect(row.textContent).toContain('mb16 · Coolify · feat/backup')
+    fireEvent.click(row)
+
+    expect(navigateToSession).not.toHaveBeenCalled()
+    expect(toastInfo).toHaveBeenCalledWith(
+      '“Backup design” is on mb16',
+      expect.anything()
+    )
+  })
+
+  it('does not open over a blocking dialog such as the first backup', () => {
+    render(<CommandPalette />)
+    const blocker = document.createElement('div')
+    blocker.setAttribute('data-blocking-dialog', '')
+    document.body.appendChild(blocker)
+
+    fireEvent.keyDown(document, { key: 'k', metaKey: true })
+    expect(setCommandPaletteOpen).not.toHaveBeenCalled()
+
+    blocker.remove()
+    fireEvent.keyDown(document, { key: 'k', metaKey: true })
+    expect(setCommandPaletteOpen).toHaveBeenCalled()
   })
 
   it('ignores Tab with a modifier, so app shortcuts still get through', () => {
