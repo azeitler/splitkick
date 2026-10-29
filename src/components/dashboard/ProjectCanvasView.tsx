@@ -88,8 +88,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { PinnedSessionsSection } from '@/components/chat/PinnedSessionsSection'
 import {
-  resolvePinnedSessionRows,
-  type PinnedSessionRow,
+  resolveProjectShortcutRows,
+  type ProjectShortcutRow,
 } from '@/components/chat/pinned-sessions'
 import { Spinner } from '@/components/ui/spinner'
 import { GitStatusBadges } from '@/components/ui/git-status-badges'
@@ -1255,16 +1255,20 @@ export function ProjectCanvasView({
   const storeState = useCanvasStoreState()
   const queryClient = useQueryClient()
 
-  // Sessions pinned to the project root. sessionsByWorktreeId already holds
-  // every session in the project, so this costs no extra fetch. Pins that no
-  // longer resolve (archived, deleted, worktree removed) simply drop out.
+  // Sessions pinned to the project root or starred in this project.
+  // sessionsByWorktreeId already holds every session in the project, so this
+  // costs no extra fetch. Rows that no longer resolve (archived, deleted,
+  // worktree removed) simply drop out.
   const pinnedSessionRefs = useProjectsStore(
     state => state.projectCanvasSettings[projectId]?.pinnedSessions
   )
+  const starredSessions = useProjectsStore(state => state.starredSessions)
 
   const pinnedRows = useMemo(() => {
-    const rows = resolvePinnedSessionRows(
+    const { rows } = resolveProjectShortcutRows(
       pinnedSessionRefs,
+      starredSessions,
+      projectId,
       worktreeId => sessionsByWorktreeId.get(worktreeId)?.sessions,
       readyWorktrees
     )
@@ -1272,10 +1276,17 @@ export function ProjectCanvasView({
       row,
       card: computeSessionCardData(row.session, storeState),
     }))
-  }, [pinnedSessionRefs, sessionsByWorktreeId, readyWorktrees, storeState])
+  }, [
+    pinnedSessionRefs,
+    starredSessions,
+    projectId,
+    sessionsByWorktreeId,
+    readyWorktrees,
+    storeState,
+  ])
 
   const handleOpenPinnedSession = useCallback(
-    (row: PinnedSessionRow) => {
+    (row: ProjectShortcutRow) => {
       // Same helper the command palette and unread bell use: it queues the
       // auto-open that this component consumes below.
       navigateToSession({

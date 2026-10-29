@@ -23,8 +23,8 @@ import { useChatStore } from '@/store/chat-store'
 import { computeSessionCardData } from '@/components/chat/session-card-utils'
 import { PinnedSessionsSection } from '@/components/chat/PinnedSessionsSection'
 import {
-  resolvePinnedSessionRows,
-  type PinnedSessionRow,
+  resolveProjectShortcutRows,
+  type ProjectShortcutRow,
 } from '@/components/chat/pinned-sessions'
 import {
   compareWorktreesForCanvasSort,
@@ -366,16 +366,27 @@ export function WorktreeList({
     state => state.projectCanvasSettings[projectId]?.pinnedSessions
   )
 
-  // Sessions pinned to the project root, shown directly under the project row.
-  // sessionsByWorktreeId is already loaded for the sidebar, so no extra fetch.
+  const starredSessions = useProjectsStore(state => state.starredSessions)
+
+  // Sessions pinned to the project root or starred in this project, shown
+  // directly under the project row. sessionsByWorktreeId is already loaded for
+  // the sidebar, so no extra fetch.
   const resolvedPinnedRows = useMemo(
     () =>
-      resolvePinnedSessionRows(
+      resolveProjectShortcutRows(
         pinnedSessionRefs,
+        starredSessions,
+        projectId,
         worktreeId => sessionsByWorktreeId.get(worktreeId)?.sessions,
         readyWorktrees
-      ),
-    [pinnedSessionRefs, sessionsByWorktreeId, readyWorktrees]
+      ).rows,
+    [
+      pinnedSessionRefs,
+      starredSessions,
+      projectId,
+      sessionsByWorktreeId,
+      readyWorktrees,
+    ]
   )
   const pinnedSessionIds = useMemo(
     () => resolvedPinnedRows.map(row => row.session.id),
@@ -394,7 +405,7 @@ export function WorktreeList({
   )
 
   const handleOpenPinnedSession = useCallback(
-    (row: PinnedSessionRow) => {
+    (row: ProjectShortcutRow) => {
       // The row already sits in the sidebar, so the tree stays put.
       navigateToSession(
         {

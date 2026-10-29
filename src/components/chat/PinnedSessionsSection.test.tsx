@@ -10,7 +10,7 @@ import { useChatStore } from '@/store/chat-store'
 import type { Session } from '@/types/chat'
 import { PinnedSessionsSection } from './PinnedSessionsSection'
 import type { SessionCardData } from './session-card-utils'
-import type { PinnedSessionRow } from './pinned-sessions'
+import type { ProjectShortcutRow } from './pinned-sessions'
 import {
   SIDEBAR_SESSION_LIST,
   SIDEBAR_SESSION_ROW_PADDING,
@@ -42,7 +42,11 @@ function entry(
   sessionId: string,
   name: string,
   worktreeName: string,
-  overrides: Partial<SessionCardData> = {}
+  overrides: Partial<SessionCardData> = {},
+  marks: { isPinned: boolean; isStarred: boolean } = {
+    isPinned: true,
+    isStarred: false,
+  }
 ) {
   const session = {
     id: sessionId,
@@ -53,12 +57,13 @@ function entry(
     messages: [],
   } as Session
 
-  const row: PinnedSessionRow = {
+  const row: ProjectShortcutRow = {
     sessionId,
     worktreeId: `wt-${sessionId}`,
     worktreePath: `/tmp/${worktreeName}`,
     worktreeName,
     session,
+    ...marks,
   }
 
   const card = {
@@ -471,6 +476,132 @@ describe('PinnedSessionsSection', () => {
       )
 
       expect(screen.queryByTestId('pinned-sessions-list')).toBeNull()
+    })
+  })
+
+  // #41: the section lists this project's pins and stars, and its label
+  // says which kinds it holds.
+  describe('pinned and starred rows', () => {
+    const PINNED = { isPinned: true, isStarred: false }
+    const STARRED = { isPinned: false, isStarred: true }
+    const BOTH = { isPinned: true, isStarred: true }
+
+    function renderMix(
+      variant: 'canvas' | 'sidebar',
+      marks: { isPinned: boolean; isStarred: boolean }[]
+    ) {
+      const rows = marks.map((mark, index) =>
+        entry(`s-${index}`, `Session ${index}`, 'feature-a', {}, mark)
+      )
+      // The glyphs and menu items read the store, so it mirrors the rows.
+      useProjectsStore.setState({
+        projectCanvasSettings: {
+          'p-1': {
+            pinnedSessions: rows
+              .filter(({ row }) => row.isPinned)
+              .map(({ row }) => ({
+                sessionId: row.sessionId,
+                worktreeId: row.worktreeId,
+              })),
+          },
+        },
+        starredSessions: rows
+          .filter(({ row }) => row.isStarred)
+          .map(({ row }) => ({
+            projectId: 'p-1',
+            worktreeId: row.worktreeId,
+            sessionId: row.sessionId,
+          })),
+      })
+      render(
+        <PinnedSessionsSection
+          rows={rows}
+          variant={variant}
+          projectId="p-1"
+          expanded={true}
+          onToggleExpanded={vi.fn()}
+          onOpen={vi.fn()}
+        />
+      )
+    }
+
+    for (const variant of ['canvas', 'sidebar'] as const) {
+      describe(variant, () => {
+        it('reads "Pinned" when every row is a pin', () => {
+          renderMix(variant, [PINNED, PINNED])
+
+          expect(screen.getByText('Pinned')).toBeInTheDocument()
+          expect(screen.queryByText(/Starred/)).toBeNull()
+        })
+
+        it('reads "Starred" when every row is a star', () => {
+          renderMix(variant, [STARRED])
+
+          expect(screen.getByText('Starred')).toBeInTheDocument()
+          expect(screen.queryByText(/Pinned/)).toBeNull()
+        })
+
+        it('reads "Pinned & Starred" for one pin and one star', () => {
+          renderMix(variant, [PINNED, STARRED])
+
+          expect(screen.getByText('Pinned & Starred')).toBeInTheDocument()
+          expect(screen.getByText('Session 0')).toBeInTheDocument()
+          expect(screen.getByText('Session 1')).toBeInTheDocument()
+        })
+
+        it('reads "Pinned & Starred" for a single pinned and starred row', () => {
+          renderMix(variant, [BOTH])
+
+          expect(screen.getByText('Pinned & Starred')).toBeInTheDocument()
+        })
+      })
+    }
+
+    // A glyph that every row carries is noise; one that only some carry
+    // tells why each row is here.
+    it('hides the glyphs every row carries', () => {
+      renderMix('canvas', [BOTH, BOTH])
+
+      expect(screen.queryByTestId('pinned-glyph')).toBeNull()
+      expect(screen.queryByTestId('starred-glyph')).toBeNull()
+    })
+
+    it('marks each row with its own pin or star in a mixed section', () => {
+      renderMix('canvas', [PINNED, STARRED])
+
+      const pinned = screen.getByText('Session 0').closest('button')
+      const starred = screen.getByText('Session 1').closest('button')
+      expect(
+        pinned?.querySelector('[data-testid="pinned-glyph"]')
+      ).not.toBeNull()
+      expect(pinned?.querySelector('[data-testid="starred-glyph"]')).toBeNull()
+      expect(
+        starred?.querySelector('[data-testid="starred-glyph"]')
+      ).not.toBeNull()
+      expect(starred?.querySelector('[data-testid="pinned-glyph"]')).toBeNull()
+    })
+
+    it('offers Unstar, not Unpin, on a starred-only row', async () => {
+      renderMix('canvas', [STARRED])
+      const user = await openRowMenu('Session 0')
+
+      expect(
+        await screen.findByRole('menuitem', { name: 'Unstar' })
+      ).toBeInTheDocument()
+      expect(screen.queryByText('Unpin from Project')).toBeNull()
+
+      await user.click(screen.getByRole('menuitem', { name: 'Unstar' }))
+      expect(useProjectsStore.getState().starredSessions).toEqual([])
+    })
+
+    it('offers Unpin and Unstar on a pinned and starred row', async () => {
+      renderMix('canvas', [BOTH])
+      await openRowMenu('Session 0')
+
+      expect(await screen.findByText('Unpin from Project')).toBeInTheDocument()
+      expect(
+        screen.getByRole('menuitem', { name: 'Unstar' })
+      ).toBeInTheDocument()
     })
   })
 

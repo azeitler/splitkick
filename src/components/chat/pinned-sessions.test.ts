@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import type { Session } from '@/types/chat'
 import type { Worktree } from '@/types/projects'
-import { resolvePinnedSessionRows } from './pinned-sessions'
+import {
+  resolvePinnedSessionRows,
+  resolveProjectShortcutRows,
+} from './pinned-sessions'
 
 function worktree(overrides: Partial<Worktree>): Worktree {
   return {
@@ -121,5 +124,113 @@ describe('resolvePinnedSessionRows', () => {
     )
 
     expect(rows).toEqual([])
+  })
+})
+
+// #41: the project's top section lists its pins and its stars.
+describe('resolveProjectShortcutRows', () => {
+  const activeSessions: Record<string, Session[]> = {
+    'wt-1': [
+      { ...session('s-old'), updated_at: 100 },
+      { ...session('s-new'), updated_at: 300 },
+    ],
+    'wt-2': [{ ...session('s-mid'), last_message_at: 200, updated_at: 50 }],
+  }
+  const getActive = (worktreeId: string) => activeSessions[worktreeId]
+  const star = (sessionId: string, worktreeId: string, projectId = 'p-1') => ({
+    projectId,
+    worktreeId,
+    sessionId,
+  })
+
+  it('returns no rows and no kind when nothing is pinned or starred', () => {
+    expect(
+      resolveProjectShortcutRows(undefined, [], 'p-1', getActive, worktrees)
+    ).toEqual({ rows: [], kind: null })
+  })
+
+  it('labels a section of pins only "pinned"', () => {
+    const { rows, kind } = resolveProjectShortcutRows(
+      [{ sessionId: 's-old', worktreeId: 'wt-1' }],
+      [],
+      'p-1',
+      getActive,
+      worktrees
+    )
+
+    expect(kind).toBe('pinned')
+    expect(rows).toMatchObject([
+      { sessionId: 's-old', isPinned: true, isStarred: false },
+    ])
+  })
+
+  it('labels a section of stars only "starred" and ignores other projects', () => {
+    const { rows, kind } = resolveProjectShortcutRows(
+      [],
+      [star('s-old', 'wt-1'), star('s-new', 'wt-1', 'p-other')],
+      'p-1',
+      getActive,
+      worktrees
+    )
+
+    expect(kind).toBe('starred')
+    expect(rows).toMatchObject([
+      { sessionId: 's-old', isPinned: false, isStarred: true },
+    ])
+  })
+
+  it('labels one pin and one star "both"', () => {
+    const { rows, kind } = resolveProjectShortcutRows(
+      [{ sessionId: 's-old', worktreeId: 'wt-1' }],
+      [star('s-mid', 'wt-2')],
+      'p-1',
+      getActive,
+      worktrees
+    )
+
+    expect(kind).toBe('both')
+    expect(rows.map(row => row.sessionId).sort()).toEqual(['s-mid', 's-old'])
+  })
+
+  it('lists a session that is pinned and starred once, as "both"', () => {
+    const { rows, kind } = resolveProjectShortcutRows(
+      [{ sessionId: 's-old', worktreeId: 'wt-1' }],
+      [star('s-old', 'wt-1')],
+      'p-1',
+      getActive,
+      worktrees
+    )
+
+    expect(kind).toBe('both')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({ isPinned: true, isStarred: true })
+  })
+
+  it('orders rows by most recent activity, pins and stars mixed', () => {
+    const { rows } = resolveProjectShortcutRows(
+      [{ sessionId: 's-old', worktreeId: 'wt-1' }],
+      [star('s-new', 'wt-1'), star('s-mid', 'wt-2')],
+      'p-1',
+      getActive,
+      worktrees
+    )
+
+    expect(rows.map(row => row.sessionId)).toEqual(['s-new', 's-mid', 's-old'])
+  })
+
+  it('hides a star whose sessions have not loaded yet', () => {
+    const stars = [star('s-old', 'wt-1')]
+    const { rows, kind } = resolveProjectShortcutRows(
+      [],
+      stars,
+      'p-1',
+      () => undefined,
+      worktrees
+    )
+
+    expect(rows).toEqual([])
+    expect(kind).toBeNull()
+    // Resolving never prunes: the input list is untouched.
+    expect(stars).toEqual([star('s-old', 'wt-1')])
   })
 })
