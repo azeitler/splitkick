@@ -63,6 +63,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   requested." in place of its question, so a draft shown in an option preview
   was lost. Splitkick now waits until the turn is on disk before it stops the
   CLI. (#57)
+- **Sessions no longer stay on "loading" in the iPhone Home Screen app.**
+  When the phone came back from the background, the app's connection check
+  could go into a dead connection and wait forever, so the app never
+  reconnected and nothing loaded until it was closed. The check now gives up
+  after 12 seconds and tries again. A request that timed out before it was sent
+  is also no longer sent later. (#64)
+
 - **The iPhone Home Screen app reaches the bottom of the screen.** On iOS 26
   a Home Screen app got a viewport shorter than the screen by the status bar,
   and the app kept its height to that short value, so a band stayed under it.

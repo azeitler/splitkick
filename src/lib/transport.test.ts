@@ -40,6 +40,15 @@ function neverSettle(): void {
   // Intentionally empty
 }
 
+/** A fetch into a dead connection: it settles only when aborted. */
+function hangingFetch(_url: string, init?: RequestInit): Promise<never> {
+  return new Promise((_resolve, reject) => {
+    init?.signal?.addEventListener('abort', () =>
+      reject(new DOMException('Aborted', 'AbortError'))
+    )
+  })
+}
+
 async function flushAsync() {
   await Promise.resolve()
   await Promise.resolve()
@@ -739,6 +748,60 @@ describe('transport bootstrap', () => {
     await flushAsync()
 
     expect(MockWebSocket.instances).toHaveLength(1)
+  })
+
+  it('reconnects when the auth check hangs after a drop (#64)', async () => {
+    // A Home Screen app resumed by iOS can send the auth check into a dead
+    // connection. Without a timeout it never settled, `_connecting` stayed
+    // true and the page never reconnected, so every load stayed "Loading".
+    vi.useFakeTimers()
+    const transport = await loadTransportModule()
+    transport.connectTransport()
+    await vi.advanceTimersByTimeAsync(10)
+    expect(transport.isTransportConnected()).toBe(true)
+
+    const answer = {
+      ok: true,
+      json: async () => ({ ok: true, appVersion: FALLBACK_APP_VERSION }),
+    }
+    const fetchMock = vi.fn(hangingFetch)
+    vi.stubGlobal('fetch', fetchMock)
+
+    getWs(0).close()
+    await vi.advanceTimersByTimeAsync(200)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+
+    fetchMock.mockResolvedValue(answer as never)
+    await vi.advanceTimersByTimeAsync(15_000)
+
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1)
+    expect(MockWebSocket.instances.length).toBe(2)
+    expect(transport.isTransportConnected()).toBe(true)
+  })
+
+  it('does not send a queued command after it timed out (#64)', async () => {
+    // A read that already failed must not run later, and a write must not
+    // run twice (the caller's retry is the second run).
+    vi.useFakeTimers()
+    vi.stubGlobal('fetch', vi.fn(hangingFetch))
+    const transport = await loadTransportModule()
+    transport.connectTransport()
+    await vi.advanceTimersByTimeAsync(10)
+
+    const failed = transport.invoke('get_session', { sessionId: 's1' })
+    const caught = failed.catch((error: Error) => error)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(String(await caught)).toContain('timed out')
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, json: async () => ({}) })
+    )
+    await vi.advanceTimersByTimeAsync(31_000)
+    const ws = MockWebSocket.instances.at(-1)
+    expect(ws?.readyState).toBe(MockWebSocket.OPEN)
+    const sent = (ws?.send.mock.calls ?? []).map(([data]) => String(data))
+    expect(sent.some(data => data.includes('get_session'))).toBe(false)
   })
 
   it('notifies established disconnect listeners synchronously', async () => {

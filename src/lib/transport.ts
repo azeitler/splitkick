@@ -45,9 +45,13 @@ function backendUrl(path: string): string {
   return new URL(path.replace(/^\/+/, ''), base).toString()
 }
 
+/**
+ * Fetch from the backend, giving up after 12 s. A phone resumed from the
+ * background can send this into a dead connection that never answers; the
+ * auth check then held `_connecting` forever and the page never reconnected
+ * (#64).
+ */
 function fetchBackend(url: string): Promise<Response> {
-  if (!getActiveRemoteConnection()) return fetch(url)
-
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 12_000)
   return fetch(url, { signal: controller.signal }).finally(() =>
@@ -986,6 +990,9 @@ class WsTransport {
 
       const timeout = setTimeout(() => {
         this.pending.delete(id)
+        // Unsent: drop it, so a failed read does not run later and a write
+        // does not run again next to the caller's retry.
+        this.queue = this.queue.filter(item => item.data !== data)
         reject(
           new Error(`Command '${command}' timed out after ${timeoutMs / 1000}s`)
         )
