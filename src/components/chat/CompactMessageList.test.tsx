@@ -3,12 +3,20 @@ import type { ComponentProps } from 'react'
 import { describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen } from '@/test/test-utils'
 import { CompactMessageList } from './CompactMessageList'
+import type * as SessionLinkInsertModule from './SessionLinkInsert'
 import type {
   ChatMessage,
   Question,
   QuestionAnswer,
   ReviewFinding,
 } from '@/types/chat'
+
+vi.mock('./SessionLinkInsert', async importOriginal => ({
+  ...(await importOriginal<typeof SessionLinkInsertModule>()),
+  SessionLinkInsert: (props: { sessionId: string }) => (
+    <div data-testid="session-link">{props.sessionId}</div>
+  ),
+}))
 
 const noopQuestionAnswer = (
   _toolCallId: string,
@@ -102,6 +110,30 @@ describe('CompactMessageList', () => {
 
     expect(screen.getByText('Bash')).toBeVisible()
     expect(screen.getByText('1 step')).toBeVisible()
+  })
+
+  it('keeps the session insert visible while the activity row is collapsed (#62)', () => {
+    renderCompact([
+      message('user-1', 'user', 100, 'start a helper'),
+      message('assistant-1', 'assistant', 104, 'Started it.', {
+        tool_calls: [
+          {
+            id: 'tool-1',
+            name: 'mcp__splitkick__create_session',
+            input: { worktreeId: 'wt' },
+            output: '{"id":"child-1"}',
+          },
+        ],
+        content_blocks: [
+          { type: 'tool_use', tool_call_id: 'tool-1' },
+          { type: 'text', text: 'Started it.' },
+        ],
+      }),
+    ])
+
+    expect(screen.getByText('1 step')).toBeVisible()
+    expect(screen.getAllByTestId('session-link')).toHaveLength(1)
+    expect(screen.getByTestId('session-link')).toHaveTextContent('child-1')
   })
 
   it('renders Command Code read_file activity with normalized labels', () => {

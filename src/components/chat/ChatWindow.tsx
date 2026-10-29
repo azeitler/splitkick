@@ -149,6 +149,8 @@ import {
   remapIndexForWindow,
 } from './compact-history-window'
 import { CodexGoalBanner } from './CodexGoalBanner'
+import { CurrentSessionContext } from './CurrentSessionContext'
+import { SessionOriginBanner } from './SessionOriginBanner'
 import { StreamingStatusBar } from './StreamingStatusBar'
 import { ChatErrorFallback } from './ChatErrorFallback'
 import { logger } from '@/lib/logger'
@@ -3002,7 +3004,7 @@ export function ChatWindow({
     })
   }
 
-  return (
+  const content = (
     <ErrorBoundary
       resetKeys={[activeWorktreeId]}
       onError={(error, errorInfo) => {
@@ -3209,6 +3211,16 @@ export function ChatWindow({
                               worktreePath={activeWorktreePath ?? null}
                               isCodexBackend={isCodexBackend}
                             />
+                            {session?.id === activeSessionId && (
+                              <SessionOriginBanner
+                                startedBySessionId={
+                                  session?.started_by_session_id
+                                }
+                                forkedFromSessionId={
+                                  session?.forked_from_session_id
+                                }
+                              />
+                            )}
                             {isLoading ||
                             isSessionsLoading ||
                             isSessionSwitching ? (
@@ -4343,5 +4355,11 @@ export function ChatWindow({
         </AlertDialog>
       </div>
     </ErrorBoundary>
+  )
+
+  return (
+    <CurrentSessionContext.Provider value={activeSessionId ?? null}>
+      {content}
+    </CurrentSessionContext.Provider>
   )
 }

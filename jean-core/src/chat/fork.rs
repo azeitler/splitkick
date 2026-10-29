@@ -126,6 +126,9 @@ pub(crate) fn prepare_forked_session(
     forked.created_at = created_at;
     forked.updated_at = created_at;
     forked.last_opened_at = Some(created_at);
+    // Mirror the metadata links, so the returned Session is right before a refetch.
+    forked.started_by_session_id = None;
+    forked.forked_from_session_id = Some(source.id.clone());
     forked.archived_at = None;
     forked.archived_by_base_close = None;
     forked.session_naming_completed = false;
@@ -265,6 +268,8 @@ pub(crate) fn prepare_forked_metadata(
     metadata.queued_messages.clear();
     metadata.scheduled_wakeup = None;
 
+    // A fork is not started by the source's parent; `forked_from` is its link.
+    metadata.started_by_session_id = None;
     metadata.forked_from_session_id = Some(source_session_id.to_string());
     metadata.pending_fork = Some(strategy);
     metadata
@@ -590,6 +595,11 @@ mod tests {
 
         assert_ne!(forked.id, source.id);
         assert_eq!(forked.name, "Fork of Build auth");
+        assert_eq!(forked.started_by_session_id, None);
+        assert_eq!(
+            forked.forked_from_session_id.as_deref(),
+            Some(source.id.as_str())
+        );
         assert_eq!(forked.order, 0);
         assert_eq!(forked.created_at, 1234);
         assert_eq!(forked.updated_at, 1234);
@@ -810,7 +820,8 @@ mod tests {
 
     #[test]
     fn prepare_forked_metadata_records_provenance_and_the_strategy() {
-        let source = metadata_with_every_resume_id(Backend::Codex);
+        let mut source = metadata_with_every_resume_id(Backend::Codex);
+        source.started_by_session_id = Some("parent-of-source".to_string());
         let forked_session =
             prepare_forked_session(&source.to_session(), 1, 1234, PendingFork::Handoff);
 
@@ -828,6 +839,10 @@ mod tests {
         assert_eq!(
             metadata.forked_from_session_id.as_deref(),
             Some("source-session")
+        );
+        assert_eq!(
+            metadata.started_by_session_id, None,
+            "a fork is not started by the source's parent"
         );
         assert_eq!(metadata.pending_fork, Some(PendingFork::Handoff));
         assert_eq!(metadata.runs.len(), 3);

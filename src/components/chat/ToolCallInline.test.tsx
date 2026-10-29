@@ -11,6 +11,7 @@ import {
 } from './ToolCallInline'
 import type { ComponentProps } from 'react'
 import type * as InlineFileDiffModule from './InlineFileDiff'
+import type * as SessionLinkInsertModule from './SessionLinkInsert'
 
 const inlineFileDiffProps = vi.hoisted(() => [] as Record<string, unknown>[])
 type InlineFileDiffProps = ComponentProps<
@@ -32,6 +33,15 @@ vi.mock('./InlineFileDiff', async importOriginal => {
     },
   }
 })
+
+vi.mock('./SessionLinkInsert', async importOriginal => ({
+  ...(await importOriginal<typeof SessionLinkInsertModule>()),
+  SessionLinkInsert: (props: { bareToolName: string; sessionId: string }) => (
+    <div data-testid="session-link">
+      {props.bareToolName}:{props.sessionId}
+    </div>
+  ),
+}))
 
 function clickExpandTrigger() {
   const triggers = document.querySelectorAll(
@@ -1060,5 +1070,108 @@ describe('TaskCallInline', () => {
     expect(screen.getByText('Nested agent finished.')).toBeInTheDocument()
     // Nested Agent renders as another TaskCallInline row, not a SubToolItem
     expect(screen.getByText('Child agent')).toBeInTheDocument()
+  })
+})
+
+describe('ToolCallInline session link (#62)', () => {
+  it('shows the session insert under a Splitkick create_session call', () => {
+    render(
+      <ToolCallInline
+        toolCall={{
+          id: 't1',
+          name: 'mcp__splitkick__create_session',
+          input: { worktreeId: 'wt' },
+          output: '{"id":"child-1","name":"Session 2"}',
+        }}
+      />
+    )
+    expect(screen.getByTestId('session-link')).toHaveTextContent(
+      'create_session:child-1'
+    )
+  })
+
+  it('shows it for a send wrapped in use_tool', () => {
+    render(
+      <ToolCallInline
+        toolCall={{
+          id: 't2',
+          name: 'use_tool',
+          input: {
+            tool_name: 'splitkick_send_chat_message',
+            tool_input: { sessionId: 'child-2', message: 'go' },
+          },
+          output: '{"sessionId":"child-2","status":"started"}',
+        }}
+      />
+    )
+    expect(screen.getByTestId('session-link')).toHaveTextContent(
+      'send_chat_message:child-2'
+    )
+  })
+
+  it('shows one insert per session outside a collapsed group', () => {
+    render(
+      <StackedGroup
+        items={[
+          {
+            type: 'tool',
+            tool: {
+              id: 'g1',
+              name: 'mcp__splitkick__create_session',
+              input: {},
+              output: '{"id":"child-1"}',
+            },
+          },
+          {
+            type: 'tool',
+            tool: {
+              id: 'g2',
+              name: 'mcp__splitkick__send_chat_message',
+              input: {},
+              output: '{"sessionId":"child-1","status":"started"}',
+            },
+          },
+          {
+            type: 'tool',
+            tool: {
+              id: 'g3',
+              name: 'mcp__splitkick__send_chat_message',
+              input: {},
+              output: '{"sessionId":"other","status":"started"}',
+            },
+          },
+        ]}
+      />
+    )
+    // Group is collapsed: the tool rows are hidden, the inserts are not.
+    expect(screen.queryByText('Splitkick: Create Session')).toBeNull()
+    const links = screen.getAllByTestId('session-link')
+    expect(links.map(l => l.textContent)).toEqual([
+      'create_session:child-1',
+      'send_chat_message:other',
+    ])
+  })
+
+  it('shows nothing for other tools or before the result arrives', () => {
+    render(
+      <ToolCallInline
+        toolCall={{
+          id: 't3',
+          name: 'mcp__splitkick__create_session',
+          input: {},
+        }}
+      />
+    )
+    render(
+      <ToolCallInline
+        toolCall={{
+          id: 't4',
+          name: 'mcp__splitkick__list_sessions',
+          input: {},
+          output: '{"id":"x"}',
+        }}
+      />
+    )
+    expect(screen.queryByTestId('session-link')).toBeNull()
   })
 })

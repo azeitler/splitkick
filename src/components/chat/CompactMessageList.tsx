@@ -41,6 +41,7 @@ import { buildTimeline, coalesceContentBlocks } from './tool-call-utils'
 import { getAssistantDurationMs } from './time-utils'
 import { MessageMetaLine } from './MessageMetaLine'
 import {
+  SessionLinkInserts,
   TOOL_CALL_ROW_CLASS,
   TOOL_CALL_DETAIL_PILL_CLASS,
 } from './ToolCallInline'
@@ -481,6 +482,11 @@ function CompactActivityRow({
           </div>
         </CollapsibleContent>
       </div>
+      {!isOpen && (
+        <SessionLinkInserts
+          toolCalls={group.flatMap(item => item.message.tool_calls ?? [])}
+        />
+      )}
       <MessageMetaLine timestamp={groupTimestamp} durationMs={groupDurationMs}>
         {hasCancelledMessage && (
           <span className="italic text-muted-foreground/50">(cancelled)</span>

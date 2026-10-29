@@ -32,6 +32,10 @@ menu. All of them go through `useSessionFork()`.
 (except the one a native fork reuses, below), every pending approval queue,
 `queued_messages`, `scheduled_wakeup` and the `last_run_*` fields.
 
+A fork also drops `started_by_session_id` (the MCP parent link, see
+`chat/session_links.rs`): the source's parent did not start the fork. The fork's link is
+`forked_from_session_id`, which the chat shows as "Forked from ‘…’".
+
 `sanitize_forked_run` strips per-run state that only made sense in the source:
 
 - `checkpoint_id` — points into the **source worktree's** `ai-checkpoints/{worktree_id}.json`.

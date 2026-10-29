@@ -12,6 +12,18 @@
 - `check:all` green (411 test files, Rust tests); clippy 1.99.1 clean for jean-core, src-server, src-tauri.
 - Live (headless server of this worktree, port 3471, copy of dev data): add, tick off, Use (composer + Send enabled), saved in the session file; phone sheet at 390 px. Not checked live: drag, MCP tool from an agent, the native dev window (port 1420 was taken by another worktree).
 
+# Parent and child sessions (#62)
+
+- [x] `SessionMetadata.started_by_session_id` (serde default); `Session` carries it and `forked_from_session_id`; forks clear it.
+- [x] `chat/session_links.rs`: `record_started_by` (first wins; send only before the first run) + `get_session_link` (dispatch only).
+- [x] MCP: one call each in `create_session`, `send_chat_message`, `start_autoinvestigating`.
+- [x] Chat: `SessionLinkInsert` under the tool call ("Started session" / "Sent to session"), shown outside collapsed groups and turns, one per session; `SessionOriginBanner` at the top ("Started by" / "Forked from").
+
+## Review
+
+- `check:all` green, clippy 1.99.1 green (3 crates). Live in the dev build (web access): real Claude run, both inserts, both clicks, rename, archive.
+- Debug dev build crashes with a stack overflow on any MCP tool call, also on `main`; run it with `RUST_MIN_STACK=33554432`.
+
 # Sidebar sticky stack (#45)
 
 - [x] Mockup (`docs/mockups/sidebar-sticky/`); chosen: full stack, stuck section headers stack and jump on click, hairline.

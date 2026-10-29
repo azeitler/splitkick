@@ -1126,9 +1126,13 @@ async fn run_tool(
             if let Some(b) = args.get("backend").and_then(|v| v.as_str()) {
                 payload.insert("backend".to_string(), Value::String(b.to_string()));
             }
-            dispatch_command(app, "create_session", Value::Object(payload))
+            let session = dispatch_command(app, "create_session", Value::Object(payload))
                 .await
-                .map_err(ToolError::internal)
+                .map_err(ToolError::internal)?;
+            if let Some(id) = session.get("id").and_then(|v| v.as_str()) {
+                crate::chat::session_links::record_started_by(app, id, source, false);
+            }
+            Ok(session)
         }
         "send_chat_message" => {
             let session_id = require_str(&args, "sessionId")?;
@@ -1137,6 +1141,7 @@ async fn run_tool(
             // Validate archive status before fire-and-forget so agents get an
             // immediate error instead of a silent log-only failure after "started".
             ensure_mcp_session_can_run(app, &session_id, &worktree_id)?;
+            crate::chat::session_links::record_started_by(app, &session_id, source, true);
             let mut payload = serde_json::Map::new();
             payload.insert("sessionId".to_string(), Value::String(session_id.clone()));
             payload.insert("worktreeId".to_string(), Value::String(worktree_id));
@@ -2637,6 +2642,7 @@ async fn start_autoinvestigating(
     .await
     .map_err(ToolError::internal)?;
     let session_id = result.session_id;
+    crate::chat::session_links::record_started_by(app, &session_id, source, false);
 
     Ok(json!({
         "worktree": ready_worktree,
