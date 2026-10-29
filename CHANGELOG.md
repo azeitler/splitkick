@@ -18,6 +18,13 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Session transfer works in Web Access.** The target must allow the page's
   address (`JEAN_ALLOWED_ORIGINS`); the error says so. (#65)
+### Changed
+
+- **The follow-up list opens beside the chat when there is room.** Its button
+  moved to the far right of the bar under the input (also in zen mode). In a
+  wide window the list opens in the free space to the right of the chat; when
+  the window, sidebar, file browser or browser pane leaves too little room, it
+  opens above the input, as before. Phones keep the bottom sheet. (#66)
 
 ## [1.1.0] - 2026-10-29
 

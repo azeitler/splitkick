@@ -23,6 +23,7 @@ import { useIsMobile } from '@/hooks/use-mobile'
 import { cn } from '@/lib/utils'
 import { isImeComposingEvent } from '@/lib/ime-composition'
 import type { FollowUp, FollowUpOp } from '@/types/chat'
+import type { FollowUpsPlacement } from './follow-ups-placement'
 
 interface FollowUpsPanelProps {
   open: boolean
@@ -35,6 +36,8 @@ interface FollowUpsPanelProps {
   onUse: (item: FollowUp) => void
   /** Move the item into the message queue. */
   onQueue: (item: FollowUp) => void
+  /** Desktop only: in the side column beside the chat, or above the composer. */
+  placement?: FollowUpsPlacement
 }
 
 /** Ids in the new order after moving `id` to the place of `targetId`. */
@@ -57,13 +60,14 @@ const iconButton =
 
 /**
  * Follow-up list (#46): notes for future turns, never sent automatically.
- * A corner panel above the composer on desktop, a bottom sheet on phones.
+ * On desktop it sits beside the chat column when there is room (#66) and
+ * floats above the composer otherwise; on phones it is a bottom sheet.
  */
 export const FollowUpsPanel = memo(function FollowUpsPanel(
   props: FollowUpsPanelProps
 ) {
   const isMobile = useIsMobile()
-  const { open, onOpenChange } = props
+  const { open, onOpenChange, placement = 'above' } = props
 
   if (isMobile) {
     return (
@@ -91,13 +95,17 @@ export const FollowUpsPanel = memo(function FollowUpsPanel(
     <div
       role="dialog"
       aria-label="Follow-ups"
+      data-placement={placement}
       onKeyDown={e => {
         if (e.key === 'Escape' && !e.defaultPrevented) {
           e.preventDefault()
           onOpenChange(false)
         }
       }}
-      className="absolute right-0 bottom-full z-20 mb-2 flex max-h-[60vh] w-80 flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md"
+      className={cn(
+        'flex max-h-[60vh] w-80 flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-md',
+        placement === 'above' && 'absolute right-0 bottom-full z-20 mb-2'
+      )}
     >
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
         <span className="text-xs font-medium">Follow-ups</span>

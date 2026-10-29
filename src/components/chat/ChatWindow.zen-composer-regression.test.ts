@@ -49,3 +49,18 @@ describe('ChatWindow zen composer', () => {
     )
   })
 })
+
+describe('ChatWindow follow-ups (#66)', () => {
+  it('puts the follow-ups button after Send in the zen toolbar', () => {
+    const zen = source.slice(source.indexOf('zenMode ? ('))
+    expect(zen.indexOf('<SendCancelButton')).toBeGreaterThan(-1)
+    expect(zen.indexOf('<FollowUpsButton')).toBeGreaterThan(
+      zen.indexOf('<SendCancelButton')
+    )
+  })
+
+  it('places the follow-ups panel from the measured side space', () => {
+    expect(source).toContain('useFollowUpsPlacement(')
+    expect(source).toContain("followUpsPlacement === 'beside'")
+  })
+})

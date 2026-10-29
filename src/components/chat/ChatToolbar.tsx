@@ -508,11 +508,11 @@ export const ChatToolbar = memo(function ChatToolbar({
 
       <div
         className={cn(
-          '@container flex px-4 py-2 md:px-6',
+          '@container flex items-center gap-1 px-4 py-2 md:px-6',
           zenMode ? 'justify-end' : 'justify-start'
         )}
       >
-        <div className="inline-flex max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap bg-transparent scrollbar-hide">
+        <div className="inline-flex min-w-0 max-w-full flex-nowrap items-center overflow-x-auto whitespace-nowrap bg-transparent scrollbar-hide">
           <div className={zenMode ? 'hidden' : 'contents'}>
             <DockBurgerButton className="flex @xl:hidden" />
 
@@ -687,14 +687,6 @@ export const ChatToolbar = memo(function ChatToolbar({
           </div>
 
           <div className="flex shrink-0 items-center gap-1">
-            {onToggleFollowUps && (
-              <FollowUpsButton
-                openCount={followUpCount}
-                open={followUpsOpen}
-                onToggle={onToggleFollowUps}
-                shortcut={followUpsShortcut}
-              />
-            )}
             <SendCancelButton
               isSending={isSending}
               canSend={canSend}
@@ -705,6 +697,18 @@ export const ChatToolbar = memo(function ChatToolbar({
             />
           </div>
         </div>
+
+        {/* Far right of the bar, outside the scrolling controls (#66) */}
+        {onToggleFollowUps && (
+          <div className="ml-auto flex shrink-0 items-center">
+            <FollowUpsButton
+              openCount={followUpCount}
+              open={followUpsOpen}
+              onToggle={onToggleFollowUps}
+              shortcut={followUpsShortcut}
+            />
+          </div>
+        )}
 
         <ContextViewerDialog
           viewingContext={viewingContext}

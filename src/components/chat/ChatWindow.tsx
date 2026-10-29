@@ -132,6 +132,7 @@ import { ReviewResultsPanel } from './ReviewResultsPanel'
 import { ReviewMethodModal } from './ReviewMethodModal'
 import { QueuedPromptsPanel } from './QueuedPromptsPanel'
 import { FollowUpsPanel } from './FollowUpsPanel'
+import { useFollowUpsPlacement } from './follow-ups-placement'
 import { ADD_FOLLOW_UP_EVENT } from './message-thread-context-menu'
 import { useFollowUpActions } from './hooks/useFollowUpActions'
 import { useQueuedPromptActions } from './hooks/useQueuedPromptActions'
@@ -1213,9 +1214,19 @@ export function ChatWindow({
   // the home-indicator padding depends on it.
   const keyboardOpen = useSoftKeyboardOpen()
   const unregisterChatComposerRef = useRef<(() => void) | null>(null)
+  // Measured for the follow-up list placement (#66)
+  const [chatComposerNode, setChatComposerNodeState] =
+    useState<HTMLDivElement | null>(null)
+  const [chatInputAreaNode, setChatInputAreaNode] =
+    useState<HTMLDivElement | null>(null)
+  const followUpsPlacement = useFollowUpsPlacement(
+    chatInputAreaNode,
+    chatComposerNode
+  )
   const setChatComposerNode = useCallback((node: HTMLDivElement | null) => {
     unregisterChatComposerRef.current?.()
     unregisterChatComposerRef.current = node ? registerChatComposer(node) : null
+    setChatComposerNodeState(node)
   }, [])
   const clearChatInputStateRef = useRef<(() => void) | null>(null)
   // PERFORMANCE: Refs for session/worktree IDs and settings to avoid recreating callbacks when session changes
@@ -3665,7 +3676,7 @@ export function ChatWindow({
                     )}
 
                     {/* Input container - full width, centered content */}
-                    <div className="bg-background">
+                    <div ref={setChatInputAreaNode} className="bg-background">
                       <div className="mx-auto max-w-7xl">
                         <div
                           ref={setChatComposerNode}
@@ -3675,18 +3686,20 @@ export function ChatWindow({
                           // open, small window): mx-auto alone left it flush.
                           className="relative md:mx-auto md:mb-3 md:w-[calc(100%-3rem)] md:max-w-3xl xl:max-w-4xl"
                         >
-                          {/* Follow-up list: corner panel above the composer (sheet on phones) */}
-                          {activeSessionId && (
-                            <FollowUpsPanel
-                              open={followUpsOpen}
-                              onOpenChange={setFollowUpsOpen}
-                              items={followUps}
-                              isSessionBusy={isSending}
-                              onEdit={handleEditFollowUps}
-                              onUse={handleUseFollowUp}
-                              onQueue={handleQueueFollowUp}
-                            />
-                          )}
+                          {/* Follow-up list: above the composer when the side
+                              column has no room (sheet on phones) */}
+                          {activeSessionId &&
+                            followUpsPlacement === 'above' && (
+                              <FollowUpsPanel
+                                open={followUpsOpen}
+                                onOpenChange={setFollowUpsOpen}
+                                items={followUps}
+                                isSessionBusy={isSending}
+                                onEdit={handleEditFollowUps}
+                                onUse={handleUseFollowUp}
+                                onQueue={handleQueueFollowUp}
+                              />
+                            )}
                           {/* Queued prompts - rendered as an extension above the chat input */}
                           {activeSessionId &&
                             currentQueuedMessages.length > 0 && (
@@ -3856,12 +3869,6 @@ export function ChatWindow({
                               {/* Bottom toolbar */}
                               {zenMode ? (
                                 <div className="flex shrink-0 items-center gap-1 pr-3">
-                                  <FollowUpsButton
-                                    openCount={openFollowUpCount}
-                                    open={followUpsOpen}
-                                    onToggle={handleToggleFollowUps}
-                                    shortcut={followUpsShortcut}
-                                  />
                                   <SendCancelButton
                                     isSending={isSending}
                                     canSend={
@@ -3886,6 +3893,12 @@ export function ChatWindow({
                                       currentQueuedMessages.length
                                     }
                                     onCancel={handleCancel}
+                                  />
+                                  <FollowUpsButton
+                                    openCount={openFollowUpCount}
+                                    open={followUpsOpen}
+                                    onToggle={handleToggleFollowUps}
+                                    shortcut={followUpsShortcut}
                                   />
                                 </div>
                               ) : (
@@ -4048,48 +4061,73 @@ export function ChatWindow({
                             </div>
                           </form>
 
-                          {/* Side panel widgets (Tasks + Agents) for wide screens */}
-                          {!zenMode &&
-                            !terminalPanelOpen &&
-                            (activeTodos.length > 0 ||
-                              activeAgents.length > 0) && (
-                              <div className="hidden xl:flex flex-col gap-2 absolute left-full bottom-0 ml-3 w-64 z-20">
-                                {activeTodos.length > 0 &&
-                                  (dismissedTodoMessageId === null ||
-                                    (todoSourceMessageId !== null &&
-                                      todoSourceMessageId !==
-                                        dismissedTodoMessageId)) && (
-                                    <TodoWidget
-                                      todos={normalizeTodosForDisplay(
-                                        activeTodos,
-                                        isFromStreaming
+                          {/* Side column beside the chat: the follow-up list when
+                              there is room (#66), Tasks + Agents on wide screens */}
+                          {((activeSessionId &&
+                            followUpsOpen &&
+                            followUpsPlacement === 'beside') ||
+                            (!zenMode &&
+                              !terminalPanelOpen &&
+                              (activeTodos.length > 0 ||
+                                activeAgents.length > 0))) && (
+                            <div className="absolute left-full bottom-0 z-20 ml-3 flex flex-col items-start gap-2">
+                              {activeSessionId &&
+                                followUpsPlacement === 'beside' && (
+                                  <FollowUpsPanel
+                                    placement="beside"
+                                    open={followUpsOpen}
+                                    onOpenChange={setFollowUpsOpen}
+                                    items={followUps}
+                                    isSessionBusy={isSending}
+                                    onEdit={handleEditFollowUps}
+                                    onUse={handleUseFollowUp}
+                                    onQueue={handleQueueFollowUp}
+                                  />
+                                )}
+                              {!zenMode &&
+                                !terminalPanelOpen &&
+                                (activeTodos.length > 0 ||
+                                  activeAgents.length > 0) && (
+                                  <div className="hidden xl:flex w-64 flex-col gap-2">
+                                    {activeTodos.length > 0 &&
+                                      (dismissedTodoMessageId === null ||
+                                        (todoSourceMessageId !== null &&
+                                          todoSourceMessageId !==
+                                            dismissedTodoMessageId)) && (
+                                        <TodoWidget
+                                          todos={normalizeTodosForDisplay(
+                                            activeTodos,
+                                            isFromStreaming
+                                          )}
+                                          isStreaming={isSending}
+                                          onClose={() =>
+                                            setDismissedTodoMessageId(
+                                              todoSourceMessageId ??
+                                                '__streaming__'
+                                            )
+                                          }
+                                        />
                                       )}
-                                      isStreaming={isSending}
-                                      onClose={() =>
-                                        setDismissedTodoMessageId(
-                                          todoSourceMessageId ?? '__streaming__'
-                                        )
-                                      }
-                                    />
-                                  )}
-                                {activeAgents.length > 0 &&
-                                  (dismissedAgentMessageId === null ||
-                                    (agentSourceMessageId !== null &&
-                                      agentSourceMessageId !==
-                                        dismissedAgentMessageId)) && (
-                                    <AgentWidget
-                                      agents={activeAgents}
-                                      isStreaming={agentIsFromStreaming}
-                                      onClose={() =>
-                                        setDismissedAgentMessageId(
-                                          agentSourceMessageId ??
-                                            '__streaming__'
-                                        )
-                                      }
-                                    />
-                                  )}
-                              </div>
-                            )}
+                                    {activeAgents.length > 0 &&
+                                      (dismissedAgentMessageId === null ||
+                                        (agentSourceMessageId !== null &&
+                                          agentSourceMessageId !==
+                                            dismissedAgentMessageId)) && (
+                                        <AgentWidget
+                                          agents={activeAgents}
+                                          isStreaming={agentIsFromStreaming}
+                                          onClose={() =>
+                                            setDismissedAgentMessageId(
+                                              agentSourceMessageId ??
+                                                '__streaming__'
+                                            )
+                                          }
+                                        />
+                                      )}
+                                  </div>
+                                )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

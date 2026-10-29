@@ -18,7 +18,7 @@ interface FollowUpsButtonProps {
   shortcut?: string
 }
 
-/** Toggles the follow-up list (#46). Sits directly in front of Send. */
+/** Toggles the follow-up list (#46). Sits at the far right, after Send (#66). */
 export function FollowUpsButton({
   openCount,
   open,

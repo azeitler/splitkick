@@ -49,6 +49,20 @@ describe('FollowUpsPanel', () => {
     expect(screen.queryByRole('dialog', { name: 'Follow-ups' })).toBeNull()
   })
 
+  it('floats above the composer by default', () => {
+    renderPanel()
+    const panel = screen.getByRole('dialog', { name: 'Follow-ups' })
+    expect(panel).toHaveAttribute('data-placement', 'above')
+    expect(panel.className).toContain('bottom-full')
+  })
+
+  it('sits in the side column when placed beside the chat', () => {
+    renderPanel({ placement: 'beside' })
+    const panel = screen.getByRole('dialog', { name: 'Follow-ups' })
+    expect(panel).toHaveAttribute('data-placement', 'beside')
+    expect(panel.className).not.toContain('absolute')
+  })
+
   it('adds a note on Enter and clears the input', async () => {
     const { onEdit } = renderPanel()
     const input = screen.getByLabelText('New follow-up') as HTMLInputElement

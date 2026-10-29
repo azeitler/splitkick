@@ -170,7 +170,7 @@ describe('ChatToolbar zen mode', () => {
 })
 
 describe('ChatToolbar follow-ups button', () => {
-  it('sits directly in front of Send and shows the open count', async () => {
+  it('sits at the far right, after Send, and shows the open count', async () => {
     const onToggleFollowUps = vi.fn()
     renderChatToolbar({
       hasInputValue: true,
@@ -183,8 +183,13 @@ describe('ChatToolbar follow-ups button', () => {
     })
     const send = screen.getByRole('button', { name: /^send$/i })
     expect(button.compareDocumentPosition(send)).toBe(
-      Node.DOCUMENT_POSITION_FOLLOWING
+      Node.DOCUMENT_POSITION_PRECEDING
     )
+    // Its own slot at the end of the bar, pushed to the right edge
+    const slot = button.parentElement as HTMLElement
+    expect(slot).toHaveClass('ml-auto')
+    expect(slot.parentElement?.lastElementChild).toBe(slot)
+    expect(slot.contains(send)).toBe(false)
     expect(screen.getByTestId('follow-ups-badge')).toHaveTextContent('3')
 
     await userEvent.click(button)
