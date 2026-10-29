@@ -45,6 +45,8 @@
     "tauri:check": "bun run typecheck && bun run tauri build --check",
     "dev:e2e": "vite --config e2e/vite.config.e2e.ts --port 1421",
     "test:e2e": "playwright test --config e2e/playwright.config.ts",
+    "test:e2e:local": "bun run build && cargo build --manifest-path src-tauri/Cargo.toml && bun run test:e2e:local:only",
+    "test:e2e:local:only": "playwright test --config e2e/local/playwright.config.ts",
     "test:all": "bun run test:run && bun run rust:test",
     "check:branding": "node scripts/check-branding.mjs",
     "check:all": "bun run typecheck && bun run lint && bun run check:branding && bun run rust:fmt:check && bun run rust:clippy && bun run test:run && bun run rust:test",
