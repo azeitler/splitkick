@@ -23,14 +23,39 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 - **Settings show only the editors, terminals and git clients you have
   installed** (macOS). The app you chose stays in the list. (#43)
-### Changed
-
-- **A starred session now also shows at the top of its project.** The
-  project's top section, in the sidebar and on the project canvas, lists the
-  project's pinned and starred sessions, most recent first. Its label follows
-  the mix: "Pinned", "Starred" or "Pinned & Starred". A pin or star glyph
-  shows on a row when not every row has it. You no longer have to pin a
-  starred session to keep it at the top. (#41)
+- **See and cancel scheduled prompts in the chat.** A banner above the
+  messages shows each pending scheduled prompt of the session, when it runs
+  (for example "in 2h", with date and time), and an X to cancel it. All
+  schedules are now kept in one list, `schedules.json`, and a session can
+  have more than one. Claude's own wakeup keeps its rule: one per session,
+  the newest replaces the older. Wakeups saved by an earlier version move to
+  the new list at the next start. (#38)
+- **Repeating schedules.** A schedule can repeat: every hour, daily at a
+  time, on weekdays, weekly, or by a cron pattern. The time is read in the
+  schedule's own time zone, so "daily at 09:00" stays at 09:00 when the
+  clocks change. The banner shows the rule, the next time and the last run.
+  A new setting, Settings → General → Scheduled prompts → Missed runs,
+  decides what happens to a schedule that came due while Splitkick or the
+  computer was off: run it once at the next start (the default), or skip it.
+  A repeating schedule never runs once per missed time. (#38)
+- **Full Disk Access as an opt-in setting on macOS.** Settings → General has
+  a "Full Disk Access (macOS)" section with the status for this session, an
+  Open System Settings button and Relaunch now (macOS applies the grant only
+  after a relaunch). It stops the repeated "would like to access data from
+  other apps" prompts, because every tool an agent runs inherits the grant.
+  Before the buttons it explains the risk: Splitkick and every program an
+  agent starts could then read all of your files, including Mail, Messages
+  and Safari history, and a prompt injection could read private data. Not
+  granting it is the recommended default; Splitkick works fine without it.
+  Onboarding does not ask for it. (#31)
+- **Transfer a session to another machine.** Right-click a session, or use
+  the command palette, and choose **Transfer to Remote Splitkick…**: pick a
+  saved connection, a project and a worktree there, and the session is copied
+  with its conversation, pasted files and saved contexts. The agent on the
+  other machine gets the earlier conversation with your first message. The
+  session here does not change. Push and pull the branch yourself; issue and
+  PR context and checkpoints do not go along. Both instances need this
+  version. (#35)
 - **Chat links to sessions, worktrees and projects.** A link such as
   `[Fix redirects](splitkick://session/<id>)` in a chat shows the target's
   name and opens it on click: a session in the session modal, a worktree or a
@@ -54,6 +79,15 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   ‘…’". The started session shows "Started by ‘…’" at the top, and a fork shows
   "Forked from ‘…’". The names follow renames, and an archived or deleted
   session is marked as such. (#62)
+
+### Changed
+
+- **A starred session now also shows at the top of its project.** The
+  project's top section, in the sidebar and on the project canvas, lists the
+  project's pinned and starred sessions, most recent first. Its label follows
+  the mix: "Pinned", "Starred" or "Pinned & Starred". A pin or star glyph
+  shows on a row when not every row has it. You no longer have to pin a
+  starred session to keep it at the top. (#41)
 
 ### Fixed
 
@@ -106,6 +140,12 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   approval from the app ran in plan. The mode now becomes the session's mode,
   and open windows switch the toolbar to it. The model given with such a
   message still applies to that one turn only. (#61)
+- **A scheduled wakeup runs with no window open.** When Claude's
+  `ScheduleWakeup` came due, the backend only told the window to send the
+  prompt; with no window open, or on a headless host with no client, the
+  prompt was lost. The backend now puts the prompt in the session's queue and
+  sends it. It uses the session's saved model and mode, not Sonnet and yolo
+  as before when the window had not loaded the session (#38).
 
 ## [1.0.15] - 2026-10-27
 
@@ -134,21 +174,6 @@ Built on Jean 0.1.73.
   sends “continue”, and **Resume with message** puts the cursor in the
   message box. The icon and the banner go away when the next run starts.
   This also works for a run that stopped while Splitkick was closed.
-- **See and cancel scheduled prompts in the chat.** A banner above the
-  messages shows each pending scheduled prompt of the session, when it runs
-  (for example "in 2h", with date and time), and an X to cancel it. All
-  schedules are now kept in one list, `schedules.json`, and a session can
-  have more than one. Claude's own wakeup keeps its rule: one per session,
-  the newest replaces the older. Wakeups saved by an earlier version move to
-  the new list at the next start. (#38)
-- **Repeating schedules.** A schedule can repeat: every hour, daily at a
-  time, on weekdays, weekly, or by a cron pattern. The time is read in the
-  schedule's own time zone, so "daily at 09:00" stays at 09:00 when the
-  clocks change. The banner shows the rule, the next time and the last run.
-  A new setting, Settings → General → Scheduled prompts → Missed runs,
-  decides what happens to a schedule that came due while Splitkick or the
-  computer was off: run it once at the next start (the default), or skip it.
-  A repeating schedule never runs once per missed time. (#38)
 
 ### Fixed
 
@@ -158,12 +183,6 @@ Built on Jean 0.1.73.
   upstream issue #N. Splitkick now asks GitHub for the repository of the
   `origin` remote. A default repository chosen with `gh repo set-default` is
   still used as before. (#56)
-- **A scheduled wakeup runs with no window open.** When Claude's
-  `ScheduleWakeup` came due, the backend only told the window to send the
-  prompt; with no window open, or on a headless host with no client, the
-  prompt was lost. The backend now puts the prompt in the session's queue and
-  sends it. It uses the session's saved model and mode, not Sonnet and yolo
-  as before when the window had not loaded the session (#38).
 
 ### Changed
 
@@ -399,24 +418,6 @@ Built on Jean 0.1.73.
   draw a file, the viewer shows the error with a Reload button and keeps your
   unsaved changes, instead of replacing the code with a raw error box. The
   error is also written to the app log, so a report can include it. (#42)
-- **Full Disk Access as an opt-in setting on macOS.** Settings → General has
-  a "Full Disk Access (macOS)" section with the status for this session, an
-  Open System Settings button and Relaunch now (macOS applies the grant only
-  after a relaunch). It stops the repeated "would like to access data from
-  other apps" prompts, because every tool an agent runs inherits the grant.
-  Before the buttons it explains the risk: Splitkick and every program an
-  agent starts could then read all of your files, including Mail, Messages
-  and Safari history, and a prompt injection could read private data. Not
-  granting it is the recommended default; Splitkick works fine without it.
-  Onboarding does not ask for it. Closes #31.
-- **Transfer a session to another machine.** Right-click a session, or use
-  the command palette, and choose **Transfer to Remote Splitkick…**: pick a
-  saved connection, a project and a worktree there, and the session is copied
-  with its conversation, pasted files and saved contexts. The agent on the
-  other machine gets the earlier conversation with your first message. The
-  session here does not change. Push and pull the branch yourself; issue and
-  PR context and checkpoints do not go along. Both instances need this
-  version. Closes #35
 
 ## [1.0.1] - 2026-10-16
 
