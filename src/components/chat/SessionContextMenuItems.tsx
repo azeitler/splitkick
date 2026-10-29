@@ -1,6 +1,7 @@
 import {
   Archive,
   Copy,
+  FolderInput,
   GitBranchPlus,
   GitFork,
   Link,
@@ -87,6 +88,11 @@ export function SessionContextMenuItems({
   const { forkInPlace, forkToWorktree } = useSessionFork()
   // Web Access works too when the target allows this origin (CORS).
   const canTransfer = useTransferTargets().length > 0
+  // A move waits for an idle session; the backend refuses the same cases.
+  const hasQueuedMessages = useChatStore(
+    state => (state.messageQueues[session.id]?.length ?? 0) > 0
+  )
+  const canMove = !card.isSending && !hasQueuedMessages
   // Select a boolean, not the pins array: the selector must subscribe to the
   // value that decides the label, or the item would not flip after a pin.
   const isPinned = useProjectsStore(state =>
@@ -225,6 +231,17 @@ export function SessionContextMenuItems({
       >
         <GitBranchPlus className="mr-2 h-4 w-4" />
         Fork Session (new Worktree)
+      </ContextMenuItem>
+      <ContextMenuItem
+        disabled={!canMove}
+        onSelect={() => {
+          useUIStore
+            .getState()
+            .setMoveSessionTarget({ worktreeId, sessionId: session.id })
+        }}
+      >
+        <FolderInput className="mr-2 h-4 w-4" />
+        Move to…
       </ContextMenuItem>
       {canTransfer && (
         <ContextMenuItem

@@ -318,58 +318,6 @@ pub struct ToolCallRequest {
     pub arguments: Value,
 }
 
-#[derive(Debug, PartialEq)]
-enum SessionMoveMode {
-    Immediate,
-    Deferred,
-}
-
-fn session_move_mode(running: bool) -> SessionMoveMode {
-    if running {
-        SessionMoveMode::Deferred
-    } else {
-        SessionMoveMode::Immediate
-    }
-}
-
-fn schedule_session_move(
-    app: &AppHandle,
-    session_id: String,
-    source_worktree_id: String,
-    target_worktree_id: String,
-) {
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        while crate::chat::registry::is_session_actively_managed(&session_id) {
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-
-        if crate::chat::worktree_archived_at(&app, &target_worktree_id).is_some() {
-            log::warn!(
-                "Deferred session move cancelled because target worktree is archived: session={session_id} target={target_worktree_id}"
-            );
-            return;
-        }
-
-        match crate::chat::storage::move_session(
-            &app,
-            &source_worktree_id,
-            &target_worktree_id,
-            &session_id,
-        ) {
-            Ok(()) => {
-                crate::chat::emit_sessions_cache_invalidation(&app);
-                log::info!(
-                    "Deferred session move completed: session={session_id} source={source_worktree_id} target={target_worktree_id}"
-                );
-            }
-            Err(error) => log::warn!(
-                "Deferred session move failed: session={session_id} source={source_worktree_id} target={target_worktree_id}: {error}"
-            ),
-        }
-    });
-}
-
 pub fn extract_tool_call(params: Value) -> Result<ToolCallRequest, ToolError> {
     let name = params
         .get("name")
@@ -477,7 +425,7 @@ fn tool_registry_session() -> Value {
         {"name":"send_chat_message","description":"Send a message to an existing non-archived session. Fire-and-forget: returns immediately as the session begins processing. Fails immediately if the session or its worktree is archived — call unarchive_session / unarchive_worktree first. Use this to kick off investigations. When model/executionMode are omitted, Splitkick uses the session's selected model and execution mode (set via set_session_model or the Splitkick UI). Pass model for a one-shot override of this turn only. Pass executionMode to run this turn in that mode and make it the session's execution mode, so the UI and later turns use it too.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"message":{"type":"string"},"model":{"type":"string","description":"Optional one-shot model override. When omitted, uses the session selected model (set_session_model / UI)."},"executionMode":{"type":"string","enum":["plan","build","yolo"],"description":"Optional execution mode. Runs this turn in it and saves it as the session execution mode (UI and later turns use it). When omitted, uses the session selected execution mode."}},"required":["sessionId","message"],"additionalProperties":false}},
         {"name":"archive_session","description":"Archive a chat session (hide it from the active session list). Prefer this over delete when history may still be useful. Cannot run send_chat_message on an archived session until unarchive_session is called.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"unarchive_session","description":"Restore an archived chat session so it can run again. Also unarchives the parent worktree when it is archived. Call this before send_chat_message if a previous attempt failed because the session was archived.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
-        {"name":"move_session","description":"Move a Splitkick session to another active worktree while preserving its session id, complete message/run history, attachments, settings, and backend resume context. An idle session moves immediately. A running session is scheduled to move automatically after its current turn finishes; do not cancel the run or retry the move.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"targetWorktreeId":{"type":"string"}},"required":["sessionId","targetWorktreeId"],"additionalProperties":false}},
+        {"name":"move_session","description":"Move a Splitkick session to another active worktree, in the same or another project, while preserving its session id, complete message/run history, attachments and settings. Claude resumes its own conversation in the new folder; other backends get the Splitkick history replayed on the next turn. A session with queued messages is refused. An idle session moves immediately. A running session is scheduled to move automatically after its current turn finishes; do not cancel the run or retry the move.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"targetWorktreeId":{"type":"string"}},"required":["sessionId","targetWorktreeId"],"additionalProperties":false}},
         {"name":"get_session_status","description":"Get whether a Splitkick session is idle/running/resumable/cancelled/error plus latest run metadata. Use after send_chat_message to poll fire-and-forget work.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"cancel_session_run","description":"Cancel the currently running request for a session. Returns whether Splitkick found an active process/turn/flag to cancel.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"}},"required":["sessionId"],"additionalProperties":false}},
         {"name":"read_session_messages","description":"Read the most recent messages of one session, in chronological order. Keep the output small: role \"user\" returns only the user prompts (the cheapest way to see what a session was for), excludeTools drops tool calls, and maxCharsPerMessage cuts long messages. Use list_all_sessions or search_sessions first to pick the session.","inputSchema":{"type":"object","properties":{"sessionId":{"type":"string"},"limit":{"type":"integer","minimum":1,"maximum":200,"default":50,"description":"Maximum number of messages returned, counted from the end of the session."},"role":{"type":"string","enum":["user","assistant","all"],"default":"all","description":"user reads the prompts from session metadata and never touches a run log."},"excludeTools":{"type":"boolean","default":false,"description":"Drop tool calls. Tool payloads are most of the bytes in a normal session."},"maxCharsPerMessage":{"type":"integer","minimum":100,"maximum":20000,"description":"Cut each message to this many characters."}},"required":["sessionId"],"additionalProperties":false}},
@@ -1258,58 +1206,19 @@ async fn run_tool(
         "move_session" => {
             let session_id = require_str(&args, "sessionId")?;
             let target_worktree_id = require_str(&args, "targetWorktreeId")?;
-            let (source_worktree_id, _) = resolve_session_worktree(app, &session_id)?;
-            if source_worktree_id == target_worktree_id {
-                return Err(ToolError::invalid_params(
-                    "Session already belongs to the target worktree",
-                ));
-            }
-            resolve_worktree_path(app, &target_worktree_id)?;
-            ensure_mcp_worktree_not_archived(app, &target_worktree_id)?;
-
-            let metadata = crate::chat::storage::load_metadata(app, &session_id)
-                .map_err(|e| ToolError::internal(format!("load_metadata: {e}")))?
-                .ok_or_else(|| {
-                    ToolError::invalid_params(format!("Unknown sessionId: {session_id}"))
-                })?;
-            if !metadata.queued_messages.is_empty() {
-                return Err(ToolError::invalid_params(
-                    "Cannot move a session while it has queued messages",
-                ));
-            }
-
-            let move_mode = session_move_mode(crate::chat::registry::is_session_actively_managed(
-                &session_id,
-            ));
-            if move_mode == SessionMoveMode::Deferred {
-                schedule_session_move(
-                    app,
-                    session_id.clone(),
-                    source_worktree_id.clone(),
-                    target_worktree_id.clone(),
-                );
-                return Ok(json!({
-                    "sessionId": session_id,
-                    "sourceWorktreeId": source_worktree_id,
-                    "targetWorktreeId": target_worktree_id,
-                    "status": "scheduled",
-                    "ok": true,
-                }));
-            }
-
-            crate::chat::storage::move_session(
+            let result = crate::chat::session_move::move_session_to_worktree(
                 app,
-                &source_worktree_id,
-                &target_worktree_id,
                 &session_id,
+                &target_worktree_id,
+                crate::chat::session_move::MoveWhenRunning::AfterTurn,
             )
-            .map_err(ToolError::internal)?;
+            .map_err(ToolError::invalid_params)?;
 
             Ok(json!({
-                "sessionId": session_id,
-                "sourceWorktreeId": source_worktree_id,
-                "targetWorktreeId": target_worktree_id,
-                "status": "moved",
+                "sessionId": result.session_id,
+                "sourceWorktreeId": result.source_worktree_id,
+                "targetWorktreeId": result.target_worktree_id,
+                "status": result.status,
                 "ok": true,
             }))
         }
@@ -3424,12 +3333,6 @@ mod tests {
         assert_eq!(state.terminal_active_ids["worktree-1"], "run-from-mcp");
         assert_eq!(state.terminal_panel_open["worktree-1"], true);
         assert_eq!(state.terminal_visible, Some(true));
-    }
-
-    #[test]
-    fn running_session_move_is_deferred_for_persistent_mcp_clients() {
-        assert_eq!(session_move_mode(true), SessionMoveMode::Deferred);
-        assert_eq!(session_move_mode(false), SessionMoveMode::Immediate);
     }
 
     fn find_tool(tools: &Value, name: &str) -> Value {

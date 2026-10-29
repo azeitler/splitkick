@@ -607,6 +607,10 @@ pub(crate) enum HandoffKind {
     /// (Claude Code deletes transcripts after `cleanupPeriodDays`, 30 by
     /// default). Jean's own copy is replayed into a fresh native session.
     LostContext,
+    /// First turn after a move to another folder, on a backend whose resume id is
+    /// bound to the old folder (every backend except Claude). The move cleared the
+    /// id; Jean's history is replayed into a fresh native session.
+    Moved,
 }
 
 impl HandoffKind {
@@ -618,6 +622,7 @@ impl HandoffKind {
                 | HandoffKind::ClaudeProfile
                 | HandoffKind::Fork
                 | HandoffKind::LostContext
+                | HandoffKind::Moved
         )
     }
 }
@@ -634,6 +639,7 @@ pub(crate) fn resolve_handoff_kind(
     backend_handoff: bool,
     profile_handoff: bool,
     pending_fork: Option<PendingFork>,
+    move_replay: bool,
 ) -> HandoffKind {
     if backend_handoff {
         HandoffKind::ProviderSwitch
@@ -643,6 +649,7 @@ pub(crate) fn resolve_handoff_kind(
         match pending_fork {
             Some(PendingFork::Handoff) => HandoffKind::Fork,
             Some(PendingFork::Native) => HandoffKind::NativeFork,
+            None if move_replay => HandoffKind::Moved,
             None => HandoffKind::None,
         }
     }
@@ -3292,7 +3299,21 @@ pub async fn send_chat_message(
         previous_custom_profile.as_deref(),
         custom_profile_name.as_deref(),
     );
-    let handoff_kind = resolve_handoff_kind(backend_handoff, profile_handoff, pending_fork);
+    // One-shot marker set by `chat::session_move`, consumed like `pending_fork`.
+    // Claude resumes by id from any folder and only needs the move note; every
+    // other backend's resume id was cleared by the move and gets a replay.
+    let pending_move = previous_metadata
+        .as_ref()
+        .and_then(|m| m.pending_move.clone());
+    let move_note = pending_move
+        .as_ref()
+        .and_then(|moved| super::handoff::build_moved_note(&moved.from_path, &worktree_path));
+    let handoff_kind = resolve_handoff_kind(
+        backend_handoff,
+        profile_handoff,
+        pending_fork,
+        pending_move.is_some() && effective_backend != Backend::Claude,
+    );
     // A completed Claude turn wrote a transcript under the saved id, but Claude
     // has since deleted it: the model would silently start over. Replay Jean's
     // copy instead. An id that never got a transcript (a first turn that failed
@@ -3303,7 +3324,14 @@ pub async fn send_chat_message(
             previous_metadata
                 .as_ref()
                 .is_some_and(|metadata| completed_claude_run_used(metadata, sid))
-                && !super::claude::claude_transcript_exists(sid, custom_profile_name.as_deref())
+                && (!super::claude::claude_transcript_exists(sid, custom_profile_name.as_deref())
+                    // After a move Claude resumes from the old project folder, but
+                    // not when several folders hold a copy: it reports "not found".
+                    || (pending_move.is_some()
+                        && super::claude::claude_transcript_count(
+                            sid,
+                            custom_profile_name.as_deref(),
+                        ) > 1))
         }) {
         log::info!(
             "[SendChat] Claude transcript missing, replaying Splitkick history session={session_id}"
@@ -3358,11 +3386,16 @@ pub async fn send_chat_message(
                 "[SendChat] injecting hidden provider-switch handoff session={session_id} previous={previous_backend:?} current={effective_backend:?} history_chars={}",
                 history.chars().count()
             );
+            let handoff_prompt =
+                super::handoff::with_move_note(handoff_prompt, move_note.as_deref());
             super::handoff::prepend_hidden_handoff(&message, &handoff_prompt)
         } else {
             message.clone()
         }
-    } else if matches!(handoff_kind, HandoffKind::Fork | HandoffKind::LostContext) {
+    } else if matches!(
+        handoff_kind,
+        HandoffKind::Fork | HandoffKind::LostContext | HandoffKind::Moved
+    ) {
         // Forked session, first turn, on a backend that cannot branch its own
         // transcript, or a backend that lost its transcript. The Jean history
         // is the only context the model gets.
@@ -3381,10 +3414,18 @@ pub async fn send_chat_message(
                 "[SendChat] injecting hidden fork handoff session={session_id} backend={effective_backend:?} history_chars={}",
                 history.chars().count()
             );
-            let fork_prompt = if handoff_kind == HandoffKind::LostContext {
-                super::handoff::build_lost_context_handoff_prompt(&history)
-            } else {
-                super::handoff::build_fork_handoff_prompt(&history)
+            let fork_prompt = match handoff_kind {
+                HandoffKind::Moved => {
+                    super::handoff::build_moved_handoff_prompt(&history, move_note.as_deref())
+                }
+                HandoffKind::LostContext => super::handoff::with_move_note(
+                    super::handoff::build_lost_context_handoff_prompt(&history),
+                    move_note.as_deref(),
+                ),
+                _ => super::handoff::with_move_note(
+                    super::handoff::build_fork_handoff_prompt(&history),
+                    move_note.as_deref(),
+                ),
             };
             super::handoff::prepend_hidden_fork_handoff(&message, &fork_prompt)
         }
@@ -3394,7 +3435,15 @@ pub async fn send_chat_message(
                 "[SendChat] fork resumes natively session={session_id} backend={effective_backend:?} claude_fork_session={claude_fork_session}"
             );
         }
-        message.clone()
+        match move_note.as_deref() {
+            Some(note) => {
+                log::info!(
+                    "[SendChat] moved session resumes natively with a move note session={session_id} backend={effective_backend:?}"
+                );
+                super::handoff::prepend_hidden_fork_handoff(&message, note)
+            }
+            None => message.clone(),
+        }
     };
     let claude_session_id = if claude_profile_changed
         || (clear_target_resume && effective_backend == Backend::Claude)
@@ -6986,12 +7035,12 @@ mod handoff_kind_tests {
     fn a_provider_switch_outranks_everything_else() {
         for pending in [None, Some(PendingFork::Handoff), Some(PendingFork::Native)] {
             assert_eq!(
-                resolve_handoff_kind(true, false, pending),
+                resolve_handoff_kind(true, false, pending, false),
                 HandoffKind::ProviderSwitch,
                 "the switch already injects the full history; a fork must not double it"
             );
             assert_eq!(
-                resolve_handoff_kind(true, true, pending),
+                resolve_handoff_kind(true, true, pending, false),
                 HandoffKind::ProviderSwitch
             );
         }
@@ -7001,7 +7050,7 @@ mod handoff_kind_tests {
     fn a_profile_switch_outranks_a_pending_fork() {
         for pending in [None, Some(PendingFork::Handoff), Some(PendingFork::Native)] {
             assert_eq!(
-                resolve_handoff_kind(false, true, pending),
+                resolve_handoff_kind(false, true, pending, false),
                 HandoffKind::ClaudeProfile
             );
         }
@@ -7010,14 +7059,42 @@ mod handoff_kind_tests {
     #[test]
     fn a_pending_fork_maps_to_its_strategy() {
         assert_eq!(
-            resolve_handoff_kind(false, false, Some(PendingFork::Handoff)),
+            resolve_handoff_kind(false, false, Some(PendingFork::Handoff), false),
             HandoffKind::Fork
         );
         assert_eq!(
-            resolve_handoff_kind(false, false, Some(PendingFork::Native)),
+            resolve_handoff_kind(false, false, Some(PendingFork::Native), false),
             HandoffKind::NativeFork
         );
-        assert_eq!(resolve_handoff_kind(false, false, None), HandoffKind::None);
+        assert_eq!(
+            resolve_handoff_kind(false, false, None, false),
+            HandoffKind::None
+        );
+    }
+
+    #[test]
+    fn a_move_replays_only_when_nothing_else_replays() {
+        assert_eq!(
+            resolve_handoff_kind(false, false, None, true),
+            HandoffKind::Moved
+        );
+        assert_eq!(
+            resolve_handoff_kind(true, false, None, true),
+            HandoffKind::ProviderSwitch
+        );
+        assert_eq!(
+            resolve_handoff_kind(false, true, None, true),
+            HandoffKind::ClaudeProfile
+        );
+        assert_eq!(
+            resolve_handoff_kind(false, false, Some(PendingFork::Handoff), true),
+            HandoffKind::Fork
+        );
+    }
+
+    #[test]
+    fn a_move_starts_a_fresh_backend_conversation() {
+        assert!(HandoffKind::Moved.clears_target_resume());
     }
 
     #[test]

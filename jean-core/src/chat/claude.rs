@@ -318,6 +318,35 @@ pub fn claude_transcript_exists(
         .any(|dir| transcript_in_projects_dir(&dir.join("projects"), &file_name))
 }
 
+/// In how many project folders Claude keeps a transcript for `claude_session_id`.
+///
+/// `claude --resume <id>` finds a conversation from any folder, but only when one
+/// project holds it: with copies in several, Claude reports "No conversation found"
+/// (https://code.claude.com/docs/en/sessions). A moved session checks this before it
+/// relies on the native resume.
+pub fn claude_transcript_count(
+    claude_session_id: &str,
+    custom_profile_name: Option<&str>,
+) -> usize {
+    let file_name = format!("{claude_session_id}.jsonl");
+    claude_config_dirs(custom_profile_name)
+        .iter()
+        .map(|dir| count_transcripts_in_projects_dir(&dir.join("projects"), &file_name))
+        .max()
+        .unwrap_or(0)
+}
+
+fn count_transcripts_in_projects_dir(projects_dir: &std::path::Path, file_name: &str) -> usize {
+    std::fs::read_dir(projects_dir)
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|entry| entry.path().join(file_name).is_file())
+                .count()
+        })
+        .unwrap_or(0)
+}
+
 /// Config dirs Claude may keep its transcripts in, most specific first.
 fn claude_config_dirs(custom_profile_name: Option<&str>) -> Vec<std::path::PathBuf> {
     let mut config_dirs: Vec<std::path::PathBuf> =
@@ -2790,6 +2819,35 @@ mod tests {
             &root.path().join("missing"),
             "sid-1.jsonl"
         ));
+    }
+
+    #[test]
+    fn transcripts_are_counted_per_project_dir() {
+        let root = tempfile::tempdir().unwrap();
+        let projects = root.path().join("projects");
+        for project in ["-Users-me-a", "-Users-me-b", "-Users-me-c"] {
+            std::fs::create_dir_all(projects.join(project)).unwrap();
+        }
+        std::fs::write(projects.join("-Users-me-a").join("sid-1.jsonl"), "{}").unwrap();
+        std::fs::write(projects.join("-Users-me-b").join("sid-1.jsonl"), "{}").unwrap();
+        std::fs::write(projects.join("-Users-me-c").join("sid-2.jsonl"), "{}").unwrap();
+
+        assert_eq!(
+            count_transcripts_in_projects_dir(&projects, "sid-1.jsonl"),
+            2
+        );
+        assert_eq!(
+            count_transcripts_in_projects_dir(&projects, "sid-2.jsonl"),
+            1
+        );
+        assert_eq!(
+            count_transcripts_in_projects_dir(&projects, "sid-3.jsonl"),
+            0
+        );
+        assert_eq!(
+            count_transcripts_in_projects_dir(&root.path().join("missing"), "sid-1.jsonl"),
+            0
+        );
     }
 
     /// The CLI streams the finished `AskUserQuestion` to stdout before it

@@ -31,6 +31,7 @@ import {
 } from '@/lib/navigate-to-session'
 import { isConnectionWindow } from '@/lib/remote-connections'
 import { logger } from '@/lib/logger'
+import { handleSessionMoved, type SessionMovedEvent } from '@/lib/session-move'
 import { logNativeError } from '@/lib/native-log'
 import {
   eventToShortcutString,
@@ -1339,6 +1340,15 @@ export function useMainWindowEventListeners() {
           })
           // Silent failure - don't show toast to avoid interrupting workflow
         }),
+
+        // A session moved to another worktree, from the UI or from MCP (#67).
+        listen<SessionMovedEvent>('session:moved', event =>
+          handleSessionMoved(event.payload)
+        ),
+        listen<{ sessionId: string; error: string }>(
+          'session:move-failed',
+          event => toast.error(`Failed to move session: ${event.payload.error}`)
+        ),
 
         // Queue sync between native + web clients.
         // When another client enqueues/dequeues, update local Zustand state.

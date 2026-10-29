@@ -11,6 +11,7 @@ import {
   Pencil,
   RotateCcw,
   Send,
+  FolderInput,
 } from 'lucide-react'
 import type { AppCommand } from './types'
 import { useUIStore } from '@/store/ui-store'
@@ -25,6 +26,22 @@ import {
 } from '@/lib/session-transfer'
 
 export const projectCommands: AppCommand[] = [
+  {
+    id: 'move-session',
+    label: 'Move Session to…',
+    description: 'Move the current session to another project or worktree',
+    icon: FolderInput,
+    group: 'projects',
+    keywords: ['session', 'move', 'project', 'worktree', 'relocate'],
+
+    isAvailable: context => context.hasActiveSession(),
+
+    execute: () => {
+      const target = getActiveSessionTarget()
+      if (target) useUIStore.getState().setMoveSessionTarget(target)
+    },
+  },
+
   {
     id: 'transfer-session-to-remote',
     label: `Transfer Session to Remote ${PRODUCT_NAME}…`,

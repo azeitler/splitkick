@@ -25,6 +25,11 @@ and this project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
   wide window the list opens in the free space to the right of the chat; when
   the window, sidebar, file browser or browser pane leaves too little room, it
   opens above the input, as before. Phones keep the bottom sheet. (#66)
+- **You can move a session to another project or worktree.** Use "Move to…" in
+  the session menu (sidebar, tabs, canvas) or "Move Session to…" in ⌘K. The
+  session keeps its history. Claude continues its conversation; other backends
+  get the history replayed on the next message. A running session or one with
+  queued messages cannot move. (#67)
 
 ## [1.1.0] - 2026-10-29
 
