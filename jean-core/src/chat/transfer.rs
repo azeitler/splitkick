@@ -494,6 +494,7 @@ mod tests {
             kimi_session_id: None,
             antigravity_session_id: None,
             checkpoint_id: Some("checkpoint".to_string()),
+            limit_hit: None,
         }
     }
 
